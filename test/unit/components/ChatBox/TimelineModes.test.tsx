@@ -302,10 +302,111 @@ describe('ChatBox timeline modes', () => {
   afterEach(() => {
     vi.useRealTimers();
     motionPreference.reduced = false;
-    usePageTabStore.setState({
-      sessionPreviewProjectId: null,
-      sessionPreviewByProject: {},
+    act(() => {
+      usePageTabStore.setState({
+        sessionPreviewProjectId: null,
+        sessionPreviewByProject: {},
+        narrativeInformationDensity: 'compact',
+      });
     });
+  });
+
+  it('presents the same message interval at three distinct Narrative densities', () => {
+    const work: ChatProjectionNode[] = [
+      {
+        ...base,
+        kind: 'message',
+        id: 'density-narration',
+        eventId: 'density-narration',
+        eventType: 'message.completed',
+        runSequence: 1,
+        createdAt: '2026-08-19T00:00:01Z',
+        role: 'assistant',
+        purpose: 'narration',
+        status: 'complete',
+        content: 'I will inspect the files.',
+        agentName: 'Developer Agent',
+      },
+      normalToolActivity({
+        id: 'density-read',
+        runSequence: 2,
+        status: 'completed',
+        methodName: 'read_file',
+        title: 'Read first file',
+        agentName: 'Developer Agent',
+      }),
+      normalToolActivity({
+        id: 'density-write',
+        runSequence: 3,
+        status: 'completed',
+        methodName: 'write_file',
+        title: 'Write second file',
+        agentName: 'Developer Agent',
+      }),
+      normalToolActivity({
+        id: 'density-search',
+        runSequence: 4,
+        status: 'completed',
+        toolkitName: 'Search Toolkit',
+        methodName: 'google_search',
+        title: 'Search docs',
+        agentName: 'Developer Agent',
+      }),
+      runningRunStatus(5),
+    ];
+    const runs = composeTimelineRuns(work);
+    usePageTabStore.setState({ narrativeInformationDensity: 'compact' });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={runs}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+
+    expect(screen.getByText('I will inspect the files.')).toBeInTheDocument();
+    expect(
+      container.querySelectorAll('[data-narrative-segment-trigger]')
+    ).toHaveLength(1);
+    expect(
+      container.querySelector('[data-narrative-segment-trigger]')
+    ).toHaveTextContent('3 actions');
+    expect(
+      container.querySelectorAll('[data-timeline-call-trigger]')
+    ).toHaveLength(0);
+
+    act(() =>
+      usePageTabStore.setState({ narrativeInformationDensity: 'balanced' })
+    );
+    const groups = [
+      ...container.querySelectorAll('[data-narrative-segment-trigger]'),
+    ];
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveTextContent('File Toolkit · read file, write file');
+    expect(
+      container.querySelectorAll('[data-timeline-call-trigger]')
+    ).toHaveLength(1);
+    expect(
+      container.querySelector('[data-timeline-call-trigger]')
+    ).toHaveTextContent('Search docs');
+
+    act(() =>
+      usePageTabStore.setState({ narrativeInformationDensity: 'expanded' })
+    );
+    expect(
+      container.querySelectorAll('[data-narrative-segment-trigger]')
+    ).toHaveLength(0);
+    expect(
+      [...container.querySelectorAll('[data-timeline-call-trigger]')].map(
+        (node) => node.textContent?.trim()
+      )
+    ).toEqual(['Read first file', 'Write second file', 'Search docs']);
+    expect(
+      [...container.querySelectorAll('[data-timeline-call-trigger]')].map(
+        (node) => node.getAttribute('aria-expanded')
+      )
+    ).toEqual(['false', 'false', 'false']);
+    expect(screen.getByText('I will inspect the files.')).toBeInTheDocument();
   });
 
   it.each(['narrative', 'trajectory'] as const)(

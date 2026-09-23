@@ -22,6 +22,7 @@ import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
+import { isProjectAchieved } from '@/lib/projectAchievement';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import {
@@ -548,7 +549,9 @@ export default function Session({ isNewProject = false }: SessionProps) {
           )}
         >
           <HeaderBox
+            projectId={activeProjectId}
             projectName={activeProjectMeta?.name}
+            projectAchieved={isProjectAchieved(activeProjectMeta?.metadata)}
             totalTokens={
               chatStore.activeTaskId
                 ? chatStore.tasks[chatStore.activeTaskId]?.tokens || 0

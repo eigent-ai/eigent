@@ -34,7 +34,10 @@ import {
 import { errorCopy } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { DEFAULT_NARRATIVE_INFORMATION_DENSITY } from '@/types/chatTimeline';
+import {
+  DEFAULT_NARRATIVE_INFORMATION_DENSITY,
+  type NarrativeInformationDensity,
+} from '@/types/chatTimeline';
 import { SessionMode, type SessionModeType } from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -224,11 +227,13 @@ function NarrativeWorkLogSummary({
 
 function NarrativeToolGroup({
   calls,
+  label,
   runActive,
   latestRunningCallId,
   reducedMotion,
 }: {
   calls: readonly TimelineCall[];
+  label?: string;
   runActive: boolean;
   latestRunningCallId: string | null;
   reducedMotion: boolean;
@@ -251,11 +256,13 @@ function NarrativeToolGroup({
   );
   // The group owns only structure. Individual CallRows own invocation titles,
   // so a one-call group never repeats its child's title in the header.
-  const toolGroupLabel = t('chat.timeline-action-count', {
-    defaultValue_one: '{{count}} action',
-    defaultValue_other: '{{count}} actions',
-    count: callCount,
-  });
+  const toolGroupLabel =
+    label ??
+    t('chat.timeline-action-count', {
+      defaultValue_one: '{{count}} action',
+      defaultValue_other: '{{count}} actions',
+      count: callCount,
+    });
   // A closed segment hides the running call, so the shimmer moves up to the
   // label. Opening it hands the shimmer back to the call that owns it, which
   // keeps exactly one live indicator on screen either way.
@@ -345,13 +352,42 @@ function NarrativeToolGroup({
   );
 }
 
+/** A missing toolkit identity cannot justify folding unrelated calls. */
+function groupCallsByToolkit(calls: readonly TimelineCall[]): TimelineCall[][] {
+  const groups: TimelineCall[][] = [];
+  for (const call of calls) {
+    const toolkit = call.toolkitName?.trim();
+    const previous = groups.at(-1);
+    if (toolkit && previous?.[0]?.toolkitName?.trim() === toolkit) {
+      previous.push(call);
+    } else {
+      groups.push([call]);
+    }
+  }
+  return groups;
+}
+
+function toolkitGroupLabel(calls: readonly TimelineCall[]): string {
+  const toolkit = calls[0]?.toolkitName?.trim() || '';
+  const descriptions = [
+    ...new Set(
+      calls.map((call) =>
+        (call.methodName?.trim() || call.title.trim()).replaceAll('_', ' ')
+      )
+    ),
+  ];
+  return [toolkit, descriptions.join(', ')].filter(Boolean).join(' · ');
+}
+
 function NarrativeSubagentRow({
   item,
+  density,
   latestRunningCallId,
   reducedMotion,
   runActive,
 }: {
   item: Extract<TimelineNarrativeItem, { kind: 'subagent' }>;
+  density: NarrativeInformationDensity;
   latestRunningCallId: string | null;
   reducedMotion: boolean;
   runActive: boolean;
@@ -550,6 +586,7 @@ function NarrativeSubagentRow({
                         key={child.id}
                       >
                         <NarrativeItem
+                          density={density}
                           item={child}
                           latestRunningCallId={latestRunningCallId}
                           reducedMotion={reducedMotion}
@@ -571,11 +608,13 @@ function NarrativeSubagentRow({
 /** One unit of reasoning followed by calls in their projected order. */
 function NarrativeSegment({
   segment,
+  density,
   runActive,
   latestRunningCallId,
   reducedMotion,
 }: {
   segment: TimelineSegment;
+  density: NarrativeInformationDensity;
   runActive: boolean;
   latestRunningCallId: string | null;
   reducedMotion: boolean;
@@ -619,7 +658,7 @@ function NarrativeSegment({
           ) : null}
         </div>
       ) : null}
-      {segment.calls.length > 0 ? (
+      {segment.calls.length > 0 && density === 'compact' ? (
         <NarrativeToolGroup
           calls={segment.calls}
           latestRunningCallId={latestRunningCallId}
@@ -627,6 +666,39 @@ function NarrativeSegment({
           runActive={runActive}
         />
       ) : null}
+      {density === 'balanced'
+        ? groupCallsByToolkit(segment.calls).map((calls) =>
+            calls.length === 1 ? (
+              <CallRow
+                call={calls[0]}
+                key={calls[0].id}
+                latestRunningCallId={latestRunningCallId}
+                reducedMotion={reducedMotion}
+                runActive={runActive}
+              />
+            ) : (
+              <NarrativeToolGroup
+                calls={calls}
+                key={calls[0].id}
+                label={toolkitGroupLabel(calls)}
+                latestRunningCallId={latestRunningCallId}
+                reducedMotion={reducedMotion}
+                runActive={runActive}
+              />
+            )
+          )
+        : null}
+      {density === 'expanded'
+        ? segment.calls.map((call) => (
+            <CallRow
+              call={call}
+              key={call.id}
+              latestRunningCallId={latestRunningCallId}
+              reducedMotion={reducedMotion}
+              runActive={runActive}
+            />
+          ))
+        : null}
     </div>
   );
 }
@@ -686,12 +758,14 @@ function NarrativeNotice({
 
 function NarrativeItem({
   item,
+  density,
   interactivePlan,
   runActive,
   latestRunningCallId,
   reducedMotion,
 }: {
   item: TimelineNarrativeItem;
+  density: NarrativeInformationDensity;
   interactivePlan?: InteractiveTimelinePlan;
   runActive: boolean;
   latestRunningCallId: string | null;
@@ -700,6 +774,7 @@ function NarrativeItem({
   if (item.kind === 'segment') {
     return (
       <NarrativeSegment
+        density={density}
         latestRunningCallId={latestRunningCallId}
         reducedMotion={reducedMotion}
         runActive={runActive}
@@ -727,6 +802,7 @@ function NarrativeItem({
   if (item.kind === 'subagent') {
     return (
       <NarrativeSubagentRow
+        density={density}
         item={item}
         latestRunningCallId={latestRunningCallId}
         reducedMotion={reducedMotion}
@@ -751,6 +827,7 @@ function NarrativeItem({
  */
 function NarrativeAgentGroup({
   agentName,
+  density,
   items,
   isLatest,
   animationsActive,
@@ -759,6 +836,7 @@ function NarrativeAgentGroup({
   reducedMotion,
 }: {
   agentName: string;
+  density: NarrativeInformationDensity;
   items: readonly TimelineNarrativeItem[];
   isLatest: boolean;
   animationsActive: boolean;
@@ -831,6 +909,7 @@ function NarrativeAgentGroup({
                     key={item.id}
                   >
                     <NarrativeItem
+                      density={density}
                       item={item}
                       latestRunningCallId={latestRunningCallId}
                       reducedMotion={reducedMotion}
@@ -912,7 +991,8 @@ function NarrativeRunWorkLog({
     (state) =>
       state.narrativeInformationDensity ?? DEFAULT_NARRATIVE_INFORMATION_DENSITY
   );
-  const defaultOpen = live || density !== 'compact';
+  // Density changes only action presentation. It never hides all narration.
+  const defaultOpen = true;
   const [open, setOpen] = useState(defaultOpen);
   const manuallyToggled = useRef(false);
   const lastAgentIndex = entries.findLastIndex(
@@ -988,6 +1068,7 @@ function NarrativeRunWorkLog({
                       {entry.kind === 'agent' ? (
                         <NarrativeAgentGroup
                           agentName={entry.agentName}
+                          density={density}
                           animationsActive={animationsActive}
                           isLatest={index === lastAgentIndex}
                           items={entry.items}
@@ -997,6 +1078,7 @@ function NarrativeRunWorkLog({
                         />
                       ) : (
                         <NarrativeItem
+                          density={density}
                           interactivePlan={interactivePlan}
                           item={entry.item}
                           latestRunningCallId={runningCallId}

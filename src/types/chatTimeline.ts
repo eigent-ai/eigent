@@ -35,7 +35,7 @@ export type NarrativeInformationDensity =
   (typeof narrativeInformationDensities)[number];
 
 export const DEFAULT_NARRATIVE_INFORMATION_DENSITY: NarrativeInformationDensity =
-  'balanced';
+  'compact';
 
 export function normalizeNarrativeInformationDensity(
   value: unknown

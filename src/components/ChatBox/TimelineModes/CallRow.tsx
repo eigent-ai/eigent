@@ -16,7 +16,6 @@ import { useTerminalProcesses } from '@/components/Session/PreviewPanel/tabs/ter
 import { Button } from '@/components/ui/button';
 import { openTerminalProcessPreview } from '@/lib/terminalPreview';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { DEFAULT_NARRATIVE_INFORMATION_DENSITY } from '@/types/chatTimeline';
 
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
@@ -85,10 +84,6 @@ export function CallRow({
 }: CallRowProps) {
   const { t } = useTranslation();
   const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
-  const density = usePageTabStore(
-    (state) =>
-      state.narrativeInformationDensity ?? DEFAULT_NARRATIVE_INFORMATION_DENSITY
-  );
   const processes = useTerminalProcesses(
     call.actionKind === 'command' ? projectId : null
   );
@@ -169,7 +164,7 @@ export function CallRow({
   );
   // A pending human call is the one thing the user must act on, so it opens
   // itself. Everything else follows the shimmer/auto-collapse rule.
-  const autoExpanded = highlighted || pendingHuman || density === 'expanded';
+  const autoExpanded = highlighted || pendingHuman;
   const [open, setOpen] = useState(autoExpanded);
   const manuallyToggled = useRef(false);
 

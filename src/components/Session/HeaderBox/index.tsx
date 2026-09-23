@@ -17,25 +17,23 @@ import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Separator } from '@/components/ui/separator';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import {
-  chatTimelineDetailLevels,
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
   DEFAULT_NARRATIVE_INFORMATION_DENSITY,
   narrativeInformationDensities,
@@ -43,33 +41,16 @@ import {
   type NarrativeInformationDensity,
 } from '@/types/chatTimeline';
 import {
+  Archive,
   ArrowLeft,
   ChevronDown,
-  createLucideIcon,
   GalleryThumbnails,
-  Logs,
-  type LucideIcon,
+  Pencil,
+  Pin,
+  Trash2,
 } from 'lucide-react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-
-const SquareText = createLucideIcon('square-text', [
-  [
-    'rect',
-    { width: '18', height: '18', x: '3', y: '3', rx: '2', key: 'frame' },
-  ],
-  ['path', { d: 'M7 8h10', key: 'line-top' }],
-  ['path', { d: 'M7 12h10', key: 'line-middle' }],
-  ['path', { d: 'M7 16h6', key: 'line-bottom' }],
-]);
-
-/**
- * Narrative reads as prose, trajectory reads as a log trace. The icons
- * carry the distinction on their own so the toggle needs no visible text.
- */
-const TIMELINE_MODE_ICONS: Record<ChatTimelineDetailLevel, LucideIcon> = {
-  narrative: SquareText,
-  trajectory: Logs,
-};
 
 const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
   narrative: 'Narrative',
@@ -93,6 +74,8 @@ export interface HeaderBoxProps {
   totalTokens?: number;
   /** Display-only identity for the active Project. */
   projectName?: string | null;
+  projectId?: string | null;
+  projectAchieved?: boolean;
   /** Optional extra class names for the outer container */
   className?: string;
   /** Reserve header height without controls or token count. */
@@ -102,10 +85,14 @@ export interface HeaderBoxProps {
 export function HeaderBox({
   totalTokens = 0,
   projectName,
+  projectId,
+  projectAchieved = false,
   className,
   empty = false,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
+  const densityId = useId();
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [headerRef, compact] = useIsCompactWidth<HTMLDivElement>(
     COMPACT_WIDTH_THRESHOLD
   );
@@ -129,6 +116,10 @@ export function HeaderBox({
     (s) => s.setNarrativeInformationDensity
   );
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
+  const pinnedProjectIds = useSessionControlsStore((s) => s.pinnedProjectIds);
+  const togglePinned = useSessionControlsStore((s) => s.togglePinned);
+  const requestSessionAction = useSessionControlsStore((s) => s.requestAction);
+  const pinned = Boolean(projectId && pinnedProjectIds.includes(projectId));
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backTooltip = t('layout.back-tooltip', {
     defaultValue: 'Back',
@@ -136,14 +127,17 @@ export function HeaderBox({
   const windowPreviewTooltip = sessionPreviewOpen
     ? t('layout.close-preview-tooltip', { defaultValue: 'Close preview' })
     : t('layout.open-preview-tooltip', { defaultValue: 'Open preview' });
-  const timelineStyleTooltip = t('chat.timeline-style-tooltip', {
-    defaultValue: 'Chat timeline style',
+  const sessionMenuLabel = t('layout.project-settings', {
+    defaultValue: 'Session settings',
   });
   const timelineStyleLabel = (level: ChatTimelineDetailLevel) =>
     t(`chat.timeline-style-${level}`, {
       defaultValue: TIMELINE_MODE_FALLBACK_LABELS[level],
     });
-  const SelectedViewIcon = TIMELINE_MODE_ICONS[chatTimelineDetailLevel];
+  const densityLabel = (density: NarrativeInformationDensity) =>
+    t(`chat.timeline-density-${density}`, {
+      defaultValue: NARRATIVE_DENSITY_FALLBACK_LABELS[density],
+    });
 
   if (empty) {
     return (
@@ -160,7 +154,7 @@ export function HeaderBox({
       ref={headerRef}
       className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
     >
-      {/* Left: return to workspace + display-only Project identity. */}
+      {/* Left: return to workspace, Session identity, and its controls. */}
       <div className="flex min-w-0 items-center gap-2">
         <TooltipSimple content={backTooltip} variant="instant" side="bottom">
           <Button
@@ -172,7 +166,7 @@ export function HeaderBox({
             className="no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
             aria-label={backTooltip}
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
+            <DsIcon icon={ArrowLeft} recipe="main" />
           </Button>
         </TooltipSimple>
         {projectName ? (
@@ -183,9 +177,203 @@ export function HeaderBox({
             {projectName}
           </span>
         ) : null}
+        {projectName ? (
+          <Popover open={sessionMenuOpen} onOpenChange={setSessionMenuOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="md"
+                buttonContent="icon-only"
+                className="no-drag shrink-0"
+                aria-label={`${sessionMenuLabel}: ${projectName}`}
+              >
+                <DsIcon icon={ChevronDown} recipe="main" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-64 p-xs">
+              {eventNativeTimelineEnabled ? (
+                <>
+                  <div className="px-2 py-1.5 text-ds-text-meta font-medium text-ds-ink-muted-default">
+                    {t('chat.timeline-view-settings', {
+                      defaultValue: 'View settings',
+                    })}
+                  </div>
+                  <div className="px-2 pb-2">
+                    <Tabs
+                      value={chatTimelineDetailLevel}
+                      onValueChange={(value) =>
+                        setChatTimelineDetailLevel(
+                          value as ChatTimelineDetailLevel
+                        )
+                      }
+                    >
+                      <TabsList
+                        appearance="default"
+                        className="w-full"
+                        aria-label={t('chat.timeline-view-label')}
+                      >
+                        <TabsTrigger
+                          className="min-w-0 flex-1"
+                          value="narrative"
+                          tabIndex={
+                            chatTimelineDetailLevel === 'narrative' ? 0 : -1
+                          }
+                        >
+                          {timelineStyleLabel('narrative')}
+                        </TabsTrigger>
+                        <TabsTrigger
+                          className="min-w-0 flex-1"
+                          value="trajectory"
+                          tabIndex={
+                            chatTimelineDetailLevel === 'trajectory' ? 0 : -1
+                          }
+                        >
+                          {timelineStyleLabel('trajectory')}
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent
+                        value="narrative"
+                        className="mt-2"
+                        tabIndex={-1}
+                      >
+                        <div className="flex flex-col gap-2 pb-2">
+                          <label
+                            htmlFor={densityId}
+                            className="text-ds-text-meta font-medium text-ds-ink-muted-default"
+                          >
+                            {t('chat.timeline-narrative-detail-label', {
+                              defaultValue: 'Narrative detail',
+                            })}
+                          </label>
+                          <input
+                            id={densityId}
+                            type="range"
+                            min={0}
+                            max={2}
+                            step={1}
+                            value={narrativeInformationDensities.indexOf(
+                              narrativeInformationDensity
+                            )}
+                            onChange={(event) =>
+                              setNarrativeInformationDensity(
+                                narrativeInformationDensities[
+                                  Number(event.target.value)
+                                ]
+                              )
+                            }
+                            onKeyDown={(event) => {
+                              const current =
+                                narrativeInformationDensities.indexOf(
+                                  narrativeInformationDensity
+                                );
+                              const next =
+                                event.key === 'Home'
+                                  ? 0
+                                  : event.key === 'End'
+                                    ? 2
+                                    : event.key === 'ArrowRight' ||
+                                        event.key === 'ArrowUp'
+                                      ? Math.min(2, current + 1)
+                                      : event.key === 'ArrowLeft' ||
+                                          event.key === 'ArrowDown'
+                                        ? Math.max(0, current - 1)
+                                        : null;
+                              if (next === null) return;
+                              event.preventDefault();
+                              setNarrativeInformationDensity(
+                                narrativeInformationDensities[next]
+                              );
+                            }}
+                            aria-valuetext={densityLabel(
+                              narrativeInformationDensity
+                            )}
+                            className="h-2 w-full cursor-pointer appearance-none rounded-full bg-ds-neutral-subtle-disabled accent-ds-accent-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none"
+                          />
+                          <div
+                            className="flex justify-between gap-1 text-ds-text-meta text-ds-ink-muted-default"
+                            aria-hidden
+                          >
+                            {narrativeInformationDensities.map((density) => (
+                              <span key={density}>{densityLabel(density)}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </TabsContent>
+                      <TabsContent
+                        value="trajectory"
+                        className="mt-0"
+                        tabIndex={-1}
+                      />
+                    </Tabs>
+                  </div>
+                  <Separator className="my-1" />
+                </>
+              ) : null}
+              <Button
+                type="button"
+                variant="ghost"
+                size="md"
+                className="w-full justify-start"
+                disabled={!projectId}
+                onClick={() => {
+                  if (projectId) togglePinned(projectId);
+                  setSessionMenuOpen(false);
+                }}
+              >
+                <DsIcon icon={Pin} recipe="main" />
+                {t(pinned ? 'layout.unpin' : 'layout.pin')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="md"
+                className="w-full justify-start"
+                disabled={!projectId}
+                onClick={() => {
+                  if (projectId) requestSessionAction('rename', projectId);
+                  setSessionMenuOpen(false);
+                }}
+              >
+                <DsIcon icon={Pencil} recipe="main" />
+                {t('layout.rename-project')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="md"
+                className="w-full justify-start"
+                disabled={!projectId || projectAchieved}
+                onClick={() => {
+                  if (projectId) requestSessionAction('end', projectId);
+                  setSessionMenuOpen(false);
+                }}
+              >
+                <DsIcon icon={Archive} recipe="main" />
+                {t('layout.achieve-project')}
+              </Button>
+              <Separator className="my-1" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                tone="error"
+                className="w-full justify-start"
+                disabled={!projectId}
+                onClick={() => {
+                  if (projectId) requestSessionAction('delete', projectId);
+                  setSessionMenuOpen(false);
+                }}
+              >
+                <DsIcon icon={Trash2} recipe="main" />
+                {t('layout.delete-project')}
+              </Button>
+            </PopoverContent>
+          </Popover>
+        ) : null}
       </div>
 
-      {/* Right: optional token count + timeline pill + preview toggle. */}
+      {/* Right: optional token count + preview toggle. */}
       <div className="flex items-center gap-2 text-ds-ink-muted-default">
         {!compact ? (
           <div className="flex items-center gap-1">
@@ -195,64 +383,6 @@ export function HeaderBox({
               <AnimatedTokenNumber value={totalTokens} />
             </span>
           </div>
-        ) : null}
-        {eventNativeTimelineEnabled ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="no-drag shrink-0 gap-ds-control-gap"
-                aria-label={`${timelineStyleTooltip}: ${timelineStyleLabel(chatTimelineDetailLevel)}`}
-              >
-                <DsIcon icon={SelectedViewIcon} recipe="main" />
-                {!compact ? (
-                  <span>{timelineStyleLabel(chatTimelineDetailLevel)}</span>
-                ) : null}
-                <DsIcon icon={ChevronDown} recipe="main-compact" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>
-                {t('chat.timeline-view-label', { defaultValue: 'View' })}
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={chatTimelineDetailLevel}
-                onValueChange={(value) =>
-                  setChatTimelineDetailLevel(value as ChatTimelineDetailLevel)
-                }
-              >
-                {chatTimelineDetailLevels.map((level) => (
-                  <DropdownMenuRadioItem key={level} value={level}>
-                    {timelineStyleLabel(level)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>
-                {t('chat.timeline-narrative-detail-label', {
-                  defaultValue: 'Narrative detail · default',
-                })}
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={narrativeInformationDensity}
-                onValueChange={(value) =>
-                  setNarrativeInformationDensity(
-                    value as NarrativeInformationDensity
-                  )
-                }
-              >
-                {narrativeInformationDensities.map((density) => (
-                  <DropdownMenuRadioItem key={density} value={density}>
-                    {t(`chat.timeline-density-${density}`, {
-                      defaultValue: NARRATIVE_DENSITY_FALLBACK_LABELS[density],
-                    })}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
         ) : null}
         <TooltipSimple
           content={
@@ -287,7 +417,7 @@ export function HeaderBox({
             aria-label={windowPreviewTooltip}
             aria-pressed={sessionPreviewOpen}
           >
-            <GalleryThumbnails className="h-4 w-4" aria-hidden />
+            <DsIcon icon={GalleryThumbnails} recipe="main" />
           </Button>
         </TooltipSimple>
       </div>
