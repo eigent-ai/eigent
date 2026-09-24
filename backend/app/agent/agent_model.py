@@ -26,6 +26,7 @@ from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
 from app.model.effort import resolve_model_effort_config
 from app.model.model_platform import (
+    configure_meta_model_api_backend,
     is_eigent_cloud_model_endpoint,
     patch_azure_cloud_config,
     patch_bedrock_cloud_config,
@@ -428,6 +429,7 @@ def agent_model(
             model_config_dict=model_config or None,
             **init_params,
         )
+        configure_meta_model_api_backend(model_backend, effective_api_url)
         # Install SDK observers before the Responses adapter wraps clients.
         model_backend = instrument_model_backend(
             model_backend,
