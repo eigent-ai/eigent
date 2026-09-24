@@ -135,8 +135,8 @@ instead of moving it to the end or nesting it under a tool.
 
 ## Timeline modes
 
-Two modes, selected by an `IconPillToggle` in the Session header and persisted
-in `pageTabStore`:
+Two modes, selected in the Session settings menu and persisted in
+`pageTabStore`:
 
 | Mode         | Question it answers               | Work-band unit |
 | ------------ | --------------------------------- | -------------- |
@@ -194,6 +194,13 @@ A pending request shows as `Input required`; the resolved record shows the
 prompt and the human's answer through the same disclosure a tool call uses.
 
 ### Fold policy
+
+The outer work log follows the Run by default: open while work is active or
+paused, folded when it ends. A user's toggle takes ownership of that Run's
+disclosure until it is unmounted, so later status receipts do not undo the
+choice. Live local toolkit rows come from the canonical Run stream; `/chat`
+toolkit mirrors remain available only for historical playback and the legacy
+renderer.
 
 Calls stay folded by default; narrative exists to show the agent's words, not
 its tool rows. A failed segment is the exception and opens to the failing row.

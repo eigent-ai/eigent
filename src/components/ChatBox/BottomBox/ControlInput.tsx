@@ -39,6 +39,7 @@ import type {
 interface InputVariantRouterProps {
   variant: BottomBoxVariant;
   inputProps: InputboxProps;
+  borderlessApproval?: boolean;
   connectorPanelOpen?: boolean;
   onToggleConnectorPanel?: () => void;
   skillPanelOpen?: boolean;
@@ -103,24 +104,41 @@ function ConfirmationInput({
   );
 }
 
-function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
+function ApprovalInput({
+  variant,
+  borderless,
+}: {
+  variant: BottomBoxApprovalVariant;
+  borderless?: boolean;
+}) {
   const { t } = useTranslation();
 
   return (
     <div
       data-bottom-box-input-surface
       data-approval-surface
-      className={controlSurfaceClassName}
+      className={
+        borderless ? 'flex w-full flex-col gap-3' : controlSurfaceClassName
+      }
     >
       <BoxHeaderDisplay
-        {...variant.header}
-        eyebrow={undefined}
-        contextItems={undefined}
-        details={undefined}
+        eyebrow={variant.header.eyebrow}
+        title={variant.header.title}
         className="px-0 pt-0 pb-0"
       />
-      <div data-approval-actions className="flex w-full justify-end">
-        <ControlActions>
+      {variant.error ? (
+        <p
+          role="alert"
+          className="m-0 text-ds-text-meta text-ds-text-error-default-default"
+        >
+          {variant.error}
+        </p>
+      ) : null}
+      <div
+        data-approval-actions
+        className="flex w-full flex-wrap justify-end gap-ds-8"
+      >
+        <div className="flex flex-wrap justify-end gap-ds-8">
           <Button
             type="button"
             variant="ghost"
@@ -131,15 +149,22 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
           >
             {variant.rejectLabel ?? t('chat.control-reject')}
           </Button>
-          {variant.options.map((option) => {
+          {variant.options.map((option, index) => {
             return (
               <Button
                 key={option.scope}
                 type="button"
-                variant="primary"
-                tone="success"
+                variant={
+                  option.scope === 'once' ||
+                  (index === 0 &&
+                    !variant.options.some((item) => item.scope === 'once'))
+                    ? 'primary'
+                    : 'secondary'
+                }
+                tone={option.scope === 'once' ? 'success' : 'neutral'}
                 size="sm"
                 buttonRadius="full"
+                title={option.description}
                 disabled={variant.disabled || variant.submitting}
                 onClick={() => variant.onApprove(option.scope)}
               >
@@ -147,7 +172,7 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
               </Button>
             );
           })}
-        </ControlActions>
+        </div>
       </div>
     </div>
   );
@@ -525,6 +550,7 @@ function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
 export function ControlInputRouter({
   variant,
   inputProps,
+  borderlessApproval,
   connectorPanelOpen,
   onToggleConnectorPanel,
   skillPanelOpen,
@@ -549,7 +575,9 @@ export function ControlInputRouter({
       content = <ConfirmationInput variant={variant} />;
       break;
     case 'approval':
-      content = <ApprovalInput variant={variant} />;
+      content = (
+        <ApprovalInput variant={variant} borderless={borderlessApproval} />
+      );
       break;
     case 'selection':
       content = <SelectionInput variant={variant} />;
