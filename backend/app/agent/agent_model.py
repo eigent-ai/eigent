@@ -23,6 +23,7 @@ from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
+from app.model.anthropic_tools import configure_anthropic_tool_compatibility
 from app.model.chat import AgentModelConfig, Chat
 from app.model.effort import resolve_model_effort_config
 from app.model.model_platform import (
@@ -430,6 +431,7 @@ def agent_model(
             **init_params,
         )
         configure_meta_model_api_backend(model_backend, effective_api_url)
+        configure_anthropic_tool_compatibility(model_backend)
         # Install SDK observers before the Responses adapter wraps clients.
         model_backend = instrument_model_backend(
             model_backend,
