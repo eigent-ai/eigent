@@ -457,7 +457,7 @@ function HeaderWin() {
   return (
     <div
       className={cn(
-        'drag absolute top-0 right-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
+        'window-chrome-safe-area drag absolute top-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
         platform === 'darwin' && 'pr-1'
       )}
       style={{ paddingLeft: topBarLeadingInset }}

@@ -16,6 +16,7 @@
 
 import type { AppCommandId } from '@/shared/appCommands';
 import type { NativeMenuLocale } from '@/shared/nativeMenu';
+import type { WindowChromeTheme } from '@/shared/windowChrome';
 import type {
   WindowCloseRequest,
   WindowCloseResponse,
@@ -31,6 +32,7 @@ export interface AppShellElectronAPI {
   ) => () => void;
   respondToCloseRequest?: (response: WindowCloseResponse) => void;
   setNativeMenuLocale?: (locale: NativeMenuLocale) => void;
+  setWindowChromeTheme?: (theme: WindowChromeTheme) => void;
 }
 
 export interface AppHost {

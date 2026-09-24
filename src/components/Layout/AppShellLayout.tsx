@@ -94,7 +94,7 @@ export default function AppShellLayout({
         className
       )}
     >
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden rounded-2xl bg-ds-neutral-default-default">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden border-x-0 border-y-0 border-t-ds-hairline border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default">
         <motion.div
           ref={sidebarRailRef}
           className="h-full min-h-0 shrink-0 overflow-hidden"
