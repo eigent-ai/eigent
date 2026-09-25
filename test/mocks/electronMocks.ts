@@ -14,6 +14,10 @@
 
 import { vi } from 'vitest';
 
+// Use the real derivation rather than a copy: the previous copy here drifted
+// along with the one it was copied from.
+import { accountDirName } from '../../electron/main/utils/accountPath';
+
 export interface MockedElectronAPI {
   // Mock environment state that can be controlled in tests
   mockState: {
@@ -257,13 +261,11 @@ export function createElectronAPIMock(): MockedElectronAPI {
     }),
 
     // EnvUtil mock functions
-    getEnvPath: vi.fn().mockImplementation((email: string) => {
-      const sanitizedEmail = email
-        .split('@')[0]
-        .replace(/[\\/*?:"<>|\s]/g, '_')
-        .replace('.', '_');
-      return `/mock/home/.eigent/.env.${sanitizedEmail}`;
-    }),
+    getEnvPath: vi
+      .fn()
+      .mockImplementation(
+        (email: string) => `/mock/home/.eigent/.env.${accountDirName(email)}`
+      ),
 
     updateEnvBlock: vi
       .fn()
@@ -307,14 +309,11 @@ export function createElectronAPIMock(): MockedElectronAPI {
     }),
 
     getEmailFolderPath: vi.fn().mockImplementation((email: string) => {
-      const sanitizedEmail = email
-        .split('@')[0]
-        .replace(/[\\/*?:"<>|\s]/g, '_')
-        .replace('.', '_');
+      const dirName = accountDirName(email);
       return {
-        MCP_REMOTE_CONFIG_DIR: `/mock/home/.eigent/${sanitizedEmail}`,
+        MCP_REMOTE_CONFIG_DIR: `/mock/home/.eigent/${dirName}`,
         MCP_CONFIG_DIR: '/mock/home/.eigent',
-        tempEmail: sanitizedEmail,
+        tempEmail: dirName,
         hasToken: mockState.hasToken,
       };
     }),

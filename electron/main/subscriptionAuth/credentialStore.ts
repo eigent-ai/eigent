@@ -30,6 +30,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// Side-effect free, unlike envUtil, so importing it here does not create
+// directories. It replaces the copy of the derivation this module used to keep
+// in sync with envUtil by hand.
+import { accountDirName } from '../utils/accountPath';
+
 import type { CodexAccountStatusView, CodexCredential } from './types';
 
 const FILE_NAME = 'codex-auth.json';
@@ -50,17 +55,8 @@ interface OnDiskRecord {
   meta: MetaPayload;
 }
 
-// Mirror of envUtil.getEnvPath's email → folder derivation, kept local so this
-// module has no side effects at import time.
-function tempEmail(email: string): string {
-  return email
-    .split('@')[0]
-    .replace(/[\\/*?:"<>|\s]/g, '_')
-    .replace('.', '_');
-}
-
 export function getCodexAuthDir(email: string): string {
-  return path.join(os.homedir(), '.eigent', tempEmail(email));
+  return path.join(os.homedir(), '.eigent', accountDirName(email));
 }
 
 export function getCodexAuthFilePath(email: string): string {
