@@ -13,6 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { PROJECT_CACHE_SCHEMA_VERSION } from '@/lib/projectCache';
+import { createSyncedProjectInSpace } from '@/lib/spaceProject';
+import type {
+  ProjectPayload,
+  ProjectUpdatePayload,
+  ServerProject,
+} from '@/service/spaceApi';
+import { useCloudModelStore } from '@/store/cloudModelStore';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
   getProjectEventStore,
@@ -35,7 +42,10 @@ const {
   hasActiveSSEConnectionMock,
   putCachedProjectMock,
   proxyFetchGetMock,
+  proxyCreateSpaceProjectMock,
+  proxyFetchSpaceProjectsMock,
   proxyUpdateSpaceProjectMock,
+  sseTransportMock,
   replayMock,
   waitForIdleSSEDisplayTailMock,
 } = vi.hoisted(() => ({
@@ -47,7 +57,10 @@ const {
   hasActiveSSEConnectionMock: vi.fn(),
   putCachedProjectMock: vi.fn(),
   proxyFetchGetMock: vi.fn(),
+  proxyCreateSpaceProjectMock: vi.fn(),
+  proxyFetchSpaceProjectsMock: vi.fn(),
   proxyUpdateSpaceProjectMock: vi.fn().mockResolvedValue({}),
+  sseTransportMock: vi.fn(),
   replayMock: vi.fn(),
   waitForIdleSSEDisplayTailMock: vi.fn(),
 }));
@@ -59,6 +72,9 @@ vi.mock('@/api/http', async (importOriginal) => {
     fetchGet: fetchGetMock,
     fetchPost: fetchPostMock,
     proxyFetchGet: proxyFetchGetMock,
+    sseTransport: sseTransportMock,
+    waitForBackendReady: vi.fn(async () => true),
+    getBaseURL: vi.fn(async () => 'http://fixture.invalid'),
   };
 });
 
@@ -77,6 +93,8 @@ vi.mock('@/service/spaceApi', async (importOriginal) => {
   return {
     ...actual,
     proxyUpdateSpaceProject: proxyUpdateSpaceProjectMock,
+    proxyCreateSpaceProject: proxyCreateSpaceProjectMock,
+    proxyFetchSpaceProjects: proxyFetchSpaceProjectsMock,
   };
 });
 
@@ -127,6 +145,23 @@ describe('projectStore runtime shape', () => {
       consumer_alive: false,
     });
     proxyFetchGetMock.mockResolvedValue({ tasks: [] });
+    proxyCreateSpaceProjectMock.mockReset();
+    proxyFetchSpaceProjectsMock.mockReset();
+    proxyUpdateSpaceProjectMock
+      .mockReset()
+      .mockImplementation(async (spaceId, id, payload) =>
+        payload.model_admission_revision
+          ? {
+              id,
+              space_id: spaceId,
+              metadata: {
+                ...payload.metadata,
+                spaceModelAdmissionRevision: payload.model_admission_revision,
+              },
+            }
+          : {}
+      );
+    sseTransportMock.mockReset();
     replayMock.mockResolvedValue(undefined);
     useProjectStore.setState({
       activeProjectId: null,
@@ -164,6 +199,992 @@ describe('projectStore runtime shape', () => {
       projectsSyncedAt: {},
     });
   });
+
+  it.each([true, false])(
+    'reconciles the persisted admission receipt after server sync and history restore (accepted: %s)',
+    async (accepted) => {
+      const { useAuthStore } = await import('@/store/authStore');
+      const originalAuth = useAuthStore.getState();
+      const originalCatalog = useCloudModelStore.getState();
+      const network = vi
+        .spyOn(globalThis, 'fetch')
+        .mockRejectedValue(
+          new Error('Real network is forbidden in this fixture')
+        );
+      useAuthStore.setState({
+        email: 'fixture@example.test',
+        user_id: 7,
+        token: 'synthetic-token',
+        modelType: 'cloud',
+        cloud_model_type: 'global',
+      });
+      const original = {
+        modelType: 'cloud' as const,
+        cloud_model_type: 'original',
+        model_platform: 'azure',
+        model_type: 'gpt-6-astra',
+      };
+      useCloudModelStore.setState({
+        models: [
+          {
+            id: 'global',
+            display_name: 'Global fixture',
+            model_type: 'gpt-5.5',
+            model_platform: 'azure',
+            provider_family: 'openai',
+            kind: 'chat',
+          },
+          {
+            id: 'original',
+            display_name: 'Accepted fixture',
+            model_type: 'gpt-6-astra',
+            model_platform: 'azure',
+            provider_family: 'openai',
+            kind: 'chat',
+          },
+        ],
+        retired: [],
+        defaultModelId: 'global',
+        status: 'ready',
+      });
+      try {
+        let serverProject!: ServerProject;
+        proxyCreateSpaceProjectMock.mockImplementation(
+          async (spaceId: string, payload: ProjectPayload) => {
+            serverProject = {
+              ...payload,
+              id: payload.id!,
+              user_id: '7',
+              space_id: spaceId,
+              status: 'active',
+              created_at: '2026-09-18T00:00:00Z',
+              updated_at: '2026-09-18T00:00:00Z',
+            };
+            return serverProject;
+          }
+        );
+        proxyUpdateSpaceProjectMock.mockImplementation(
+          async (
+            _spaceId: string,
+            _projectId: string,
+            payload: ProjectUpdatePayload
+          ) => {
+            // Model the server's shallow metadata merge using the actual API
+            // payloads. Do not inject the local eligibility marker into them.
+            serverProject = {
+              ...serverProject,
+              ...payload,
+              metadata: {
+                ...serverProject.metadata,
+                ...payload.metadata,
+                ...(payload.model_admission_revision
+                  ? {
+                      spaceModelAdmissionRevision:
+                        payload.model_admission_revision,
+                    }
+                  : {}),
+              },
+            };
+            return serverProject;
+          }
+        );
+        const { projectId } = await createSyncedProjectInSpace({
+          projectStore: useProjectStore.getState(),
+          spaceId: 'space_test',
+          name: 'Fresh fixture Session',
+          mode: 'single-agent',
+        });
+        expect(proxyCreateSpaceProjectMock.mock.calls[0][1].metadata).toEqual({
+          serverSynced: true,
+        });
+        expect(
+          useProjectStore.getState().projects[projectId].metadata
+            ?.spaceModelDefaultPending
+        ).toBe(true);
+        useProjectStore.getState().setHistoryId(projectId, 'history-1');
+        await useProjectStore
+          .getState()
+          .setProjectModelAdmission(projectId, 'accepted-run-1');
+        expect(
+          proxyUpdateSpaceProjectMock.mock.calls.at(-1)![2].metadata
+        ).toEqual({ spaceModelAdmissionRunId: 'accepted-run-1' });
+        expect(serverProject.metadata).toEqual({
+          spaceModelAdmissionRevision: expect.any(String),
+          serverSynced: true,
+          spaceModelAdmissionRunId: 'accepted-run-1',
+        });
+
+        useProjectStore.setState({ projects: {}, activeProjectId: null });
+        proxyFetchSpaceProjectsMock.mockImplementation(async () => [
+          serverProject,
+        ]);
+        await useSpaceStore.getState().syncProjectsFromServer('space_test', []);
+        expect(proxyFetchSpaceProjectsMock).toHaveBeenCalledWith('space_test');
+        const synced = useProjectStore.getState().projects[projectId];
+        expect(synced.metadata?.spaceModelAdmissionRunId).toBe(
+          'accepted-run-1'
+        );
+        expect(synced.metadata?.spaceModelDefaultPending).toBeUndefined();
+        expect(
+          useProjectStore.getState().getProjectModel(projectId)
+        ).toBeNull();
+
+        fetchGetMock.mockImplementation(async (url: string) => {
+          if (url.endsWith('/session-model'))
+            return {
+              space_id: 'space_test',
+              project_id: projectId,
+              accepted: accepted
+                ? { run_id: 'accepted-run-1', selection: original }
+                : null,
+              restore_pending: false,
+            };
+          if (url.endsWith('/model-selection')) {
+            throw new Error(
+              'An existing receipt must not acquire a new Space default'
+            );
+          }
+          return {
+            runs: [
+              {
+                run_id: 'accepted-run-1',
+                status: accepted ? 'completed' : 'pending',
+              },
+            ],
+          };
+        });
+        await useProjectStore
+          .getState()
+          .loadProjectFromHistory(
+            ['accepted-run-1'],
+            'First fixture question',
+            projectId,
+            'history-1',
+            'Existing fixture Session',
+            'space_test'
+          );
+        expect(replayMock).toHaveBeenCalled();
+        const recoveryCalls = () =>
+          fetchGetMock.mock.calls.filter(([url]) =>
+            url.endsWith('/session-model')
+          );
+        expect(recoveryCalls()).toHaveLength(1);
+        expect(recoveryCalls()[0][1]).toEqual({
+          project_id: projectId,
+          email: 'fixture@example.test',
+          user_id: 7,
+        });
+        const restored = useProjectStore.getState().projects[projectId];
+        if (accepted) {
+          expect(useProjectStore.getState().getProjectModel(projectId)).toEqual(
+            original
+          );
+          expect(restored.metadata?.spaceModelAdmissionRunId).toBeNull();
+          expect(restored.metadata?.spaceModelDefaultPending).toBe(false);
+        } else {
+          expect(
+            useProjectStore.getState().getProjectModel(projectId)
+          ).toBeNull();
+          expect(restored.metadata?.spaceModelAdmissionRunId).toBe(
+            'accepted-run-1'
+          );
+          expect(restored.metadata?.spaceModelDefaultPending).not.toBe(true);
+        }
+
+        proxyFetchGetMock.mockImplementation(async (url: string) =>
+          url === '/api/v1/user/key'
+            ? {
+                value: 'synthetic-cloud-key',
+                api_url: 'https://cloud.example.test',
+              }
+            : []
+        );
+        sseTransportMock.mockImplementation(async (options) => {
+          await options.onopen(
+            new Response('', {
+              status: 200,
+              headers: { 'content-type': 'text/event-stream' },
+            })
+          );
+        });
+        const chat = useProjectStore.getState().getChatStore(projectId)!;
+        const start = chat
+          .getState()
+          .startTask(
+            chat.getState().create(),
+            undefined,
+            undefined,
+            undefined,
+            'Next fixture question',
+            [],
+            undefined,
+            projectId,
+            'single-agent',
+            { skipHistoryCreate: true, awaitAdmission: true }
+          );
+        if (accepted) {
+          await start;
+          const request = sseTransportMock.mock.calls.find(
+            ([options]) => options.body?.project_id === projectId
+          )![0].body;
+          expect(request.model_platform).toBe('azure');
+          expect(request.model_type).toBe('gpt-6-astra');
+          expect(request.workspace_model_selection).toBeUndefined();
+          expect(useProjectStore.getState().getProjectModel(projectId)).toEqual(
+            original
+          );
+          expect(recoveryCalls()).toHaveLength(1);
+        } else {
+          await expect(start).rejects.toThrow('has not been confirmed');
+          expect(recoveryCalls()).toHaveLength(2);
+          expect(sseTransportMock).not.toHaveBeenCalled();
+          expect(
+            proxyFetchGetMock.mock.calls.some(
+              ([url]) => url === '/api/v1/user/key'
+            )
+          ).toBe(false);
+          expect(
+            useProjectStore.getState().getProjectModel(projectId)
+          ).toBeNull();
+          expect(
+            useProjectStore.getState().projects[projectId].metadata
+              ?.spaceModelAdmissionRunId
+          ).toBe('accepted-run-1');
+          expect(
+            useProjectStore.getState().projects[projectId].metadata
+              ?.spaceModelDefaultPending
+          ).not.toBe(true);
+        }
+        expect(
+          fetchGetMock.mock.calls.some(([url]) =>
+            url.endsWith('/model-selection')
+          )
+        ).toBe(false);
+        expect(useAuthStore.getState().cloud_model_type).toBe('global');
+        expect(network).not.toHaveBeenCalled();
+      } finally {
+        useAuthStore.setState(originalAuth);
+        useCloudModelStore.setState(originalCatalog);
+        network.mockRestore();
+      }
+    }
+  );
+
+  it.each([
+    'Run',
+    'in-place receipt',
+    'Space',
+    'model',
+    'account',
+    'token',
+  ] as const)(
+    'refuses stale receipt cleanup before actual proxy fetch after %s changes',
+    async (change) => {
+      const store = useProjectStore.getState();
+      const id = store.createProject(
+        'Fresh session',
+        undefined,
+        'guarded-receipt'
+      );
+      await store.setProjectModelAdmission(id, 'old-run');
+      const api =
+        await vi.importActual<typeof import('@/service/spaceApi')>(
+          '@/service/spaceApi'
+        );
+      proxyUpdateSpaceProjectMock.mockImplementation(
+        api.proxyUpdateSpaceProject
+      );
+      const network = vi
+        .spyOn(globalThis, 'fetch')
+        .mockRejectedValue(new Error('Unexpected network'));
+      let account = 'account-a';
+      let token = 'synthetic-a';
+      try {
+        const clearing = store.setProjectModelAdmission(id, null, () => {
+          if (account !== 'account-a' || token !== 'synthetic-a')
+            throw new Error('Receipt account changed');
+        });
+        // The local clear happened, but the proxy still awaits base URL.
+        expect(
+          useProjectStore.getState().projects[id].metadata
+            ?.spaceModelAdmissionRunId
+        ).toBeNull();
+        const current = useProjectStore.getState().projects[id];
+        const model = {
+          modelType: 'cloud' as const,
+          cloud_model_type: 'manual',
+        };
+        if (change === 'account') account = 'account-b';
+        if (change === 'token') token = 'synthetic-b';
+        if (change === 'in-place receipt')
+          current.metadata!.spaceModelAdmissionRunId = 'new-run';
+        if (change === 'Run' || change === 'Space' || change === 'model')
+          useProjectStore.setState({
+            projects: {
+              [id]: {
+                ...current,
+                ...(change === 'Space' ? { spaceId: 'space-other' } : {}),
+                metadata: {
+                  ...current.metadata,
+                  ...(change === 'Run'
+                    ? { spaceModelAdmissionRunId: 'new-run' }
+                    : {}),
+                  ...(change === 'model'
+                    ? { modelSelection: model, spaceModelDefaultPending: false }
+                    : {}),
+                },
+              },
+            },
+          });
+        await expect(clearing).rejects.toThrow(/changed/);
+        expect(network).not.toHaveBeenCalled();
+        const final = useProjectStore.getState().projects[id];
+        if (change === 'Run' || change === 'in-place receipt')
+          expect(final.metadata?.spaceModelAdmissionRunId).toBe('new-run');
+        if (change === 'Space') expect(final.spaceId).toBe('space-other');
+        if (change === 'model')
+          expect(final.metadata?.modelSelection).toEqual(model);
+      } finally {
+        network.mockRestore();
+      }
+    }
+  );
+
+  it('rebases an unsent assignment onto the returned empty revision without changing its Run', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    const api =
+      await vi.importActual<typeof import('@/service/spaceApi')>(
+        '@/service/spaceApi'
+      );
+    proxyUpdateSpaceProjectMock.mockImplementation(api.proxyUpdateSpaceProject);
+    const bodies: any[] = [];
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (_url, init) => {
+        const body = JSON.parse(init!.body as string);
+        bodies.push(body);
+        return new Response(
+          JSON.stringify({
+            id,
+            space_id: 'space_test',
+            metadata:
+              bodies.length === 1
+                ? {
+                    spaceModelAdmissionRunId: null,
+                    spaceModelAdmissionRevision: 'empty-version',
+                  }
+                : {
+                    ...body.metadata,
+                    spaceModelAdmissionRevision: body.model_admission_revision,
+                  },
+          }),
+          { headers: { 'content-type': 'application/json' } }
+        );
+      });
+    try {
+      await store.setProjectModelAdmission(id, 'candidate', () => {});
+      expect(bodies).toHaveLength(2);
+      expect(bodies[1]).toEqual({
+        ...bodies[0],
+        expected_model_admission_revision: 'empty-version',
+      });
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBe('candidate');
+    } finally {
+      network.mockRestore();
+    }
+  });
+
+  it.each([false, true])(
+    'retains another owner on a version conflict (manual model=%s)',
+    async (manual) => {
+      const store = useProjectStore.getState();
+      const id = store.createProject('Fresh session');
+      const api =
+        await vi.importActual<typeof import('@/service/spaceApi')>(
+          '@/service/spaceApi'
+        );
+      proxyUpdateSpaceProjectMock.mockImplementation(
+        api.proxyUpdateSpaceProject
+      );
+      const model = { modelType: 'cloud' as const, cloud_model_type: 'manual' };
+      const remote = {
+        spaceModelAdmissionRunId: 'unknown-ack-run',
+        spaceModelAdmissionRevision: 'other-version',
+        ...(manual ? { modelSelection: model } : {}),
+      };
+      const network = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(
+          async () =>
+            new Response(
+              JSON.stringify({ id, space_id: 'space_test', metadata: remote }),
+              { headers: { 'content-type': 'application/json' } }
+            )
+        );
+      try {
+        await expect(
+          store.setProjectModelAdmission(id, 'candidate', () => {})
+        ).rejects.toThrow(/changed/);
+        expect(network).toHaveBeenCalledOnce();
+        expect(useProjectStore.getState().projects[id].metadata).toMatchObject(
+          remote
+        );
+        if (manual) expect(store.getProjectModel(id)).toEqual(model);
+        else {
+          await expect(
+            store.setProjectModelAdmission(id, 'blind-new-run', () => {})
+          ).rejects.toThrow(/changed/);
+          expect(network).toHaveBeenCalledOnce();
+        }
+      } finally {
+        network.mockRestore();
+      }
+    }
+  );
+
+  it.each(['old-run', 'new-run'])(
+    'refuses to borrow an abandoned proof from another revision for %s',
+    async (targetRun) => {
+      const store = useProjectStore.getState();
+      const id = store.createProject('Fresh session');
+      proxyUpdateSpaceProjectMock.mockRejectedValueOnce(
+        new Error('Lost receipt response')
+      );
+      await expect(
+        store.setProjectModelAdmission(id, 'old-run')
+      ).rejects.toThrow();
+      const current = useProjectStore.getState().projects[id];
+      const synced = {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          spaceModelAdmissionRevision: 'another-accepted-generation',
+        },
+      };
+      useProjectStore.setState({ projects: { [id]: synced } });
+      proxyUpdateSpaceProjectMock.mockClear();
+      await expect(
+        store.setProjectModelAdmission(id, targetRun)
+      ).rejects.toThrow(/changed/);
+      expect(proxyUpdateSpaceProjectMock).not.toHaveBeenCalled();
+      expect(useProjectStore.getState().projects[id]).toBe(synced);
+    }
+  );
+
+  it('refuses to replace a same-Run generation whose delivery is not known unsent', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'unknown-ack-run');
+    const current = useProjectStore.getState().projects[id];
+    proxyUpdateSpaceProjectMock.mockClear();
+    await expect(
+      store.setProjectModelAdmission(id, 'unknown-ack-run')
+    ).rejects.toThrow(/changed/);
+    expect(proxyUpdateSpaceProjectMock).not.toHaveBeenCalled();
+    expect(useProjectStore.getState().projects[id]).toBe(current);
+  });
+
+  it.each(['failed-run', 'new-run'])(
+    'allows a proven-unsent generation to retry as %s',
+    async (targetRun) => {
+      const store = useProjectStore.getState();
+      const id = store.createProject('Fresh session');
+      proxyUpdateSpaceProjectMock.mockRejectedValueOnce(
+        new Error('Lost receipt response')
+      );
+      await expect(
+        store.setProjectModelAdmission(id, 'failed-run')
+      ).rejects.toThrow();
+      const previousRevision =
+        useProjectStore.getState().projects[id].metadata!
+          .spaceModelAdmissionRevision;
+      await store.setProjectModelAdmission(id, targetRun);
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(2);
+      expect(proxyUpdateSpaceProjectMock.mock.calls[1][2]).toMatchObject({
+        metadata: { spaceModelAdmissionRunId: targetRun },
+        expected_model_admission_run_id: 'failed-run',
+        expected_model_admission_revision: previousRevision,
+      });
+      const current = useProjectStore.getState().projects[id].metadata!;
+      expect(current.spaceModelAdmissionRunId).toBe(targetRun);
+      expect(current.spaceModelAdmissionRevision).not.toBe(previousRevision);
+    }
+  );
+
+  it('allows a new generation of the same Run after explicit release', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'reused-run');
+    const firstRevision =
+      useProjectStore.getState().projects[id].metadata!
+        .spaceModelAdmissionRevision;
+    await store.setProjectModelAdmission(id, null);
+    const clearedRevision =
+      useProjectStore.getState().projects[id].metadata!
+        .spaceModelAdmissionRevision;
+    await store.setProjectModelAdmission(id, 'reused-run');
+    expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(3);
+    expect(proxyUpdateSpaceProjectMock.mock.calls[2][2]).toMatchObject({
+      metadata: { spaceModelAdmissionRunId: 'reused-run' },
+      expected_model_admission_run_id: null,
+      expected_model_admission_revision: clearedRevision,
+    });
+    const current = useProjectStore.getState().projects[id].metadata!;
+    expect(current.spaceModelAdmissionRunId).toBe('reused-run');
+    expect(
+      new Set([
+        firstRevision,
+        clearedRevision,
+        current.spaceModelAdmissionRevision,
+      ]).size
+    ).toBe(3);
+  });
+
+  it('does not mark another generation abandoned when clearing the same Run ID', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'accepted-run');
+    const accepted = useProjectStore.getState().projects[id];
+    useProjectStore.setState({
+      projects: {
+        [id]: {
+          ...accepted,
+          metadata: {
+            ...accepted.metadata,
+            spaceModelAdmissionRevision: 'later-generation',
+          },
+        },
+      },
+    });
+    proxyUpdateSpaceProjectMock.mockRejectedValueOnce(
+      new Error('Cleanup failed')
+    );
+    await expect(store.setProjectModelAdmission(id, null)).rejects.toThrow();
+    // Reconcile back to the original unknown-ACK generation. Clearing a later
+    // generation must not have converted its old record into an unsent proof.
+    useProjectStore.setState({ projects: { [id]: accepted } });
+    proxyUpdateSpaceProjectMock.mockClear();
+    await expect(
+      store.setProjectModelAdmission(id, 'replacement')
+    ).rejects.toThrow(/changed/);
+    expect(proxyUpdateSpaceProjectMock).not.toHaveBeenCalled();
+    expect(useProjectStore.getState().projects[id]).toBe(accepted);
+  });
+
+  it('bounds version conflicts and allows cleanup followed by a legitimate same-Session retry', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    const api =
+      await vi.importActual<typeof import('@/service/spaceApi')>(
+        '@/service/spaceApi'
+      );
+    proxyUpdateSpaceProjectMock.mockImplementation(api.proxyUpdateSpaceProject);
+    let calls = 0;
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (_url, init) => {
+        const body = JSON.parse(init!.body as string);
+        calls++;
+        const metadata =
+          calls <= 4
+            ? {
+                spaceModelAdmissionRunId: null,
+                spaceModelAdmissionRevision: `empty-${Math.min(calls, 3)}`,
+              }
+            : {
+                ...body.metadata,
+                spaceModelAdmissionRevision: body.model_admission_revision,
+              };
+        return new Response(
+          JSON.stringify({ id, space_id: 'space_test', metadata }),
+          { headers: { 'content-type': 'application/json' } }
+        );
+      });
+    try {
+      await expect(
+        store.setProjectModelAdmission(id, 'failed-candidate', () => {})
+      ).rejects.toThrow(/changed/);
+      expect(calls).toBe(3);
+      await store.setProjectModelAdmission(id, null, () => {});
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBeNull();
+      await store.setProjectModelAdmission(id, 'retried-candidate', () => {});
+      expect(calls).toBe(5);
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBe('retried-candidate');
+    } finally {
+      network.mockRestore();
+    }
+  });
+
+  it('refuses a late assignment response after the local owner changes', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    const api =
+      await vi.importActual<typeof import('@/service/spaceApi')>(
+        '@/service/spaceApi'
+      );
+    proxyUpdateSpaceProjectMock.mockImplementation(api.proxyUpdateSpaceProject);
+    const response = deferred<Response>();
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValue(response.promise);
+    try {
+      const assignment = store.setProjectModelAdmission(
+        id,
+        'obsolete',
+        () => {}
+      );
+      const outcome = assignment.then(
+        () => null,
+        (error) => error
+      );
+      await vi.waitFor(() => expect(network).toHaveBeenCalledOnce());
+      const body = JSON.parse(network.mock.calls[0][1]!.body as string);
+      const current = useProjectStore.getState().projects[id];
+      useProjectStore.setState({
+        projects: {
+          [id]: {
+            ...current,
+            metadata: {
+              ...current.metadata,
+              spaceModelAdmissionRunId: 'new-owner',
+              spaceModelAdmissionRevision: 'new-version',
+            },
+          },
+        },
+      });
+      response.resolve(
+        new Response(
+          JSON.stringify({
+            id,
+            space_id: 'space_test',
+            metadata: {
+              ...body.metadata,
+              spaceModelAdmissionRevision: body.model_admission_revision,
+            },
+          }),
+          { headers: { 'content-type': 'application/json' } }
+        )
+      );
+      expect(await outcome).toBeInstanceOf(Error);
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBe('new-owner');
+    } finally {
+      network.mockRestore();
+    }
+  });
+
+  it('does not persist an unowned receipt clear', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    proxyUpdateSpaceProjectMock.mockClear();
+    await store.setProjectModelAdmission(id, null);
+    expect(proxyUpdateSpaceProjectMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the old cleanup precondition frozen while a new receipt is delivered', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'old-run');
+    const api =
+      await vi.importActual<typeof import('@/service/spaceApi')>(
+        '@/service/spaceApi'
+      );
+    proxyUpdateSpaceProjectMock.mockImplementation(api.proxyUpdateSpaceProject);
+    const oldResponse = deferred<Response>();
+    const newResponse = deferred<Response>();
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(newResponse.promise);
+    try {
+      const cleanup = store
+        .setProjectModelAdmission(id, null, () => {})
+        .then(
+          () => null,
+          (error) => error
+        );
+      await vi.waitFor(() => expect(network).toHaveBeenCalledTimes(1));
+      const newer = store.setProjectModelAdmission(id, 'new-run', () => {});
+      await vi.waitFor(() => expect(network).toHaveBeenCalledTimes(2));
+      const [oldUrl, oldInit] = network.mock.calls[0];
+      const [newUrl, newInit] = network.mock.calls[1];
+      expect(String(oldUrl)).toBe(String(newUrl));
+      expect(String(newUrl)).toMatch(/\/model-admission\/transition$/);
+      expect(JSON.parse(oldInit!.body as string)).toEqual({
+        metadata: { spaceModelAdmissionRunId: null },
+        expected_model_admission_run_id: 'old-run',
+        expected_model_admission_revision: expect.any(String),
+        model_admission_revision: expect.any(String),
+      });
+      expect(JSON.parse(newInit!.body as string)).toEqual({
+        metadata: { spaceModelAdmissionRunId: 'new-run' },
+        expected_model_admission_run_id: null,
+        expected_model_admission_revision: expect.any(String),
+        model_admission_revision: expect.any(String),
+      });
+      newResponse.resolve(
+        new Response(
+          JSON.stringify({
+            id,
+            space_id: 'space_test',
+            metadata: {
+              spaceModelAdmissionRunId: 'new-run',
+              spaceModelAdmissionRevision: JSON.parse(newInit!.body as string)
+                .model_admission_revision,
+            },
+          }),
+          { headers: { 'content-type': 'application/json' } }
+        )
+      );
+      await newer;
+      oldResponse.resolve(
+        new Response('{}', { headers: { 'content-type': 'application/json' } })
+      );
+      expect(await cleanup).toBeInstanceOf(Error);
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBe('new-run');
+    } finally {
+      network.mockRestore();
+    }
+  });
+
+  it('never falls back after an unsupported transition and permits a later supported retry', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'old-run');
+    const api =
+      await vi.importActual<typeof import('@/service/spaceApi')>(
+        '@/service/spaceApi'
+      );
+    proxyUpdateSpaceProjectMock.mockImplementation(api.proxyUpdateSpaceProject);
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: 'Not Found' }), { status: 404 })
+      )
+      .mockImplementationOnce(async (_url, init) => {
+        const payload = JSON.parse(init!.body as string);
+        return new Response(
+          JSON.stringify({
+            id,
+            space_id: 'space_test',
+            metadata: {
+              ...payload.metadata,
+              spaceModelAdmissionRevision: payload.model_admission_revision,
+            },
+          }),
+          { headers: { 'content-type': 'application/json' } }
+        );
+      });
+    try {
+      await expect(
+        store.setProjectModelAdmission(id, null, () => {})
+      ).rejects.toThrow();
+      expect(network).toHaveBeenCalledOnce();
+      expect(String(network.mock.calls[0][0])).toMatch(
+        /\/model-admission\/transition$/
+      );
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBeNull();
+      await store.setProjectModelAdmission(id, 'new-run', () => {});
+      expect(network).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(network.mock.calls[1][1]!.body as string)).toEqual({
+        metadata: { spaceModelAdmissionRunId: 'new-run' },
+        expected_model_admission_run_id: null,
+        expected_model_admission_revision: expect.any(String),
+        model_admission_revision: expect.any(String),
+      });
+    } finally {
+      network.mockRestore();
+    }
+  });
+
+  it('keeps newer receipt ownership after an already-delivered cleanup later fails', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject(
+      'Fresh session',
+      undefined,
+      'cleanup-failure'
+    );
+    await store.setProjectModelAdmission(id, 'old-run');
+    const api =
+      await vi.importActual<typeof import('@/service/spaceApi')>(
+        '@/service/spaceApi'
+      );
+    proxyUpdateSpaceProjectMock.mockImplementation(api.proxyUpdateSpaceProject);
+    const response = deferred<Response>();
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValue(response.promise);
+    try {
+      const clearing = store.setProjectModelAdmission(id, null, () => {});
+      const outcome = clearing.then(
+        () => null,
+        (error) => error
+      );
+      await vi.waitFor(() => expect(network).toHaveBeenCalledOnce());
+      const init = network.mock.calls[0][1]!;
+      expect(JSON.parse(init.body as string)).toEqual({
+        metadata: { spaceModelAdmissionRunId: null },
+        expected_model_admission_run_id: 'old-run',
+        expected_model_admission_revision: expect.any(String),
+        model_admission_revision: expect.any(String),
+      });
+      const current = useProjectStore.getState().projects[id];
+      useProjectStore.setState({
+        projects: {
+          [id]: {
+            ...current,
+            metadata: {
+              ...current.metadata,
+              spaceModelAdmissionRunId: 'new-run',
+            },
+          },
+        },
+      });
+      response.reject(new Error('Synthetic cleanup delivery failure'));
+      expect(await outcome).toBeInstanceOf(Error);
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBe('new-run');
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelDefaultPending
+      ).toBe(true);
+    } finally {
+      network.mockRestore();
+    }
+  });
+
+  it('limits Space default eligibility to fresh Session containers and clears it when pinned', () => {
+    const store = useProjectStore.getState();
+    const fresh = store.createProject(
+      'Fresh session',
+      undefined,
+      'fresh-model-session'
+    );
+    expect(
+      useProjectStore.getState().projects[fresh].metadata
+        ?.spaceModelDefaultPending
+    ).toBe(true);
+    store.setProjectModel(fresh, {
+      modelType: 'cloud',
+      cloud_model_type: 'fixture',
+    });
+    expect(
+      useProjectStore.getState().projects[fresh].metadata
+        ?.spaceModelDefaultPending
+    ).toBe(false);
+    expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledWith(
+      'space_test',
+      fresh,
+      {
+        metadata: {
+          modelSelection: { modelType: 'cloud', cloud_model_type: 'fixture' },
+          spaceModelDefaultPending: false,
+          spaceModelAdmissionRunId: null,
+        },
+      }
+    );
+    const restored = store.createProject(
+      'Restored session',
+      undefined,
+      'restored-model-session',
+      undefined,
+      'existing-history'
+    );
+    expect(
+      useProjectStore.getState().projects[restored].metadata
+        ?.spaceModelDefaultPending
+    ).toBeUndefined();
+    const historical = store.createProject(
+      'Historical session',
+      undefined,
+      'historical-model-session',
+      undefined,
+      undefined,
+      false,
+      { createdAt: 1 }
+    );
+    expect(
+      useProjectStore.getState().projects[historical].metadata
+        ?.spaceModelDefaultPending
+    ).toBeUndefined();
+  });
+
+  it.each([true, false])(
+    'reconciles a restored pending Session only with durable acceptance (%s)',
+    async (accepted) => {
+      const id = useProjectStore
+        .getState()
+        .createProject('Fresh session', undefined, 'lost-admission');
+      useProjectStore.getState().setHistoryId(id, 'history-1');
+      await useProjectStore
+        .getState()
+        .setProjectModelAdmission(id, 'accepted-run-1');
+      const original = {
+        modelType: 'cloud',
+        cloud_model_type: 'original',
+        model_platform: 'azure',
+        model_type: 'gpt-5.5',
+      };
+      fetchGetMock.mockImplementation(async (url) =>
+        url.includes('/session-model')
+          ? {
+              space_id: 'space_test',
+              project_id: id,
+              accepted: accepted
+                ? { run_id: 'accepted-run-1', selection: original }
+                : null,
+              restore_pending: false,
+            }
+          : { runs: [{ run_id: 'accepted-run-1', status: 'pending' }] }
+      );
+      useProjectStore.setState({ projects: {}, activeProjectId: null });
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['accepted-run-1'],
+          'Existing question',
+          id,
+          'history-1',
+          'Existing session',
+          'space_test'
+        );
+      const restored = useProjectStore.getState().projects[id];
+      expect(replayMock).toHaveBeenCalled();
+      if (accepted) {
+        expect(useProjectStore.getState().getProjectModel(id)).toEqual(
+          original
+        );
+        expect(restored.metadata?.spaceModelDefaultPending).toBe(false);
+        expect(restored.metadata?.spaceModelAdmissionRunId).toBeNull();
+      } else {
+        expect(useProjectStore.getState().getProjectModel(id)).toBeNull();
+        expect(restored.metadata?.spaceModelDefaultPending).toBe(true);
+        expect(restored.metadata?.spaceModelAdmissionRunId).toBe(
+          'accepted-run-1'
+        );
+      }
+    }
+  );
 
   it('disposes the preview shell when its project is removed', () => {
     const projectId = useProjectStore

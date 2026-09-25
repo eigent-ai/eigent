@@ -19,7 +19,13 @@ import {
   type WorkspaceConfigurationDraft,
   type WorkspaceConfigurationIdentity,
 } from '@/service/workspaceConfigurationApi';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 
 export type WorkspaceConfigurationSaveState =
   'idle' | 'loading' | 'saving' | 'saved' | 'needs_attention';
@@ -55,6 +61,13 @@ export function useWorkspaceConfiguration({
   const autosaveTimerRef = useRef<number | null>(null);
   const identityEmail = identity?.email ?? null;
   const identityUserId = identity?.userId ?? null;
+  const scopeKey = JSON.stringify([spaceId, identityEmail, identityUserId]);
+  const activeScopeRef = useRef(scopeKey);
+  useLayoutEffect(() => {
+    activeScopeRef.current = scopeKey;
+  }, [scopeKey]);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const loadedScopeRef = useRef<string | null>(null);
 
   const refreshHasPendingChanges = useCallback(() => {
     const generation = loadGenerationRef.current;
@@ -73,7 +86,16 @@ export function useWorkspaceConfiguration({
   }, []);
 
   const load = useCallback(async () => {
+    if (activeScopeRef.current !== scopeKey) return;
     const generation = ++loadGenerationRef.current;
+    clearAutosaveTimer();
+    loadedScopeRef.current = null;
+    setLoadedScope(null);
+    setDraft(null);
+    setDocumentState(null);
+    documentRef.current = null;
+    persistedDocumentRef.current = '';
+    lastQueuedRef.current = '';
     if (!spaceId || !identityEmail) {
       setDraft(null);
       setDocumentState(null);
@@ -95,6 +117,9 @@ export function useWorkspaceConfiguration({
         spaceName
       );
       if (generation !== loadGenerationRef.current) return;
+      if (activeScopeRef.current !== scopeKey) return;
+      loadedScopeRef.current = scopeKey;
+      setLoadedScope(scopeKey);
       versionRef.current = loaded.version;
       baseRevisionRef.current = loaded.base_revision_id;
       documentRef.current = loaded.document;
@@ -111,7 +136,14 @@ export function useWorkspaceConfiguration({
       setError(cause instanceof Error ? cause.message : String(cause));
       setHasPendingChanges(false);
     }
-  }, [identityEmail, identityUserId, spaceId, spaceName]);
+  }, [
+    clearAutosaveTimer,
+    identityEmail,
+    identityUserId,
+    scopeKey,
+    spaceId,
+    spaceName,
+  ]);
 
   useEffect(() => {
     void load();
@@ -122,7 +154,13 @@ export function useWorkspaceConfiguration({
 
   const enqueueSave = useCallback(
     (candidate: WorkspaceConfigurationDocument): Promise<boolean> => {
-      if (!spaceId || !identityEmail) return Promise.resolve(false);
+      if (
+        !spaceId ||
+        !identityEmail ||
+        activeScopeRef.current !== scopeKey ||
+        loadedScopeRef.current !== scopeKey
+      )
+        return Promise.resolve(false);
       const generation = loadGenerationRef.current;
       const serialized = JSON.stringify(candidate);
       if (serialized === lastQueuedRef.current) {
@@ -195,11 +233,11 @@ export function useWorkspaceConfiguration({
       saveQueueRef.current = operation.then(() => undefined);
       return operation;
     },
-    [identityEmail, identityUserId, refreshHasPendingChanges, spaceId]
+    [identityEmail, identityUserId, refreshHasPendingChanges, scopeKey, spaceId]
   );
 
   useEffect(() => {
-    if (!document) return;
+    if (!document || loadedScope !== scopeKey) return;
     const timer = window.setTimeout(() => {
       autosaveTimerRef.current = null;
       void enqueueSave(document);
@@ -211,7 +249,7 @@ export function useWorkspaceConfiguration({
         autosaveTimerRef.current = null;
       }
     };
-  }, [autosaveDelayMs, document, enqueueSave]);
+  }, [autosaveDelayMs, document, enqueueSave, loadedScope, scopeKey]);
 
   const setDocument = useCallback(
     (
@@ -222,16 +260,22 @@ export function useWorkspaceConfiguration({
           ) => WorkspaceConfigurationDocument)
     ) => {
       const current = documentRef.current;
-      if (!current) return;
+      if (
+        !current ||
+        activeScopeRef.current !== scopeKey ||
+        loadedScopeRef.current !== scopeKey
+      )
+        return;
       const resolved = typeof next === 'function' ? next(current) : next;
       documentRef.current = resolved;
       setDocumentState(resolved);
       refreshHasPendingChanges();
     },
-    [refreshHasPendingChanges]
+    [refreshHasPendingChanges, scopeKey]
   );
 
   const flushSave = useCallback(async (): Promise<boolean> => {
+    if (activeScopeRef.current !== scopeKey) return false;
     clearAutosaveTimer();
     const generation = loadGenerationRef.current;
 
@@ -267,17 +311,22 @@ export function useWorkspaceConfiguration({
     }
 
     return false;
-  }, [clearAutosaveTimer, enqueueSave, refreshHasPendingChanges]);
+  }, [clearAutosaveTimer, enqueueSave, refreshHasPendingChanges, scopeKey]);
 
   const retrySave = useCallback(() => {
+    if (
+      activeScopeRef.current !== scopeKey ||
+      loadedScopeRef.current !== scopeKey
+    )
+      return;
     if (!documentRef.current) return;
     lastQueuedRef.current = '';
     void enqueueSave(documentRef.current);
-  }, [enqueueSave]);
+  }, [enqueueSave, scopeKey]);
 
   return {
-    draft,
-    document,
+    draft: loadedScope === scopeKey ? draft : null,
+    document: loadedScope === scopeKey ? document : null,
     setDocument,
     saveState,
     error,

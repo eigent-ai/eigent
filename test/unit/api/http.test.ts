@@ -49,7 +49,14 @@ vi.mock('@/components/Toast/trafficToast', () => ({
   showTrafficToast: mocked.showTrafficToast,
 }));
 
-import { fetchGet, fetchPost, getBaseURL, proxyFetchPut } from '@/api/http';
+import {
+  fetchGet,
+  fetchPost,
+  fetchPut,
+  getBaseURL,
+  proxyFetchPatch,
+  proxyFetchPut,
+} from '@/api/http';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
   resetConnectionConfig,
@@ -70,7 +77,7 @@ describe('api/http handleResponse', () => {
     vi.restoreAllMocks();
   });
 
-  it.each(['brain', 'server'])(
+  it.each(['brain', 'brain-put', 'server'])(
     'does not send a %s request under a changed account after async URL resolution',
     async (target) => {
       const fetch = vi.spyOn(globalThis, 'fetch');
@@ -80,17 +87,88 @@ describe('api/http handleResponse', () => {
       const request =
         target === 'brain'
           ? fetchGet('/runs/exact-run', undefined, undefined, options)
-          : proxyFetchPut(
-              '/api/v1/execution/exact-execution',
-              { status: 'completed' },
-              undefined,
-              options
-            );
+          : target === 'brain-put'
+            ? fetchPut(
+                '/workspace-bundles/install-proposals/p/local-values',
+                {},
+                undefined,
+                options
+              )
+            : proxyFetchPut(
+                '/api/v1/execution/exact-execution',
+                { status: 'completed' },
+                undefined,
+                options
+              );
       mocked.auth = { token: 'test-other-account', user_id: 2 };
       await expect(request).rejects.toThrow('account changed');
       expect(fetch).not.toHaveBeenCalled();
     }
   );
+
+  it.each(['resume', 'chat', 'values'])(
+    'checks admission context after delayed capability headers before delivering %s',
+    async (kind) => {
+      vi.resetModules();
+      const http = await import('@/api/http');
+      let release!: (value: string) => void;
+      mocked.getLocalControlCapability.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      );
+      const fetch = vi.spyOn(globalThis, 'fetch');
+      let current = true;
+      const beforeRequest = vi.fn(() => {
+        if (!current) throw new Error('stale admission');
+      });
+      const request =
+        kind === 'resume'
+          ? http.fetchPost(
+              '/runs/run-1/resume',
+              { request_id: 'resume-1' },
+              undefined,
+              { beforeRequest }
+            )
+          : kind === 'values'
+            ? http.fetchPut(
+                '/workspace-bundles/install-proposals/p/local-values',
+                {},
+                undefined,
+                { beforeRequest }
+              )
+            : http.sseTransport({
+                url: '/chat',
+                beforeRequest,
+                onmessage: vi.fn(),
+              });
+      await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+      current = false;
+      release('synthetic-capability');
+      await expect(request).rejects.toThrow('stale admission');
+      expect(beforeRequest).toHaveBeenCalledOnce();
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it('checks receipt ownership after async proxy URL resolution before PATCH delivery', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    let current = true;
+    const beforeRequest = vi.fn(() => {
+      if (!current) throw new Error('stale receipt owner');
+    });
+    const request = proxyFetchPatch(
+      '/api/v1/spaces/space-a/projects/session-a',
+      { metadata: { spaceModelAdmissionRunId: null } },
+      undefined,
+      { beforeRequest }
+    );
+    current = false;
+    await expect(request).rejects.toThrow('stale receipt owner');
+    expect(beforeRequest).toHaveBeenCalledOnce();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 
   it('throws for non-JSON error responses instead of returning stream object', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

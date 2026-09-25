@@ -441,5 +441,9 @@
   "notice-refresh-failed": "Impossible d’actualiser vos crédits. Réessayez.",
   "notice-availability-unverified": "Impossible de vérifier la disponibilité. Contactez l’assistance si le problème persiste.",
   "notice-access-unverified": "Votre forfait a été actualisé. Réessayez le modèle pour vérifier l’accès.",
-  "notice-credits-unavailable": "Crédits indisponibles"
+  "notice-credits-unavailable": "Crédits indisponibles",
+  "space-model-unconfirmed": "La première requête de la session n’a pas encore été confirmée. Reconnectez-vous et réessayez, ou choisissez un modèle pour la session.",
+  "space-model-unavailable": "Ce modèle est indisponible pour ce compte. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
+  "space-model-ambiguous": "Plusieurs fournisseurs correspondent. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
+  "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message."
 }

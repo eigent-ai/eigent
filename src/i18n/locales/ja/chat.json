@@ -433,5 +433,9 @@
   "notice-refresh-failed": "クレジットを更新できませんでした。再試行してください。",
   "notice-availability-unverified": "利用状況を確認できませんでした。問題が続く場合はサポートに連絡してください。",
   "notice-access-unverified": "プランを更新しました。モデルを再度試してアクセスを確認してください。",
-  "notice-credits-unavailable": "クレジットを取得できません"
+  "notice-credits-unavailable": "クレジットを取得できません",
+  "space-model-unconfirmed": "セッションの最初のリクエストはまだ確認されていません。再接続して再試行するか、セッションのモデルを選択してください。",
+  "space-model-unavailable": "このアカウントではモデルを利用できません。モデル設定を確認するか、セッションのモデルを選択してください。",
+  "space-model-ambiguous": "複数のプロバイダーが一致しています。モデル設定を確認するか、セッションのモデルを選択してください。",
+  "space-model-changed": "読み込み中にアカウントまたはセッションのモデルが変更されました。メッセージを再送信してください。"
 }

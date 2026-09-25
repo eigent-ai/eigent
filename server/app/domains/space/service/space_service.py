@@ -47,6 +47,10 @@ class SpaceHasProjectsError(ValueError):
         )
 
 
+class ProjectModelAdmissionConflictError(ValueError):
+    pass
+
+
 class SpaceService:
     PROJECT_DISPLAY_NAME_MAX = 255
 
@@ -643,18 +647,66 @@ class SpaceService:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
         SpaceService._get_owned_space(space_id, canonical_user_id, s)
         SpaceService._validate_project_payload(status=data.status, workdir_mode=data.workdir_mode)
-        project = s.exec(
-            select(Project).where(
-                Project.id == project_id,
-                Project.user_id == canonical_user_id,
-                Project.space_id == space_id,
-            )
-        ).first()
+        project_scope = (
+            Project.id == project_id,
+            Project.user_id == canonical_user_id,
+            Project.space_id == space_id,
+        )
+        # Lock before reading/merging metadata. A no-op UPDATE takes a database
+        # write lock on SQLite too, where SELECT FOR UPDATE is ignored. Every
+        # PATCH participates, so an already-dispatched cleanup cannot overwrite
+        # a newer receipt, model pin, or unrelated metadata from another PATCH.
+        s.execute(
+            update(Project)
+            .where(*project_scope)
+            .values(updated_at=Project.updated_at)
+            .execution_options(synchronize_session=False)
+        )
+        project = s.exec(select(Project).where(*project_scope).execution_options(populate_existing=True)).first()
         if not project:
             raise ValueError("Project not found")
 
         update_data = data.model_dump(exclude_unset=True)
+        expected_run_id = update_data.pop("expected_model_admission_run_id", None)
+        expected_revision = update_data.pop("expected_model_admission_revision", None)
+        revision = update_data.pop("model_admission_revision", None)
+        current_metadata = project.metadata_json or {}
+        current_revision = current_metadata.get("spaceModelAdmissionRevision")
         metadata = update_data.pop("metadata", None)
+        if revision is not None:
+            # Both assignment and cleanup compare the entire receipt generation.
+            # Keep the revision after null so an old request cannot exploit ABA.
+            if (
+                current_metadata.get("modelSelection")
+                or current_revision != expected_revision
+                or current_metadata.get("spaceModelAdmissionRunId") != expected_run_id
+            ):
+                s.commit()
+                s.refresh(project)
+                return project
+            metadata = {**metadata, "spaceModelAdmissionRevision": revision}
+        elif expected_run_id is not None and (
+            current_revision is not None
+            or current_metadata.get("spaceModelAdmissionRunId") != expected_run_id
+            or current_metadata.get("modelSelection")
+        ):
+            # A stale cleanup is an idempotent no-op, including a retry whose
+            # first response was lost. Never clear another Run's recovery hint.
+            s.commit()
+            s.refresh(project)
+            return project
+        elif metadata is not None:
+            metadata = dict(metadata)
+            metadata.pop("spaceModelAdmissionRevision", None)
+            if "modelSelection" in metadata:
+                # Pin/unpin also invalidates every older in-flight transition.
+                metadata["spaceModelAdmissionRevision"] = uuid4().hex
+            elif (
+                current_revision is not None
+                and "spaceModelAdmissionRunId" in metadata
+                and metadata["spaceModelAdmissionRunId"] != current_metadata.get("spaceModelAdmissionRunId")
+            ):
+                raise ProjectModelAdmissionConflictError("Model admission requires a versioned transition")
         for key, value in update_data.items():
             if key == "name" and isinstance(value, str):
                 value = value.strip() or project.name

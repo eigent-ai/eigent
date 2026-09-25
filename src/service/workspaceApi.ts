@@ -93,13 +93,18 @@ export const fetchWorkspaceCapabilities =
 export const fetchWorkspaceCurrent = async (
   spaceId: string,
   email: string,
-  userId?: string | number | null
-): Promise<WorkspaceCurrent> =>
-  fetchGet('/workspace/current', {
+  userId?: string | number | null,
+  options: { signal?: AbortSignal } = {}
+): Promise<WorkspaceCurrent> => {
+  const params = {
     space_id: spaceId,
     email,
     ...(userId === undefined || userId === null ? {} : { user_id: userId }),
-  });
+  };
+  return options.signal
+    ? fetchGet('/workspace/current', params, undefined, options)
+    : fetchGet('/workspace/current', params);
+};
 
 export const bindWorkspaceToSpace = async (
   payload: WorkspaceBindPayload
