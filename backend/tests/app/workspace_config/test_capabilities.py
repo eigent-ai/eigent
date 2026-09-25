@@ -39,6 +39,27 @@ def test_astra_preserves_all_efforts(effort):
     assert not resolution.remapped
 
 
+@pytest.mark.parametrize("platform", ["openai", "azure"])
+@pytest.mark.parametrize("is_cloud", [False, True])
+@pytest.mark.parametrize("effort", tuple(ThinkingEffort))
+def test_luna_tools_preserve_effort_and_require_responses(
+    platform, is_cloud, effort
+):
+    capability = ModelCapabilityRegistry().resolve(
+        model_platform=platform,
+        model_type="gpt-6-luna",
+        api_mode="chat_completions",
+        has_function_tools=True,
+        is_cloud=is_cloud,
+    )
+    resolution = capability.resolve(effort)
+    assert capability.source == "catalog"
+    assert capability.transport == "responses"
+    assert resolution.provider_parameter_name == "reasoning.effort"
+    assert resolution.provider_value == effort.value
+    assert not resolution.remapped
+
+
 @pytest.mark.parametrize("effort", tuple(ThinkingEffort))
 def test_unknown_never_accepts_explicit_effort(effort):
     capability = ModelCapabilityRegistry().resolve(
@@ -173,7 +194,8 @@ def test_revision_pins_mapping_transport_and_metadata():
 
 
 @pytest.mark.parametrize(
-    "model", ["gpt-6-astra-future", "gpt-6-astra-alias", "gpt-7"]
+    "model",
+    ["gpt-6-astra-future", "gpt-6-astra-alias", "gpt-6-luna-alias", "gpt-7"],
 )
 def test_unregistered_astra_like_aliases_are_unknown(model):
     capability = ModelCapabilityRegistry().resolve(
