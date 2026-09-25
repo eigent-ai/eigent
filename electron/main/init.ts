@@ -38,6 +38,7 @@ import {
   isBinaryExists,
   killProcessByName,
 } from './utils/process';
+import { terminateProcessTree } from './utils/processTree';
 
 const execAsync = promisify(exec);
 
@@ -580,29 +581,18 @@ export async function startBackend(
       }
     }, BACKEND_INITIAL_HEALTH_DELAY_MS);
 
+    /**
+     * Stop the backend and confirm it stopped.
+     *
+     * The previous version sent SIGTERM, scheduled a SIGKILL one second later
+     * and returned at once. The scheduled signal was dropped whenever the
+     * caller unwound before it fired, which is the normal case on quit, and
+     * `init.ts` is not the only shutdown path: `index.ts` calls this one.
+     */
     const killBackendProcess = (proc: any) => {
       if (!proc || !proc.pid) return;
-
       log.info(`Killing backend process ${proc.pid} and its children...`);
-      try {
-        if (process.platform === 'win32') {
-          spawn('taskkill', ['/pid', proc.pid.toString(), '/T', '/F']);
-        } else {
-          try {
-            process.kill(-proc.pid, 'SIGTERM');
-            setTimeout(() => {
-              try {
-                process.kill(-proc.pid, 'SIGKILL');
-              } catch (_error) {}
-            }, 1000);
-          } catch (e) {
-            log.error(`Failed to kill process group: ${e}`);
-            proc.kill('SIGKILL');
-          }
-        }
-      } catch (e) {
-        log.error(`Failed to kill backend process: ${e}`);
-      }
+      return terminateProcessTree(proc);
     };
 
     const pollHealthEndpoint = (): void => {

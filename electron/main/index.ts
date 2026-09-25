@@ -37,7 +37,6 @@ import os, { homedir } from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import kill from 'tree-kill';
 import {
   APP_COMMAND_CHANNEL,
   APP_COMMAND_HANDLED_CHANNEL,
@@ -124,6 +123,10 @@ import {
   getBackendPath,
   isBinaryExists,
 } from './utils/process';
+import {
+  releaseChildListeners,
+  terminateProcessTree,
+} from './utils/processTree';
 import { WebViewManager } from './webview';
 import { loadWindowStartupState, persistWindowState } from './windowState';
 import {
@@ -3784,33 +3787,17 @@ const cleanupPythonProcess = async () => {
       const pid = python_process.pid;
       log.info('Cleaning up Python process and all children', { pid });
 
-      // Remove all listeners to prevent memory leaks
-      python_process.removeAllListeners();
+      // Drop the stdout/stderr listeners a long-lived child accumulates, but
+      // keep `close`/`exit`: they are the only reliable evidence that the
+      // process actually stopped, and the previous cleanup discarded them
+      // before signalling.
+      releaseChildListeners(python_process);
 
-      await new Promise<void>((resolve) => {
-        // Kill the entire process tree (parent + all children)
-        kill(pid, 'SIGTERM', (err) => {
-          if (err) {
-            log.error('Failed to clean up process tree with SIGTERM:', err);
-            // Try SIGKILL as fallback for entire tree
-            kill(pid, 'SIGKILL', (killErr) => {
-              if (killErr) {
-                log.error('Failed to force kill process tree:', killErr);
-              }
-              resolve();
-            });
-          } else {
-            log.info('Successfully sent SIGTERM to process tree');
-            // Give processes 1 second to clean up, then SIGKILL
-            setTimeout(() => {
-              kill(pid, 'SIGKILL', () => {
-                log.info('Sent SIGKILL to ensure cleanup');
-                resolve();
-              });
-            }, 1000);
-          }
-        });
-      });
+      // Resolve only once the process is gone, not once the signal is sent.
+      const stopped = await terminateProcessTree(python_process);
+      if (!stopped) {
+        log.error('Python backend did not stop; its port may stay held');
+      }
     }
 
     // Second attempt: Use port-based cleanup as fallback
