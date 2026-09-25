@@ -12,6 +12,23 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+// These cases exercise the existing legacy lane. C6 ownership/transport is
+// covered separately by sessionExecution and real ASGI IPC integration tests.
+const sessionEntryGuard = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined)
+);
+vi.mock('@/store/sessionExecutionStore', () => ({
+  requireLegacyExecution: sessionEntryGuard,
+  readSessionExecutionRoute: async (scope: { projectId: string }) => ({
+    project_id: scope.projectId,
+    route: 'legacy',
+  }),
+  getSessionExecutionState: (scope: { projectId: string }) => ({
+    route: { project_id: scope.projectId, route: 'legacy' },
+    managed: false,
+  }),
+}));
+
 import { useBackgroundTaskProcessor } from '@/hooks/useBackgroundTaskProcessor';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import * as authStore from '@/store/authStore';
@@ -174,6 +191,20 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
       consumer_alive: false,
     });
     mocks.startTask.mockImplementation(() => new Promise<void>(() => {}));
+  });
+
+  it('rejects a managed Session before legacy retirement or admission', async () => {
+    sessionEntryGuard.mockRejectedValueOnce(
+      new Error('managed_execution_required')
+    );
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sessionEntryGuard).toHaveBeenCalled();
+    expect(mocks.fetchPost).not.toHaveBeenCalled();
+    expect(mocks.startTask).not.toHaveBeenCalled();
+    unmount();
   });
 
   it('reconciles receipts at startup and periodically without dispatching a Run, and stops on unmount', async () => {

@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { SSETransportOptions } from '@/api/http';
+import { sseTransport, type SSETransportOptions } from '@/api/http';
 import {
   ProjectRunEventStreamOwner,
   type ProjectRunEventStreamOwnerOptions,
@@ -29,6 +29,7 @@ export type UseProjectRunEventStreamsOptions = {
   projectId: string | null | undefined;
   snapshot: ProjectEventStoreSnapshot | null;
   enabled?: boolean;
+  expectedAccountKey?: string;
   maxStreams?: number;
   reconnectDelayMs?: number;
   /** Test/host seam; production uses the shared authenticated SSE transport. */
@@ -43,6 +44,7 @@ export function useProjectRunEventStreams({
   projectId,
   snapshot,
   enabled = true,
+  expectedAccountKey,
   maxStreams,
   reconnectDelayMs,
   transport,
@@ -61,7 +63,10 @@ export function useProjectRunEventStreams({
       store: getProjectEventStore(projectId),
       maxStreams,
       reconnectDelayMs,
-      transport,
+      transport: expectedAccountKey
+        ? (input) =>
+            (transport ?? sseTransport)({ ...input, expectedAccountKey })
+        : transport,
     };
     const owner = new ProjectRunEventStreamOwner(options);
     ownerRef.current = owner;
@@ -70,7 +75,14 @@ export function useProjectRunEventStreams({
       if (ownerRef.current === owner) ownerRef.current = null;
       owner.dispose();
     };
-  }, [enabled, maxStreams, projectId, reconnectDelayMs, transport]);
+  }, [
+    enabled,
+    maxStreams,
+    projectId,
+    reconnectDelayMs,
+    transport,
+    expectedAccountKey,
+  ]);
 
   // `projectId`/`enabled` are dependencies even though they are unused here:
   // they are what construct a new owner above, and effects run in declaration
@@ -80,5 +92,5 @@ export function useProjectRunEventStreams({
   // the next unrelated store publish.
   useEffect(() => {
     if (snapshot) ownerRef.current?.updateSnapshot(snapshot);
-  }, [snapshot, projectId, enabled]);
+  }, [snapshot, projectId, enabled, expectedAccountKey]);
 }

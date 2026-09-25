@@ -63,7 +63,14 @@ const mocks = vi.hoisted(() => ({
   durableRun: null as any,
 }));
 vi.mock('@/api/http', () => ({
-  fetchGet: mocks.localGet,
+  fetchGet: (url: string, ...args: unknown[]) => {
+    if (url.endsWith('/execution-route'))
+      return Promise.resolve({
+        project_id: decodeURIComponent(url.split('/')[2]),
+        route: 'legacy',
+      });
+    return mocks.localGet(url, ...args);
+  },
   proxyFetchGet: mocks.get,
   fetchPost: mocks.post,
   fetchPut: vi.fn(),
@@ -121,6 +128,18 @@ vi.mock('@/hooks/useChatStoreAdapter', () => ({
   default: () => ({
     chatStore: mocks.chat.getState(),
     projectStore: mocks.projectStore,
+  }),
+}));
+// This suite exercises model admission within the legacy Session surface.
+// Managed-route observation has separate execution and integration coverage.
+vi.mock('@/hooks/useSessionExecution', () => ({
+  useSessionExecution: (projectId: string) => ({
+    scope: { projectId, accountKey: 'legacy-test' },
+    state: {
+      route: { route: 'legacy', project_id: projectId },
+      managed: false,
+      error: null,
+    },
   }),
 }));
 vi.mock('@/hooks/useProjectEventRuntime', () => ({

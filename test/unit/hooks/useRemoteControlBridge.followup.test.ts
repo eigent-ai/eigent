@@ -12,6 +12,23 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+// These cases exercise the existing legacy lane. C6 ownership/transport is
+// covered separately by sessionExecution and real ASGI IPC integration tests.
+const sessionEntryGuard = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined)
+);
+vi.mock('@/store/sessionExecutionStore', () => ({
+  requireLegacyExecution: sessionEntryGuard,
+  readSessionExecutionRoute: async (scope: { projectId: string }) => ({
+    project_id: scope.projectId,
+    route: 'legacy',
+  }),
+  getSessionExecutionState: (scope: { projectId: string }) => ({
+    route: { project_id: scope.projectId, route: 'legacy' },
+    managed: false,
+  }),
+}));
+
 import { fetchGet, fetchPost } from '@/api/http';
 import { __remoteControlBridgeTestHooks } from '@/hooks/useRemoteControlBridge';
 import {
@@ -112,6 +129,31 @@ describe('Remote Control durable follow-up admission', () => {
     });
     vi.mocked(markFollowUpRequestAdmitted).mockResolvedValue({} as never);
     startTask.mockResolvedValue(undefined);
+  });
+
+  it('rejects managed ownership before remote legacy submission', async () => {
+    sessionEntryGuard.mockRejectedValueOnce(
+      new Error('managed_execution_required')
+    );
+    await expect(
+      __remoteControlBridgeTestHooks.executeRemoteCommand(
+        {
+          id: 'blocked',
+          session_id: 'session-1',
+          user_id: 1,
+          source_channel: 'remote_control',
+          type: 'user_message',
+          target_project_id: 'project-1',
+          next_task_id: 'run-2',
+          payload: { content: 'blocked' },
+        },
+        'token',
+        vi.fn()
+      )
+    ).rejects.toThrow('managed_execution_required');
+    expect(createFollowUpRequest).not.toHaveBeenCalled();
+    expect(fetchPost).not.toHaveBeenCalled();
+    expect(startTask).not.toHaveBeenCalled();
   });
 
   it('persists an active-Run phone message instead of calling /chat directly', async () => {

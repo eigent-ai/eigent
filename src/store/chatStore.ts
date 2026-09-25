@@ -79,6 +79,7 @@ import {
   errorCopy,
 } from '@/lib/usageErrors';
 import { recoverCompletedRunDisplay } from '@/service/completedRunDisplayRecovery';
+import { executionScope } from '@/service/executionApi';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
@@ -88,6 +89,7 @@ import {
   proxyUpdateTriggerExecution,
   trackTriggerExecutionRun,
 } from '@/service/triggerApi';
+import { requireLegacyExecution } from '@/store/sessionExecutionStore';
 import {
   confirmCloudRecovery,
   useUsageNoticeStore,
@@ -2670,6 +2672,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           })
         );
       }
+      // Routing can yield. Keep attachment ownership at the user's gesture,
+      // so a draft edited while ownership is checked cannot be cleared later.
+      const draftAttachmentsBeforeRouting = new Map(
+        Object.entries(get().tasks).map(([id, task]) => [id, task.attaches])
+      );
+      if (isLiveTask && project_id) {
+        for (const { chatStore } of projectStore.getAllChatStores?.(
+          project_id
+        ) ?? []) {
+          for (const [id, task] of Object.entries(chatStore.getState().tasks))
+            draftAttachmentsBeforeRouting.set(id, task.attaches);
+        }
+        await requireLegacyExecution(executionScope(project_id));
+      }
       const startOptions = options || {};
       const project =
         isLiveTask && project_id
@@ -2795,7 +2811,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? {
               store: targetChatStore,
               taskId: newTaskId,
-              attaches: targetChatStore.getState().tasks[newTaskId]?.attaches,
+              attaches: draftAttachmentsBeforeRouting.has(newTaskId)
+                ? draftAttachmentsBeforeRouting.get(newTaskId)
+                : targetChatStore.getState().tasks[newTaskId]?.attaches,
             }
           : null;
 

@@ -25,6 +25,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionExecution } from '@/hooks/useSessionExecution';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
@@ -106,6 +107,10 @@ import {
   selectEventNativeActiveRunId,
   selectQueueExecution,
 } from './runControlArbitration';
+import {
+  SessionExecutionChat,
+  SessionExecutionStatus,
+} from './SessionExecutionChat';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -332,6 +337,23 @@ const buildUsageLimitBannerState = (
   };
 };
 export default function ChatBox(): JSX.Element {
+  const { projectStore } = useChatStoreAdapter();
+  const projectId = projectStore.activeProjectId;
+  const { scope, state } = useSessionExecution(projectId);
+  if (!projectId) return <></>;
+  if (state.managed)
+    return (
+      <SessionExecutionChat
+        key={`${scope.accountKey}:${projectId}`}
+        projectId={projectId}
+      />
+    );
+  if (!state.route || state.error)
+    return <SessionExecutionStatus projectId={projectId} />;
+  return <LegacyChatBox />;
+}
+
+function LegacyChatBox(): JSX.Element {
   const [message, setMessageState] = useState<string>('');
   const composerRevisionRef = useRef(0);
   const setMessage = useCallback<typeof setMessageState>((value) => {

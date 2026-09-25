@@ -145,7 +145,7 @@ export async function getBaseURL() {
   return '';
 }
 
-type FetchRequestOptions = {
+export type FetchRequestOptions = {
   signal?: AbortSignal;
   expectedAccountKey?: string;
   /** Revalidate mutable admission context after asynchronous header lookup. */
@@ -153,11 +153,24 @@ type FetchRequestOptions = {
 };
 
 function assertRequestAccount(options: FetchRequestOptions): void {
+  if (options.signal?.aborted)
+    throw new DOMException('Request owner left', 'AbortError');
   if (
     options.expectedAccountKey !== undefined &&
     options.expectedAccountKey !== getAccountEnvironmentKey(getAuthStore())
   )
     throw new Error('Request account changed before delivery');
+}
+
+async function accountResponse<T>(
+  request: Promise<T>,
+  options: FetchRequestOptions
+): Promise<T> {
+  const result = await request;
+  assertRequestAccount(options);
+  if (options.signal?.aborted)
+    throw new DOMException('Request owner left', 'AbortError');
+  return result;
 }
 
 async function fetchRequest(
@@ -191,19 +204,26 @@ async function fetchRequest(
       });
     });
     const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
-    return handleResponse(fetch(fullUrl + query, options), data);
+    return accountResponse(
+      handleResponse(fetch(fullUrl + query, options), data, requestOptions),
+      requestOptions
+    );
   }
 
   if (data) {
     options.body = JSON.stringify(data);
   }
 
-  return handleResponse(fetch(fullUrl, options), data);
+  return accountResponse(
+    handleResponse(fetch(fullUrl, options), data, requestOptions),
+    requestOptions
+  );
 }
 
 async function handleResponse(
   responsePromise: Promise<Response>,
-  requestData?: Record<string, any>
+  requestData?: Record<string, any>,
+  requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
   const auth = getAuthStore();
   const requestAccount =
@@ -211,6 +231,7 @@ async function handleResponse(
   setUsageAccount(requestAccount);
   try {
     const res = await responsePromise;
+    assertRequestAccount(requestOptions);
     persistSessionIdFromResponse(res);
     if (res.status === 204) {
       return { code: 0, text: '' };
@@ -239,6 +260,7 @@ async function handleResponse(
       return null;
     }
     const resData = await res.json();
+    assertRequestAccount(requestOptions);
     if (!resData) {
       return null;
     }
@@ -291,6 +313,7 @@ async function handleResponse(
 
     return resData;
   } catch (err: any) {
+    assertRequestAccount(requestOptions);
     if (err?.name === 'AbortError') {
       throw err;
     }
@@ -343,11 +366,15 @@ export async function fetchGetBlob(
     });
   });
   const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
+  assertRequestAccount(options);
+  const headers = await buildBrainHeaders(url, { Accept: '*/*' }, false);
+  assertRequestAccount(options);
   const response = await fetch(`${baseURL}${url}${query}`, {
     method: 'GET',
-    headers: await buildBrainHeaders(url, { Accept: '*/*' }, false),
+    headers,
     signal: options.signal,
   });
+  assertRequestAccount(options);
   persistSessionIdFromResponse(response);
   if (!response.ok) {
     const contentType = response.headers.get('content-type') || '';
@@ -369,7 +396,7 @@ export async function fetchGetBlob(
     error.response = response;
     throw error;
   }
-  return response.blob();
+  return accountResponse(response.blob(), options);
 }
 
 export const fetchPost = (
@@ -425,6 +452,7 @@ export interface SSETransportOptions {
   method?: 'GET' | 'POST';
   body?: Record<string, any> | string;
   signal?: AbortSignal;
+  expectedAccountKey?: string;
   extraHeaders?: Record<string, string>;
   openWhenHidden?: boolean;
   /** Runs before every delivery, including the SSE library's own retries. */
@@ -444,7 +472,9 @@ export async function sseTransport(
       ? options.url
       : `${baseURL}${options.url}`;
 
+  assertRequestAccount(options);
   const headers = await buildBrainHeaders(options.url, options.extraHeaders);
+  assertRequestAccount(options);
   const body =
     typeof options.body === 'string'
       ? options.body
@@ -461,35 +491,42 @@ export async function sseTransport(
     signal: options.signal,
     headers,
     body,
-    fetch: options.beforeRequest
-      ? (input, init) => {
-          if (guardRejected) throw guardError;
-          try {
-            options.beforeRequest?.();
-          } catch (error) {
-            guardRejected = true;
-            guardError = error;
-            throw error;
+    fetch:
+      options.beforeRequest || options.expectedAccountKey
+        ? (input, init) => {
+            if (guardRejected) throw guardError;
+            try {
+              assertRequestAccount(options);
+              options.beforeRequest?.();
+            } catch (error) {
+              guardRejected = true;
+              guardError = error;
+              throw error;
+            }
+            return requestFetch(input, init);
           }
-          return requestFetch(input, init);
-        }
-      : undefined,
-    onmessage: options.onmessage,
+        : undefined,
+    onmessage(event) {
+      assertRequestAccount(options);
+      if (!options.signal?.aborted) return options.onmessage(event);
+    },
     async onopen(response) {
+      assertRequestAccount(options);
       persistSessionIdFromResponse(response);
       if (options.onopen) {
         await options.onopen(response);
       }
     },
-    onerror: options.beforeRequest
-      ? (error) => {
-          // A guard may throw a TypeError too. Never pass a rejected admission
-          // through a caller's retryable-network-error policy.
-          if (guardRejected) throw guardError;
-          return options.onerror?.(error);
-        }
-      : options.onerror,
-    onclose: options.onclose,
+    onerror(error) {
+      // Admission failures must never enter the network retry policy.
+      if (guardRejected) throw guardError;
+      assertRequestAccount(options);
+      return options.onerror?.(error);
+    },
+    onclose() {
+      assertRequestAccount(options);
+      options.onclose?.();
+    },
   });
   // Caller cleanup inside the guard can abort the input signal. The library
   // resolves on abort; preserve the admission error instead of reporting success.
@@ -565,21 +602,39 @@ async function proxyFetchRequest(
           )
           .join('&')
       : '';
-    return handleResponse(fetch(fullUrl + query, options));
+    return accountResponse(
+      handleResponse(
+        fetch(fullUrl + query, options),
+        undefined,
+        requestOptions
+      ),
+      requestOptions
+    );
   }
 
   if (data) {
     options.body = JSON.stringify(data);
   }
 
-  return handleResponse(fetch(fullUrl, options));
+  return accountResponse(
+    handleResponse(fetch(fullUrl, options), undefined, requestOptions),
+    requestOptions
+  );
 }
 
-export const proxyFetchGet = (url: string, params?: any, headers?: any) =>
-  proxyFetchRequest('GET', url, params, headers);
+export const proxyFetchGet = (
+  url: string,
+  params?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('GET', url, params, headers, options);
 
-export const proxyFetchPost = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('POST', url, data, headers);
+export const proxyFetchPost = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('POST', url, data, headers, options);
 
 export const proxyFetchPut = (
   url: string,

@@ -18,7 +18,9 @@ import {
   computeProjectFreshnessAnchor,
 } from '@/lib/replay';
 import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
+import { executionScope } from '@/service/executionApi';
 import type { ProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { readSessionExecutionRoute } from '@/store/sessionExecutionStore';
 
 interface EnsureProjectRuntimeLoadedOptions {
   onHydrationStarted?: () => void;
@@ -35,6 +37,11 @@ export async function ensureProjectRuntimeLoaded(
   projectId: string,
   options: EnsureProjectRuntimeLoadedOptions = {}
 ): Promise<void> {
+  const route = await readSessionExecutionRoute(executionScope(projectId));
+  if (route.route === 'managed') {
+    options.onHydrationStarted?.();
+    return;
+  }
   const project = projectStore.getProjectById(projectId);
   const needsRemoteHistoryHydration =
     project?.metadata?.remoteHistoryHydrationPending === true;

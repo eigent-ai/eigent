@@ -13,11 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { generateUniqueId } from '@/lib';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { isLegacySpace } from '@/lib/spaceLabel';
 import {
   proxyCreateSpaceProject,
   proxyEnsureLegacySpace,
 } from '@/service/spaceApi';
+import { getAuthStore } from '@/store/authStore';
 import type {
   ProjectMode,
   ProjectRuntimeStore,
@@ -39,6 +41,9 @@ export class LegacySpaceProjectError extends Error {
 }
 
 interface CreateSyncedProjectInSpaceInput {
+  projectId?: string;
+  expectedAccountKey?: string;
+  signal?: AbortSignal;
   projectStore: ProjectRuntimeStore;
   spaceId: string;
   name?: string;
@@ -84,6 +89,9 @@ export const resolveServerBackedSpaceId = async (
 };
 
 export const createSyncedProjectInSpace = async ({
+  projectId: requestedProjectId,
+  expectedAccountKey,
+  signal,
   projectStore,
   spaceId,
   name = 'new project',
@@ -108,20 +116,31 @@ export const createSyncedProjectInSpace = async ({
     projectStore,
     spaceId
   );
-  const projectId = generateUniqueId();
+  const projectId = requestedProjectId ?? generateUniqueId();
   const projectMetadata = {
     ...metadata,
     serverSynced: true,
   };
 
-  await proxyCreateSpaceProject(resolvedSpaceId, {
-    id: projectId,
-    name,
-    description,
-    mode,
-    workdir_mode: workdirMode,
-    metadata: projectMetadata,
-  });
+  await proxyCreateSpaceProject(
+    resolvedSpaceId,
+    {
+      id: projectId,
+      name,
+      description,
+      mode,
+      workdir_mode: workdirMode,
+      metadata: projectMetadata,
+    },
+    expectedAccountKey ? { expectedAccountKey, signal } : undefined
+  );
+
+  if (
+    expectedAccountKey &&
+    expectedAccountKey !== getAccountEnvironmentKey(getAuthStore())
+  ) {
+    throw new Error('Session account changed');
+  }
 
   const localProjectId = projectStore.createProject(
     name,

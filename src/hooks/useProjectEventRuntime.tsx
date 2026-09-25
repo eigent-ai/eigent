@@ -64,12 +64,16 @@ const ProjectEventRuntimeContext = createContext<ProjectEventRuntimeValue>({
 export function ProjectEventRuntimeProvider({
   children,
   projectId,
+  expectedAccountKey,
+  enabled = true,
 }: {
   children: ReactNode;
   projectId: string | null | undefined;
+  expectedAccountKey?: string;
+  enabled?: boolean;
 }) {
   const normalizedProjectId = projectId || null;
-  const runtimeEnabled = Boolean(normalizedProjectId);
+  const runtimeEnabled = enabled && Boolean(normalizedProjectId);
   const store = useMemo(
     () =>
       runtimeEnabled && normalizedProjectId
@@ -91,12 +95,14 @@ export function ProjectEventRuntimeProvider({
   const hydration = useProjectEventStoreHydration({
     projectId: normalizedProjectId,
     enabled: runtimeEnabled,
+    expectedAccountKey,
   });
 
   useProjectRunEventStreams({
     projectId: normalizedProjectId,
     snapshot,
     enabled: runtimeEnabled,
+    expectedAccountKey,
   });
 
   const value = useMemo<ProjectEventRuntimeValue>(

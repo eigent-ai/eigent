@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  type FetchRequestOptions,
   proxyFetchDelete,
   proxyFetchGet,
   proxyFetchPatch,
@@ -212,11 +213,14 @@ export const proxyFetchSpaceProjects = async (
 
 export const proxyCreateSpaceProject = async (
   spaceId: string,
-  payload: ProjectPayload
+  payload: ProjectPayload,
+  options?: FetchRequestOptions
 ): Promise<ServerProject> => {
   const project = await proxyFetchPost(
     `/api/v1/spaces/${spaceId}/projects`,
-    payload
+    payload,
+    undefined,
+    options
   );
   return project;
 };
@@ -225,7 +229,7 @@ export const proxyUpdateSpaceProject = async (
   spaceId: string,
   projectId: string,
   payload: ProjectUpdatePayload,
-  options?: Parameters<typeof proxyFetchPatch>[3]
+  options?: FetchRequestOptions
 ): Promise<ServerProject> => {
   // Older servers must reject a conditional cleanup rather than silently
   // ignoring its precondition and treating it as an unconditional PATCH.

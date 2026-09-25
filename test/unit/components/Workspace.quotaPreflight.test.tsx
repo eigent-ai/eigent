@@ -48,7 +48,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/api/http', () => ({
-  fetchGet: mocks.localGet,
+  fetchGet: (url: string, ...args: unknown[]) => {
+    if (url === '/executions/capabilities')
+      return Promise.resolve({ local_single_session: false });
+    if (url.endsWith('/execution-route'))
+      return Promise.resolve({
+        project_id: decodeURIComponent(url.split('/')[2]),
+        route: 'legacy',
+      });
+    return mocks.localGet(url, ...args);
+  },
   proxyFetchGet: mocks.get,
   fetchPost: mocks.post,
   proxyFetchPost: mocks.proxyPost,
@@ -74,10 +83,16 @@ vi.mock('@/store/authStore', () => ({
 }));
 vi.mock('@/store/projectStore', () => ({
   useProjectStore: { getState: () => mocks.projectStore },
-  useProjectRuntimeStore: { getState: () => mocks.projectStore },
+  useProjectRuntimeStore: Object.assign(
+    (selector: (state: any) => unknown) => selector(mocks.projectStore),
+    { getState: () => mocks.projectStore }
+  ),
 }));
 vi.mock('@/store/projectRuntimeStore', () => ({
-  useProjectRuntimeStore: { getState: () => mocks.projectStore },
+  useProjectRuntimeStore: Object.assign(
+    (selector: (state: any) => unknown) => selector(mocks.projectStore),
+    { getState: () => mocks.projectStore }
+  ),
 }));
 vi.mock('@/store/spaceStore', () => ({
   legacySpaceIdForUser: () => 'legacy-local',
@@ -612,7 +627,9 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       expect(mocks.projectStore.createProject).toHaveBeenCalledOnce();
       expect(mocks.proxyPost).toHaveBeenCalledWith(
         '/api/v1/spaces/space-1/projects',
-        expect.objectContaining({ name: question })
+        expect.objectContaining({ name: question }),
+        undefined,
+        undefined
       );
       expect(mocks.sse).toHaveBeenCalledOnce();
       expect(mocks.sse.mock.calls[0][0].body).toMatchObject({

@@ -13,6 +13,17 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Comprehensive unit tests for ChatBox component
+vi.mock('@/hooks/useSessionExecution', () => ({
+  useSessionExecution: (projectId: string) => ({
+    scope: { projectId, accountKey: 'legacy-test' },
+    state: {
+      route: { route: 'legacy', project_id: projectId },
+      managed: false,
+      error: null,
+    },
+  }),
+}));
+
 import { generateUniqueId } from '@/lib';
 import { runProjectionStore } from '@/lib/runEvents';
 import { errorCopy } from '@/lib/usageErrors';

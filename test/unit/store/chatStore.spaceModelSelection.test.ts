@@ -26,7 +26,16 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
 }));
 vi.mock('@/api/http', () => ({
-  fetchGet: mocks.localGet,
+  fetchGet: (url: string, ...args: unknown[]) => {
+    if (url === '/executions/capabilities')
+      return Promise.resolve({ local_single_session: false });
+    if (url.endsWith('/execution-route'))
+      return Promise.resolve({
+        project_id: decodeURIComponent(url.split('/')[2]),
+        route: 'legacy',
+      });
+    return mocks.localGet(url, ...args);
+  },
   proxyFetchGet: mocks.get,
   fetchPost: mocks.post,
   fetchPut: vi.fn(),

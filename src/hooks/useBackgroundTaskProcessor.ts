@@ -17,6 +17,7 @@ import i18n from '@/i18n';
 import { generateUniqueId } from '@/lib';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyExecutionError } from '@/lib/notifyError';
+import { executionScope } from '@/service/executionApi';
 import {
   flushPendingTriggerExecutionUpdates,
   proxyUpdateTriggerExecution,
@@ -32,6 +33,7 @@ import {
   type TaskQueue,
   useProjectRuntimeStore,
 } from '@/store/projectRuntimeStore';
+import { requireLegacyExecution } from '@/store/sessionExecutionStore';
 import { useTriggerTaskStore } from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
@@ -96,9 +98,9 @@ export function useBackgroundTaskProcessor() {
     if (!lifetime.active || isProcessingRef.current) return;
     isProcessingRef.current = true;
     try {
-      const requestRuntime = async (
-        request: (signal: AbortSignal) => Promise<LegacyChatRuntimeStatus>
-      ): Promise<LegacyChatRuntimeStatus> => {
+      const requestRuntime = async <T>(
+        request: (signal: AbortSignal) => Promise<T>
+      ): Promise<T> => {
         const controller = new AbortController();
         runtimeRequestRef.current = controller;
         let onAbort!: () => void;
@@ -230,6 +232,9 @@ export function useBackgroundTaskProcessor() {
 
         let runtimeStatus: LegacyChatRuntimeStatus;
         try {
+          await requestRuntime((signal) =>
+            requireLegacyExecution({ ...executionScope(project.id), signal })
+          );
           runtimeStatus = await requestRuntime((signal) =>
             fetchGet(
               `/chat/${encodeURIComponent(project.id)}/status`,

@@ -29,9 +29,15 @@ import {
   spaceModelError,
 } from '@/lib/spaceModelBinding';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
+import { executionScope } from '@/service/executionApi';
 import { fetchProjectRuns } from '@/service/projectRunsApi';
 import type { ServerProject } from '@/service/spaceApi';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
+import {
+  getSessionExecutionState,
+  readSessionExecutionRoute,
+  requireLegacyExecution,
+} from '@/store/sessionExecutionStore';
 import {
   ChatTaskStatus,
   normalizeThinkingEffort,
@@ -423,6 +429,20 @@ const thinkingEffortPersistenceByProject = new Map<
   string,
   ThinkingEffortPersistenceState
 >();
+
+const modelPersistenceByProject = new Map<string, Promise<unknown>>();
+
+/** Managed submission confirms its complete captured configuration afterwards. */
+export async function waitForPendingProjectConfigurationWrites(
+  projectId: string
+): Promise<void> {
+  while (true) {
+    const model = modelPersistenceByProject.get(projectId);
+    const effort = thinkingEffortPersistenceByProject.get(projectId);
+    if (!model && !effort?.pendingCount) return;
+    await Promise.allSettled([model, effort?.tail]);
+  }
+}
 
 interface CreateProjectOptions {
   spaceId?: string;
@@ -1456,6 +1476,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             );
             return hasActiveSSEConnection(taskIds) ? null : taskIds;
           };
+          await requireLegacyExecution(executionScope(staleProjectId));
           const runtimeStatus = await fetchGet(
             `/chat/${encodeURIComponent(staleProjectId)}/status`
           );
@@ -1708,6 +1729,18 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     serverUpdatedAt?: number | null,
     options?: LoadProjectFromHistoryOptions
   ) => {
+    const scope = executionScope(projectId);
+    const route =
+      getSessionExecutionState(scope).route ??
+      (await readSessionExecutionRoute(scope));
+    if (route.route === 'managed') {
+      if (
+        !options?.requireActiveSelection ||
+        get().activeProjectId === projectId
+      )
+        get().setActiveProject(projectId);
+      return projectId;
+    }
     if (
       options?.requireActiveSelection &&
       get().activeProjectId !== projectId
@@ -2978,18 +3011,36 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       updatedProject?.spaceId ??
       useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
     if (spaceId) {
-      void proxyUpdateSpaceProject(spaceId, projectId, {
-        metadata: {
-          modelSelection,
-          spaceModelDefaultPending: false,
-          spaceModelAdmissionRunId: null,
-        },
-      }).catch((error) => {
-        console.warn(
-          `Failed to persist model selection for project ${projectId}:`,
-          error
+      const expectedAccountKey = getAccountEnvironmentKey(getAuthStore());
+      const prior = modelPersistenceByProject.get(projectId);
+      const persist = () =>
+        proxyUpdateSpaceProject(
+          spaceId,
+          projectId,
+          {
+            metadata: {
+              modelSelection,
+              spaceModelDefaultPending: false,
+              spaceModelAdmissionRunId: null,
+            },
+          },
+          { expectedAccountKey }
         );
-      });
+      const write = prior
+        ? prior.catch(() => undefined).then(persist)
+        : persist();
+      modelPersistenceByProject.set(projectId, write);
+      void write
+        .catch((error) => {
+          console.warn(
+            `Failed to persist model selection for project ${projectId}:`,
+            error
+          );
+        })
+        .finally(() => {
+          if (modelPersistenceByProject.get(projectId) === write)
+            modelPersistenceByProject.delete(projectId);
+        });
     }
   },
 
@@ -3187,7 +3238,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     const capturedSpaceId =
       project.spaceId ??
       useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
+    const expectedAccountKey = getAccountEnvironmentKey(getAuthStore());
     const applyLocalEffort = (localEffort: ThinkingEffortType | null) => {
+      if (getAccountEnvironmentKey(getAuthStore()) !== expectedAccountKey)
+        return null;
       const currentPersistence =
         thinkingEffortPersistenceByProject.get(projectId);
       const currentProject = get().projects[projectId];
@@ -3269,7 +3323,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           projectId,
           {
             metadata: { thinkingEffort: nextEffort },
-          }
+          },
+          { expectedAccountKey }
         );
         if (persistedProject.updated_at) {
           const confirmedAt = timestampFromServer(
