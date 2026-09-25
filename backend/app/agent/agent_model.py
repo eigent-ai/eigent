@@ -26,6 +26,11 @@ from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.anthropic_tools import configure_anthropic_tool_compatibility
 from app.model.chat import AgentModelConfig, Chat
 from app.model.effort import resolve_model_effort_config
+from app.model.max_tokens import (
+    DEFAULT_ANTHROPIC_MAX_TOKENS,
+    InvalidMaxTokensError,
+    ensure_anthropic_max_tokens,
+)
 from app.model.model_platform import (
     configure_meta_model_api_backend,
     is_eigent_cloud_model_endpoint,
@@ -405,8 +410,22 @@ def agent_model(
                 model_platform_enum = None
 
         if effective_config["model_platform"].lower() == "anthropic":
-            if model_config.get("max_tokens") is None:
-                model_config["max_tokens"] = 128000
+            # Anthropic requires an int, but max_tokens routinely arrives as a
+            # string from an env var or a stored settings blob. A bad value is
+            # reported and replaced with the shared conservative default rather
+            # than a large constant: a wrong limit would surface much later as
+            # unexplained truncation. The validation flow reports the same
+            # condition to the user instead of falling back.
+            try:
+                model_config = ensure_anthropic_max_tokens(model_config)
+            except InvalidMaxTokensError as exc:
+                logger.warning(
+                    "Invalid max_tokens for Anthropic model, using default %d: %s",
+                    DEFAULT_ANTHROPIC_MAX_TOKENS,
+                    exc,
+                )
+                model_config = dict(model_config)
+                model_config["max_tokens"] = DEFAULT_ANTHROPIC_MAX_TOKENS
 
         # Ensure streaming steps still report token usage. OpenAI-family
         # providers omit usage from streamed responses unless include_usage
