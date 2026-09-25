@@ -76,12 +76,16 @@ export async function scheduleWorkspaceUnbind(
   // Subscribe before checking readiness so recovery cannot fall between the
   // initial attempt and registration. A failure retains this subscription;
   // success (or a different owner) releases it. No polling or tight retry loop.
-  unsubscribe = useInstallationStore.subscribe(
-    (state) => state.isBackendReady,
-    (ready) => {
-      if (ready) void attempt();
-      else inFlight?.abort();
+  unsubscribe = useInstallationStore.subscribe((state, previous) => {
+    if (!state.isBackendReady) {
+      inFlight?.abort();
+    } else if (
+      !previous.isBackendReady ||
+      state.backendReadyRevision !== previous.backendReadyRevision
+    ) {
+      // A backend restart may report ready without an earlier not-ready event.
+      void attempt();
     }
-  );
+  });
   void attempt();
 }

@@ -37,6 +37,7 @@ import {
 import type { ProjectGroup } from '@/types/history';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getAuthStore } from './authStore';
 import { usePageTabStore } from './pageTabStore';
 import type {
   ProjectMetadata,
@@ -533,7 +534,17 @@ const rehomeLegacyRuntimeProjects = (
 };
 
 let workspaceReconcileFailureCount = 0;
-const projectSyncInFlight = new Map<string, Promise<void>>();
+const projectSyncInFlight = new Map<
+  string,
+  {
+    promise: Promise<void>;
+    context: {
+      accountKey: string;
+      spaceIds: Set<string>;
+      cancelled: boolean;
+    };
+  }
+>();
 const spaceHydrationInFlight = new Map<
   string,
   { promise: Promise<void>; deletedSpaceIds: Set<string> }
@@ -944,21 +955,33 @@ export const useSpaceStore = create<SpaceStore>()(
       syncProjectsFromServer: async (spaceId, historyProjects) => {
         if (!spaceId) return;
 
-        const syncKey = `${getAuthEnvironmentKey()}::${spaceId}`;
+        const accountKey = getAccountEnvironmentKey(getAuthStore());
+        const syncKey = `${accountKey}::${spaceId}`;
         const existingSync = projectSyncInFlight.get(syncKey);
         if (existingSync) {
-          await existingSync;
+          await existingSync.promise;
           return;
         }
 
+        const context = {
+          accountKey,
+          spaceIds: new Set([spaceId]),
+          cancelled: false,
+        };
+        const isCurrent = () =>
+          !context.cancelled &&
+          getAccountEnvironmentKey(getAuthStore()) === accountKey;
         const syncOperation = (async () => {
           try {
             const projectModule = await import('./projectRuntimeStore');
+            if (!isCurrent()) return;
             let targetSpaceId = spaceId;
 
             if (spaceId.startsWith('legacy_')) {
               const legacySpace = await proxyEnsureLegacySpace();
+              if (!isCurrent()) return;
               targetSpaceId = legacySpace.id;
+              context.spaceIds.add(targetSpaceId);
               get().upsertSpaces(
                 [legacySpace],
                 get().activeSpaceId === spaceId ? legacySpace.id : undefined
@@ -1006,6 +1029,9 @@ export const useSpaceStore = create<SpaceStore>()(
                 >();
               }),
             ]);
+            // Deletion or an account switch invalidates the entire response,
+            // including navigation metadata and the runtime Project store.
+            if (!isCurrent()) return;
             const namedProjects = withHistoryProjectNames(
               serverProjects,
               historyMetaByProjectId
@@ -1039,11 +1065,12 @@ export const useSpaceStore = create<SpaceStore>()(
           }
         })();
 
-        projectSyncInFlight.set(syncKey, syncOperation);
+        const currentSync = { promise: syncOperation, context };
+        projectSyncInFlight.set(syncKey, currentSync);
         try {
           await syncOperation;
         } finally {
-          if (projectSyncInFlight.get(syncKey) === syncOperation) {
+          if (projectSyncInFlight.get(syncKey) === currentSync) {
             projectSyncInFlight.delete(syncKey);
           }
         }
@@ -1337,7 +1364,8 @@ export const useSpaceStore = create<SpaceStore>()(
 
       deleteSpace: (spaceId) => {
         const current = get();
-        if (!current.spaces[spaceId]) return;
+        // Hydration may have removed the Space row before DELETE completed;
+        // its Session metadata and previews still need to be cleared.
         const removedProjectIds = Object.keys(
           current.projectsBySpaceId[spaceId] ?? {}
         );
@@ -1345,7 +1373,6 @@ export const useSpaceStore = create<SpaceStore>()(
           usePageTabStore.getState().removeSessionPreviewProject(projectId);
         }
         set((state) => {
-          if (!state.spaces[spaceId]) return state;
           const nextSpaces = { ...state.spaces };
           delete nextSpaces[spaceId];
           const nextProjectsBySpaceId = { ...state.projectsBySpaceId };
@@ -1402,6 +1429,14 @@ export const useSpaceStore = create<SpaceStore>()(
         spaceHydrationInFlight
           .get(`${environmentKey}::${ownerId}`)
           ?.deletedSpaceIds.add(spaceId);
+        for (const { context } of projectSyncInFlight.values()) {
+          if (
+            context.accountKey === accountKey &&
+            context.spaceIds.has(spaceId)
+          ) {
+            context.cancelled = true;
+          }
+        }
         if (isCurrentOwner()) get().deleteSpace(spaceId);
         if (email) {
           // Also handles the last Space: bulk reconciliation skips empty lists.
