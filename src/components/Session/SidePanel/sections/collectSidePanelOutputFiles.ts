@@ -15,7 +15,8 @@
 /**
  * Output files from agent runs can arrive from multiple places:
  * `taskAssigning[].tasks[].fileList` for WRITE_FILE events, `messages[].fileList`
- * for final-summary extraction, and occasionally task-level mirrors.
+ * for final-summary extraction, the durable Artifact manifest, and
+ * occasionally task-level mirrors.
  * The chat task's top-level `fileList` is not kept in sync, so SidePanel
  * must aggregate every known source.
  */
@@ -26,6 +27,7 @@ type SidePanelOutputTask = {
   taskInfo?: TaskInfo[];
   taskRunning?: TaskInfo[];
   fileList?: FileInfo[];
+  artifactManifestFiles?: FileInfo[];
   messages?: Pick<Message, 'fileList'>[];
 };
 
@@ -34,6 +36,7 @@ function outputFileSources(
 ): FileInfo[][] {
   if (!task) return [];
   return [
+    task.artifactManifestFiles ?? [],
     task.fileList ?? [],
     ...(task.taskAssigning ?? []).flatMap((agent) =>
       (agent.tasks ?? []).map((assignedTask) => assignedTask.fileList ?? [])

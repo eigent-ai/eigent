@@ -190,6 +190,7 @@ import {
   hasActiveSSEConnection,
   hasAnyActiveLegacySSEConnection,
   hasSSETransportForTasks,
+  injectHost,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
@@ -2431,6 +2432,83 @@ describe('ChatStore - Core Functionality', () => {
                   (message) => message.step === AgentStep.END
                 )
             ).toHaveLength(1);
+          });
+
+          it('recovers the finalized artifact manifest and attaches it to the missing END after legacy close', async () => {
+            const previousAuth = vi
+              .mocked(getAuthStore)
+              .getMockImplementation();
+            vi.mocked(getAuthStore).mockReturnValue({
+              email: 'user@example.com',
+              user_id: 42,
+            } as any);
+            injectHost({ ipcRenderer: { invoke: vi.fn() } } as any);
+            try {
+              const { store, streamContaining } = await startObservedLiveTask();
+              const legacy = streamContaining('/chat');
+              const fixture = structuredClone(completedRunDisplay);
+              vi.mocked(fetchGet).mockImplementation((path) =>
+                Promise.resolve(
+                  path === '/runs/live-run/events'
+                    ? fixture
+                    : path === '/files/changes'
+                      ? {
+                          artifacts: [
+                            {
+                              artifact_id: 'artifact-iss-atlas',
+                              filename: 'ISS_Orbital_Atlas.html',
+                              path: '/workspace/ISS_Orbital_Atlas.html',
+                              relativePath: 'ISS_Orbital_Atlas.html',
+                              changeType: 'generated',
+                            },
+                          ],
+                          scan_status: 'complete',
+                          truncated: false,
+                        }
+                      : undefined
+                )
+              );
+
+              legacy.onclose();
+              publish(fixture.events as unknown as ReturnType<typeof journal>);
+
+              await vi.waitFor(() =>
+                expect(
+                  store.getState().tasks['live-run'].artifactManifestFinalized
+                ).toBe(true)
+              );
+              const completed = store.getState().tasks['live-run'];
+              expect(completed).toMatchObject({
+                status: ChatTaskStatus.FINISHED,
+                durableRunStatus: 'completed',
+                artifactManifestScanStatus: 'complete',
+                artifactManifestTruncated: false,
+              });
+              expect(completed.artifactManifestFiles).toEqual([
+                expect.objectContaining({
+                  artifactId: 'artifact-iss-atlas',
+                  name: 'ISS_Orbital_Atlas.html',
+                  path: '/workspace/ISS_Orbital_Atlas.html',
+                  relativePath: 'ISS_Orbital_Atlas.html',
+                }),
+              ]);
+              expect(
+                completed.messages.find(
+                  (message) => message.step === AgentStep.END
+                )?.fileList
+              ).toEqual(completed.artifactManifestFiles);
+              expect(fetchGet).toHaveBeenCalledWith('/files/changes', {
+                task_id: 'live-run',
+                project_id: 'project-1',
+                email: 'user@example.com',
+                user_id: 42,
+              });
+            } finally {
+              injectHost(null);
+              vi.mocked(getAuthStore).mockImplementation(
+                previousAuth || (() => ({}) as any)
+              );
+            }
           });
 
           it.each(['existing full report', 'old journal without report'])(

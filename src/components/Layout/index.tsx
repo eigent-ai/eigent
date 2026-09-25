@@ -18,6 +18,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useDesktopUpdater } from '@/hooks/useDesktopUpdater';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useHost } from '@/host';
+import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
@@ -111,13 +112,16 @@ const Layout = () => {
     onboardingCompleted,
     setInitState: _setInitState,
   } = useAuthStore();
-  const activeWorkspaceRoot = useSpaceStore((state) => {
-    const projectSpaceId = projectStore.activeProjectId
-      ? state.projectIdIndex[projectStore.activeProjectId]
-      : null;
-    const activeSpaceId = projectSpaceId || state.activeSpaceId;
-    return activeSpaceId ? state.spaces[activeSpaceId]?.rootPath || null : null;
-  });
+  const activeProjectSpaceId = projectStore.activeProjectId
+    ? projectStore.projects[projectStore.activeProjectId]?.spaceId
+    : null;
+  const activeWorkspaceRoot = useSpaceStore((state) =>
+    selectProjectWorkspaceRoot(
+      state,
+      projectStore.activeProjectId,
+      activeProjectSpaceId
+    )
+  );
 
   const {
     installationState,
