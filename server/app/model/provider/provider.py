@@ -16,11 +16,12 @@ from enum import IntEnum
 from typing import Literal
 
 from pydantic import AliasChoices, BaseModel, Field as PydanticField, field_validator
-from sqlalchemy import Boolean, Column, SmallInteger, text
+from sqlalchemy import Boolean, Column, SmallInteger, String, event, text
 from sqlalchemy_utils import ChoiceType
 from sqlmodel import JSON, Field
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
+from app.model.provider.execution_revision import after_create
 
 
 class VaildStatus(IntEnum):
@@ -34,6 +35,8 @@ class Provider(AbstractModel, DefaultTimes, table=True):
     provider_name: str
     model_type: str
     api_key: str
+    # Assigned by database triggers. It is random, never a hash of a key/token.
+    execution_revision: str = Field(default="", sa_column=Column(String(32), nullable=False, server_default=text("''")))
     endpoint_url: str = ""
     encrypted_config: dict | None = Field(default=None, sa_column=Column(JSON))
     prefer: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("false")))
@@ -101,3 +104,6 @@ class ProviderModelMetadata(BaseModel):
             model_type=model_type,
             available=bool(model_type) and is_valid == VaildStatus.is_valid,
         )
+
+
+event.listen(Provider.__table__, "after_create", after_create)
