@@ -96,7 +96,16 @@ vi.mock('@/host', () => ({ useHost: () => ({ electronAPI: {} }) }));
 vi.mock('@/api/http', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/http')>()),
   proxyFetchGet: mocks.get,
-  fetchGet: mocks.localGet,
+  fetchGet: (url: string, ...args: unknown[]) => {
+    if (url === '/executions/capabilities')
+      return Promise.resolve({ local_single_session: false });
+    if (url.endsWith('/execution-route'))
+      return Promise.resolve({
+        project_id: decodeURIComponent(url.split('/')[2]),
+        route: 'legacy',
+      });
+    return mocks.localGet(url, ...args);
+  },
 }));
 vi.mock('@/store/settingsStore', () => ({ openSettings: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));

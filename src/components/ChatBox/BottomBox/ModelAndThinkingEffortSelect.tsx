@@ -544,6 +544,7 @@ export function ModelAndThinkingEffortSelect({
         setLocalPrefer,
         setLocalPlatform,
         localProviderIds,
+        localTypes,
         localPlatform,
         setModelType,
         setCloudModelType: (id: string) => {

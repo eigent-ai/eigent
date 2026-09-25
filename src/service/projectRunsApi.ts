@@ -105,15 +105,17 @@ function waitForCaller<T>(
 export function fetchProjectRuns(
   projectId: string,
   limit = 100,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  expectedAccountKey?: string
 ): Promise<ProjectRunsResponse> {
-  const key = `${projectId}\u0000${limit}`;
+  const key = `${expectedAccountKey ?? ''}\u0000${projectId}\u0000${limit}`;
   let entry = inFlightProjectRuns.get(key);
   if (!entry) {
     const controller = new AbortController();
     const request = Promise.resolve(
       fetchGet('/runs', { project_id: projectId, limit }, undefined, {
         signal: controller.signal,
+        ...(expectedAccountKey ? { expectedAccountKey } : {}),
       })
     ) as Promise<ProjectRunsResponse>;
     entry = {

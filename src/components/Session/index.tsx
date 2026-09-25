@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ChatBox from '@/components/ChatBox';
+import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
 import {
   RIGHT_RAIL_EXPANDED_OUTER_CLASS,
   RIGHT_RAIL_FOLDED_OUTER_CLASS,
@@ -22,6 +23,7 @@ import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
+import { useSessionExecution } from '@/hooks/useSessionExecution';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import {
@@ -94,6 +96,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
     usePageTabStore((s) => getSessionPreviewSlice(s).open) &&
     sessionPreviewProjectId === (projectStore.activeProjectId ?? null);
   const activeProjectId = projectStore.activeProjectId;
+  const sessionExecution = useSessionExecution(activeProjectId);
   const isHistoryLoadingActiveProject = useProjectRuntimeStore((s) =>
     activeProjectId
       ? Boolean(s.historyLoadingProjectIds[activeProjectId])
@@ -198,6 +201,12 @@ export default function Session({ isNewProject = false }: SessionProps) {
     // does remove+create), there is a render where the live state is also
     // empty. Trust the project type tag here to avoid the bounce.
     if (activeIsReplayProject) return;
+    if (
+      sessionExecution.state.managed ||
+      !sessionExecution.state.route ||
+      sessionExecution.state.error
+    )
+      return;
     if (!hasSessionStarted) {
       setActiveWorkspaceTab('workforce');
     }
@@ -206,6 +215,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
     activeWorkspaceTab,
     chatStore,
     hasSessionStarted,
+    sessionExecution.state,
     isHistoryLoadingActiveProject,
     isNewProject,
     setActiveWorkspaceTab,
@@ -468,22 +478,29 @@ export default function Session({ isNewProject = false }: SessionProps) {
     setIsExpandedOverlayOpen(false);
   }, []);
 
-  if (!isNewProject && !chatStore) {
+  if (
+    !isNewProject &&
+    !chatStore &&
+    sessionExecution.state.route?.route === 'legacy'
+  ) {
     return null;
   }
 
-  const sessionSidePanel = displaySessionMode ? (
-    <SessionSidePanel
-      key={displaySessionMode}
-      mode={displaySessionMode}
-      workforcePanelKey={workforcePanelKey}
-      isSidePanelVisible={isSidePanelVisible}
-      onToggleSidePanel={toggleSidePanel}
-      isExpandedOverlayOpen={isExpandedOverlayOpen}
-      onToggleExpandedOverlay={toggleExpandedOverlay}
-      onCloseExpandedOverlay={closeExpandedOverlay}
-    />
-  ) : null;
+  const sessionSidePanel =
+    displaySessionMode &&
+    (isNewProject ||
+      (sessionExecution.state.route && !sessionExecution.state.error)) ? (
+      <SessionSidePanel
+        key={displaySessionMode}
+        mode={displaySessionMode}
+        workforcePanelKey={workforcePanelKey}
+        isSidePanelVisible={isSidePanelVisible}
+        onToggleSidePanel={toggleSidePanel}
+        isExpandedOverlayOpen={isExpandedOverlayOpen}
+        onToggleExpandedOverlay={toggleExpandedOverlay}
+        onCloseExpandedOverlay={closeExpandedOverlay}
+      />
+    ) : null;
   if (isNewProject) {
     return (
       // The new-project tab deliberately preserves the last active Project in
@@ -520,116 +537,124 @@ export default function Session({ isNewProject = false }: SessionProps) {
   }
 
   return (
-    <ProjectEventRuntimeProvider projectId={activeProjectId}>
-      <div
-        ref={chatRowRef}
-        className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden"
+    <ProjectEventRuntimeProvider
+      key={`${sessionExecution.scope.accountKey}:${activeProjectId}`}
+      projectId={activeProjectId}
+      expectedAccountKey={sessionExecution.scope.accountKey}
+      enabled={
+        Boolean(sessionExecution.state.route) && !sessionExecution.state.error
+      }
+    >
+      <SessionArtifactPreview
+        scope={sessionExecution.scope}
+        enabled={sessionExecution.state.managed}
       >
-        {isResizingPreview ? (
-          <div
-            data-preview-resize-shield
-            aria-hidden="true"
-            className="fixed inset-0 z-40 cursor-col-resize"
-          />
-        ) : null}
-        {/* Chat content: owns the project header and folds when display opens. */}
         <div
-          style={
-            previewOpen
-              ? {
-                  width: `var(--session-chat-width, ${chatWidth}px)`,
-                }
-              : undefined
-          }
-          className={cn(
-            'flex min-h-0 min-w-0 flex-col overflow-hidden',
-            previewOpen ? 'shrink-0' : 'flex-1',
-            !isResizingPreview && 'transition-[width] duration-200 ease-out'
-          )}
+          ref={chatRowRef}
+          className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden"
         >
-          <HeaderBox
-            projectName={activeProjectMeta?.name}
-            totalTokens={
-              chatStore.activeTaskId
-                ? chatStore.tasks[chatStore.activeTaskId]?.tokens || 0
-                : 0
+          {isResizingPreview ? (
+            <div
+              data-preview-resize-shield
+              aria-hidden="true"
+              className="fixed inset-0 z-40 cursor-col-resize"
+            />
+          ) : null}
+          {/* Chat content: owns the project header and folds when display opens. */}
+          <div
+            style={
+              previewOpen
+                ? {
+                    width: `var(--session-chat-width, ${chatWidth}px)`,
+                  }
+                : undefined
             }
-          />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <ChatBox />
+            className={cn(
+              'flex min-h-0 min-w-0 flex-col overflow-hidden',
+              previewOpen ? 'shrink-0' : 'flex-1',
+              !isResizingPreview && 'transition-[width] duration-200 ease-out'
+            )}
+          >
+            <HeaderBox
+              projectName={activeProjectMeta?.name}
+              totalTokens={activeTask?.tokens ?? 0}
+            />
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <ChatBox />
+            </div>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {previewOpen && (
+              <motion.div
+                key="session-display-content"
+                initial={
+                  shouldReduceMotion
+                    ? { flexGrow: 1, opacity: 0, transform: 'translateX(0%)' }
+                    : { flexGrow: 0, opacity: 0, transform: 'translateX(3%)' }
+                }
+                animate={{
+                  flexGrow: 1,
+                  opacity: 1,
+                  transform: 'translateX(0%)',
+                }}
+                exit={
+                  shouldReduceMotion
+                    ? { flexGrow: 0, opacity: 0, transform: 'translateX(0%)' }
+                    : { flexGrow: 0, opacity: 0, transform: 'translateX(3%)' }
+                }
+                transition={
+                  shouldReduceMotion
+                    ? {
+                        flexGrow: { duration: 0 },
+                        transform: { duration: 0 },
+                        opacity: DISPLAY_PANEL_FADE,
+                      }
+                    : {
+                        flexGrow: DISPLAY_PANEL_SPRING,
+                        transform: DISPLAY_PANEL_SPRING,
+                        opacity: DISPLAY_PANEL_FADE,
+                      }
+                }
+                className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
+              >
+                <div
+                  onPointerDown={handlePreviewResizeStart}
+                  role="separator"
+                  aria-orientation="vertical"
+                  data-resize-handle-state={
+                    isResizingPreview ? 'drag' : 'inactive'
+                  }
+                  // Transparent 2px rail with a centered line and wider hit area.
+                  className="relative z-10 flex w-[2px] shrink-0 cursor-col-resize items-center justify-center bg-transparent before:absolute before:inset-y-0 before:-right-1 before:-left-1 before:content-[''] after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 after:bg-ds-neutral-default-default after:opacity-0 after:transition-opacity hover:after:opacity-100"
+                />
+
+                {/* Display content: middle column between chat and session. */}
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                  {activeProjectId ? (
+                    <PreviewPanel
+                      displaySettled={displaySettled}
+                      onJumpToFiles={handleJumpToFiles}
+                    />
+                  ) : null}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div
+            id="session-side-panel"
+            className={cn(
+              'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
+              isSidePanelVisible
+                ? RIGHT_RAIL_EXPANDED_OUTER_CLASS
+                : cn(RIGHT_RAIL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
+            )}
+          >
+            {sessionSidePanel}
           </div>
         </div>
-
-        <AnimatePresence initial={false}>
-          {previewOpen && (
-            <motion.div
-              key="session-display-content"
-              initial={
-                shouldReduceMotion
-                  ? { flexGrow: 1, opacity: 0, transform: 'translateX(0%)' }
-                  : { flexGrow: 0, opacity: 0, transform: 'translateX(3%)' }
-              }
-              animate={{
-                flexGrow: 1,
-                opacity: 1,
-                transform: 'translateX(0%)',
-              }}
-              exit={
-                shouldReduceMotion
-                  ? { flexGrow: 0, opacity: 0, transform: 'translateX(0%)' }
-                  : { flexGrow: 0, opacity: 0, transform: 'translateX(3%)' }
-              }
-              transition={
-                shouldReduceMotion
-                  ? {
-                      flexGrow: { duration: 0 },
-                      transform: { duration: 0 },
-                      opacity: DISPLAY_PANEL_FADE,
-                    }
-                  : {
-                      flexGrow: DISPLAY_PANEL_SPRING,
-                      transform: DISPLAY_PANEL_SPRING,
-                      opacity: DISPLAY_PANEL_FADE,
-                    }
-              }
-              className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
-            >
-              <div
-                onPointerDown={handlePreviewResizeStart}
-                role="separator"
-                aria-orientation="vertical"
-                data-resize-handle-state={
-                  isResizingPreview ? 'drag' : 'inactive'
-                }
-                // Transparent 2px rail with a centered line and wider hit area.
-                className="relative z-10 flex w-[2px] shrink-0 cursor-col-resize items-center justify-center bg-transparent before:absolute before:inset-y-0 before:-right-1 before:-left-1 before:content-[''] after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 after:bg-ds-neutral-default-default after:opacity-0 after:transition-opacity hover:after:opacity-100"
-              />
-
-              {/* Display content: middle column between chat and session. */}
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-                {activeProjectId ? (
-                  <PreviewPanel
-                    displaySettled={displaySettled}
-                    onJumpToFiles={handleJumpToFiles}
-                  />
-                ) : null}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <div
-          id="session-side-panel"
-          className={cn(
-            'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
-            isSidePanelVisible
-              ? RIGHT_RAIL_EXPANDED_OUTER_CLASS
-              : cn(RIGHT_RAIL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
-          )}
-        >
-          {sessionSidePanel}
-        </div>
-      </div>
+      </SessionArtifactPreview>
     </ProjectEventRuntimeProvider>
   );
 }

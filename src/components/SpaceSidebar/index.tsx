@@ -46,11 +46,13 @@ import {
 import { AUTOMATION_ICON, AUTOMATION_OFF_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
+import { executionScope } from '@/service/executionApi';
 import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { readSessionExecutionRoute } from '@/store/sessionExecutionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
@@ -247,6 +249,21 @@ export default function SpaceSidebar({
   const selectSession = useCallback(
     async (projectId: string) => {
       projectStore.setActiveProject(projectId);
+      try {
+        const route = await readSessionExecutionRoute(
+          executionScope(projectId)
+        );
+        if (useProjectRuntimeStore.getState().activeProjectId !== projectId)
+          return;
+        if (route.route === 'managed') {
+          setActiveWorkspaceTab('project');
+          return;
+        }
+      } catch {
+        if (useProjectRuntimeStore.getState().activeProjectId === projectId)
+          setActiveWorkspaceTab('project');
+        return;
+      }
       const needsRemoteHistoryHydration =
         projectStore.getProjectById(projectId)?.metadata
           ?.remoteHistoryHydrationPending === true;

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { sseTransport } from '@/api/http';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { setConnectionConfig } from '@/store/connectionStore';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -89,6 +90,41 @@ describe('SSE delivery through the actual fetch-event-source library', () => {
       expect(onerror).toHaveBeenCalledWith(networkError);
       expect(onopen).toHaveBeenCalledOnce();
       expect(onclose).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  );
+
+  it.each([false, true])(
+    'rejects account changes before a network retry (admission guard=%s)',
+    async (guarded) => {
+      const fetch = vi
+        .fn()
+        .mockRejectedValue(new TypeError('Synthetic disconnect'));
+      vi.stubGlobal('fetch', fetch);
+      const guard = vi.fn();
+      const onerror = vi.fn();
+      const result = outcome(
+        sseTransport({
+          url: '/chat',
+          expectedAccountKey: getAccountEnvironmentKey(mocks.auth),
+          beforeRequest: guarded ? guard : undefined,
+          onerror,
+          onmessage: vi.fn(),
+        })
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetch).toHaveBeenCalledOnce();
+      mocks.auth = { token: 'synthetic-b', user_id: 2 };
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await result).toEqual({
+        ok: false,
+        error: expect.objectContaining({
+          message: 'Request account changed before delivery',
+        }),
+      });
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(guard).toHaveBeenCalledTimes(guarded ? 1 : 0);
+      expect(onerror).toHaveBeenCalledOnce();
       expect(vi.getTimerCount()).toBe(0);
     }
   );

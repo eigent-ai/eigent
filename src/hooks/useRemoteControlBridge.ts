@@ -26,6 +26,7 @@ import {
   setRemoteControlBridgeConnected,
   type RemoteControlBridgeError,
 } from '@/lib/remoteControl';
+import { executionScope } from '@/service/executionApi';
 import {
   createFollowUpRequest,
   getRemoteFollowUpByCommandId,
@@ -38,6 +39,7 @@ import { humanInteractionDecisionPath } from '@/service/humanInteractionApi';
 import { toLocalSpace, type ServerProject } from '@/service/spaceApi';
 import { getAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
+import { requireLegacyExecution } from '@/store/sessionExecutionStore';
 import { projectMetaFromServer, useSpaceStore } from '@/store/spaceStore';
 import type { SessionModeType } from '@/types/constants';
 import { useEffect, useRef } from 'react';
@@ -605,7 +607,7 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
   if (!projectId || !nextTaskId) {
     throw new Error('Remote user message requires project_id and next_task_id');
   }
-
+  await requireLegacyExecution(executionScope(projectId));
   ensureRemoteProjectLoaded(command);
 
   const payload = command.payload || {};
@@ -747,6 +749,7 @@ async function dispatchPersistedRemoteFollowUp(
   if (!projectId || !requestId) {
     throw new Error('Remote follow-up requires Project and request ids');
   }
+  await requireLegacyExecution(executionScope(projectId));
   const pending = await listPendingFollowUpRequests(projectId);
   const next = pending[0];
   if (!next || next.request_id !== requestId) {
@@ -800,6 +803,9 @@ async function executeRemoteCommand(
   token: string,
   scheduleFollowUp?: (command: RemoteCommand) => void
 ): Promise<BridgeAck> {
+  const executionProjectId = getCommandProjectId(command);
+  if (executionProjectId)
+    await requireLegacyExecution(executionScope(executionProjectId));
   if (
     command.type !== 'user_message' &&
     command.type !== 'interaction_decision'

@@ -22,6 +22,23 @@
  * - Message handling
  */
 
+// These cases exercise the existing legacy lane. C6 ownership/transport is
+// covered separately by sessionExecution and real ASGI IPC integration tests.
+const sessionEntryGuard = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined)
+);
+vi.mock('@/store/sessionExecutionStore', () => ({
+  requireLegacyExecution: sessionEntryGuard,
+  readSessionExecutionRoute: async (scope: { projectId: string }) => ({
+    project_id: scope.projectId,
+    route: 'legacy',
+  }),
+  getSessionExecutionState: (scope: { projectId: string }) => ({
+    route: { project_id: scope.projectId, route: 'legacy' },
+    managed: false,
+  }),
+}));
+
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -1153,6 +1170,33 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('Task startup', () => {
+    it('rejects managed ownership before provider resolution or legacy SSE admission', async () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create('managed-guard');
+      sessionEntryGuard.mockRejectedValueOnce(
+        new Error('managed_execution_required')
+      );
+      await expect(
+        result.current
+          .getState()
+          .startTask(
+            taskId,
+            undefined,
+            undefined,
+            undefined,
+            'kept draft',
+            [],
+            undefined,
+            'project-1',
+            'single-agent',
+            { awaitAdmission: true }
+          )
+      ).rejects.toThrow('managed_execution_required');
+      expect(proxyFetchGet).not.toHaveBeenCalled();
+      expect(fetchPost).not.toHaveBeenCalled();
+      expect(fetchEventSource).not.toHaveBeenCalled();
+    });
+
     it('settles a live task from a canonical failure when legacy SSE ends without ERROR', () => {
       const { result } = renderHook(() => useChatStore());
       const taskId = result.current.getState().create('failed-run');
@@ -5056,6 +5100,9 @@ describe('ChatStore - Core Functionality', () => {
           );
       });
 
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(appendInitChatStore).toHaveBeenCalledTimes(1);
       expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
         isPending: true,
