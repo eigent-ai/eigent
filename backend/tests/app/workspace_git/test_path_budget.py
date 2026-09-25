@@ -151,7 +151,9 @@ def test_artifact_classification_failure_is_partial_and_never_falls_back(
     assert result.scan_status == "partial" and result.truncated
 
 
-def test_git_and_fallback_artifact_classification_agree(tmp_path):
+def test_git_and_fallback_artifact_classification_agree(
+    tmp_path, tmp_path_factory, monkeypatch
+):
     git = GitBackend()
     git.init_repository(tmp_path)
     base = git.create_empty_initial_commit(tmp_path, message="Empty base")
@@ -159,7 +161,7 @@ def test_git_and_fallback_artifact_classification_agree(tmp_path):
     final = tmp_path / "scene.blend"
     final.write_bytes(b"fixture")
     head = git.commit_paths(tmp_path, (final,), message="Final scene")
-    journal = SimpleNamespace(
+    projection = SimpleNamespace(
         get_run_git_materialization=lambda run_id: SimpleNamespace(
             workspace_base_commit=base,
             promoted_commit=head,
@@ -173,9 +175,19 @@ def test_git_and_fallback_artifact_classification_agree(tmp_path):
             pending_apply=False
         ),
     )
-    native = artifacts._git_run_changed_artifacts(
-        journal, SimpleNamespace(run_id="run-1", project_id="project-1")
-    )
+    # Classification stubs only the Git projection. The ownership guard still
+    # queries a real isolated journal, outside the scanned artifact directory.
+    database = tmp_path_factory.mktemp("artifact-journal") / "journal.sqlite"
+    with SQLiteRunJournal(database) as journal:
+        for method in (
+            "get_run_git_materialization",
+            "get_git_repository",
+            "get_project_git_state",
+        ):
+            monkeypatch.setattr(journal, method, getattr(projection, method))
+        native = artifacts._git_run_changed_artifacts(
+            journal, SimpleNamespace(run_id="run-1", project_id="project-1")
+        )
     fallback = _scan(tmp_path)
     assert native.artifacts == fallback.artifacts
     assert native.scan_status == fallback.scan_status == "complete"

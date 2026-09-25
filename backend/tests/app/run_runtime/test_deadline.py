@@ -51,12 +51,15 @@ async def test_coordinator_enforces_only_a_persisted_run_deadline(tmp_path):
             stream_factory=source,
         )
         try:
-            # Deadline enforcement includes threaded SQLite work. Wait for
-            # completion instead of assuming it finishes within 100 ms.
             execution = subscription.handle.execution_task
+            watcher = subscription.handle.deadline_task
             assert execution is not None
-            done, _ = await asyncio.wait({execution}, timeout=5)
-            assert execution in done
+            assert watcher is not None
+            # Deadline enforcement includes threaded SQLite work. Observe both
+            # tasks without cancelling either when the bound expires: the
+            # deadline watcher must own execution cancellation and settlement.
+            _, pending = await asyncio.wait({execution, watcher}, timeout=5)
+            assert not pending
             assert execution.cancelled()
             assert journal.get_run("run-1").status == "failed"
             assert (
@@ -65,6 +68,10 @@ async def test_coordinator_enforces_only_a_persisted_run_deadline(tmp_path):
             )
         finally:
             await coordinator.close()
+            if subscription.handle.deadline_task is not None:
+                await asyncio.gather(
+                    subscription.handle.deadline_task, return_exceptions=True
+                )
 
 
 @pytest.mark.asyncio

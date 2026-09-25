@@ -53,6 +53,7 @@ from app.run_context import RunContext
 from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
 from app.run_runtime import RunCoordinator
 from app.workspace_bundle.runtime import EnvironmentSetupRequiredError
+from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
 
 
 @pytest.fixture(autouse=True)
@@ -67,9 +68,23 @@ def controller_run_journal():
         attempt_id="attempt-1",
         status="pending",
     )
-    with patch(
-        "app.controller.chat_controller.get_default_run_journal",
-        return_value=journal,
+
+    async def unit_admission_guard(candidate, **owner):
+        # This fixture deliberately supplies a non-durable unit double. Real
+        # SQLite fixtures still execute the production guard; its managed lane
+        # and unavailable-Journal cases have dedicated entry-guard tests.
+        if candidate is not journal:
+            await guard_legacy_execution_entry(candidate, **owner)
+
+    with (
+        patch(
+            "app.controller.chat_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.chat_controller.guard_legacy_execution_entry",
+            side_effect=unit_admission_guard,
+        ),
     ):
         yield journal
 

@@ -52,6 +52,12 @@ from app.run_runtime.active_timeout import (
     ActiveExecutionTimeout,
     refresh_active_execution_timeout,
 )
+from app.run_runtime.owned_tasks import (
+    current_owned_tasks,
+    get_task_lock,
+    get_task_lock_if_exists,
+    run_owned_thread,
+)
 from app.run_runtime.step_coordinator import step_scope
 from app.run_runtime.timeout_config import (
     normalize_optional_timeout_seconds,
@@ -74,8 +80,6 @@ from app.service.task import (
     ActionDeactivateAgentData,
     ActionDeactivateToolkitData,
     ActionRequestUsageData,
-    get_task_lock,
-    get_task_lock_if_exists,
     set_process_task,
 )
 from app.tool_validation import prewrite_validation_result
@@ -996,7 +1000,7 @@ class ListenChatAgent(ChatAgent):
                 if "Budget has been exceeded" in str(e):
                     message = "Budget has been exceeded"
                     logger.warning(f"Agent {self.agent_name} budget exceeded")
-                    asyncio.create_task(
+                    _schedule_async_task(
                         task_lock.put_queue(ActionBudgetNotEnough())
                     )
                 else:
@@ -1328,7 +1332,7 @@ class ListenChatAgent(ChatAgent):
         # If so, the decorator will handle activate/deactivate events
         has_listen_decorator = getattr(tool.func, "__listen_toolkit__", False)
 
-        checkpoint = await asyncio.to_thread(
+        preparation = run_owned_thread(
             prepare_tool_checkpoint,
             raw_tool_call_id=tool_call_id,
             tool_name=func_name,
@@ -1343,6 +1347,29 @@ class ListenChatAgent(ChatAgent):
             agent_name=self.agent_name,
             task_id=self.process_task_id,
         )
+        owner = current_owned_tasks()
+        if owner is None:
+            checkpoint = await preparation
+        else:
+            preparation_task = owner.create_task(preparation)
+            try:
+                checkpoint = await asyncio.shield(preparation_task)
+            except asyncio.CancelledError:
+
+                async def close_unstarted_tool():
+                    prepared = await asyncio.shield(preparation_task)
+                    await run_owned_thread(
+                        finish_tool_checkpoint,
+                        prepared,
+                        error=TimeoutError("tool cancelled before dispatch"),
+                        outcome_known=True,
+                    )
+
+                # The preparation thread may still be committing its row.
+                # Retain its result and the no-dispatch cleanup in this owner;
+                # cancellation of the Agent waiter cannot abandon either one.
+                owner.create_task(close_unstarted_tool())
+                raise
 
         execution_error: Exception | None = None
         dispatched = False
@@ -1354,7 +1381,7 @@ class ListenChatAgent(ChatAgent):
                 agent_name=self.agent_name,
                 task_lock=task_lock,
             )
-            await asyncio.to_thread(dispatch_tool_checkpoint, checkpoint)
+            await run_owned_thread(dispatch_tool_checkpoint, checkpoint)
             dispatched = True
             # Activation is an execution projection. Do not publish it before
             # the durable permission gate authorizes and dispatches the tool.
@@ -1389,7 +1416,7 @@ class ListenChatAgent(ChatAgent):
                     # the Run/tool checkpoints needed by child-agent tool
                     # callbacks while the queue consumer stays responsive.
                     if hasattr(tool, "is_async") and not tool.is_async:
-                        result = await asyncio.to_thread(tool, **args)
+                        result = await run_owned_thread(tool, **args)
                         # Handle case where sync call returns a coroutine
                         if inspect.isawaitable(result):
                             result = await result
@@ -1411,13 +1438,13 @@ class ListenChatAgent(ChatAgent):
                     # Fallback sync call. to_thread propagates ContextVars and
                     # prevents a blocking AgentToolkit wait from starving
                     # approvals, timeline events, and child progress updates.
-                    result = await asyncio.to_thread(tool, **args)
+                    result = await run_owned_thread(tool, **args)
                     # Handle case where synchronous call returns a coroutine
                     if inspect.isawaitable(result):
                         result = await result
 
         except asyncio.CancelledError as error:
-            await asyncio.to_thread(
+            await run_owned_thread(
                 finish_tool_checkpoint,
                 checkpoint,
                 error=TimeoutError("tool execution cancelled or timed out"),
@@ -1427,7 +1454,7 @@ class ListenChatAgent(ChatAgent):
         except ToolPermissionRejectedError as error:
             execution_error = error
             result = {"error": str(error), "permission_denied": True}
-            await asyncio.to_thread(
+            await run_owned_thread(
                 finish_tool_checkpoint,
                 checkpoint,
                 result=result,
@@ -1437,7 +1464,7 @@ class ListenChatAgent(ChatAgent):
         except Exception as e:
             execution_error = e
             rejection = prewrite_validation_result(e)
-            await asyncio.to_thread(
+            await run_owned_thread(
                 finish_tool_checkpoint,
                 checkpoint,
                 result=rejection,
@@ -1461,13 +1488,13 @@ class ListenChatAgent(ChatAgent):
         if execution_error is None:
             reported_error = _reported_tool_error(result)
             if reported_error is None:
-                await asyncio.to_thread(
+                await run_owned_thread(
                     finish_tool_checkpoint,
                     checkpoint,
                     result=result,
                 )
             else:
-                await asyncio.to_thread(
+                await run_owned_thread(
                     finish_tool_checkpoint,
                     checkpoint,
                     result=result,

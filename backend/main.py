@@ -267,6 +267,16 @@ async def startup_event():
     initialize_tracer_provider()
     app_logger.info("Telemetry tracer provider initialized")
 
+    # Optional isolated owners start only after durable fact reconciliation.
+    # Deployment registration supplies explicit policies and worker adapters.
+    from app.workspace_runtime.runtime import (
+        initialize_execution_service,
+        start_default_execution_service,
+    )
+
+    initialize_execution_service(env("EIGENT_MANAGED_EXECUTION_MANIFEST", ""))
+    await start_default_execution_service()
+
 
 @api.on_event("shutdown")
 async def shutdown_event_handler():
@@ -277,6 +287,12 @@ async def shutdown_event_handler():
 async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
     app_logger.info("Starting graceful shutdown process")
+
+    from app.workspace_runtime.runtime import close_default_execution_service
+
+    # Stop new claims and drain owned preparation/execution before the shared
+    # coordinator, compatibility resources or journal are closed.
+    await close_default_execution_service()
 
     # Stop detached execution consumers before cleaning their compatibility
     # TaskLocks. RunJournal remains open until all producers have stopped.

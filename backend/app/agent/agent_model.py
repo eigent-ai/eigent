@@ -39,7 +39,8 @@ from app.model.subscription_runtime import (
     is_subscription_auth,
 )
 from app.run_journal.model_capture import instrument_model_backend
-from app.service.task import ActionCreateAgentData, Agents, get_task_lock
+from app.run_runtime.owned_tasks import get_task_lock
+from app.service.task import ActionCreateAgentData, Agents
 from app.utils.event_loop_utils import _schedule_async_task
 
 # OpenAI chat-completions streaming only returns token usage when
@@ -122,6 +123,7 @@ def agent_model(
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
     custom_model_config: AgentModelConfig | None = None,
+    managed_resources=None,
 ):
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
@@ -340,6 +342,11 @@ def agent_model(
                 )
             ),
             is_cloud=is_effective_cloud,
+            **(
+                {"pinned_capability": managed_resources.provider_capability}
+                if managed_resources is not None
+                else {}
+            ),
         )
         uses_responses_transport = transport == "responses"
         if uses_responses_transport or "api_mode" in init_params:
@@ -374,7 +381,7 @@ def agent_model(
         if use_subscription_runtime:
             model_config["stream"] = True
             model_config["store"] = False
-        if agent_name == Agents.task_agent:
+        if agent_name == Agents.task_agent and managed_resources is None:
             model_config["stream"] = True
         if agent_name == Agents.browser_agent:
             try:
@@ -422,6 +429,8 @@ def agent_model(
 
         # Preserve the existing default without duplicating explicit options.
         init_params.setdefault("timeout", 600)
+        if managed_resources is not None:
+            init_params.update(managed_resources.constructor_arguments())
         model_backend = ModelFactory.create(
             model_platform=runtime_model_platform,
             model_type=effective_config["model_type"],
@@ -443,10 +452,22 @@ def agent_model(
         configure_responses_input(model_backend)
         if uses_responses_transport and model_config.get("instructions"):
             _configure_responses_instructions(model_backend)
+        if managed_resources is not None:
+            model_backend = managed_resources.bind(model_backend)
         return model_backend
 
     model = build_model()
 
+    managed_options = (
+        {}
+        if managed_resources is None
+        else {
+            "step_timeout": options.extra_params["timeout"],
+            "stall_timeout": 0,
+            "max_iteration": 64,
+            "tool_log_dir": None,
+        }
+    )
     return ListenChatAgent(
         options.project_id,
         agent_name,
@@ -463,4 +484,5 @@ def agent_model(
             else None
         ),
         stream_accumulate=False,
+        **managed_options,
     )
