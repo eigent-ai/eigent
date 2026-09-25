@@ -13,7 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { generateUniqueId } from '@/lib';
-import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
+import {
+  getAccountEnvironmentKey,
+  getAuthEnvironmentKey,
+} from '@/lib/authEnvironment';
 import {
   getSessionNavLeadFromHistoryProject,
   type SessionNavLeadPresentation,
@@ -24,6 +27,7 @@ import {
   isPlaceholderProjectName,
   isPlaceholderSpaceNameStatic,
 } from '@/lib/spaceLabel';
+import { scheduleWorkspaceUnbind } from '@/lib/workspaceUnbind';
 import { fetchGroupedHistoryProjects } from '@/service/historyApi';
 import {
   proxyEnsureLegacySpace,
@@ -577,6 +581,18 @@ const isHydrationStillCurrentForUser = async (ownerId: string) => {
   } catch {
     return true;
   }
+};
+
+const captureSpaceResponseGuard = async (
+  get: () => SpaceStore,
+  spaceId: string
+) => {
+  const { getAuthStore } = await import('@/store/authStore');
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  // An update must not recreate a Space removed while the request was pending.
+  return () =>
+    Boolean(get().spaces[spaceId]) &&
+    getAccountEnvironmentKey(getAuthStore()) === accountKey;
 };
 
 export const useSpaceStore = create<SpaceStore>()(
@@ -1303,7 +1319,10 @@ export const useSpaceStore = create<SpaceStore>()(
       },
 
       updateSpaceOnServer: async (spaceId, input) => {
-        const { proxyUpdateSpace } = await import('@/service/spaceApi');
+        const [{ proxyUpdateSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
         const space = await proxyUpdateSpace(spaceId, {
           name: input.name,
           description: input.description,
@@ -1313,7 +1332,7 @@ export const useSpaceStore = create<SpaceStore>()(
           status: input.status,
           metadata: input.metadata,
         });
-        get().upsertSpaces([space], undefined);
+        if (isCurrent()) get().upsertSpaces([space], undefined);
       },
 
       deleteSpace: (spaceId) => {
@@ -1364,6 +1383,7 @@ export const useSpaceStore = create<SpaceStore>()(
         const { email, user_id: userId } = getAuthStore();
         const ownerId = canonicalUserId(userId);
         const environmentKey = getAuthEnvironmentKey();
+        const accountKey = getAccountEnvironmentKey(getAuthStore());
         const isCurrentOwner = () =>
           canonicalUserId(getAuthStore().user_id) === ownerId &&
           getAuthEnvironmentKey() === environmentKey;
@@ -1383,28 +1403,19 @@ export const useSpaceStore = create<SpaceStore>()(
           .get(`${environmentKey}::${ownerId}`)
           ?.deletedSpaceIds.add(spaceId);
         if (isCurrentOwner()) get().deleteSpace(spaceId);
-        void Promise.all([
-          import('@/service/workspaceApi'),
-          import('@/store/installationStore'),
-        ])
-          .then(async ([workspaceModule, installationModule]) => {
-            // Also handles the last Space, since bulk reconciliation deliberately
-            // skips an empty list. Never make the deletion dialog wait for Brain.
-            await installationModule.waitForBackendReadiness();
-            if (!email || !isCurrentOwner()) return;
-            await workspaceModule.unbindWorkspaceFromBrain(
-              spaceId,
-              email,
-              userId
-            );
-          })
-          .catch((error) => {
-            // The next hydration reconciles stale bindings once Brain is ready.
+        if (email) {
+          // Also handles the last Space: bulk reconciliation skips empty lists.
+          void scheduleWorkspaceUnbind(spaceId, {
+            email,
+            userId,
+            accountKey,
+          }).catch((error) => {
             console.warn(
-              `[spaceStore] Failed to unbind deleted Space ${spaceId} from Brain; deferring cleanup to workspace reconciliation:`,
+              `[spaceStore] Failed to schedule Brain workspace cleanup for ${spaceId}:`,
               error
             );
           });
+        }
       },
 
       cleanupInactiveEmptySpacesOnServer: async () => {
@@ -1522,15 +1533,23 @@ export const useSpaceStore = create<SpaceStore>()(
       },
 
       archiveSpaceOnServer: async (spaceId) => {
-        const { proxyArchiveSpace } = await import('@/service/spaceApi');
+        const [{ proxyArchiveSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
         const space = await proxyArchiveSpace(spaceId);
+        if (!isCurrent()) return;
         get().upsertSpaces([space], undefined);
         await unbindBrainWorkspaceMirror(spaceId);
       },
 
       unarchiveSpaceOnServer: async (spaceId) => {
-        const { proxyUnarchiveSpace } = await import('@/service/spaceApi');
+        const [{ proxyUnarchiveSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
         const space = await proxyUnarchiveSpace(spaceId);
+        if (!isCurrent()) return;
         get().upsertSpaces([space], space.id);
       },
 
@@ -1620,11 +1639,15 @@ export const useSpaceStore = create<SpaceStore>()(
         }),
 
       relocateSpaceOnServer: async (spaceId, rootPath, force = false) => {
-        const { proxyRelocateSpace } = await import('@/service/spaceApi');
+        const [{ proxyRelocateSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
         const space = await proxyRelocateSpace(spaceId, {
           root_path: rootPath,
           force,
         });
+        if (!isCurrent()) return;
         get().upsertSpaces([space], space.id);
         await unbindBrainWorkspaceMirror(spaceId).catch((error) => {
           console.warn(
@@ -1639,7 +1662,7 @@ export const useSpaceStore = create<SpaceStore>()(
               import('@/store/authStore'),
             ]);
           const { email, user_id: userId } = getAuthStore();
-          if (email) {
+          if (email && isCurrent()) {
             await bindWorkspaceToSpace({
               space_id: space.id,
               email,
