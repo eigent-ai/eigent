@@ -38,8 +38,8 @@ from tests.app.workspace_runtime.test_agent_adapter import response
 from tests.app.workspace_runtime.test_registration import Deployment
 
 EXAMPLE = (
-    Path(__file__).resolve().parents[4]
-    / "docs/plans/parallel-session-execution/deployment.synthetic.example.json"
+    Path(__file__).resolve().parent
+    / "fixtures/deployment.synthetic.example.json"
 )
 
 
