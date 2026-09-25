@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "server_url": "https://authority.example.test",
+  "tokenizer_asset_directory": "/absolute/synthetic-release/tokenizers",
+  "capacity": 4,
+  "session_history_enabled": false,
+  "local_single_session_enabled": false
+}
