@@ -35,9 +35,11 @@ pytestmark = pytest.mark.unit
 def _install_stubs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Replace every optional shutdown dependency with a recorder.
 
-    Each fake module is registered in ``sys.modules`` so the ``from ... import``
-    statements inside ``cleanup_resources`` resolve without pulling in the real
-    services.
+    Each fake module is registered through ``monkeypatch.setitem`` so it is
+    removed again when the test ends. Assigning into ``sys.modules`` directly
+    would leave the fakes behind for the rest of the session: the real
+    ``app.run_runtime`` and friends would then resolve to these recorders, and
+    unrelated tests that use them would fail.
     """
     calls: list[str] = []
 
@@ -79,7 +81,10 @@ def _install_stubs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
                 calls.append("websocket_pool")
 
         module.websocket_connection_pool = _WebsocketPool()  # type: ignore[attr-defined]
-        sys.modules[name] = module
+        # Via monkeypatch so the fake is removed again when the test ends:
+        # assigning directly would leave it behind for the rest of the
+        # session, and the real app.run_runtime would resolve to a recorder.
+        monkeypatch.setitem(sys.modules, name, module)
         return module
 
     for name in (
