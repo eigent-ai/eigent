@@ -71,6 +71,10 @@ class Project(AbstractModel, DefaultTimes, table=True):
     metadata_json: dict[str, Any] | None = Field(default=None, sa_column=Column("metadata", JSON))
 
 
+# Server-owned receipt in the existing JSON column; no database migration.
+PROJECT_CREATION_INTENT_KEY = "_eigent_creation_intent_v1"
+
+
 class ProjectIn(BaseModel):
     id: str | None = None
     space_id: str | None = None
@@ -85,6 +89,7 @@ class ProjectIn(BaseModel):
 class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    mode: str | None = None
     status: str | None = None
     workdir_mode: str | None = None
     metadata: dict[str, Any] | None = None
@@ -135,6 +140,8 @@ class ProjectOut(BaseModel):
     @classmethod
     def from_model(cls, project: Project) -> "ProjectOut":
         metadata = project.metadata_json if isinstance(project.metadata_json, dict) else None
+        if metadata is not None and PROJECT_CREATION_INTENT_KEY in metadata:
+            metadata = {key: value for key, value in metadata.items() if key != PROJECT_CREATION_INTENT_KEY} or None
         return cls(
             id=project.id,
             user_id=project.user_id,
