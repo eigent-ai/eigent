@@ -1454,8 +1454,14 @@ export const useSpaceStore = create<SpaceStore>()(
       },
 
       cleanupInactiveEmptySpacesOnServer: async () => {
+        const accountKey = getAccountEnvironmentKey(getAuthStore());
+        const isCurrentAccount = () =>
+          getAccountEnvironmentKey(getAuthStore()) === accountKey;
+        const isCurrentSpace = (spaceId: string) =>
+          isCurrentAccount() && Boolean(get().spaces[spaceId]);
         const { proxyFetchSpaceProjects } = await import('@/service/spaceApi');
         const projectModule = await import('./projectRuntimeStore');
+        if (!isCurrentAccount()) return;
         const { activeSpaceId, spaces, projectsBySpaceId } = get();
         const candidates = Object.values(spaces).filter(
           (space) =>
@@ -1464,8 +1470,12 @@ export const useSpaceStore = create<SpaceStore>()(
         );
 
         for (const space of candidates) {
+          if (!isCurrentSpace(space.id)) continue;
           try {
             const projects = await proxyFetchSpaceProjects(space.id);
+            // This inspection can outlive a confirmed deletion or account
+            // switch, just like an explicit Session synchronization request.
+            if (!isCurrentSpace(space.id)) continue;
             const activeProjects = projects.filter(
               (project) => project.status !== 'archived'
             );
@@ -1483,8 +1493,18 @@ export const useSpaceStore = create<SpaceStore>()(
                 .upsertProjectsFromServer(activeProjects);
               continue;
             }
-            await get().deleteSpaceOnServer(space.id);
+            const current = get();
+            if (
+              current.activeSpaceId !== space.id &&
+              isDisposableBlankSpace(
+                current.spaces[space.id],
+                current.projectsBySpaceId
+              )
+            ) {
+              await get().deleteSpaceOnServer(space.id);
+            }
           } catch (error) {
+            if (!isCurrentSpace(space.id)) continue;
             if ((error as { status?: number })?.status === 404) {
               get().deleteSpace(space.id);
               continue;
