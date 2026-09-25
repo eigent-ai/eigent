@@ -92,6 +92,19 @@ jobs:
           FORMAT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/check-changed-format.mjs
 
+      # Changed frontend tests include the real TS-to-Python execution bridge.
+      - name: Install uv for integration tests
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python for integration tests
+        run: uv python install 3.11
+
+      - name: Install backend dependencies for integration tests
+        working-directory: backend
+        run: uv sync
+
       # The full suite currently contains known failures, so keep this gate
       # focused on tests that the change adds or updates.
       - name: Run changed frontend tests

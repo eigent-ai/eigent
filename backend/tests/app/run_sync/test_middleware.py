@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -17,7 +31,10 @@ async def test_authorized_traffic_uses_process_owned_desktop_identity(
     )
     response = object()
     call_next = AsyncMock(return_value=response)
-    request = SimpleNamespace(headers={"authorization": "Bearer cloud-token"})
+    request = SimpleNamespace(
+        headers={"authorization": "Bearer cloud-token"},
+        url=SimpleNamespace(path="/chat"),
+    )
 
     result = await middleware.cloud_sync_configuration_middleware(
         request, call_next
@@ -39,7 +56,7 @@ async def test_unauthorized_traffic_does_not_configure_cloud_sync(monkeypatch):
         middleware, "configure_default_cloud_sync_worker", configure
     )
     call_next = AsyncMock(return_value=object())
-    request = SimpleNamespace(headers={})
+    request = SimpleNamespace(headers={}, url=SimpleNamespace(path="/chat"))
 
     await middleware.cloud_sync_configuration_middleware(request, call_next)
 

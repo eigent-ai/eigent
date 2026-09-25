@@ -35,6 +35,7 @@ from app.utils.workspace_paths import (
     project_workdir_root,
     run_output_root,
     runtime_owner_key,
+    sanitize_identity,
     workspace_state_root,
 )
 
@@ -219,6 +220,24 @@ class TaskSnapshot:
 
 
 class WorkspaceStore:
+    def get_canonical_binding(
+        self, user_id: str, space_id: str
+    ) -> WorkspaceBinding | None:
+        """Read only an authenticated account's primary record; no legacy lookup."""
+        if not user_id.isdecimal() or sanitize_identity(space_id) != space_id:
+            return None
+        path = self._space_path("", space_id, user_id)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            binding = WorkspaceBinding(**data)
+        except (OSError, ValueError, TypeError):
+            return None
+        return (
+            binding
+            if binding.space_id == space_id and binding.version == 2
+            else None
+        )
+
     def _state_roots(
         self, email: str, user_id: str | int | None = None
     ) -> tuple[Path, ...]:

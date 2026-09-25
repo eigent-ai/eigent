@@ -114,6 +114,10 @@ from app.workspace_config.admission import (
     LegacyEnvironmentImporter,
 )
 from app.workspace_git import get_default_workspace_git_coordinator
+from app.workspace_runtime.entry_guard import (
+    ManagedExecutionRequired,
+    guard_legacy_execution_entry,
+)
 
 router = APIRouter()
 _CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
@@ -155,6 +159,14 @@ def _follow_up_response(record: FollowUpRequestRecord) -> dict[str, Any]:
 
 
 def _raise_follow_up_http_error(exc: Exception) -> None:
+    if isinstance(exc, ManagedExecutionRequired):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "managed_execution_required",
+                "message": "This Session requires the managed execution API.",
+            },
+        ) from exc
     if isinstance(exc, RunNotFoundError):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if isinstance(exc, (IdempotencyConflictError, InvalidRunTransitionError)):
@@ -662,7 +674,10 @@ async def _reject_pending_continuation(
             request_id=request_id,
             project_id=project_id,
             error=f"{code_value}: {message}",
+            reject_managed=True,
         )
+    except ManagedExecutionRequired as exc:
+        _raise_follow_up_http_error(exc)
     except RunNotFoundError:
         # Direct messages are resolved before a queue row exists. The typed
         # HTTP response is their complete clarification contract.
@@ -1565,11 +1580,29 @@ async def start_chat_stream(data: Chat, request: Request):
     """Admit one detached execution or attach this SSE to an existing one."""
 
     run_id = data.run_id or data.task_id
-    coordinator = get_default_run_coordinator()
     journal = get_default_run_journal()
+    await guard_legacy_execution_entry(
+        journal, project_id=data.project_id, run_id=run_id
+    )
+    coordinator = get_default_run_coordinator()
     if isinstance(journal, SQLiteRunJournal):
         coordinator.bind_journal(journal)
     async with coordinator.admission_scope(run_id, project_id=data.project_id):
+        if isinstance(journal, SQLiteRunJournal):
+            from app.workspace_runtime.entry_guard import (
+                ManagedExecutionRequired,
+            )
+            from app.workspace_runtime.routing import claim_legacy_session
+
+            try:
+                await asyncio.to_thread(
+                    claim_legacy_session, journal, data.project_id
+                )
+            except ManagedExecutionRequired:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "managed_execution_required"},
+                ) from None
         subscription = await coordinator.attach_if_running(run_id)
         if subscription is not None:
             chat_logger.info(
@@ -1895,6 +1928,9 @@ async def status(project_id: str):
 async def retire_idle_runtime(project_id: str, data: RetireIdleRuntimeRequest):
     """Await disposal of a completed warm consumer before cold admission."""
 
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id, run_id=data.run_id
+    )
     coordinator = get_default_run_coordinator()
     async with coordinator.admission_scope(data.run_id, project_id=project_id):
         task_lock = get_task_lock_if_exists(project_id)
@@ -1964,6 +2000,9 @@ async def retire_idle_runtime(project_id: str, data: RetireIdleRuntimeRequest):
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def enqueue_follow_up(project_id: str, data: FollowUpRequestCreate):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
     try:
         record = await asyncio.to_thread(
             get_default_run_journal().put_follow_up_request,
@@ -1975,6 +2014,7 @@ async def enqueue_follow_up(project_id: str, data: FollowUpRequestCreate):
             delivery_mode=data.delivery_mode,
             source=data.source,
             source_command_id=data.source_command_id,
+            reject_managed=True,
         )
     except Exception as exc:
         _raise_follow_up_http_error(exc)
@@ -2037,12 +2077,16 @@ async def follow_up_by_source_command(source_command_id: str):
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def send_follow_up_now(project_id: str, request_id: str):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
     try:
         record = await asyncio.to_thread(
             get_default_run_journal().set_follow_up_delivery_mode,
             request_id=request_id,
             project_id=project_id,
             delivery_mode="send_now",
+            reject_managed=True,
         )
     except Exception as exc:
         _raise_follow_up_http_error(exc)
@@ -2054,11 +2098,15 @@ async def send_follow_up_now(project_id: str, request_id: str):
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def cancel_follow_up(project_id: str, request_id: str):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
     try:
         record = await asyncio.to_thread(
             get_default_run_journal().cancel_follow_up_request,
             request_id=request_id,
             project_id=project_id,
+            reject_managed=True,
         )
     except Exception as exc:
         _raise_follow_up_http_error(exc)
@@ -2074,12 +2122,16 @@ async def mark_follow_up_admitted(
     request_id: str,
     data: FollowUpRequestAdmitted,
 ):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
     try:
         record = await asyncio.to_thread(
             get_default_run_journal().mark_follow_up_admitted,
             request_id=request_id,
             project_id=project_id,
             run_id=data.run_id,
+            reject_managed=True,
         )
     except Exception as exc:
         _raise_follow_up_http_error(exc)
@@ -2092,6 +2144,9 @@ async def mark_follow_up_admitted(
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def improve(id: str, data: SupplementChat, request: Request):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=id, run_id=data.task_id
+    )
     if data.task_id:
         coordinator = get_default_run_coordinator()
         async with coordinator.admission_scope(data.task_id, project_id=id):
@@ -2146,6 +2201,9 @@ async def _improve_chat(
     *,
     admission_request_id: str | None = None,
 ):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=id, run_id=data.task_id
+    )
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
@@ -2498,6 +2556,9 @@ def supplement(id: str, data: SupplementChat):
 )
 async def stop(id: str):
     """stop the task"""
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=id
+    )
     chat_logger.info("=" * 80)
     chat_logger.info(
         "🛑 [STOP-BUTTON] DELETE /chat/{id} request received from frontend"

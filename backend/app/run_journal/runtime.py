@@ -21,6 +21,8 @@ SQLite database, and Brain shutdown closes the shared connection explicitly.
 from __future__ import annotations
 
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from app.component.environment import env
@@ -31,6 +33,23 @@ from app.run_journal.store import SQLiteRunJournal
 _runtime_lock = threading.Lock()
 _default_journal: SQLiteRunJournal | None = None
 _default_recorder: EventRecorder | None = None
+_scoped_journal: ContextVar[SQLiteRunJournal | None] = ContextVar(
+    "execution_journal", default=None
+)
+
+
+@contextmanager
+def run_journal_scope(journal: SQLiteRunJournal):
+    """Bind an already-owned journal without opening the user's default DB."""
+    token = _scoped_journal.set(journal)
+    try:
+        yield journal
+    finally:
+        _scoped_journal.reset(token)
+
+
+def has_scoped_run_journal() -> bool:
+    return _scoped_journal.get() is not None
 
 
 def _notify_cloud_sync() -> None:
@@ -48,6 +67,9 @@ def configured_run_journal_path() -> Path:
 
 def get_default_run_journal() -> SQLiteRunJournal:
     global _default_journal
+    scoped = _scoped_journal.get()
+    if scoped is not None:
+        return scoped
     with _runtime_lock:
         if _default_journal is None:
             _default_journal = SQLiteRunJournal(configured_run_journal_path())
@@ -56,6 +78,9 @@ def get_default_run_journal() -> SQLiteRunJournal:
 
 def get_default_event_recorder() -> EventRecorder:
     global _default_journal, _default_recorder
+    scoped = _scoped_journal.get()
+    if scoped is not None:
+        return EventRecorder(scoped)
     with _runtime_lock:
         if _default_recorder is None:
             # Construct directly while holding the runtime lock; calling
