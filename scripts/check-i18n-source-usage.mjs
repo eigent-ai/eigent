@@ -108,6 +108,7 @@ const PROVIDER_METADATA_DESCRIPTIONS = [
   'Azure OpenAI model configuration.',
   'Baidu Ernie model configuration.',
   'OrcaRouter model configuration.',
+  'Meta Model API model configuration.',
   'Nebius Token Factory model configuration.',
   'Ant Ling model configuration',
   'OpenAI-compatible API endpoint configuration.',

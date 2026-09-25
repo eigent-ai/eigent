@@ -337,7 +337,7 @@ export default function SettingModels() {
     > = {};
     for (const p of INIT_PROVODERS) {
       if (!p.modelsEndpoint) continue;
-      const cached = loadCachedModels(p.id);
+      const cached = loadCachedModels(p.id, p.modelIdPrefix);
       if (cached) {
         initial[p.id] = {
           groups: cached,
@@ -394,7 +394,8 @@ export default function SettingModels() {
         const groups = await fetchProviderModels(
           apiHost,
           item.modelsEndpoint,
-          apiKey
+          apiKey,
+          item.modelIdPrefix
         );
         if (cloudModelsRequestIds.current[item.id] !== requestId) return;
         setCloudModelsState((prev) => ({

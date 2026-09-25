@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchProviderModels } from '@/lib/providerModels';
+import {
+  fetchProviderModels,
+  loadCachedModels,
+  saveCachedModels,
+} from '@/lib/providerModels';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ fetchPost: vi.fn() }));
@@ -61,5 +65,52 @@ describe('fetchProviderModels errors', () => {
       models_endpoint: '/models',
       api_key: 'new-key',
     });
+  });
+});
+
+describe('provider model filtering', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('limits Meta discovery results to the Muse Spark family', async () => {
+    mocks.fetchPost.mockResolvedValue({
+      data: [
+        { id: 'muse-voice-transcribe-1.0' },
+        { id: 'muse-spark-1.3' },
+        { id: 'muse-image-1.0' },
+        { id: 'muse-spark-1.3-contributor' },
+      ],
+    });
+
+    const groups = await fetchProviderModels(
+      'https://api.meta.ai/v1',
+      '/models',
+      'test-key',
+      'muse-spark-'
+    );
+
+    expect(groups).toEqual([
+      {
+        provider: 'other',
+        models: [
+          { id: 'muse-spark-1.3' },
+          { id: 'muse-spark-1.3-contributor' },
+        ],
+      },
+    ]);
+  });
+
+  it('applies the provider filter to cached model lists', () => {
+    saveCachedModels('meta', [
+      {
+        provider: 'other',
+        models: [{ id: 'muse-image-1.0' }, { id: 'muse-spark-1.3' }],
+      },
+    ]);
+
+    expect(loadCachedModels('meta', 'muse-spark-')).toEqual([
+      { provider: 'other', models: [{ id: 'muse-spark-1.3' }] },
+    ]);
   });
 });

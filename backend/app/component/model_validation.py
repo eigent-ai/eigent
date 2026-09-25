@@ -22,6 +22,7 @@ from camel.models import ModelFactory, ModelProcessingError
 from app.model.effort import resolve_model_effort_config
 from app.model.model_platform import (
     BEDROCK_CONVERSE_REGION,
+    configure_meta_model_api_backend,
     is_eigent_cloud_model_endpoint,
     resolve_cloud_model_runtime_platform,
 )
@@ -419,6 +420,7 @@ def validate_model_with_details(
             model_config_dict=model_config_dict,
             **kwargs,
         )
+        configure_meta_model_api_backend(model, url)
         configure_responses_input(model)
         result.validation_stages[ValidationStage.MODEL_CREATION] = True
         result.successful_stages.append(ValidationStage.MODEL_CREATION)
