@@ -1346,8 +1346,16 @@ export const useSpaceStore = create<SpaceStore>()(
             `[spaceStore] Space ${spaceId} was already absent on server; continuing Brain unbind.`
           );
         }
-        await unbindBrainWorkspaceMirror(spaceId);
+        // Cloud deletion is authoritative. A failed or stalled Brain unbind
+        // must not keep a deleted Space visible or its confirmation pending.
         get().deleteSpace(spaceId);
+        void unbindBrainWorkspaceMirror(spaceId).catch((error) => {
+          // The next hydration reconciles stale bindings once Brain is ready.
+          console.warn(
+            `[spaceStore] Failed to unbind deleted Space ${spaceId} from Brain; deferring cleanup to workspace reconciliation:`,
+            error
+          );
+        });
       },
 
       cleanupInactiveEmptySpacesOnServer: async () => {
