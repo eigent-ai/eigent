@@ -38,7 +38,9 @@ from app.workspace_config.models import ThinkingEffort
 @pytest.mark.asyncio
 @pytest.mark.parametrize("effort", tuple(ThinkingEffort))
 @pytest.mark.parametrize("platform", ["azure", "openai", "cloud_azure"])
-@pytest.mark.parametrize("source", ["builtin", "catalog", "provider_override"])
+@pytest.mark.parametrize(
+    "source", ["builtin", "builtin_luna", "catalog", "provider_override"]
+)
 @pytest.mark.parametrize("with_image", [False, True])
 async def test_admitted_effort_matches_sdk_body_and_invocation(
     tmp_path,
@@ -51,7 +53,10 @@ async def test_admitted_effort_matches_sdk_body_and_invocation(
     with_image,
 ):
     caplog.set_level("INFO", logger="provider_wait")
-    model_type = "gpt-6-astra" if source == "builtin" else "nebula-2027"
+    model_type = {
+        "builtin": "gpt-6-astra",
+        "builtin_luna": "gpt-6-luna",
+    }.get(source, "nebula-2027")
     model_platform = "openai" if platform == "openai" else "azure"
     metadata = {
         "schema_version": 1,
@@ -276,7 +281,7 @@ async def test_admitted_effort_matches_sdk_body_and_invocation(
                     "detail": "high",
                 }
         assert template.provider_capability.source == (
-            "catalog" if source == "builtin" else source
+            "catalog" if source.startswith("builtin") else source
         )
         assert environment.spec.thinking_effort_requested == effort
         assert environment.spec.thinking_effort_effective == effort

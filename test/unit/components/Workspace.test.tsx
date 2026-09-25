@@ -750,7 +750,9 @@ describe('Workspace', () => {
     fireEvent.click(screen.getByText('Send'));
     fireEvent.click(screen.getByText('Send'));
 
-    expect(createSyncedProjectInSpace).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(createSyncedProjectInSpace).toHaveBeenCalledTimes(1)
+    );
     resolveCreation?.({ projectId: 'new-project', spaceId: 'space-1' });
     await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
   });

@@ -433,5 +433,9 @@
   "notice-refresh-failed": "無法重新整理額度，請再試一次。",
   "notice-availability-unverified": "無法檢查服務狀態。如問題持續，請聯絡支援。",
   "notice-access-unverified": "方案已重新整理。請再次嘗試此模型以檢查存取權限。",
-  "notice-credits-unavailable": "額度暫時無法取得"
+  "notice-credits-unavailable": "額度暫時無法取得",
+  "space-model-unconfirmed": "首次工作階段請求尚未確認。請重新連線後重試，或手動選擇工作階段模型。",
+  "space-model-unavailable": "目前帳號無法使用此模型。請檢查模型設定，或為會話選擇模型。",
+  "space-model-ambiguous": "多個提供商與此模型符合。請檢查模型設定，或為會話選擇模型。",
+  "space-model-changed": "載入期間帳號或會話模型已變更，請重新傳送訊息。"
 }

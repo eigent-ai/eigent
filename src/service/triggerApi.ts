@@ -422,18 +422,19 @@ export function trackTriggerExecutionRun(
   return previous === undefined;
 }
 
-/** Only used for a typed rejection which proves this candidate was not admitted. */
+/** Only used when this exact candidate is known not to have been admitted. */
 export function forgetRejectedTriggerRun(
   executionId: string,
   projectId: string,
-  runId: string
+  runId: string,
+  expectedAccountKey = currentAccountKey()
 ): void {
   loadTriggerRunBindings();
   const record = triggerRunBindings.get(executionId);
   if (
     record?.projectId === projectId &&
     record.runId === runId &&
-    record.accountKey === currentAccountKey()
+    record.accountKey === expectedAccountKey
   ) {
     triggerRunBindings.delete(executionId);
     try {

@@ -148,6 +148,8 @@ export async function getBaseURL() {
 type FetchRequestOptions = {
   signal?: AbortSignal;
   expectedAccountKey?: string;
+  /** Revalidate mutable admission context after asynchronous header lookup. */
+  beforeRequest?: () => void;
 };
 
 function assertRequestAccount(options: FetchRequestOptions): void {
@@ -170,6 +172,7 @@ async function fetchRequest(
   assertRequestAccount(requestOptions);
   const headers = await buildBrainHeaders(url, customHeaders);
   assertRequestAccount(requestOptions);
+  requestOptions.beforeRequest?.();
 
   const options: RequestInit = {
     method,
@@ -376,8 +379,12 @@ export const fetchPost = (
   options?: FetchRequestOptions
 ) => fetchRequest('POST', url, data, headers, options);
 
-export const fetchPut = (url: string, data?: any, headers?: any) =>
-  fetchRequest('PUT', url, data, headers);
+export const fetchPut = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => fetchRequest('PUT', url, data, headers, options);
 
 export const fetchPatch = (url: string, data?: any, headers?: any) =>
   fetchRequest('PATCH', url, data, headers);
@@ -420,6 +427,8 @@ export interface SSETransportOptions {
   signal?: AbortSignal;
   extraHeaders?: Record<string, string>;
   openWhenHidden?: boolean;
+  /** Runs before every delivery, including the SSE library's own retries. */
+  beforeRequest?: () => void;
   onmessage: (event: EventSourceMessage) => void | Promise<void>;
   onopen?: (response: Response) => void | Promise<void>;
   onerror?: (err: any) => number | null | undefined | void;
@@ -443,12 +452,28 @@ export async function sseTransport(
         ? JSON.stringify(options.body)
         : undefined;
 
+  const requestFetch = window.fetch;
+  let guardRejected = false;
+  let guardError: unknown;
   await fetchEventSource(fullUrl, {
     method: options.method || 'POST',
     openWhenHidden: options.openWhenHidden ?? true,
     signal: options.signal,
     headers,
     body,
+    fetch: options.beforeRequest
+      ? (input, init) => {
+          if (guardRejected) throw guardError;
+          try {
+            options.beforeRequest?.();
+          } catch (error) {
+            guardRejected = true;
+            guardError = error;
+            throw error;
+          }
+          return requestFetch(input, init);
+        }
+      : undefined,
     onmessage: options.onmessage,
     async onopen(response) {
       persistSessionIdFromResponse(response);
@@ -456,9 +481,19 @@ export async function sseTransport(
         await options.onopen(response);
       }
     },
-    onerror: options.onerror,
+    onerror: options.beforeRequest
+      ? (error) => {
+          // A guard may throw a TypeError too. Never pass a rejected admission
+          // through a caller's retryable-network-error policy.
+          if (guardRejected) throw guardError;
+          return options.onerror?.(error);
+        }
+      : options.onerror,
     onclose: options.onclose,
   });
+  // Caller cleanup inside the guard can abort the input signal. The library
+  // resolves on abort; preserve the admission error instead of reporting success.
+  if (guardRejected) throw guardError;
 }
 
 // =============== porxy ===============
@@ -513,6 +548,7 @@ async function proxyFetchRequest(
     }
   }
 
+  requestOptions.beforeRequest?.();
   const options: RequestInit = {
     method,
     headers,
@@ -552,8 +588,12 @@ export const proxyFetchPut = (
   options?: FetchRequestOptions
 ) => proxyFetchRequest('PUT', url, data, headers, options);
 
-export const proxyFetchPatch = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('PATCH', url, data, headers);
+export const proxyFetchPatch = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('PATCH', url, data, headers, options);
 
 export const proxyFetchDelete = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('DELETE', url, data, headers);

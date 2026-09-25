@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Fail-closed, in-memory runtime assembly for materialized Bundles."""
 
 from __future__ import annotations
@@ -31,6 +45,13 @@ from app.workspace_bundle.secrets import (
     WorkspaceSecretBroker,
     WorkspaceSecretBrokerError,
     WorkspaceSecretIdentity,
+)
+from app.workspace_config.global_resources import (
+    GLOBAL_MCP_PREFIX,
+    GLOBAL_SKILL_PREFIX,
+    GlobalResourceUnavailable,
+    resolve_global_mcp,
+    resolve_global_skill,
 )
 from app.workspace_config.models import (
     EffectiveEnvironmentSpec,
@@ -157,6 +178,12 @@ class ResolvedRuntimeEnvironment:
         return bool(self._environment_bindings)
 
     def mcp_config_without_secrets(self) -> dict[str, Any] | None:
+        """Build the live client config without resolving Bundle secret slots.
+
+        Explicit global references use their already-configured local values,
+        which can include credentials. This return value is runtime-only and
+        must not be serialized into environment facts, discovery or logs.
+        """
         if any(
             identity.slot_id.startswith("mcp_secret:")
             for identity in self._secret_identities
@@ -309,7 +336,7 @@ def bundle_runtime_binding_digest(
 
 
 class RuntimeEnvironmentAssembler:
-    """Resolve one pinned EnvironmentSpec without consulting legacy config."""
+    """Resolve pinned Bundle assets and explicitly selected global resources."""
 
     MAX_TEXT_ASSET_BYTES = 1024 * 1024
     MAX_PROMPT_BYTES = 2 * 1024 * 1024
@@ -334,6 +361,8 @@ class RuntimeEnvironmentAssembler:
         *,
         space_id: str,
         space_root: Path,
+        user_id: str | int | None = None,
+        email: str = "",
     ) -> ResolvedRuntimeEnvironment | None:
         marker = spec.semantic_spec.get("runtime_capability_manifest", {}).get(
             "workspace_bundle"
@@ -454,6 +483,14 @@ class RuntimeEnvironmentAssembler:
             file_cache[ref] = resolved
             return resolved
 
+        if any(
+            server.definition.startswith(GLOBAL_MCP_PREFIX)
+            and server.secret_slots
+            for server in manifest.spec.mcp_servers
+        ):
+            raise EnvironmentSetupRequiredError(
+                ["global_mcp_secret_slots_unsupported"]
+            )
         local_by_slot = {item.slot_id: item for item in local_bindings}
         self._validate_declared_bindings(
             manifest,
@@ -607,12 +644,20 @@ class RuntimeEnvironmentAssembler:
 
         skills: list[ResolvedRuntimeSkill] = []
         for skill in manifest.spec.skills:
-            if not skill.ref.startswith("bundle://"):
+            if skill.ref.startswith(GLOBAL_SKILL_PREFIX):
+                try:
+                    path, text = resolve_global_skill(
+                        skill.ref, user_id=user_id, email=email
+                    )
+                except GlobalResourceUnavailable as exc:
+                    raise EnvironmentSetupRequiredError([str(exc)]) from exc
+            elif skill.ref.startswith("bundle://"):
+                path, content = asset(skill.ref)
+                text = self._decode_text(skill.ref, content)
+            else:
                 raise EnvironmentSetupRequiredError(
                     [f"registry_skill_unmaterialized:{skill.ref}"]
                 )
-            path, content = asset(skill.ref)
-            text = self._decode_text(skill.ref, content)
             if path.name != "SKILL.md":
                 raise EnvironmentSetupRequiredError(
                     [f"bundle_skill_not_portable:{skill.ref}"]
@@ -628,6 +673,14 @@ class RuntimeEnvironmentAssembler:
 
         mcp_servers: dict[str, dict[str, Any]] = {}
         for server in manifest.spec.mcp_servers:
+            if server.definition.startswith(GLOBAL_MCP_PREFIX):
+                try:
+                    mcp_servers[server.id] = resolve_global_mcp(
+                        server.definition, secret_slots=server.secret_slots
+                    )
+                except GlobalResourceUnavailable as exc:
+                    raise EnvironmentSetupRequiredError([str(exc)]) from exc
+                continue
             if not server.definition.startswith("bundle://"):
                 raise EnvironmentSetupRequiredError(
                     [f"registry_mcp_unmaterialized:{server.id}"]

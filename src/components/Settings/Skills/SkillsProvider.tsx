@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { getBaseURL } from '@/api/http';
+import { fetchWorkspaceCurrent } from '@/service/workspaceApi';
 import { fetchWorkspaceConfiguration } from '@/service/workspaceConfigurationApi';
 import { useAuthStore } from '@/store/authStore';
 import {
@@ -50,6 +51,17 @@ type SkillLibraryLoadError = {
 };
 
 const SPACE_PROFILE_BATCH_TIMEOUT_MS = 15_000;
+
+function isMissingSpaceBinding(error: unknown): boolean {
+  const failure = error as {
+    status?: number;
+    response?: { data?: { detail?: { code?: string } } };
+  } | null;
+  return (
+    failure?.status === 404 &&
+    failure.response?.data?.detail?.code === 'workspace_binding_not_found'
+  );
+}
 
 /**
  * A save that failed only because nobody is signed in gets the actionable
@@ -183,6 +195,29 @@ function useLibrary() {
               const controller = new AbortController();
               controllers.add(controller);
               try {
+                // Cloud Spaces need not have a binding on this machine. Check
+                // that state first instead of requesting a nonexistent profile.
+                const binding = await fetchWorkspaceCurrent(
+                  space.id,
+                  email,
+                  userId,
+                  { signal: controller.signal }
+                );
+                if (
+                  generation.current !== current ||
+                  controller.signal.aborted
+                ) {
+                  if (batchExpired)
+                    throw new Error('Space profile load timed out');
+                  continue;
+                }
+                if (
+                  binding?.space_id !== space.id ||
+                  typeof binding.bound !== 'boolean'
+                ) {
+                  throw new Error('Invalid Space binding response');
+                }
+                if (!binding.bound) continue;
                 const draft = await fetchWorkspaceConfiguration(
                   space.id,
                   { email, userId },
@@ -199,7 +234,11 @@ function useLibrary() {
                     )
                   );
                 }
-              } catch {
+              } catch (error) {
+                // A binding can be removed between the two reads. Only this
+                // explicit server code means no applicable profile; other
+                // 404s, permission failures and transport errors remain errors.
+                if (!batchExpired && isMissingSpaceBinding(error)) continue;
                 failures.push({
                   key: 'agents.library-space-load-failed',
                   name: space.name,

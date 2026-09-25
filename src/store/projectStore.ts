@@ -14,6 +14,7 @@
 
 import { fetchGet, fetchPost, proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
   deleteCachedProject,
   getCachedProject,
@@ -23,6 +24,10 @@ import {
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
+import {
+  recoverSpaceSessionModel,
+  spaceModelError,
+} from '@/lib/spaceModelBinding';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import { fetchProjectRuns } from '@/service/projectRunsApi';
 import type { ServerProject } from '@/service/spaceApi';
@@ -58,6 +63,15 @@ import {
 
 const staleRuntimeEvictionsInFlight = new Map<string, Promise<void>>();
 const staleRuntimeEvictionRetriesAfterFlight = new Set<string>();
+
+type ReceiptWrite = {
+  revision: string;
+  bases: Set<string | null>;
+  abandoned: boolean;
+};
+// Only failed/explicitly released assignments are safe to supersede. This is
+// renderer-local proof, scoped to account, environment and Space/Project.
+const receiptWrites = new Map<string, Map<string, ReceiptWrite>>();
 
 /**
  * Wait until an older Project transition has finished inspecting or retiring
@@ -244,6 +258,9 @@ interface ProjectModelSelection {
   provider_id?: number;
   model_platform?: string;
   model_type?: string;
+  /** Portable origin only; credentials are resolved transiently at launch. */
+  model_ref?: string;
+  thinking_effort?: ThinkingEffortType;
 }
 
 interface ProjectMetadata {
@@ -269,6 +286,12 @@ interface ProjectMetadata {
   historyDisplayName?: string;
   /** Per-Project model pin; reused by startTask for follow-up runs. */
   modelSelection?: ProjectModelSelection;
+  /** Only containers created locally as new Sessions may adopt a Space default. */
+  spaceModelDefaultPending?: boolean;
+  /** A dispatched initial request whose delivery has not been reconciled. */
+  spaceModelAdmissionRunId?: string | null;
+  /** Kept after cleanup so old requests cannot reuse an earlier empty state. */
+  spaceModelAdmissionRevision?: string | null;
   /** Requested effort for new Runs; null clears a persisted override. */
   thinkingEffort?: ThinkingEffortType | null;
   serverSynced?: boolean;
@@ -614,6 +637,11 @@ interface ProjectStore {
     modelSelection: ProjectModelSelection
   ) => void;
   getProjectModel: (projectId: string | null) => ProjectModelSelection | null;
+  setProjectModelAdmission: (
+    projectId: string,
+    runId: string | null,
+    beforeRequest?: () => void
+  ) => Promise<void>;
   setProjectThinkingEffort: (
     projectId: string,
     effort: ThinkingEffortType | undefined
@@ -808,6 +836,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       queuedMessages: [], // Initialize empty queued messages array
       metadata: {
         status: 'active',
+        ...(!historyId &&
+        type !== ProjectType.REPLAY &&
+        options?.createdAt === undefined &&
+        !useSpaceStore.getState().getProjectMeta(targetProjectId)
+          ? { spaceModelDefaultPending: true }
+          : {}),
         historyId: historyId,
         tags: type === ProjectType.REPLAY ? ['replay'] : [],
         ...(description === 'Auto-created project'
@@ -1748,6 +1782,38 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     );
 
     const cacheUserId = getAuthStore().user_id;
+    const restored = get().projects[loadProjectId];
+    if (
+      (restored?.metadata?.spaceModelDefaultPending ||
+        restored?.metadata?.spaceModelAdmissionRunId) &&
+      !get().getProjectModel(loadProjectId) &&
+      restored.spaceId &&
+      !restored.spaceId.startsWith('legacy_')
+    ) {
+      const identity = getAuthStore();
+      try {
+        const selection = await recoverSpaceSessionModel(
+          restored.spaceId,
+          loadProjectId,
+          { email: identity.email || '', userId: identity.user_id },
+          () => {
+            const current = getAuthStore();
+            if (
+              current.token !== identity.token ||
+              current.user_id !== identity.user_id ||
+              current.email !== identity.email ||
+              get().projects[loadProjectId]?.spaceId !== restored.spaceId ||
+              get().getProjectModel(loadProjectId)
+            )
+              throw new Error('Session model recovery changed');
+          }
+        );
+        if (selection) get().setProjectModel(loadProjectId, selection);
+      } catch {
+        // Preserve pending delivery/eligibility. A live start must reconcile it
+        // before choosing a model; history can still be viewed while offline.
+      }
+    }
     // Cache usage requires both an authenticated user (to scope per-account)
     // AND a non-null server freshness anchor. Without the latter we cannot
     // detect staleness, so we neither read from nor write to the cache —
@@ -2877,7 +2943,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       previous.codex_model_type === modelSelection.codex_model_type &&
       previous.provider_id === modelSelection.provider_id &&
       previous.model_platform === modelSelection.model_platform &&
-      previous.model_type === modelSelection.model_type
+      previous.model_type === modelSelection.model_type &&
+      previous.model_ref === modelSelection.model_ref &&
+      previous.thinking_effort === modelSelection.thinking_effort &&
+      projects[projectId].metadata?.spaceModelDefaultPending !== true &&
+      !projects[projectId].metadata?.spaceModelAdmissionRunId
     ) {
       return;
     }
@@ -2890,6 +2960,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           metadata: {
             ...state.projects[projectId].metadata,
             modelSelection,
+            spaceModelDefaultPending: false,
+            spaceModelAdmissionRunId: null,
           },
           updatedAt: Date.now(),
         },
@@ -2907,13 +2979,171 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
     if (spaceId) {
       void proxyUpdateSpaceProject(spaceId, projectId, {
-        metadata: { modelSelection },
+        metadata: {
+          modelSelection,
+          spaceModelDefaultPending: false,
+          spaceModelAdmissionRunId: null,
+        },
       }).catch((error) => {
         console.warn(
           `Failed to persist model selection for project ${projectId}:`,
           error
         );
       });
+    }
+  },
+
+  setProjectModelAdmission: async (projectId, runId, beforeRequest) => {
+    beforeRequest?.();
+    const project = get().projects[projectId];
+    if (!project || get().getProjectModel(projectId)) return;
+    const previousRunId = project.metadata?.spaceModelAdmissionRunId ?? null;
+    if (runId === null && !previousRunId) return;
+    const auth = getAuthStore();
+    const { token, email } = auth;
+    const accountKey = getAccountEnvironmentKey(auth);
+    const ownerKey = JSON.stringify([accountKey, project.spaceId, projectId]);
+    let writes = receiptWrites.get(ownerKey);
+    if (!writes) receiptWrites.set(ownerKey, (writes = new Map()));
+    const previousRevision =
+      project.metadata?.spaceModelAdmissionRevision ?? null;
+    const candidate = previousRunId ? writes.get(previousRunId) : undefined;
+    // A reused Run ID does not transfer the old generation's unsent proof.
+    // Match before publishing locally, including same-Run assignments/clears.
+    const released =
+      candidate?.revision === previousRevision ? candidate : undefined;
+    if (runId !== null && previousRunId && !released?.abandoned)
+      throw spaceModelError('changed');
+    if (runId === null && released) released.abandoned = true;
+    const revision = Array.from(
+      crypto.getRandomValues(new Uint8Array(16)),
+      (value) => value.toString(16).padStart(2, '0')
+    ).join('');
+    let expectedRunId = previousRunId;
+    let expectedRevision = previousRevision;
+    const write: ReceiptWrite = {
+      revision,
+      bases: new Set(),
+      abandoned: false,
+    };
+    if (runId !== null) writes.set(runId, write);
+    let updatedProject: Project & { metadata: ProjectMetadata } = {
+      ...project,
+      metadata: {
+        ...project.metadata,
+        spaceModelAdmissionRunId: runId,
+        spaceModelAdmissionRevision: revision,
+      },
+    };
+    const publishLocal = () => {
+      set((state) => ({
+        projects: { ...state.projects, [projectId]: updatedProject },
+      }));
+      upsertSpaceProjectMetaFromProject(updatedProject);
+    };
+    publishLocal();
+    if (!project.spaceId) return;
+    const assertCurrent = () => {
+      beforeRequest?.();
+      const currentAuth = getAuthStore();
+      if (
+        getAccountEnvironmentKey(currentAuth) !== accountKey ||
+        currentAuth.token !== token ||
+        currentAuth.email !== email ||
+        get().projects[projectId] !== updatedProject ||
+        updatedProject.metadata.spaceModelAdmissionRunId !== runId ||
+        updatedProject.metadata.spaceModelAdmissionRevision !== revision ||
+        get().getProjectModel(projectId)
+      )
+        throw spaceModelError('changed');
+    };
+    try {
+      // Conflicts return the locked server snapshot. Retry only an empty state
+      // or an exact assignment proven never sent; never replace an unknown ACK.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        assertCurrent();
+        write.bases.add(expectedRevision);
+        const remote = await proxyUpdateSpaceProject(
+          project.spaceId,
+          projectId,
+          {
+            metadata: { spaceModelAdmissionRunId: runId },
+            expected_model_admission_run_id: expectedRunId,
+            expected_model_admission_revision: expectedRevision,
+            model_admission_revision: revision,
+          },
+          { beforeRequest: assertCurrent }
+        );
+        assertCurrent();
+        if (remote.id !== projectId || remote.space_id !== project.spaceId)
+          throw spaceModelError('changed');
+        const metadata = remote.metadata ?? {};
+        const remoteRun =
+          typeof metadata.spaceModelAdmissionRunId === 'string'
+            ? metadata.spaceModelAdmissionRunId
+            : null;
+        const remoteRevision =
+          typeof metadata.spaceModelAdmissionRevision === 'string'
+            ? metadata.spaceModelAdmissionRevision
+            : null;
+        if (
+          remoteRevision === revision &&
+          remoteRun === runId &&
+          !metadata.modelSelection
+        ) {
+          for (const [id, candidate] of writes)
+            if (candidate.abandoned) writes.delete(id);
+          if (!writes.size) receiptWrites.delete(ownerKey);
+          return;
+        }
+        const remoteWrite = remoteRun ? writes.get(remoteRun) : undefined;
+        const knownUnsent =
+          remoteWrite?.abandoned && remoteWrite.revision === remoteRevision;
+        // A clear loaded from synced legacy metadata still owns that exact
+        // snapshot. An empty base of its failed assignment must be fenced too.
+        const originalReceipt =
+          remoteRun === previousRunId &&
+          remoteRevision ===
+            (project.metadata?.spaceModelAdmissionRevision ?? null);
+        const mayTransition =
+          !metadata.modelSelection &&
+          (runId !== null
+            ? remoteRun === null || knownUnsent
+            : knownUnsent ||
+              originalReceipt ||
+              (remoteRun === null && !!released?.bases.has(remoteRevision)));
+        if (mayTransition && remoteRevision !== revision && attempt < 2) {
+          expectedRunId = remoteRun;
+          expectedRevision = remoteRevision;
+          continue;
+        }
+        if (mayTransition) throw spaceModelError('changed');
+        // Keep another owner's recovery receipt/model locally, without applying
+        // late responses across a replaced container or account. Null revisions
+        // remain explicit: the next valid retry must compare the real snapshot.
+        updatedProject = {
+          ...updatedProject,
+          metadata: {
+            ...updatedProject.metadata,
+            spaceModelAdmissionRunId: remoteRun,
+            spaceModelAdmissionRevision: remoteRevision,
+            ...(metadata.modelSelection
+              ? {
+                  modelSelection:
+                    metadata.modelSelection as ProjectModelSelection,
+                }
+              : {}),
+          },
+        };
+        publishLocal();
+        if (runId === null) return;
+        throw spaceModelError('changed');
+      }
+    } catch (error) {
+      // The caller awaits this assignment before starting /chat. A failure is
+      // proof only that /chat has not begun, never that this PATCH was canceled.
+      if (runId !== null) write.abandoned = true;
+      throw error;
     }
   },
 

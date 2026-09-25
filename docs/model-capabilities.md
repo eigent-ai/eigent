@@ -25,8 +25,14 @@ Catalog entries match `model_platform` and `model_type` after trimming whitespac
 and normalizing case. Azure deployment aliases need their own exact entry or
 scoped override; their capabilities are not inferred from the alias.
 
-The built-in `gpt-6-astra` entries for OpenAI and Azure preserve all five effort
-values, including `max`. They select Responses when tools are present. These are
+The built-in `gpt-6-astra` and `gpt-6-luna` entries for OpenAI and Azure preserve
+all five selectable effort values, including `max`. They select Responses when
+tools are present, including when effort is omitted or Cloud metadata still
+selects Chat Completions. Luna's provider default enables reasoning, so omitting
+the effort parameter does not make Chat Completions with tools compatible. See
+the [Luna API contract](https://developers.openai.com/api/docs/models/gpt-6-luna).
+This does not add `none` to the application's persisted effort enum or silently
+disable reasoning. Deployment aliases still need scoped declarations. These are
 application declarations; the mocked tests do not establish support for a
 particular live Azure deployment. Consult the provider's model/deployment contract
 before registering a deployment.
@@ -130,6 +136,33 @@ attempts created with an older capability digest format. This change does not
 rewrite historical attempts or bypass that check. Start a new Run when an older
 attempt cannot satisfy the current capability contract.
 
+## Anthropic tool compatibility
+
+CAMEL emits tool-level `strict` flags. The native Anthropic API supports them,
+but some Anthropic Messages-compatible routes reject the field, even when its
+value is `false`. The shared model and validation factories install a narrow
+compatibility adapter for CAMEL's Anthropic backend:
+
+- Send the original request first, preserving strict tools on supporting routes.
+- Only when HTTP 400 explicitly rejects `tools.N.custom.strict` (or
+  `tools.N.strict`) as an extra input, retry that request once with the custom
+  tools' top-level `strict` fields omitted.
+- Preserve tool definitions, argument schemas, messages, thinking parameters,
+  and structured-output configuration. A parameter named `strict` inside a
+  tool's `input_schema` is not removed.
+- Remember the omission only after a successful retry, on that model instance.
+  Do not modify shared SDK clients or maintain a global model-name override.
+- Do not retry unrelated errors, a failed compatibility retry, or errors raised
+  while consuming a response stream. Tools that were already executed are not
+  replayed by this adapter.
+
+The retry logs that strict tool constraints are unavailable. It does not supply
+grammar-constrained tool arguments on the incompatible route. Structured-output
+errors remain errors; this adapter does not disable output schemas. If a gateway
+injects `strict` after the client's request, that gateway must be fixed: the
+adapter only retries when the rejected field was present in the outgoing tool.
+OpenAI-compatible and Bedrock Converse backends retain their existing adapters.
+
 ## Mock verification
 
 Use the backend's installed Python environment and run from `backend`:
@@ -138,6 +171,7 @@ Use the backend's installed Python environment and run from `backend`:
 python -B tests/run_isolated.py --fast-test-mode \
   tests/app/workspace_config \
   tests/app/model/test_effort.py \
+  tests/app/model/test_anthropic_tools.py \
   tests/app/model/test_model_platform.py \
   tests/app/model/test_codex_subscription_runtime.py \
   tests/app/agent/test_agent_model.py \

@@ -28,13 +28,19 @@ import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
 import {
   isProjectAchieved,
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
 import { runEventIngressRegistry } from '@/lib/runEvents/registry';
+import {
+  beginResumeRequest,
+  finishResumeRequest,
+} from '@/lib/runResumeRequest';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { errorCopy } from '@/lib/usageErrors';
 import {
@@ -427,12 +433,37 @@ export default function ChatBox(): JSX.Element {
     CHAT_SCROLL_BOTTOM_MIN_PX
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { modelType, user_id } = useAuthStore();
-  const composerModelType =
+  const { modelType, token, user_id } = useAuthStore();
+  const sessionModelSelection =
     (activeProjectId
       ? projectStore.projects[activeProjectId]?.metadata?.modelSelection
-          ?.modelType
-      : undefined) ?? modelType;
+      : undefined) ?? activeProjectMeta?.metadata?.modelSelection;
+  const sessionModelIdentity = sessionModelSelection?.model_ref
+    ? parseSpaceModelReference(sessionModelSelection.model_ref)
+    : null;
+  const sessionSpace = useSpaceStore((s) =>
+    s.getSpaceById(activeProject?.spaceId)
+  );
+  const canUseSessionSpace = Boolean(
+    token &&
+    user_id != null &&
+    sessionSpace &&
+    sessionSpace.id === activeProject?.spaceId &&
+    sessionSpace.sourceType !== 'legacy' &&
+    !sessionSpace.id.startsWith('legacy_') &&
+    (!sessionSpace.userId || sessionSpace.userId === String(user_id))
+  );
+  // An accepted portable Session pin is independent of the global preference.
+  // A pending flag or receipt alone must still pass launch-time recovery; it
+  // cannot enable warm follow-ups, which go directly to continuation admission.
+  const canUseSessionModel =
+    hasModel ||
+    Boolean(
+      canUseSessionSpace &&
+      sessionModelIdentity &&
+      sessionModelIdentity.category === sessionModelSelection?.modelType
+    );
+  const composerModelType = sessionModelSelection?.modelType ?? modelType;
   const usage = useUsageNoticeStore();
   const subscriptionUsage = usage.subscription;
   const currentCredits = usage.credits;
@@ -444,6 +475,23 @@ export default function ChatBox(): JSX.Element {
     setRun: setInterruptedRun,
     refresh: refreshInterruptedRun,
   } = useInterruptedRunStatus(activeProjectId);
+  const pendingModelAdmission =
+    activeProject?.metadata?.spaceModelAdmissionRunId;
+  // Cold Resume always passes through canonical model recovery in startTask.
+  // This permits that attempt, not warm use of an unconfirmed receipt/default.
+  const canAttemptModelRecovery = Boolean(
+    !sessionModelSelection &&
+    canUseSessionSpace &&
+    interruptedRun?.project_id === activeProjectId &&
+    (interruptedRun?.status === 'interrupted' ||
+      (interruptedRun?.status === 'pending' &&
+        interruptedRun.retry_request_id)) &&
+    interruptedRun.origin !== 'cloud_restore' &&
+    interruptedRun.latest_attempt &&
+    (pendingModelAdmission != null
+      ? pendingModelAdmission === interruptedRun.run_id
+      : activeProject?.metadata?.spaceModelDefaultPending === true)
+  );
   const [durableRunAction, setDurableRunAction] =
     useState<InterruptedRunBannerAction>(null);
   const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
@@ -936,7 +984,7 @@ export default function ChatBox(): JSX.Element {
 
     // Standard checks - check model
     if (isCloudUsageLimited) return true;
-    if (!hasModel) return true;
+    if (!canUseSessionModel) return true;
     if (useCloudModelInDev) return true;
     if (task.isContextExceeded) return true;
 
@@ -945,7 +993,7 @@ export default function ChatBox(): JSX.Element {
     chatStore?.activeTaskId,
     chatStore?.tasks,
     isCloudUsageLimited,
-    hasModel,
+    canUseSessionModel,
     useCloudModelInDev,
   ]);
 
@@ -1073,7 +1121,12 @@ export default function ChatBox(): JSX.Element {
     )
       return;
 
-    if (!hasModel) {
+    const replyingToHuman = Boolean(
+      _taskId &&
+      chatStore.tasks[_taskId]?.activeAsk &&
+      interruptedRun?.project_id !== projectStore.activeProjectId
+    );
+    if ((isCloudUsageLimited && !replyingToHuman) || !canUseSessionModel) {
       if (isCloudUsageLimited) {
         notifyError(
           cloudUsageLimitMessage || t('chat.usage-limit-trial-daily-exhausted')
@@ -1815,7 +1868,15 @@ export default function ChatBox(): JSX.Element {
 
   const handleResumeInterruptedRun = async () => {
     if (!interruptedRun || !activeProjectId || !chatStore) return;
-    if (!hasModel) {
+    // Unpinned recovery must establish the canonical model category first.
+    // startTask applies the quota check to that recovered model before admission.
+    if (isCloudUsageLimited && !canAttemptModelRecovery) {
+      notifyError(
+        cloudUsageLimitMessage || t('chat.usage-limit-trial-daily-exhausted')
+      );
+      return;
+    }
+    if (!canUseSessionModel && !canAttemptModelRecovery) {
       notifyError(
         t('chat.select-model-before-resume', {
           defaultValue: 'Select a model before resuming this task.',
@@ -1824,7 +1885,12 @@ export default function ChatBox(): JSX.Element {
       return;
     }
     const run = interruptedRun;
-    const requestId = runActionRequestId('resume', run.run_id);
+    const owner = {
+      accountKey: getAccountEnvironmentKey(useAuthStore.getState()),
+      projectId: activeProjectId,
+      runId: run.run_id,
+    };
+    const requestId = beginResumeRequest(owner, run);
     setDurableRunAction('resuming');
     try {
       ensureActiveProjectMode();
@@ -1851,12 +1917,12 @@ export default function ChatBox(): JSX.Element {
       // RunJournal in the catch path.
       setInterruptedRun(null);
       await resumePromise;
-      clearRunActionRequestId('resume', run.run_id);
+      finishResumeRequest(owner, requestId, true);
     } catch (error: any) {
       console.error('[RunControl] Failed to resume Run', error);
-      clearRunActionRequestId('resume', run.run_id);
+      finishResumeRequest(owner, requestId, false);
       notifyError(error?.message || t('chat.run-resume-failed'));
-      await refreshInterruptedRun();
+      await refreshInterruptedRun(owner.accountKey);
     } finally {
       setDurableRunAction(null);
     }
@@ -1898,7 +1964,7 @@ export default function ChatBox(): JSX.Element {
     ? t('chat.queue-wait-interrupted')
     : activeAsk
       ? t('chat.queue-wait-reply')
-      : !hasModel
+      : !canUseSessionModel
         ? t('chat.queue-wait-model')
         : isCloudUsageLimited
           ? t('chat.queue-wait-usage')
@@ -2114,7 +2180,7 @@ export default function ChatBox(): JSX.Element {
       queueExecution.busy ||
       interruptedRun ||
       activeAsk ||
-      !hasModel ||
+      !canUseSessionModel ||
       isCloudUsageLimited
     )
       return;
@@ -2181,7 +2247,7 @@ export default function ChatBox(): JSX.Element {
     activeAsk,
     admittedQueuedRun,
     chatStore?.activeTaskId,
-    hasModel,
+    canUseSessionModel,
     isCloudUsageLimited,
     queueExecution.busy,
     interruptedRun,
@@ -2827,7 +2893,7 @@ export default function ChatBox(): JSX.Element {
                   onSendQueuedMessageNow={handleSendQueuedMessageNow}
                   onReorderQueuedMessage={handleReorderTaskQueue}
                   usageLimitBanner={usageLimitBanner}
-                  noModelOverlay={!hasModel && !isCloudUsageLimited}
+                  noModelOverlay={!canUseSessionModel && !isCloudUsageLimited}
                   onSelectModel={handleSelectModel}
                   inputProps={{
                     value: message,
@@ -2928,7 +2994,7 @@ export default function ChatBox(): JSX.Element {
                 onSendQueuedMessageNow={handleSendQueuedMessageNow}
                 onReorderQueuedMessage={handleReorderTaskQueue}
                 usageLimitBanner={usageLimitBanner}
-                noModelOverlay={!hasModel && !isCloudUsageLimited}
+                noModelOverlay={!canUseSessionModel && !isCloudUsageLimited}
                 onSelectModel={handleSelectModel}
                 subtitle={
                   getBottomBoxState() === 'confirm' ||

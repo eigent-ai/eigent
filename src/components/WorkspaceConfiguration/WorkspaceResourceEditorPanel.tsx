@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { usePresenceFocusGuard } from '@/hooks/usePresenceFocusGuard';
 import type {
   WorkspaceAgentProfile,
   WorkspaceConfigurationDocument,
@@ -33,21 +34,36 @@ import type {
   WorkspaceMcpRequirement,
   WorkspaceSkillAssignment,
 } from '@/service/workspaceConfigurationApi';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import {
+  AnimatePresence,
+  motion,
+  useIsPresent,
+  useReducedMotion,
+} from 'framer-motion';
 import type { TFunction } from 'i18next';
 import {
   ArrowLeft,
-  Cable,
   Database,
   FileText,
   FolderOpen,
   Package,
-  Server,
   Trash2,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  SpaceResourceDiscoveryEditor,
+  type SpaceSettingsDiscovery,
+} from './SpaceResourceDiscoveryEditor';
 
 type EditorMode = 'create' | 'edit';
 type EditorStep = 'picker' | 'editor';
@@ -108,17 +124,12 @@ interface WorkspaceResourceEditorPanelProps {
   editor: WorkspaceResourceEditorState;
   document: WorkspaceConfigurationDocument;
   saveState: 'idle' | 'loading' | 'saving' | 'saved' | 'needs_attention';
+  discovery: SpaceSettingsDiscovery;
   onChange: (editor: WorkspaceResourceEditorState) => void;
   onClose: () => void;
   onCommit: () => void;
   onDelete: () => void;
 }
-
-const csv = (value: string): string[] =>
-  value
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
 
 const editorName = (
   kind: WorkspaceResourceEditorState['kind'],
@@ -155,6 +166,63 @@ const editorName = (
 const drawerEase = [0.32, 0.72, 0, 1] as const;
 const uiEaseOut = [0.23, 1, 0.32, 1] as const;
 type ContentDirection = 1 | -1;
+
+const panelAvailableHeight =
+  'max(0px, calc(var(--ds-resource-editor-available-height, 100dvh) - var(--ds-space-panel-inset)))';
+
+/** Runtime bounds belong to the sticky anchor, never the animated panel. */
+function useResourcePanelHeight(panelRef: RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const anchor = panel?.closest<HTMLElement>(
+      '[data-workspace-resource-panel-anchor]'
+    );
+    const view = panel?.ownerDocument.defaultView;
+    if (!panel || !anchor || !view) return;
+    const ancestors: HTMLElement[] = [];
+    for (
+      let parent = anchor.parentElement;
+      parent;
+      parent = parent.parentElement
+    ) {
+      ancestors.push(parent);
+    }
+    const viewport = view.visualViewport;
+    const measure = () => {
+      let bottom = viewport
+        ? viewport.offsetTop + viewport.height
+        : view.innerHeight;
+      for (const parent of ancestors) {
+        if (
+          /(auto|scroll|hidden|clip|overlay)/.test(
+            view.getComputedStyle(parent).overflowY
+          )
+        ) {
+          bottom = Math.min(bottom, parent.getBoundingClientRect().bottom);
+        }
+      }
+      panel.style.setProperty(
+        '--ds-resource-editor-available-height',
+        `${Math.max(0, bottom - anchor.getBoundingClientRect().top)}px`
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(anchor);
+    ancestors.forEach((parent) => observer.observe(parent));
+    view.addEventListener('resize', measure);
+    view.addEventListener('scroll', measure, true);
+    viewport?.addEventListener('resize', measure);
+    viewport?.addEventListener('scroll', measure);
+    return () => {
+      observer.disconnect();
+      view.removeEventListener('resize', measure);
+      view.removeEventListener('scroll', measure, true);
+      viewport?.removeEventListener('resize', measure);
+      viewport?.removeEventListener('scroll', measure);
+    };
+  }, [panelRef]);
+}
 
 const ENVIRONMENT_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -345,164 +413,6 @@ function Picker({
             }
           />
         ))}
-      </div>
-    );
-  }
-
-  if (editor.kind === 'skill') {
-    return (
-      <div className="space-y-2" data-workspace-resource-picker="skill">
-        <PickerOption
-          icon={<Package className="h-4 w-4" aria-hidden />}
-          title={t('layout.workspace-resource-browse-registry', {
-            defaultValue: 'Browse registry',
-          })}
-          description={t(
-            'layout.workspace-resource-browse-registry-description',
-            {
-              defaultValue:
-                'Add a versioned skill available from the registry.',
-            }
-          )}
-          onClick={() =>
-            onChange({
-              ...editor,
-              step: 'editor',
-              item: {
-                ref: 'registry://skills/new-skill@1.0.0',
-                assignTo: [],
-              },
-            })
-          }
-        />
-        <PickerOption
-          icon={<FileText className="h-4 w-4" aria-hidden />}
-          title={t('layout.workspace-resource-bundle-skill', {
-            defaultValue: 'Bundle skill',
-          })}
-          description={t('layout.workspace-resource-bundle-skill-description', {
-            defaultValue: 'Reference a skill packaged inside this Bundle.',
-          })}
-          onClick={() =>
-            onChange({
-              ...editor,
-              step: 'editor',
-              item: {
-                ref: 'bundle://skills/new-skill/SKILL.md',
-                assignTo: [],
-              },
-            })
-          }
-        />
-      </div>
-    );
-  }
-
-  if (editor.kind === 'connector') {
-    const connectors = [
-      [
-        'github',
-        t('layout.workspace-resource-github', { defaultValue: 'GitHub' }),
-        t('layout.workspace-resource-github-description', {
-          defaultValue: 'Connect repositories and issues.',
-        }),
-      ],
-      [
-        'slack',
-        t('layout.workspace-resource-slack', { defaultValue: 'Slack' }),
-        t('layout.workspace-resource-slack-description', {
-          defaultValue: 'Connect channels and messages.',
-        }),
-      ],
-      [
-        'google_drive',
-        t('layout.workspace-resource-google-drive', {
-          defaultValue: 'Google Drive',
-        }),
-        t('layout.workspace-resource-google-drive-description', {
-          defaultValue: 'Connect files and folders.',
-        }),
-      ],
-      [
-        'custom',
-        t('layout.workspace-resource-custom-connector', {
-          defaultValue: 'Custom connector',
-        }),
-        t('layout.workspace-resource-custom-connector-description', {
-          defaultValue: 'Configure another connector type.',
-        }),
-      ],
-    ] as const;
-    return (
-      <div className="space-y-2" data-workspace-resource-picker="connector">
-        {connectors.map(([value, title, description]) => (
-          <PickerOption
-            key={value}
-            icon={<Cable className="h-4 w-4" aria-hidden />}
-            title={title}
-            description={description}
-            onClick={() =>
-              onChange({
-                ...editor,
-                step: 'editor',
-                item: {
-                  ...editor.item,
-                  connector: value,
-                  connectionSlot: `${value}_connection`,
-                },
-              })
-            }
-          />
-        ))}
-      </div>
-    );
-  }
-
-  if (editor.kind === 'mcp') {
-    return (
-      <div className="space-y-2" data-workspace-resource-picker="mcp">
-        <PickerOption
-          icon={<Server className="h-4 w-4" aria-hidden />}
-          title={t('layout.workspace-resource-mcp-registry', {
-            defaultValue: 'MCP registry',
-          })}
-          description={t('layout.workspace-resource-mcp-registry-description', {
-            defaultValue: 'Use a versioned MCP definition from the registry.',
-          })}
-          onClick={() =>
-            onChange({
-              ...editor,
-              step: 'editor',
-              item: {
-                ...editor.item,
-                definition: 'registry://mcp/new-server@1.0.0',
-              },
-            })
-          }
-        />
-        <PickerOption
-          icon={<FileText className="h-4 w-4" aria-hidden />}
-          title={t('layout.workspace-resource-bundle-definition', {
-            defaultValue: 'Bundle definition',
-          })}
-          description={t(
-            'layout.workspace-resource-bundle-definition-description',
-            {
-              defaultValue:
-                'Reference an MCP definition packaged in this Bundle.',
-            }
-          )}
-          onClick={() =>
-            onChange({
-              ...editor,
-              step: 'editor',
-              item: {
-                ...editor.item,
-                definition: `bundle://mcp/${editor.item.id}.json`,
-              },
-            })
-          }
-        />
       </div>
     );
   }
@@ -1041,171 +951,6 @@ function EditorFields({
     );
   }
 
-  if (editor.kind === 'skill') {
-    const duplicateRef = hasDuplicateSkillRef(editor, document);
-    const refNote = duplicateRef
-      ? t('layout.workspace-resource-skill-refs-unique', {
-          defaultValue: 'Skill references must be unique.',
-        })
-      : undefined;
-    return (
-      <div className="space-y-4">
-        <Input
-          autoFocus
-          title={t('layout.workspace-resource-skill-reference', {
-            defaultValue: 'Skill reference',
-          })}
-          value={editor.item.ref}
-          state={refNote ? 'error' : 'default'}
-          note={refNote}
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: { ...editor.item, ref: event.target.value },
-            })
-          }
-        />
-        <Input
-          title={t('layout.workspace-resource-assign-to-agents', {
-            defaultValue: 'Assign to agents',
-          })}
-          value={editor.item.assignTo.join(', ')}
-          placeholder="lead, researcher"
-          note={t('layout.workspace-resource-agent-ids-note', {
-            defaultValue: 'Use agent ids separated by commas.',
-          })}
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: { ...editor.item, assignTo: csv(event.target.value) },
-            })
-          }
-        />
-      </div>
-    );
-  }
-
-  if (editor.kind === 'connector') {
-    return (
-      <div className="space-y-4">
-        <Input
-          autoFocus
-          title={t('layout.workspace-resource-connector-id', {
-            defaultValue: 'Connector id',
-          })}
-          value={editor.item.id}
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: { ...editor.item, id: event.target.value },
-            })
-          }
-        />
-        <Input
-          title={t('layout.workspace-resource-connector-label', {
-            defaultValue: 'Connector',
-          })}
-          value={editor.item.connector}
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: { ...editor.item, connector: event.target.value },
-            })
-          }
-        />
-        <Input
-          title={t('layout.workspace-resource-connection-slot', {
-            defaultValue: 'Connection slot',
-          })}
-          value={editor.item.connectionSlot}
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: { ...editor.item, connectionSlot: event.target.value },
-            })
-          }
-        />
-        <Input
-          title={t('layout.workspace-resource-required-grants', {
-            defaultValue: 'Required grants',
-          })}
-          value={editor.item.requiredGrants.join(', ')}
-          placeholder="repository.read, issues.read"
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: {
-                ...editor.item,
-                requiredGrants: csv(event.target.value),
-              },
-            })
-          }
-        />
-      </div>
-    );
-  }
-
-  if (editor.kind === 'mcp') {
-    return (
-      <div className="space-y-4">
-        <Input
-          autoFocus
-          title={t('layout.workspace-resource-mcp-server-id', {
-            defaultValue: 'MCP server id',
-          })}
-          value={editor.item.id}
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: { ...editor.item, id: event.target.value },
-            })
-          }
-        />
-        <Input
-          title={t('layout.workspace-resource-definition', {
-            defaultValue: 'Definition',
-          })}
-          value={editor.item.definition}
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: { ...editor.item, definition: event.target.value },
-            })
-          }
-        />
-        <Input
-          title={t('layout.workspace-resource-secret-slots', {
-            defaultValue: 'Secret slots',
-          })}
-          value={editor.item.secretSlots.join(', ')}
-          placeholder="API_TOKEN"
-          note={t('layout.workspace-resource-secret-slots-note', {
-            defaultValue: 'Store slot names only. Secret values remain local.',
-          })}
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: { ...editor.item, secretSlots: csv(event.target.value) },
-            })
-          }
-        />
-        <Input
-          title={t('layout.workspace-resource-assign-to-agents', {
-            defaultValue: 'Assign to agents',
-          })}
-          value={editor.item.assignTo.join(', ')}
-          placeholder="lead, researcher"
-          onChange={(event) =>
-            onChange({
-              ...editor,
-              item: { ...editor.item, assignTo: csv(event.target.value) },
-            })
-          }
-        />
-      </div>
-    );
-  }
-
   return null;
 }
 
@@ -1213,6 +958,7 @@ export function WorkspaceResourceEditorPanel({
   editor,
   document,
   saveState,
+  discovery,
   onChange,
   onClose,
   onCommit,
@@ -1220,15 +966,22 @@ export function WorkspaceResourceEditorPanel({
 }: WorkspaceResourceEditorPanelProps) {
   const { t } = useTranslation();
   const reduceMotion = Boolean(useReducedMotion());
+  const isPresent = useIsPresent();
+  const panelRef = useRef<HTMLElement>(null);
+  useResourcePanelHeight(panelRef);
+  usePresenceFocusGuard(panelRef, isPresent, true);
   const [contentDirection, setContentDirection] = useState<ContentDirection>(1);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (isPresent && event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault();
+        onClose();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [isPresent, onClose]);
 
   const resourceName = editorName(editor.kind, t);
   const title =
@@ -1244,10 +997,7 @@ export function WorkspaceResourceEditorPanel({
   const canGoBack =
     editor.mode === 'create' &&
     editor.step === 'editor' &&
-    (editor.kind === 'context' ||
-      editor.kind === 'skill' ||
-      editor.kind === 'connector' ||
-      editor.kind === 'mcp');
+    editor.kind === 'context';
   const handleEditorChange = useCallback(
     (nextEditor: WorkspaceResourceEditorState) => {
       if (nextEditor.step !== editor.step) {
@@ -1312,6 +1062,7 @@ export function WorkspaceResourceEditorPanel({
 
   return (
     <motion.aside
+      ref={panelRef}
       data-workspace-resource-editor-panel
       data-motion-reduced={reduceMotion ? 'true' : 'false'}
       aria-label={title}
@@ -1332,9 +1083,13 @@ export function WorkspaceResourceEditorPanel({
           ease: drawerEase,
         },
       }}
-      className="pointer-events-auto ml-auto flex max-h-[calc(100dvh-5rem)] min-h-[80dvh] w-full flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default shadow-xl md:w-1/2 md:min-w-[420px]"
+      style={{
+        maxHeight: panelAvailableHeight,
+        minHeight: `min(80dvh, ${panelAvailableHeight})`,
+      }}
+      className="pointer-events-auto ml-auto flex w-full flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default shadow-xl md:w-1/2 md:min-w-[420px]"
     >
-      <header className="flex items-start justify-between gap-4 border-x-0 border-t-0 border-r-0 border-b border-l-0 border-solid border-ds-hairline-subtle-default px-5 py-4">
+      <header className="flex shrink-0 items-start justify-between gap-4 border-x-0 border-t-0 border-r-0 border-b border-l-0 border-solid border-ds-hairline-subtle-default px-5 py-4">
         <div className="flex min-w-0 items-start gap-2">
           {canGoBack ? (
             <Button
@@ -1354,7 +1109,7 @@ export function WorkspaceResourceEditorPanel({
               {title}
             </span>
             <span className="mt-1 block text-ds-text-meta text-ds-ink-muted-default">
-              {editor.step === 'picker'
+              {editor.step === 'picker' && editor.kind === 'context'
                 ? t('layout.workspace-resource-choose-type-description', {
                     resourceName,
                     defaultValue:
@@ -1384,20 +1139,27 @@ export function WorkspaceResourceEditorPanel({
           aria-label={t('layout.workspace-resource-close-editor', {
             defaultValue: 'Close editor',
           })}
+          data-resource-editor-close
           onClick={onClose}
         >
           <X className="h-4 w-4" aria-hidden />
         </Button>
       </header>
 
-      <div className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-5">
+      <div className="scrollbar-always-visible relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-5">
         <AnimatePresence
           initial={false}
           mode="popLayout"
           custom={contentDirection}
         >
           <motion.div
-            key={editor.step}
+            key={
+              editor.kind === 'skill' ||
+              editor.kind === 'mcp' ||
+              editor.kind === 'connector'
+                ? 'discovery'
+                : editor.step
+            }
             data-workspace-resource-content-step={editor.step}
             data-workspace-resource-content-direction={
               contentDirection === 1 ? 'forward' : 'back'
@@ -1410,7 +1172,16 @@ export function WorkspaceResourceEditorPanel({
             transition={contentTransition}
             className="min-h-full"
           >
-            {editor.step === 'picker' ? (
+            {editor.kind === 'skill' ||
+            editor.kind === 'mcp' ||
+            editor.kind === 'connector' ? (
+              <SpaceResourceDiscoveryEditor
+                editor={editor}
+                document={document}
+                discovery={discovery}
+                onChange={handleEditorChange}
+              />
+            ) : editor.step === 'picker' ? (
               <Picker editor={editor} onChange={handleEditorChange} />
             ) : (
               <EditorFields
@@ -1423,7 +1194,7 @@ export function WorkspaceResourceEditorPanel({
         </AnimatePresence>
       </div>
 
-      <footer className="border-x-0 border-t border-r-0 border-b-0 border-l-0 border-solid border-ds-hairline-subtle-default px-4 py-2">
+      <footer className="shrink-0 border-x-0 border-t border-r-0 border-b-0 border-l-0 border-solid border-ds-hairline-subtle-default px-4 py-2">
         <div className="flex items-center gap-2">
           {editor.mode === 'edit' ? (
             <Button
