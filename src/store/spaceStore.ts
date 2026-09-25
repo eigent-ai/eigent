@@ -13,7 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { generateUniqueId } from '@/lib';
-import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
+import {
+  getAccountEnvironmentKey,
+  getAuthEnvironmentKey,
+} from '@/lib/authEnvironment';
 import {
   getSessionNavLeadFromHistoryProject,
   type SessionNavLeadPresentation,
@@ -24,6 +27,7 @@ import {
   isPlaceholderProjectName,
   isPlaceholderSpaceNameStatic,
 } from '@/lib/spaceLabel';
+import { scheduleWorkspaceUnbind } from '@/lib/workspaceUnbind';
 import { fetchGroupedHistoryProjects } from '@/service/historyApi';
 import {
   proxyEnsureLegacySpace,
@@ -33,6 +37,7 @@ import {
 import type { ProjectGroup } from '@/types/history';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getAuthStore } from './authStore';
 import { usePageTabStore } from './pageTabStore';
 import type {
   ProjectMetadata,
@@ -529,8 +534,21 @@ const rehomeLegacyRuntimeProjects = (
 };
 
 let workspaceReconcileFailureCount = 0;
-const projectSyncInFlight = new Map<string, Promise<void>>();
-const spaceHydrationInFlight = new Map<string, Promise<void>>();
+const projectSyncInFlight = new Map<
+  string,
+  {
+    promise: Promise<void>;
+    context: {
+      accountKey: string;
+      spaceIds: Set<string>;
+      cancelled: boolean;
+    };
+  }
+>();
+const spaceHydrationInFlight = new Map<
+  string,
+  { promise: Promise<void>; deletedSpaceIds: Set<string> }
+>();
 
 const wait = (ms: number) =>
   new Promise((resolve) => {
@@ -574,6 +592,18 @@ const isHydrationStillCurrentForUser = async (ownerId: string) => {
   } catch {
     return true;
   }
+};
+
+const captureSpaceResponseGuard = async (
+  get: () => SpaceStore,
+  spaceId: string
+) => {
+  const { getAuthStore } = await import('@/store/authStore');
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  // An update must not recreate a Space removed while the request was pending.
+  return () =>
+    Boolean(get().spaces[spaceId]) &&
+    getAccountEnvironmentKey(getAuthStore()) === accountKey;
 };
 
 export const useSpaceStore = create<SpaceStore>()(
@@ -645,17 +675,21 @@ export const useSpaceStore = create<SpaceStore>()(
 
       hydrateFromServer: async (userId) => {
         const ownerId = await resolveHydrationOwnerId(userId);
-        const hydrationKey = `${getAuthEnvironmentKey()}::${ownerId}`;
+        const environmentKey = getAuthEnvironmentKey();
+        const hydrationKey = `${environmentKey}::${ownerId}`;
         const existingHydration = spaceHydrationInFlight.get(hydrationKey);
         if (existingHydration) {
-          await existingHydration;
+          await existingHydration.promise;
           return;
         }
 
         let finishHydration: () => void = () => undefined;
-        const currentHydration = new Promise<void>((resolve) => {
-          finishHydration = resolve;
-        });
+        const currentHydration = {
+          promise: new Promise<void>((resolve) => {
+            finishHydration = resolve;
+          }),
+          deletedSpaceIds: new Set<string>(),
+        };
         spaceHydrationInFlight.set(hydrationKey, currentHydration);
 
         try {
@@ -671,7 +705,9 @@ export const useSpaceStore = create<SpaceStore>()(
             return;
           }
           const ownedSpaces = serverSpaces.filter(
-            (space) => !space.userId || String(space.userId) === ownerId
+            (space) =>
+              (!space.userId || String(space.userId) === ownerId) &&
+              !currentHydration.deletedSpaceIds.has(space.id)
           );
           const activeOwnedSpaces = ownedSpaces.filter(
             (space) => space.status === 'active'
@@ -701,7 +737,9 @@ export const useSpaceStore = create<SpaceStore>()(
 
           const visibleOwnedSpaces = ownedSpaces.filter(
             (space) =>
-              !isLegacySpace(space) || legacySpaceIdsWithProjects.has(space.id)
+              (!isLegacySpace(space) ||
+                legacySpaceIdsWithProjects.has(space.id)) &&
+              !currentHydration.deletedSpaceIds.has(space.id)
           );
           const shouldCreateInitialBlankSpace = !visibleOwnedSpaces.some(
             (space) => space.status === 'active'
@@ -729,9 +767,14 @@ export const useSpaceStore = create<SpaceStore>()(
             return;
           }
 
-          const spaces = initialBlankSpace
-            ? [initialBlankSpace, ...visibleOwnedSpaces]
-            : visibleOwnedSpaces;
+          // A cloud deletion can complete during any of the awaits above.
+          // Keep its tombstone only for this hydration, so an older response
+          // cannot restore the Space after deleteSpace has removed it.
+          const spaces = (
+            initialBlankSpace
+              ? [initialBlankSpace, ...visibleOwnedSpaces]
+              : visibleOwnedSpaces
+          ).filter((space) => !currentHydration.deletedSpaceIds.has(space.id));
           void Promise.all([
             import('@/service/workspaceApi'),
             import('@/store/authStore'),
@@ -739,44 +782,50 @@ export const useSpaceStore = create<SpaceStore>()(
           ])
             .then(async ([workspaceModule, authModule, installationModule]) => {
               await installationModule.waitForBackendReadiness();
-              if (!(await isHydrationStillCurrentForUser(ownerId))) {
-                return;
-              }
-              const email = authModule.getAuthStore().email;
-              const userId = authModule.getAuthStore().user_id;
-              if (!email) return;
-              const bindingSpaceIds = spaces
-                .filter(
-                  (space) =>
-                    space.status !== 'archived' && !isLegacySpace(space)
+              const reconcileCurrentBindings = async () => {
+                const { email, user_id: userId } = authModule.getAuthStore();
+                if (
+                  !email ||
+                  canonicalUserId(userId) !== ownerId ||
+                  getAuthEnvironmentKey() !== environmentKey
                 )
-                .map((space) => space.id);
-              return workspaceModule
-                .reconcileWorkspaceBindings(email, bindingSpaceIds, userId)
-                .catch(async (firstError) => {
+                  return;
+                // Read again after readiness and on each retry: Spaces may
+                // have been deleted or created since the cloud fetch.
+                const bindingSpaceIds = Object.values(get().spaces)
+                  .filter(
+                    (space) =>
+                      (!space.userId || String(space.userId) === ownerId) &&
+                      space.status !== 'archived' &&
+                      !isLegacySpace(space)
+                  )
+                  .map((space) => space.id);
+                return workspaceModule.reconcileWorkspaceBindings(
+                  email,
+                  bindingSpaceIds,
+                  userId
+                );
+              };
+              return reconcileCurrentBindings().catch(async (firstError) => {
+                console.warn(
+                  '[spaceStore] Brain workspace reconcile failed; retrying once:',
+                  firstError
+                );
+                await wait(500);
+                try {
+                  return await reconcileCurrentBindings();
+                } catch (retryError) {
+                  workspaceReconcileFailureCount += 1;
                   console.warn(
-                    '[spaceStore] Brain workspace reconcile failed; retrying once:',
-                    firstError
+                    '[spaceStore] Failed to reconcile Brain workspace bindings after retry:',
+                    {
+                      failureCount: workspaceReconcileFailureCount,
+                      error: retryError,
+                    }
                   );
-                  await wait(500);
-                  try {
-                    return await workspaceModule.reconcileWorkspaceBindings(
-                      email,
-                      bindingSpaceIds,
-                      userId
-                    );
-                  } catch (retryError) {
-                    workspaceReconcileFailureCount += 1;
-                    console.warn(
-                      '[spaceStore] Failed to reconcile Brain workspace bindings after retry:',
-                      {
-                        failureCount: workspaceReconcileFailureCount,
-                        error: retryError,
-                      }
-                    );
-                    return undefined;
-                  }
-                });
+                  return undefined;
+                }
+              });
             })
             .catch((error) => {
               console.warn(
@@ -906,21 +955,33 @@ export const useSpaceStore = create<SpaceStore>()(
       syncProjectsFromServer: async (spaceId, historyProjects) => {
         if (!spaceId) return;
 
-        const syncKey = `${getAuthEnvironmentKey()}::${spaceId}`;
+        const accountKey = getAccountEnvironmentKey(getAuthStore());
+        const syncKey = `${accountKey}::${spaceId}`;
         const existingSync = projectSyncInFlight.get(syncKey);
         if (existingSync) {
-          await existingSync;
+          await existingSync.promise;
           return;
         }
 
+        const context = {
+          accountKey,
+          spaceIds: new Set([spaceId]),
+          cancelled: false,
+        };
+        const isCurrent = () =>
+          !context.cancelled &&
+          getAccountEnvironmentKey(getAuthStore()) === accountKey;
         const syncOperation = (async () => {
           try {
             const projectModule = await import('./projectRuntimeStore');
+            if (!isCurrent()) return;
             let targetSpaceId = spaceId;
 
             if (spaceId.startsWith('legacy_')) {
               const legacySpace = await proxyEnsureLegacySpace();
+              if (!isCurrent()) return;
               targetSpaceId = legacySpace.id;
+              context.spaceIds.add(targetSpaceId);
               get().upsertSpaces(
                 [legacySpace],
                 get().activeSpaceId === spaceId ? legacySpace.id : undefined
@@ -968,6 +1029,9 @@ export const useSpaceStore = create<SpaceStore>()(
                 >();
               }),
             ]);
+            // Deletion or an account switch invalidates the entire response,
+            // including navigation metadata and the runtime Project store.
+            if (!isCurrent()) return;
             const namedProjects = withHistoryProjectNames(
               serverProjects,
               historyMetaByProjectId
@@ -1001,11 +1065,12 @@ export const useSpaceStore = create<SpaceStore>()(
           }
         })();
 
-        projectSyncInFlight.set(syncKey, syncOperation);
+        const currentSync = { promise: syncOperation, context };
+        projectSyncInFlight.set(syncKey, currentSync);
         try {
           await syncOperation;
         } finally {
-          if (projectSyncInFlight.get(syncKey) === syncOperation) {
+          if (projectSyncInFlight.get(syncKey) === currentSync) {
             projectSyncInFlight.delete(syncKey);
           }
         }
@@ -1281,7 +1346,10 @@ export const useSpaceStore = create<SpaceStore>()(
       },
 
       updateSpaceOnServer: async (spaceId, input) => {
-        const { proxyUpdateSpace } = await import('@/service/spaceApi');
+        const [{ proxyUpdateSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
         const space = await proxyUpdateSpace(spaceId, {
           name: input.name,
           description: input.description,
@@ -1291,12 +1359,13 @@ export const useSpaceStore = create<SpaceStore>()(
           status: input.status,
           metadata: input.metadata,
         });
-        get().upsertSpaces([space], undefined);
+        if (isCurrent()) get().upsertSpaces([space], undefined);
       },
 
       deleteSpace: (spaceId) => {
         const current = get();
-        if (!current.spaces[spaceId]) return;
+        // Hydration may have removed the Space row before DELETE completed;
+        // its Session metadata and previews still need to be cleared.
         const removedProjectIds = Object.keys(
           current.projectsBySpaceId[spaceId] ?? {}
         );
@@ -1304,7 +1373,6 @@ export const useSpaceStore = create<SpaceStore>()(
           usePageTabStore.getState().removeSessionPreviewProject(projectId);
         }
         set((state) => {
-          if (!state.spaces[spaceId]) return state;
           const nextSpaces = { ...state.spaces };
           delete nextSpaces[spaceId];
           const nextProjectsBySpaceId = { ...state.projectsBySpaceId };
@@ -1335,7 +1403,17 @@ export const useSpaceStore = create<SpaceStore>()(
       },
 
       deleteSpaceOnServer: async (spaceId) => {
-        const { proxyDeleteSpace } = await import('@/service/spaceApi');
+        const [{ proxyDeleteSpace }, { getAuthStore }] = await Promise.all([
+          import('@/service/spaceApi'),
+          import('@/store/authStore'),
+        ]);
+        const { email, user_id: userId } = getAuthStore();
+        const ownerId = canonicalUserId(userId);
+        const environmentKey = getAuthEnvironmentKey();
+        const accountKey = getAccountEnvironmentKey(getAuthStore());
+        const isCurrentOwner = () =>
+          canonicalUserId(getAuthStore().user_id) === ownerId &&
+          getAuthEnvironmentKey() === environmentKey;
         try {
           await proxyDeleteSpace(spaceId);
         } catch (error) {
@@ -1346,13 +1424,44 @@ export const useSpaceStore = create<SpaceStore>()(
             `[spaceStore] Space ${spaceId} was already absent on server; continuing Brain unbind.`
           );
         }
-        await unbindBrainWorkspaceMirror(spaceId);
-        get().deleteSpace(spaceId);
+        // Cloud deletion is authoritative. A failed or stalled Brain unbind
+        // must not keep a deleted Space visible or its confirmation pending.
+        spaceHydrationInFlight
+          .get(`${environmentKey}::${ownerId}`)
+          ?.deletedSpaceIds.add(spaceId);
+        for (const { context } of projectSyncInFlight.values()) {
+          if (
+            context.accountKey === accountKey &&
+            context.spaceIds.has(spaceId)
+          ) {
+            context.cancelled = true;
+          }
+        }
+        if (isCurrentOwner()) get().deleteSpace(spaceId);
+        if (email) {
+          // Also handles the last Space: bulk reconciliation skips empty lists.
+          void scheduleWorkspaceUnbind(spaceId, {
+            email,
+            userId,
+            accountKey,
+          }).catch((error) => {
+            console.warn(
+              `[spaceStore] Failed to schedule Brain workspace cleanup for ${spaceId}:`,
+              error
+            );
+          });
+        }
       },
 
       cleanupInactiveEmptySpacesOnServer: async () => {
+        const accountKey = getAccountEnvironmentKey(getAuthStore());
+        const isCurrentAccount = () =>
+          getAccountEnvironmentKey(getAuthStore()) === accountKey;
+        const isCurrentSpace = (spaceId: string) =>
+          isCurrentAccount() && Boolean(get().spaces[spaceId]);
         const { proxyFetchSpaceProjects } = await import('@/service/spaceApi');
         const projectModule = await import('./projectRuntimeStore');
+        if (!isCurrentAccount()) return;
         const { activeSpaceId, spaces, projectsBySpaceId } = get();
         const candidates = Object.values(spaces).filter(
           (space) =>
@@ -1361,8 +1470,12 @@ export const useSpaceStore = create<SpaceStore>()(
         );
 
         for (const space of candidates) {
+          if (!isCurrentSpace(space.id)) continue;
           try {
             const projects = await proxyFetchSpaceProjects(space.id);
+            // This inspection can outlive a confirmed deletion or account
+            // switch, just like an explicit Session synchronization request.
+            if (!isCurrentSpace(space.id)) continue;
             const activeProjects = projects.filter(
               (project) => project.status !== 'archived'
             );
@@ -1380,8 +1493,18 @@ export const useSpaceStore = create<SpaceStore>()(
                 .upsertProjectsFromServer(activeProjects);
               continue;
             }
-            await get().deleteSpaceOnServer(space.id);
+            const current = get();
+            if (
+              current.activeSpaceId !== space.id &&
+              isDisposableBlankSpace(
+                current.spaces[space.id],
+                current.projectsBySpaceId
+              )
+            ) {
+              await get().deleteSpaceOnServer(space.id);
+            }
           } catch (error) {
+            if (!isCurrentSpace(space.id)) continue;
             if ((error as { status?: number })?.status === 404) {
               get().deleteSpace(space.id);
               continue;
@@ -1465,15 +1588,23 @@ export const useSpaceStore = create<SpaceStore>()(
       },
 
       archiveSpaceOnServer: async (spaceId) => {
-        const { proxyArchiveSpace } = await import('@/service/spaceApi');
+        const [{ proxyArchiveSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
         const space = await proxyArchiveSpace(spaceId);
+        if (!isCurrent()) return;
         get().upsertSpaces([space], undefined);
         await unbindBrainWorkspaceMirror(spaceId);
       },
 
       unarchiveSpaceOnServer: async (spaceId) => {
-        const { proxyUnarchiveSpace } = await import('@/service/spaceApi');
+        const [{ proxyUnarchiveSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
         const space = await proxyUnarchiveSpace(spaceId);
+        if (!isCurrent()) return;
         get().upsertSpaces([space], space.id);
       },
 
@@ -1563,11 +1694,15 @@ export const useSpaceStore = create<SpaceStore>()(
         }),
 
       relocateSpaceOnServer: async (spaceId, rootPath, force = false) => {
-        const { proxyRelocateSpace } = await import('@/service/spaceApi');
+        const [{ proxyRelocateSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
         const space = await proxyRelocateSpace(spaceId, {
           root_path: rootPath,
           force,
         });
+        if (!isCurrent()) return;
         get().upsertSpaces([space], space.id);
         await unbindBrainWorkspaceMirror(spaceId).catch((error) => {
           console.warn(
@@ -1582,7 +1717,7 @@ export const useSpaceStore = create<SpaceStore>()(
               import('@/store/authStore'),
             ]);
           const { email, user_id: userId } = getAuthStore();
-          if (email) {
+          if (email && isCurrent()) {
             await bindWorkspaceToSpace({
               space_id: space.id,
               email,
