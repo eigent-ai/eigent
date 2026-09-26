@@ -103,22 +103,36 @@ async def single_agent(
         if bundle_context:
             system_message = f"{system_message}\n\n{bundle_context}"
 
-    agent = agent_model(
-        Agents.single_agent,
-        BaseMessage.make_assistant_message(
-            role_name="Single Agent",
-            content=system_message,
-        ),
-        options,
-        assembly.tools,
-        tool_names=assembly.tool_names,
-        toolkits_to_register_agent=assembly.toolkits_to_register_agent,
-        **(
-            {"managed_resources": managed_execution.model_resources}
-            if managed_execution is not None
-            else {}
-        ),
-    )
+    try:
+        agent = agent_model(
+            Agents.single_agent,
+            BaseMessage.make_assistant_message(
+                role_name="Single Agent",
+                content=system_message,
+            ),
+            options,
+            assembly.tools,
+            tool_names=assembly.tool_names,
+            toolkits_to_register_agent=assembly.toolkits_to_register_agent,
+            **(
+                {"managed_resources": managed_execution.model_resources}
+                if managed_execution is not None
+                else {}
+            ),
+        )
+    except BaseException:
+        if managed_execution is None:
+            from app.agent.factory.toolkit_assembler import (
+                _rollback_runtime_assembly,
+            )
+
+            await _rollback_runtime_assembly(
+                assembly,
+                project_id=options.project_id,
+                options=options,
+                hands=hands,
+            )
+        raise
     if pause_event is not None:
         agent.pause_event = pause_event
     if assembly.observable_todo_toolkit is not None:

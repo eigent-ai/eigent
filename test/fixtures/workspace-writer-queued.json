@@ -1,0 +1,113 @@
+[
+  {
+    "event_id": "attempt:c7abed52-3091-4224-9180-02f1b92204a7:created",
+    "run_id": "run-2",
+    "sequence": 2,
+    "run_version": 2,
+    "event_type": "run.attempt_created",
+    "legacy_step": null,
+    "created_at": 1790349681.479352,
+    "payload": {
+      "attempt_id": "c7abed52-3091-4224-9180-02f1b92204a7",
+      "attempt_number": 1,
+      "bundle_revision_id": "bundle_legacy_e7f3a793b619bcd0045a0ddd@1",
+      "environment_spec_digest": "87e2ee4d66d9108bc716c7b8d32951dbe01cf7f51473a177e4b92127513493e0",
+      "environment_spec_id": "envspec_4eac9d532966b419df864207a715b85f754e98054a8ccc0c827249106d5ccac4",
+      "permission_profile_revision": "b15ef26f6c99f3201dbb35b53e142ce6ce55ab0cef89cf09e10e2bc30551d84a",
+      "policy_version": "v1",
+      "provider_capability_revision": "modelcap_aef04acac875017a95268aeb5e8d4205086c11e0a311349ce678ff34e93207a3",
+      "reason": "initial_execution",
+      "status": "pending",
+      "thinking_effort_effective": "medium",
+      "thinking_effort_requested": "medium",
+      "workload_profile": {
+        "budget_policy_ref": "budget.product-default.v1",
+        "capture_policy_ref": "capture.best-effort.v1",
+        "isolation_policy_ref": "isolation.product-default.v1",
+        "network_policy_ref": "network.product-default.v1",
+        "profile_version": "1",
+        "retention_policy_ref": "retention.product-default.v1",
+        "schema_version": 1,
+        "verifier_policy_ref": "verifier.noop.v1",
+        "workload_kind": "production"
+      },
+      "workload_profile_digest": "4786bb51388abddfbbe18decc88ada3e3e896b4aa9967970c2b99865d4999302"
+    },
+    "project_id": "session-2",
+    "run_sequence": 2,
+    "origin": "local"
+  },
+  {
+    "event_id": "workspace.writer.queued:workspace-writer:run-2:1:run-1",
+    "run_id": "run-2",
+    "sequence": 3,
+    "run_version": 3,
+    "event_type": "workspace.writer.queued",
+    "legacy_step": null,
+    "created_at": 1790349681.676859,
+    "payload": {
+      "blocker_task_id": "run-1",
+      "checkout_id": "checkout_7127f74fc983cee3bf3790c93a995b76",
+      "display_schema_version": 1,
+      "display_summary": "Another task is updating this Space",
+      "display_title": "Waiting for workspace",
+      "project_id": "session-2",
+      "queue_position": 1,
+      "reason": "task.mutating_default",
+      "repository_id": "repo_e63a44e558542cb71d2f3a758d772230",
+      "request_id": "workspace-writer:run-2",
+      "semantic": {
+        "actor": {
+          "type": "system"
+        },
+        "completeness": {
+          "missing_fields": [],
+          "state": "complete"
+        },
+        "correlation": {
+          "checkout_id": "checkout_7127f74fc983cee3bf3790c93a995b76",
+          "project_id": "session-2",
+          "task_id": "run-2"
+        },
+        "kind": "workspace_writer",
+        "lifecycle": {
+          "phase": "requested",
+          "status": "pending"
+        },
+        "provenance": {
+          "source": "workspace_writer_scheduler"
+        },
+        "subject": {
+          "id": "workspace-writer:run-2",
+          "type": "writer_request"
+        }
+      },
+      "semantic_schema_version": 1,
+      "target_ref": "refs/heads/main",
+      "task_id": "run-2",
+      "wait_duration_ms": null,
+      "waited": false
+    },
+    "project_id": "session-2",
+    "run_sequence": 3,
+    "origin": "local"
+  },
+  {
+    "event_id": "user-message:initial:run-2:0a74381ec43b2c854b50ce08",
+    "run_id": "run-2",
+    "sequence": 4,
+    "run_version": 4,
+    "event_type": "user.message",
+    "legacy_step": null,
+    "created_at": 1790349681.677388,
+    "payload": {
+      "attachment_names": [],
+      "content": "Synthetic execution probe",
+      "review_handoff_ids": [],
+      "source": "chat"
+    },
+    "project_id": "session-2",
+    "run_sequence": 4,
+    "origin": "local"
+  }
+]

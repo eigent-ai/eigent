@@ -14,6 +14,11 @@
 
 import { buildProjectSessionPanelData } from '@/components/Session/SidePanel/sections/buildProjectSessionPanelData';
 import { buildProjectSessionOverview } from '@/hooks/useProjectSessionOverview';
+import {
+  createProjectViewState,
+  normalizeEvent,
+  reduceProjectView,
+} from '@/lib/projector';
 import type { ChatArtifactNode } from '@/lib/projector/chat';
 import type {
   ProjectedArtifact,
@@ -29,6 +34,40 @@ const manifest: ProjectedArtifactManifest = {
   scanStatus: 'complete',
   truncated: false,
 };
+
+it('keeps native CAS identity through manifest projection and file reconciliation', () => {
+  const event = normalizeEvent({
+    event_id: 'native-manifest',
+    project_id: 'project-1',
+    run_id: 'run-1',
+    sequence: 20,
+    event_type: 'artifact.manifest.finalized',
+    payload: {
+      scan_status: 'complete',
+      truncated: false,
+      artifacts: [
+        {
+          artifact_id: 'saved-output',
+          relativePath: 'report.html',
+          filename: 'report.html',
+          storage: 'workspace_cas',
+          content_digest: 'abc123',
+          size: 42,
+        },
+      ],
+    },
+  });
+  const state = reduceProjectView(createProjectViewState('project-1'), event);
+  const rows = reconcileRunOutputFiles({
+    artifactNodes: [],
+    projectedArtifacts: state.artifactsByRun['run-1'],
+    artifactManifest: state.artifactManifestsByRun?.['run-1'],
+  });
+  expect(rows[0].file).toMatchObject({
+    artifactId: 'saved-output',
+    workspaceArtifact: { runId: 'run-1', contentDigest: 'abc123' },
+  });
+});
 function node(
   path: string,
   sequence: number,

@@ -465,5 +465,12 @@
   "space-model-unconfirmed": "La première requête de la session n’a pas encore été confirmée. Reconnectez-vous et réessayez, ou choisissez un modèle pour la session.",
   "space-model-unavailable": "Ce modèle est indisponible pour ce compte. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
   "space-model-ambiguous": "Plusieurs fournisseurs correspondent. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
-  "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message."
+  "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message.",
+  "workspace-integration-completed": "Les modifications enregistrées de la tâche ont été intégrées à l’espace.",
+  "workspace-integration-waiting": "Les fichiers de la tâche sont enregistrés. Leur application à l’espace attend une autorisation d’accès ou la fin d’une autre mise à jour.",
+  "workspace-integration-conflict": "Certaines modifications n’ont pas pu être intégrées. Les deux versions sont conservées ; examinez les modifications enregistrées de la tâche avant de résoudre le conflit.",
+  "workspace-finalization-attention": "La sortie de la tâche est encore en cours de sauvegarde. Le nettoyage du répertoire de travail nécessite une intervention avant l’intégration des modifications.",
+  "workspace-preparation-waiting": "En attente de la stabilisation du Space pour préparer cette tâche.",
+  "browser-resource-waiting": "En attente d’un navigateur disponible. Les autres sessions peuvent continuer.",
+  "browser-resource-acquired": "Navigateur disponible. Cette tâche continue."
 }

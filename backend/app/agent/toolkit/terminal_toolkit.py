@@ -1101,6 +1101,15 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 "Terminal session is still active"
             )
         run_context = run_context_for_task(self.api_task_id)
+        if (
+            run_context is not None
+            and run_context.workspace_source_root is not None
+        ):
+            command = _remap_workspace_command(
+                command,
+                visible_root=str(run_context.workspace_source_root),
+                mutation_root=str(run_context.working_directory),
+            )
         # A code-owned pwd response cannot launch a shell, source a profile,
         # redirect output or mutate files. Do not exempt arbitrary commands
         # based on an LLM-provided read-only claim or a shell prefix.

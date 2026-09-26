@@ -521,6 +521,9 @@ class TaskLock:
         self.summary_generated = False
         self.current_task_id = None
         self.run_context = None
+        self.ordinary_workspace = None
+        self.ordinary_runtime = None
+        self.ordinary_finalizing = None
         self.user_id = None
         self.working_directory = None
         self.task_output_root = None

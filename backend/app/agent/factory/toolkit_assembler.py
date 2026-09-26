@@ -55,6 +55,7 @@ from app.service.task import Agents, get_task_lock_if_exists
 from app.utils.browser_launcher import normalize_cdp_url
 from app.utils.workspace_paths import runtime_task_root
 from app.workspace_bundle.runtime import ResolvedRuntimeEnvironment
+from app.workspace_runtime.native_runtime import current_native_runtime
 
 logger = logging.getLogger("toolkit_assembler")
 
@@ -180,9 +181,12 @@ async def _rollback_runtime_assembly(
     ):
         candidates.append(assembly.browser_toolkit)
     disposed: list[Any] = []
+    failures = []
     for toolkit in reversed(candidates):
         try:
             cleanup = getattr(toolkit, "disconnect", None)
+            if cleanup is None:
+                cleanup = getattr(toolkit, "close", None)
             if cleanup is None:
                 cleanup = getattr(toolkit, "cleanup_tab_tracking", None)
             if cleanup is None:
@@ -192,7 +196,8 @@ async def _rollback_runtime_assembly(
                 if inspect.isawaitable(outcome):
                     await outcome
             disposed.append(toolkit)
-        except Exception:
+        except Exception as exc:
+            failures.append(exc)
             logger.exception(
                 "Failed to roll back partial Bundle toolkit assembly",
                 extra={
@@ -208,6 +213,14 @@ async def _rollback_runtime_assembly(
             for toolkit in task_lock.registered_toolkits
             if toolkit not in disposed
         ]
+
+    if failures:
+        native = current_native_runtime()
+        if native is not None:
+            native.note_uncontained_writer()
+            raise RuntimeError(
+                "Partial toolkit assembly could not settle"
+            ) from failures[0]
 
     if assembly.browser_session_id is not None:
         if assembly.browser_owned_by_hands and hands is not None:
@@ -387,7 +400,27 @@ def _mcp_config(
 
 async def assemble_single_agent_toolkits(
     options: Chat,
+    **kwargs,
+) -> ToolkitAssembly:
+    assembly = ToolkitAssembly()
+    try:
+        return await _assemble_single_agent_toolkits(
+            options, assembly=assembly, **kwargs
+        )
+    except BaseException:
+        await _rollback_runtime_assembly(
+            assembly,
+            project_id=options.project_id,
+            options=options,
+            hands=kwargs.get("hands"),
+        )
+        raise
+
+
+async def _assemble_single_agent_toolkits(
+    options: Chat,
     *,
+    assembly: ToolkitAssembly,
     task_id: str,
     working_directory: str,
     hands: IHands | None,
@@ -397,7 +430,10 @@ async def assemble_single_agent_toolkits(
     runtime_environment: ResolvedRuntimeEnvironment | None = None,
 ) -> ToolkitAssembly:
     config = _merged_config(options)
-    assembly = ToolkitAssembly()
+    native = current_native_runtime()
+    if native is not None:
+        native.require_dispatch()
+        working_directory = str(native.binding.workspace.local_root)
     pinned_skill_sources = (
         runtime_environment.pinned_skill_sources(Agents.single_agent)
         if runtime_environment is not None
@@ -449,6 +485,8 @@ async def assemble_single_agent_toolkits(
             "working_directory": working_directory,
             **_options(config, "file"),
         }
+        if native is not None:
+            file_options["working_directory"] = working_directory
         toolkit = FileToolkit(
             options.project_id,
             **file_options,
@@ -463,6 +501,8 @@ async def assemble_single_agent_toolkits(
             "agent_name": Agents.single_agent,
             **_options(config, "screenshot"),
         }
+        if native is not None:
+            screenshot_options["working_directory"] = working_directory
         toolkit = ScreenshotToolkit(
             options.project_id,
             **screenshot_options,
@@ -479,6 +519,8 @@ async def assemble_single_agent_toolkits(
             "user_id": options.skill_config_user_id(),
             **_options(config, "skill"),
         }
+        if native is not None:
+            skill_options["working_directory"] = working_directory
         if runtime_environment is not None:
             # Immutable Bundle inputs are runtime authority, never request
             # customization. Legacy sessions retain their existing options.
@@ -554,10 +596,14 @@ async def assemble_single_agent_toolkits(
             # do not accidentally claim the same CDP browser tab set.
             from app.agent.factory.browser import _cdp_pool_manager
 
-            selected_browser = _cdp_pool_manager.acquire_browser(
-                options.cdp_browsers,
-                toolkit_session_id,
-                options.task_id,
+            selected_browser = (
+                options.cdp_browsers[0]
+                if native is not None
+                else _cdp_pool_manager.acquire_browser(
+                    options.cdp_browsers,
+                    toolkit_session_id,
+                    options.task_id,
+                )
             )
             if selected_browser is None:
                 if electron_runtime:
@@ -622,9 +668,46 @@ async def assemble_single_agent_toolkits(
                 "owned_target_url": owned_target_url,
                 "stealth": not bool(owned_target_url),
             }
+            if native is not None:
+                browser_options["download_dir"] = working_directory
+                browser_options["cache_dir"] = os.path.join(
+                    working_directory, ".cache", "browser"
+                )
+                browser_options["log_dir"] = os.path.join(
+                    working_directory, ".cache", "browser", "logs"
+                )
             toolkit = HybridBrowserToolkit(
                 options.project_id, **browser_options
             )
+            if native is not None and options.cdp_browsers:
+                descriptors = [
+                    dict(browser) for browser in options.cdp_browsers
+                ]
+
+                def acquire_browser():
+                    selected = _cdp_pool_manager.acquire_browser(
+                        descriptors,
+                        toolkit_session_id,
+                        options.task_id,
+                        quiet=True,
+                    )
+                    if selected is None:
+                        return None
+                    return {
+                        "cdpUrl": _get_browser_endpoint(selected),
+                        "ownedTargetUrl": selected.get("targetUrl"),
+                        "port": _get_browser_port(selected),
+                    }
+
+                toolkit.configure_resource_lease(
+                    acquire_browser,
+                    lambda lease: _cdp_pool_manager.release_browser(
+                        lease["port"], toolkit_session_id
+                    ),
+                )
+                # The toolkit releases only after its exact worker settles.
+                # Legacy Agent disposal must not release a live native lease.
+                selected_port = None
             toolkit.agent_name = Agents.single_agent
             assembly.browser_toolkit = toolkit
             assembly.browser_port = selected_port
@@ -646,6 +729,8 @@ async def assemble_single_agent_toolkits(
             "clone_current_env": True,
             **_options(config, "terminal"),
         }
+        if native is not None:
+            terminal_options["working_directory"] = working_directory
         if runtime_environment is not None:
             terminal_options.update(
                 {
@@ -689,6 +774,8 @@ async def assemble_single_agent_toolkits(
             "working_directory": working_directory,
             **_options(config, "planning_worktree"),
         }
+        if native is not None:
+            planning_options["working_directory"] = working_directory
         toolkit = PlanningWorktreeToolkit(
             **planning_options,
         )
@@ -705,15 +792,35 @@ async def assemble_single_agent_toolkits(
                 exact_config=(exact_mcp_config or {"mcpServers": {}}),
             )
         if mcp_config is not None:
+            if native is not None:
+                from app.workspace_runtime.native_paths import (
+                    private_workspace_path,
+                )
+
+                for server in mcp_config["mcpServers"].values():
+                    if server.get("command"):
+                        server["cwd"] = working_directory
+                        server["env"].update(
+                            {"CAMEL_WORKDIR": working_directory}
+                        )
+                        server["args"] = [
+                            private_workspace_path(arg)
+                            for arg in server.get("args", [])
+                        ]
             mcp_options = {
                 "timeout": 180,
                 **_options(config, "mcp"),
             }
             mcp_options["config_dict"] = mcp_config
             mcp_options["skip_failed"] = runtime_environment is None
+            mcp_class = MCPToolkit
+            if native is not None:
+                from app.agent.toolkit.owned_mcp_toolkit import OwnedMCPToolkit
+
+                mcp_class = OwnedMCPToolkit
             if runtime_environment is not None:
                 try:
-                    toolkit = MCPToolkit(**mcp_options)
+                    toolkit = mcp_class(**mcp_options)
                     # connect() can partially allocate subprocesses before it
                     # raises. Include it in rollback before attempting startup.
                     assembly.cleanup_toolkits.append(toolkit)
@@ -723,18 +830,13 @@ async def assemble_single_agent_toolkits(
                         EnvironmentSetupRequiredError,
                     )
 
-                    await _rollback_runtime_assembly(
-                        assembly,
-                        project_id=options.project_id,
-                        options=options,
-                        hands=hands,
-                    )
                     raise EnvironmentSetupRequiredError(
                         ["bundle_mcp_start_failed"]
                     ) from exc
                 assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
             else:
-                toolkit = MCPToolkit(**mcp_options)
+                toolkit = mcp_class(**mcp_options)
+                assembly.cleanup_toolkits.append(toolkit)
                 try:
                     await toolkit.connect()
                 except Exception:
@@ -743,7 +845,6 @@ async def assemble_single_agent_toolkits(
                         exc_info=True,
                     )
                 else:
-                    assembly.cleanup_toolkits.append(toolkit)
                     assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
 
     if _enabled(config, "agent") and can_delegate:
@@ -753,6 +854,7 @@ async def assemble_single_agent_toolkits(
             **_options(config, "agent"),
         )
         assembly.toolkits_to_register_agent.append(toolkit)
+        assembly.cleanup_toolkits.append(toolkit)
         assembly.add_tools(toolkit.get_tools(), toolkit.toolkit_name())
 
     return assembly

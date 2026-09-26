@@ -457,5 +457,12 @@
   "space-model-unconfirmed": "首次工作階段請求尚未確認。請重新連線後重試，或手動選擇工作階段模型。",
   "space-model-unavailable": "目前帳號無法使用此模型。請檢查模型設定，或為會話選擇模型。",
   "space-model-ambiguous": "多個提供商與此模型符合。請檢查模型設定，或為會話選擇模型。",
-  "space-model-changed": "載入期間帳號或會話模型已變更，請重新傳送訊息。"
+  "space-model-changed": "載入期間帳號或會話模型已變更，請重新傳送訊息。",
+  "workspace-integration-completed": "任務的已儲存變更已整合至空間。",
+  "workspace-integration-waiting": "任務檔案已儲存。套用至空間正在等待存取權限或另一項更新完成。",
+  "workspace-integration-conflict": "部分變更無法整合。雙方版本均已保留；解決衝突前請檢閱任務的已儲存變更。",
+  "workspace-finalization-attention": "任務輸出尚未完成儲存。需要處理工作目錄清理問題後才能整合變更。",
+  "workspace-preparation-waiting": "正在等待 Space 穩定，以準備此任務。",
+  "browser-resource-waiting": "正在等待可用的瀏覽器。其他 Session 可以繼續執行。",
+  "browser-resource-acquired": "瀏覽器已可用，任務正在繼續。"
 }

@@ -465,5 +465,12 @@
   "space-model-unconfirmed": "La primera solicitud de la sesión aún no se ha confirmado. Vuelve a conectarte y reinténtalo, o elige un modelo para la sesión.",
   "space-model-unavailable": "Este modelo no está disponible para esta cuenta. Revise los ajustes de modelos o elija un modelo para la sesión.",
   "space-model-ambiguous": "Coinciden varios proveedores. Revise los ajustes de modelos o elija un modelo para la sesión.",
-  "space-model-changed": "La cuenta o el modelo de la sesión cambió durante la carga. Vuelva a enviar el mensaje."
+  "space-model-changed": "La cuenta o el modelo de la sesión cambió durante la carga. Vuelva a enviar el mensaje.",
+  "workspace-integration-completed": "Los cambios guardados de la tarea se han integrado en el espacio.",
+  "workspace-integration-waiting": "Los archivos de la tarea están guardados. Su aplicación al espacio espera acceso o que termine otra actualización.",
+  "workspace-integration-conflict": "Algunos cambios no se pudieron integrar. Se conservan ambas versiones; revisa los cambios guardados de la tarea antes de resolver el conflicto.",
+  "workspace-finalization-attention": "La salida de la tarea aún se está guardando. La limpieza del directorio de trabajo requiere atención antes de integrar los cambios.",
+  "workspace-preparation-waiting": "Esperando a que el Space se estabilice para preparar esta tarea.",
+  "browser-resource-waiting": "Esperando un navegador disponible. Las demás sesiones pueden continuar.",
+  "browser-resource-acquired": "Navegador disponible. Esta tarea continúa."
 }

@@ -113,7 +113,11 @@ async def _dispose_stale_agent_runtime(
             if cleanup is None:
                 cleanup = getattr(toolkit, "cleanup", None)
             if cleanup is not None:
-                outcome = cleanup()
+                outcome = (
+                    cleanup()
+                    if inspect.iscoroutinefunction(cleanup)
+                    else await asyncio.to_thread(cleanup)
+                )
                 if inspect.isawaitable(outcome):
                     await outcome
             disposed = True
@@ -450,8 +454,19 @@ async def single_agent_solve(
             agent_run_id = None
             agent_runtime_key = None
         if agent is None:
+            from app.workspace_runtime.native_runtime import (
+                current_native_runtime,
+            )
+
+            run_options = (
+                options.model_copy(
+                    update={"task_id": task_id, "run_id": task_id}
+                )
+                if current_native_runtime() is not None
+                else options
+            )
             agent = await single_agent(
-                options,
+                run_options,
                 task_id=task_id,
                 hands=hands,
                 pause_event=pause_event,
@@ -472,13 +487,20 @@ async def single_agent_solve(
             observable_todo.emit_todo_state()
         return agent
 
-    async def run_turn(
+    async def execute_turn(
         question: str,
         attaches: list[str],
         task_id: str,
         project_context: str | None = None,
     ) -> tuple[str, int]:
-        turn_agent = await ensure_agent(task_id)
+        from app.workspace_runtime.native_runtime import current_native_runtime
+
+        runtime = current_native_runtime()
+        turn_agent = (
+            await runtime.run_tool(lambda: ensure_agent(task_id))
+            if runtime is not None
+            else await ensure_agent(task_id)
+        )
         turn_agent.process_task_id = task_id
         prompt = _build_single_agent_prompt(
             task_lock,
@@ -505,6 +527,84 @@ async def single_agent_solve(
             },
         )
         return content, total_tokens
+
+    async def run_turn(question, attaches, task_id, project_context=None):
+        from app.workspace_runtime.ordinary import OrdinaryWorkspace
+
+        workspace = getattr(task_lock, "ordinary_workspace", None)
+        if (
+            not isinstance(workspace, OrdinaryWorkspace)
+            or workspace.owner.run_id != task_id
+        ):
+            return await execute_turn(
+                question, attaches, task_id, project_context
+            )
+        from app.workspace_runtime.native_runtime import NativeAgentRuntime
+        from app.workspace_runtime.ordinary import finalize_task_lock_workspace
+
+        async def stop_resources():
+            if agent is not None and agent_run_id == task_id:
+                for toolkit in getattr(agent, "_runtime_cleanup_toolkits", ()):
+                    stop_children = getattr(
+                        toolkit, "stop_owned_children", None
+                    )
+                    if callable(stop_children):
+                        await asyncio.to_thread(stop_children)
+            calls = [
+                asyncio.to_thread(
+                    toolkit.quiesce_run_background_sessions, task_id
+                )
+                for toolkit in tuple(task_lock.registered_toolkits)
+                if callable(
+                    getattr(toolkit, "quiesce_run_background_sessions", None)
+                )
+            ]
+            outcomes = await asyncio.gather(*calls, return_exceptions=True)
+            if any(
+                isinstance(value, BaseException) or value for value in outcomes
+            ):
+                raise RuntimeError("ordinary Run tools did not stop")
+
+        async def close_resources():
+            if agent is not None and agent_run_id == task_id:
+                browser = getattr(agent, "_browser_toolkit", None)
+                if browser is not None:
+                    await browser.close()
+                await _dispose_stale_agent_runtime(
+                    agent, task_lock, task_id=task_id
+                )
+
+        runtime = task_lock.ordinary_runtime
+        if (
+            not isinstance(runtime, NativeAgentRuntime)
+            or runtime.binding.run_id != task_id
+        ):
+            raise RuntimeError("ordinary Run lost its live workspace owner")
+        runtime.attach_resources(
+            stop_resources=stop_resources, close_resources=close_resources
+        )
+        try:
+            result = await runtime.run(
+                lambda _runtime: execute_turn(
+                    question, attaches, task_id, project_context
+                )
+            )
+        except asyncio.CancelledError:
+            # The exact cancellation/shutdown owner chooses the durable
+            # outcome and awaits this runtime's retained writers below.
+            raise
+        except Exception as error:
+            await finalize_task_lock_workspace(
+                task_lock,
+                outcome="interrupted"
+                if _is_retryable_turn_error(error)
+                else "failed",
+            )
+            raise
+        await finalize_task_lock_workspace(
+            task_lock, result=result[0], outcome="completed"
+        )
+        return result
 
     pending_queue_get: asyncio.Task[Any] = asyncio.create_task(
         task_lock.get_queue()
@@ -795,6 +895,24 @@ async def single_agent_solve(
             task_lock.status = Status.confirming
             running_turn.cancel()
         cancel_running_summary()
+        from app.workspace_runtime.ordinary import (
+            OrdinaryWorkspace,
+            finalize_task_lock_workspace,
+        )
+
+        workspace = getattr(task_lock, "ordinary_workspace", None)
+        if (
+            isinstance(workspace, OrdinaryWorkspace)
+            and getattr(task_lock, "ordinary_runtime", None) is not None
+        ):
+            journal = get_default_run_journal()
+            run = journal.get_run(workspace.owner.run_id)
+            await finalize_task_lock_workspace(
+                task_lock,
+                outcome="cancelled"
+                if run and run.cancel_request_id
+                else "interrupted",
+            )
         # If the loop exits without a clean done/failed/cancelled end-of-turn,
         # project it as interrupted. Only an explicit cancel may produce the
         # cancelled state; transport/process teardown is resumable. The

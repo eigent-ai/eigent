@@ -23,6 +23,7 @@ import type {
 } from './types';
 
 const RUN_STATUS_BY_EVENT: Record<string, ProjectedRun['status']> = {
+  'run.preparing': 'pending',
   'run.attempt_created': 'pending',
   'run.attempt_started': 'running',
   'run.cancel_requested': 'cancelling',
@@ -581,6 +582,11 @@ export function reduceProjectView(
                 ? value.uploadPolicy
                 : null,
             localPathAvailable: value.localPathAvailable === true,
+            workspaceArtifact:
+              value.storage === 'workspace_cas' &&
+              typeof value.content_digest === 'string'
+                ? { runId: event.runId, contentDigest: value.content_digest }
+                : undefined,
           },
         ];
       }

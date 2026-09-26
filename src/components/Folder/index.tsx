@@ -1142,7 +1142,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       setIsShowSourceCode(Boolean(isShowSourceCode));
     }
     setLoading(true);
-    void resolveArtifactAssetFile(file)
+    void resolveArtifactAssetFile(file, controller.signal)
       .then((resolvedFile) =>
         loadFilePreview(resolvedFile, {
           ipcRenderer,

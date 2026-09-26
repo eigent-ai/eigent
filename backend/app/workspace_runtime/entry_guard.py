@@ -98,10 +98,16 @@ def owns_managed_execution_in_connection(
             AND state!='released' LIMIT 1""",
             """SELECT 1 FROM run_workspace_bindings binding
             JOIN runs owner ON owner.run_id=binding.run_id
-            WHERE owner.project_id=? LIMIT 1""",
+            WHERE owner.project_id=?
+            AND binding.policy_version!='ordinary-single-v1' LIMIT 1""",
             """SELECT 1 FROM run_workspace_finalizations finalization
             JOIN runs owner ON owner.run_id=finalization.run_id
-            WHERE owner.project_id=? LIMIT 1""",
+            LEFT JOIN run_workspace_bindings binding
+              ON binding.run_id=finalization.run_id
+              AND binding.generation=finalization.generation
+            WHERE owner.project_id=? AND
+              (binding.policy_version IS NULL OR
+               binding.policy_version!='ordinary-single-v1') LIMIT 1""",
         ):
             if connection.execute(query, (project,)).fetchone():
                 return True
@@ -113,6 +119,7 @@ async def guard_legacy_execution_entry(
     *,
     project_id: str | None = None,
     run_id: str | None = None,
+    resume: bool = False,
 ) -> None:
     """HTTP compatibility boundary; never expose private workspace details."""
     from fastapi import HTTPException
@@ -122,6 +129,20 @@ async def guard_legacy_execution_entry(
             status_code=503,
             detail={"code": "execution_ownership_unavailable"},
         )
+    if resume and run_id is not None:
+        from .ordinary import ordinary_binding
+
+        if (
+            await asyncio.to_thread(ordinary_binding, journal, run_id)
+            is not None
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "workspace_resume_recovery_required",
+                    "message": "The private workspace requires explicit recovery before resuming.",
+                },
+            )
     if await asyncio.to_thread(
         owns_managed_execution,
         journal,
