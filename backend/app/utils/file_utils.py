@@ -399,6 +399,16 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
     then falls back to environment variable or default path.
     Result is normalized for safety (traversal, length, existence).
     """
+    context = get_current_run_context()
+    if (
+        context is not None
+        and context.project_id == options.project_id
+        and context.workspace_source_root is not None
+    ):
+        # A retained tool/child belongs to its original Run even after the
+        # compatibility TaskLock has been rebound for a follow-up message.
+        return normalize_working_path(context.working_directory)
+
     if not task_lock:
         from app.service.task import get_task_lock_if_exists
 

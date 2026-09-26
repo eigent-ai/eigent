@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { runDomainEventHub, runProjectionStore } from '@/lib/runEvents';
+import {
+  runDomainEventHub,
+  runEventIngressRegistry,
+  runProjectionStore,
+} from '@/lib/runEvents';
 import {
   forgetRejectedTriggerRun,
   trackTriggerExecutionRun,
@@ -289,6 +293,23 @@ describe('Fresh Space admission at actual HTTP delivery', () => {
       new ReadableStream({ start: (controller) => controller.close() }),
       { headers: { 'content-type': 'text/event-stream' } }
     );
+
+  it('observes preparation before admission response headers arrive', async () => {
+    mocks.sse.mockImplementation(async (options) => {
+      await options.beforeRequest?.();
+      expect(runEventIngressRegistry.ensureLocal).toHaveBeenCalledWith(
+        'session-1',
+        expect.any(String)
+      );
+      await options.onopen(
+        new Response('', {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        })
+      );
+    });
+    await start();
+  });
   async function useActualTransport() {
     setConnectionConfig({
       brainEndpoint: 'http://brain.fixture.invalid',

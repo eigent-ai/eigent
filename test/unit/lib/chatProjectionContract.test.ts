@@ -251,6 +251,36 @@ describe('chat projection presentation contract', () => {
     });
   });
 
+  it.each([
+    ['integrated', 'info'],
+    ['waiting', 'info'],
+    ['conflict', 'warning'],
+  ])(
+    'projects native publication %s as a visible notice',
+    (status, severity) => {
+      expect(
+        adaptChatProjectionEvent(
+          event('workspace.integration.updated', { status }, 1)
+        )
+      ).toMatchObject({
+        kind: 'display',
+        node: { kind: 'notice', severity, content: expect.any(String) },
+      });
+    }
+  );
+
+  it.each(['browser.resource.waiting', 'browser.resource.acquired'])(
+    'projects %s as a resource notice',
+    (type) => {
+      expect(
+        adaptChatProjectionEvent(event(type, { resource: 'browser' }, 1))
+      ).toMatchObject({
+        kind: 'display',
+        node: { kind: 'notice', severity: 'info', content: expect.any(String) },
+      });
+    }
+  );
+
   it('keeps canonical transcript, tool outcomes, and safe artifact identity semantic', () => {
     const inputs = [
       event('user.message', { content: 'Create the report' }, 1),

@@ -127,7 +127,17 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         # watchdog paused until the UI supplies a reply or cleanup interrupts
         # the wait, matching the durable Approval path.
         async with pause_active_execution_timeout(task_lock):
-            reply = await task_lock.get_human_input(self.agent_name)
+            from app.workspace_runtime.native_runtime import (
+                current_native_runtime,
+            )
+
+            runtime = current_native_runtime()
+            if runtime is None:
+                reply = await task_lock.get_human_input(self.agent_name)
+            else:
+                reply = await runtime.wait_for_user(
+                    lambda: task_lock.get_human_input(self.agent_name)
+                )
         if reply == TASK_LOCK_CLEANUP_SENTINEL:
             logger.info(
                 "Human input wait interrupted by task cleanup",

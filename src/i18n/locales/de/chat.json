@@ -461,5 +461,12 @@
   "space-model-unconfirmed": "Die erste Sitzungsanfrage ist noch nicht bestätigt. Verbinde dich erneut und versuche es noch einmal, oder wähle ein Sitzungsmodell.",
   "space-model-unavailable": "Dieses Modell ist für das aktuelle Konto nicht verfügbar. Prüfen Sie die Modelleinstellungen oder wählen Sie ein Sitzungsmodell.",
   "space-model-ambiguous": "Mehrere Anbieter passen zu diesem Modell. Prüfen Sie die Modelleinstellungen oder wählen Sie ein Sitzungsmodell.",
-  "space-model-changed": "Das Konto oder Sitzungsmodell hat sich beim Laden geändert. Senden Sie Ihre Nachricht erneut."
+  "space-model-changed": "Das Konto oder Sitzungsmodell hat sich beim Laden geändert. Senden Sie Ihre Nachricht erneut.",
+  "workspace-integration-completed": "Die gespeicherten Aufgabenänderungen wurden in den Space übernommen.",
+  "workspace-integration-waiting": "Die Aufgabendateien sind gespeichert. Die Übernahme in den Space wartet auf Zugriff oder den Abschluss einer anderen Aktualisierung.",
+  "workspace-integration-conflict": "Einige Änderungen konnten nicht übernommen werden. Beide Versionen bleiben erhalten; prüfe die gespeicherten Aufgabenänderungen, bevor du den Konflikt löst.",
+  "workspace-finalization-attention": "Die Aufgabenausgabe wird noch gesichert. Die Bereinigung des Arbeitsverzeichnisses muss geklärt werden, bevor Änderungen übernommen werden können.",
+  "workspace-preparation-waiting": "Warte, bis der Space stabil ist, um diese Aufgabe vorzubereiten.",
+  "browser-resource-waiting": "Warten auf einen verfügbaren Browser. Andere Sitzungen können fortfahren.",
+  "browser-resource-acquired": "Browser verfügbar. Diese Aufgabe wird fortgesetzt."
 }

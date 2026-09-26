@@ -43,6 +43,8 @@ declare global {
     preview?: FilePreviewPayload;
     /** Stable identity from the canonical Artifact event stream. */
     artifactId?: string;
+    /** Immutable local Run output; never resolve this against the Space. */
+    workspaceArtifact?: { runId: string; contentDigest: string };
     /** Only agent-generated outputs may be uploaded automatically. */
     uploadPolicy?: 'agent_generated' | 'metadata_only';
     /** False for Cloud-restored metadata whose local path was redacted. */

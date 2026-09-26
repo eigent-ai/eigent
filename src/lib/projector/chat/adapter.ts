@@ -63,6 +63,7 @@ type NormalizedInput = {
 };
 
 const RUN_STATUS_BY_EVENT: Record<string, ChatRunStatus> = {
+  'run.preparing': 'pending',
   'run.attempt_created': 'pending',
   'run.attempt_started': 'running',
   'run.cancel_requested': 'cancelling',
@@ -1668,6 +1669,62 @@ function typedNode(
 
   if (eventType.startsWith('workspace.writer.')) {
     return workspaceWriterNotice(base, data);
+  }
+
+  if (eventType === 'workspace.preparation.waiting') {
+    return noticeNode(
+      base,
+      { content: i18next.t('chat.workspace-preparation-waiting') },
+      'info'
+    );
+  }
+
+  if (
+    eventType === 'browser.resource.waiting' ||
+    eventType === 'browser.resource.acquired'
+  ) {
+    return noticeNode(
+      base,
+      {
+        content: i18next.t(
+          eventType === 'browser.resource.waiting'
+            ? 'chat.browser-resource-waiting'
+            : 'chat.browser-resource-acquired'
+        ),
+        purpose: 'status',
+      },
+      'info'
+    );
+  }
+
+  if (eventType === 'workspace.integration.updated') {
+    const status = firstText(asRecord(data).status);
+    const conflict = [
+      'conflict',
+      'partially_integrated',
+      'needs_attention',
+    ].includes(status);
+    const key =
+      status === 'integrated'
+        ? 'chat.workspace-integration-completed'
+        : conflict
+          ? 'chat.workspace-integration-conflict'
+          : 'chat.workspace-integration-waiting';
+    return noticeNode(
+      base,
+      { content: i18next.t(key), purpose: 'status' },
+      conflict ? 'warning' : 'info'
+    );
+  }
+  if (eventType === 'workspace.finalization.needs_attention') {
+    return noticeNode(
+      base,
+      {
+        content: i18next.t('chat.workspace-finalization-attention'),
+        purpose: 'status',
+      },
+      'warning'
+    );
   }
 
   if (eventType.startsWith('step.')) {

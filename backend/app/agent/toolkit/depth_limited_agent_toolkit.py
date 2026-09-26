@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 from collections.abc import Callable
 from contextvars import Context, copy_context
 from threading import Lock
@@ -59,7 +60,23 @@ class DepthLimitedAgentToolkit(AgentToolkit, AbstractToolkit):
         with self._child_context_lock:
             self._child_contexts[agent_key] = copy_context()
         try:
-            return super()._submit_agent_task(agent_id, agent, prompt)
+            from app.run_runtime.owned_tasks import current_owned_tasks
+            from app.workspace_runtime.native_runtime import (
+                current_native_runtime,
+            )
+
+            runtime = current_native_runtime()
+            if runtime is not None:
+                runtime.require_dispatch()
+            task = super()._submit_agent_task(agent_id, agent, prompt)
+            owner = current_owned_tasks()
+            if runtime is not None and owner is not None:
+
+                async def retain_child():
+                    return await asyncio.wrap_future(task.future)
+
+                owner.schedule(retain_child())
+            return task
         except Exception:
             with self._child_context_lock:
                 self._child_contexts.pop(agent_key, None)
@@ -74,6 +91,14 @@ class DepthLimitedAgentToolkit(AgentToolkit, AbstractToolkit):
         if context is None:
             return super()._run_agent_step(agent, prompt)
         return context.run(super()._run_agent_step, agent, prompt)
+
+    def stop_owned_children(self) -> None:
+        # One toolkit is assembled per ordinary Run. Signal every child, but
+        # leave its Future retained by NativeAgentRuntime until it has exited.
+        with self._lock:
+            tasks = tuple(self._tasks.values())
+        for task in tasks:
+            task.stop_event.set()
 
     def _resolve_child_tools(
         self,

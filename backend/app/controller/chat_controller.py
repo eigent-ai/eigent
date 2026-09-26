@@ -18,6 +18,7 @@ import inspect
 import json
 import logging
 import os
+import uuid
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, replace
@@ -1191,6 +1192,170 @@ async def _replay_persisted_run(run_id: str):
         )
 
 
+async def _prepare_ordinary_workspace_context(
+    journal, context, frozen_dirs, resolver, task_lock
+):
+    from app.workspace_runtime.native_runtime import NativeRunOwner
+    from app.workspace_runtime.ordinary import prepare_ordinary_workspace_async
+    from app.workspace_runtime.provider import WorkspaceLimitError
+    from app.workspace_runtime.session_input import SessionInputConflict
+
+    await asyncio.to_thread(
+        get_default_workspace_git_coordinator().ensure_project_binding,
+        space_id=context.space_id,
+        project_id=context.project_id,
+    )
+    try:
+        workspace = await prepare_ordinary_workspace_async(
+            journal,
+            owner=NativeRunOwner(
+                context.project_id, context.run_id, str(uuid.uuid4())
+            ),
+            source_root=context.working_directory,
+        )
+    except SessionInputConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "session_input_content_conflict",
+                "message": "This Session has saved changes that conflict with the Space. Resolve the conflict before continuing.",
+            },
+        ) from exc
+    except WorkspaceLimitError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "workspace_limit_exceeded",
+                "message": "The Space exceeds the supported private workspace size.",
+            },
+        ) from exc
+    private_root = workspace.handle.local_root
+    context = replace(
+        context,
+        workspace_source_root=context.working_directory,
+        working_directory=private_root,
+        task_output_root=private_root,
+    )
+    frozen_dirs = replace(
+        frozen_dirs,
+        working_directory=private_root,
+        task_output_root=private_root,
+        snapshot=replace(
+            frozen_dirs.snapshot,
+            working_directory=str(private_root),
+            task_output_root=str(private_root),
+        ),
+    )
+    return workspace, context, frozen_dirs
+
+
+async def _admit_ordinary_workspace(
+    journal,
+    workspace,
+    context,
+    frozen_dirs,
+    resolver,
+    task_lock,
+    *,
+    request_id,
+    reason,
+    environment,
+):
+    from app.workspace_runtime.ordinary import drain_task
+
+    task = asyncio.create_task(
+        _install_ordinary_workspace(
+            journal,
+            workspace,
+            context,
+            frozen_dirs,
+            resolver,
+            task_lock,
+            request_id=request_id,
+            reason=reason,
+            environment=environment,
+        )
+    )
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        # Install the live settlement owner even if admission committed while
+        # the request was cancelled. The caller can then finalize it safely.
+        await drain_task(task)
+        raise
+
+
+async def _install_ordinary_workspace(
+    journal,
+    workspace,
+    context,
+    frozen_dirs,
+    resolver,
+    task_lock,
+    *,
+    request_id,
+    reason,
+    environment,
+):
+    from app.workspace_runtime.bound_runtime import RuntimeBinding
+    from app.workspace_runtime.native_runtime import NativeAgentRuntime
+
+    async def unstarted_resources():
+        pass
+
+    attempt = await asyncio.to_thread(
+        workspace.admit,
+        journal,
+        request_id=request_id,
+        reason=reason,
+        environment=environment,
+    )
+    task_lock.ordinary_workspace = workspace
+    task_lock.run_context = replace(context, attempt_id=attempt.attempt_id)
+    # Install the live owner before the generator can start or be cancelled.
+    # A restored binding must never manufacture this no-writer attestation.
+    task_lock.ordinary_runtime = NativeAgentRuntime(
+        RuntimeBinding(
+            context.run_id,
+            workspace.owner.attempt_id,
+            workspace.handle.generation,
+            workspace.handle,
+            task_lock.environment_spec_id,
+            {},
+        ),
+        stop_resources=unstarted_resources,
+    )
+    task_lock.working_directory = str(context.working_directory)
+    task_lock.task_output_root = str(context.task_output_root)
+    task_lock.new_folder_path = None
+    await asyncio.to_thread(
+        resolver.write_task_snapshot, context.email, frozen_dirs.snapshot
+    )
+    return attempt
+
+
+async def _abort_ordinary_workspace(journal, workspace, task_lock):
+    from app.workspace_runtime.ordinary import (
+        finalize_task_lock_workspace,
+        ordinary_binding,
+    )
+
+    try:
+        if (
+            await asyncio.to_thread(
+                ordinary_binding, journal, workspace.owner.run_id
+            )
+            is None
+        ):
+            await asyncio.to_thread(workspace.discard_unadmitted, journal)
+        else:
+            await finalize_task_lock_workspace(task_lock, outcome="failed")
+    except Exception:
+        chat_logger.exception(
+            "Ordinary workspace admission cleanup requires attention"
+        )
+
+
 async def _prepare_chat_run(
     data: Chat,
     request: Request,
@@ -1408,97 +1573,132 @@ async def _prepare_chat_run(
             project_context=data.project_context,
         )
         environment = None
-        if isinstance(journal, SQLiteRunJournal):
-            template = _legacy_environment_template(data)
-            try:
-                environment = await asyncio.to_thread(
-                    EnvironmentAdmissionService(journal).persist_for_run,
-                    run_id=run_context.run_id,
-                    space_id=run_context.space_id,
-                    working_directory=run_context.working_directory,
-                    space_root=_space_root_for_run(run_context),
-                    created_by=(run_context.user_id or "local-user"),
-                    template=template,
-                )
-            except WorkspaceBundleReconfigurationPendingError as exc:
-                raise _workspace_bundle_admission_error(exc) from exc
-            except EnvironmentSetupRequiredError as exc:
-                raise _environment_setup_error(exc) from exc
-            try:
-                runtime_environment = await asyncio.to_thread(
-                    _assemble_runtime_environment,
-                    journal,
+        ordinary_workspace = None
+        try:
+            if isinstance(journal, SQLiteRunJournal):
+                # The shared provider's publication lock currently requires
+                # POSIX. Keep unsupported hosts on their existing owner path.
+                if data.session_mode == "single-agent" and os.name == "posix":
+                    (
+                        ordinary_workspace,
+                        run_context,
+                        frozen_dirs,
+                    ) = await _prepare_ordinary_workspace_context(
+                        journal, run_context, frozen_dirs, resolver, task_lock
+                    )
+                template = _legacy_environment_template(data)
+                try:
+                    environment = await asyncio.to_thread(
+                        EnvironmentAdmissionService(journal).persist_for_run,
+                        run_id=run_context.run_id,
+                        space_id=run_context.space_id,
+                        working_directory=run_context.working_directory,
+                        space_root=_space_root_for_run(run_context),
+                        created_by=(run_context.user_id or "local-user"),
+                        template=template,
+                    )
+                except WorkspaceBundleReconfigurationPendingError as exc:
+                    raise _workspace_bundle_admission_error(exc) from exc
+                except EnvironmentSetupRequiredError as exc:
+                    raise _environment_setup_error(exc) from exc
+                try:
+                    runtime_environment = await asyncio.to_thread(
+                        _assemble_runtime_environment,
+                        journal,
+                        environment.spec,
+                        run_context,
+                        getattr(
+                            request.state, "local_control_principal", None
+                        ),
+                    )
+                except EnvironmentSetupRequiredError as exc:
+                    raise _environment_setup_error(exc) from exc
+                try:
+                    _require_supported_bundle_session_mode(
+                        data.session_mode,
+                        runtime_environment,
+                    )
+                except EnvironmentSetupRequiredError as exc:
+                    raise _environment_setup_error(exc) from exc
+                _apply_environment_to_task_lock(
+                    task_lock,
                     environment.spec,
+                    template=template,
+                    runtime_environment=runtime_environment,
+                )
+            if ordinary_workspace is not None:
+                attempt = await _admit_ordinary_workspace(
+                    journal,
+                    ordinary_workspace,
                     run_context,
-                    getattr(request.state, "local_control_principal", None),
+                    frozen_dirs,
+                    resolver,
+                    task_lock,
+                    request_id=request_id,
+                    reason="initial_execution",
+                    environment=(environment.binding if environment else None),
                 )
-            except EnvironmentSetupRequiredError as exc:
-                raise _environment_setup_error(exc) from exc
-            try:
-                _require_supported_bundle_session_mode(
-                    data.session_mode,
-                    runtime_environment,
+            else:
+                attempt = await asyncio.to_thread(
+                    journal.create_run_attempt,
+                    run_context.run_id,
+                    request_id=request_id,
+                    reason="initial_execution",
+                    activate=False,
+                    environment=(environment.binding if environment else None),
                 )
-            except EnvironmentSetupRequiredError as exc:
-                raise _environment_setup_error(exc) from exc
-            _apply_environment_to_task_lock(
-                task_lock,
-                environment.spec,
-                template=template,
-                runtime_environment=runtime_environment,
-            )
-        attempt = await asyncio.to_thread(
-            journal.create_run_attempt,
-            run_context.run_id,
-            request_id=request_id,
-            reason="initial_execution",
-            activate=False,
-            environment=(environment.binding if environment else None),
-        )
-        if isinstance(journal, SQLiteRunJournal):
-            try:
-                await asyncio.to_thread(
-                    get_default_workspace_git_coordinator().admit_run,
-                    space_id=run_context.space_id,
-                    project_id=run_context.project_id,
-                    run_id=run_context.run_id,
-                    task_id=run_context.task_id,
-                    session_mode=run_context.session_mode,
-                )
-            except Exception:
-                # Git is optional at Run admission. A broken repository blocks
-                # later Git/file mutation, while pure conversation remains
-                # available for recovery and user guidance. The Attempt is
-                # created first so a failed Project lease admission can never
-                # leave a checkout writer without an owning Attempt.
-                chat_logger.warning(
-                    "Failed to pin optional Run Git workspace",
-                    extra={
+            if ordinary_workspace is None and isinstance(
+                journal, SQLiteRunJournal
+            ):
+                try:
+                    await asyncio.to_thread(
+                        get_default_workspace_git_coordinator().admit_run,
+                        space_id=run_context.space_id,
+                        project_id=run_context.project_id,
+                        run_id=run_context.run_id,
+                        task_id=run_context.task_id,
+                        session_mode=run_context.session_mode,
+                    )
+                except Exception:
+                    # Git is optional at Run admission. A broken repository blocks
+                    # later Git/file mutation, while pure conversation remains
+                    # available for recovery and user guidance. The Attempt is
+                    # created first so a failed Project lease admission can never
+                    # leave a checkout writer without an owning Attempt.
+                    chat_logger.warning(
+                        "Failed to pin optional Run Git workspace",
+                        extra={
+                            "space_id": run_context.space_id,
+                            "project_id": run_context.project_id,
+                            "run_id": run_context.run_id,
+                        },
+                        exc_info=True,
+                    )
+            await _record_canonical_user_message(
+                journal,
+                run_context=run_context,
+                request_id=request_id,
+                content=data.question,
+                source="chat",
+                attaches=data.attaches or [],
+                review_handoff_ids=data.review_handoff_ids,
+                session_model_selection=(
+                    {
                         "space_id": run_context.space_id,
-                        "project_id": run_context.project_id,
-                        "run_id": run_context.run_id,
-                    },
-                    exc_info=True,
+                        "selection": data.session_model_selection.model_dump(
+                            mode="json", by_alias=True, exclude_none=True
+                        ),
+                    }
+                    if data.session_model_selection is not None
+                    else None
+                ),
+            )
+        except BaseException:
+            if ordinary_workspace is not None:
+                await _abort_ordinary_workspace(
+                    journal, ordinary_workspace, task_lock
                 )
-        await _record_canonical_user_message(
-            journal,
-            run_context=run_context,
-            request_id=request_id,
-            content=data.question,
-            source="chat",
-            attaches=data.attaches or [],
-            review_handoff_ids=data.review_handoff_ids,
-            session_model_selection=(
-                {
-                    "space_id": run_context.space_id,
-                    "selection": data.session_model_selection.model_dump(
-                        mode="json", by_alias=True, exclude_none=True
-                    ),
-                }
-                if data.session_model_selection is not None
-                else None
-            ),
-        )
+            raise
     if attempt is not None:
         run_context = replace(run_context, attempt_id=attempt.attempt_id)
     apply_run_env_for_third_party(run_context)
@@ -1582,7 +1782,10 @@ async def start_chat_stream(data: Chat, request: Request):
     run_id = data.run_id or data.task_id
     journal = get_default_run_journal()
     await guard_legacy_execution_entry(
-        journal, project_id=data.project_id, run_id=run_id
+        journal,
+        project_id=data.project_id,
+        run_id=run_id,
+        resume=bool(getattr(data, "resume_request_id", None)),
     )
     coordinator = get_default_run_coordinator()
     if isinstance(journal, SQLiteRunJournal):
@@ -2210,9 +2413,39 @@ async def _improve_chat(
     )
     task_lock = get_task_lock(id)
 
+    journal = get_default_run_journal()
+    if isinstance(journal, SQLiteRunJournal):
+        active = await asyncio.to_thread(journal.get_active_project_run, id)
+        if active is not None:
+            # The ordinary FollowUp dispatcher retries this message after the
+            # current owner settles. Never rebind its live TaskLock here.
+            raise HTTPException(
+                status_code=409, detail="Session has an active Run"
+            )
+
     # Reuse an existing endpoint when possible to avoid tearing down
     # a browser that was manually connected through the Browser page.
     current_context = getattr(task_lock, "run_context", None)
+    previous_binding = {
+        name: getattr(task_lock, name, None)
+        for name in (
+            "working_directory",
+            "task_output_root",
+            "new_folder_path",
+            "ordinary_workspace",
+            "ordinary_runtime",
+            "environment_spec_id",
+            "permission_profile_revision",
+            "environment_admission_template",
+            "resolved_runtime_environment",
+            "thinking_effort_requested",
+            "thinking_effort_effective",
+            "provider_effort_parameter_name",
+            "provider_effort_parameter_value",
+            "provider_capability_revision",
+            "provider_model_transport",
+        )
+    }
     previous_run_id = getattr(current_context, "run_id", None)
     previous_status = task_lock.status
     port = (
@@ -2294,6 +2527,7 @@ async def _improve_chat(
                         camel_log_dir=camel_log,
                         binding_source=frozen_dirs.binding_source,
                         attempt_id=None,
+                        workspace_source_root=None,
                         browser_port=int(
                             getattr(request.state, "browser_port", port)
                         ),
@@ -2301,9 +2535,14 @@ async def _improve_chat(
                             request.state, "cdp_url", current_context.cdp_url
                         ),
                     )
-                    await asyncio.to_thread(
-                        apply_run_env_for_third_party, updated_context
-                    )
+                    if not (
+                        isinstance(journal, SQLiteRunJournal)
+                        and updated_context.session_mode == "single-agent"
+                        and os.name == "posix"
+                    ):
+                        await asyncio.to_thread(
+                            apply_run_env_for_third_party, updated_context
+                        )
                     task_lock.run_context = updated_context
                 chat_logger.info(
                     f"Updated file_save_path to: {new_folder_path}"
@@ -2348,9 +2587,14 @@ async def _improve_chat(
     if rotation_succeeded:
         coordinator = get_default_run_coordinator()
         rebound_runtime = False
+        ordinary_workspace = None
 
         async def rollback_runtime_binding() -> None:
             nonlocal rebound_runtime
+            if ordinary_workspace is not None:
+                await _abort_ordinary_workspace(
+                    journal, ordinary_workspace, task_lock
+                )
             if (
                 rebound_runtime
                 and previous_run_id is not None
@@ -2374,6 +2618,8 @@ async def _improve_chat(
                     apply_run_env_for_third_party, current_context
                 )
             task_lock.status = previous_status
+            for name, value in previous_binding.items():
+                setattr(task_lock, name, value)
             rebound_runtime = False
 
         if previous_run_id is not None:
@@ -2412,78 +2658,108 @@ async def _improve_chat(
                 project_id=refreshed_context.project_id,
                 status="pending",
             )
-        except Exception:
+        except BaseException:
             await rollback_runtime_binding()
             raise
         environment = None
+        ordinary_workspace = None
         template = getattr(
             task_lock,
             "environment_admission_template",
             None,
         )
-        if isinstance(journal, SQLiteRunJournal) and isinstance(
-            template,
-            EnvironmentAdmissionTemplate,
-        ):
-            try:
-                template = await asyncio.to_thread(
-                    template.refresh_model_capability
-                )
-                environment = await asyncio.to_thread(
-                    EnvironmentAdmissionService(journal).persist_for_run,
-                    run_id=refreshed_context.run_id,
-                    space_id=refreshed_context.space_id,
-                    working_directory=refreshed_context.working_directory,
-                    space_root=_space_root_for_run(refreshed_context),
-                    created_by=(refreshed_context.user_id or "local-user"),
-                    template=template,
-                )
-            except WorkspaceBundleReconfigurationPendingError as exc:
-                await rollback_runtime_binding()
-                raise _workspace_bundle_admission_error(exc) from exc
-            except EnvironmentSetupRequiredError as exc:
-                await rollback_runtime_binding()
-                raise _environment_setup_error(exc) from exc
-            except (
-                ModelCapabilityConfigError,
-                UnsupportedThinkingEffortError,
-            ) as exc:
-                await rollback_runtime_binding()
-                raise _model_capability_http_error(exc) from exc
-            try:
-                runtime_environment = await asyncio.to_thread(
-                    _assemble_runtime_environment,
-                    journal,
-                    environment.spec,
-                    refreshed_context,
-                    getattr(request.state, "local_control_principal", None),
-                )
-            except EnvironmentSetupRequiredError as exc:
-                await rollback_runtime_binding()
-                raise _environment_setup_error(exc) from exc
-            try:
-                _require_supported_bundle_session_mode(
-                    getattr(task_lock, "runtime_session_mode", None),
-                    runtime_environment,
-                )
-            except EnvironmentSetupRequiredError as exc:
-                await rollback_runtime_binding()
-                raise _environment_setup_error(exc) from exc
-            _apply_environment_to_task_lock(
-                task_lock,
-                environment.spec,
-                template=template,
-                runtime_environment=runtime_environment,
-            )
         try:
-            attempt = await asyncio.to_thread(
-                journal.create_run_attempt,
-                refreshed_context.run_id,
-                request_id=resolved_request_id,
-                reason="follow_up_execution",
-                activate=False,
-                environment=(environment.binding if environment else None),
-            )
+            if isinstance(journal, SQLiteRunJournal) and isinstance(
+                template,
+                EnvironmentAdmissionTemplate,
+            ):
+                if (
+                    refreshed_context.session_mode == "single-agent"
+                    and os.name == "posix"
+                ):
+                    (
+                        ordinary_workspace,
+                        refreshed_context,
+                        frozen_dirs,
+                    ) = await _prepare_ordinary_workspace_context(
+                        journal,
+                        refreshed_context,
+                        frozen_dirs,
+                        resolver,
+                        task_lock,
+                    )
+                try:
+                    template = await asyncio.to_thread(
+                        template.refresh_model_capability
+                    )
+                    environment = await asyncio.to_thread(
+                        EnvironmentAdmissionService(journal).persist_for_run,
+                        run_id=refreshed_context.run_id,
+                        space_id=refreshed_context.space_id,
+                        working_directory=refreshed_context.working_directory,
+                        space_root=_space_root_for_run(refreshed_context),
+                        created_by=(refreshed_context.user_id or "local-user"),
+                        template=template,
+                    )
+                except WorkspaceBundleReconfigurationPendingError as exc:
+                    raise _workspace_bundle_admission_error(exc) from exc
+                except EnvironmentSetupRequiredError as exc:
+                    raise _environment_setup_error(exc) from exc
+                except (
+                    ModelCapabilityConfigError,
+                    UnsupportedThinkingEffortError,
+                ) as exc:
+                    raise _model_capability_http_error(exc) from exc
+                try:
+                    runtime_environment = await asyncio.to_thread(
+                        _assemble_runtime_environment,
+                        journal,
+                        environment.spec,
+                        refreshed_context,
+                        getattr(
+                            request.state, "local_control_principal", None
+                        ),
+                    )
+                except EnvironmentSetupRequiredError as exc:
+                    raise _environment_setup_error(exc) from exc
+                try:
+                    _require_supported_bundle_session_mode(
+                        getattr(task_lock, "runtime_session_mode", None),
+                        runtime_environment,
+                    )
+                except EnvironmentSetupRequiredError as exc:
+                    raise _environment_setup_error(exc) from exc
+                _apply_environment_to_task_lock(
+                    task_lock,
+                    environment.spec,
+                    template=template,
+                    runtime_environment=runtime_environment,
+                )
+        except BaseException:
+            await rollback_runtime_binding()
+            raise
+        try:
+            if ordinary_workspace is not None:
+                attempt = await _admit_ordinary_workspace(
+                    journal,
+                    ordinary_workspace,
+                    refreshed_context,
+                    frozen_dirs,
+                    resolver,
+                    task_lock,
+                    request_id=resolved_request_id,
+                    reason="follow_up_execution",
+                    environment=(environment.binding if environment else None),
+                )
+            else:
+                attempt = await asyncio.to_thread(
+                    journal.create_run_attempt,
+                    refreshed_context.run_id,
+                    request_id=resolved_request_id,
+                    reason="follow_up_execution",
+                    activate=False,
+                    environment=(environment.binding if environment else None),
+                )
             await _record_canonical_user_message(
                 journal,
                 run_context=refreshed_context,
@@ -2498,7 +2774,7 @@ async def _improve_chat(
                 attempt_id=attempt.attempt_id,
             )
             task_lock.run_context = refreshed_context
-        except Exception:
+        except BaseException:
             await rollback_runtime_binding()
             raise
     elif data.task_id:

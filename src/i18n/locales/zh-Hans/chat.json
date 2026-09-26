@@ -457,5 +457,12 @@
   "space-model-unconfirmed": "首次会话请求尚未确认。请重新连接后重试，或手动选择会话模型。",
   "space-model-unavailable": "当前账号无法使用此模型。请检查模型设置，或为会话选择模型。",
   "space-model-ambiguous": "多个提供商与此模型匹配。请检查模型设置，或为会话选择模型。",
-  "space-model-changed": "加载期间账号或会话模型发生变化，请重新发送消息。"
+  "space-model-changed": "加载期间账号或会话模型发生变化，请重新发送消息。",
+  "workspace-integration-completed": "任务的已保存更改已整合到空间。",
+  "workspace-integration-waiting": "任务文件已保存。应用到空间正在等待访问权限或另一项更新完成。",
+  "workspace-integration-conflict": "部分更改无法整合。双方版本均已保留；解决冲突前请审查任务的已保存更改。",
+  "workspace-finalization-attention": "任务输出尚未完成保存。需要处理工作目录清理问题后才能整合更改。",
+  "workspace-preparation-waiting": "正在等待 Space 稳定，以准备此任务。",
+  "browser-resource-waiting": "正在等待可用的浏览器。其他 Session 可以继续执行。",
+  "browser-resource-acquired": "浏览器已可用，任务正在继续。"
 }

@@ -457,5 +457,12 @@
   "space-model-unconfirmed": "세션의 첫 요청이 아직 확인되지 않았습니다. 다시 연결해 재시도하거나 세션 모델을 선택하세요.",
   "space-model-unavailable": "현재 계정에서 이 모델을 사용할 수 없습니다. 모델 설정을 확인하거나 세션 모델을 선택하세요.",
   "space-model-ambiguous": "일치하는 제공업체가 여러 개입니다. 모델 설정을 확인하거나 세션 모델을 선택하세요.",
-  "space-model-changed": "로드 중 계정 또는 세션 모델이 변경되었습니다. 메시지를 다시 보내세요."
+  "space-model-changed": "로드 중 계정 또는 세션 모델이 변경되었습니다. 메시지를 다시 보내세요.",
+  "workspace-integration-completed": "저장된 작업 변경 사항을 스페이스에 반영했습니다.",
+  "workspace-integration-waiting": "작업 파일이 저장되었습니다. 스페이스에 반영하려면 접근 권한이나 다른 업데이트의 완료를 기다려야 합니다.",
+  "workspace-integration-conflict": "일부 변경 사항을 반영하지 못했습니다. 두 버전 모두 보존됩니다. 충돌을 해결하기 전에 저장된 작업 변경 사항을 검토하세요.",
+  "workspace-finalization-attention": "작업 출력을 아직 저장 중입니다. 변경 사항을 반영하려면 작업 디렉터리 정리 문제를 확인해야 합니다.",
+  "workspace-preparation-waiting": "이 작업을 준비하기 위해 Space가 안정될 때까지 기다리고 있습니다.",
+  "browser-resource-waiting": "사용 가능한 브라우저를 기다리는 중입니다. 다른 세션은 계속할 수 있습니다.",
+  "browser-resource-acquired": "브라우저를 사용할 수 있습니다. 작업을 계속합니다."
 }
