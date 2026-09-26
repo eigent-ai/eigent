@@ -60,6 +60,7 @@ import {
   useProjectSessionOverview,
 } from '@/hooks/useProjectSessionOverview';
 import { useHost } from '@/host';
+import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSkillsStore } from '@/store/skillsStore';
@@ -616,11 +617,12 @@ export function SessionActivityPanel({
   const activeTask = activeTaskId
     ? scopedChatStore?.tasks[activeTaskId]
     : undefined;
-  const workspaceRoot = useSpaceStore((state) => {
-    if (!projectId) return null;
-    const spaceId = state.projectIdIndex[projectId];
-    return spaceId ? state.spaces[spaceId]?.rootPath || null : null;
-  });
+  const runtimeSpaceId = projectId
+    ? projectStore.projects[projectId]?.spaceId
+    : undefined;
+  const workspaceRoot = useSpaceStore((state) =>
+    selectProjectWorkspaceRoot(state, projectId, runtimeSpaceId)
+  );
   const skills = useSkillsStore((state) => state.skills);
   const [connectors, setConnectors] = useState<ConnectorProvider[]>([]);
   const requestTaskBoxFocus = usePageTabStore(

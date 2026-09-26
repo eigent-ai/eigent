@@ -1315,6 +1315,15 @@ export interface ChatStore {
   setTaskAssigning: (taskId: string, taskAssigning: Agent[]) => void;
   setTaskInfo: (taskId: string, taskInfo: TaskInfo[]) => void;
   setTaskRunning: (taskId: string, taskRunning: TaskInfo[]) => void;
+  setArtifactManifest: (
+    taskId: string,
+    manifest: {
+      files: FileInfo[];
+      finalized: boolean;
+      scanStatus: string;
+      truncated: boolean;
+    }
+  ) => void;
   setActiveAsk: (taskId: string, agentName: string) => void;
   setActiveAskList: (taskId: string, message: Message[]) => void;
   addWebViewUrl: (
@@ -2339,14 +2348,30 @@ function recoverClosedTerminalResult(
     outcome === 'failed'
       ? ['run.failed', 'run.deadline_reached']
       : [`run.${outcome}`];
-  void readTerminalRunResult({
-    projectId,
-    runId: taskId,
-    throughSequence,
-    terminalEventTypes,
-    signal: controller.signal,
-  })
-    .then(({ tokens, displayEvents, assistantFinal }) => {
+  const auth = getAuthStore();
+  void Promise.all([
+    readTerminalRunResult({
+      projectId,
+      runId: taskId,
+      throughSequence,
+      terminalEventTypes,
+      signal: controller.signal,
+    }),
+    outcome === 'completed' && !task.artifactManifestFinalized
+      ? loadTaskArtifactFileList({
+          taskId,
+          projectId,
+          email: auth.email || undefined,
+          userId: auth.user_id,
+        })
+      : Promise.resolve<TaskArtifactFileListResult>({
+          canonical: false,
+          files: [],
+          scanStatus: null,
+          truncated: false,
+        }),
+  ])
+    .then(([{ tokens, displayEvents, assistantFinal }, artifactManifest]) => {
       const state = owner.getState();
       let current = state.tasks[taskId];
       if (
@@ -2359,6 +2384,19 @@ function recoverClosedTerminalResult(
         current.isPending
       )
         return;
+      if (
+        outcome === 'completed' &&
+        artifactManifest.canonical &&
+        !current.artifactManifestFinalized
+      ) {
+        state.setArtifactManifest(taskId, {
+          files: artifactManifest.files,
+          finalized: true,
+          scanStatus: artifactManifest.scanStatus || 'complete',
+          truncated: artifactManifest.truncated,
+        });
+        current = owner.getState().tasks[taskId];
+      }
       if (outcome === 'completed' && displayEvents.length) {
         const recovered = recoverCompletedRunDisplay(
           current,
@@ -6083,23 +6121,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (agentMessages.step === AgentStep.ARTIFACT_MANIFEST) {
             const lockedTaskId = getCurrentTaskId();
-            const lockedTask = getCurrentChatStore().tasks[lockedTaskId];
+            const lockedState = getCurrentChatStore();
+            const lockedTask = lockedState.tasks[lockedTaskId];
             if (!lockedTask) return;
-            lockedTask.artifactManifestFiles = normalizeTaskArtifactFileList(
-              agentMessages.data.artifacts
-            );
-            lockedTask.artifactManifestScanStatus =
-              typeof agentMessages.data.scan_status === 'string'
-                ? agentMessages.data.scan_status
-                : 'complete';
-            lockedTask.artifactManifestTruncated =
-              agentMessages.data.truncated === true;
             // A finalized manifest is the durable barrier even when discovery
             // explicitly records workspace_unavailable. Re-querying the live
             // filesystem during replay would invent a second, non-canonical
             // history and produces noisy 404s after Cloud restore.
-            lockedTask.artifactManifestFinalized = true;
-            setUpdateCount();
+            lockedState.setArtifactManifest(lockedTaskId, {
+              files: normalizeTaskArtifactFileList(
+                agentMessages.data.artifacts
+              ),
+              finalized: true,
+              scanStatus:
+                typeof agentMessages.data.scan_status === 'string'
+                  ? agentMessages.data.scan_status
+                  : 'complete',
+              truncated: agentMessages.data.truncated === true,
+            });
             return;
           }
 
@@ -7646,6 +7685,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
       computedProgressValue(taskId);
+    },
+    setArtifactManifest(taskId, manifest) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              artifactManifestFiles: [...manifest.files],
+              artifactManifestFinalized: manifest.finalized,
+              artifactManifestScanStatus: manifest.scanStatus,
+              artifactManifestTruncated: manifest.truncated,
+            },
+          },
+        };
+      });
     },
     addWebViewUrl(taskId: string, webViewUrl: string, processTaskId: string) {
       set((state) => ({
