@@ -98,6 +98,8 @@ class CdpBrowserPoolManager:
         cdp_browsers: list[dict],
         session_id: str,
         task_id: str | None = None,
+        *,
+        quiet: bool = False,
     ) -> dict | None:
         """Acquire an available browser from the pool.
 
@@ -127,10 +129,11 @@ class CdpBrowserPoolManager:
                         f"{list(self._occupied_browsers.keys())}"
                     )
                     return browser
-            logger.warning(
-                f"No available browsers for session {session_id}. "
-                f"All occupied: {list(self._occupied_browsers.keys())}"
-            )
+            if not quiet:
+                logger.warning(
+                    f"No available browsers for session {session_id}. "
+                    f"All occupied: {list(self._occupied_browsers.keys())}"
+                )
             return None
 
     def release_browser(self, port: int, session_id: str):

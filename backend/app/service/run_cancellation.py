@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from app.run_context import RunContext
@@ -26,6 +27,23 @@ async def cancel_current_turn_durable(task_lock: Any) -> bool:
     context = getattr(task_lock, "run_context", None)
     if not isinstance(context, RunContext):
         return False
+    from app.workspace_runtime.ordinary import OrdinaryWorkspace
+
+    if isinstance(
+        getattr(task_lock, "ordinary_workspace", None), OrdinaryWorkspace
+    ):
+        from app.run_journal.runtime import get_default_run_journal
+        from app.workspace_runtime.ordinary import finalize_task_lock_workspace
+
+        journal = get_default_run_journal()
+        await asyncio.to_thread(
+            journal.request_cancel,
+            context.run_id,
+            request_id=f"user-stop:{context.run_id}",
+            reason="user_stopped_turn",
+        )
+        if await finalize_task_lock_workspace(task_lock, outcome="cancelled"):
+            return True
     await get_default_run_coordinator().complete_cancelled_turn(
         context.run_id,
         request_id=f"user-stop:{context.run_id}",

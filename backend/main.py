@@ -276,6 +276,11 @@ async def startup_event():
 
     initialize_execution_service(env("EIGENT_MANAGED_EXECUTION_MANIFEST", ""))
     await start_default_execution_service()
+    from app.workspace_runtime.ordinary_publication import (
+        start_ordinary_publication,
+    )
+
+    start_ordinary_publication(get_default_run_journal())
 
 
 @api.on_event("shutdown")
@@ -293,6 +298,11 @@ async def cleanup_resources():
     # Stop new claims and drain owned preparation/execution before the shared
     # coordinator, compatibility resources or journal are closed.
     await close_default_execution_service()
+    from app.workspace_runtime.ordinary_publication import (
+        close_ordinary_publication,
+    )
+
+    await close_ordinary_publication()
 
     # Stop detached execution consumers before cleaning their compatibility
     # TaskLocks. RunJournal remains open until all producers have stopped.

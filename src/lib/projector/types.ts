@@ -192,6 +192,7 @@ export type ProjectedArtifact = {
   modifiedAt: number | null;
   uploadPolicy: string | null;
   localPathAvailable: boolean;
+  workspaceArtifact?: { runId: string; contentDigest: string };
   assetRef?: {
     chatFileId?: number;
     bucket?: string;

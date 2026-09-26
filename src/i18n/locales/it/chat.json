@@ -465,5 +465,12 @@
   "space-model-unconfirmed": "La prima richiesta della sessione non è ancora stata confermata. Riconnettiti e riprova, oppure scegli un modello per la sessione.",
   "space-model-unavailable": "Questo modello non è disponibile per l’account attuale. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
   "space-model-ambiguous": "Più provider corrispondono al modello. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
-  "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio."
+  "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio.",
+  "workspace-integration-completed": "Le modifiche salvate dell’attività sono state integrate nello spazio.",
+  "workspace-integration-waiting": "I file dell’attività sono salvati. La loro applicazione allo spazio attende l’accesso o il completamento di un altro aggiornamento.",
+  "workspace-integration-conflict": "Alcune modifiche non sono state integrate. Entrambe le versioni sono conservate; esamina le modifiche salvate dell’attività prima di risolvere il conflitto.",
+  "workspace-finalization-attention": "L’output dell’attività è ancora in fase di salvataggio. La pulizia della directory di lavoro richiede attenzione prima di integrare le modifiche.",
+  "workspace-preparation-waiting": "In attesa che lo Space sia stabile per preparare questa attività.",
+  "browser-resource-waiting": "In attesa di un browser disponibile. Le altre sessioni possono continuare.",
+  "browser-resource-acquired": "Browser disponibile. Questa attività continua."
 }

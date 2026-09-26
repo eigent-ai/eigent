@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
@@ -127,9 +128,18 @@ class SheetCell(TypedDict):
 
 
 class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
+    async def _cleanup_existing_processes(self):
+        # A matching executable path is not ownership. In particular another
+        # Session may be using the same bundled Node worker right now.
+        # The connection pool closes only its exact retained process handles.
+        return None
+
     def __init__(self, config: dict[str, Any] | None = None):
         """Initialize wrapper."""
         super().__init__(config)
+        from app.workspace_runtime.native_runtime import current_native_runtime
+
+        self._native_owner = current_native_runtime()
         logger.info(f"WebSocketBrowserWrapper using ts_dir: {self.ts_dir}")
         # Track tabs opened by this session for isolation
         self._session_tab_ids: set[str] = set()
@@ -427,6 +437,8 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
     async def start(self):
         """Start CAMEL, adding the target guard only for Electron sessions."""
         self._ensure_local_no_proxy()
+        if self._native_owner is not None:
+            return await self._start_owned_worker()
         logger.info(
             "Starting WebSocket server using parent implementation (system npm/node)"
         )
@@ -449,6 +461,58 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                     os.environ.pop("NODE_OPTIONS", None)
                 else:
                     os.environ["NODE_OPTIONS"] = previous
+
+    async def _start_owned_worker(self):
+        from camel.toolkits.hybrid_browser_toolkit import ws_wrapper
+        from nodejs_wheel.executable import ROOT_DIR
+
+        await ws_wrapper.check_and_install_dependencies(self.ts_dir)
+        # The wheel's console-script `node` spawns a subprocess. Hold the
+        # actual bundled binary so terminating its handle cannot orphan Node.
+        executable = Path(ROOT_DIR) / "bin" / "node"
+        if not executable.is_file():
+            raise RuntimeError(
+                "Owned Browser worker requires the bundled Node binary"
+            )
+        environment = dict(os.environ)
+        if self.config.get("ownedTargetUrl"):
+            hook = Path(__file__).with_name("electron_target_guard.cjs")
+            environment["NODE_OPTIONS"] = (
+                environment.get("NODE_OPTIONS", "") + f" --require={hook}"
+            ).strip()
+        self.process = subprocess.Popen(
+            [str(executable), "websocket-server.js"],
+            cwd=self.ts_dir,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            bufsize=1,
+            start_new_session=True,
+        )
+        self._server_ready_future = asyncio.get_running_loop().create_future()
+        self._log_reader_task = asyncio.create_task(
+            self._read_and_log_output()
+        )
+        try:
+            await asyncio.wait_for(self._server_ready_future, timeout=10)
+            self.websocket = await websockets.connect(
+                f"ws://127.0.0.1:{self.server_port}",
+                open_timeout=10,
+                ping_interval=30,
+                ping_timeout=10,
+                max_size=50 * 1024 * 1024,
+            )
+            self._receive_task = asyncio.create_task(self._receive_loop())
+            await self._send_command("init", self.config)
+            self._browser_opened = bool(self.config.get("cdpUrl"))
+        except BaseException:
+            # A failed initialization may already own pages. Retain that
+            # uncertainty even if stopping the concrete worker succeeds.
+            self._native_owner.note_uncontained_writer()
+            await self.stop()
+            raise
 
     async def _send_command(
         self, command: str, params: dict[str, Any]
@@ -673,6 +737,10 @@ class WebSocketConnectionPool:
                     return wrapper
                 else:
                     # Connection is unhealthy, clean it up
+                    if wrapper._native_owner is not None:
+                        raise RuntimeError(
+                            "Owned Browser connection requires settlement; it cannot be replaced"
+                        )
                     logger.info(
                         f"Removing unhealthy WebSocket connection for session {session_id}"
                     )
@@ -711,6 +779,47 @@ class WebSocketConnectionPool:
                 logger.info(
                     f"Closed WebSocket connection for session {session_id}"
                 )
+
+    async def close_owned_connection(self, session_id, wrapper):
+        """Retain an exact native handle when shutdown cannot be proven."""
+        async with self._lock:
+            registered = self._connections.get(session_id)
+            if registered is not None and registered is not wrapper:
+                raise RuntimeError("Browser connection owner changed")
+        process = wrapper.process
+        failure = (
+            RuntimeError("Browser worker disconnected before shutdown")
+            if process is not None and not wrapper.websocket
+            else None
+        )
+        try:
+            if wrapper.websocket:
+                # The worker's shutdown command swallows closeBrowser errors.
+                # Require the separate close result before stopping its process.
+                closed = await wrapper._send_command("close_browser", {})
+                if (
+                    not isinstance(closed, dict)
+                    or closed.get("success") is not True
+                ):
+                    raise RuntimeError(
+                        "Browser pages did not acknowledge close"
+                    )
+                await wrapper._send_command("shutdown", {})
+        except Exception as exc:
+            failure = exc
+        await wrapper.stop()
+        if failure is not None:
+            if wrapper._native_owner is not None:
+                wrapper._native_owner.note_uncontained_writer()
+            raise RuntimeError(
+                "Browser shutdown was not acknowledged"
+            ) from failure
+        if process is not None and process.poll() is None:
+            raise RuntimeError("Browser worker has not stopped")
+        await wrapper.cleanup_tab_tracking()
+        async with self._lock:
+            if self._connections.get(session_id) is wrapper:
+                del self._connections[session_id]
 
     async def _close_connection_unlocked(self, session_id: str):
         """Close connection without acquiring lock (for internal use)."""
@@ -769,6 +878,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         cdp_url: str | None = "http://localhost:9222",
         cdp_keep_current_page: bool = False,
         owned_target_url: str | None = None,
+        download_dir: str | None = None,
         full_visual_mode: bool = False,
     ) -> None:
         logger.info(
@@ -806,6 +916,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cache_dir=cache_dir,
             enabled_tools=enabled_tools,
             browser_log_to_file=browser_log_to_file,
+            log_dir=log_dir,
             session_id=session_id,
             default_start_url=default_start_url,
             default_timeout=default_timeout,
@@ -819,10 +930,18 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             connect_over_cdp=connect_over_cdp,
             cdp_url=cdp_url,
             cdp_keep_current_page=cdp_keep_current_page,
+            download_dir=download_dir,
             full_visual_mode=full_visual_mode,
         )
         self._owned_target_url = owned_target_url
+        from app.workspace_runtime.native_runtime import current_native_runtime
+
+        self._native_owner = current_native_runtime()
         self._allow_owned_target_clone = False
+        self._resource_acquire = None
+        self._resource_release = None
+        self._resource_lease = None
+        self._resource_lock = asyncio.Lock()
         if owned_target_url:
             self._ws_config["ownedTargetUrl"] = owned_target_url
         if self._default_timeout is not None:
@@ -845,6 +964,66 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             or self._ws_config.get("cdp_url")
             or f"http://localhost:{env('browser_port', '9222')}"
         )
+
+    def configure_resource_lease(self, acquire, release):
+        if self._native_owner is None or self._ws_wrapper is not None:
+            raise RuntimeError(
+                "Browser resource lease requires an unstarted native owner"
+            )
+        self._resource_acquire = acquire
+        self._resource_release = release
+
+    async def _record_resource_wait(self, event_type):
+        from app.run_journal.models import RunEventDraft
+        from app.run_journal.runtime import get_default_run_journal
+
+        journal = get_default_run_journal()
+        run_id = self._native_owner.binding.run_id
+        if journal.get_run(run_id) is not None:
+            await asyncio.to_thread(
+                journal.append_event,
+                run_id,
+                RunEventDraft(
+                    event_type=event_type,
+                    payload={"resource": "browser"},
+                    event_id=f"{event_type}:{run_id}:{self._session_id}",
+                ),
+            )
+
+    async def _ensure_resource_lease(self):
+        if self._resource_acquire is None or self._resource_lease is not None:
+            return
+        async with self._resource_lock:
+            waited = False
+            while self._resource_lease is None:
+                self._native_owner.require_dispatch()
+                lease = self._resource_acquire()
+                if lease is not None:
+                    self._resource_lease = lease
+                    self._ws_config["cdpUrl"] = lease["cdpUrl"]
+                    self._owned_target_url = lease.get("ownedTargetUrl")
+                    if self._owned_target_url:
+                        self._ws_config["ownedTargetUrl"] = (
+                            self._owned_target_url
+                        )
+                    else:
+                        self._ws_config.pop("ownedTargetUrl", None)
+                    if waited:
+                        await self._record_resource_wait(
+                            "browser.resource.acquired"
+                        )
+                    return
+                if not waited:
+                    await self._record_resource_wait(
+                        "browser.resource.waiting"
+                    )
+                    waited = True
+                try:
+                    await asyncio.wait_for(
+                        self._native_owner.cancelled.wait(), timeout=0.25
+                    )
+                except TimeoutError:
+                    pass
 
     def _should_prime_shared_cdp_tab(self) -> bool:
         enabled = (
@@ -876,6 +1055,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}"
         )
         global websocket_connection_pool
+        await self._ensure_resource_lease()
 
         # Get session ID from config or use default
         session_id = self._ws_config.get("session_id", "default")
@@ -945,6 +1125,11 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     ) -> "HybridBrowserToolkit":
         import uuid
 
+        if self._resource_acquire is not None:
+            raise RuntimeError(
+                "A leased Browser target requires a separate resource reservation"
+            )
+
         if self._owned_target_url and not self._allow_owned_target_clone:
             raise RuntimeError(
                 "An Electron embedded Browser Toolkit target cannot be "
@@ -992,6 +1177,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=self.config_loader.get_browser_config().cdp_keep_current_page,
             owned_target_url=self._owned_target_url,
             full_visual_mode=self._full_visual_mode,
+            download_dir=self.config_loader.get_toolkit_config().download_dir,
         )
 
     async def browser_sheet_input(
@@ -1015,8 +1201,25 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     def toolkit_name(cls) -> str:
         return "Browser Toolkit"
 
+    async def browser_close(self) -> str:
+        if self._native_owner is None:
+            return await super().browser_close()
+        await self.close()
+        return "Browser session closed."
+
     async def close(self):
         """Close the browser toolkit and release WebSocket connection."""
+        if self._native_owner is not None:
+            if self._ws_wrapper is not None:
+                await websocket_connection_pool.close_owned_connection(
+                    self._ws_config.get("session_id", "default"),
+                    self._ws_wrapper,
+                )
+                self._ws_wrapper = None
+            if self._resource_lease is not None:
+                self._resource_release(self._resource_lease)
+                self._resource_lease = None
+            return
         try:
             # Close browser if needed
             if self._ws_wrapper:

@@ -159,4 +159,6 @@ async def run_owned_thread(function, /, *args, **kwargs):
     call = asyncio.to_thread(function, *args, **kwargs)
     if owner is None:
         return await call
-    return await asyncio.shield(owner.create_task(call))
+    if asyncio.get_running_loop() is owner.loop:
+        return await asyncio.shield(owner.create_task(call))
+    return await asyncio.shield(asyncio.wrap_future(owner.schedule(call)))

@@ -80,6 +80,38 @@ class WorkspaceGitCoordinator:
             journal
         )
 
+    def ensure_project_binding(self, *, space_id: str, project_id: str):
+        """Register the visible target without admitting a shared writer."""
+        repository = self.journal.get_space_git_repository(space_id=space_id)
+        if repository is None:
+            return None
+        probe = self.git.probe(Path(repository.root_path))
+        user_ref = f"refs/heads/{probe.branch}" if probe.branch else None
+        binding = self.journal.get_project_workspace_binding(project_id)
+        if binding is None:
+            binding = self.journal.ensure_project_workspace_binding(
+                project_id=project_id,
+                repository_id=repository.repository_id,
+                checkout_id=(
+                    "checkout_"
+                    + canonical_digest(
+                        {
+                            "kind": "primary_checkout",
+                            "repository_id": repository.repository_id,
+                            "root_path_digest": repository.root_path_digest,
+                        }
+                    )[:32]
+                ),
+                checkout_mode="primary_checkout",
+                target_ref=user_ref or "refs/heads/main",
+                worktree_path=repository.root_path,
+            )
+        elif binding.repository_id != repository.repository_id:
+            raise ContentRepositoryError(
+                f"Project {project_id!r} is bound to another repository"
+            )
+        return binding
+
     def admit_run(
         self,
         *,
@@ -109,29 +141,9 @@ class WorkspaceGitCoordinator:
         status = self.content.status(repository.repository_id)
         probe = self.git.probe(Path(repository.root_path))
         user_ref = f"refs/heads/{probe.branch}" if probe.branch else None
-        binding = self.journal.get_project_workspace_binding(project_id)
-        if binding is None:
-            binding = self.journal.ensure_project_workspace_binding(
-                project_id=project_id,
-                repository_id=repository.repository_id,
-                checkout_id=(
-                    "checkout_"
-                    + canonical_digest(
-                        {
-                            "kind": "primary_checkout",
-                            "repository_id": repository.repository_id,
-                            "root_path_digest": repository.root_path_digest,
-                        }
-                    )[:32]
-                ),
-                checkout_mode="primary_checkout",
-                target_ref=user_ref or "refs/heads/main",
-                worktree_path=repository.root_path,
-            )
-        elif binding.repository_id != repository.repository_id:
-            raise ContentRepositoryError(
-                f"Project {project_id!r} is bound to another repository"
-            )
+        binding = self.ensure_project_binding(
+            space_id=space_id, project_id=project_id
+        )
         project, run = self.journal.admit_git_run_workspace(
             run_id=run_id,
             project_id=project_id,

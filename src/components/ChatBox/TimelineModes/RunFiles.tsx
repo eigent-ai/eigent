@@ -52,6 +52,7 @@ export function resolveRunFilePreview(
   file: FileInfo,
   workspaceRoot: string | null | undefined
 ): FileInfo | null {
+  if (file.workspaceArtifact && file.artifactId) return file;
   // A projected Artifact may retain its Cloud reference even after the local
   // Project workspace has been restored. Prefer that workspace copy so file
   // previews keep using Electron's bounded local loader (including the rich

@@ -1003,6 +1003,23 @@ class RunCoordinator:
         run = await asyncio.to_thread(self._journal.get_run, run_id)
         if run is None:
             return
+        from app.workspace_runtime.ordinary import (
+            finalize_task_lock_workspace,
+            ordinary_binding,
+        )
+
+        if await asyncio.to_thread(ordinary_binding, self._journal, run_id):
+            from app.service.task import get_task_lock_if_exists
+
+            task_lock = get_task_lock_if_exists(run.project_id)
+            if task_lock is not None:
+                await finalize_task_lock_workspace(
+                    task_lock,
+                    outcome="cancelled"
+                    if run.cancel_request_id
+                    else "interrupted",
+                )
+            return
         try:
             await self._quiesce_run_background_sessions(
                 run_id, project_id=run.project_id
@@ -1024,6 +1041,21 @@ class RunCoordinator:
 
     async def _finalize_artifacts_before_terminal(self, run_id: str) -> None:
         if self._journal is None:
+            return
+        from app.workspace_runtime.ordinary import ordinary_binding
+
+        if await asyncio.to_thread(ordinary_binding, self._journal, run_id):
+            # The generator's precise native owner must have settled. Never
+            # fall back to scanning mutable private or Space files here.
+            with self._journal._lock:
+                row = self._journal._connection.execute(
+                    "SELECT state FROM run_workspace_finalizations WHERE run_id=?",
+                    (run_id,),
+                ).fetchone()
+            if row is None or row[0] != "settled":
+                raise RuntimeError(
+                    "ordinary Run writer settlement is still pending"
+                )
             return
         from app.artifacts import finalize_run_artifacts
 

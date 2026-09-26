@@ -1,5 +1,12 @@
 # Session 并行执行：详细设计与交付计划
 
+默认入口的后续代码与验收边界见[实现候选记录](DEFAULT_SESSION_IMPLEMENTATION.md)。
+该候选尚未完成真实 Browser、默认配置和安装包验收，不能作为发布完成证明。
+
+1.0.5 默认普通 Session 的正式版问题、复现证据及本次修复边界见
+[发布后续记录](RELEASE_1_0_5_FOLLOWUP.md)。本页历史设计和 C6 受限验收
+不代表默认模型、普通工具或安装包已通过并行验收。
+
 状态：Draft，设计分支 `enhance/parallel-session-execution`。代码基线 `abb46a17b10d5c7ccf1c8458558bd5375bbdc347`；2026-09-18 在设计快照 `8d0cbf7a6e18bdc181f16260310465802dfc659f` 上按用户最新方向修订：隔离并行执行，系统自动整合；待同一 reviewer 复审。
 
 本分支先细化协议与实施切片，不启用新的产品行为。参考外部架构稿 `eigent-docs/refactor_docs/design/21-parallel-session-execution/README.md` 与 `HISTORY.md`。本文是仓库内的工程设计入口；所有新增类、表、接口和测试名均为拟议实现，不表示已经落地。
