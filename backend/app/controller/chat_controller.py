@@ -1349,7 +1349,11 @@ async def _abort_ordinary_workspace(journal, workspace, task_lock):
         ):
             await asyncio.to_thread(workspace.discard_unadmitted, journal)
         else:
-            await finalize_task_lock_workspace(task_lock, outcome="failed")
+            await finalize_task_lock_workspace(
+                task_lock,
+                expected_run_id=workspace.owner.run_id,
+                outcome="failed",
+            )
     except Exception:
         chat_logger.exception(
             "Ordinary workspace admission cleanup requires attention"

@@ -17,7 +17,11 @@ import threading
 
 import pytest
 
-from app.run_runtime.owned_tasks import run_owned_thread
+from app.run_runtime.owned_tasks import (
+    current_owned_tasks,
+    owned_tasks_scope,
+    run_owned_thread,
+)
 from app.workspace_runtime.bound_runtime import (
     RuntimeBinding,
     UnsettledWriters,
@@ -37,6 +41,168 @@ def binding(tmp_path, name):
         "environment",
         {},
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("other_loop", [False, True])
+async def test_handled_tool_errors_do_not_poison_turn(tmp_path, other_loop):
+    async def close():
+        pass
+
+    runtime = NativeAgentRuntime(
+        binding(tmp_path, "run"), stop_resources=close
+    )
+
+    def failed_sync_tool():
+        raise ValueError("invalid tool argument")
+
+    async def failed_async_tool():
+        raise ValueError("invalid async tool argument")
+
+    async def recover():
+        with pytest.raises(ValueError, match="invalid tool argument"):
+            await runtime.run_tool(lambda: asyncio.to_thread(failed_sync_tool))
+        with pytest.raises(ValueError, match="invalid async tool argument"):
+            await runtime.run_tool(failed_async_tool)
+        return "recovered"
+
+    async def turn(_runtime):
+        if other_loop:
+            return await run_owned_thread(lambda: asyncio.run(recover()))
+        return await recover()
+
+    assert await runtime.run(turn) == "recovered"
+    proof = await runtime.stop()
+    assert runtime.verify_settlement(proof)["outcome"] == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_known_tool_failure_can_recover_through_agent_adapter(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from camel.agents._types import ToolCallRequest
+    from camel.toolkits import FunctionTool
+
+    from app.agent.listen_chat_agent import ListenChatAgent
+    from app.run_runtime.tool_checkpoint import (
+        ToolInvocationNotDispatchedError,
+    )
+
+    def terminal_command():
+        raise ToolInvocationNotDispatchedError("no write dispatched")
+
+    agent = object.__new__(ListenChatAgent)
+    agent._internal_tools = {
+        "terminal_command": FunctionTool(terminal_command)
+    }
+    agent.api_task_id = "session"
+    agent.agent_name = "developer"
+    agent.process_task_id = "run"
+    agent._record_tool_calling = MagicMock(return_value="model-visible error")
+    lock = MagicMock()
+    lock.put_queue = AsyncMock()
+    request = ToolCallRequest(
+        tool_name="terminal_command", args={}, tool_call_id="call-pre-dispatch"
+    )
+
+    async def close():
+        pass
+
+    runtime = NativeAgentRuntime(
+        binding(tmp_path, "run"), stop_resources=close
+    )
+
+    async def turn(_runtime):
+        assert await agent._aexecute_tool(request) == "model-visible error"
+        return "successful answer after recovery"
+
+    module = "app.agent.listen_chat_agent"
+    with (
+        patch(module + ".get_task_lock", return_value=lock),
+        patch(module + ".prepare_tool_checkpoint", return_value=MagicMock()),
+        patch(module + ".authorize_tool_checkpoint", new=AsyncMock()),
+        patch(module + ".dispatch_tool_checkpoint"),
+        patch(module + ".finish_tool_checkpoint") as finish,
+    ):
+        try:
+            assert (
+                await runtime.run(turn) == "successful answer after recovery"
+            )
+            assert finish.call_args.kwargs["outcome_known"] is True
+        finally:
+            await runtime.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("other_loop", [False, True])
+async def test_unobserved_background_failure_still_fails_drain(other_loop):
+    async def failed_background_work():
+        raise RuntimeError("background cleanup failed")
+
+    with pytest.raises(RuntimeError, match="background cleanup failed"):
+        async with owned_tasks_scope():
+            owner = current_owned_tasks()
+            if other_loop:
+                await asyncio.to_thread(
+                    owner.schedule, failed_background_work()
+                )
+            else:
+                owner.create_task(failed_background_work())
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_thread_failure_still_fails_turn(tmp_path):
+    async def close():
+        pass
+
+    def failed_checkpoint():
+        raise RuntimeError("checkpoint commit failed")
+
+    runtime = NativeAgentRuntime(
+        binding(tmp_path, "run"), stop_resources=close
+    )
+
+    async def turn(_runtime):
+        with pytest.raises(RuntimeError, match="checkpoint commit failed"):
+            await run_owned_thread(failed_checkpoint)
+        return "must not succeed"
+
+    with pytest.raises(RuntimeError, match="checkpoint commit failed"):
+        await runtime.run(turn)
+    await runtime.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("other_loop", [False, True])
+async def test_cancelled_tool_waiter_retains_late_failure(other_loop):
+    entered, release = threading.Event(), threading.Event()
+
+    def failed_tool():
+        entered.set()
+        assert release.wait(5)
+        raise RuntimeError("unobserved tool failure")
+
+    async def cancel_waiter():
+        waiter = asyncio.create_task(
+            current_owned_tasks().run(asyncio.to_thread(failed_tool))
+        )
+        assert await asyncio.to_thread(entered.wait, 5)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+
+    try:
+        with pytest.raises(RuntimeError, match="unobserved tool failure"):
+            async with owned_tasks_scope():
+                if other_loop:
+                    await asyncio.to_thread(
+                        lambda: asyncio.run(cancel_waiter())
+                    )
+                else:
+                    await cancel_waiter()
+                release.set()
+    finally:
+        release.set()
 
 
 @pytest.mark.asyncio

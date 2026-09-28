@@ -1015,6 +1015,7 @@ class RunCoordinator:
             if task_lock is not None:
                 await finalize_task_lock_workspace(
                     task_lock,
+                    expected_run_id=run_id,
                     outcome="cancelled"
                     if run.cancel_request_id
                     else "interrupted",

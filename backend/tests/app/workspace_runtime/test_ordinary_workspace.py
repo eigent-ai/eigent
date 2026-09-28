@@ -14,6 +14,7 @@
 
 import asyncio
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -52,6 +53,77 @@ def admit(journal, source, run, project=None):
         stop_resources=noop,
     )
     return workspace, runtime
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "cancel_method", ["cancel_durable", "complete_cancelled_turn"]
+)
+async def test_cancel_retry_leaves_new_run_in_same_session_running(
+    tmp_path, monkeypatch, cancel_method
+):
+    from app.run_journal.runtime import run_journal_scope
+    from app.run_runtime import RunCoordinator
+    from app.service import task as task_module
+
+    monkeypatch.setattr(
+        "app.workspace_runtime.ordinary.ordinary_publication_authorized",
+        lambda *_: True,
+    )
+    source = tmp_path / "space"
+    source.mkdir()
+    with (
+        SQLiteRunJournal(tmp_path / "journal.sqlite") as journal,
+        run_journal_scope(journal),
+    ):
+        previous, previous_runtime = admit(journal, source, "old", "session")
+        journal.request_cancel(
+            "old", request_id="stop-old", reason="explicit_cancel"
+        )
+        await finalize_ordinary_workspace(
+            journal, previous, previous_runtime, "", "cancelled"
+        )
+        workspace, runtime = admit(journal, source, "new", "session")
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def turn(_runtime):
+            entered.set()
+            await release.wait()
+            (workspace.handle.local_root / "new.txt").write_text("new Run")
+            return "done"
+
+        caller = asyncio.create_task(runtime.run(turn))
+        await asyncio.wait_for(entered.wait(), 2)
+        lock = SimpleNamespace(
+            ordinary_workspace=workspace,
+            ordinary_runtime=runtime,
+            run_context=SimpleNamespace(run_id="new"),
+        )
+        monkeypatch.setattr(task_module, "task_locks", {"session": lock})
+        coordinator = RunCoordinator(journal=journal)
+        try:
+            for _ in range(2):
+                cancelled = await getattr(coordinator, cancel_method)(
+                    "old", request_id="stop-old", reason="explicit_cancel"
+                )
+                assert cancelled.status == "cancelled"
+                assert journal.get_run("new").status == "running"
+                assert (
+                    journal.get_active_project_run("session").run_id == "new"
+                )
+                assert not runtime.cancelled.is_set()
+                assert not caller.done()
+            release.set()
+            result = await asyncio.wait_for(caller, 2)
+            await finalize_ordinary_workspace(
+                journal, workspace, runtime, result, "completed"
+            )
+            assert journal.get_run("new").status == "completed"
+            assert (source / "new.txt").read_text() == "new Run"
+        finally:
+            release.set()
+            await runtime.stop()
+            await asyncio.gather(caller, return_exceptions=True)
 
 
 @pytest.mark.asyncio

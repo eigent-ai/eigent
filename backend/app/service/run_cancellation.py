@@ -42,7 +42,9 @@ async def cancel_current_turn_durable(task_lock: Any) -> bool:
             request_id=f"user-stop:{context.run_id}",
             reason="user_stopped_turn",
         )
-        if await finalize_task_lock_workspace(task_lock, outcome="cancelled"):
+        if await finalize_task_lock_workspace(
+            task_lock, expected_run_id=context.run_id, outcome="cancelled"
+        ):
             return True
     await get_default_run_coordinator().complete_cancelled_turn(
         context.run_id,

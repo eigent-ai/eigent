@@ -1398,6 +1398,16 @@ class ListenChatAgent(ChatAgent):
 
             runtime = current_native_runtime()
 
+            async def call_sync_tool():
+                if runtime is not None:
+                    # A model-visible tool error may be handled and retried.
+                    # Keep checkpoint and cleanup threads on the strict
+                    # run_owned_thread path: their failures must fail drain.
+                    return await runtime.run_tool(
+                        lambda: asyncio.to_thread(tool, **args)
+                    )
+                return await run_owned_thread(tool, **args)
+
             async def authorization():
                 return await authorize_tool_checkpoint(
                     checkpoint,
@@ -1447,7 +1457,7 @@ class ListenChatAgent(ChatAgent):
                     # the Run/tool checkpoints needed by child-agent tool
                     # callbacks while the queue consumer stays responsive.
                     if hasattr(tool, "is_async") and not tool.is_async:
-                        result = await run_owned_thread(tool, **args)
+                        result = await call_sync_tool()
                         # Handle case where sync call returns a coroutine
                         if inspect.isawaitable(result):
                             result = await result
@@ -1469,7 +1479,7 @@ class ListenChatAgent(ChatAgent):
                     # Fallback sync call. to_thread propagates ContextVars and
                     # prevents a blocking AgentToolkit wait from starving
                     # approvals, timeline events, and child progress updates.
-                    result = await run_owned_thread(tool, **args)
+                    result = await call_sync_tool()
                     # Handle case where synchronous call returns a coroutine
                     if inspect.isawaitable(result):
                         result = await result

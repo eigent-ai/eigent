@@ -596,13 +596,17 @@ async def single_agent_solve(
         except Exception as error:
             await finalize_task_lock_workspace(
                 task_lock,
+                expected_run_id=task_id,
                 outcome="interrupted"
                 if _is_retryable_turn_error(error)
                 else "failed",
             )
             raise
         await finalize_task_lock_workspace(
-            task_lock, result=result[0], outcome="completed"
+            task_lock,
+            expected_run_id=task_id,
+            result=result[0],
+            outcome="completed",
         )
         return result
 
@@ -909,6 +913,7 @@ async def single_agent_solve(
             run = journal.get_run(workspace.owner.run_id)
             await finalize_task_lock_workspace(
                 task_lock,
+                expected_run_id=workspace.owner.run_id,
                 outcome="cancelled"
                 if run and run.cancel_request_id
                 else "interrupted",

@@ -137,11 +137,7 @@ class NativeAgentRuntime:
             raise UnsettledWriters("native tool has no owning turn")
         # Async MCP/Browser requests need retention just as sync tool threads
         # do. Cancelling the model waiter must not abandon an in-flight write.
-        if asyncio.get_running_loop() is owner.loop:
-            return await asyncio.shield(owner.create_task(handler()))
-        return await asyncio.shield(
-            asyncio.wrap_future(owner.schedule(handler()))
-        )
+        return await owner.run(handler())
 
     async def wait_for_user(self, handler):
         """Cancel approval/input waiters, never a dispatched tool writer."""

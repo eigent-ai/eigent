@@ -328,14 +328,18 @@ async def finalize_ordinary_workspace(
     )
 
 
-async def finalize_task_lock_workspace(task_lock, *, result="", outcome):
+async def finalize_task_lock_workspace(
+    task_lock, *, expected_run_id, result="", outcome
+):
+    """Settle only the requested Run, even if its Session has moved on."""
     workspace = getattr(task_lock, "ordinary_workspace", None)
     runtime = getattr(task_lock, "ordinary_runtime", None)
     context = getattr(task_lock, "run_context", None)
     if (
         not isinstance(workspace, OrdinaryWorkspace)
         or context is None
-        or workspace.owner.run_id != context.run_id
+        or context.run_id != expected_run_id
+        or workspace.owner.run_id != expected_run_id
     ):
         return False
     if runtime is None or runtime.binding.run_id != context.run_id:
