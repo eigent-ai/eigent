@@ -2647,15 +2647,21 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                     }
                 )
             )
-            await asyncio.to_thread(
+            _, decision_applied = await asyncio.to_thread(
                 journal.resolve_human_interaction,
                 interaction.interaction_id,
+                include_transition=True,
                 decision_request_id=request_id,
                 decision=reply_decision,
                 expected_version=interaction.version,
                 expected_run_id=run_context.run_id,
                 continue_active_attempt=True,
             )
+            if not decision_applied:
+                # An overlapping retry read the same pending interaction, but
+                # only the transaction owner may answer a live waiter or emit
+                # the legacy mirror. Reuse the journal's atomic ownership bit.
+                return Response(status_code=201)
             resolved_interaction_id = interaction.interaction_id
             try:
                 from app.run_sync.runtime import (

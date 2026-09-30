@@ -1850,6 +1850,10 @@ class TestChatController:
         mock_request,
         controller_run_journal,
     ):
+        controller_run_journal.resolve_human_interaction.return_value = (
+            SimpleNamespace(status="resolved"),
+            True,
+        )
         task_id = "test_task_stale_approval"
         mock_task_lock.run_context = RunContext(
             space_id="space-1",
