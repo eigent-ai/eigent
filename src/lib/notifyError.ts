@@ -17,6 +17,7 @@ import {
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
 import { toast } from 'sonner';
+import { ownErrorField } from './errorEnvelope';
 import {
   classifyError,
   errorCopy,
@@ -65,10 +66,14 @@ export function notifyError(
   executionId?: string
 ) {
   const { account, modelType } = useUsageNoticeStore.getState();
+  const elementType = ownErrorField(message, '$$typeof');
+  const envelope =
+    message !== null &&
+    typeof message === 'object' &&
+    elementType !== Symbol.for('react.element') &&
+    elementType !== Symbol.for('react.transitional.element');
   const reason = reportError(
-    message instanceof Error
-      ? message
-      : { message, detail: options?.description },
+    envelope ? message : { message, detail: options?.description },
     { modelType, executionId },
     account
   );
@@ -95,22 +100,20 @@ export function notifyError(
     'rate-limit',
   ].includes(reason)
     ? errorPresentationReason(
-        message instanceof Error
-          ? message
-          : { message, detail: options?.description },
+        envelope ? message : { message, detail: options?.description },
         { modelType }
       )
     : reason;
-  const text = message instanceof Error ? message.message : message;
-  const raw =
-    isRawErrorMessage(text) ||
-    (message instanceof Error && 'response' in message);
+  const text = envelope ? ownErrorField(message, 'message') : message;
+  const raw = isRawErrorMessage(text) || envelope;
   const safeOptions =
     options && isRawErrorMessage(options.description)
       ? { ...options, description: errorCopy(presentationReason) }
       : options;
   return toast.error(
-    raw || reason === 'model-restricted' ? errorCopy(presentationReason) : text,
+    raw || reason === 'model-restricted'
+      ? errorCopy(presentationReason)
+      : (text as Parameters<typeof toast.error>[0]),
     safeOptions
   );
 }

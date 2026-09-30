@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { notifyExecutionError, reportError } from '@/lib/notifyError';
+import { sanitizeResponseError } from '@/lib/responseError';
 import {
   acknowledgeUsageNotice,
   confirmCloudRecovery,
@@ -176,4 +177,81 @@ it('keeps detailed unknown backend failures visible beside an existing incident'
   });
   notifyExecutionError(error, undefined, 'execution-a');
   expect(mocks.error).toHaveBeenCalledWith('chat.notice-task', undefined);
+});
+
+it('keeps the report and notification boundaries safe for getters, cycles and hostile proxies', () => {
+  setUsageAccount(null);
+  const getter = vi.fn(() => {
+    throw new Error('getter executed');
+  });
+  const accessor = Object.create(null);
+  for (const key of [
+    'message',
+    'response',
+    'detail',
+    'data',
+    'status',
+    'cause',
+    'usageReason',
+    '$$typeof',
+  ]) {
+    Object.defineProperty(accessor, key, { get: getter });
+  }
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  const cycle: Record<string, unknown> = {};
+  cycle.error = cycle;
+  for (const value of [
+    accessor,
+    cycle,
+    revoked.proxy,
+    Object.create({ message: 'SYNTHETIC_PRIVATE' }),
+    new Proxy(
+      {},
+      {
+        get() {
+          throw new Error('get');
+        },
+        getPrototypeOf() {
+          throw new Error('prototype');
+        },
+        getOwnPropertyDescriptor() {
+          throw new Error('descriptor');
+        },
+      }
+    ),
+  ]) {
+    mocks.error.mockClear();
+    expect(reportError(value)).toBe('task');
+    expect(() => notifyExecutionError(value as Error)).not.toThrow();
+    expect(mocks.error).toHaveBeenCalledWith('chat.notice-task', undefined);
+    expect(sanitizeResponseError(value as Error, 'task', true).message).toBe(
+      'chat.notice-task'
+    );
+  }
+  expect(getter).not.toHaveBeenCalled();
+  expect(useUsageNoticeStore.getState().incidents).toEqual([]);
+});
+
+it('retains own diagnostics while sanitizing a frozen error without executing setters', () => {
+  const response = { status: 402, data: { detail: 'SYNTHETIC_PRIVATE' } };
+  const error = Object.freeze(
+    Object.assign(new Error('SYNTHETIC_PRIVATE'), { status: 402, response })
+  );
+  expect(sanitizeResponseError(error, 'task')).toMatchObject({
+    message: 'chat.notice-task',
+    cause: 'SYNTHETIC_PRIVATE',
+    status: 402,
+    response,
+  });
+  const setter = vi.fn();
+  const withSetter = Object.defineProperty(
+    new Error('SYNTHETIC_PRIVATE'),
+    'cause',
+    { set: setter, configurable: true }
+  );
+  expect(sanitizeResponseError(withSetter, 'task', true).message).toBe(
+    'chat.notice-task'
+  );
+  expect(setter).not.toHaveBeenCalled();
 });

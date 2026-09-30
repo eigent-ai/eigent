@@ -13,6 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import i18n from 'i18next';
+import {
+  ERROR_DEPTH_LIMIT,
+  ERROR_NODE_LIMIT,
+  ERROR_TEXT_LIMIT,
+  ownErrorField,
+  parseErrorLiteral,
+} from './errorEnvelope';
 
 export type UsageReason =
   | 'credits'
@@ -70,9 +77,24 @@ export const isUsageReason = (reason: ErrorReason): reason is UsageReason =>
   ].includes(reason);
 
 function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object'
-    ? (value as Record<string, unknown>)
-    : {};
+  const result: Record<string, unknown> = Object.create(null);
+  for (const key of [
+    'usageReason',
+    'response',
+    'data',
+    'detail',
+    'error',
+    'message',
+    'text',
+    'code',
+    'reason',
+    'type',
+    'status',
+    'cause',
+  ]) {
+    result[key] = ownErrorField(value, key);
+  }
+  return result;
 }
 
 /** Read structured envelopes first. Legacy Python repr is only matched, never evaluated. */
@@ -209,7 +231,7 @@ export function errorPresentationReason(
   const seen = new Set<unknown>();
   let fallback: ErrorReason = 'task';
   let messageReason: ErrorReason | null = null;
-  let remaining = 32;
+  let remaining = ERROR_NODE_LIMIT;
   const signal = (code: unknown): ErrorReason => {
     if (typeof code !== 'string' && typeof code !== 'number') return 'task';
     switch (String(code)) {
@@ -233,30 +255,53 @@ export function errorPresentationReason(
   };
   while (pending.length && remaining-- > 0) {
     const { value: current, depth } = pending.shift()!;
-    if (depth > 6 || current == null || seen.has(current)) continue;
+    if (depth > ERROR_DEPTH_LIMIT || current == null || seen.has(current))
+      continue;
     seen.add(current);
     let reason: ErrorReason = 'task';
     if (typeof current === 'string') {
-      if (current.length > 8192) continue;
-      // JSON may itself contain another serialized message. Python repr is
-      // matched only for known scalar fields; no eval or quote replacement.
-      try {
-        const parsed: unknown = JSON.parse(current);
-        if (parsed !== current) {
+      if (current.length > ERROR_TEXT_LIMIT) continue;
+      // Only strip complete, recognized transport/display prefixes. The rest
+      // must parse as one literal; never search its unknown fields for codes.
+      const text = current
+        .trim()
+        .replace(
+          /^❌\s*\*\*(?:Error|Fehler|Erreur|Ошибка|错误|錯誤|エラー|오류|خطأ)\*\*\s*[:：]\s*/,
+          ''
+        )
+        .replace(/^Errore:\s*(?=Error code:|HTTP \d{3}|\{)/, '')
+        .replace(
+          /^Run (?:admission did not return an event stream: |stream returned )/,
+          ''
+        );
+      const prefix =
+        /^(?:Error code:\s*(\d{3})\s*-\s*|(?:HTTP\s+)?(\d{3}):\s*)/.exec(text);
+      const literal = prefix ? text.slice(prefix[0].length) : text;
+      if (/^[{["']/.test(literal)) {
+        try {
+          const parsed = parseErrorLiteral(literal, depth);
           pending.push({ value: parsed, depth: depth + 1 });
-          continue;
+          if (prefix) {
+            const statusReason = classifyError(
+              { status: Number(prefix[1] ?? prefix[2]) },
+              context
+            );
+            if (statusReason !== 'task') fallback = statusReason;
+          }
+        } catch {
+          // Malformed, oversized, or overly nested diagnostics stay generic.
         }
-      } catch {
-        // Legacy HTTP/SDK prefixes and Python repr are not JSON.
+        continue;
       }
-      const fields = current.matchAll(
-        /["'](?:reason|type|code)["']\s*:\s*["']([a-zA-Z0-9_]{1,80})["']/g
-      );
-      for (const field of fields) {
-        const matched = signal(field[1]);
-        if (matched !== 'task') return matched;
-      }
-      reason = classifyError(current, context);
+      // Braces in unrecognized prefixes / malformed literals are diagnostics,
+      // not natural-language evidence of a billing cause.
+      if (/[{}\[\]]/.test(literal)) continue;
+      reason = classifyError(literal, context);
+      if (prefix && reason === 'task')
+        reason = classifyError(
+          { status: Number(prefix[1] ?? prefix[2]) },
+          context
+        );
     } else if (typeof current === 'object') {
       const item = record(current);
       for (const code of [item.reason, item.type, item.code]) {
@@ -279,7 +324,7 @@ export function errorPresentationReason(
         'text',
         'cause',
       ]) {
-        if (item[field] != null && pending.length < 32)
+        if (item[field] != null && pending.length < ERROR_NODE_LIMIT)
           pending.push({ value: item[field], depth: depth + 1 });
       }
     }

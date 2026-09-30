@@ -17,7 +17,7 @@ import {
   errorCopy,
   errorPresentationReason,
 } from '@/lib/usageErrors';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const cases = [
   ['budget_exceeded', 'credits'],
@@ -39,6 +39,8 @@ describe('error presentation (no incident or admission side effects)', () => {
         JSON.stringify({ detail: { code } }),
         { message: JSON.stringify({ error: { type: code } }) },
         `Error code: 403 - {'error': {'message': "403: {'reason': '${code}'}", 'code': '403'}}`,
+        `❌ **Fehler**: Error code: 403 - {'detail': {'reason': '${code}'}}`,
+        `Errore: Error code: 403 - {'detail': {'reason': '${code}'}}`,
       ];
       for (const value of shapes) {
         const before = structuredClone(value);
@@ -120,5 +122,97 @@ describe('error presentation (no incident or admission side effects)', () => {
     expect(classifyError(value)).toBe('model-unavailable');
     expect(errorPresentationReason(value)).toBe('trial-daily');
     expect(classifyError(value)).toBe('model-unavailable');
+  });
+});
+
+describe('reviewed untrusted presentation boundaries', () => {
+  it.each([
+    "{'unknown': {'reason': 'trial_daily_exhausted'}}",
+    "{'__proto__': {'reason': 'trial_daily_exhausted'}}",
+    `Error code: 402 - {"unknown":{"reason":"trial_daily_exhausted"}}`,
+    `Error code: 402 - {'unknown': {'reason': 'trial_daily_exhausted'}}`,
+    `HTTP 402: {'__proto__': {'reason': 'trial_daily_exhausted'}}`,
+    `${"{'error': ".repeat(8)}{'reason': 'trial_daily_exhausted'}${'}'.repeat(8)}`,
+    `Error code: 402 - ${JSON.stringify({ error: { error: { error: { error: { error: { error: { error: { reason: 'trial_daily_exhausted' } } } } } } } })}`,
+  ])('does not find causes outside allowed paths or limits: %s', (payload) => {
+    expect(errorPresentationReason(payload)).toBe('task');
+  });
+
+  it.each([
+    'message',
+    'response',
+    'data',
+    'text',
+    'detail',
+    'error',
+    'reason',
+    'type',
+    'code',
+    'status',
+    'cause',
+    'usageReason',
+  ])('does not execute a %s accessor', (field) => {
+    const getter = vi.fn(() => {
+      throw new Error('getter executed');
+    });
+    const value = Object.defineProperty({}, field, { get: getter });
+    expect(errorPresentationReason(value)).toBe('task');
+    expect(classifyError(value)).toBe('task');
+    expect(getter).not.toHaveBeenCalled();
+  });
+  it.each([
+    Object.create({ reason: 'trial_daily_exhausted' }),
+    Object.create({ detail: { reason: 'trial_daily_exhausted' } }),
+    Object.create({ message: 'Budget has been exceeded!' }),
+    new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error('descriptor trap');
+        },
+      }
+    ),
+    new Proxy(
+      {},
+      {
+        get() {
+          throw new Error('get trap');
+        },
+      }
+    ),
+    Proxy.revocable({}, {}),
+  ])('rejects inherited fields and hostile descriptors', (input) => {
+    let value = input;
+    if ('revoke' in input) {
+      input.revoke();
+      value = input.proxy;
+    }
+    expect(errorPresentationReason(value)).toBe('task');
+    expect(classifyError(value)).toBe('task');
+  });
+
+  it.each([
+    "{'reason': 'trial_daily_exhausted', 'reason': 'future_policy'}",
+    "{'reason': 'trial_daily_exhausted'} trailing text",
+    "dict(reason='trial_daily_exhausted')",
+    "{'reason': __import__('os').system('trial_daily_exhausted')}",
+    JSON.stringify({
+      ignored: Array(40).fill(null),
+      reason: 'trial_daily_exhausted',
+    }),
+    JSON.stringify({
+      ignored: 'x'.repeat(8192),
+      reason: 'trial_daily_exhausted',
+    }),
+  ])('rejects malformed or over-budget literals as a whole: %s', (value) => {
+    expect(errorPresentationReason(value)).toBe('task');
+  });
+
+  it('accepts bounded Python literals without evaluating their contents', () => {
+    expect(
+      errorPresentationReason(
+        "{'detail': {'reason': 'trial_daily_exhausted', 'message': 'can\\'t start'}, 'unused': [None, True, False, 2,],}"
+      )
+    ).toBe('trial-daily');
   });
 });

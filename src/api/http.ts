@@ -16,7 +16,7 @@ import { showStorageToast } from '@/components/Toast/storageToast';
 import { createHost } from '@/host/createHost';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { reportError } from '@/lib/notifyError';
-import { errorCopy, isRawErrorMessage, isUsageReason } from '@/lib/usageErrors';
+import { sanitizeResponseError } from '@/lib/responseError';
 import { getAuthStore } from '@/store/authStore';
 import {
   getConnectionConfig,
@@ -327,19 +327,7 @@ async function handleResponse(
       { modelType: requestData?.api_url === 'cloud' ? 'cloud' : undefined },
       requestAccount
     );
-    if (
-      isUsageReason(reason) ||
-      (err?.response &&
-        ([402, 403, 429, 500, 502, 503, 504].includes(err.status) ||
-          isRawErrorMessage(err.message)))
-    ) {
-      // Keep the response for diagnostics/classification, but sanitize catch-handler copy.
-      // Use the existing incident reason here; refined presentation must not
-      // create a new account-wide gate when a caller forwards only the message.
-      err.cause ??= err.message;
-      err.message = errorCopy(reason);
-      err.usageReason = reason;
-    }
+    err = sanitizeResponseError(err, reason);
 
     console.error('[fetch error]:', err);
 
