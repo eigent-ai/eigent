@@ -107,6 +107,7 @@ function fromArtifact(
           ? artifact.uploadPolicy
           : undefined,
       localPathAvailable: artifact.localPathAvailable,
+      workspaceArtifact: artifact.workspaceArtifact,
       assetRef: artifact.assetRef,
       isRemote: !artifact.localPathAvailable && Boolean(artifact.assetRef),
     },

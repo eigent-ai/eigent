@@ -12721,6 +12721,13 @@ class SQLiteRunJournal:
                 "workspace and execution context; start a new Run or fork it "
                 "after explicitly binding a workspace"
             )
+        if connection.execute(
+            "SELECT 1 FROM run_workspace_bindings WHERE run_id=? AND policy_version=?",
+            (run_id, "ordinary-single-v1"),
+        ).fetchone():
+            raise InvalidRunTransitionError(
+                "Private workspace Resume requires a fenced ownership transfer"
+            )
         if run["status"] in {"completed", "failed", "cancelled"}:
             raise InvalidRunTransitionError(
                 f"cannot create an attempt for terminal run {run_id!r}"

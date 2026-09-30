@@ -16,7 +16,7 @@
 
 Filesystem/process work happens before the final journal transaction. Artifact
 reads resolve only retained CAS objects; no mutable directory or legacy artifact
-scanner is consulted. This adapter accepts only BoundRuntime's live stop proof.
+scanner is consulted. Both runtime adapters must supply their exact live settlement proof.
 """
 
 from __future__ import annotations
@@ -30,6 +30,11 @@ from typing import TYPE_CHECKING, Any
 from .admission import ExecutionRequest
 from .bound_runtime import BoundRuntime, VerifiedSettlement
 from .content import ContentIntegrityError, canonical_json, content_digest
+from .native_runtime import (
+    NATIVE_POLICY_VERSION,
+    NativeAgentRuntime,
+    NativeRunOwner,
+)
 from .provider import (
     DirectoryWorkspaceProvider,
     WorkspaceHandle,
@@ -55,25 +60,41 @@ class WorkspaceFinalizer:
     def _owner(
         self,
         connection: sqlite3.Connection,
-        request: ExecutionRequest,
-        runtime: BoundRuntime,
+        request: ExecutionRequest | NativeRunOwner,
+        runtime: BoundRuntime | NativeAgentRuntime,
     ) -> sqlite3.Row:
         owner = runtime.binding
-        durable = connection.execute(
-            """SELECT project_id,intent_digest,status,admitted_run_id,
-            admitted_attempt_id FROM execution_requests WHERE request_id=?""",
-            (request.request_id,),
-        ).fetchone()
-        if durable is None or tuple(durable) != (
-            request.project_id,
-            request.intent_digest,
-            "admitted",
-            owner.run_id,
-            owner.attempt_id,
-        ):
-            raise WorkspaceFenceLost(
-                "execution request does not own finalization"
-            )
+        if isinstance(request, NativeRunOwner):
+            policy = connection.execute(
+                """SELECT policy_version FROM run_workspace_bindings
+                WHERE run_id=? AND attempt_id=? AND generation=?""",
+                (owner.run_id, owner.attempt_id, owner.generation),
+            ).fetchone()
+            if (
+                (request.run_id, request.attempt_id)
+                != (owner.run_id, owner.attempt_id)
+                or policy is None
+                or policy[0] != NATIVE_POLICY_VERSION
+            ):
+                raise WorkspaceFenceLost(
+                    "ordinary Run does not own finalization"
+                )
+        else:
+            durable = connection.execute(
+                """SELECT project_id,intent_digest,status,admitted_run_id,
+                admitted_attempt_id FROM execution_requests WHERE request_id=?""",
+                (request.request_id,),
+            ).fetchone()
+            if durable is None or tuple(durable) != (
+                request.project_id,
+                request.intent_digest,
+                "admitted",
+                owner.run_id,
+                owner.attempt_id,
+            ):
+                raise WorkspaceFenceLost(
+                    "execution request does not own finalization"
+                )
         row = self.state._finalizer(
             connection, owner.run_id, owner.attempt_id, owner.generation
         )
@@ -102,8 +123,8 @@ class WorkspaceFinalizer:
 
     def _assert_owner(
         self,
-        request: ExecutionRequest,
-        runtime: BoundRuntime,
+        request: ExecutionRequest | NativeRunOwner,
+        runtime: BoundRuntime | NativeAgentRuntime,
         proof: VerifiedSettlement,
         handle: WorkspaceHandle,
     ) -> None:
@@ -115,8 +136,8 @@ class WorkspaceFinalizer:
 
     async def finalize(
         self,
-        request: ExecutionRequest,
-        runtime: BoundRuntime,
+        request: ExecutionRequest | NativeRunOwner,
+        runtime: BoundRuntime | NativeAgentRuntime,
         provider: DirectoryWorkspaceProvider,
         result: str,
         outcome: str,
@@ -196,8 +217,8 @@ class WorkspaceFinalizer:
 
     def _checkpoint(
         self,
-        request: ExecutionRequest,
-        runtime: BoundRuntime,
+        request: ExecutionRequest | NativeRunOwner,
+        runtime: BoundRuntime | NativeAgentRuntime,
         provider: DirectoryWorkspaceProvider,
         proof: VerifiedSettlement,
     ) -> tuple[WorkspaceRevision, dict[str, str]]:
@@ -239,7 +260,7 @@ class WorkspaceFinalizer:
 
     @staticmethod
     def _artifact_payload(
-        runtime: BoundRuntime,
+        runtime: BoundRuntime | NativeAgentRuntime,
         provider: DirectoryWorkspaceProvider,
         checkpoint: WorkspaceRevision,
         provenance: dict[str, str],
@@ -285,6 +306,8 @@ class WorkspaceFinalizer:
         }
         if checkpoint.provider == "git":
             payload["git_checkpoint"] = {
+                "base_commit": checkpoint.overlay_preimage_commit
+                or owner.workspace.input_commit,
                 "commit": checkpoint.git_commit,
                 "tree": checkpoint.git_tree,
                 "ref": checkpoint.git_ref,
@@ -293,8 +316,8 @@ class WorkspaceFinalizer:
 
     def _commit(
         self,
-        request: ExecutionRequest,
-        runtime: BoundRuntime,
+        request: ExecutionRequest | NativeRunOwner,
+        runtime: BoundRuntime | NativeAgentRuntime,
         checkpoint: WorkspaceRevision,
         provenance: dict[str, str],
         payload: dict[str, Any],
@@ -448,17 +471,9 @@ class WorkspaceFinalizer:
             )
             return True
 
-    def read_artifact(
-        self,
-        *,
-        run_id: str,
-        artifact_id: str,
-        provider: DirectoryWorkspaceProvider,
-        offset: int = 0,
-        length: int | None = None,
-    ) -> bytes:
-        if offset < 0 or (length is not None and length < 0):
-            raise ValueError("invalid artifact byte range")
+    def artifact_manifest(
+        self, *, run_id: str, provider: DirectoryWorkspaceProvider
+    ) -> dict:
         with self.journal._lock:
             final = self.journal._connection.execute(
                 "SELECT * FROM run_workspace_finalizations WHERE run_id=?",
@@ -478,6 +493,20 @@ class WorkspaceFinalizer:
             != final["checkpoint_revision"]
         ):
             raise ContentIntegrityError("artifact manifest owner differs")
+        return payload
+
+    def read_artifact(
+        self,
+        *,
+        run_id: str,
+        artifact_id: str,
+        provider: DirectoryWorkspaceProvider,
+        offset: int = 0,
+        length: int | None = None,
+    ) -> bytes:
+        if offset < 0 or (length is not None and length < 0):
+            raise ValueError("invalid artifact byte range")
+        payload = self.artifact_manifest(run_id=run_id, provider=provider)
         artifact = next(
             (
                 item

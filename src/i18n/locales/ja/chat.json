@@ -457,5 +457,12 @@
   "space-model-unconfirmed": "セッションの最初のリクエストはまだ確認されていません。再接続して再試行するか、セッションのモデルを選択してください。",
   "space-model-unavailable": "このアカウントではモデルを利用できません。モデル設定を確認するか、セッションのモデルを選択してください。",
   "space-model-ambiguous": "複数のプロバイダーが一致しています。モデル設定を確認するか、セッションのモデルを選択してください。",
-  "space-model-changed": "読み込み中にアカウントまたはセッションのモデルが変更されました。メッセージを再送信してください。"
+  "space-model-changed": "読み込み中にアカウントまたはセッションのモデルが変更されました。メッセージを再送信してください。",
+  "workspace-integration-completed": "保存されたタスクの変更をスペースに反映しました。",
+  "workspace-integration-waiting": "タスクのファイルは保存済みです。スペースへの反映は、アクセス権限または別の更新の完了を待っています。",
+  "workspace-integration-conflict": "一部の変更を反映できませんでした。両方のバージョンを保持しています。競合を解決する前に、保存されたタスクの変更を確認してください。",
+  "workspace-finalization-attention": "タスクの出力をまだ保存中です。変更を反映する前に、作業ディレクトリのクリーンアップを確認する必要があります。",
+  "workspace-preparation-waiting": "このタスクを準備するため、Space が安定するのを待っています。",
+  "browser-resource-waiting": "利用可能なブラウザーを待っています。他のセッションは続行できます。",
+  "browser-resource-acquired": "ブラウザーが利用可能になりました。タスクを続行しています。"
 }

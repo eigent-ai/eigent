@@ -56,6 +56,8 @@ class RunContext:
     # Bound after durable Attempt admission and then inherited by child tasks.
     # Preparation code may temporarily carry ``None`` before an Attempt exists.
     attempt_id: str | None = None
+    # Visible publication target for a private ordinary Run. Never a tool cwd.
+    workspace_source_root: Path | None = None
 
     def env_overrides(self) -> dict[str, str]:
         values: dict[str, str] = {
@@ -118,6 +120,10 @@ def apply_run_env_for_third_party(context: RunContext) -> None:
     ContextVar. Keep this shim intentionally tiny and auditable.
     """
 
+    if context.workspace_source_root is not None:
+        # Native tools receive explicit per-Run roots and process env. A
+        # process-global workdir would race with the other Session's Run.
+        return
     overrides = context.env_overrides()
     for key in THIRD_PARTY_OS_ENV_KEYS:
         value = overrides.get(key)

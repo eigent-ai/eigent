@@ -955,6 +955,49 @@ def _run_change_context(
     root = _binding_root(space_id=space_id, email=email, user_id=user_id)
     service = _service()
     repository = service.journal.get_space_git_repository(space_id=space_id)
+    from app.workspace_runtime.finalizer import WorkspaceFinalizer
+    from app.workspace_runtime.ordinary import (
+        ordinary_binding,
+        ordinary_provider,
+    )
+    from app.workspace_runtime.store import WorkspaceStateStore
+
+    binding = ordinary_binding(service.journal, run_id)
+    if binding is not None and repository is not None:
+        _assert_repository_binding(repository, root)
+        target = WorkspaceStateStore(service.journal).target(
+            binding["target_id"]
+        )
+        canonical_run = service.journal.get_run(run_id)
+        project = service.journal.get_project_workspace_binding(
+            canonical_run.project_id
+        )
+        if (
+            Path(target.root_path).resolve() != root.resolve()
+            or project is None
+            or project.repository_id != repository.repository_id
+            or binding["provider"] != "git"
+        ):
+            raise HTTPException(
+                status_code=404, detail="Run Git state not found"
+            )
+        try:
+            manifest = WorkspaceFinalizer(service.journal).artifact_manifest(
+                run_id=run_id,
+                provider=ordinary_provider(service.journal),
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=409, detail="Run changes are not finalized yet"
+            ) from exc
+        checkpoint = manifest["git_checkpoint"]
+        return (
+            service,
+            repository,
+            canonical_run,
+            checkpoint["base_commit"],
+            checkpoint["commit"],
+        )
     run = service.journal.get_run_git_materialization(run_id)
     if (
         repository is None
@@ -1372,7 +1415,13 @@ async def run_git_changes(
     service = _service()
     canonical_run = service.journal.get_run(run_id)
     run_materialization = service.journal.get_run_git_materialization(run_id)
-    if canonical_run is not None and run_materialization is None:
+    from app.workspace_runtime.ordinary import ordinary_binding
+
+    if (
+        canonical_run is not None
+        and run_materialization is None
+        and ordinary_binding(service.journal, run_id) is None
+    ):
         repository = service.journal.get_space_git_repository(
             space_id=space_id
         )

@@ -4207,32 +4207,36 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (!guardDelivery) admissionRequested = true;
       const ssePromise = sseTransport({
         url: api,
-        beforeRequest: guardDelivery
-          ? () => {
-              // Resume retains its scoped admission ticket until stream ACK.
-              // Fresh starts become uncertain once fetch begins: subsequent
-              // reconnects keep that Run's frozen body/headers and receipt.
-              if (
-                !admissionRequested ||
-                (startOptions.resumeRequestId && !resumeStreamOpened)
-              )
-                assertAdmissionCurrent();
-              if (
-                adoptingSpaceDefault &&
-                !admissionRequested &&
-                project_id &&
-                (projectStore.getProjectById(project_id)?.metadata
-                  ?.spaceModelAdmissionRunId !== newTaskId ||
-                  (projectStore.getProjectById(project_id)?.metadata
-                    ?.spaceModelAdmissionRevision ?? null) !==
-                    modelAdmissionRevision)
-              ) {
-                finishStartupFailure();
-                throw spaceModelError('changed');
-              }
-              admissionRequested = true;
-            }
-          : undefined,
+        beforeRequest: () => {
+          // Resume retains its scoped admission ticket until stream ACK.
+          // Fresh starts become uncertain once fetch begins: subsequent
+          // reconnects keep that Run's frozen body/headers and receipt.
+          if (
+            guardDelivery &&
+            (!admissionRequested ||
+              (startOptions.resumeRequestId && !resumeStreamOpened))
+          )
+            assertAdmissionCurrent();
+          if (
+            adoptingSpaceDefault &&
+            !admissionRequested &&
+            project_id &&
+            (projectStore.getProjectById(project_id)?.metadata
+              ?.spaceModelAdmissionRunId !== newTaskId ||
+              (projectStore.getProjectById(project_id)?.metadata
+                ?.spaceModelAdmissionRevision ?? null) !==
+                modelAdmissionRevision)
+          ) {
+            finishStartupFailure();
+            throw spaceModelError('changed');
+          }
+          admissionRequested = true;
+          // Capture can wait before POST response headers. Start the owned
+          // event observer after delivery guards, so that wait is visible.
+          if (!type && project_id) {
+            observeCanonicalTerminal(lockedChatStore, lockedTaskId);
+          }
+        },
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
         signal: abortController.signal,

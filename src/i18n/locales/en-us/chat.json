@@ -461,5 +461,12 @@
   "space-model-unconfirmed": "The first session request has not been confirmed. Reconnect and retry, or choose a session model.",
   "space-model-unavailable": "This model is unavailable for the current account. Review Models settings or choose a session model.",
   "space-model-ambiguous": "More than one provider matches this model. Review Models settings or choose a session model.",
-  "space-model-changed": "The account or session model changed while loading. Send your message again."
+  "space-model-changed": "The account or session model changed while loading. Send your message again.",
+  "workspace-integration-completed": "Saved task changes have been integrated into the Space.",
+  "workspace-integration-waiting": "Task files are saved. Applying them to the Space is waiting for access or another update to finish.",
+  "workspace-integration-conflict": "Some changes could not be integrated. Both versions are kept; review the saved task changes before resolving the conflict.",
+  "workspace-finalization-attention": "Task output is still being secured. Workspace cleanup needs attention before changes can be integrated.",
+  "workspace-preparation-waiting": "Waiting for the Space to become stable before preparing this task.",
+  "browser-resource-waiting": "Waiting for an available Browser. Other Sessions can continue.",
+  "browser-resource-acquired": "Browser available. This task is continuing."
 }

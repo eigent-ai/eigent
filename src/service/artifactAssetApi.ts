@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
+import { fetchGetBlob, proxyFetchGet } from '@/api/http';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { getAuthStore } from '@/store/authStore';
 
 type ArtifactDownloadResponse = {
   download_url: string;
@@ -21,8 +23,49 @@ type ArtifactDownloadResponse = {
 
 /** Resolve a Cloud-restored Artifact into the same bounded preview pipeline. */
 export async function resolveArtifactAssetFile(
-  file: FileInfo
+  file: FileInfo,
+  signal?: AbortSignal
 ): Promise<FileInfo> {
+  if (file.workspaceArtifact) {
+    if (!file.artifactId || !signal)
+      throw new Error('Missing Artifact preview owner');
+    signal.throwIfAborted();
+    const owner = file.workspaceArtifact;
+    const accountKey = getAccountEnvironmentKey(getAuthStore());
+    const blob = await fetchGetBlob(
+      `/runs/${encodeURIComponent(owner.runId)}/artifacts/${encodeURIComponent(file.artifactId)}/content`,
+      undefined,
+      { signal, expectedAccountKey: accountKey }
+    );
+    const digest = Array.from(
+      new Uint8Array(
+        await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())
+      )
+    )
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+    if (digest !== owner.contentDigest)
+      throw new Error('Artifact content changed');
+    signal.throwIfAborted();
+    if (getAccountEnvironmentKey(getAuthStore()) !== accountKey) {
+      throw new Error('Artifact preview account changed');
+    }
+    const path = URL.createObjectURL(
+      new Blob([blob], {
+        type: file.mimeType || blob.type,
+      })
+    );
+    signal.addEventListener('abort', () => URL.revokeObjectURL(path), {
+      once: true,
+    });
+    return {
+      ...file,
+      path,
+      isRemote: true,
+      size: blob.size,
+      supportsRanges: true,
+    };
+  }
   if (file.localPathAvailable !== false) return file;
   if (/^https?:\/\//i.test(file.path)) return file;
   const chatFileId = file.assetRef?.chatFileId;

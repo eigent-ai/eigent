@@ -31,7 +31,7 @@ from dataclasses import asdict
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth import require_local_control_principal
@@ -61,6 +61,45 @@ from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 logger = logging.getLogger("run_controller")
+
+
+@router.get("/runs/{run_id}/artifacts/{artifact_id}/content")
+async def ordinary_artifact_content(run_id: str, artifact_id: str):
+    """Serve only finalized ordinary output from its verified immutable CAS."""
+    from app.workspace_runtime.finalizer import WorkspaceFinalizer
+    from app.workspace_runtime.ordinary import (
+        ordinary_binding,
+        ordinary_provider,
+    )
+    from app.workspace_runtime.store import WorkspaceStateError
+
+    journal = get_default_run_journal()
+    if await asyncio.to_thread(ordinary_binding, journal, run_id) is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    try:
+        content = await asyncio.to_thread(
+            WorkspaceFinalizer(journal).read_artifact,
+            run_id=run_id,
+            artifact_id=artifact_id,
+            provider=ordinary_provider(journal),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="Artifact not found"
+        ) from exc
+    except WorkspaceStateError as exc:
+        raise HTTPException(
+            status_code=409, detail="Run output is not finalized"
+        ) from exc
+    return Response(
+        content=content,
+        media_type="application/octet-stream",
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        },
+    )
+
 
 _EVENT_PAGE_SIZE = 500
 _DEFAULT_HEARTBEAT_SECONDS = 15.0
@@ -713,7 +752,7 @@ def _control_error(exc: Exception) -> HTTPException:
 async def resume_run(run_id: str, body: ResumeRunBody):
     coordinator = get_default_run_coordinator()
     await guard_legacy_execution_entry(
-        coordinator._run_journal(), run_id=run_id
+        coordinator._run_journal(), run_id=run_id, resume=True
     )
     try:
         attempt = await coordinator.resume(

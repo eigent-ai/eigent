@@ -15,7 +15,11 @@
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
 import { TimelineModeRenderer } from '@/components/ChatBox/TimelineModes';
 import { subscribeAppEvents, type AppEvent } from '@/lib/events/appEvents';
-import { selectRenderableChatNodes } from '@/lib/projector/chat';
+import { normalizeEvent } from '@/lib/projector';
+import {
+  projectChatEvents,
+  selectRenderableChatNodes,
+} from '@/lib/projector/chat';
 import {
   composeTimelineRuns,
   reconcileTimelineRun,
@@ -31,6 +35,7 @@ import {
 import { SessionMode } from '@/types/constants';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import writerQueuedFixture from '../../../fixtures/workspace-writer-queued.json';
 
 const motionPreference = vi.hoisted(() => ({ reduced: false }));
 
@@ -1339,6 +1344,20 @@ describe('ChatBox timeline modes', () => {
       container.querySelector('[data-narrative-run-work-log]')
     ).toBeInTheDocument();
   });
+
+  it.each(['narrative', 'trajectory'] as const)(
+    'shows the recorded scheduler wait in %s before any tool starts',
+    (detailLevel) => {
+      // Actual envelope from the isolated registered-Git serial baseline.
+      const events = writerQueuedFixture.map((raw) => normalizeEvent(raw));
+      const projection = projectChatEvents(events[0].projectId, events);
+      const runs = composeTimelineRuns(selectRenderableChatNodes(projection));
+      render(<TimelineModeRenderer detailLevel={detailLevel} runs={runs} />);
+      expect(screen.getByText(/Waiting for Space/)).toBeInTheDocument();
+      expect(screen.queryByText('Preparing to start tasks')).toBeNull();
+      expect(screen.queryByText('run-1')).toBeNull();
+    }
+  );
 
   it('highlights only the latest running tool and hands off when it completes', () => {
     const firstTool = normalToolActivity({

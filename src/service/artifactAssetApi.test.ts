@@ -12,14 +12,21 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { webcrypto } from 'node:crypto';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { proxyFetchGetMock } = vi.hoisted(() => ({
+const { proxyFetchGetMock, fetchGetBlobMock } = vi.hoisted(() => ({
   proxyFetchGetMock: vi.fn(),
+  fetchGetBlobMock: vi.fn(),
 }));
 
 vi.mock('@/api/http', () => ({
   proxyFetchGet: proxyFetchGetMock,
+  fetchGetBlob: fetchGetBlobMock,
+}));
+vi.mock('@/store/authStore', () => ({ getAuthStore: () => ({}) }));
+vi.mock('@/lib/authEnvironment', () => ({
+  getAccountEnvironmentKey: () => 'synthetic-account',
 }));
 
 import { resolveArtifactAssetFile } from './artifactAssetApi';
@@ -27,6 +34,59 @@ import { resolveArtifactAssetFile } from './artifactAssetApi';
 describe('Artifact asset resolution', () => {
   beforeEach(() => {
     proxyFetchGetMock.mockReset();
+    fetchGetBlobMock.mockReset();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('opens verified Run bytes and releases the object URL when its preview closes', async () => {
+    vi.stubGlobal('crypto', webcrypto);
+    const createObjectURL = vi.fn(() => 'blob:saved-run');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+    const blob = {
+      size: 5,
+      arrayBuffer: async () => new TextEncoder().encode('run-1').buffer,
+    };
+    fetchGetBlobMock.mockResolvedValue(blob);
+    const controller = new AbortController();
+    const file: FileInfo = {
+      name: 'result.txt',
+      type: 'txt',
+      path: '/space/result.txt',
+      artifactId: 'artifact-1',
+      workspaceArtifact: {
+        runId: 'run-1',
+        contentDigest:
+          '4e65d3fbe8ad6535681b021b30785b12b6c0e3f8878859a4148b3f58b8835db0',
+      },
+    };
+    await expect(
+      resolveArtifactAssetFile(file, controller.signal)
+    ).resolves.toMatchObject({ path: 'blob:saved-run', isRemote: true });
+    expect(fetchGetBlobMock).toHaveBeenCalledWith(
+      '/runs/run-1/artifacts/artifact-1/content',
+      undefined,
+      {
+        signal: controller.signal,
+        expectedAccountKey: 'synthetic-account',
+      }
+    );
+    controller.abort();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:saved-run');
+    const next = new AbortController();
+    await expect(
+      resolveArtifactAssetFile(
+        {
+          ...file,
+          workspaceArtifact: {
+            ...file.workspaceArtifact!,
+            contentDigest: 'changed',
+          },
+        },
+        next.signal
+      )
+    ).rejects.toThrow('Artifact content changed');
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
   });
 
   it('keeps an available local Artifact on the local preview path', async () => {

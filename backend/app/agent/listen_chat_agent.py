@@ -1054,6 +1054,10 @@ class ListenChatAgent(ChatAgent):
     def _execute_tool(
         self, tool_call_request: ToolCallRequest
     ) -> ToolCallingRecord:
+        from app.workspace_runtime.native_runtime import current_native_runtime
+
+        if current_native_runtime() is not None:
+            return asyncio.run(self._aexecute_tool(tool_call_request))
         func_name = tool_call_request.tool_name
         tool: FunctionTool = self._internal_tools[func_name]
         # Route async functions to async execution
@@ -1276,7 +1280,17 @@ class ListenChatAgent(ChatAgent):
             logger.error(f"Error processing streaming tool call: {e}")
             return None
 
-    async def _aexecute_tool(
+    async def _aexecute_tool(self, tool_call_request):
+        from app.workspace_runtime.native_runtime import current_native_runtime
+
+        runtime = current_native_runtime()
+        if runtime is None:
+            return await self._aexecute_owned_tool(tool_call_request)
+        return await runtime.run_tool(
+            lambda: self._aexecute_owned_tool(tool_call_request)
+        )
+
+    async def _aexecute_owned_tool(
         self, tool_call_request: ToolCallRequest
     ) -> ToolCallingRecord:
         func_name = tool_call_request.tool_name
@@ -1321,6 +1335,10 @@ class ListenChatAgent(ChatAgent):
         # Default fallback
         if not toolkit_name:
             toolkit_name = "mcp_toolkit"
+
+        from app.workspace_runtime.native_paths import private_tool_arguments
+
+        args = private_tool_arguments(toolkit_name, func_name, args)
 
         logger.info(
             f"Agent {self.agent_name} executing async tool: {func_name} "
@@ -1374,13 +1392,36 @@ class ListenChatAgent(ChatAgent):
         execution_error: Exception | None = None
         dispatched = False
         try:
-            await authorize_tool_checkpoint(
-                checkpoint,
-                arguments=args,
-                toolkit_name=toolkit_name,
-                agent_name=self.agent_name,
-                task_lock=task_lock,
+            from app.workspace_runtime.native_runtime import (
+                current_native_runtime,
             )
+
+            runtime = current_native_runtime()
+
+            async def call_sync_tool():
+                if runtime is not None:
+                    # A model-visible tool error may be handled and retried.
+                    # Keep checkpoint and cleanup threads on the strict
+                    # run_owned_thread path: their failures must fail drain.
+                    return await runtime.run_tool(
+                        lambda: asyncio.to_thread(tool, **args)
+                    )
+                return await run_owned_thread(tool, **args)
+
+            async def authorization():
+                return await authorize_tool_checkpoint(
+                    checkpoint,
+                    arguments=args,
+                    toolkit_name=toolkit_name,
+                    agent_name=self.agent_name,
+                    task_lock=task_lock,
+                )
+
+            if runtime is not None:
+                await runtime.wait_for_user(authorization)
+                runtime.require_dispatch()
+            else:
+                await authorization()
             await run_owned_thread(dispatch_tool_checkpoint, checkpoint)
             dispatched = True
             # Activation is an execution projection. Do not publish it before
@@ -1416,7 +1457,7 @@ class ListenChatAgent(ChatAgent):
                     # the Run/tool checkpoints needed by child-agent tool
                     # callbacks while the queue consumer stays responsive.
                     if hasattr(tool, "is_async") and not tool.is_async:
-                        result = await run_owned_thread(tool, **args)
+                        result = await call_sync_tool()
                         # Handle case where sync call returns a coroutine
                         if inspect.isawaitable(result):
                             result = await result
@@ -1438,7 +1479,7 @@ class ListenChatAgent(ChatAgent):
                     # Fallback sync call. to_thread propagates ContextVars and
                     # prevents a blocking AgentToolkit wait from starving
                     # approvals, timeline events, and child progress updates.
-                    result = await run_owned_thread(tool, **args)
+                    result = await call_sync_tool()
                     # Handle case where synchronous call returns a coroutine
                     if inspect.isawaitable(result):
                         result = await result

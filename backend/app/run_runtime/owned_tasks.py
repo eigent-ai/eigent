@@ -25,6 +25,7 @@ import asyncio
 import threading
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 
 _owner: ContextVar[OwnedTasks | None] = ContextVar("owned_tasks", default=None)
 _projection: ContextVar[object] = ContextVar(
@@ -61,6 +62,12 @@ def get_task_lock_if_exists(project_id):
     if projection is None:
         return legacy(project_id)
     return projection if projection.id == project_id else None
+
+
+@dataclass
+class _AwaitedFailure:
+    error: Exception
+    delivered: bool = False
 
 
 class OwnedTasks:
@@ -102,6 +109,36 @@ class OwnedTasks:
             self.submissions.add(future)
         return future
 
+    async def run(self, coroutine):
+        """Deliver an awaited error once, retaining abandoned failures.
+
+        A caller may handle a tool error and recover. Drain must still join
+        that work, but must not raise the handled error again. Keep failures
+        from cancelled waiters observable, including across event loops.
+        """
+
+        async def capture():
+            try:
+                return await coroutine
+            except Exception as error:
+                return _AwaitedFailure(error)
+
+        try:
+            pending = self.schedule(capture())
+        except BaseException:
+            coroutine.close()
+            raise
+        waiter = (
+            pending
+            if isinstance(pending, asyncio.Future)
+            else asyncio.wrap_future(pending)
+        )
+        result = await asyncio.shield(waiter)
+        if isinstance(result, _AwaitedFailure):
+            result.delivered = True
+            raise result.error
+        return result
+
     async def drain(self):
         # Tasks may schedule projections while finishing. No timeout or task
         # cancellation is interpreted as completion of their underlying work.
@@ -118,9 +155,12 @@ class OwnedTasks:
                 *(asyncio.wrap_future(item) for item in submissions),
                 return_exceptions=True,
             )
-            errors.extend(
-                value for value in outcomes if isinstance(value, Exception)
-            )
+            for value in outcomes:
+                if isinstance(value, _AwaitedFailure):
+                    if not value.delivered:
+                        errors.append(value.error)
+                elif isinstance(value, Exception):
+                    errors.append(value)
             with self.lock:
                 self.tasks.difference_update(batch)
                 self.submissions.difference_update(submissions)
@@ -159,4 +199,6 @@ async def run_owned_thread(function, /, *args, **kwargs):
     call = asyncio.to_thread(function, *args, **kwargs)
     if owner is None:
         return await call
-    return await asyncio.shield(owner.create_task(call))
+    if asyncio.get_running_loop() is owner.loop:
+        return await asyncio.shield(owner.create_task(call))
+    return await asyncio.shield(asyncio.wrap_future(owner.schedule(call)))

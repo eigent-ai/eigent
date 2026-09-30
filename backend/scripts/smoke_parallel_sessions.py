@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -35,14 +36,30 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TEST = "tests/app/workspace_runtime/test_delivery_smoke.py"
+SUITES = {
+    "preview": TEST,
+    "default": "tests/app/controller/test_default_session_parallel.py",
+    "native": "tests/app/workspace_runtime/test_native_runtime.py tests/app/workspace_runtime/test_native_tools.py tests/app/workspace_runtime/test_native_browser_lifecycle.py tests/app/workspace_runtime/test_ordinary_workspace.py tests/app/service/test_single_agent_service.py tests/app/run_runtime/test_coordinator.py",
+    "protocol": "tests/app/workspace_runtime",
+    "compatibility": "tests/app/run_journal/test_follow_up_queue.py tests/app/agent/toolkit/test_file_write_workspace.py tests/app/agent/toolkit/test_hybrid_browser_tab_limits.py tests/app/agent/factory/test_browser.py::test_electron_browser_pool_allocates_by_target_not_shared_port tests/app/agent/toolkit/test_electron_browser_target_guard.py",
+    "guards": "tests/app/workspace_runtime/test_entry_guard.py",
+    "browser": "tests/app/workspace_runtime/test_native_browser.py",
+}
 
 
-def worker(output: Path) -> int:
+def worker(output: Path, test: str = TEST) -> int:
     if Path.home().resolve() != output / "home":
         raise RuntimeError("smoke requires its isolated HOME")
 
     def offline(event, args):
         if event in {"socket.connect", "socket.getaddrinfo", "socket.sendto"}:
+            if os.environ.get("EIGENT_NATIVE_BROWSER_FIXTURE") == "1":
+                address = (
+                    args[0] if event == "socket.getaddrinfo" else args[-1]
+                )
+                host = address[0] if isinstance(address, tuple) else address
+                if host in {"localhost", "127.0.0.1", "::1"}:
+                    return
             raise RuntimeError("C6 smoke forbids real network I/O")
         if event == "open" and isinstance(args[0], (str, bytes)):
             path = Path(os.fsdecode(args[0])).absolute()
@@ -61,6 +78,24 @@ def worker(output: Path) -> int:
     from app.run_journal import runtime as journal_runtime
 
     class FailureFacts:
+        @pytest.fixture
+        def client(self):
+            # Narrow route harness; never starts the application's background
+            # services or loads the production user's settings.
+            from fastapi import FastAPI
+            from fastapi.testclient import TestClient
+
+            from app.auth import require_local_control_principal
+            from app.controller.chat_controller import router
+
+            application = FastAPI()
+            application.dependency_overrides[
+                require_local_control_principal
+            ] = lambda: {"kind": "test"}
+            application.include_router(router)
+            with TestClient(application) as client:
+                yield client
+
         @pytest.hookimpl(hookwrapper=True)
         def pytest_runtest_makereport(self, item, call):
             outcome = yield
@@ -82,14 +117,14 @@ def worker(output: Path) -> int:
                 "-p",
                 "pytest_asyncio.plugin",
                 "--import-mode=importlib",
-                "--confcutdir=tests/app/workspace_runtime",
+                "--confcutdir=tests/app",
                 "--basetemp",
                 str(output / "state"),
                 "--junitxml",
                 str(output / "junit.xml"),
                 "-q",
                 "--tb=short",
-                TEST,
+                *test.split(),
             ],
             plugins=[FailureFacts()],
         )
@@ -100,6 +135,7 @@ def worker(output: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--suite", choices=SUITES, default="preview")
     parser.add_argument(
         "--worker", action="store_true", help=argparse.SUPPRESS
     )
@@ -109,7 +145,7 @@ def main() -> int:
         parser.error("--output must be an absolute, new directory")
     output = output.resolve()
     if args.worker:
-        return worker(output)
+        return worker(output, SUITES[args.suite])
     output.mkdir(parents=True, exist_ok=False)
     for directory in ("home", "tmp", "config", "cache"):
         (output / directory).mkdir()
@@ -134,6 +170,14 @@ def main() -> int:
         "EIGENT_RUN_JOURNAL_PATH": str(output / "default.sqlite"),
         "CAMEL_LOG_DIR": str(output / "home" / "camel-logs"),
     }
+    if args.suite == "browser":
+        node = shutil.which("node")
+        if node is None:
+            raise RuntimeError(
+                "browser smoke requires existing Node dependencies"
+            )
+        environment["PATH"] += os.pathsep + str(Path(node).parent)
+        environment["EIGENT_NATIVE_BROWSER_FIXTURE"] = "1"
     command = [
         sys.executable,
         "-u",
@@ -142,6 +186,8 @@ def main() -> int:
         "--output",
         str(output),
         "--worker",
+        "--suite",
+        args.suite,
     ]
     started = time.time()
     with (output / "smoke.log").open("x") as log:
@@ -164,12 +210,12 @@ def main() -> int:
             path.read_bytes()
         ).hexdigest()
     summary = {
-        "scope": "synthetic ASGI C6 deployment/API smoke; no Electron/full main startup",
+        "scope": "synthetic parallel execution smoke; no Electron/full main startup",
         "exit_code": result,
         "started_at": started,
         "finished_at": time.time(),
         "python": sys.executable,
-        "test": TEST,
+        "test": SUITES[args.suite],
         "observations": evidence,
         "environment": environment,
         "real_model_or_account_io": False,
