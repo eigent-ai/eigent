@@ -344,10 +344,14 @@ export async function readTerminalRunResult({
                 failureDisplayText(payload.tool_name),
               input:
                 failureDisplayText(payload.display_input) || previous?.input,
+              // Outcome-specific text belongs to the receipt's outcome;
+              // sparse terminal receipts must not inherit earlier progress.
               output:
-                failureDisplayText(payload.display_output) || previous?.output,
+                failureDisplayText(payload.display_output) ||
+                (previous?.outcome === outcome ? previous.output : undefined),
               detail:
-                failureDisplayText(payload.display_summary) || previous?.detail,
+                failureDisplayText(payload.display_summary) ||
+                (previous?.outcome === outcome ? previous.detail : undefined),
             });
             if (
               failureActions.size > 100 ||

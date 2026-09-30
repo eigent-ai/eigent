@@ -742,6 +742,96 @@ describe('failure evidence safety boundaries', () => {
   beforeEach(() => fetchGetMock.mockReset());
   const failureInput = { ...input, includeFailureFacts: true };
 
+  it.each([
+    ['dispatched', 'timed_out', 'Running'],
+    ['dispatched', 'outcome_unknown', 'Running'],
+    ['timed_out', 'completed', 'Timed out while waiting'],
+  ])(
+    'clears stale display text from %s when %s omits fresh text',
+    async (previousStatus, outcome, staleText) => {
+      fetchGetMock.mockResolvedValue(
+        page([
+          event(1, `tool.${previousStatus}`, {
+            tool_call_id: 'read',
+            tool_name: 'read_file',
+            status: previousStatus,
+            display_input: 'Read report.txt',
+            display_summary: staleText,
+            display_output: staleText,
+          }),
+          // record_timeout_outcome receipts contain identity and timeout
+          // metadata, but omit tool names and all display fields.
+          event(
+            2,
+            `tool.${outcome}`,
+            outcome === 'completed'
+              ? { tool_call_id: 'read', status: 'completed' }
+              : {
+                  activity_id: null,
+                  approval_id: null,
+                  attempt_id: null,
+                  ended_at: 3,
+                  policy_version: 'v1',
+                  reason: 'activity_timeout',
+                  run_id: 'run-1',
+                  scope: 'tool_timeout',
+                  started_at: 2,
+                  tool_call_id: 'read',
+                }
+          ),
+          event(3, 'run.failed', { reason: 'execution_backend_failure' }),
+        ])
+      );
+
+      const result = await readTerminalRunResult(failureInput);
+      expect(result.failureFacts?.actions).toEqual([
+        {
+          id: 'read',
+          title: 'read_file',
+          input: 'Read report.txt',
+          outcome,
+          output: undefined,
+          detail: undefined,
+        },
+      ]);
+      expect(JSON.stringify(result.failureFacts)).not.toContain(staleText);
+    }
+  );
+
+  it('preserves explicit terminal display text exactly', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'tool.dispatched', {
+          tool_call_id: 'read',
+          tool_name: 'read_file',
+          status: 'dispatched',
+          display_input: 'Read report.txt',
+          display_summary: 'Running',
+          display_output: 'Running',
+        }),
+        event(2, 'tool.completed', {
+          tool_call_id: 'read',
+          status: 'completed',
+          display_summary: 'Read completed',
+          display_output: 'Recorded output\nSecond line',
+        }),
+        event(3, 'run.failed', { reason: 'execution_backend_failure' }),
+      ])
+    );
+
+    const result = await readTerminalRunResult(failureInput);
+    expect(result.failureFacts?.actions).toEqual([
+      {
+        id: 'read',
+        title: 'read_file',
+        input: 'Read report.txt',
+        outcome: 'completed',
+        detail: 'Read completed',
+        output: 'Recorded output\nSecond line',
+      },
+    ]);
+  });
+
   it('collapses a tool lifecycle by explicit identity and keeps terminal outcomes on reopen', async () => {
     const journal = page([
       event(1, 'tool.dispatched', {
