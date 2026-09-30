@@ -39,6 +39,7 @@ from app.run_journal.runtime import get_default_run_journal
 from app.run_runtime.admission import (
     abort_pending_warm_admission,
     activate_improve_admission,
+    skip_targets_current_turn,
 )
 from app.run_runtime.coordinator import RunInterruptedError
 from app.service.task import (
@@ -613,16 +614,15 @@ async def single_agent_solve(
                     continue
 
                 if item.action == Action.skip_task:
-                    if (
-                        item.expected_task_id
-                        and item.expected_task_id != task_lock.current_task_id
-                    ):
+                    if not skip_targets_current_turn(task_lock, item):
                         continue
                     if await abort_pending_warm_admission(task_lock):
                         yield sse_json(
                             "end",
                             "<summary>Task stopped</summary>Task stopped by user",
                         )
+                        continue
+                    if task_lock.status == Status.done:
                         continue
                     pause_event.clear()
                     cancel_running_summary()

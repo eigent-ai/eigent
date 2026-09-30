@@ -34,7 +34,7 @@ from app.run_journal.models import (
     RunAttemptRecord,
     WarmAdmissionReceipt,
 )
-from app.service.task import ActionImproveData, TaskLock
+from app.service.task import ActionImproveData, ActionSkipTaskData, TaskLock
 from app.workspace_git.coordinator import get_default_workspace_git_coordinator
 from app.workspace_git.scheduler import WorkspaceWriterScheduler
 
@@ -180,10 +180,17 @@ class WarmRunAdmission:
             await admission_to_thread(admit_git)
         return attempt
 
-    async def publish(self, item: ActionImproveData) -> None:
+    async def publish(
+        self,
+        item: ActionImproveData,
+        *,
+        before_publication: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         item._publication = self.publication
         try:
             await self.task_lock.put_queue(item)
+            if before_publication is not None:
+                await drain_admission(before_publication())
             if self.receipt is not None:
                 await admission_to_thread(
                     self.journal.publish_warm_admission, self.receipt
@@ -236,6 +243,19 @@ async def abort_pending_warm_admission(task_lock: TaskLock) -> bool:
     ):
         return False
     return await admission.cancel_before_publication()
+
+
+def skip_targets_current_turn(
+    task_lock: TaskLock, item: ActionSkipTaskData
+) -> bool:
+    """A queued Stop belongs to the Run and preparation seen at enqueue time."""
+    if (
+        item.expected_task_id
+        and item.expected_task_id != task_lock.current_task_id
+    ):
+        return False
+    previous = item._warm_admission
+    return not (isinstance(previous, WarmRunAdmission) and previous._aborted)
 
 
 async def activate_improve_admission(

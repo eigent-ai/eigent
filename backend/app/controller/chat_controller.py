@@ -63,7 +63,7 @@ from app.run_journal import (
     configured_run_journal_path,
     get_default_run_journal,
 )
-from app.run_runtime import get_default_run_coordinator
+from app.run_runtime import RunCoordinator, get_default_run_coordinator
 from app.run_runtime.admission import (
     WarmRunAdmission,
     admission_to_thread,
@@ -81,6 +81,7 @@ from app.service.task import (
     ActionSupplementData,
     ImprovePayload,
     TaskLock,
+    delete_task_lock,
     get_or_create_task_lock,
     get_task_lock,
     get_task_lock_if_exists,
@@ -1202,6 +1203,8 @@ async def _prepare_chat_run(
     *,
     resume_attempt: RunAttemptRecord | None = None,
     admission_request_id: str | None = None,
+    warm_admission: WarmRunAdmission | None = None,
+    aborted_warm_attempt: RunAttemptRecord | None = None,
 ) -> _PreparedChatRun:
     """Bind fresh runtime inputs for a new Run or explicit Resume Attempt."""
     if data.session_model_selection is not None and (
@@ -1452,15 +1455,33 @@ async def _prepare_chat_run(
                 template=template,
                 runtime_environment=runtime_environment,
             )
-        attempt = await asyncio.to_thread(
-            journal.create_run_attempt,
-            run_context.run_id,
-            request_id=request_id,
-            reason="initial_execution",
-            activate=False,
-            environment=(environment.binding if environment else None),
-        )
-        if isinstance(journal, SQLiteRunJournal):
+        if warm_admission is not None:
+            # A closed consumer does not change the identity of its aborted
+            # follow-up. Rearm that exact Attempt using its original binding;
+            # the existing one-time legacy backfill validates the fresh spec.
+            attempt = await warm_admission.prepare(
+                run_context,
+                request_id=request_id,
+                environment=_attempt_environment_binding(aborted_warm_attempt),
+            )
+            if environment is not None and environment.binding is not None:
+                attempt = await admission_to_thread(
+                    journal.bind_pending_attempt_environment,
+                    attempt.attempt_id,
+                    run_id=run_context.run_id,
+                    request_id=request_id,
+                    environment=environment.binding,
+                )
+        else:
+            attempt = await asyncio.to_thread(
+                journal.create_run_attempt,
+                run_context.run_id,
+                request_id=request_id,
+                reason="initial_execution",
+                activate=False,
+                environment=(environment.binding if environment else None),
+            )
+        if isinstance(journal, SQLiteRunJournal) and warm_admission is None:
             try:
                 await asyncio.to_thread(
                     get_default_workspace_git_coordinator().admit_run,
@@ -1490,7 +1511,7 @@ async def _prepare_chat_run(
             run_context=run_context,
             request_id=request_id,
             content=data.question,
-            source="chat",
+            source="improve" if warm_admission is not None else "chat",
             attaches=data.attaches or [],
             review_handoff_ids=data.review_handoff_ids,
             session_model_selection=(
@@ -1501,6 +1522,7 @@ async def _prepare_chat_run(
                     ),
                 }
                 if data.session_model_selection is not None
+                and warm_admission is None
                 else None
             ),
         )
@@ -1579,6 +1601,86 @@ async def _prepare_chat_run(
         attempt_id=(attempt.attempt_id if attempt is not None else ""),
         initial_action=initial_action,
     )
+
+
+async def _start_aborted_warm_retry(
+    data: Chat,
+    request: Request,
+    *,
+    coordinator: RunCoordinator,
+    journal: SQLiteRunJournal,
+    attempt: RunAttemptRecord,
+    request_id: str,
+):
+    """Rebuild a closed consumer without converting a follow-up to initial."""
+    task_lock = get_or_create_task_lock(data.project_id)
+    admission = WarmRunAdmission(
+        journal, task_lock, logger=chat_logger, run_id=attempt.run_id
+    )
+    task_lock._warm_admission = admission
+    subscription = None
+    try:
+        prepared = await drain_admission(
+            _prepare_chat_run(
+                data,
+                request,
+                admission_request_id=request_id,
+                warm_admission=admission,
+                aborted_warm_attempt=attempt,
+            )
+        )
+
+        async def start_consumer() -> None:
+            nonlocal subscription
+
+            async def execution_stream():
+                # No command, including a queued Stop, may run inside this
+                # fresh consumer while its admission owner is still preparing.
+                # A failed publication cancels the pump without terminalizing
+                # the pending, retryable Attempt.
+                if not await asyncio.shield(
+                    asyncio.wrap_future(admission.publication)
+                ):
+                    raise asyncio.CancelledError
+                async for chunk in stream_with_run_context(
+                    step_solve(data, request, task_lock),
+                    lambda: task_lock.run_context,
+                ):
+                    yield chunk
+
+            subscription = await coordinator.start_with_subscription(
+                run_id=prepared.run_context.run_id,
+                stream_factory=execution_stream,
+                command_queue=task_lock.queue,
+            )
+
+        # The new consumer must exist before publication. Its envelope remains
+        # behind the same gate used by the warm path until the commit succeeds.
+        await admission.publish(
+            prepared.initial_action, before_publication=start_consumer
+        )
+        assert subscription is not None
+        return timeout_stream_wrapper(subscription, run_id=attempt.run_id)
+    except BaseException:
+
+        async def cleanup() -> None:
+            try:
+                if not admission.published:
+                    await admission.abort()
+                    if subscription is not None:
+                        await subscription.handle.cancel()
+                    if get_task_lock_if_exists(data.project_id) is task_lock:
+                        await delete_task_lock(data.project_id)
+            finally:
+                if subscription is not None:
+                    await subscription.aclose()
+
+        await drain_admission(cleanup(), propagate_cancellation=False)
+        raise
+    finally:
+        admission.finish()
+        if task_lock._warm_admission is admission:
+            task_lock._warm_admission = None
 
 
 async def start_chat_stream(data: Chat, request: Request):
@@ -1828,6 +1930,20 @@ async def start_chat_stream(data: Chat, request: Request):
             project_id=data.project_id,
             run_id=run_id,
         )
+        if (
+            isinstance(_attempt, RunAttemptRecord)
+            and _attempt.status == "pending"
+            and _attempt.resume_reason == "follow_up_execution"
+            and _attempt.outcome == "warm_admission_aborted"
+        ):
+            return await _start_aborted_warm_retry(
+                data,
+                request,
+                coordinator=coordinator,
+                journal=journal,
+                attempt=_attempt,
+                request_id=request_id,
+            )
         try:
             prepared = await _prepare_chat_run(
                 data,
@@ -2945,7 +3061,14 @@ def skip_task(project_id: str, expected_task_id: str | None = None):
         # Queue the skip task action - this will
         # preserve context for multi-turn
         skip_task_action = ActionSkipTaskData(
-            project_id=project_id, expected_task_id=expected_task_id
+            project_id=project_id,
+            expected_task_id=expected_task_id or task_lock.current_task_id,
+        )
+        # Freeze the control target before queueing. An abort can restore the
+        # previous Run or a same-key retry can replace this preparation before
+        # the consumer reaches a repeated Stop.
+        skip_task_action._warm_admission = getattr(
+            task_lock, "_warm_admission", None
         )
         chat_logger.info(
             "[STOP-BUTTON] Queueing"

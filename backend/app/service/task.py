@@ -367,6 +367,7 @@ class ActionSkipTaskData(BaseModel):
     action: Literal[Action.skip_task] = Action.skip_task
     project_id: str
     expected_task_id: str | None = None
+    _warm_admission: object | None = PrivateAttr(default=None)
 
 
 ActionData = (

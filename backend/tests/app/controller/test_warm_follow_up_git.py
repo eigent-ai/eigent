@@ -26,7 +26,7 @@ import pytest
 import pytest_asyncio
 
 from app.controller import chat_controller as controller
-from app.model.chat import Status, SupplementChat
+from app.model.chat import Chat, Status, SupplementChat
 from app.run_context import RunContext
 from app.run_journal import (
     InvalidRunTransitionError,
@@ -137,6 +137,8 @@ async def warm(tmp_path, monkeypatch, request):
             root=root,
             lock=lock,
             runtime=runtime,
+            initial_source_finished=stopped,
+            initial_subscription=subscription,
             request=request,
             repository=repository,
             mutation=WorkspaceMutationService(
@@ -374,6 +376,251 @@ async def activate(warm, item):
         project_id="session",
         logger=logging.getLogger(__name__),
     )
+
+
+@pytest_asyncio.fixture
+async def live_warm(warm, monkeypatch):
+    """The actual Single Agent consumer and detached pump, without a model."""
+    from app.service import run_cancellation, single_agent_service, task
+    from app.utils.event_loop_utils import set_main_event_loop
+
+    write_and_finish(warm, "first.txt")
+    warm.initial_source_finished.set()
+    await warm.initial_subscription.handle.wait()
+    monkeypatch.setitem(task.task_locks, "session", warm.lock)
+    for name in (
+        "get_task_lock",
+        "get_task_lock_if_exists",
+        "get_or_create_task_lock",
+    ):
+        monkeypatch.setattr(controller, name, getattr(task, name))
+    monkeypatch.setattr(
+        run_cancellation, "get_default_run_coordinator", lambda: warm.runtime
+    )
+    monkeypatch.setattr(
+        "app.workspace_git.get_default_workspace_git_lifecycle",
+        lambda: warm.lifecycle,
+    )
+    monkeypatch.setattr(
+        single_agent_service, "_finalize_memory_for_turn", Mock()
+    )
+
+    async def no_model(*args, **kwargs):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(single_agent_service, "single_agent", no_model)
+    monkeypatch.setattr(
+        controller, "step_solve", single_agent_service.single_agent_solve
+    )
+    resolver = controller.get_workspace_resolver()
+    frozen = resolver.freeze_task_directories_for.return_value
+
+    def freeze(**kwargs):
+        warm.lock.current_task_id = kwargs["task_id"]
+        return frozen
+
+    resolver.freeze_task_directories_for.side_effect = freeze
+    resolver.freeze_task_directories.return_value = frozen
+    frozen.workdir_mode = "direct-write"
+    frozen.base_snapshot_id = None
+    warm.lock.current_task_id = "first"
+    warm.request.headers = {}
+    warm.options = Chat(
+        task_id="first",
+        project_id="session",
+        space_id="space",
+        question="write first",
+        email=warm.lock.email,
+        user_id=warm.lock.user_id,
+        model_platform="openai",
+        model_type="gpt-4o",
+        api_key="test-key",
+        session_mode="single-agent",
+        workdir_mode="direct-write",
+    )
+    # Keep the environment adapter outside this admission regression. The
+    # journal, Git coordinator, queue, consumer, and RuntimeHandle are real.
+    monkeypatch.setattr(
+        controller.EnvironmentAdmissionService,
+        "persist_for_run",
+        Mock(return_value=SimpleNamespace(spec=Mock(), binding=None)),
+    )
+    monkeypatch.setattr(controller, "_legacy_environment_template", Mock())
+    monkeypatch.setattr(controller, "_assemble_runtime_environment", Mock())
+    monkeypatch.setattr(controller, "_apply_environment_to_task_lock", Mock())
+    warm.runtime.bind_journal(warm.journal)
+    warm.second_skip_seen = asyncio.Event()
+    warm.release_second_skip = asyncio.Event()
+    warm.hold_second_skip = False
+    get_queue = warm.lock.get_queue
+    skip_count = 0
+
+    async def receive_action():
+        nonlocal skip_count
+        item = await get_queue()
+        if item.action == task.Action.skip_task:
+            skip_count += 1
+            if skip_count == 2 and warm.hold_second_skip:
+                warm.second_skip_seen.set()
+                await warm.release_second_skip.wait()
+        return item
+
+    monkeypatch.setattr(warm.lock, "get_queue", receive_action)
+    set_main_event_loop(asyncio.get_running_loop())
+    warm.live_subscription = await warm.runtime.start_with_subscription(
+        run_id="first",
+        command_queue=warm.lock.queue,
+        stream_factory=lambda: single_agent_service.single_agent_solve(
+            warm.options, warm.request, warm.lock
+        ),
+    )
+    try:
+        yield warm
+    finally:
+        warm.release_second_skip.set()
+        await warm.runtime.close()
+        await warm.live_subscription.aclose()
+        set_main_event_loop(None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("closing", "cold_fault"),
+    [(False, False), (True, False), (True, True)],
+    ids=[
+        "plain-repeated-skip",
+        "close-then-cold-retry",
+        "cold-publication-failure",
+    ],
+)
+async def test_stop_retry_through_real_consumer(
+    live_warm, monkeypatch, closing, cold_fault
+):
+    warm = live_warm
+    warm.hold_second_skip = not closing
+    WorkspaceStateStore(warm.journal).register_target(warm.root)
+    entered, release = threading.Event(), threading.Event()
+    admit = warm.workspace.admit_run
+
+    def paused(**kwargs):
+        entered.set()
+        assert release.wait(5)
+        return admit(**kwargs)
+
+    monkeypatch.setattr(warm.workspace, "admit_run", paused)
+    pending = asyncio.create_task(follow_up(warm))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        attempt = warm.journal.list_run_attempts("second")[0]
+        if closing:
+            assert (await controller.stop("session")).status_code == 204
+        else:
+            # Match the ordinary browser/API request: no expected_task_id.
+            for _ in range(2):
+                assert (
+                    await asyncio.to_thread(controller.skip_task, "session")
+                ).status_code == 201
+        await asyncio.sleep(0.05)
+        assert pending.cancelling()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+        assert (
+            warm.journal.list_run_attempts("second")[0].outcome
+            == "warm_admission_aborted"
+        )
+        assert (
+            warm.journal.get_workspace_writer_request(
+                "workspace-writer:second"
+            )
+            is None
+        )
+        monkeypatch.setattr(warm.workspace, "admit_run", admit)
+        if closing:
+            await asyncio.wait_for(warm.live_subscription.handle.wait(), 5)
+            assert controller.get_task_lock_if_exists("session") is None
+            data = warm.options.model_copy(
+                update={"task_id": "second", "question": "write second"}
+            )
+            with pytest.raises(controller.UserException):
+                await controller.start_chat_stream(
+                    data.model_copy(update={"question": "different request"}),
+                    warm.request,
+                )
+            assert (
+                warm.journal.list_run_attempts("second")[0].outcome
+                == "warm_admission_aborted"
+            )
+            if cold_fault:
+                with monkeypatch.context() as patcher:
+                    patcher.setattr(
+                        warm.journal,
+                        "publish_warm_admission",
+                        Mock(
+                            side_effect=RuntimeError(
+                                "injected cold publication failure"
+                            )
+                        ),
+                    )
+                    with pytest.raises(
+                        RuntimeError, match="injected cold publication failure"
+                    ):
+                        await controller.start_chat_stream(data, warm.request)
+                assert controller.get_task_lock_if_exists("session") is None
+                assert await warm.runtime.get_handle("second") is None
+                assert (
+                    warm.journal.get_workspace_writer_request(
+                        "workspace-writer:second"
+                    )
+                    is None
+                )
+                assert (
+                    warm.journal.list_run_attempts("second")[0].outcome
+                    == "warm_admission_aborted"
+                )
+            retry_stream = await controller.start_chat_stream(
+                data, warm.request
+            )
+            try:
+                event = json.loads(
+                    (await asyncio.wait_for(anext(retry_stream), 5))[6:]
+                )
+            finally:
+                await retry_stream.aclose()
+        else:
+            event = json.loads(
+                (await asyncio.wait_for(anext(warm.live_subscription), 5))[6:]
+            )
+            assert event["step"] == "end"
+            next_frame = asyncio.create_task(anext(warm.live_subscription))
+            done, _ = await asyncio.wait({next_frame}, timeout=0.1)
+            assert not done, (
+                "Duplicate plain Skip terminated the warm consumer"
+            )
+            assert warm.live_subscription.handle.consumer_alive
+            await follow_up(warm)
+            # Deliver the earlier duplicate after the same Run id is retried.
+            # Its captured admission must not stop this new preparation.
+            await asyncio.wait_for(warm.second_skip_seen.wait(), 5)
+            warm.release_second_skip.set()
+            event = json.loads((await asyncio.wait_for(next_frame, 5))[6:])
+        assert event["step"] == "confirmed"
+        retried = warm.journal.list_run_attempts("second")
+        assert len(retried) == 1
+        assert retried[0].attempt_id == attempt.attempt_id
+        assert retried[0].resume_reason == "follow_up_execution"
+        assert retried[0].status == "running"
+        # A distinct subsequent plain Skip must still stop the retried Run.
+        await asyncio.to_thread(controller.skip_task, "session")
+        for _ in range(100):
+            if warm.journal.get_run("second").status == "cancelled":
+                break
+            await asyncio.sleep(0.01)
+        assert warm.journal.get_run("second").status == "cancelled"
+        assert warm.journal.get_run("first").status == "completed"
+    finally:
+        release.set()
+        await asyncio.gather(pending, return_exceptions=True)
 
 
 @pytest.mark.asyncio
