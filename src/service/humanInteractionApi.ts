@@ -212,6 +212,7 @@ export async function decideHumanInteraction(
     ),
     body,
   });
+  if (op.phase === 'resolved') return submitControlOperation(op);
   // A remount may supply a fresh request ID; the frozen envelope owns delivery.
   if (
     op.version !== (interaction.version ?? 0) ||

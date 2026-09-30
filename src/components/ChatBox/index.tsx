@@ -44,7 +44,10 @@ import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { errorCopy } from '@/lib/usageErrors';
-import { stopProjectTask } from '@/service/controlOperations';
+import {
+  reconcileControlOperations,
+  stopProjectTask,
+} from '@/service/controlOperations';
 import { controlOwner } from '@/service/controlRequest';
 import {
   cancelFollowUpRequest,
@@ -55,6 +58,7 @@ import {
   terminalContinuationAdmissionRejection,
 } from '@/service/followUpQueueApi';
 import { decideHumanInteraction } from '@/service/humanInteractionApi';
+import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import { reconcileHumanInteractionEvents } from '@/service/humanInteractionEventReconciliation';
 import { cancelProjectRun } from '@/service/projectRunsApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
@@ -382,6 +386,10 @@ function LegacyChatBox(): JSX.Element {
       ? sharedProjectEventSnapshot
       : null;
   useEffect(() => {
+    if (sharedProjectEventSnapshot?.view.projectId === activeProjectId)
+      reconcileControlOperations(sharedProjectEventSnapshot);
+  }, [sharedProjectEventSnapshot, activeProjectId, controlOperations.length]);
+  useEffect(() => {
     if (!activeProjectId || !eventNativeProjectSnapshot) return;
     const admittedIds = eventNativeProjectSnapshot.chat.nodes.flatMap((node) =>
       node.kind === 'message' && node.role === 'user'
@@ -495,6 +503,12 @@ function LegacyChatBox(): JSX.Element {
   );
   const [resumeRunAction, setDurableRunAction] =
     useState<InterruptedRunBannerAction>(null);
+  const interruptedCancelOperation = controlOperations.find(
+    (op) => op.kind === 'cancel' && op.runId === interruptedRun?.run_id
+  );
+  const cancelRecoveryReason = interruptedCancelOperation
+    ? t('chat.control-outcome-unknown')
+    : undefined;
   const durableRunAction = controlOperations.some(
     (op) =>
       op.kind === 'cancel' &&
@@ -782,7 +796,8 @@ function LegacyChatBox(): JSX.Element {
       });
       if (!isCurrent()) return;
       const state = projectStore.getActiveChatStore(projectId)?.getState();
-      state?.markHumanInteractionResolved(taskId, interaction.interaction_id);
+      if (state)
+        completeHumanInteraction(state, taskId, interaction.interaction_id);
     } catch {
       // The persistent operation recovery owns ambiguous outcomes. No local
       // decision or Run transition is inferred from a transport failure.
@@ -816,33 +831,7 @@ function LegacyChatBox(): JSX.Element {
       if (!activeStore) return;
       const state = activeStore.getState();
       if (state.activeTaskId !== resolved.runId) return;
-      const current = state.tasks[resolved.runId];
-      if (!current) return;
-
-      const activeAskInteractionId = current.messages.findLast(
-        (message) => message.step === AgentStep.ASK
-      )?.interaction?.interaction_id;
-      if (
-        activeAskInteractionId &&
-        activeAskInteractionId !== resolved.interactionId
-      ) {
-        return;
-      }
-
-      // Migration-only compatibility: the durable terminal event is already
-      // loaded at this point. Keep the legacy task queue coherent until all
-      // send/disable and sidebar logic reads HumanControlProjection directly.
-      state.markHumanInteractionResolved(
-        resolved.runId,
-        resolved.interactionId
-      );
-      const reconciled = activeStore.getState().tasks[resolved.runId];
-      if (!reconciled) return;
-      const [nextAsk, ...remainingAsks] = reconciled.askList;
-      state.setActiveAskList(resolved.runId, remainingAsks);
-      state.setActiveAsk(resolved.runId, nextAsk?.agent_name || '');
-      state.setIsPending(resolved.runId, false);
-      if (nextAsk) state.addMessages(resolved.runId, nextAsk);
+      completeHumanInteraction(state, resolved.runId, resolved.interactionId);
     },
     [projectStore]
   );
@@ -2672,7 +2661,7 @@ function LegacyChatBox(): JSX.Element {
         ),
         description: isCloudRestoredRun
           ? undefined
-          : t('chat.run-interrupted-description'),
+          : (cancelRecoveryReason ?? t('chat.run-interrupted-description')),
       },
       runId: interruptedRun.run_id,
       state: isCloudRestoredRun
@@ -2680,6 +2669,7 @@ function LegacyChatBox(): JSX.Element {
         : (durableRunAction ?? 'interrupted'),
       resumeLabel: t('chat.run-resume'),
       resumingLabel: t('chat.run-resuming'),
+      disabled: Boolean(interruptedCancelOperation),
       cancelLabel: t('chat.run-cancel'),
       cancellingLabel: t('chat.run-cancelling'),
       readOnlyLabel: t('chat.run-cloud-restored-description'),
@@ -2764,7 +2754,13 @@ function LegacyChatBox(): JSX.Element {
   const showFloatingStop =
     shouldRenderChatTimeline &&
     composerTaskControlState === 'running' &&
-    eventNativeActiveProjectedRun?.status !== 'cancelling';
+    eventNativeActiveProjectedRun?.status !== 'cancelling' &&
+    !controlOperations.some(
+      (op) =>
+        op.kind !== 'interaction' &&
+        op.runId === (eventNativeActiveRunId ?? activeTaskId) &&
+        op.phase !== 'pending'
+    );
   const handleFloatingStop = () => {
     if (eventNativeActiveProjectedRun?.status === 'running') {
       void handleEventNativeStopRun(eventNativeActiveProjectedRun.runId);
@@ -2778,8 +2774,8 @@ function LegacyChatBox(): JSX.Element {
         .filter(
           (op) =>
             op.projectId === activeProjectId &&
-            op.runId ===
-              (eventNativeActiveRunId ?? activeTaskId ?? interruptedRun?.run_id)
+            (op.runId === interruptedRun?.run_id ||
+              op.runId === (eventNativeActiveRunId ?? activeTaskId))
         )
         .filter((op) => {
           // A later canonical event can settle the UI even when its HTTP
@@ -2847,6 +2843,7 @@ function LegacyChatBox(): JSX.Element {
                       ? 'chat.run-cloud-restored-description'
                       : 'chat.run-interrupted-description'
                   )}
+                  disabledReason={cancelRecoveryReason}
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
                   resumingLabel={t('chat.run-resuming')}
@@ -2945,6 +2942,7 @@ function LegacyChatBox(): JSX.Element {
                       : 'chat.run-interrupted-description'
                   )}
                   attemptNumber={interruptedRun.latest_attempt?.attempt_number}
+                  disabledReason={cancelRecoveryReason}
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
                   resumingLabel={t('chat.run-resuming')}

@@ -14,12 +14,16 @@
 
 import { fetchGet, fetchPost } from '@/api/http';
 import { runProjectionStore } from '@/lib/runEvents/projectionStore';
-import { getProjectEventStore } from '@/store/projectEventStore';
+import {
+  getProjectEventStore,
+  type ProjectEventStoreSnapshot,
+} from '@/store/projectEventStore';
 import {
   ControlOutcomeUnknown,
   controlOwner,
   controlRequest,
 } from './controlRequest';
+import { completeProjectHumanInteraction } from './humanInteractionCompletion';
 import { reconcileHumanInteractionEvents } from './humanInteractionEventReconciliation';
 import { parseSummary } from './runStateReconciliation';
 
@@ -43,6 +47,45 @@ export type ControlOperation = {
 
 // Renderer-lifetime ownership: navigation must not create a second intent.
 const operations = new Map<string, ControlOperation>();
+export const TERMINAL_CONTROL_LIMIT = 128;
+const terminalOperations = new Map<string, ControlOperation>();
+let registryOwner: string | undefined;
+function maintainOwner() {
+  const owner = controlOwner();
+  if (owner !== registryOwner) {
+    for (const op of [...operations.values(), ...terminalOperations.values()])
+      op.generation++;
+    operations.clear();
+    terminalOperations.clear();
+    flights.clear();
+    registryOwner = owner;
+  }
+}
+function compactTerminal(op: ControlOperation) {
+  if (op.owner !== registryOwner) return;
+  operations.delete(op.key);
+  // No terminal operation can be retried. Retain a bounded, minimal tombstone
+  // for stale mounted controls; the backend's CAS still protects older evictions.
+  op.body = Object.freeze({});
+  op.path = '';
+  op.retryAllowed = false;
+  if (op.receipt) {
+    const { run_id, interaction_id, version, status, action_digest, response } =
+      op.receipt;
+    op.receipt = {
+      run_id,
+      interaction_id,
+      version,
+      status,
+      action_digest,
+      response,
+    };
+  }
+  terminalOperations.delete(op.key);
+  terminalOperations.set(op.key, op);
+  while (terminalOperations.size > TERMINAL_CONTROL_LIMIT)
+    terminalOperations.delete(terminalOperations.keys().next().value!);
+}
 const flights = new Map<string, Promise<ControlReceipt>>();
 const listeners = new Set<() => void>();
 let revision = 0;
@@ -58,7 +101,13 @@ function publish() {
   for (const listener of listeners) listener();
 }
 export function listControlOperations(owner = controlOwner()) {
-  return [...operations.values()].filter((op) => op.owner === owner);
+  maintainOwner();
+  return [...operations.values(), ...terminalOperations.values()].filter(
+    (op) => op.owner === owner
+  );
+}
+function isRegistered(op: ControlOperation) {
+  return operations.get(op.key) === op || terminalOperations.get(op.key) === op;
 }
 function freeze<T>(value: T): T {
   if (value && typeof value === 'object') {
@@ -74,6 +123,7 @@ export function createControlOperation(
     'key' | 'owner' | 'phase' | 'retryAllowed' | 'generation' | 'receipt'
   >
 ): ControlOperation {
+  maintainOwner();
   const owner = controlOwner();
   // Group interaction versions together too: a changed card cannot override
   // an unresolved intent. Its original version/digest remain in the envelope.
@@ -83,7 +133,7 @@ export function createControlOperation(
     input.runId,
     input.interactionId,
   ]);
-  const existing = operations.get(key);
+  const existing = operations.get(key) ?? terminalOperations.get(key);
   if (existing) {
     if (input.projectId && !existing.projectId)
       existing.projectId = input.projectId;
@@ -132,12 +182,10 @@ function readReceipt(op: ControlOperation, value: unknown): ControlReceipt {
       const response = receipt.response as Record<string, unknown> | undefined;
       if (!response || typeof response !== 'object' || Array.isArray(response))
         throw new ControlOutcomeUnknown();
-      const submitted = op.body.decision as Record<string, unknown>;
       if (
-        ['approved', 'rejected'].includes(String(submitted.decision)) &&
-        (!['approved', 'rejected'].includes(String(response.decision)) ||
-          (response.scope !== undefined &&
-            !['once', 'run', 'space'].includes(String(response.scope))))
+        !['approved', 'rejected'].includes(String(response.decision)) ||
+        (response.scope !== undefined &&
+          !['once', 'run', 'space'].includes(String(response.scope)))
       )
         throw new ControlOutcomeUnknown();
     }
@@ -172,29 +220,50 @@ function execute(
   op: ControlOperation,
   checking: boolean
 ): Promise<ControlReceipt> {
-  if (controlOwner() !== op.owner)
+  maintainOwner();
+  if (controlOwner() !== op.owner || !isRegistered(op))
     return Promise.reject(new ControlOutcomeUnknown());
   const current = flights.get(op.key);
   if (current) return current;
   const generation = ++op.generation;
+  const terminalReceipt = op.phase === 'resolved' ? op.receipt : undefined;
   op.phase = checking ? 'checking' : 'pending';
   // Reserve synchronously before publishing to React or beginning async lookup.
-  const work = controlRequest(async (options) => {
-    if (!checking) return fetchPost(op.path, op.body, undefined, options);
+  const work = controlRequest(async (bounded) => {
+    const guard = () => {
+      bounded.beforeRequest?.();
+      if (op.generation !== generation) throw new ControlOutcomeUnknown();
+    };
+    const options = { ...bounded, beforeRequest: guard, assertCurrent: guard };
+    const submitted = !checking
+      ? await fetchPost(op.path, op.body, undefined, options)
+      : undefined;
     if (op.kind === 'interaction') {
-      const result = await fetchGet(
-        `/runs/${encodeURIComponent(op.runId)}/interactions`,
-        { status: 'all' },
-        undefined,
-        options
-      );
-      options.beforeRequest?.();
-      if (result?.run_id !== op.runId || !Array.isArray(result.interactions))
-        throw new ControlOutcomeUnknown();
-      const receipt = result.interactions.find(
-        (item: ControlReceipt) => item.interaction_id === op.interactionId
-      );
+      let receipt = submitted;
+      if (checking) {
+        const result = await fetchGet(
+          `/runs/${encodeURIComponent(op.runId)}/interactions`,
+          { status: 'all' },
+          undefined,
+          options
+        );
+        options.beforeRequest?.();
+        if (result?.run_id !== op.runId || !Array.isArray(result.interactions))
+          throw new ControlOutcomeUnknown();
+        receipt = result.interactions.find(
+          (item: ControlReceipt) => item.interaction_id === op.interactionId
+        );
+      }
+      // Validate identity and the canonical decision before replay can advance
+      // the legacy ask queue. Keep registry mutation after the bounded request.
+      try {
+        readReceipt({ ...op }, receipt);
+      } catch (error) {
+        op.retryAllowed = false;
+        throw error;
+      }
       if (
+        (checking || generation > 1) &&
         op.projectId &&
         ['resolved', 'expired', 'cancelled'].includes(receipt?.status)
       ) {
@@ -207,9 +276,16 @@ function execute(
           },
           options
         );
+        options.beforeRequest?.();
+        completeProjectHumanInteraction(
+          op.projectId,
+          op.runId,
+          op.interactionId!
+        );
       }
       return receipt;
     }
+    if (!checking) return submitted;
     return fetchGet(
       `/runs/${encodeURIComponent(op.runId)}`,
       undefined,
@@ -226,6 +302,16 @@ function execute(
         op.phase = 'acknowledged';
         return {};
       }
+      if (terminalReceipt) {
+        const candidate = { ...op };
+        readReceipt(candidate, result);
+        if (
+          candidate.phase !== 'resolved' ||
+          (typeof terminalReceipt.version === 'number' &&
+            Number(candidate.receipt?.version) < terminalReceipt.version)
+        )
+          throw new ControlOutcomeUnknown();
+      }
       const receipt = readReceipt(op, result);
       if (op.kind !== 'interaction' && op.projectId) {
         const summary = parseSummary(receipt, op.projectId, op.runId);
@@ -237,7 +323,8 @@ function execute(
     })
     .catch((error) => {
       if (op.generation === generation) {
-        op.phase = 'unknown';
+        op.phase = terminalReceipt ? 'resolved' : 'unknown';
+        if (terminalReceipt) op.receipt = terminalReceipt;
         if ((error as { status?: number })?.status === 409)
           op.retryAllowed = false;
       }
@@ -246,6 +333,7 @@ function execute(
     .finally(() => {
       if (op.generation === generation) {
         flights.delete(op.key);
+        if (op.phase === 'resolved') compactTerminal(op);
         publish();
       }
     });
@@ -254,7 +342,65 @@ function execute(
   return work;
 }
 
+/** Canonical events can complete an abandoned HTTP wait without inventing a decision. */
+export function reconcileControlOperations(
+  snapshot: ProjectEventStoreSnapshot
+) {
+  maintainOwner();
+  let changed = false;
+  for (const op of [...operations.values()]) {
+    if (op.projectId !== snapshot.view.projectId) continue;
+    const interaction = op.interactionId
+      ? snapshot.control.interactionById[op.interactionId]
+      : undefined;
+    const run = snapshot.view.runs[op.runId];
+    const status =
+      op.kind === 'interaction' ? interaction?.status : run?.status;
+    if (
+      op.kind === 'interaction'
+        ? !interaction ||
+          interaction.runId !== op.runId ||
+          !['resolved', 'expired', 'cancelled'].includes(String(status))
+        : !['completed', 'cancelled', 'failed'].includes(String(status))
+    )
+      continue;
+    if (
+      op.kind === 'interaction' &&
+      interaction?.actionDigest &&
+      interaction.actionDigest !== op.digest
+    )
+      continue;
+    if (
+      interaction?.version !== undefined &&
+      interaction.version < (op.version ?? 0)
+    )
+      continue;
+    op.receipt = {
+      ...op.receipt,
+      run_id: op.runId,
+      interaction_id: op.interactionId,
+      status,
+      version: interaction?.version ?? op.version,
+    };
+    op.phase = 'resolved';
+    op.generation++;
+    flights.delete(op.key);
+    if (op.interactionId)
+      completeProjectHumanInteraction(
+        op.projectId!,
+        op.runId,
+        op.interactionId
+      );
+    compactTerminal(op);
+    changed = true;
+  }
+  if (changed) publish();
+}
+
 export function submitControlOperation(op: ControlOperation, retry = false) {
+  maintainOwner();
+  if (controlOwner() !== op.owner || !isRegistered(op))
+    return Promise.reject(new ControlOutcomeUnknown());
   if (
     op.kind === 'interaction' &&
     listControlOperations(op.owner).some(

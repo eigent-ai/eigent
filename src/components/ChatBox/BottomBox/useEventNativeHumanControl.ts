@@ -489,6 +489,21 @@ export function useEventNativeHumanControl({
   );
   const inFlightKey = useRef<string | null>(null);
   const owner = controlOwner();
+  const ownerKey = JSON.stringify([owner, projectId, activeRunId]);
+  const lifetime = useRef({ key: ownerKey, generation: 0, mounted: true });
+  if (lifetime.current.key !== ownerKey)
+    lifetime.current = {
+      key: ownerKey,
+      generation: lifetime.current.generation + 1,
+      mounted: true,
+    };
+  useEffect(() => {
+    lifetime.current.mounted = true;
+    return () => {
+      lifetime.current.mounted = false;
+      lifetime.current.generation++;
+    };
+  }, []);
   const viewKey = JSON.stringify([
     owner,
     projectId,
@@ -551,6 +566,12 @@ export function useEventNativeHumanControl({
       if (!projectId || !interaction || !controlKey || submitting || operation)
         return;
       const generation = view.current.generation;
+      const ownerGeneration = lifetime.current.generation;
+      const ownsCompletion = () =>
+        lifetime.current.mounted &&
+        lifetime.current.key === ownerKey &&
+        lifetime.current.generation === ownerGeneration &&
+        controlOwner() === owner;
       const isCurrent = () =>
         view.current.mounted &&
         view.current.key === viewKey &&
@@ -570,8 +591,9 @@ export function useEventNativeHumanControl({
 
       let decisionAccepted = false;
       const reconcileTerminalDecision = async () => {
-        if (!isCurrent()) return;
-        setSubmission({ key: controlKey, phase: 'reconciling', error: null });
+        if (!ownsCompletion()) return;
+        if (isCurrent())
+          setSubmission({ key: controlKey, phase: 'reconciling', error: null });
         await reconcileHumanInteractionEvents({
           bounded: interaction.interactionType === 'approval',
           projectId,
@@ -586,7 +608,7 @@ export function useEventNativeHumanControl({
               : 0,
         });
         try {
-          if (isCurrent()) onDurableResolution?.(interaction);
+          if (ownsCompletion()) onDurableResolution?.(interaction);
         } catch (error) {
           // Compatibility consumers must not turn an authoritative decision
           // into a failed/retryable command if their local cleanup fails.
@@ -658,6 +680,7 @@ export function useEventNativeHumanControl({
     },
     [
       operation,
+      ownerKey,
       owner,
       viewKey,
       actorId,

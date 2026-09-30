@@ -61,7 +61,7 @@ describe('local HumanInteraction API', () => {
       },
       {
         decisionRequestId: 'decision-1',
-        decision: { approved: true },
+        decision: { decision: 'approved', scope: 'once' },
         actorId: 'user-1',
       }
     );

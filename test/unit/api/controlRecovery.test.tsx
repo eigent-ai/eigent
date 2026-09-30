@@ -53,8 +53,10 @@ vi.mock('@/components/Toast/trafficToast', () => ({
 
 import { HumanInteractionCard } from '@/components/ChatBox/MessageItem/HumanInteractionCard';
 import {
+  TERMINAL_CONTROL_LIMIT,
   checkControlOperation,
   listControlOperations,
+  reconcileControlOperations,
   stopProjectTask,
   submitControlOperation,
 } from '@/service/controlOperations';
@@ -603,5 +605,179 @@ describe('SL-BUG-27 recovery safety contracts', () => {
     ).rejects.toThrow();
     await vi.advanceTimersByTimeAsync(15_000);
     await cancel;
+  });
+  it('compacts terminal envelopes while preserving unresolved intents and recent deduplication', async () => {
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => new Promise(() => {}));
+    const pending = decideHumanInteraction(interaction, {
+      decisionRequestId: 'keep',
+      decision: { decision: 'approved', scope: 'once' },
+    }).catch(() => {});
+    await vi.advanceTimersByTimeAsync(15_000);
+    await pending;
+    const uncertain = listControlOperations()[0];
+    const body = uncertain.body;
+    fetch.mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          ...canonical(),
+          interaction_id: request.decision_request_id,
+          response: { decision: 'approved', scope: 'once' },
+        }),
+        { headers: { 'content-type': 'application/json' } }
+      );
+    });
+    for (let i = 0; i < TERMINAL_CONTROL_LIMIT + 8; i++) {
+      const id = 'terminal-' + i;
+      await decideHumanInteraction(
+        { ...interaction, interaction_id: id },
+        {
+          decisionRequestId: id,
+          decision: { decision: 'approved', scope: 'once' },
+        }
+      );
+    }
+    expect(listControlOperations()).toHaveLength(TERMINAL_CONTROL_LIMIT + 1);
+    expect(uncertain.body).toBe(body);
+    expect(uncertain.phase).toBe('unknown');
+    expect(
+      listControlOperations()
+        .filter((op) => op.phase === 'resolved')
+        .every((op) => Object.keys(op.body).length === 0)
+    ).toBe(true);
+    const calls = fetch.mock.calls.length;
+    await decideHumanInteraction(
+      {
+        ...interaction,
+        interaction_id: 'terminal-' + (TERMINAL_CONTROL_LIMIT + 7),
+      },
+      { decisionRequestId: 'fresh-id', decision: { decision: 'rejected' } }
+    );
+    expect(fetch).toHaveBeenCalledTimes(calls);
+  });
+
+  it('retires obsolete owner operations without reviving a late receipt', async () => {
+    let finish!: (response: Response) => void;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const pending = decideHumanInteraction(interaction, {
+      decisionRequestId: 'old',
+      decision: { decision: 'approved', scope: 'once' },
+    }).catch(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    const retired = listControlOperations()[0];
+    mocked.auth.user_id = 2;
+    expect(listControlOperations()).toHaveLength(0);
+    mocked.auth.user_id = 1;
+    expect(listControlOperations()).toHaveLength(0);
+    finish(canonicalResponse());
+    await pending;
+    expect(listControlOperations()).toHaveLength(0);
+    await expect(submitControlOperation(retired, true)).rejects.toThrow();
+    await expect(checkControlOperation(retired)).rejects.toThrow();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retires an ambiguous envelope after an exact canonical event and ignores its late reply', async () => {
+    let finish!: (response: Response) => void;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const pending = decideHumanInteraction(interaction, {
+      projectId: 'event-project',
+      decisionRequestId: 'event',
+      decision: { decision: 'approved', scope: 'once' },
+    }).catch(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    const op = listControlOperations()[0];
+    const snapshot = getProjectEventStore('event-project').getSnapshot();
+    reconcileControlOperations({
+      ...snapshot,
+      control: {
+        ...snapshot.control,
+        interactionById: {
+          [interaction.interaction_id]: {
+            interactionId: interaction.interaction_id,
+            runId: interaction.run_id,
+            status: 'resolved',
+            version: 1,
+            actionDigest: interaction.action_digest,
+          } as any,
+        },
+      },
+    });
+    expect(op.phase).toBe('resolved');
+    expect(op.body).toEqual({});
+    expect(op.retryAllowed).toBe(false);
+    finish(canonicalResponse());
+    await pending;
+    expect(op.phase).toBe('resolved');
+  });
+
+  it.each([
+    { run_id: 'different-run' },
+    { action_digest: 'different-digest' },
+    { version: -1 },
+    { response: { decision: 'invalid' } },
+  ])(
+    'rejects mismatched recovery before replay or queue cleanup: %j',
+    async (mismatch) => {
+      const fetch = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(() => new Promise(() => {}));
+      const pending = decideHumanInteraction(interaction, {
+        projectId: 'recovery-project',
+        decisionRequestId: 'original',
+        decision: { decision: 'approved', scope: 'once' },
+      }).catch(() => {});
+      await vi.advanceTimersByTimeAsync(15_000);
+      await pending;
+      const op = listControlOperations()[0];
+      fetch.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            run_id: interaction.run_id,
+            interactions: [{ ...canonical(), ...mismatch }],
+          }),
+          { headers: { 'content-type': 'application/json' } }
+        )
+      );
+      await expect(checkControlOperation(op)).rejects.toThrow();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(op.phase).toBe('unknown');
+    }
+  );
+
+  it('keeps a terminal receipt when a status check reads stale pending state', async () => {
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(canonicalResponse());
+    await decideHumanInteraction(interaction, {
+      decisionRequestId: 'original',
+      decision: { decision: 'approved', scope: 'once' },
+    });
+    const op = listControlOperations()[0];
+    fetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          run_id: interaction.run_id,
+          interactions: [{ ...canonical(undefined, 'requested'), version: 0 }],
+        }),
+        { headers: { 'content-type': 'application/json' } }
+      )
+    );
+    await expect(checkControlOperation(op)).rejects.toThrow();
+    expect(op.phase).toBe('resolved');
+    expect(op.receipt?.status).toBe('resolved');
+    expect(op.retryAllowed).toBe(false);
   });
 });

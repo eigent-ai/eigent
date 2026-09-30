@@ -555,9 +555,10 @@ async def decide_run_interaction(
                 for key, value in body.decision.items()
                 if key != "decision"
             }
-            await asyncio.to_thread(
+            _, decision_applied = await asyncio.to_thread(
                 journal.decide_approval,
                 interaction_id,
+                include_transition=True,
                 decision=approval_decision,
                 details=details,
                 expected_version=body.expected_version,
@@ -589,11 +590,11 @@ async def decide_run_interaction(
                 journal.get_human_interaction, interaction_id
             )
             assert result is not None
-            decision_applied = True
         else:
-            result = await asyncio.to_thread(
+            result, decision_applied = await asyncio.to_thread(
                 journal.resolve_human_interaction,
                 interaction_id,
+                include_transition=True,
                 decision_request_id=body.decision_request_id,
                 decision=body.decision,
                 expected_version=body.expected_version,
@@ -603,8 +604,10 @@ async def decide_run_interaction(
                 source=body.source,
                 continue_active_attempt=body.continue_active_attempt,
             )
-            decision_applied = True
-            if interaction.interaction_type == "merge_conflict":
+            if (
+                decision_applied
+                and interaction.interaction_type == "merge_conflict"
+            ):
                 from app.workspace_git import (
                     get_default_workforce_git_service,
                 )
