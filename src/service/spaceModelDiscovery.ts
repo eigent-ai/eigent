@@ -82,6 +82,7 @@ async function legacyProviderCandidates(
   requireComplete: boolean
 ): Promise<SpaceModelCandidate[]> {
   const projected = new Map<number, SpaceModelCandidate | null>();
+  let pagination: { pages: number; total: number; size: number } | undefined;
   for (let page = 1; page <= 6; page++) {
     assertCurrent();
     const response: unknown = await proxyFetchGet('/api/v1/providers', {
@@ -92,17 +93,29 @@ async function legacyProviderCandidates(
     const envelope = record(response);
     const items = Array.isArray(response) ? response : envelope.items;
     if (!Array.isArray(items)) throw new Error('model_catalog_unavailable');
-    if (
-      requireComplete &&
-      !Array.isArray(response) &&
-      (!Number.isInteger(envelope.pages) ||
-        Number(envelope.pages) < 0 ||
-        (envelope.pages === 0
-          ? page !== 1 || items.length !== 0
-          : Number(envelope.pages) < page ||
-            (Number(envelope.pages) > 1 && items.length === 0)))
-    )
-      throw new Error('model_catalog_incomplete');
+    if (requireComplete) {
+      const { pages, total, size } = envelope;
+      // Pin the legacy Page envelope for this read. A bare array or missing
+      // metadata cannot attest completeness; pagination drift invalidates even
+      // candidates already observed on an earlier page.
+      if (
+        typeof pages !== 'number' ||
+        !Number.isSafeInteger(pages) ||
+        typeof total !== 'number' ||
+        !Number.isSafeInteger(total) ||
+        total < 0 ||
+        size !== 100 ||
+        envelope.page !== page ||
+        pages !== Math.ceil(total / size) ||
+        (pagination &&
+          (pages !== pagination.pages ||
+            total !== pagination.total ||
+            size !== pagination.size)) ||
+        items.length !== Math.min(size, Math.max(total - (page - 1) * size, 0))
+      )
+        throw new Error('model_catalog_incomplete');
+      pagination ??= { pages, total, size };
+    }
     for (const raw of items) {
       const provider = record(raw);
       if (!Number.isInteger(provider.id)) {
@@ -132,6 +145,11 @@ async function legacyProviderCandidates(
         throw new Error('model_catalog_incomplete');
     }
     if (projected.size > 512) throw new Error('model_catalog_unavailable');
+    if (
+      pagination &&
+      projected.size !== Math.min(page * pagination.size, pagination.total)
+    )
+      throw new Error('model_catalog_incomplete');
     if (
       Array.isArray(response) ||
       (typeof envelope.pages === 'number'
