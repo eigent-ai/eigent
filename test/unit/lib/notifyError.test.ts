@@ -161,3 +161,19 @@ describe('execution error notification scope', () => {
     ]);
   });
 });
+
+it('keeps detailed unknown backend failures visible beside an existing incident', () => {
+  setUsageAccount('account-a');
+  reportError({ code: 20 }, { executionId: 'execution-a' });
+  mocks.error.mockClear();
+  const error = Object.assign(new Error('unknown internal detail'), {
+    usageReason: 'task',
+    status: 402,
+    response: {
+      data: { detail: { unknown: 'synthetic-secret' } },
+      status: 402,
+    },
+  });
+  notifyExecutionError(error, undefined, 'execution-a');
+  expect(mocks.error).toHaveBeenCalledWith('chat.notice-task', undefined);
+});

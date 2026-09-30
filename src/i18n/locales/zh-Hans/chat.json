@@ -423,7 +423,7 @@
   "notice-context": "此对话超出所选模型的长度限制。请新建会话以继续。",
   "notice-request": "此模型无法处理该请求。",
   "notice-model-unavailable": "此模型暂时不可用。",
-  "notice-task": "此任务无法继续。",
+  "notice-task": "此任务无法继续。请重试或联系支持。",
   "notice-contact-description": "请联系 support@eigent.ai 报告此问题。",
   "notice-refresh-description": "刷新以查看最新余额。",
   "notice-contact-support": "联系支持",

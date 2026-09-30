@@ -18,7 +18,7 @@ import {
 } from '@/lib/events/appEvents';
 import { fileInfoFromPath } from '@/lib/fileInfo';
 import {
-  classifyError,
+  errorPresentationReason,
   isLegacyTaskError,
   type ErrorReason,
 } from '@/lib/usageErrors';
@@ -202,7 +202,20 @@ export function AgentMessageCard({
   );
 
   if (errorReason || isLegacyTaskError(content)) {
-    return <TaskErrorNotice reason={errorReason ?? classifyError(content)} />;
+    // Keep request-time ownership (cloud vs custom) when it was known. Only
+    // refine generic historical classifications from the retained message.
+    const parsedReason =
+      errorReason &&
+      !['task', 'request', 'model-unavailable'].includes(errorReason)
+        ? errorReason
+        : errorPresentationReason(content);
+    return (
+      <TaskErrorNotice
+        reason={
+          parsedReason === 'task' ? (errorReason ?? 'task') : parsedReason
+        }
+      />
+    );
   }
 
   const showDeferredFileUi =

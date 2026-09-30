@@ -81,7 +81,10 @@ export function classifyError(
   context: ErrorContext = {}
 ): ErrorReason {
   const outer = record(value);
-  if (typeof outer.usageReason === 'string' && outer.usageReason in copyKeys)
+  if (
+    typeof outer.usageReason === 'string' &&
+    Object.prototype.hasOwnProperty.call(copyKeys, outer.usageReason)
+  )
     return outer.usageReason as ErrorReason;
   const response = record(outer.response);
   const body = record(response.data ?? value);
@@ -104,13 +107,17 @@ export function classifyError(
     parts.some((part) => typeof part === 'string' && part === errorCopy(reason))
   );
   if (localized) return localized;
-  const code = String(body.code ?? detail.code ?? error.code ?? '');
-  const reason = String(
+  const scalar = (value: unknown) =>
+    typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+  const code = scalar(body.code ?? detail.code ?? error.code);
+  const reason = scalar(
     body.reason ?? detail.reason ?? error.type ?? body.type ?? ''
   );
   const cloud = context.modelType === 'cloud';
   const ownProvider = context.modelType === 'custom';
-  const status = Number(outer.status ?? response.status ?? body.status ?? code);
+  const status = Number(
+    scalar(outer.status ?? response.status ?? body.status ?? code)
+  );
 
   // Gateway entitlement and spend-limit signals are distinct from upstream quota.
   if (reason === 'managed_service_unavailable') return 'service';
@@ -176,4 +183,113 @@ export function isLegacyTaskError(content: string): boolean {
       content.trimStart()
     ) || /^Errore:\s*(?:Error code:|HTTP \d{3}|\{)/.test(content.trimStart())
   );
+}
+
+/** Untrusted diagnostics are never copy. Ordinary local notification text is allowed. */
+export function isRawErrorMessage(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    (value.length > 1000 ||
+      /error code:|HTTP \d{3}|\{\s*["']|\[object Object\]|<\/?[a-z][^>]*>|\b(?:api[_ -]?key|authorization|secret|token)\s*[:=]/i.test(
+        value
+      ))
+  );
+}
+
+/**
+ * Presentation only: unwrap known transport fields without changing the incident
+ * classifier (which also owns admission). Never evaluate Python repr or walk
+ * arbitrary diagnostic fields. Bounds apply to both parsing and traversal.
+ */
+export function errorPresentationReason(
+  value: unknown,
+  context: ErrorContext = {}
+): ErrorReason {
+  const pending: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
+  const seen = new Set<unknown>();
+  let fallback: ErrorReason = 'task';
+  let messageReason: ErrorReason | null = null;
+  let remaining = 32;
+  const signal = (code: unknown): ErrorReason => {
+    if (typeof code !== 'string' && typeof code !== 'number') return 'task';
+    switch (String(code)) {
+      case 'trial_daily_exhausted':
+        return 'trial-daily';
+      case 'trial_total_exhausted':
+        return 'trial-total';
+      case 'model_plan_required':
+        return 'model-access';
+      case 'managed_service_unavailable':
+        return 'service';
+      case '20':
+      case '22':
+      case 'budget_exceeded':
+      case 'eigent_low_balance_model_restricted':
+      case 'insufficient_quota':
+        return classifyError({ reason: String(code), code }, context);
+      default:
+        return 'task';
+    }
+  };
+  while (pending.length && remaining-- > 0) {
+    const { value: current, depth } = pending.shift()!;
+    if (depth > 6 || current == null || seen.has(current)) continue;
+    seen.add(current);
+    let reason: ErrorReason = 'task';
+    if (typeof current === 'string') {
+      if (current.length > 8192) continue;
+      // JSON may itself contain another serialized message. Python repr is
+      // matched only for known scalar fields; no eval or quote replacement.
+      try {
+        const parsed: unknown = JSON.parse(current);
+        if (parsed !== current) {
+          pending.push({ value: parsed, depth: depth + 1 });
+          continue;
+        }
+      } catch {
+        // Legacy HTTP/SDK prefixes and Python repr are not JSON.
+      }
+      const fields = current.matchAll(
+        /["'](?:reason|type|code)["']\s*:\s*["']([a-zA-Z0-9_]{1,80})["']/g
+      );
+      for (const field of fields) {
+        const matched = signal(field[1]);
+        if (matched !== 'task') return matched;
+      }
+      reason = classifyError(current, context);
+    } else if (typeof current === 'object') {
+      const item = record(current);
+      for (const code of [item.reason, item.type, item.code]) {
+        const matched = signal(code);
+        if (matched !== 'task') return matched;
+      }
+      // Read status independently: nested objects and large messages must not
+      // be coerced into strings by the legacy classifier.
+      const statusReason = classifyError(
+        { status: item.status, code: item.code },
+        context
+      );
+      if (statusReason !== 'task') fallback = statusReason;
+      for (const field of [
+        'response',
+        'data',
+        'detail',
+        'error',
+        'message',
+        'text',
+        'cause',
+      ]) {
+        if (item[field] != null && pending.length < 32)
+          pending.push({ value: item[field], depth: depth + 1 });
+      }
+    }
+    if (
+      reason !== 'task' &&
+      reason !== 'request' &&
+      reason !== 'model-unavailable'
+    )
+      messageReason ??= reason;
+    if (reason !== 'task') fallback = reason;
+  }
+  return messageReason ?? fallback;
 }

@@ -431,7 +431,7 @@
   "notice-context": "Esta conversación es demasiado larga para el modelo elegido. Inicia una nueva sesión.",
   "notice-request": "Este modelo no pudo procesar la solicitud.",
   "notice-model-unavailable": "Este modelo no está disponible ahora.",
-  "notice-task": "Esta tarea no pudo continuar.",
+  "notice-task": "La tarea no pudo continuar. Reinténtalo o contacta con soporte.",
   "notice-contact-description": "Contacta con support@eigent.ai para informar del problema.",
   "notice-refresh-description": "Actualiza para consultar tu saldo actual.",
   "notice-contact-support": "Contactar con soporte",

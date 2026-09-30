@@ -580,7 +580,9 @@ describe('Workspace', () => {
       fireEvent.click(screen.getByText('Send'));
 
       await waitFor(() =>
-        expect(notifyError).toHaveBeenCalledWith('Usage limit reached')
+        expect(notifyError).toHaveBeenCalledWith(
+          expect.objectContaining({ message: 'Usage limit reached' })
+        )
       );
       expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
       expect(screen.getByLabelText('workspace-message')).toHaveValue(
@@ -751,7 +753,13 @@ describe('Workspace', () => {
       fireEvent.click(screen.getByText('Send'));
 
       await waitFor(() =>
-        expect(notifyError).toHaveBeenCalledWith(errorCopy('credits'))
+        expect(notifyError).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: errorCopy('credits'),
+            usageReason: 'credits',
+            response: { data: { code } },
+          })
+        )
       );
       expect(useUsageNoticeStore.getState()).toMatchObject({
         account: '101',

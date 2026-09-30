@@ -443,7 +443,7 @@
   "notice-context": "هذه المحادثة طويلة جدًا للنموذج المحدد. ابدأ جلسة جديدة للمتابعة.",
   "notice-request": "تعذّر على هذا النموذج معالجة الطلب.",
   "notice-model-unavailable": "هذا النموذج غير متاح حاليًا.",
-  "notice-task": "تعذّر متابعة هذه المهمة.",
+  "notice-task": "تعذّرت متابعة المهمة. حاول مرة أخرى أو تواصل مع الدعم.",
   "notice-contact-description": "تواصل مع support@eigent.ai للإبلاغ عن هذه المشكلة.",
   "notice-refresh-description": "حدّث للتحقق من أحدث رصيد لك.",
   "notice-contact-support": "تواصل مع الدعم",

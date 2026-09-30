@@ -20,6 +20,8 @@ import { toast } from 'sonner';
 import {
   classifyError,
   errorCopy,
+  errorPresentationReason,
+  isRawErrorMessage,
   isUsageReason,
   type ErrorContext,
 } from './usageErrors';
@@ -58,13 +60,15 @@ export function reportError(
 
 /** For interactive catch handlers. A classified incident already owns its reminder. */
 export function notifyError(
-  message: Parameters<typeof toast.error>[0],
+  message: Parameters<typeof toast.error>[0] | Error,
   options?: Parameters<typeof toast.error>[1],
   executionId?: string
 ) {
   const { account, modelType } = useUsageNoticeStore.getState();
   const reason = reportError(
-    { message, detail: options?.description },
+    message instanceof Error
+      ? message
+      : { message, detail: options?.description },
     { modelType, executionId },
     account
   );
@@ -73,6 +77,8 @@ export function notifyError(
   // Detailed failures and listener errors must remain independently visible.
   if (
     reason === 'task' &&
+    typeof message === 'string' &&
+    !isRawErrorMessage(message) &&
     !options?.description &&
     executionId &&
     useUsageNoticeStore
@@ -82,24 +88,36 @@ export function notifyError(
       )
   )
     return;
+  const presentationReason = [
+    'task',
+    'request',
+    'model-unavailable',
+    'rate-limit',
+  ].includes(reason)
+    ? errorPresentationReason(
+        message instanceof Error
+          ? message
+          : { message, detail: options?.description },
+        { modelType }
+      )
+    : reason;
+  const text = message instanceof Error ? message.message : message;
   const raw =
-    typeof message === 'string' &&
-    /error code:|\{'error'|"error"\s*:|HTTP \d{3}/i.test(message);
+    isRawErrorMessage(text) ||
+    (message instanceof Error && 'response' in message);
   const safeOptions =
-    options &&
-    typeof options.description === 'string' &&
-    /error code:|\{'error'|"error"\s*:|HTTP \d{3}/i.test(options.description)
-      ? { ...options, description: errorCopy(reason) }
+    options && isRawErrorMessage(options.description)
+      ? { ...options, description: errorCopy(presentationReason) }
       : options;
   return toast.error(
-    raw || reason === 'model-restricted' ? errorCopy(reason) : message,
+    raw || reason === 'model-restricted' ? errorCopy(presentationReason) : text,
     safeOptions
   );
 }
 
 /** Execution status can arrive again over WebSocket after the task SSE failure. */
 export function notifyExecutionError(
-  message: Parameters<typeof toast.error>[0],
+  message: Parameters<typeof toast.error>[0] | Error,
   options?: Parameters<typeof toast.error>[1],
   executionId?: string
 ) {

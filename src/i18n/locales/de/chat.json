@@ -427,7 +427,7 @@
   "notice-context": "Diese Unterhaltung ist für das gewählte Modell zu lang. Starte eine neue Sitzung.",
   "notice-request": "Dieses Modell konnte die Anfrage nicht verarbeiten.",
   "notice-model-unavailable": "Dieses Modell ist derzeit nicht verfügbar.",
-  "notice-task": "Diese Aufgabe konnte nicht fortgesetzt werden.",
+  "notice-task": "Aufgabe fehlgeschlagen. Erneut versuchen oder Support kontaktieren.",
   "notice-contact-description": "Melde dieses Problem an support@eigent.ai.",
   "notice-refresh-description": "Aktualisiere, um dein aktuelles Guthaben zu prüfen.",
   "notice-contact-support": "Support kontaktieren",

@@ -772,7 +772,11 @@ function LegacyChatBox(): JSX.Element {
         error?.message ||
         t('chat.control-decision-failed');
       notifyError(
-        typeof message === 'string' ? message : JSON.stringify(message)
+        error instanceof Error
+          ? error
+          : typeof message === 'string'
+            ? message
+            : JSON.stringify(message)
       );
     } finally {
       setLegacyApprovalSubmitting(false);
@@ -1305,7 +1309,11 @@ function LegacyChatBox(): JSX.Element {
         });
       } catch (error: any) {
         console.error('[FollowUpQueue] Failed to persist message', error);
-        notifyError(error?.message || 'Failed to queue message.');
+        notifyError(
+          error instanceof Error
+            ? error
+            : error?.message || 'Failed to queue message.'
+        );
         return;
       }
       projectStore.restoreQueuedMessage(targetProjectId, {
@@ -1499,7 +1507,11 @@ function LegacyChatBox(): JSX.Element {
           chatStore.removeMessage(_taskId, humanReplyMessageId);
           chatStore.setIsPending(_taskId, false);
           setMessage(tempMessageContent);
-          notifyError(error?.message || 'Failed to send your reply.');
+          notifyError(
+            error instanceof Error
+              ? error
+              : error?.message || 'Failed to send your reply.'
+          );
           return;
         }
         if (replyResult?.code === 1) {
@@ -1798,7 +1810,11 @@ function LegacyChatBox(): JSX.Element {
                     error?.message ||
                     '❌ **Error**: Failed to start the follow-up task.',
                 });
-                notifyError(error?.message || 'Failed to send follow-up.');
+                notifyError(
+                  error instanceof Error
+                    ? error
+                    : error?.message || 'Failed to send follow-up.'
+                );
                 if (preserveComposer) throw error;
               }
             }
@@ -1844,8 +1860,10 @@ function LegacyChatBox(): JSX.Element {
           } catch (err: any) {
             console.error('Failed to start task:', err);
             notifyError(
-              err?.message ||
-                'Failed to start task. Please check your model configuration.'
+              err instanceof Error
+                ? err
+                : err?.message ||
+                    'Failed to start task. Please check your model configuration.'
             );
             if (preserveComposer) throw err;
             return;
@@ -1943,7 +1961,11 @@ function LegacyChatBox(): JSX.Element {
     } catch (error: any) {
       console.error('[RunControl] Failed to resume Run', error);
       finishResumeRequest(owner, requestId, false);
-      notifyError(error?.message || t('chat.run-resume-failed'));
+      notifyError(
+        error instanceof Error
+          ? error
+          : error?.message || t('chat.run-resume-failed')
+      );
       await refreshInterruptedRun(owner.accountKey);
     } finally {
       setDurableRunAction(null);
@@ -1975,7 +1997,11 @@ function LegacyChatBox(): JSX.Element {
       }
     } catch (error: any) {
       console.error('[RunControl] Failed to cancel Run', error);
-      notifyError(error?.message || t('chat.run-cancel-failed'));
+      notifyError(
+        error instanceof Error
+          ? error
+          : error?.message || t('chat.run-cancel-failed')
+      );
       await refreshInterruptedRun();
     } finally {
       setDurableRunAction(null);
@@ -2259,7 +2285,11 @@ function LegacyChatBox(): JSX.Element {
           return;
         }
         projectStore.setQueuedMessageProcessing(projectId, next.task_id, false);
-        notifyError(error?.message || 'Failed to send queued message.');
+        notifyError(
+          error instanceof Error
+            ? error
+            : error?.message || 'Failed to send queued message.'
+        );
       })
       .finally(() => {
         queuedDispatchRef.current = null;

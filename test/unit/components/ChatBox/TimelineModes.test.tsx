@@ -2428,3 +2428,65 @@ describe('ChatBox timeline modes', () => {
     expect(screen.getByText(/Working on tasks for/)).toBeInTheDocument();
   });
 });
+
+it.each(['narrative', 'trajectory'] as const)(
+  'keeps quota presentation safe after event replay and remount in %s',
+  (detailLevel) => {
+    const projectId = 'quota-presentation-replay';
+    const runId = 'quota-run';
+    const raw = {
+      id: 981,
+      task_id: runId,
+      step: 'error',
+      timestamp: 1787000000,
+      data: {
+        message: JSON.stringify({
+          detail: { code: 'trial_daily_exhausted', secret: 'synthetic-secret' },
+        }),
+        request_id: 'diagnostic-request',
+      },
+    };
+    for (const historical of [false, true]) {
+      releaseProjectEventStore(projectId);
+      const store = getProjectEventStore(projectId, {
+        scheduleFlush: () => () => {},
+      });
+      expect(
+        enqueueChatEventProjection(
+          {
+            raw,
+            projectId,
+            runId,
+            sequence: 1,
+            sourceId: 'quota-fixture',
+            transport: 'legacy_chat',
+            historical,
+          },
+          true,
+          true
+        )
+      ).toBe('accepted');
+      store.flushAll();
+      const snapshot = store.getSnapshot();
+      const nodes = selectRenderableChatNodes(snapshot.chat);
+      expect(JSON.stringify(nodes)).toContain('synthetic-secret');
+      const runs = reconcileTimelineRuns(
+        composeTimelineRuns(presentChatSemanticEntities(nodes)),
+        snapshot.view.runs
+      );
+      const view = render(
+        <TimelineModeRenderer detailLevel={detailLevel} runs={runs} />
+      );
+      expect(view.container.textContent).not.toContain('synthetic-secret');
+      expect(view.container.textContent).not.toContain('trial_daily_exhausted');
+      const disclosure = screen.queryByRole('button', { name: /Failed after/ });
+      if (disclosure) fireEvent.click(disclosure);
+      expect(view.container.textContent).toContain(
+        'You’ve used today’s trial credits.'
+      );
+      expect(view.container.textContent).not.toContain('diagnostic-request');
+      view.unmount();
+    }
+    releaseProjectEventStore(projectId);
+  }
+);
