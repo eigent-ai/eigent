@@ -359,9 +359,9 @@ describe('chat projection presentation contract', () => {
     ]);
   });
 
-  it('prefers canonical transcript events over legacy history fallbacks per Run', () => {
+  it('suppresses same-content legacy input mirrors and retains legacy-only history per Run', () => {
     const mixed = projectChatEvents('project-1', [
-      event('legacy.confirmed', { content: 'Legacy prompt' }, 1, {
+      event('legacy.confirmed', { content: 'Canonical prompt' }, 1, {
         legacyStep: 'confirmed',
       }),
       event('user.message', { content: 'Canonical prompt' }, 2),
@@ -374,10 +374,19 @@ describe('chat projection presentation contract', () => {
     ]);
 
     expect(
-      presentChatSemanticEntities(selectRenderableChatNodes(mixed)).map(
-        (node) => (node.kind === 'message' ? node.content : node.eventType)
-      )
-    ).toEqual(['Canonical prompt', 'Canonical answer']);
+      presentChatSemanticEntities(selectRenderableChatNodes(mixed))
+    ).toEqual([
+      expect.objectContaining({
+        eventId: 'event-2',
+        eventType: 'user.message',
+        content: 'Canonical prompt',
+      }),
+      expect.objectContaining({
+        eventId: 'event-4',
+        eventType: 'assistant.final',
+        content: 'Canonical answer',
+      }),
+    ]);
 
     const legacyOnly = projectChatEvents('project-1', [
       event('legacy.confirmed', { content: 'Old prompt' }, 1, {
@@ -392,6 +401,21 @@ describe('chat projection presentation contract', () => {
         (node) => (node.kind === 'message' ? node.content : node.eventType)
       )
     ).toEqual(['Old prompt', 'Old answer']);
+  });
+
+  it('preserves different legacy input beside the canonical input in the same Run', () => {
+    const mixed = projectChatEvents('project-1', [
+      event('legacy.confirmed', { content: 'Legacy prompt' }, 1, {
+        legacyStep: 'confirmed',
+      }),
+      event('user.message', { content: 'Canonical prompt' }, 2),
+    ]);
+
+    expect(
+      presentChatSemanticEntities(selectRenderableChatNodes(mixed)).map(
+        (node) => (node.kind === 'message' ? node.content : node.eventType)
+      )
+    ).toEqual(['Legacy prompt', 'Canonical prompt']);
   });
 
   it('coalesces typed message lifecycle receipts by message_id', () => {
