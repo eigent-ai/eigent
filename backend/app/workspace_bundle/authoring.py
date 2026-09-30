@@ -21,6 +21,13 @@ from typing import Any
 
 from app.workspace_config import WorkspaceBundleManifest, canonical_digest
 from app.workspace_config.admission import LegacyEnvironmentImporter
+from app.workspace_config.global_resources import (
+    GLOBAL_MCP_PREFIX,
+    GLOBAL_SKILL_PREFIX,
+    GlobalResourceUnavailable,
+    resolve_global_mcp,
+    resolve_global_skill,
+)
 
 _SENSITIVE_ENV_NAME = re.compile(
     r"(?:api[_-]?key|access[_-]?token|auth(?:orization)?|credential|"
@@ -31,6 +38,77 @@ _SENSITIVE_ENV_NAME = re.compile(
 
 class WorkspaceBundleAuthoringService:
     """Build a bounded review without exposing any locally configured value."""
+
+    @staticmethod
+    def reference_findings(
+        manifest: WorkspaceBundleManifest,
+        *,
+        user_id: str | int | None = None,
+        email: str = "",
+    ) -> list[dict[str, str]]:
+        """Advisory device checks, separate from immutable author review digests.
+
+        No registry lookup, script execution, credential export, or Cloud ACL
+        claim. Models and explicitly selected assets are checked by Desktop.
+        """
+        findings = []
+        references = [
+            (f"spec.skills[{index}].ref", item.ref, "skill", ())
+            for index, item in enumerate(manifest.spec.skills)
+        ] + [
+            (
+                f"spec.mcpServers[{index}].definition",
+                item.definition,
+                "mcp",
+                item.secret_slots,
+            )
+            for index, item in enumerate(manifest.spec.mcp_servers)
+        ]
+        for location, ref, kind, slots in references:
+            code = None
+            if ref.startswith("bundle://"):
+                # Availability depends on the assets explicitly selected in
+                # Save Review, not the contents of the user's Space folder.
+                continue
+            prefix = (
+                GLOBAL_SKILL_PREFIX if kind == "skill" else GLOBAL_MCP_PREFIX
+            )
+            if not re.fullmatch(r"registry://[^\s?#%\\]+", ref):
+                code = "malformed"
+            elif not ref.startswith(prefix):
+                code = "unsupported"
+            elif not re.fullmatch(re.escape(prefix) + r"[0-9a-f]{64}", ref):
+                code = "malformed"
+            else:
+                try:
+                    if kind == "skill":
+                        resolve_global_skill(ref, user_id=user_id, email=email)
+                    else:
+                        resolve_global_mcp(ref, secret_slots=slots)
+                except GlobalResourceUnavailable as exc:
+                    reason = str(exc)
+                    if reason in {
+                        "global_skill_unavailable",
+                        "global_mcp_unavailable",
+                        "global_resource_disabled",
+                    }:
+                        code = "global_setup_required"
+                    elif reason in {
+                        "global_mcp_invalid",
+                        "global_mcp_secret_slots_unsupported",
+                    }:
+                        code = "unsupported"
+                    else:
+                        code = "verification_unavailable"
+                except (OSError, ValueError, TimeoutError):
+                    # Never project raw exceptions: they may contain paths,
+                    # config contents or credentials. Failure is not absence.
+                    code = "verification_unavailable"
+            if code:
+                findings.append(
+                    {"location": location, "reference": ref, "code": code}
+                )
+        return findings
 
     @classmethod
     def review(

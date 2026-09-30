@@ -1515,5 +1515,15 @@
   "space-discovery-resource-disabled": "已在全局设置中禁用",
   "space-discovery-resource-invalid": "全局配置无效或不可用",
   "space-discovery-model-partial": "部分模型来源加载失败。已显示可用模型，请重试加载全部来源。",
-  "space-discovery-connectors-disabled": "连接器目录已禁用。请在全局设置中启用后重试。"
+  "space-discovery-connectors-disabled": "连接器目录已禁用。请在全局设置中启用后重试。",
+  "bundle-reference-title": "此设备上的引用检查",
+  "bundle-reference-scope": "草稿可以保留未解析的引用。这些检查不验证接收者的访问权限或配置，也不替代 Cloud 发布检查。",
+  "bundle-reference-malformed": "引用格式错误。请在配置中修正。",
+  "bundle-reference-unsupported": "此 Desktop 版本不支持该引用或定义。请选择受支持的资源或修正定义。",
+  "bundle-reference-global_setup_required": "此全局资源尚未在本设备配置或启用。请检查全局设置。接收者需要自行配置。",
+  "bundle-reference-model_setup_required": "当前账号的目录中没有可用的此模型。请检查模型设置或选择其他模型；接收者需要自己的访问权限。",
+  "bundle-reference-bundle_asset_required": "本次保存尚未包含此 Bundle 资源。请在下方选择引用的文件。",
+  "bundle-reference-verification_unavailable": "无法验证此引用。请检查连接和资源设置，然后在发布前重新检查。",
+  "bundle-reference-changed": "引用或配置已更改，或无法完成验证。请查看当前检查结果并重新确认。",
+  "bundle-reference-recheck": "重新检查引用"
 }

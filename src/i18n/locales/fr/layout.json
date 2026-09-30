@@ -1559,5 +1559,15 @@
   "space-discovery-resource-disabled": "Désactivé dans les paramètres globaux",
   "space-discovery-resource-invalid": "Configuration globale invalide ou indisponible",
   "space-discovery-model-partial": "Certaines sources de modèles n’ont pas pu être chargées. Les modèles disponibles sont affichés. Réessayez.",
-  "space-discovery-connectors-disabled": "Le catalogue de connecteurs est désactivé. Activez-le dans les paramètres globaux, puis réessayez."
+  "space-discovery-connectors-disabled": "Le catalogue de connecteurs est désactivé. Activez-le dans les paramètres globaux, puis réessayez.",
+  "bundle-reference-title": "Vérification des références sur cet appareil",
+  "bundle-reference-scope": "Les brouillons peuvent conserver des références non résolues. Ces vérifications ne valident pas l’accès ni la configuration des destinataires et ne remplacent pas celles de publication Cloud.",
+  "bundle-reference-malformed": "Cette référence est mal formée. Corrigez-la dans la configuration.",
+  "bundle-reference-unsupported": "Cette version de Desktop ne prend pas en charge cette référence ou définition. Choisissez une ressource compatible ou corrigez sa définition.",
+  "bundle-reference-global_setup_required": "Cette ressource globale n’est pas configurée ou activée sur cet appareil. Vérifiez les paramètres globaux. Les destinataires doivent la configurer eux-mêmes.",
+  "bundle-reference-model_setup_required": "Ce modèle n’est pas disponible dans le catalogue du compte actuel. Vérifiez les paramètres des modèles ou choisissez-en un autre ; les destinataires ont besoin de leur propre accès.",
+  "bundle-reference-bundle_asset_required": "Cet élément du Bundle n’est pas inclus dans cet enregistrement. Sélectionnez le fichier référencé ci-dessous.",
+  "bundle-reference-verification_unavailable": "Cette référence n’a pas pu être vérifiée. Vérifiez la connexion et les paramètres des ressources, puis réessayez avant de publier.",
+  "bundle-reference-changed": "Les références ou la configuration ont changé, ou la vérification est indisponible. Examinez les résultats actuels et confirmez à nouveau.",
+  "bundle-reference-recheck": "Vérifier à nouveau les références"
 }

@@ -78,7 +78,8 @@ function configuredCandidate(raw: unknown): SpaceModelCandidate | null {
  * each response; never return, cache or log the credential-bearing provider row.
  */
 async function legacyProviderCandidates(
-  assertCurrent: () => void
+  assertCurrent: () => void,
+  requireComplete: boolean
 ): Promise<SpaceModelCandidate[]> {
   const projected = new Map<number, SpaceModelCandidate | null>();
   for (let page = 1; page <= 6; page++) {
@@ -91,9 +92,25 @@ async function legacyProviderCandidates(
     const envelope = record(response);
     const items = Array.isArray(response) ? response : envelope.items;
     if (!Array.isArray(items)) throw new Error('model_catalog_unavailable');
+    if (
+      requireComplete &&
+      !Array.isArray(response) &&
+      (!Number.isInteger(envelope.pages) ||
+        Number(envelope.pages) < 0 ||
+        (envelope.pages === 0
+          ? page !== 1 || items.length !== 0
+          : Number(envelope.pages) < page ||
+            (Number(envelope.pages) > 1 && items.length === 0)))
+    )
+      throw new Error('model_catalog_incomplete');
     for (const raw of items) {
       const provider = record(raw);
-      if (!Number.isInteger(provider.id)) continue;
+      if (!Number.isInteger(provider.id)) {
+        if (requireComplete) throw new Error('model_catalog_incomplete');
+        continue;
+      }
+      if (requireComplete && projected.has(provider.id as number))
+        throw new Error('model_catalog_incomplete');
       const config = record(provider.encrypted_config);
       projected.set(
         provider.id as number,
@@ -111,6 +128,8 @@ async function legacyProviderCandidates(
           available: getProviderValid(provider),
         })
       );
+      if (requireComplete && !projected.get(provider.id as number))
+        throw new Error('model_catalog_incomplete');
     }
     if (projected.size > 512) throw new Error('model_catalog_unavailable');
     if (
@@ -127,7 +146,8 @@ async function legacyProviderCandidates(
 }
 
 async function configuredCandidates(
-  assertCurrent: () => void
+  assertCurrent: () => void,
+  requireComplete: boolean
 ): Promise<SpaceModelCandidate[]> {
   let response: unknown;
   try {
@@ -141,21 +161,31 @@ async function configuredCandidates(
     // bypass permission errors or hide a failed service with a second endpoint.
     if ((failure.status ?? record(failure.response).status) !== 404)
       throw error;
-    return legacyProviderCandidates(assertCurrent);
+    return legacyProviderCandidates(assertCurrent, requireComplete);
   }
   if (!Array.isArray(response)) throw new Error('model_catalog_unavailable');
-  return response
-    .map(configuredCandidate)
-    .filter(
-      (candidate): candidate is SpaceModelCandidate => candidate !== null
-    );
+  if (
+    requireComplete &&
+    response.some((raw) => typeof record(raw).available !== 'boolean')
+  )
+    throw new Error('model_catalog_incomplete');
+  const candidates = response.map(configuredCandidate);
+  if (requireComplete && candidates.some((candidate) => candidate === null))
+    throw new Error('model_catalog_incomplete');
+  return candidates.filter(
+    (candidate): candidate is SpaceModelCandidate => candidate !== null
+  );
 }
 
 async function cloudCandidates(
-  assertCurrent: () => void
+  assertCurrent: () => void,
+  requireComplete: boolean
 ): Promise<SpaceModelCandidate[]> {
   // Local API deployments do not provide the managed Cloud catalog.
-  if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') return [];
+  if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
+    if (requireComplete) throw new Error('model_catalog_unavailable');
+    return [];
+  }
   assertCurrent();
   const response = record(
     await proxyFetchGet('/api/v1/cloud-models', { kind: 'chat' })
@@ -163,14 +193,20 @@ async function cloudCandidates(
   assertCurrent();
   if (!Array.isArray(response.models))
     throw new Error('model_catalog_unavailable');
-  return response.models.flatMap((raw): SpaceModelCandidate[] => {
+  const candidates = response.models.flatMap((raw): SpaceModelCandidate[] => {
     const model = record(raw);
     const modelId = exactText(model.id);
     const modelType = exactText(model.model_type);
     const platform = identifier(model.model_platform);
-    if (!modelId || !modelType || !platform || model.kind !== 'chat') return [];
+    if (!modelId || !modelType || !platform || model.kind !== 'chat') {
+      if (requireComplete) throw new Error('model_catalog_incomplete');
+      return [];
+    }
     const value = spaceModelReference({ category: 'cloud', modelId });
-    if (!parseSpaceModelReference(value)) return [];
+    if (!parseSpaceModelReference(value)) {
+      if (requireComplete) throw new Error('model_catalog_incomplete');
+      return [];
+    }
     return [
       {
         value,
@@ -185,10 +221,18 @@ async function cloudCandidates(
       },
     ];
   });
+  if (
+    requireComplete &&
+    new Set(candidates.map((item) => item.value)).size !== candidates.length
+  )
+    throw new Error('model_catalog_incomplete');
+  return candidates;
 }
 
 /** Independent global catalogs with transient, account-isolated metadata only. */
-export async function discoverSpaceModels(): Promise<SpaceModelDiscovery> {
+export async function discoverSpaceModels({
+  requireComplete = false,
+}: { requireComplete?: boolean } = {}): Promise<SpaceModelDiscovery> {
   const auth = getAuthStore();
   const owner = getAccountEnvironmentKey(auth);
   const token = auth.token;
@@ -198,8 +242,8 @@ export async function discoverSpaceModels(): Promise<SpaceModelDiscovery> {
       throw new Error('model_catalog_account_changed');
   };
   const [cloud, configured] = await Promise.allSettled([
-    cloudCandidates(assertCurrent),
-    configuredCandidates(assertCurrent),
+    cloudCandidates(assertCurrent, requireComplete),
+    configuredCandidates(assertCurrent, requireComplete),
   ]);
   assertCurrent();
   const providers = configured.status === 'fulfilled' ? configured.value : [];

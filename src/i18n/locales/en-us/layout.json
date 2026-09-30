@@ -1537,5 +1537,15 @@
   "space-discovery-resource-disabled": "Disabled in global settings",
   "space-discovery-resource-invalid": "Invalid or unavailable global configuration",
   "space-discovery-model-partial": "Some model sources could not be loaded. Available models are shown; retry to reload all sources.",
-  "space-discovery-connectors-disabled": "The connector catalog is disabled. Enable it in global settings, then retry."
+  "space-discovery-connectors-disabled": "The connector catalog is disabled. Enable it in global settings, then retry.",
+  "bundle-reference-title": "Reference checks on this device",
+  "bundle-reference-scope": "Drafts can keep unresolved references. These checks do not verify recipient access or setup, or replace Cloud publishing checks.",
+  "bundle-reference-malformed": "This reference is malformed. Correct it in the configuration.",
+  "bundle-reference-unsupported": "This reference or definition is not supported by this Desktop version. Choose a supported resource or correct its definition.",
+  "bundle-reference-global_setup_required": "This global resource is not configured or enabled on this device. Check global settings. Recipients need their own setup.",
+  "bundle-reference-model_setup_required": "This model is not available in the current account catalog. Check model settings or choose another model; recipients need their own access.",
+  "bundle-reference-bundle_asset_required": "This Bundle asset is not included in this save. Select the referenced file below.",
+  "bundle-reference-verification_unavailable": "This reference could not be verified. Check your connection and resource settings, then check again before publishing.",
+  "bundle-reference-changed": "References or the configuration changed, or verification is unavailable. Review the current findings and confirm again.",
+  "bundle-reference-recheck": "Check references again"
 }

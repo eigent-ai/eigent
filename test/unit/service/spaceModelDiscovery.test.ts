@@ -368,4 +368,64 @@ describe('global model catalog compatibility', () => {
       reason: 'model_unavailable',
     });
   });
+  it('marks incomplete model metadata unavailable for authoring preflight', async () => {
+    get.mockImplementation(async (url) =>
+      url === '/api/v1/cloud-models'
+        ? { models: [cloud, { id: 'broken' }] }
+        : [metadata, { category: 'future' }]
+    );
+    const result = await discoverSpaceModels({ requireComplete: true });
+    expect(result.unavailableSources).toEqual([
+      'cloud_catalog',
+      'provider_catalog',
+    ]);
+    expect(values(result)).toEqual(['provider://default']);
+  });
+
+  it('cannot verify a Cloud model from a self-hosted deployment', async () => {
+    vi.stubEnv('VITE_USE_LOCAL_PROXY', 'true');
+    get.mockResolvedValue([metadata]);
+    expect(
+      (await discoverSpaceModels({ requireComplete: true })).unavailableSources
+    ).toEqual(['cloud_catalog']);
+  });
+  it.each([
+    { items: [legacy], pages: '2' },
+    { items: [], pages: 2 },
+    { items: [legacy, legacy], pages: 1 },
+  ])(
+    'rejects incomplete or drifting legacy pagination during preflight: %j',
+    async (page) => {
+      get.mockImplementation(async (url) => {
+        if (url === '/api/v1/cloud-models') return { models: [cloud] };
+        if (url === '/api/v1/provider-models') throw missing();
+        return page;
+      });
+      expect(
+        (await discoverSpaceModels({ requireComplete: true }))
+          .unavailableSources
+      ).toEqual(['provider_catalog']);
+    }
+  );
+
+  it('rejects duplicate Cloud identities and missing availability during preflight', async () => {
+    get.mockImplementation(async (url) =>
+      url === '/api/v1/cloud-models'
+        ? { models: [cloud, cloud] }
+        : [{ ...metadata, available: undefined }]
+    );
+    expect(
+      (await discoverSpaceModels({ requireComplete: true })).unavailableSources
+    ).toEqual(['cloud_catalog', 'provider_catalog']);
+  });
+  it('accepts an authoritative empty legacy catalog with zero pages', async () => {
+    get.mockImplementation(async (url) => {
+      if (url === '/api/v1/cloud-models') return { models: [] };
+      if (url === '/api/v1/provider-models') throw missing();
+      return { items: [], pages: 0 };
+    });
+    expect(
+      (await discoverSpaceModels({ requireComplete: true })).unavailableSources
+    ).toEqual([]);
+  });
 });

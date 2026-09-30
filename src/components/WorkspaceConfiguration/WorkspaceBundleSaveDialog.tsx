@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -20,7 +21,9 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsText } from '@/components/ui/ds-text';
 import { Switch } from '@/components/ui/switch';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
   buildWorkspaceBundleAuthorReview,
   ensureWorkspaceBundle,
@@ -34,6 +37,12 @@ import {
   type WorkspaceBundleSelectedAsset,
 } from '@/service/workspaceBundleAuthoringApi';
 import {
+  blocksLocalBundlePublish,
+  bundleAssetReferenceFindings,
+  preflightWorkspaceBundleReferences,
+} from '@/service/workspaceBundleReferencePreflight';
+import type { WorkspaceBundleReferenceFinding } from '@/service/workspaceConfigurationApi';
+import {
   preflightPreparedWorkspaceConfigurationAssets,
   preflightWorkspaceConfigurationAsset,
   recordPublishedWorkspaceConfiguration,
@@ -46,6 +55,7 @@ import {
   type WorkspaceConfigurationSaveReview,
   type WorkspaceEnvironmentVariableRequirement,
 } from '@/service/workspaceConfigurationApi';
+import { getAuthStore } from '@/store/authStore';
 import { Check, Copy, FileUp, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -59,6 +69,18 @@ const isPublishableVisibility = (
   value: string
 ): value is PublishableWorkspaceBundleVisibility =>
   value === 'private' || value === 'public';
+
+const captureAccountCheck = () => {
+  const auth = getAuthStore();
+  const account = getAccountEnvironmentKey(auth);
+  const token = auth.token;
+  return () => {
+    const current = getAuthStore();
+    return (
+      account === getAccountEnvironmentKey(current) && token === current.token
+    );
+  };
+};
 
 interface WorkspaceBundleSaveDialogProps {
   open: boolean;
@@ -142,16 +164,38 @@ export function WorkspaceBundleSaveDialog({
   const [reviewed, setReviewed] = useState(false);
   const [publishedHandle, setPublishedHandle] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const reviewGeneration = useRef(0);
+  const invalidateReview = useCallback(() => {
+    reviewGeneration.current++;
+  }, []);
+  const [referenceFindings, setReferenceFindings] = useState<
+    WorkspaceBundleReferenceFinding[] | null
+  >(null);
 
   const loadReview = useCallback(async () => {
+    const generation = ++reviewGeneration.current;
+    const current = () => generation === reviewGeneration.current;
+    const accountIsCurrent = captureAccountCheck();
     const translate = tRef.current;
     setLoading(true);
+    setReview(null);
+    setReferenceFindings(null);
+    setReviewed(false);
+    setKnownCloudBundle(null);
+    setRecoverablePublishedRevision(null);
     setError(null);
     setPublishedHandle(null);
     setPreparedUploadConfirmed(false);
     try {
       const response = await reviewWorkspaceConfiguration(spaceId, identity);
-      if (response.draft_version !== draft.version) {
+      if (!current()) return;
+      if (!accountIsCurrent())
+        throw new Error(translate('layout.bundle-reference-changed'));
+      if (
+        response.space_id !== spaceId ||
+        response.draft_version !== draft.version ||
+        response.review.manifest_digest !== draft.document_digest
+      ) {
         throw new Error(
           translate(
             'layout.workspace-bundle-save-local-configuration-changed',
@@ -162,7 +206,17 @@ export function WorkspaceBundleSaveDialog({
           )
         );
       }
+      const findings = await preflightWorkspaceBundleReferences(
+        draft.document,
+        response.reference_findings
+      );
+      if (!current()) return;
+      if (!accountIsCurrent())
+        throw new Error(translate('layout.bundle-reference-changed'));
       const existing = await findWorkspaceBundleBySlug(response.review.slug);
+      if (!current()) return;
+      if (!accountIsCurrent())
+        throw new Error(translate('layout.bundle-reference-changed'));
       if (existing) {
         if (existing.workspace_id !== spaceId) {
           throw new Error(
@@ -190,6 +244,9 @@ export function WorkspaceBundleSaveDialog({
             existing.id,
             existing.latest_published_revision_id
           );
+          if (!current()) return;
+          if (!accountIsCurrent())
+            throw new Error(translate('layout.bundle-reference-changed'));
           if (
             isVerifiedPublishedRevision(published, response.review) &&
             published.revision === draft.document.metadata.revision
@@ -208,7 +265,9 @@ export function WorkspaceBundleSaveDialog({
         }
       }
       setReview(response.review);
+      setReferenceFindings(findings);
     } catch (nextError) {
+      if (!current()) return;
       setReview(null);
       setError(
         errorMessage(
@@ -219,9 +278,9 @@ export function WorkspaceBundleSaveDialog({
         )
       );
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
-  }, [draft.document, draft.version, identity, spaceId]);
+  }, [draft.document, draft.document_digest, draft.version, identity, spaceId]);
 
   useEffect(() => {
     if (!open) return;
@@ -234,7 +293,8 @@ export function WorkspaceBundleSaveDialog({
     setRecoveredConcurrentEdits(false);
     setCopied(false);
     void loadReview();
-  }, [loadReview, open]);
+    return invalidateReview;
+  }, [invalidateReview, loadReview, open]);
 
   const preparedAssets = useMemo(() => review?.prepared_assets ?? [], [review]);
   const preparedAssetPaths = useMemo(
@@ -243,6 +303,19 @@ export function WorkspaceBundleSaveDialog({
         preparedAssets.map((asset) => logicalAssetPath(asset.logical_path))
       ),
     [preparedAssets]
+  );
+  const findings = useMemo(
+    () => [
+      ...(referenceFindings ?? []),
+      ...bundleAssetReferenceFindings(
+        draft.document,
+        new Set([
+          ...preparedAssetPaths,
+          ...Object.keys(assetFiles).map(logicalAssetPath),
+        ])
+      ),
+    ],
+    [referenceFindings, draft.document, preparedAssetPaths, assetFiles]
   );
   const manualAssetPaths = useMemo(
     () =>
@@ -303,6 +376,9 @@ export function WorkspaceBundleSaveDialog({
     : null;
   const canPublish = Boolean(
     review &&
+    referenceFindings !== null &&
+    !findings.some(blocksLocalBundlePublish) &&
+    !loading &&
     assetsReady &&
     requirementsReady &&
     !assetLimitError &&
@@ -347,9 +423,37 @@ export function WorkspaceBundleSaveDialog({
   const publish = async () => {
     if (!review || !canPublish) return;
     const targetDraft = draft;
+    const generation = reviewGeneration.current;
+    const accountIsCurrent = captureAccountCheck();
     setPublishing(true);
     setError(null);
     try {
+      const recheckReferences = async () => {
+        const response = await reviewWorkspaceConfiguration(spaceId, identity);
+        if (
+          generation !== reviewGeneration.current ||
+          !accountIsCurrent() ||
+          response.space_id !== spaceId ||
+          response.draft_version !== targetDraft.version ||
+          response.review.manifest_digest !== review.manifest_digest ||
+          response.review.review_digest !== review.review_digest
+        )
+          throw new Error(t('layout.bundle-reference-changed'));
+        const fresh = await preflightWorkspaceBundleReferences(
+          targetDraft.document,
+          response.reference_findings
+        );
+        if (generation !== reviewGeneration.current || !accountIsCurrent())
+          throw new Error(t('layout.bundle-reference-changed'));
+        setReferenceFindings(fresh);
+        if (
+          fresh.some(blocksLocalBundlePublish) ||
+          JSON.stringify(fresh) !== JSON.stringify(referenceFindings)
+        ) {
+          setReviewed(false);
+          throw new Error(t('layout.bundle-reference-changed'));
+        }
+      };
       if (totalAssetCount > MAX_ASSET_COUNT) {
         throw new Error(
           t('layout.workspace-bundle-save-asset-count-limit', {
@@ -466,6 +570,7 @@ export function WorkspaceBundleSaveDialog({
         preflightedPreparedAssets = preparedPreflight.assets;
       }
 
+      await recheckReferences();
       const bundle = await ensureWorkspaceBundle({
         slug: review.slug,
         workspaceId: spaceId,
@@ -612,6 +717,7 @@ export function WorkspaceBundleSaveDialog({
         visibility,
         selectedAssets: selectedAssetReceipts,
       });
+      await recheckReferences();
       const published = await publishWorkspaceBundleRevision({
         bundleId: bundle.id,
         revisionId: validated.id,
@@ -715,6 +821,49 @@ export function WorkspaceBundleSaveDialog({
 
           {review ? (
             <>
+              {!recoverablePublishedRevision && !publishedHandle ? (
+                <section
+                  className="space-y-ds-stack-related"
+                  aria-live="polite"
+                >
+                  <DsText as="h3" role="base" weight="semibold">
+                    {t('layout.bundle-reference-title')}
+                  </DsText>
+                  <DsText role="meta" className="text-ds-ink-muted-default">
+                    {t('layout.bundle-reference-scope')}
+                  </DsText>
+                  {findings.map((finding) => (
+                    <Alert
+                      key={`${finding.location}:${finding.code}`}
+                      tone={
+                        blocksLocalBundlePublish(finding) ? 'error' : 'warning'
+                      }
+                    >
+                      <DsText role="base">
+                        {t(`layout.bundle-reference-${finding.code}`)}
+                      </DsText>
+                      <DsText
+                        as="p"
+                        channel="code"
+                        role="small"
+                        className="break-all"
+                      >
+                        {finding.location}
+                        {finding.reference ? ` · ${finding.reference}` : ''}
+                      </DsText>
+                    </Alert>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={publishing || Boolean(publishedHandle)}
+                    onClick={() => void loadReview()}
+                  >
+                    {t('layout.bundle-reference-recheck')}
+                  </Button>
+                </section>
+              ) : null}
               {recoverablePublishedRevision && !publishedHandle ? (
                 <div className="rounded-xl border border-x border-y border-ds-border-information-default-default bg-ds-bg-information-subtle-default p-4">
                   <p className="text-ds-text-base font-bold">
