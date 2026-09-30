@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { TeachCommentPopover } from '@/components/TeachMode/TeachCommentPopover';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -59,6 +60,7 @@ export function BrowserTab({
   const setPreviewBrowserViewport = usePageTabStore(
     (state) => state.setPreviewBrowserViewport
   );
+  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [addressInput, setAddressInput] = useState(tab.url);
@@ -175,7 +177,12 @@ export function BrowserTab({
   }, [isDesktop, viewportSettled, tab.id, setPreviewBrowserViewport]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      data-teach-feedback-source={`browser:${tab.id}`}
+      data-teach-annotation-label={tab.navigation.title || tab.title}
+      data-teach-annotation-detail={tab.url}
+    >
       <div className="flex h-10 shrink-0 items-center gap-1.5 px-2">
         <TooltipSimple
           content={t('layout.browser-back', { defaultValue: 'Back' })}
@@ -282,6 +289,18 @@ export function BrowserTab({
             <ExternalLink className="h-4 w-4" aria-hidden />
           </Button>
         </TooltipSimple>
+        <TeachCommentPopover
+          projectId={projectId}
+          sourceType="browser"
+          sourceId={`browser:${tab.id}`}
+          contextLabel={
+            tab.navigation.title ||
+            tab.title ||
+            t('layout.browser', { defaultValue: 'Browser' })
+          }
+          contextDetail={tab.url || undefined}
+          triggerVariant="icon"
+        />
       </div>
       {addressError ? (
         <p className="shrink-0 px-3 py-1 text-xs text-ds-text-error-default-default">

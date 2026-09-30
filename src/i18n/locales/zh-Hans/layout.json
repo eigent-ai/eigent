@@ -676,6 +676,8 @@
     "keyboardShortcuts": "键盘快捷键…",
     "reportBug": "报告问题…",
     "github": "GitHub 上的 Eigent",
+    "quickAnnotate": "快速批注",
+    "annotate": "批注",
     "inspectElement": "检查元素"
   },
   "add-preview-tab": "新标签页",
@@ -1515,5 +1517,9 @@
   "space-discovery-resource-disabled": "已在全局设置中禁用",
   "space-discovery-resource-invalid": "全局配置无效或不可用",
   "space-discovery-model-partial": "部分模型来源加载失败。已显示可用模型，请重试加载全部来源。",
-  "space-discovery-connectors-disabled": "连接器目录已禁用。请在全局设置中启用后重试。"
+  "space-discovery-connectors-disabled": "连接器目录已禁用。请在全局设置中启用后重试。",
+  "teach-mode": "教学模式",
+  "teach-mode-disable": "关闭",
+  "preview-feedback": "批注",
+  "preview-kind-feedback-desc": "See the annotations you added while teaching."
 }

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useTeachModeStore } from '@/store/teachModeStore';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
@@ -104,6 +105,20 @@ export function XtermViewer({
     // viewer's selection. Everything else falls through (stdin is disabled).
     terminal.attachCustomKeyEventHandler((event) => {
       if (
+        useTeachModeStore.getState().enabled &&
+        event.type === 'keydown' &&
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === 'a'
+      ) {
+        window.dispatchEvent(
+          new CustomEvent('teach-terminal-shortcut', {
+            detail: terminal.getSelection(),
+          })
+        );
+        return false;
+      }
+      if (
         (event.ctrlKey || event.metaKey) &&
         event.key === 'c' &&
         terminal.hasSelection()
@@ -191,6 +206,13 @@ export function XtermViewer({
     <div
       className="preview-terminal-screen h-full w-full"
       style={{ backgroundColor: TERMINAL_SCREEN_BACKGROUND }}
+      onContextMenuCapture={() =>
+        window.dispatchEvent(
+          new CustomEvent('teach-terminal-selection', {
+            detail: terminalRef.current?.getSelection() ?? '',
+          })
+        )
+      }
     >
       <div ref={containerRef} className="h-full w-full p-3" />
     </div>

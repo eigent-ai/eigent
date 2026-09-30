@@ -20,7 +20,14 @@ import {
 } from '@/lib/filePreviewLoader';
 import { resolveArtifactAssetFile } from '@/service/artifactAssetApi';
 import { FileText, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { downloadFromUrl, downloadOpenedFile, FileViewerPanel } from './index';
@@ -37,6 +44,8 @@ export interface FilePreviewProps {
   projectFiles?: FileInfo[];
   /** Close the preview column. */
   onClose?: () => void;
+  /** Extra contextual actions shown in the file viewer toolbar. */
+  headerActionsExtra?: ReactNode;
   /**
    * Navigate to the Files tab for the given file (or null to just open the file
    * list). Wired from the breadcrumb "Files" root and the empty state.
@@ -55,6 +64,7 @@ export function FilePreview({
   embedded = false,
   projectFiles = [],
   onClose,
+  headerActionsExtra,
   onJumpToFiles,
 }: FilePreviewProps) {
   const { t } = useTranslation();
@@ -268,17 +278,22 @@ export function FilePreview({
         </div>
       }
       headerActionsExtra={
-        onClose ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            buttonContent="icon-only"
-            aria-label={t('common.close', { defaultValue: 'Close' })}
-            onClick={onClose}
-          >
-            <X aria-hidden />
-          </Button>
+        headerActionsExtra || onClose ? (
+          <>
+            {headerActionsExtra}
+            {onClose ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                buttonContent="icon-only"
+                aria-label={t('common.close', { defaultValue: 'Close' })}
+                onClick={onClose}
+              >
+                <X aria-hidden />
+              </Button>
+            ) : null}
+          </>
         ) : undefined
       }
     />

@@ -79,6 +79,7 @@ export type RunFileSources = RunOutputSources;
 export interface RunFilesProps extends RunFileSources {
   runId: string;
   projectId?: string;
+  teachCommentsEnabled?: boolean;
 }
 
 interface RunFileDiffStats {
@@ -246,6 +247,7 @@ export function RunFilesGroup(props: RunFilesProps) {
     <RunArtifactChangeList
       runId={props.runId}
       projectId={projectId ?? undefined}
+      teachCommentsEnabled={props.teachCommentsEnabled}
       files={files}
       scanStatus={props.artifactManifest?.scanStatus}
       truncated={props.artifactManifest?.truncated}
@@ -275,10 +277,19 @@ export function RunFilesGroup(props: RunFilesProps) {
 export function RunArtifactChangeList({
   runId,
   projectId,
+  teachCommentsEnabled = false,
   files: sourceFiles,
   ...props
-}: ArtifactChangeListProps & { runId: string; projectId?: string }) {
+}: ArtifactChangeListProps & {
+  runId: string;
+  projectId?: string;
+  teachCommentsEnabled?: boolean;
+}) {
   const managedPreview = useSessionArtifactPreview();
+  const previewProjectId = usePageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
+  const resolvedProjectId = projectId ?? previewProjectId ?? undefined;
   const files = useMemo(
     () => (sourceFiles || []).filter(isDisplayableOutputFile),
     [sourceFiles]
@@ -324,6 +335,11 @@ export function RunArtifactChangeList({
         files={files}
         totals={totals}
         lineChangesForFile={lineChangesForFile}
+        teachCommentTarget={
+          teachCommentsEnabled
+            ? { projectId: resolvedProjectId, runId }
+            : undefined
+        }
       />
     </div>
   );

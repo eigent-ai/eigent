@@ -23,10 +23,12 @@ import {
   type ErrorReason,
 } from '@/lib/usageErrors';
 import { usePageTabStore } from '@/store/pageTabStore';
+import type { TeachFeedbackSourceType } from '@/store/teachModeStore';
 import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { TeachCommentPopover } from '../../TeachMode/TeachCommentPopover';
 import { Button } from '../../ui/button';
 import { TaskErrorNotice } from '../TaskErrorNotice';
 import { MarkDown } from './MarkDown';
@@ -66,6 +68,14 @@ interface AgentMessageCardProps {
   feedbackRunId?: string;
   /** Lifecycle step of the rated message; forwarded with the feedback event. */
   messageStep?: string;
+  teachFeedback?: {
+    projectId: string;
+    runId: string;
+    sourceType: TeachFeedbackSourceType;
+    sourceId: string;
+    contextLabel: string;
+    contextDetail?: string;
+  };
   /** Shown only after markdown (and typewriter, if enabled) has finished rendering — e.g. generated file chips. */
   deferredFooter?: ReactNode;
   onTyping?: () => void;
@@ -87,6 +97,7 @@ export function AgentMessageCard({
   feedbackMessageId,
   feedbackRunId,
   messageStep,
+  teachFeedback,
   deferredFooter,
 }: AgentMessageCardProps) {
   const openFilePreview = usePageTabStore((s) => s.openFilePreview);
@@ -212,6 +223,10 @@ export function AgentMessageCard({
   return (
     <div
       key={id}
+      data-teach-feedback-source={teachFeedback?.sourceId}
+      data-teach-annotation-source-type={teachFeedback?.sourceType}
+      data-teach-annotation-label={teachFeedback?.contextLabel}
+      data-teach-annotation-detail={teachFeedback?.contextDetail}
       className={`flex w-full flex-col rounded-xl bg-transparent py-3 ${className || ''} overflow-hidden`}
     >
       <MarkDown
@@ -292,6 +307,14 @@ export function AgentMessageCard({
               className={`h-4 w-4 ${feedback === 'down' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
+          {teachFeedback ? (
+            <TeachCommentPopover
+              {...teachFeedback}
+              selectedText={content}
+              triggerVariant="text"
+              triggerSize="sm"
+            />
+          ) : null}
         </div>
       )}
     </div>

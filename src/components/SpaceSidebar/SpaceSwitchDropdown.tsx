@@ -36,6 +36,7 @@ import {
   Check,
   CheckCircle2,
   GitBranch,
+  GraduationCap,
   Loader2,
   Pencil,
   Plus,
@@ -105,6 +106,8 @@ export interface SpaceSwitchDropdownProps {
   onRenameSpace: () => void;
   onOpenSpaceSettings?: () => void;
   onOpenMemorySettings?: () => void;
+  teachModeEnabled?: boolean;
+  onTeachModeChange?: (enabled: boolean) => void;
   onSpaceSelect: (spaceId: string) => void | Promise<void>;
   contentAlign?: ComponentPropsWithoutRef<typeof DropdownMenuContent>['align'];
   contentClassName?: string;
@@ -134,6 +137,8 @@ export function SpaceSwitchDropdown({
   onRenameSpace,
   onOpenSpaceSettings,
   onOpenMemorySettings,
+  teachModeEnabled,
+  onTeachModeChange,
   onSpaceSelect,
   contentAlign = 'start',
   contentClassName,
@@ -493,11 +498,33 @@ export function SpaceSwitchDropdown({
         {savePointMenu &&
         (canRenameActiveSpace ||
           onOpenSpaceSettings ||
-          onOpenMemorySettings) ? (
+          onOpenMemorySettings ||
+          onTeachModeChange) ? (
           <DropdownMenuSeparator
             className="mx-2"
             data-space-settings-separator
           />
+        ) : null}
+
+        {onTeachModeChange ? (
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={(event) => {
+              event.preventDefault();
+              onTeachModeChange(!teachModeEnabled);
+            }}
+          >
+            <GraduationCap className="h-4 w-4" aria-hidden />
+            <span className="min-w-0 flex-1">
+              {t('layout.teach-mode', { defaultValue: 'Teach mode' })}
+            </span>
+            {teachModeEnabled ? (
+              <Check
+                className="h-4 w-4 shrink-0 text-ds-icon-teach-mode-default-default"
+                aria-hidden
+              />
+            ) : null}
+          </DropdownMenuItem>
         ) : null}
 
         <DropdownMenuItem

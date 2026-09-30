@@ -676,6 +676,8 @@
     "keyboardShortcuts": "Scorciatoie da tastiera…",
     "reportBug": "Segnala un errore…",
     "github": "Eigent su GitHub",
+    "quickAnnotate": "Annotazione rapida",
+    "annotate": "Annota",
     "inspectElement": "Ispeziona elemento"
   },
   "add-preview-tab": "Nuova finestra",
@@ -1559,5 +1561,9 @@
   "space-discovery-resource-disabled": "Disattivato nelle impostazioni globali",
   "space-discovery-resource-invalid": "Configurazione globale non valida o non disponibile",
   "space-discovery-model-partial": "Impossibile caricare alcune fonti di modelli. Vengono mostrati i modelli disponibili. Riprova.",
-  "space-discovery-connectors-disabled": "Il catalogo dei connettori è disattivato. Attivalo nelle impostazioni globali e riprova."
+  "space-discovery-connectors-disabled": "Il catalogo dei connettori è disattivato. Attivalo nelle impostazioni globali e riprova.",
+  "teach-mode": "Modalità insegnamento",
+  "teach-mode-disable": "Disattiva",
+  "preview-feedback": "Annotazioni",
+  "preview-kind-feedback-desc": "See the annotations you added while teaching."
 }

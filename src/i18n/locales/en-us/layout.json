@@ -676,6 +676,8 @@
     "keyboardShortcuts": "Keyboard Shortcuts…",
     "reportBug": "Report a Bug…",
     "github": "Eigent on GitHub",
+    "quickAnnotate": "Quick annotate",
+    "annotate": "Annotate",
     "inspectElement": "Inspect Element"
   },
   "add-preview-tab": "New tab",
@@ -1537,5 +1539,9 @@
   "space-discovery-resource-disabled": "Disabled in global settings",
   "space-discovery-resource-invalid": "Invalid or unavailable global configuration",
   "space-discovery-model-partial": "Some model sources could not be loaded. Available models are shown; retry to reload all sources.",
-  "space-discovery-connectors-disabled": "The connector catalog is disabled. Enable it in global settings, then retry."
+  "space-discovery-connectors-disabled": "The connector catalog is disabled. Enable it in global settings, then retry.",
+  "teach-mode": "Teach mode",
+  "teach-mode-disable": "Turn off",
+  "preview-feedback": "Annotation",
+  "preview-kind-feedback-desc": "See the annotations you added while teaching."
 }

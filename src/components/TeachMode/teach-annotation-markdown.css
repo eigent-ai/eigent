@@ -1,0 +1,45 @@
+/* Selected output has its own Markdown profile, separate from chat messages. */
+.teach-annotation-markdown {
+  color: var(--ds-ink-muted-default);
+  font-family: var(--ds-font-text);
+  font-size: var(--ds-text-base-size);
+  line-height: var(--ds-text-base-line);
+  overflow-wrap: anywhere;
+}
+
+.teach-annotation-markdown :is(p, ul, ol, blockquote, pre, h1, h2, h3) {
+  margin: 0;
+}
+
+.teach-annotation-markdown > * + * {
+  margin-block-start: var(--ds-space-control-gap);
+}
+
+.teach-annotation-markdown :is(ul, ol) {
+  padding-inline-start: var(--ds-space-panel-inset);
+}
+
+.teach-annotation-markdown ul {
+  list-style: disc;
+}
+
+.teach-annotation-markdown ol {
+  list-style: decimal;
+}
+
+.teach-annotation-markdown strong {
+  color: var(--ds-ink-default-default);
+  font-weight: 600;
+}
+
+.teach-annotation-markdown code {
+  font-family: var(--ds-font-code);
+  font-size: var(--ds-code-small-size);
+}
+
+.teach-annotation-markdown pre {
+  overflow: auto;
+  border-radius: var(--ds-radius-field);
+  background: var(--ds-bg-neutral-default-default);
+  padding: var(--ds-space-control-gap);
+}

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { TeachCommentPopover } from '@/components/TeachMode/TeachCommentPopover';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -36,6 +37,7 @@ export interface ArtifactChangeListProps {
   totals?: ArtifactLineChanges | null;
   scanStatus?: string;
   truncated?: boolean;
+  teachCommentTarget?: { projectId?: string; runId: string };
 }
 
 /** Run-scoped artifact delta. Every item opens in the existing preview panel. */
@@ -48,6 +50,7 @@ export function ArtifactChangeList({
   totals,
   scanStatus = 'complete',
   truncated = false,
+  teachCommentTarget,
 }: ArtifactChangeListProps) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -159,30 +162,47 @@ export function ArtifactChangeList({
               )}
             </>
           );
-          const rowClassName = cn(
-            'flex min-h-ds-control-xl w-full min-w-0 items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-ds-neutral-default-hover',
-            canOpen && 'group'
-          );
-          return canOpen ? (
-            <button
-              type="button"
-              key={`artifact-${detail}-${fileIndex}`}
-              title={detail}
-              data-artifact-preview="available"
-              onClick={() => onOpen(file)}
-              className={rowClassName}
-            >
-              {contents}
-            </button>
-          ) : (
+          return (
             <div
-              aria-disabled="true"
               key={`artifact-${detail}-${fileIndex}`}
               title={detail}
-              data-artifact-preview="unavailable"
-              className={rowClassName}
+              data-artifact-preview={canOpen ? 'available' : 'unavailable'}
+              data-teach-feedback-source={
+                teachCommentTarget
+                  ? `artifact:${teachCommentTarget.runId}:${detail}`
+                  : undefined
+              }
+              data-teach-annotation-label={file.name}
+              data-teach-annotation-detail={detail}
+              className="flex min-h-ds-control-xl w-full min-w-0 items-center gap-1 px-2 transition-colors hover:bg-ds-neutral-default-hover"
             >
-              {contents}
+              {canOpen ? (
+                <button
+                  type="button"
+                  onClick={() => onOpen(file)}
+                  className="group flex min-w-0 flex-1 items-center gap-3 border-0 border-x-0 border-y-0 bg-transparent px-2 py-2 text-left"
+                >
+                  {contents}
+                </button>
+              ) : (
+                <div
+                  aria-disabled="true"
+                  className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left"
+                >
+                  {contents}
+                </div>
+              )}
+              {teachCommentTarget ? (
+                <TeachCommentPopover
+                  projectId={teachCommentTarget.projectId}
+                  runId={teachCommentTarget.runId}
+                  sourceType="artifact"
+                  sourceId={`artifact:${teachCommentTarget.runId}:${detail}`}
+                  contextLabel={baseName || detail}
+                  contextDetail={detail}
+                  triggerVariant="icon"
+                />
+              ) : null}
             </div>
           );
         })}

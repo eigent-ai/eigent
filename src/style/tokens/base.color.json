@@ -70,6 +70,7 @@
     "light": {
       "single-agent": "#7e22ce",
       "workforce": "#007a55",
+      "teach-mode": "#4c19e8",
       "browser": "#0084d1",
       "terminal": "#009966",
       "document": "#e17100",
@@ -91,6 +92,7 @@
     "dark": {
       "single-agent": "#e9d5ff",
       "workforce": "#6ee7b7",
+      "teach-mode": "#b5afff",
       "browser": "#7dd3fc",
       "terminal": "#6ee7b7",
       "document": "#ffd479",

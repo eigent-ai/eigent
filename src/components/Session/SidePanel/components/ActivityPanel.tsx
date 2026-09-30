@@ -60,6 +60,7 @@ import {
   useProjectSessionOverview,
 } from '@/hooks/useProjectSessionOverview';
 import { useHost } from '@/host';
+import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSkillsStore } from '@/store/skillsStore';
@@ -549,22 +550,28 @@ function FilesSection({
     <SimpleRows
       items={files}
       render={(item) => (
-        <SidePanelListRow
+        <div
           key={item.id}
-          leading={<FileText size={16} aria-hidden />}
-          trailing={
-            !item.previewable ? (
-              <span className="text-ds-text-meta text-ds-ink-muted-default">
-                {t('layout.session-panel-file-unavailable', {
-                  defaultValue: 'Preview unavailable',
-                })}
-              </span>
-            ) : null
-          }
-          onClick={item.previewable ? () => onSelect(item) : undefined}
+          data-teach-feedback-source={`file:${getWorkspaceRelativeFilePath(item.file)}`}
+          data-teach-annotation-label={item.file.name}
+          data-teach-annotation-detail={getWorkspaceRelativeFilePath(item.file)}
         >
-          {item.file.name || item.file.path}
-        </SidePanelListRow>
+          <SidePanelListRow
+            leading={<FileText size={16} aria-hidden />}
+            trailing={
+              !item.previewable ? (
+                <span className="text-ds-text-meta text-ds-ink-muted-default">
+                  {t('layout.session-panel-file-unavailable', {
+                    defaultValue: 'Preview unavailable',
+                  })}
+                </span>
+              ) : null
+            }
+            onClick={item.previewable ? () => onSelect(item) : undefined}
+          >
+            {item.file.name || item.file.path}
+          </SidePanelListRow>
+        </div>
       )}
     />
   );

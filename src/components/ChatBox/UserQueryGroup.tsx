@@ -17,6 +17,7 @@ import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectStore } from '@/store/projectStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
@@ -170,6 +171,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const chatState = chatStore.getState();
 
   const activeTaskId = scopedTaskId ?? chatState.activeTaskId;
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const feedbackProjectId = activeProjectId ?? chatId;
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const workspaceRoot = useSpaceStore((s) =>
     activeSpaceId ? s.spaces[activeSpaceId]?.rootPath : undefined
@@ -542,6 +545,22 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   feedbackRunId={activeTaskId ?? undefined}
                   feedbackMessageId={message.feedbackMessageId}
                   messageStep={message.step}
+                  teachFeedback={
+                    activeTaskId && task?.status === ChatTaskStatus.FINISHED
+                      ? {
+                          projectId: feedbackProjectId,
+                          runId: activeTaskId,
+                          sourceType: 'run',
+                          sourceId: activeTaskId,
+                          contextLabel: t('chat.teach-final-answer', {
+                            defaultValue: 'Final answer',
+                          }),
+                          contextDetail: t('chat.teach-whole-run', {
+                            defaultValue: 'Whole run',
+                          }),
+                        }
+                      : undefined
+                  }
                   deferredFooter={
                     message.fileList?.length ||
                     task?.artifactManifestTruncated ||
@@ -550,6 +569,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                       <div className="flex flex-col gap-2">
                         <RunArtifactChangeList
                           runId={activeTaskId || ''}
+                          teachCommentsEnabled={
+                            task?.status === ChatTaskStatus.FINISHED
+                          }
                           files={message.fileList || []}
                           onOpen={openFilePreview}
                           onViewChanges={viewChanges}
@@ -640,6 +662,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             >
               <RunArtifactChangeList
                 runId={activeTaskId || ''}
+                teachCommentsEnabled={task?.status === ChatTaskStatus.FINISHED}
                 files={message.fileList}
                 onOpen={openFilePreview}
                 onViewChanges={viewChanges}

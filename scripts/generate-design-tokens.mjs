@@ -38,6 +38,7 @@ const referenceDimension = readJson('reference.dimension.json');
 const referenceTypography = readJson('reference.typography.json');
 const semanticDimension = readJson('semantic.dimension.json');
 const semanticElevation = readJson('semantic.elevation.json');
+const semanticColor = readJson('semantic.color.json');
 const componentRecipe = readJson('component.recipe.json');
 const toneAssignment = readJson('tone.assignment.json');
 const exceptionRegistry = readJson('exception.registry.json');
@@ -246,6 +247,13 @@ walkObject(semanticDimension, (parts, value) => {
 for (const [role, value] of Object.entries(semanticElevation.roles)) {
   defineToken(`elevation.${role}`, `--ds-elevation-${role}`, value, 'semantic');
 }
+
+defineToken(
+  'surface.teach-mode-titlebar-halo',
+  '--ds-surface-teach-mode-titlebar-halo',
+  semanticColor.surfaceEffects.teachModeTitlebarHalo,
+  'semantic'
+);
 
 const aliasPattern = /\{([a-z0-9.-]+)\}/gi;
 function resolveRecipeValue(value) {

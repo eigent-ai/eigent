@@ -1481,53 +1481,67 @@ const AgentBlockRow = memo(function AgentBlockRow({
             className="min-w-0 overflow-hidden"
           >
             <div className="flex flex-col gap-2 py-1">
-              {block.items.map((item) =>
-                item.kind === 'message' ? (
-                  <InlineMessageRow
-                    key={item.id}
-                    text={item.text}
-                    source={item.source}
-                    running={item.running && taskRunning}
-                  />
-                ) : item.kind === 'human-input' ? (
-                  <HumanInputReceiptRow
-                    key={item.id}
-                    item={item}
-                    readOnly={humanInputReadOnly}
-                    onResolved={onHumanInputResolved}
-                  />
-                ) : (
-                  <ToolDetailRow
-                    key={item.id}
-                    rowTitle={item.rowTitle}
-                    providerLabel={searchProviderLabel(
-                      item.toolkitName,
-                      item.method
-                    )}
-                    input={item.input}
-                    output={item.output}
-                    status={
-                      taskRunning &&
-                      block.status === 'running' &&
-                      item.status === 'running'
-                        ? 'running'
-                        : 'done'
-                    }
-                    humanInputPending={Boolean(
-                      item.humanInput && !item.humanInput.response
-                    )}
-                    humanInputReceipt={
-                      item.humanInput ? (
-                        <HumanInputReceiptRow
-                          item={item.humanInput}
-                          readOnly={humanInputReadOnly}
-                          onResolved={onHumanInputResolved}
-                        />
-                      ) : undefined
-                    }
-                  />
-                )
-              )}
+              {block.items.map((item) => (
+                <div
+                  key={item.id}
+                  className="min-w-0"
+                  data-teach-feedback-source={`work-log:${block.id}:${item.id}`}
+                  data-teach-annotation-label={(item.kind === 'message'
+                    ? item.text
+                    : item.kind === 'human-input'
+                      ? item.question
+                      : item.rowTitle
+                  )
+                    .trim()
+                    .slice(0, 80)}
+                  data-teach-annotation-detail={t('chat.teach-agent-log', {
+                    defaultValue: 'Agent log',
+                  })}
+                >
+                  {item.kind === 'message' ? (
+                    <InlineMessageRow
+                      text={item.text}
+                      source={item.source}
+                      running={item.running && taskRunning}
+                    />
+                  ) : item.kind === 'human-input' ? (
+                    <HumanInputReceiptRow
+                      item={item}
+                      readOnly={humanInputReadOnly}
+                      onResolved={onHumanInputResolved}
+                    />
+                  ) : (
+                    <ToolDetailRow
+                      rowTitle={item.rowTitle}
+                      providerLabel={searchProviderLabel(
+                        item.toolkitName,
+                        item.method
+                      )}
+                      input={item.input}
+                      output={item.output}
+                      status={
+                        taskRunning &&
+                        block.status === 'running' &&
+                        item.status === 'running'
+                          ? 'running'
+                          : 'done'
+                      }
+                      humanInputPending={Boolean(
+                        item.humanInput && !item.humanInput.response
+                      )}
+                      humanInputReceipt={
+                        item.humanInput ? (
+                          <HumanInputReceiptRow
+                            item={item.humanInput}
+                            readOnly={humanInputReadOnly}
+                            onResolved={onHumanInputResolved}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  )}
+                </div>
+              ))}
               {block.items.length === 0 &&
                 taskRunning &&
                 block.status === 'running' && (
@@ -1755,59 +1769,72 @@ const AgentGroupRow = memo(function AgentGroupRow({
             className="min-w-0 overflow-hidden"
           >
             <div className="flex flex-col gap-2 py-1 pl-6">
-              {displayItems.map((item) =>
-                item.kind === 'message' ? (
-                  <InlineMessageRow
-                    key={item.id}
-                    text={item.text}
-                    source={item.source}
-                    running={item.running && taskRunning}
-                  />
-                ) : item.kind === 'human-input' ? (
-                  <HumanInputReceiptRow
-                    key={item.id}
-                    item={item}
-                    readOnly={humanInputReadOnly}
-                    onResolved={onHumanInputResolved}
-                  />
-                ) : item.kind === 'repeated-tool' ? (
-                  <RepeatedToolDetailRow
-                    key={item.id}
-                    item={item}
-                    active={taskRunning && group.status === 'running'}
-                  />
-                ) : (
-                  <ToolDetailRow
-                    key={item.id}
-                    rowTitle={item.rowTitle}
-                    providerLabel={searchProviderLabel(
-                      item.toolkitName,
-                      item.method
-                    )}
-                    input={item.input}
-                    output={item.output}
-                    status={
-                      taskRunning &&
-                      group.status === 'running' &&
-                      item.status === 'running'
-                        ? 'running'
-                        : 'done'
-                    }
-                    humanInputPending={Boolean(
-                      item.humanInput && !item.humanInput.response
-                    )}
-                    humanInputReceipt={
-                      item.humanInput ? (
-                        <HumanInputReceiptRow
-                          item={item.humanInput}
-                          readOnly={humanInputReadOnly}
-                          onResolved={onHumanInputResolved}
-                        />
-                      ) : undefined
-                    }
-                  />
-                )
-              )}
+              {displayItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="min-w-0"
+                  data-teach-feedback-source={`work-log:${group.id}:${item.id}`}
+                  data-teach-annotation-label={(item.kind === 'message'
+                    ? item.text
+                    : item.kind === 'human-input'
+                      ? item.question
+                      : item.rowTitle
+                  )
+                    .trim()
+                    .slice(0, 80)}
+                  data-teach-annotation-detail={t('chat.teach-agent-log', {
+                    defaultValue: 'Agent log',
+                  })}
+                >
+                  {item.kind === 'message' ? (
+                    <InlineMessageRow
+                      text={item.text}
+                      source={item.source}
+                      running={item.running && taskRunning}
+                    />
+                  ) : item.kind === 'human-input' ? (
+                    <HumanInputReceiptRow
+                      item={item}
+                      readOnly={humanInputReadOnly}
+                      onResolved={onHumanInputResolved}
+                    />
+                  ) : item.kind === 'repeated-tool' ? (
+                    <RepeatedToolDetailRow
+                      item={item}
+                      active={taskRunning && group.status === 'running'}
+                    />
+                  ) : (
+                    <ToolDetailRow
+                      rowTitle={item.rowTitle}
+                      providerLabel={searchProviderLabel(
+                        item.toolkitName,
+                        item.method
+                      )}
+                      input={item.input}
+                      output={item.output}
+                      status={
+                        taskRunning &&
+                        group.status === 'running' &&
+                        item.status === 'running'
+                          ? 'running'
+                          : 'done'
+                      }
+                      humanInputPending={Boolean(
+                        item.humanInput && !item.humanInput.response
+                      )}
+                      humanInputReceipt={
+                        item.humanInput ? (
+                          <HumanInputReceiptRow
+                            item={item.humanInput}
+                            readOnly={humanInputReadOnly}
+                            onResolved={onHumanInputResolved}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  )}
+                </div>
+              ))}
               {group.items.length === 0 &&
                 taskRunning &&
                 group.status === 'running' && (
@@ -2010,7 +2037,14 @@ export function TaskWorkLogAccordion({
   const timeLabel = formatSplittingElapsed(elapsedMs);
 
   return (
-    <div className={cn('flex w-full min-w-0 flex-col', className)}>
+    <div
+      className={cn('flex w-full min-w-0 flex-col', className)}
+      data-teach-feedback-source={`work-log:${taskId}`}
+      data-run-id={taskId}
+      data-teach-annotation-label={_t('chat.teach-agent-log', {
+        defaultValue: 'Agent log',
+      })}
+    >
       <button
         type="button"
         aria-expanded={outerOpen}

@@ -21,6 +21,7 @@ import {
   getKeyboardShortcutById,
 } from '@/shared/keyboardShortcuts';
 import type { PreviewTabKind } from '@/store/pageTabStore';
+import { useTeachModeStore } from '@/store/teachModeStore';
 import { useTranslation } from 'react-i18next';
 import { PREVIEW_TAB_KINDS } from '../tabKinds';
 
@@ -33,11 +34,14 @@ export interface ChooserTabProps {
 export function ChooserTab({ onChoose }: ChooserTabProps) {
   const { t } = useTranslation();
   const shortcutPlatform = useDesktopShortcutPlatform();
+  const teachModeEnabled = useTeachModeStore((state) => state.enabled);
   return (
     <div className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-y-auto p-4">
       <div className="w-full max-w-[420px]">
         <div className="flex flex-col gap-1.5">
-          {PREVIEW_TAB_KINDS.map(
+          {PREVIEW_TAB_KINDS.filter(
+            ({ kind }) => kind !== 'feedback' || teachModeEnabled
+          ).map(
             ({
               kind,
               icon: Icon,

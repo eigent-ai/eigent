@@ -38,10 +38,19 @@ export interface TerminalTabProps {
  * from the chooser's project section shows that agent stream read-only.
  */
 export function TerminalTab({ tab }: TerminalTabProps) {
-  if (tab.agentSourceId) {
-    return <AgentStreamTerminal sourceId={tab.agentSourceId} />;
-  }
-  return <LocalShellTerminal tab={tab} />;
+  return (
+    <div
+      className="h-full min-h-0"
+      data-teach-feedback-source={`terminal:${tab.agentSourceId ?? tab.id}`}
+      data-teach-annotation-label={tab.title}
+    >
+      {tab.agentSourceId ? (
+        <AgentStreamTerminal sourceId={tab.agentSourceId} />
+      ) : (
+        <LocalShellTerminal tab={tab} />
+      )}
+    </div>
+  );
 }
 
 /** One-line label for a stream: agent name, then the subtask it ran for. */

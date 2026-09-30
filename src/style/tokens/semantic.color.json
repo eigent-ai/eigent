@@ -1,5 +1,8 @@
 {
   "$description": "Semantic token axes and generation transforms for V2.",
+  "surfaceEffects": {
+    "teachModeTitlebarHalo": "color-mix(in srgb, var(--ds-bg-teach-mode-default-default) 20%, transparent)"
+  },
   "axes": {
     "elements": ["bg", "text", "border", "icon", "ring"],
     "tones": [
@@ -17,6 +20,7 @@
       "status-cancelled",
       "single-agent",
       "workforce",
+      "teach-mode",
       "browser",
       "terminal",
       "document",
@@ -84,6 +88,7 @@
     "status-cancelled": { "source": "fixed" },
     "single-agent": { "source": "fixed" },
     "workforce": { "source": "fixed" },
+    "teach-mode": { "source": "fixed" },
     "browser": { "source": "fixed" },
     "terminal": { "source": "fixed" },
     "document": { "source": "fixed" },

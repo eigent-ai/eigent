@@ -39,10 +39,15 @@ export const TOP_BAR_CONTROL_SELECTED_CLASS = '!bg-ds-neutral-subtle-default';
  * elements and Tailwind's preflight is disabled, so the browser's own control
  * font would otherwise size the label.
  */
-export const TOP_BAR_PILL_CLASS = [
+export const TOP_BAR_PILL_BASE_CLASS = [
   'no-drag flex min-h-[28px] min-w-0 items-center gap-1.5 rounded-full px-2 ml-1.5',
-  '!text-ds-text-base font-bold text-ds-ink-default-default',
+  '!text-ds-text-base font-bold',
   'outline-none transition-colors',
   'focus-visible:ring-ds-ring-focus/50 focus-visible:ring-[3px]',
+].join(' ');
+
+export const TOP_BAR_PILL_CLASS = [
+  TOP_BAR_PILL_BASE_CLASS,
+  'text-ds-ink-default-default',
   TOP_BAR_CONTROL_STATE_CLASS,
 ].join(' ');

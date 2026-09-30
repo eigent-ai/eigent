@@ -676,6 +676,8 @@
     "keyboardShortcuts": "キーボードショートカット…",
     "reportBug": "問題を報告…",
     "github": "GitHub の Eigent",
+    "quickAnnotate": "クイック注釈",
+    "annotate": "注釈を追加",
     "inspectElement": "要素を調査"
   },
   "add-preview-tab": "新しいタブ",
@@ -1515,5 +1517,9 @@
   "space-discovery-resource-disabled": "グローバル設定で無効",
   "space-discovery-resource-invalid": "グローバル設定が無効か利用できません",
   "space-discovery-model-partial": "一部のモデル一覧を読み込めませんでした。利用可能なモデルを表示しています。再試行してください。",
-  "space-discovery-connectors-disabled": "コネクター一覧は無効です。グローバル設定で有効にしてから再試行してください。"
+  "space-discovery-connectors-disabled": "コネクター一覧は無効です。グローバル設定で有効にしてから再試行してください。",
+  "teach-mode": "教えるモード",
+  "teach-mode-disable": "オフにする",
+  "preview-feedback": "注釈",
+  "preview-kind-feedback-desc": "See the annotations you added while teaching."
 }

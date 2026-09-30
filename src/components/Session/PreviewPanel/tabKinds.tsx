@@ -17,10 +17,11 @@ import {
   FileDiff,
   FileText,
   Globe,
-  type LucideIcon,
   PanelsTopLeft,
   Shapes,
+  SquareDashedMousePointer,
   SquareTerminal,
+  type LucideIcon,
 } from 'lucide-react';
 
 export interface PreviewKindMeta {
@@ -68,6 +69,14 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
     defaultDescription: 'Inspect file changes made in this session.',
   },
   {
+    kind: 'feedback',
+    icon: SquareDashedMousePointer,
+    labelKey: 'layout.preview-feedback',
+    defaultLabel: 'Annotation',
+    descriptionKey: 'layout.preview-kind-feedback-desc',
+    defaultDescription: 'See the annotations you added while teaching.',
+  },
+  {
     kind: 'terminal',
     icon: SquareTerminal,
     labelKey: 'layout.preview-kind-terminal',
@@ -83,6 +92,7 @@ const KIND_ICONS: Record<SessionPreviewTab['type'], LucideIcon> = {
   browser: Globe,
   file: FileText,
   review: FileDiff,
+  feedback: SquareDashedMousePointer,
   terminal: SquareTerminal,
   canvas: Shapes,
 };

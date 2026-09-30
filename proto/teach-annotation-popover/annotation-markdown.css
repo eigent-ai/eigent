@@ -1,0 +1,57 @@
+/* Isolated selected-output Markdown profile. It never inherits chat Markdown margins. */
+.proto-annotation-markdown {
+  color: var(--ds-ink-muted-default);
+  font-family: var(--ds-font-text);
+  font-size: var(--ds-text-base-size);
+  line-height: var(--ds-text-base-line);
+  overflow-wrap: anywhere;
+}
+
+.proto-annotation-markdown :is(p, ul, ol, blockquote, pre, h1, h2, h3) {
+  margin: 0;
+}
+
+.proto-annotation-markdown > * + * {
+  margin-block-start: var(--ds-ref-space-6);
+}
+
+.proto-annotation-markdown :is(ul, ol) {
+  padding-inline-start: var(--ds-ref-space-16);
+}
+
+.proto-annotation-markdown ul {
+  list-style: disc;
+}
+.proto-annotation-markdown ol {
+  list-style: decimal;
+}
+.proto-annotation-markdown li + li {
+  margin-block-start: var(--ds-ref-space-2);
+}
+.proto-annotation-markdown strong {
+  color: var(--ds-ink-default-default);
+  font-weight: 600;
+}
+.proto-annotation-markdown code {
+  border-radius: var(--ds-ref-radius-4);
+  background: var(--ds-bg-neutral-muted-default);
+  padding-inline: var(--ds-ref-space-4);
+  font-family: var(--ds-font-code);
+  font-size: var(--ds-code-small-size);
+}
+
+.proto-annotation-markdown pre {
+  overflow: auto;
+  border-radius: var(--ds-radius-field);
+  background: var(--ds-bg-neutral-muted-default);
+  padding: var(--ds-ref-space-8);
+}
+
+.proto-annotation-markdown pre code {
+  background: none;
+  padding: 0;
+}
+.proto-annotation-markdown a {
+  color: var(--ds-text-teach-mode-strong-default);
+  text-decoration: underline;
+}

@@ -676,6 +676,8 @@
     "keyboardShortcuts": "Atajos de teclado…",
     "reportBug": "Informar de un error…",
     "github": "Eigent en GitHub",
+    "quickAnnotate": "Anotación rápida",
+    "annotate": "Anotar",
     "inspectElement": "Inspeccionar elemento"
   },
   "add-preview-tab": "Nueva pestaña",
@@ -1559,5 +1561,9 @@
   "space-discovery-resource-disabled": "Desactivado en los ajustes globales",
   "space-discovery-resource-invalid": "Configuración global no válida o no disponible",
   "space-discovery-model-partial": "No se pudieron cargar algunas fuentes de modelos. Se muestran los modelos disponibles. Vuelve a intentarlo.",
-  "space-discovery-connectors-disabled": "El catálogo de conectores está desactivado. Actívalo en los ajustes globales y vuelve a intentarlo."
+  "space-discovery-connectors-disabled": "El catálogo de conectores está desactivado. Actívalo en los ajustes globales y vuelve a intentarlo.",
+  "teach-mode": "Modo enseñanza",
+  "teach-mode-disable": "Desactivar",
+  "preview-feedback": "Anotaciones",
+  "preview-kind-feedback-desc": "See the annotations you added while teaching."
 }

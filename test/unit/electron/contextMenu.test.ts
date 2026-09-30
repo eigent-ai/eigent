@@ -59,6 +59,8 @@ function createParams(
     },
     isEditable: true,
     menuSourceType: 'mouse',
+    selectionText: 'selected sentence',
+    pageURL: 'https://example.com/',
     x: 17,
     y: 29,
     ...overrides,
@@ -82,6 +84,33 @@ function click(item: MenuItem): void {
 }
 
 describe('context menu', () => {
+  it('offers Teach Mode annotation actions with the selected context only when enabled', () => {
+    const { contents } = createContents();
+    const onTeachAnnotation = vi.fn();
+    const template = buildContextMenuTemplate({
+      contents,
+      isDevelopment: false,
+      messages: englishMessages,
+      params: createParams({ isEditable: false }),
+      surfaceKind: 'preview-guest',
+      teachModeEnabled: true,
+      onTeachAnnotation,
+    });
+    expect(itemNames(template).slice(0, 3)).toEqual([
+      'Quick annotate',
+      'Annotate',
+      'separator',
+    ]);
+    click(findByLabel(template, 'Quick annotate'));
+    expect(onTeachAnnotation).toHaveBeenCalledWith({
+      action: 'quick',
+      surfaceKind: 'preview-guest',
+      selectionText: 'selected sentence',
+      pageUrl: 'https://example.com/',
+      x: 17,
+      y: 29,
+    });
+  });
   it('builds conventional editable commands with exact enabled flags and target operations', () => {
     const { contents, methods } = createContents();
     const template = buildContextMenuTemplate({

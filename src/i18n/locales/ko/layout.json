@@ -676,6 +676,8 @@
     "keyboardShortcuts": "키보드 단축키…",
     "reportBug": "버그 신고…",
     "github": "GitHub의 Eigent",
+    "quickAnnotate": "빠른 주석",
+    "annotate": "주석 달기",
     "inspectElement": "요소 검사"
   },
   "add-preview-tab": "새 탭",
@@ -1515,5 +1517,9 @@
   "space-discovery-resource-disabled": "전역 설정에서 비활성화됨",
   "space-discovery-resource-invalid": "전역 설정이 잘못되었거나 사용할 수 없음",
   "space-discovery-model-partial": "일부 모델 목록을 불러오지 못했습니다. 사용 가능한 모델이 표시됩니다. 다시 시도하세요.",
-  "space-discovery-connectors-disabled": "커넥터 목록이 비활성화되어 있습니다. 전역 설정에서 활성화한 후 다시 시도하세요."
+  "space-discovery-connectors-disabled": "커넥터 목록이 비활성화되어 있습니다. 전역 설정에서 활성화한 후 다시 시도하세요.",
+  "teach-mode": "가르치기 모드",
+  "teach-mode-disable": "끄기",
+  "preview-feedback": "주석",
+  "preview-kind-feedback-desc": "See the annotations you added while teaching."
 }

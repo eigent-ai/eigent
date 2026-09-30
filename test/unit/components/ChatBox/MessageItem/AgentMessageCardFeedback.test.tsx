@@ -42,6 +42,8 @@ vi.mock('@/components/ChatBox/MessageItem/MarkDown', async () => {
 
 import { AgentMessageCard } from '@/components/ChatBox/MessageItem/AgentMessageCard';
 import { subscribeAppEvents, type AppEvent } from '@/lib/events/appEvents';
+import { useSpaceStore } from '@/store/spaceStore';
+import { useTeachModeStore } from '@/store/teachModeStore';
 
 describe('AgentMessageCard feedback', () => {
   let events: AppEvent[] = [];
@@ -49,9 +51,35 @@ describe('AgentMessageCard feedback', () => {
 
   beforeEach(() => {
     events = [];
+    useTeachModeStore.setState({ enabled: false });
     unsubscribe = subscribeAppEvents((event) => {
       events.push(event);
     });
+  });
+
+  it('puts the Teach comment action beside the rating controls', () => {
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
+    useTeachModeStore.setState({ enabled: true });
+    render(
+      <AgentMessageCard
+        id="teach-message"
+        content="Final answer"
+        typewriter={false}
+        teachFeedback={{
+          projectId: 'session-1',
+          runId: 'run-1',
+          sourceType: 'run',
+          sourceId: 'run-1',
+          contextLabel: 'Final answer',
+        }}
+      />
+    );
+
+    const comment = screen.getByRole('button', { name: 'Add comment' });
+    expect(comment.parentElement).toBe(
+      screen.getByRole('button', { name: 'Thumb down' }).parentElement
+    );
+    expect(comment.className).toContain('ds-button-sm-height');
   });
 
   afterEach(() => {

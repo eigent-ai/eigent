@@ -54,6 +54,11 @@ import {
   type NativeMenuLocale,
 } from '../../src/shared/nativeMenu';
 import {
+  TEACH_ANNOTATION_REQUEST_CHANNEL,
+  TEACH_MODE_ENABLED_CHANNEL,
+  type TeachAnnotationRequest,
+} from '../../src/shared/teachAnnotation';
+import {
   isWindowCloseResponse,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
 } from '../../src/shared/windowClose';
@@ -162,6 +167,7 @@ const activeLocalFileRoots = new Set<string>();
 let protocolUrlQueue: string[] = [];
 let isWindowReady = false;
 let nativeMenuLocale: NativeMenuLocale | null = null;
+let teachModeEnabled = false;
 const appShellReadinessGate = new AppShellReadinessGate({
   announceReadyProbe: () => {
     const target = win;
@@ -204,14 +210,62 @@ function installSurfaceContextMenu(
   ownerWindow: BrowserWindow,
   surfaceKind: ContextMenuSurfaceKind
 ): () => void {
-  return installContextMenu({
+  const disposeContextMenu = installContextMenu({
     contents,
     getMessages: getCurrentNativeMenuMessages,
     isDevelopment: allowDeveloperTools,
     menuApi: Menu,
     ownerWindow,
     surfaceKind,
+    getTeachModeEnabled: () => teachModeEnabled,
+    onTeachAnnotation: (request) => {
+      if (teachModeEnabled && !ownerWindow.webContents.isDestroyed()) {
+        ownerWindow.webContents.send(TEACH_ANNOTATION_REQUEST_CHANNEL, request);
+      }
+    },
   });
+  const onShortcut = (event: Electron.Event, input: Electron.Input) => {
+    if (
+      !teachModeEnabled ||
+      surfaceKind === 'automation-view' ||
+      input.type !== 'keyDown' ||
+      input.key.toLowerCase() !== 'a' ||
+      !input.shift ||
+      !(input.meta || input.control) ||
+      input.alt
+    )
+      return;
+    event.preventDefault();
+    const send = (selectionText: string) => {
+      if (ownerWindow.webContents.isDestroyed()) return;
+      const request: TeachAnnotationRequest = {
+        action: 'quick',
+        surfaceKind,
+        selectionText,
+        pageUrl:
+          surfaceKind === 'preview-guest' ? contents.getURL() : undefined,
+      };
+      ownerWindow.webContents.send(TEACH_ANNOTATION_REQUEST_CHANNEL, request);
+    };
+    if (surfaceKind === 'preview-guest') {
+      void contents
+        .executeJavaScript('window.getSelection()?.toString() ?? ""', true)
+        .then((selection: unknown) =>
+          send(typeof selection === 'string' ? selection : '')
+        )
+        .catch(() => send(''));
+    } else {
+      send('');
+    }
+  };
+  if (surfaceKind === 'preview-guest')
+    contents.on('before-input-event', onShortcut);
+  return () => {
+    disposeContextMenu();
+    if (surfaceKind === 'preview-guest' && !contents.isDestroyed()) {
+      contents.off('before-input-event', onShortcut);
+    }
+  };
 }
 
 async function dispatchRendererAppCommand(
@@ -1936,6 +1990,10 @@ function registerIpcHandlers() {
       nativeMenuLocale = nextLocale;
       installNativeApplicationMenu();
     });
+  });
+  ipcMain.on(TEACH_MODE_ENABLED_CHANNEL, (event, enabled: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (typeof enabled === 'boolean') teachModeEnabled = enabled;
   });
   ipcMain.on(APP_SHELL_READY_CHANNEL, (event, message: unknown) => {
     if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;

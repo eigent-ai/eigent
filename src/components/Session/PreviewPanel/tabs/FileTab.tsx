@@ -13,7 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { FilePreview } from '@/components/Folder/FilePreview';
-import type { SessionFileTab } from '@/store/pageTabStore';
+import { TeachCommentPopover } from '@/components/TeachMode/TeachCommentPopover';
+import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
+import { usePageTabStore, type SessionFileTab } from '@/store/pageTabStore';
 
 export interface FileTabProps {
   tab: SessionFileTab;
@@ -22,13 +24,34 @@ export interface FileTabProps {
 
 /** File preview surface for one file tab. */
 export function FileTab({ tab, onJumpToFiles }: FileTabProps) {
+  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const detail = tab.file ? getWorkspaceRelativeFilePath(tab.file) : '';
   return (
-    <FilePreview
-      file={tab.file}
-      embedded
-      surfaceClassName="bg-ds-neutral-default-default"
-      onJumpToFiles={onJumpToFiles}
-    />
+    <div
+      className="h-full min-h-0"
+      data-teach-feedback-source={tab.file ? `file:${detail}` : undefined}
+      data-teach-annotation-label={tab.file?.name}
+      data-teach-annotation-detail={detail || undefined}
+    >
+      <FilePreview
+        file={tab.file}
+        embedded
+        surfaceClassName="bg-ds-neutral-default-default"
+        onJumpToFiles={onJumpToFiles}
+        headerActionsExtra={
+          tab.file ? (
+            <TeachCommentPopover
+              projectId={projectId}
+              sourceType="file"
+              sourceId={`file:${detail}`}
+              contextLabel={tab.file.name || detail}
+              contextDetail={detail}
+              triggerVariant="icon"
+            />
+          ) : undefined
+        }
+      />
+    </div>
   );
 }
 

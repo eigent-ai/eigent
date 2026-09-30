@@ -180,11 +180,19 @@ export interface SessionCanvasTab {
   title: string;
 }
 
+/** Teach-mode comments for the current Session or Space. */
+export interface SessionFeedbackTab {
+  id: string;
+  type: 'feedback';
+  title: string;
+}
+
 export type SessionPreviewTab =
   | SessionChooserTab
   | SessionBrowserTab
   | SessionFileTab
   | SessionReviewTab
+  | SessionFeedbackTab
   | SessionTerminalTab
   | SessionCanvasTab;
 
@@ -378,6 +386,14 @@ function createPreviewTabOfKind(
       return createFilePreviewTab();
     case 'review':
       return createReviewPreviewTab();
+    case 'feedback':
+      return {
+        id: nextSessionPreviewTabId('feedback'),
+        type: 'feedback',
+        title: i18next.t('layout.preview-feedback', {
+          defaultValue: 'Feedback',
+        }),
+      };
     case 'terminal': {
       const id = nextSessionPreviewTabId('terminal');
       return {

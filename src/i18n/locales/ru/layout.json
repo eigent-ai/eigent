@@ -676,6 +676,8 @@
     "keyboardShortcuts": "Сочетания клавиш…",
     "reportBug": "Сообщить об ошибке…",
     "github": "Eigent на GitHub",
+    "quickAnnotate": "Быстрая аннотация",
+    "annotate": "Аннотировать",
     "inspectElement": "Исследовать элемент"
   },
   "add-preview-tab": "Новая вкладка",
@@ -1581,5 +1583,9 @@
   "space-discovery-resource-disabled": "Отключено в глобальных настройках",
   "space-discovery-resource-invalid": "Глобальная конфигурация недействительна или недоступна",
   "space-discovery-model-partial": "Не удалось загрузить некоторые источники моделей. Показаны доступные модели. Повторите попытку.",
-  "space-discovery-connectors-disabled": "Каталог коннекторов отключён. Включите его в глобальных настройках и повторите попытку."
+  "space-discovery-connectors-disabled": "Каталог коннекторов отключён. Включите его в глобальных настройках и повторите попытку.",
+  "teach-mode": "Режим обучения",
+  "teach-mode-disable": "Выключить",
+  "preview-feedback": "Аннотации",
+  "preview-kind-feedback-desc": "See the annotations you added while teaching."
 }

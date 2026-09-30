@@ -22,6 +22,16 @@
 @source inline('{hover:,focus-visible:,focus:,focus-within:,}ring-ds-ring-focus');
 @source inline('text-ds-ink-inverse text-ds-icon-inverse !text-ds-ink-inverse !text-ds-icon-inverse');
 
+/* A transparent CAMEL halo marks the title bar's top edge in Teach mode.
+   The underlying app-shell background remains unchanged. */
+.teach-mode-titlebar {
+  background-image: radial-gradient(
+    ellipse 76% 160% at 50% -65%,
+    var(--ds-surface-teach-mode-titlebar-halo) 0%,
+    transparent 100%
+  );
+}
+
 /* Palatino LT — welcome headline on History; files in /public/fonts/palatino-lt/ */
 @font-face {
   font-family: 'Palatino LT';

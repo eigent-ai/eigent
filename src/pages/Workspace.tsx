@@ -54,6 +54,7 @@ import {
 
 import Session from '@/components/Session';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
+import { TeachAnnotationLayer } from '@/components/TeachMode/TeachAnnotationLayer';
 
 export default function WorkspacePage() {
   const { t } = useTranslation();
@@ -483,7 +484,12 @@ export default function WorkspacePage() {
         /* Always mounted: hosts preview <webview> guests so their pages and
            history survive panel close, workspace-tab hops, and project
            switches. Renders nothing on the web host. */
-        overlay={<PreviewBrowserLayer />}
+        overlay={
+          <>
+            <PreviewBrowserLayer />
+            <TeachAnnotationLayer />
+          </>
+        }
       >
         {renderActiveWorkspaceTab()}
       </AppShellLayout>

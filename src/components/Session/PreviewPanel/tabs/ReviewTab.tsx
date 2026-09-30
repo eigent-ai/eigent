@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ContentHeader from '@/components/Layout/ContentHeader';
+import { TeachCommentPopover } from '@/components/TeachMode/TeachCommentPopover';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -139,6 +140,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   const requestWorkspaceChatDraft = usePageTabStore(
     (state) => state.requestWorkspaceChatDraft
   );
+  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
   const reviewTarget = tab.reviewTarget ?? DEFAULT_REVIEW_TARGET;
   // A tab opened for one Run stays on that Run; a generic Review tab follows
   // whichever Run is newest. Review is intentionally task-focused.
@@ -524,6 +526,11 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
     <div
       ref={panelRef}
       className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-neutral-default-default"
+      data-teach-feedback-source={
+        selectedFile
+          ? `review:${scopedRunId ?? 'project'}:${selectedFile.path}`
+          : undefined
+      }
     >
       <div className="min-h-0 flex-1">{content}</div>
     </div>
@@ -657,6 +664,19 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
             data-testid="review-header-actions"
             className="flex items-center gap-1"
           >
+            {selectedFile ? (
+              <TeachCommentPopover
+                projectId={projectId}
+                runId={scopedRunId}
+                sourceType="review"
+                sourceId={`review:${scopedRunId ?? 'project'}:${selectedFile.path}`}
+                contextLabel={selectedFile.path}
+                contextDetail={t('layout.review', {
+                  defaultValue: 'Review',
+                })}
+                triggerVariant="icon"
+              />
+            ) : null}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

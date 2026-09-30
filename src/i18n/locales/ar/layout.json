@@ -1579,6 +1579,8 @@
     "keyboardShortcuts": "اختصارات لوحة المفاتيح…",
     "reportBug": "الإبلاغ عن خلل…",
     "github": "Eigent على GitHub",
+    "quickAnnotate": "تعليق سريع",
+    "annotate": "إضافة تعليق توضيحي",
     "inspectElement": "فحص العنصر"
   },
   "terminal-process-stop": "إيقاف {{name}}",
@@ -1625,5 +1627,9 @@
   "space-discovery-resource-disabled": "معطل في الإعدادات العامة",
   "space-discovery-resource-invalid": "الإعدادات العامة غير صالحة أو غير متاحة",
   "space-discovery-model-partial": "تعذر تحميل بعض مصادر النماذج. تظهر النماذج المتاحة؛ أعد المحاولة لتحميل جميع المصادر.",
-  "space-discovery-connectors-disabled": "دليل الموصلات معطل. فعّله في الإعدادات العامة ثم أعد المحاولة."
+  "space-discovery-connectors-disabled": "دليل الموصلات معطل. فعّله في الإعدادات العامة ثم أعد المحاولة.",
+  "teach-mode": "وضع التعليم",
+  "teach-mode-disable": "إيقاف",
+  "preview-feedback": "التعليقات التوضيحية",
+  "preview-kind-feedback-desc": "See the annotations you added while teaching."
 }

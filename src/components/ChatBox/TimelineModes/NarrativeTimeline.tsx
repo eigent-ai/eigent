@@ -17,6 +17,7 @@ import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/Prepar
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
+import { TeachCommentPopover } from '@/components/TeachMode/TeachCommentPopover';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { itemFadeMotion } from '@/components/ui/motion';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
@@ -998,6 +999,24 @@ function NarrativeRunWorkLog({
                           runActive={animationsActive}
                         />
                       )}
+                      {isTerminalRunStatus(run.status) ? (
+                        <TeachCommentPopover
+                          projectId={run.projectId}
+                          runId={run.runId}
+                          sourceType="agent-log"
+                          sourceId={entryId}
+                          contextLabel={t('chat.teach-agent-log', {
+                            defaultValue: 'Agent log',
+                          })}
+                          contextDetail={
+                            entry.kind === 'agent'
+                              ? entry.agentName
+                              : t('chat.teach-completed-step', {
+                                  defaultValue: 'Completed step',
+                                })
+                          }
+                        />
+                      ) : null}
                     </motion.div>
                   );
                 })}
@@ -1018,6 +1037,7 @@ export function NarrativeTimeline({
   paused = false,
   sessionMode,
 }: TimelineModeProps & { sessionMode?: SessionModeType }) {
+  const { t } = useTranslation();
   const workforce = sessionMode === SessionMode.WORKFORCE;
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="narrative">
@@ -1069,6 +1089,7 @@ export function NarrativeTimeline({
                       artifactManifest={artifactManifest}
                       projectId={run.projectId}
                       runId={run.runId}
+                      teachCommentsEnabled={isTerminalRunStatus(run.status)}
                     />
                   ) : undefined
                 }
@@ -1089,10 +1110,25 @@ export function NarrativeTimeline({
                 artifactManifest={artifactManifest}
                 projectId={run.projectId}
                 runId={run.runId}
+                teachCommentsEnabled={isTerminalRunStatus(run.status)}
               />
             ) : null}
             {run.status === 'running' && !paused && hasWorkBand ? (
               <RunActivityIndicator />
+            ) : null}
+            {isTerminalRunStatus(run.status) ? (
+              <TeachCommentPopover
+                projectId={run.projectId}
+                runId={run.runId}
+                sourceType="run"
+                sourceId={run.runId}
+                contextLabel={t('chat.teach-whole-run', {
+                  defaultValue: 'Whole run',
+                })}
+                contextDetail={t('chat.teach-completed-run', {
+                  defaultValue: 'Completed run',
+                })}
+              />
             ) : null}
           </section>
         );

@@ -676,6 +676,8 @@
     "keyboardShortcuts": "鍵盤快速鍵…",
     "reportBug": "回報問題…",
     "github": "GitHub 上的 Eigent",
+    "quickAnnotate": "快速註解",
+    "annotate": "註解",
     "inspectElement": "檢查元素"
   },
   "add-preview-tab": "新標籤頁",
@@ -1515,5 +1517,9 @@
   "space-discovery-resource-disabled": "已在全域設定中停用",
   "space-discovery-resource-invalid": "全域設定無效或無法使用",
   "space-discovery-model-partial": "部分模型來源載入失敗。已顯示可用模型，請重試載入全部來源。",
-  "space-discovery-connectors-disabled": "連接器目錄已停用。請在全域設定中啟用後重試。"
+  "space-discovery-connectors-disabled": "連接器目錄已停用。請在全域設定中啟用後重試。",
+  "teach-mode": "教學模式",
+  "teach-mode-disable": "關閉",
+  "preview-feedback": "註解",
+  "preview-kind-feedback-desc": "See the annotations you added while teaching."
 }

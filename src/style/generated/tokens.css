@@ -212,6 +212,11 @@
   --ds-space-panel-inset: var(--ds-ref-space-16);
   --ds-space-stack-related: var(--ds-ref-space-8);
   --ds-space-stack-section: var(--ds-ref-space-32);
+  --ds-surface-teach-mode-titlebar-halo: color-mix(
+    in srgb,
+    var(--ds-bg-teach-mode-default-default) 20%,
+    transparent
+  );
   --ds-switch-md-height: var(--ds-ref-control-height-sm);
   --ds-switch-md-width: 2.75rem;
   --ds-switch-sm-height: var(--ds-ref-control-height-2xs);

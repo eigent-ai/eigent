@@ -25,6 +25,7 @@ import {
   writeToShell,
   type ShellSessionState,
 } from '@/lib/shellSessions';
+import { useTeachModeStore } from '@/store/teachModeStore';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
@@ -117,6 +118,20 @@ export function ShellTerminal({
       container.appendChild(element);
       terminal.open(element);
       terminal.attachCustomKeyEventHandler((event) => {
+        if (
+          useTeachModeStore.getState().enabled &&
+          event.type === 'keydown' &&
+          (event.ctrlKey || event.metaKey) &&
+          event.shiftKey &&
+          event.key.toLowerCase() === 'a'
+        ) {
+          window.dispatchEvent(
+            new CustomEvent('teach-terminal-shortcut', {
+              detail: terminal.getSelection(),
+            })
+          );
+          return false;
+        }
         if (
           (event.ctrlKey || event.metaKey) &&
           event.key === 'c' &&
@@ -220,6 +235,13 @@ export function ShellTerminal({
     <div
       className="preview-terminal-screen relative h-full w-full"
       style={{ backgroundColor: TERMINAL_SCREEN_BACKGROUND }}
+      onContextMenuCapture={() =>
+        window.dispatchEvent(
+          new CustomEvent('teach-terminal-selection', {
+            detail: terminalRef.current?.getSelection() ?? '',
+          })
+        )
+      }
     >
       <div ref={containerRef} className="h-full w-full p-3" />
       {notice ? (

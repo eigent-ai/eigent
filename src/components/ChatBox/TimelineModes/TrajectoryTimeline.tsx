@@ -14,6 +14,7 @@
 
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
+import { TeachCommentPopover } from '@/components/TeachMode/TeachCommentPopover';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import type {
   TimelineRunView,
@@ -34,6 +35,7 @@ import { normalizeRunReviewPath } from './RunFiles';
 import {
   hasRunExecutionRows,
   isActiveRunStatus,
+  isTerminalRunStatus,
   RunActivityIndicator,
   statusIcon,
   statusLabel,
@@ -631,6 +633,21 @@ function DetailedRun({
           })}
         </ol>
       ) : null}
+      {run.traceRows.length > 0 && isTerminalRunStatus(run.status) ? (
+        <TeachCommentPopover
+          className="px-3"
+          projectId={run.projectId}
+          runId={run.runId}
+          sourceType="agent-log"
+          sourceId={`trajectory:${run.runId}`}
+          contextLabel={t('chat.teach-agent-log', {
+            defaultValue: 'Agent log',
+          })}
+          contextDetail={t('chat.teach-completed-run', {
+            defaultValue: 'Completed run',
+          })}
+        />
+      ) : null}
       {isActiveRunStatus(run.status) && !hasRunExecutionRows(run) ? (
         <div className="px-3 py-2">
           <PreparingToExecuteTasks />
@@ -640,6 +657,21 @@ function DetailedRun({
         <div className="px-3 py-2">
           <RunActivityIndicator />
         </div>
+      ) : null}
+      {isTerminalRunStatus(run.status) ? (
+        <TeachCommentPopover
+          className="px-3"
+          projectId={run.projectId}
+          runId={run.runId}
+          sourceType="run"
+          sourceId={run.runId}
+          contextLabel={t('chat.teach-whole-run', {
+            defaultValue: 'Whole run',
+          })}
+          contextDetail={t('chat.teach-completed-run', {
+            defaultValue: 'Completed run',
+          })}
+        />
       ) : null}
     </section>
   );

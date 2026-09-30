@@ -25,6 +25,7 @@ import { Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { previewTabIcon } from './tabKinds';
+import { AnnotationTab } from './tabs/AnnotationTab';
 import { BrowserTab } from './tabs/browser/BrowserTab';
 import { CanvasTab } from './tabs/CanvasTab';
 import { ChooserTab } from './tabs/ChooserTab';
@@ -171,6 +172,8 @@ export function PreviewPanel({
         return <FileTab tab={activeTab} onJumpToFiles={onJumpToFiles} />;
       case 'review':
         return <ReviewTab key={activeTab.id} tab={activeTab} />;
+      case 'feedback':
+        return <AnnotationTab key={activeTab.id} />;
       case 'terminal':
         // Keyed so each terminal tab keeps its own shell / stream state.
         return <TerminalTab key={activeTab.id} tab={activeTab} />;

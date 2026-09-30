@@ -24,6 +24,7 @@
     "status-cancelled": { "kind": "status", "mapsToFeedback": "neutral" },
     "single-agent": { "kind": "category", "role": "agent-identity" },
     "workforce": { "kind": "category", "role": "agent-identity" },
+    "teach-mode": { "kind": "category", "role": "mode-identity" },
     "browser": { "kind": "category", "role": "tool-identity" },
     "terminal": { "kind": "category", "role": "tool-identity" },
     "document": { "kind": "category", "role": "tool-identity" }

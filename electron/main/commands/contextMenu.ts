@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { TeachAnnotationRequest } from '../../../src/shared/teachAnnotation';
 import type { NativeMenuMessages } from './nativeMenuMessages';
 
 export type ContextMenuSurfaceKind =
@@ -47,9 +48,17 @@ export interface ContextMenuTemplateOptions {
   messages: NativeMenuMessages;
   params: Pick<
     Electron.ContextMenuParams,
-    'editFlags' | 'isEditable' | 'menuSourceType' | 'x' | 'y'
+    | 'editFlags'
+    | 'isEditable'
+    | 'menuSourceType'
+    | 'selectionText'
+    | 'pageURL'
+    | 'x'
+    | 'y'
   >;
   surfaceKind: ContextMenuSurfaceKind;
+  teachModeEnabled?: boolean;
+  onTeachAnnotation?: (request: TeachAnnotationRequest) => void;
 }
 
 export interface InstallContextMenuOptions<
@@ -61,6 +70,8 @@ export interface InstallContextMenuOptions<
   menuApi: ContextMenuApi<TMenu>;
   ownerWindow: Electron.BaseWindow;
   surfaceKind: ContextMenuSurfaceKind;
+  getTeachModeEnabled?: () => boolean;
+  onTeachAnnotation?: (request: TeachAnnotationRequest) => void;
 }
 
 type ContextCommand =
@@ -96,6 +107,8 @@ export function buildContextMenuTemplate({
   messages,
   params,
   surfaceKind,
+  teachModeEnabled = false,
+  onTeachAnnotation,
 }: ContextMenuTemplateOptions): Electron.MenuItemConstructorOptions[] {
   const { editFlags } = params;
   const supportsEditing =
@@ -144,6 +157,38 @@ export function buildContextMenuTemplate({
         ),
       ];
 
+  if (
+    teachModeEnabled &&
+    surfaceKind !== 'automation-view' &&
+    onTeachAnnotation
+  ) {
+    const annotationItem = (
+      action: TeachAnnotationRequest['action'],
+      label: string
+    ) => ({
+      id: `context.${surfaceKind}.${action}-annotate`,
+      label,
+      accelerator: action === 'quick' ? 'CmdOrCtrl+Shift+A' : undefined,
+      click: () =>
+        onTeachAnnotation({
+          action,
+          surfaceKind,
+          selectionText: (params.selectionText ?? '').slice(0, 10000),
+          pageUrl:
+            surfaceKind === 'preview-guest'
+              ? params.pageURL || undefined
+              : undefined,
+          x: params.x,
+          y: params.y,
+        }),
+    });
+    template.unshift(
+      annotationItem('quick', messages.quickAnnotate),
+      annotationItem('annotate', messages.annotate),
+      separator()
+    );
+  }
+
   if (isDevelopment && surfaceKind !== 'automation-view') {
     template.push(
       separator(),
@@ -170,6 +215,8 @@ export function installContextMenu<
   menuApi,
   ownerWindow,
   surfaceKind,
+  getTeachModeEnabled,
+  onTeachAnnotation,
 }: InstallContextMenuOptions<TMenu>): () => void {
   const listener = (
     _event: Electron.Event,
@@ -184,6 +231,8 @@ export function installContextMenu<
         messages: getMessages(),
         params,
         surfaceKind,
+        teachModeEnabled: getTeachModeEnabled?.(),
+        onTeachAnnotation,
       })
     );
     menu.popup({
