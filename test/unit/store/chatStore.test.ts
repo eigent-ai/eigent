@@ -1936,7 +1936,7 @@ describe('ChatStore - Core Functionality', () => {
           stream: any,
           step: (typeof AgentStep)[keyof typeof AgentStep],
           message: string,
-          callId = 'visit-1',
+          callId: string | null = 'visit-1',
           runId?: string
         ) => {
           await stream.onmessage({
@@ -1948,7 +1948,7 @@ describe('ChatStore - Core Functionality', () => {
                 process_task_id: runId || 'live-run',
                 toolkit_name: 'Browser Toolkit',
                 method_name: 'browser visit page',
-                tool_call_id: callId,
+                tool_call_id: callId ?? undefined,
                 message,
               },
             }),
@@ -1957,14 +1957,14 @@ describe('ChatStore - Core Functionality', () => {
         const activate = (
           stream: any,
           target = url,
-          callId?: string,
+          callId?: string | null,
           runId?: string
         ) =>
           visitEvent(stream, AgentStep.ACTIVATE_TOOLKIT, target, callId, runId);
         const complete = (
           stream: any,
           target = url,
-          callId?: string,
+          callId?: string | null,
           runId?: string
         ) =>
           visitEvent(
@@ -1985,6 +1985,237 @@ describe('ChatStore - Core Functionality', () => {
         afterEach(() => {
           injectHost(null);
           usePageTabStore.setState({ sessionPreviewByProject: {} });
+        });
+
+        describe('browser preview ownership probes', () => {
+          it('rejects old-Run activation before it can poison the fresh handoff', async () => {
+            const started = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream);
+            await complete(stream);
+            usePageTabStore.getState().closeSessionPreview();
+            await switchLegacyStreamToFollowUp(started);
+            const currentUrl = 'http://localhost:8080/current.html';
+            const staleUrl = 'http://localhost:8080/stale.html';
+            const noCallId = (step: string, runId: string, message: string) =>
+              stream.onmessage({
+                data: JSON.stringify({
+                  step,
+                  run_id: runId,
+                  data: {
+                    agent_name: 'single_agent',
+                    process_task_id: runId,
+                    toolkit_name: 'Browser Toolkit',
+                    method_name: 'browser visit page',
+                    message,
+                  },
+                }),
+              });
+            await noCallId(
+              AgentStep.ACTIVATE_TOOLKIT,
+              'follow-up-run',
+              currentUrl
+            );
+            await noCallId(AgentStep.ACTIVATE_TOOLKIT, 'live-run', staleUrl);
+            await noCallId(
+              AgentStep.DEACTIVATE_TOOLKIT,
+              'follow-up-run',
+              JSON.stringify({ result: `Navigated to ${currentUrl}` })
+            );
+            const slice = preview()!;
+            expect(
+              slice.tabs.find((tab) => tab.id === slice.activeTabId)
+            ).toMatchObject({ url: currentUrl });
+          });
+
+          it('allows no-run-id legacy events for the fresh Run and rejects an explicitly old receipt', async () => {
+            const started = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream);
+            await complete(stream);
+            usePageTabStore.getState().closeSessionPreview();
+            await switchLegacyStreamToFollowUp(started);
+            await activate(stream, url, 'new-call');
+            await complete(stream, url, 'new-call', 'live-run');
+            expect(preview()?.open).toBe(false);
+            await complete(stream, url, 'new-call');
+            expect(preview()?.open).toBe(true);
+          });
+
+          it('does not rearm when CONFIRMED binds the same prepared Run twice', async () => {
+            const started = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await switchLegacyStreamToFollowUp(started);
+            await activate(stream, url, 'new-call', 'follow-up-run');
+            await complete(stream, url, 'new-call', 'follow-up-run');
+            usePageTabStore.getState().closeSessionPreview();
+            await stream.onmessage({
+              data: JSON.stringify({
+                step: AgentStep.CONFIRMED,
+                data: { question: 'Improve the game' },
+              }),
+            });
+            await activate(stream, url, 'another-call', 'follow-up-run');
+            await complete(stream, url, 'another-call', 'follow-up-run');
+            expect(preview()?.open).toBe(false);
+          });
+
+          it('a failed receipt leaves the fresh Run reveal available for later success', async () => {
+            const started = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream);
+            await complete(stream);
+            usePageTabStore.getState().closeSessionPreview();
+            await switchLegacyStreamToFollowUp(started);
+            await activate(stream, url, 'new-call', 'follow-up-run');
+            await visitEvent(
+              stream,
+              AgentStep.DEACTIVATE_TOOLKIT,
+              '{"success":false}',
+              'new-call',
+              'follow-up-run'
+            );
+            expect(preview()?.open).toBe(false);
+            await activate(stream, url, 'retry-call', 'follow-up-run');
+            await complete(stream, url, 'retry-call', 'follow-up-run');
+            expect(preview()?.open).toBe(true);
+          });
+        });
+
+        describe('browser preview ownership boundaries', () => {
+          const unkeyed = (
+            stream: any,
+            step: (typeof AgentStep)[keyof typeof AgentStep],
+            message: string,
+            identity: {
+              run_id?: string;
+              project_id?: string;
+              data?: { run_id?: string; project_id?: string };
+            } = {}
+          ) =>
+            stream.onmessage({
+              data: JSON.stringify({
+                ...identity,
+                step,
+                data: {
+                  ...identity.data,
+                  agent_name: 'single_agent',
+                  toolkit_name: 'Browser Toolkit',
+                  method_name: 'browser visit page',
+                  message,
+                },
+              }),
+            });
+
+          it.each([
+            { run_id: 'live-run' },
+            { data: { run_id: 'live-run' } },
+            { run_id: 'follow-up-run', data: { run_id: 'live-run' } },
+            { project_id: 'project-2' },
+            { data: { project_id: 'project-2' } },
+            { project_id: 'project-1', data: { project_id: 'project-2' } },
+          ])(
+            'rejects foreign activation and completion identity %j',
+            async (identity) => {
+              const started = await startObservedLiveTask({
+                prompt: `Preview ${url}`,
+              });
+              await switchLegacyStreamToFollowUp(started);
+              const stream = started.streamContaining('/chat');
+              const staleUrl = 'http://localhost:8080/stale.html';
+              await activate(stream, url, null);
+              await unkeyed(
+                stream,
+                AgentStep.ACTIVATE_TOOLKIT,
+                staleUrl,
+                identity
+              );
+              await unkeyed(
+                stream,
+                AgentStep.DEACTIVATE_TOOLKIT,
+                '{"success":true}',
+                identity
+              );
+              expect(preview()).toBeUndefined();
+              await complete(stream, url, null);
+              expect(preview()).toMatchObject({ open: true, tabs: [{ url }] });
+              expect(
+                started.store.getState().tasks['follow-up-run'].webViewUrls
+              ).not.toContainEqual(expect.objectContaining({ url: staleUrl }));
+            }
+          );
+
+          it('keeps unkeyed legacy visits in parallel Sessions on their owning transports', async () => {
+            const first = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            await switchLegacyStreamToFollowUp(first);
+            const second = await startObservedLiveTask({
+              initialRunId: 'other-run',
+              projectId: 'project-2',
+              resetObservers: false,
+            });
+            usePageTabStore.getState().setSessionPreviewProject('project-2');
+            const a = first.streamContaining('/chat');
+            const b = second.streamContaining('/chat');
+            const otherUrl = 'http://localhost:8080/other.html';
+            await activate(a, url, null);
+            await activate(b, otherUrl, null);
+            await complete(a, url, null);
+            expect(
+              getSessionPreviewSlice(usePageTabStore.getState()).open
+            ).toBe(false);
+            await complete(b, otherUrl, null);
+            expect(preview()).toMatchObject({
+              tabs: [{ url, webviewId: expect.stringContaining('project-1:') }],
+            });
+            expect(
+              getSessionPreviewSlice(usePageTabStore.getState())
+            ).toMatchObject({
+              tabs: [
+                {
+                  url: otherUrl,
+                  webviewId: expect.stringContaining('project-2:'),
+                },
+              ],
+            });
+            usePageTabStore.getState().closeSessionPreview();
+            await activate(b, otherUrl, null);
+            await complete(b, otherUrl, null);
+            expect(
+              getSessionPreviewSlice(usePageTabStore.getState()).open
+            ).toBe(false);
+          });
+
+          it('rejects activation from a superseded transport even when Run and project ids match', async () => {
+            const previous = await startObservedLiveTask();
+            const oldStream = previous.streamContaining('/chat');
+            const current = await startObservedLiveTask({
+              resetObservers: false,
+            });
+            expect(oldStream.signal.aborted).toBe(true);
+            await unkeyed(
+              oldStream,
+              AgentStep.ACTIVATE_TOOLKIT,
+              'http://localhost:8080/stale.html',
+              { run_id: 'live-run', project_id: 'project-1' }
+            );
+            expect(
+              previous.store.getState().tasks['live-run'].webViewUrls
+            ).toEqual([]);
+            const currentStream = current.streamContaining('/chat');
+            await activate(currentStream, url, null);
+            await complete(currentStream, url, null);
+            expect(preview()).toMatchObject({ open: true, tabs: [{ url }] });
+          });
         });
 
         it.each([url, 'http://localhost:8080/revised.html'])(

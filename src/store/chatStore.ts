@@ -4263,16 +4263,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           try {
             const parsed = JSON.parse(event.data);
-            if (!type && completionTailSteps.has(parsed?.step)) {
+            if (
+              isLiveTask &&
+              (completionTailSteps.has(parsed?.step) ||
+                parsed?.step === AgentStep.ACTIVATE_TOOLKIT)
+            ) {
               const ownerRunId = getCurrentTaskId();
-              const explicitRunId = parsed?.run_id ?? parsed?.data?.run_id;
+              // Activation can replace an unkeyed pending browser visit.
+              // Validate it before projection or URL recording, just like
+              // its completion. Legacy frames without ids use this transport's
+              // captured ownership; every explicit id must agree with it.
               if (
                 abortController.signal.aborted ||
                 sseConnection.taskId !== ownerRunId ||
                 activeSSEControllers[ownerRunId] !== sseConnection ||
                 legacyEndRunId === ownerRunId ||
-                (typeof explicitRunId === 'string' &&
-                  explicitRunId !== ownerRunId)
+                [parsed?.run_id, parsed?.data?.run_id].some(
+                  (id) => typeof id === 'string' && id !== ownerRunId
+                ) ||
+                [parsed?.project_id, parsed?.data?.project_id].some(
+                  (id) => typeof id === 'string' && id !== project_id
+                )
               ) {
                 return;
               }
