@@ -522,20 +522,34 @@ export class FileReader {
         FILE_PREVIEW_LIMITS.textBytes
       )
     );
-    const bytesRead = Math.min(stats.size, limit);
     const handle = await fs.promises.open(localPath, 'r');
     try {
+      // The path stat only guards the file type. A writer may change or
+      // replace the file before open, so size must belong to this handle.
+      const openedStats = await handle.stat();
+      if (!openedStats.isFile())
+        throw new Error('Preview target is not a file');
+      const bytesRead = Math.min(openedStats.size, limit);
       const buffer = Buffer.alloc(bytesRead);
       const result = await handle.read(buffer, 0, bytesRead, 0);
+      const currentStats = await handle.stat();
+      // Counts from a changing file cannot prove completeness, even if a
+      // writer happened to leave it at the same size after our read.
+      const totalBytes =
+        openedStats.size === currentStats.size &&
+        openedStats.mtimeMs === currentStats.mtimeMs &&
+        openedStats.ctimeMs === currentStats.ctimeMs
+          ? currentStats.size
+          : null;
       const content = decodePreviewText(
         buffer.subarray(0, result.bytesRead),
-        result.bytesRead < stats.size
+        totalBytes === null || result.bytesRead < totalBytes
       );
       return {
         content: content ?? '',
         binary: content === null,
         bytesRead: result.bytesRead,
-        totalBytes: stats.size,
+        totalBytes,
       };
     } finally {
       await handle.close();

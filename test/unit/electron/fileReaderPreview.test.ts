@@ -14,7 +14,9 @@
 
 import { loadFilePreview } from '@/lib/filePreviewLoader';
 import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
+import fs from 'node:fs';
 import {
+  appendFile,
   mkdir,
   mkdtemp,
   readFile,
@@ -56,6 +58,74 @@ async function temporaryFile(name: string, content: string): Promise<string> {
 }
 
 describe('FileReader bounded preview', () => {
+  it.each(['before-open', 'after-read-append', 'after-read-truncate'])(
+    'uses opened-file facts when text changes %s',
+    async (timing) => {
+      const content = 'weird ext\n';
+      const filePath = await temporaryFile('unsupported.xyz', content);
+      const reader = new FileReader(null as never);
+      const open = fs.promises.open.bind(fs.promises);
+      const openSpy = vi
+        .spyOn(fs.promises, 'open')
+        .mockImplementationOnce(async (...args) => {
+          if (timing === 'before-open') {
+            // Deterministically append after the path stat, before opening.
+            await appendFile(filePath, content);
+          }
+          const handle = await open(...args);
+          if (timing !== 'before-open') {
+            const read = handle.read.bind(handle);
+            vi.spyOn(handle, 'read').mockImplementationOnce(
+              async (...readArgs) => {
+                const result = await read(...readArgs);
+                if (timing === 'after-read-append') {
+                  await appendFile(filePath, content);
+                } else {
+                  await truncate(filePath, 0);
+                }
+                return result;
+              }
+            );
+          }
+          return handle;
+        });
+      try {
+        const result = await loadFilePreview(
+          { name: 'unsupported.xyz', type: 'xyz', path: filePath },
+          {
+            ipcRenderer: {
+              invoke: async (channel, ...args) => {
+                if (channel === 'get-file-preview-metadata')
+                  return reader.getPreviewMetadata(args[0] as string);
+                if (channel === 'preview-text-file')
+                  return reader.previewTextFile(
+                    args[0] as string,
+                    args[1] as number
+                  );
+                throw new Error(`Unexpected channel: ${channel}`);
+              },
+            },
+          }
+        );
+        expect(openSpy).toHaveBeenCalledOnce();
+        expect((await fs.promises.stat(filePath)).size).toBe(
+          timing === 'after-read-truncate' ? 0 : 20
+        );
+        expect(result.preview).toEqual({
+          kind: 'text',
+          completeness: timing === 'before-open' ? 'complete' : 'unknown',
+          bytesRead: timing === 'before-open' ? 20 : 10,
+          totalBytes: timing === 'before-open' ? 20 : null,
+        });
+        expect(result.content).toBe(
+          timing === 'before-open' ? content.repeat(2) : content
+        );
+      } finally {
+        openSpy.mockRestore();
+      }
+    }
+  );
+
   it.each([
     '',
     'weird ext\n',
