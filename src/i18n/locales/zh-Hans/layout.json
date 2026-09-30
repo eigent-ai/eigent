@@ -262,6 +262,7 @@
   "yesterday": "昨天",
   "days-ago": "天前",
   "delete-project": "删除会话",
+  "delete-project-failed": "会话删除未完成。部分本地文件可能已移除。请重试以完成删除。",
   "delete-project-confirmation": "您确定要删除此会话及其所有任务吗？此操作无法撤销。",
   "delete-space-confirmation": "确定要删除此 Space 及其所有会话吗？此操作无法撤销。",
   "please-select-model": "请在智能体 > 模型中选择一个模型以继续。",

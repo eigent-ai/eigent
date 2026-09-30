@@ -262,6 +262,7 @@
   "yesterday": "Hier",
   "days-ago": "jours auparavant",
   "delete-project": "Supprimer la session",
+  "delete-project-failed": "La suppression de la session n’a pas pu être terminée. Certains fichiers locaux ont peut-être déjà été supprimés. Réessayez pour terminer la suppression.",
   "delete-project-confirmation": "Voulez-vous vraiment supprimer cette session et toutes ses tâches ? Cette action est irréversible.",
   "delete-space-confirmation": "Voulez-vous vraiment supprimer cet espace et toutes ses sessions ? Cette action est irréversible.",
   "please-select-model": "Veuillez sélectionner un modèle dans Agents > Modèles pour continuer.",

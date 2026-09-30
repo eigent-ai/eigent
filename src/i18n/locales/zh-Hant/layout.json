@@ -262,6 +262,7 @@
   "yesterday": "昨天",
   "days-ago": "天前",
   "delete-project": "刪除工作階段",
+  "delete-project-failed": "工作階段刪除未完成。部分本機檔案可能已移除。請重試以完成刪除。",
   "delete-project-confirmation": "您確定要刪除此工作階段及其所有任務嗎？此操作無法撤銷。",
   "delete-space-confirmation": "確定要刪除此 Space 及其所有工作階段嗎？此操作無法復原。",
   "please-select-model": "請在智能體 > 模型中選擇一個模型以繼續。",

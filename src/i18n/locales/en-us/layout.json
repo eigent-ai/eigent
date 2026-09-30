@@ -271,6 +271,7 @@
   "yesterday": "Yesterday",
   "days-ago": "days ago",
   "delete-project": "Delete session",
+  "delete-project-failed": "Session deletion could not be completed. Some local files may already have been removed. Retry to finish deleting this session.",
   "delete-project-confirmation": "Are you sure you want to delete this session and all its tasks? This action cannot be undone.",
   "delete-space-confirmation": "Are you sure you want to delete this space and all its sessions? This action cannot be undone.",
   "please-select-model": "Please select a model in Agents > Models to continue.",

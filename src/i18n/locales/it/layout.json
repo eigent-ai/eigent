@@ -271,6 +271,7 @@
   "yesterday": "Ieri",
   "days-ago": "giorni fa",
   "delete-project": "Elimina sessione",
+  "delete-project-failed": "Non è stato possibile completare l’eliminazione della sessione. Alcuni file locali potrebbero essere già stati rimossi. Riprova per completare l’eliminazione.",
   "delete-project-confirmation": "Vuoi eliminare questa sessione e tutte le sue attività? Questa azione non può essere annullata.",
   "delete-space-confirmation": "Vuoi eliminare questo spazio e tutte le sue sessioni? Questa azione non può essere annullata.",
   "please-select-model": "Seleziona un modello in Agenti > Modelli per continuare.",

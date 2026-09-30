@@ -271,6 +271,7 @@
   "yesterday": "Gestern",
   "days-ago": "Tage zuvor",
   "delete-project": "Sitzung löschen",
+  "delete-project-failed": "Die Sitzung konnte nicht vollständig gelöscht werden. Einige lokale Dateien wurden möglicherweise bereits entfernt. Versuche es erneut, um die Sitzung vollständig zu löschen.",
   "delete-project-confirmation": "Möchten Sie diese Sitzung und alle zugehörigen Aufgaben wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
   "delete-space-confirmation": "Möchten Sie diesen Space und alle zugehörigen Sitzungen wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
   "please-select-model": "Bitte wählen Sie ein Modell unter Agenten > Modelle aus, um fortzufahren.",

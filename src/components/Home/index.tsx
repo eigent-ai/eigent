@@ -25,6 +25,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import {
   HomeHubProvider,
   type HomeSortBy,
@@ -68,6 +69,8 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
   const [curHistoryId, setCurHistoryId] = useState('');
   const [deleteProjectModalOpen, setDeleteProjectModalOpen] = useState(false);
   const [curProjectId, setCurProjectId] = useState('');
+  const [deleteProjectLoading, setDeleteProjectLoading] = useState(false);
+  const [deleteProjectFailed, setDeleteProjectFailed] = useState(false);
   const [projectDeleteCallback, setProjectDeleteCallback] = useState<
     (() => Promise<void>) | null
   >(null);
@@ -118,6 +121,7 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
 
   const handleProjectDelete = (projectId: string) => {
     hubHandleProjectDelete(projectId, (deleteCallbackFn) => {
+      setDeleteProjectFailed(false);
       setCurProjectId(projectId);
       setProjectDeleteCallback(() => deleteCallbackFn);
       setDeleteProjectModalOpen(true);
@@ -126,16 +130,20 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
 
   const confirmProjectDelete = async () => {
     const projectId = curProjectId;
-    if (!projectId || !projectDeleteCallback) return;
+    if (!projectId || !projectDeleteCallback || deleteProjectLoading) return;
 
+    setDeleteProjectLoading(true);
     try {
       await projectDeleteCallback();
-    } catch (error) {
-      console.error('Failed to delete project:', error);
-    } finally {
       setCurProjectId('');
       setProjectDeleteCallback(null);
       setDeleteProjectModalOpen(false);
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      setDeleteProjectFailed(true);
+      toast.error(t('layout.delete-project-failed'));
+    } finally {
+      setDeleteProjectLoading(false);
     }
   };
 
@@ -213,14 +221,19 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
 
       <AlertDialog
         isOpen={deleteProjectModalOpen}
-        onClose={() => setDeleteProjectModalOpen(false)}
+        onClose={() => {
+          if (!deleteProjectLoading) setDeleteProjectModalOpen(false);
+        }}
         onConfirm={confirmProjectDelete}
-        title={t('layout.delete-project') || 'Delete session'}
-        message={
-          t('layout.delete-project-confirmation') ||
-          'Are you sure you want to delete this session and all its tasks? This action cannot be undone.'
-        }
-        confirmText={t('layout.delete')}
+        title={t('layout.delete-project')}
+        message={t(
+          deleteProjectFailed
+            ? 'layout.delete-project-failed'
+            : 'layout.delete-project-confirmation'
+        )}
+        confirmText={t(deleteProjectFailed ? 'layout.retry' : 'layout.delete')}
+        closeOnConfirm={false}
+        confirmDisabled={deleteProjectLoading}
         cancelText={t('layout.cancel')}
         confirmVariant="secondary"
         confirmTone="error"
