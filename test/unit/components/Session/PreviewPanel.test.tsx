@@ -37,7 +37,9 @@ vi.mock('@/components/Session/PreviewPanel/tabs/CanvasTab', () => ({
 
 // xterm needs real layout/canvas APIs; the terminal tab has its own suite.
 vi.mock('@/components/Session/PreviewPanel/tabs/terminal/TerminalTab', () => ({
-  TerminalTab: () => <div data-testid="terminal-tab" />,
+  TerminalTab: ({ viewportSettled }: { viewportSettled: boolean }) => (
+    <div data-testid="terminal-tab" data-settled={viewportSettled} />
+  ),
 }));
 
 // Monaco and the live project stores are covered by the ReviewTab suite.
@@ -78,6 +80,20 @@ describe('PreviewPanel', () => {
     });
     usePageTabStore.getState().setSessionPreviewProject('project-test');
     usePageTabStore.getState().toggleSessionPreview();
+  });
+
+  it('holds terminal fitting until the display panel has settled', () => {
+    usePageTabStore.getState().openPreviewTab('terminal');
+    const view = render(<PreviewPanel displaySettled={false} />);
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'false'
+    );
+    view.rerender(<PreviewPanel displaySettled />);
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'true'
+    );
   });
 
   it('opens on the chooser tab listing the available content kinds', () => {

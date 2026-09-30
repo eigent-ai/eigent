@@ -43,7 +43,8 @@ export interface PreviewPanelProps {
   /**
    * False while the display panel's open animation is still running. Browser
    * tabs hold their fixed-position webview guest parked until it settles so
-   * the page doesn't pop in over the chat mid-animation.
+   * the page doesn't pop in over the chat mid-animation. Shells also wait to
+   * fit until these bounds are stable, preserving their parsed scrollback.
    */
   displaySettled?: boolean;
 }
@@ -173,7 +174,13 @@ export function PreviewPanel({
         return <ReviewTab key={activeTab.id} tab={activeTab} />;
       case 'terminal':
         // Keyed so each terminal tab keeps its own shell / stream state.
-        return <TerminalTab key={activeTab.id} tab={activeTab} />;
+        return (
+          <TerminalTab
+            key={activeTab.id}
+            tab={activeTab}
+            viewportSettled={displaySettled}
+          />
+        );
       case 'canvas':
         return <CanvasTab key={activeTab.id} />;
       default:
