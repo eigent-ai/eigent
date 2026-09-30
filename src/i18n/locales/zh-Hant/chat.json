@@ -457,5 +457,19 @@
   "space-model-unconfirmed": "首次工作階段請求尚未確認。請重新連線後重試，或手動選擇工作階段模型。",
   "space-model-unavailable": "目前帳號無法使用此模型。請檢查模型設定，或為會話選擇模型。",
   "space-model-ambiguous": "多個提供商與此模型符合。請檢查模型設定，或為會話選擇模型。",
-  "space-model-changed": "載入期間帳號或會話模型已變更，請重新傳送訊息。"
+  "space-model-changed": "載入期間帳號或會話模型已變更，請重新傳送訊息。",
+  "task-failure-confirmed": "任務失敗，未記錄最終回覆。",
+  "task-failure-status": "任務失敗。",
+  "task-failure-unverified": "無法核實操作結果。",
+  "task-failure-unknown": "外部操作可能已發生，其結果未知。",
+  "task-failure-effects": "失敗並不能證明檔案或外部服務是否發生了變化。",
+  "task-failure-view-actions": "查看已記錄的操作",
+  "task-failure-hide-actions": "收起已記錄的操作",
+  "task-failure-action": "已記錄的操作",
+  "task-failure-no-actions": "暫無經過核實的操作詳情。",
+  "task-failure-outcome-completed": "已記錄完成",
+  "task-failure-outcome-failed": "已記錄失敗",
+  "task-failure-outcome-timed_out": "已逾時",
+  "task-failure-outcome-outcome_unknown": "結果未知",
+  "task-failure-outcome-unverified": "結果未核實"
 }

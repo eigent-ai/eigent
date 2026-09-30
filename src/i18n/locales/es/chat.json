@@ -465,5 +465,19 @@
   "space-model-unconfirmed": "La primera solicitud de la sesión aún no se ha confirmado. Vuelve a conectarte y reinténtalo, o elige un modelo para la sesión.",
   "space-model-unavailable": "Este modelo no está disponible para esta cuenta. Revise los ajustes de modelos o elija un modelo para la sesión.",
   "space-model-ambiguous": "Coinciden varios proveedores. Revise los ajustes de modelos o elija un modelo para la sesión.",
-  "space-model-changed": "La cuenta o el modelo de la sesión cambió durante la carga. Vuelva a enviar el mensaje."
+  "space-model-changed": "La cuenta o el modelo de la sesión cambió durante la carga. Vuelva a enviar el mensaje.",
+  "task-failure-confirmed": "La tarea falló antes de que se registrara una respuesta final.",
+  "task-failure-status": "La tarea falló.",
+  "task-failure-unverified": "No se pudieron verificar los resultados de las acciones.",
+  "task-failure-unknown": "Es posible que se haya realizado una acción externa; se desconoce su resultado.",
+  "task-failure-effects": "Un fallo no permite determinar si se modificaron archivos o servicios externos.",
+  "task-failure-view-actions": "Ver acciones registradas",
+  "task-failure-hide-actions": "Ocultar acciones registradas",
+  "task-failure-action": "Acción registrada",
+  "task-failure-no-actions": "No hay detalles verificados de las acciones.",
+  "task-failure-outcome-completed": "Finalización registrada",
+  "task-failure-outcome-failed": "Fallo registrado",
+  "task-failure-outcome-timed_out": "Tiempo agotado",
+  "task-failure-outcome-outcome_unknown": "Resultado desconocido",
+  "task-failure-outcome-unverified": "Resultado sin verificar"
 }

@@ -477,5 +477,19 @@
   "space-model-unconfirmed": "لم يتأكد طلب الجلسة الأول بعد. أعد الاتصال وحاول مجددًا، أو اختر نموذجًا لهذه الجلسة.",
   "space-model-unavailable": "هذا النموذج غير متاح للحساب الحالي. راجع إعدادات النماذج أو اختر نموذجاً للجلسة.",
   "space-model-ambiguous": "توجد موفرات متعددة مطابقة. راجع إعدادات النماذج أو اختر نموذجاً للجلسة.",
-  "space-model-changed": "تغير الحساب أو نموذج الجلسة أثناء التحميل. أرسل رسالتك مرة أخرى."
+  "space-model-changed": "تغير الحساب أو نموذج الجلسة أثناء التحميل. أرسل رسالتك مرة أخرى.",
+  "task-failure-confirmed": "فشلت المهمة قبل تسجيل رد نهائي.",
+  "task-failure-status": "فشلت المهمة.",
+  "task-failure-unverified": "تعذر التحقق من نتائج الإجراءات.",
+  "task-failure-unknown": "ربما حدث إجراء خارجي؛ نتيجته غير معروفة.",
+  "task-failure-effects": "لا يثبت الفشل ما إذا كانت الملفات أو الخدمات الخارجية قد تغيرت.",
+  "task-failure-view-actions": "عرض الإجراءات المسجلة",
+  "task-failure-hide-actions": "إخفاء الإجراءات المسجلة",
+  "task-failure-action": "إجراء مسجل",
+  "task-failure-no-actions": "لا تتوفر تفاصيل إجراءات تم التحقق منها.",
+  "task-failure-outcome-completed": "تم تسجيل الاكتمال",
+  "task-failure-outcome-failed": "تم تسجيل الفشل",
+  "task-failure-outcome-timed_out": "انتهت المهلة",
+  "task-failure-outcome-outcome_unknown": "النتيجة غير معروفة",
+  "task-failure-outcome-unverified": "النتيجة غير متحقق منها"
 }

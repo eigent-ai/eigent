@@ -83,7 +83,11 @@ import { executionScope } from '@/service/executionApi';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
-import { readTerminalRunResult } from '@/service/runUsageReconciliation';
+import {
+  readTerminalRunResult,
+  unverifiedTaskFailureFacts,
+  type TaskFailureFacts,
+} from '@/service/runUsageReconciliation';
 import {
   forgetRejectedTriggerRun,
   proxyUpdateTriggerExecution,
@@ -109,7 +113,7 @@ import i18next from 'i18next';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
-import { getAuthStore, getWorkerList } from './authStore';
+import { getAuthStore, getWorkerList, useAuthStore } from './authStore';
 import { enqueueChatEventProjection } from './chatEventProjectionBridge';
 import {
   cloudModelRequestExtraParams,
@@ -1273,6 +1277,10 @@ export interface ChatStore {
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
+  observeTaskFailureFacts: (
+    taskId: string,
+    onFacts: (facts: TaskFailureFacts | undefined) => void
+  ) => () => void;
   setDurableRunStatus: (
     taskId: string,
     status: DurableRunDisplayStatus | undefined
@@ -2314,6 +2322,67 @@ const updateTriggerExecutionStatus = async (
   }
 };
 
+/** Hydrate mount-scoped failure presentation, without changing history or execution. */
+export async function readTaskFailureFacts(
+  owner: VanillaChatStore,
+  projectId: string,
+  taskId: string,
+  signal: AbortSignal
+): Promise<TaskFailureFacts | null> {
+  const task = owner.getState().tasks[taskId];
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  const controller = new AbortController();
+  const isCurrent = () => {
+    const current = owner.getState().tasks[taskId];
+    const projects = useProjectStore.getState();
+    return (
+      !signal.aborted &&
+      !controller.signal.aborted &&
+      getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+      projects.activeProjectId === projectId &&
+      projects
+        .getAllChatStores(projectId)
+        .some((entry) => entry.chatStore === owner) &&
+      Boolean(
+        task &&
+        current &&
+        current.executionId === task.executionId &&
+        current.durableRunStatus === 'failed' &&
+        current.status === ChatTaskStatus.FINISHED
+      )
+    );
+  };
+  if (!isCurrent()) return null;
+  const invalidate = () => {
+    if (!isCurrent()) controller.abort();
+  };
+  const abort = () => controller.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  const unsubscribe = [
+    owner.subscribe(invalidate),
+    useProjectStore.subscribe(invalidate),
+    useAuthStore.subscribe(invalidate),
+  ];
+  try {
+    const result = await readTerminalRunResult({
+      projectId,
+      runId: taskId,
+      terminalEventTypes: ['run.failed', 'run.deadline_reached'],
+      signal: controller.signal,
+      expectedAccountKey: accountKey,
+      includeFailureFacts: true,
+    });
+    return isCurrent()
+      ? (result.failureFacts ?? unverifiedTaskFailureFacts())
+      : null;
+  } catch {
+    return isCurrent() ? unverifiedTaskFailureFacts() : null;
+  } finally {
+    signal.removeEventListener('abort', abort);
+    unsubscribe.forEach((dispose) => dispose());
+  }
+}
+
 /** Recover terminal receipts and missing display without replaying execution. */
 function recoverClosedTerminalResult(
   owner: Pick<VanillaChatStore, 'getState'>,
@@ -2437,7 +2506,7 @@ function recoverClosedTerminalResult(
 }
 
 const chatStore = (initial?: Partial<ChatStore>) =>
-  createStore<ChatStore>()((set, get) => ({
+  createStore<ChatStore>()((set, get, store) => ({
     activeTaskId: null,
     nextTaskId: null,
     tasks: initial?.tasks ?? {},
@@ -7718,6 +7787,47 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           },
         },
       }));
+    },
+    observeTaskFailureFacts(taskId, onFacts) {
+      const projectId = useProjectStore.getState().activeProjectId;
+      if (!projectId) return () => {};
+      const executionId = get().tasks[taskId]?.executionId;
+      const accountKey = getAccountEnvironmentKey(getAuthStore());
+      const controller = new AbortController();
+      const invalidate = () => {
+        if (controller.signal.aborted) return;
+        if (
+          getAccountEnvironmentKey(getAuthStore()) !== accountKey ||
+          useProjectStore.getState().activeProjectId !== projectId ||
+          !useProjectStore
+            .getState()
+            .getAllChatStores(projectId)
+            .some((entry) => entry.chatStore === store) ||
+          get().tasks[taskId]?.durableRunStatus !== 'failed' ||
+          get().tasks[taskId]?.status !== ChatTaskStatus.FINISHED ||
+          get().tasks[taskId]?.executionId !== executionId
+        ) {
+          controller.abort();
+          onFacts(undefined);
+        }
+      };
+      const unsubscribe = [
+        useAuthStore.subscribe(invalidate),
+        useProjectStore.subscribe(invalidate),
+        store.subscribe(invalidate),
+      ];
+      void readTaskFailureFacts(
+        store,
+        projectId,
+        taskId,
+        controller.signal
+      ).then((facts) => {
+        if (!controller.signal.aborted && facts) onFacts(facts);
+      });
+      return () => {
+        controller.abort();
+        unsubscribe.forEach((dispose) => dispose());
+      };
     },
     setDurableRunStatus(
       taskId: string,

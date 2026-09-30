@@ -465,5 +465,19 @@
   "space-model-unconfirmed": "La première requête de la session n’a pas encore été confirmée. Reconnectez-vous et réessayez, ou choisissez un modèle pour la session.",
   "space-model-unavailable": "Ce modèle est indisponible pour ce compte. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
   "space-model-ambiguous": "Plusieurs fournisseurs correspondent. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
-  "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message."
+  "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message.",
+  "task-failure-confirmed": "La tâche a échoué avant qu’une réponse finale soit enregistrée.",
+  "task-failure-status": "La tâche a échoué.",
+  "task-failure-unverified": "Les résultats des actions n’ont pas pu être vérifiés.",
+  "task-failure-unknown": "Une action externe a peut-être eu lieu ; son résultat est inconnu.",
+  "task-failure-effects": "Un échec ne permet pas de déterminer si des fichiers ou des services externes ont été modifiés.",
+  "task-failure-view-actions": "Voir les actions enregistrées",
+  "task-failure-hide-actions": "Masquer les actions enregistrées",
+  "task-failure-action": "Action enregistrée",
+  "task-failure-no-actions": "Aucun détail vérifié sur les actions n’est disponible.",
+  "task-failure-outcome-completed": "Achèvement enregistré",
+  "task-failure-outcome-failed": "Échec enregistré",
+  "task-failure-outcome-timed_out": "Délai dépassé",
+  "task-failure-outcome-outcome_unknown": "Résultat inconnu",
+  "task-failure-outcome-unverified": "Résultat non vérifié"
 }

@@ -648,3 +648,170 @@ describe('readTerminalRunResult', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe('failed Task facts', () => {
+  beforeEach(() => fetchGetMock.mockReset());
+
+  it('keeps mixed durable outcomes separate from successful display recovery', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'tool.completed', {
+          tool_call_id: 'read',
+          tool_name: 'read_file',
+          display_output: 'Read 12 lines',
+        }),
+        event(2, 'tool.failed', {
+          tool_call_id: 'write',
+          tool_name: 'write_file',
+          display_summary: 'Write failed',
+        }),
+        event(3, 'tool.timed_out', {
+          tool_call_id: 'search',
+          tool_name: 'search',
+        }),
+        event(4, 'tool.outcome_unknown', {
+          tool_call_id: 'send',
+          tool_name: 'send_email',
+          request: { secret: 'NEVER DISPLAY' },
+          result: { secret: 'NEVER DISPLAY' },
+        }),
+        event(5, 'run.failed', {}),
+      ])
+    );
+    const result = await readTerminalRunResult({
+      ...input,
+      includeFailureFacts: true,
+    });
+    expect(result.failureFacts).toMatchObject({
+      finalResponse: 'absent',
+      actionsVerified: true,
+      actions: [
+        { id: 'read', outcome: 'completed', output: 'Read 12 lines' },
+        { id: 'write', outcome: 'failed', detail: 'Write failed' },
+        { id: 'search', outcome: 'timed_out' },
+        { id: 'send', outcome: 'outcome_unknown' },
+      ],
+    });
+    expect(JSON.stringify(result.failureFacts)).not.toContain('NEVER DISPLAY');
+    expect(result.displayEvents).toEqual([]);
+    expect(result.assistantFinal).toBeUndefined();
+  });
+
+  it.each(['assistant.final', 'legacy.end'])(
+    'does not claim a missing final when %s is recorded',
+    async (type) => {
+      fetchGetMock.mockResolvedValue(
+        page([
+          event(1, type, { message: 'Existing final' }),
+          event(2, 'run.failed', {}),
+        ])
+      );
+      expect(
+        (await readTerminalRunResult({ ...input, includeFailureFacts: true }))
+          .failureFacts?.finalResponse
+      ).toBe('present');
+    }
+  );
+
+  it('does not treat a legacy done receipt or missing terminal tool receipt as success', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'tool.dispatched', {
+          tool_call_id: 'send',
+          tool_name: 'send_email',
+        }),
+        event(2, 'legacy.deactivate_toolkit', {
+          toolkitStatus: 'done',
+          message: 'legacy text',
+        }),
+        event(3, 'run.failed', {}),
+      ])
+    );
+    expect(
+      (await readTerminalRunResult({ ...input, includeFailureFacts: true }))
+        .failureFacts
+    ).toMatchObject({
+      finalResponse: 'absent',
+      actionsVerified: false,
+      actions: [{ id: 'send', outcome: 'unverified' }],
+    });
+  });
+});
+
+describe('failure evidence safety boundaries', () => {
+  beforeEach(() => fetchGetMock.mockReset());
+  const failureInput = { ...input, includeFailureFacts: true };
+
+  it('collapses a tool lifecycle by explicit identity and keeps terminal outcomes on reopen', async () => {
+    const journal = page([
+      event(1, 'tool.dispatched', {
+        tool_call_id: 'send',
+        tool_name: 'send_email',
+        display_input: 'Recipient redacted',
+      }),
+      event(2, 'tool.outcome_unknown', {
+        tool_call_id: 'send',
+        tool_name: 'send_email',
+      }),
+      event(3, 'run.failed', {}),
+      event(4, 'tool.completed', {
+        tool_call_id: 'send',
+        display_output: 'Later receipt outside failure boundary',
+      }),
+    ]);
+    fetchGetMock.mockResolvedValue(journal);
+    const first = await readTerminalRunResult(failureInput);
+    expect(first.failureFacts?.actions).toEqual([
+      {
+        id: 'send',
+        title: 'send_email',
+        input: 'Recipient redacted',
+        outcome: 'outcome_unknown',
+      },
+    ]);
+    expect((await readTerminalRunResult(failureInput)).failureFacts).toEqual(
+      first.failureFacts
+    );
+  });
+
+  it.each([
+    'identity',
+    'conflicting status',
+    'scope',
+    'oversized detail',
+    'truncated detail',
+    'too many actions',
+    'regression',
+  ])('rejects %s instead of publishing incomplete facts', async (kind) => {
+    const payload: any = { tool_call_id: 'send', tool_name: 'send_email' };
+    if (kind === 'identity') delete payload.tool_call_id;
+    if (kind === 'conflicting status') payload.status = 'completed';
+    if (kind === 'scope') payload.run_id = 'other';
+    if (kind === 'oversized detail') payload.display_output = 'x'.repeat(4001);
+    if (kind === 'truncated detail') payload.display_output_truncated = true;
+    const receipts =
+      kind === 'too many actions'
+        ? Array.from({ length: 101 }, (_, index) =>
+            event(index + 1, 'tool.completed', { tool_call_id: String(index) })
+          )
+        : kind === 'regression'
+          ? [
+              event(1, 'tool.completed', payload),
+              event(2, 'tool.failed', payload),
+            ]
+          : [event(1, 'tool.outcome_unknown', payload)];
+    fetchGetMock.mockResolvedValue(
+      page([...receipts, event(receipts.length + 1, 'run.failed', {})])
+    );
+    await expect(readTerminalRunResult(failureInput)).rejects.toThrow();
+  });
+
+  it('does not verify action outcomes merely because no tool receipts exist', async () => {
+    fetchGetMock.mockResolvedValue(page([event(1, 'run.failed', {})]));
+    expect((await readTerminalRunResult(failureInput)).failureFacts).toEqual({
+      finalResponse: 'absent',
+      actionsVerified: false,
+      actions: [],
+    });
+  });
+});

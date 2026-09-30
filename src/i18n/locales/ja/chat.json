@@ -457,5 +457,19 @@
   "space-model-unconfirmed": "セッションの最初のリクエストはまだ確認されていません。再接続して再試行するか、セッションのモデルを選択してください。",
   "space-model-unavailable": "このアカウントではモデルを利用できません。モデル設定を確認するか、セッションのモデルを選択してください。",
   "space-model-ambiguous": "複数のプロバイダーが一致しています。モデル設定を確認するか、セッションのモデルを選択してください。",
-  "space-model-changed": "読み込み中にアカウントまたはセッションのモデルが変更されました。メッセージを再送信してください。"
+  "space-model-changed": "読み込み中にアカウントまたはセッションのモデルが変更されました。メッセージを再送信してください。",
+  "task-failure-confirmed": "最終返信が記録される前にタスクが失敗しました。",
+  "task-failure-status": "Task が失敗しました。",
+  "task-failure-unverified": "操作の結果を確認できませんでした。",
+  "task-failure-unknown": "外部操作が行われた可能性がありますが、結果は不明です。",
+  "task-failure-effects": "失敗したという事実だけでは、ファイルや外部サービスが変更されたかは判断できません。",
+  "task-failure-view-actions": "記録された操作を表示",
+  "task-failure-hide-actions": "記録された操作を非表示",
+  "task-failure-action": "記録された操作",
+  "task-failure-no-actions": "確認済みの操作の詳細はありません。",
+  "task-failure-outcome-completed": "完了を記録",
+  "task-failure-outcome-failed": "失敗を記録",
+  "task-failure-outcome-timed_out": "タイムアウト",
+  "task-failure-outcome-outcome_unknown": "結果不明",
+  "task-failure-outcome-unverified": "結果未確認"
 }

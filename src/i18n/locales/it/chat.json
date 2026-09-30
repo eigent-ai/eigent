@@ -465,5 +465,19 @@
   "space-model-unconfirmed": "La prima richiesta della sessione non è ancora stata confermata. Riconnettiti e riprova, oppure scegli un modello per la sessione.",
   "space-model-unavailable": "Questo modello non è disponibile per l’account attuale. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
   "space-model-ambiguous": "Più provider corrispondono al modello. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
-  "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio."
+  "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio.",
+  "task-failure-confirmed": "Il compito è fallito prima che venisse registrata una risposta finale.",
+  "task-failure-status": "Il compito è fallito.",
+  "task-failure-unverified": "Non è stato possibile verificare gli esiti delle azioni.",
+  "task-failure-unknown": "Potrebbe essersi verificata un’azione esterna; il suo esito è sconosciuto.",
+  "task-failure-effects": "Un errore non permette di stabilire se file o servizi esterni siano stati modificati.",
+  "task-failure-view-actions": "Mostra azioni registrate",
+  "task-failure-hide-actions": "Nascondi azioni registrate",
+  "task-failure-action": "Azione registrata",
+  "task-failure-no-actions": "Non sono disponibili dettagli verificati sulle azioni.",
+  "task-failure-outcome-completed": "Completamento registrato",
+  "task-failure-outcome-failed": "Errore registrato",
+  "task-failure-outcome-timed_out": "Tempo scaduto",
+  "task-failure-outcome-outcome_unknown": "Esito sconosciuto",
+  "task-failure-outcome-unverified": "Esito non verificato"
 }
