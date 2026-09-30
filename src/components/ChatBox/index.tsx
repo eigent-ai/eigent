@@ -386,10 +386,6 @@ function LegacyChatBox(): JSX.Element {
       ? sharedProjectEventSnapshot
       : null;
   useEffect(() => {
-    if (sharedProjectEventSnapshot?.view.projectId === activeProjectId)
-      reconcileControlOperations(sharedProjectEventSnapshot);
-  }, [sharedProjectEventSnapshot, activeProjectId, controlOperations.length]);
-  useEffect(() => {
     if (!activeProjectId || !eventNativeProjectSnapshot) return;
     const admittedIds = eventNativeProjectSnapshot.chat.nodes.flatMap((node) =>
       node.kind === 'message' && node.role === 'user'
@@ -415,6 +411,16 @@ function LegacyChatBox(): JSX.Element {
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
     : undefined;
+  useEffect(() => {
+    if (sharedProjectEventSnapshot?.view.projectId === activeProjectId)
+      reconcileControlOperations(sharedProjectEventSnapshot);
+  }, [
+    sharedProjectEventSnapshot,
+    activeProjectId,
+    chatStore?.activeTaskId,
+    activeTask,
+    controlOperations.length,
+  ]);
   // Project mode in three forms: `inferred` is a legacy Run fallback;
   // `effective` always resolves to a concrete mode; `display` stays nullable
   // so a still-loading Project renders empty instead of the wrong mode.
@@ -2778,6 +2784,7 @@ function LegacyChatBox(): JSX.Element {
               op.runId === (eventNativeActiveRunId ?? activeTaskId))
         )
         .filter((op) => {
+          if (op.completionPending) return true;
           // A later canonical event can settle the UI even when its HTTP
           // reply was lost. Keep the uncertain envelope for deduplication.
           if (

@@ -55,6 +55,7 @@ import { HumanInteractionCard } from '@/components/ChatBox/MessageItem/HumanInte
 import {
   TERMINAL_CONTROL_LIMIT,
   checkControlOperation,
+  createControlOperation,
   listControlOperations,
   reconcileControlOperations,
   stopProjectTask,
@@ -618,6 +619,32 @@ describe('SL-BUG-27 recovery safety contracts', () => {
     await pending;
     const uncertain = listControlOperations()[0];
     const body = uncertain.body;
+    const awaitingCleanup = createControlOperation({
+      kind: 'interaction',
+      projectId: 'inactive-project',
+      runId: interaction.run_id,
+      interactionId: 'inactive-approval',
+      version: 0,
+      digest: interaction.action_digest,
+      path: '/unused',
+      body: { decision_request_id: 'inactive-original' },
+    });
+    const snapshot = getProjectEventStore('inactive-project').getSnapshot();
+    reconcileControlOperations({
+      ...snapshot,
+      control: {
+        ...snapshot.control,
+        interactionById: {
+          'inactive-approval': {
+            interactionId: 'inactive-approval',
+            runId: interaction.run_id,
+            status: 'resolved',
+            version: 1,
+            actionDigest: interaction.action_digest,
+          } as any,
+        },
+      },
+    });
     fetch.mockImplementation(async (_url, init) => {
       const request = JSON.parse(String(init?.body));
       return new Response(
@@ -639,7 +666,10 @@ describe('SL-BUG-27 recovery safety contracts', () => {
         }
       );
     }
-    expect(listControlOperations()).toHaveLength(TERMINAL_CONTROL_LIMIT + 1);
+    expect(listControlOperations()).toHaveLength(TERMINAL_CONTROL_LIMIT + 2);
+    expect(listControlOperations()).toContain(awaitingCleanup);
+    expect(awaitingCleanup.completionPending).toBe(true);
+    expect(awaitingCleanup.body).toEqual({});
     expect(uncertain.body).toBe(body);
     expect(uncertain.phase).toBe('unknown');
     expect(
@@ -721,6 +751,12 @@ describe('SL-BUG-27 recovery safety contracts', () => {
     finish(canonicalResponse());
     await pending;
     expect(op.phase).toBe('resolved');
+    expect(op.completionPending).toBe(true);
+    mocked.auth.user_id = 2;
+    expect(listControlOperations()).toHaveLength(0);
+    mocked.auth.user_id = 1;
+    expect(listControlOperations()).toHaveLength(0);
+    await expect(checkControlOperation(op)).rejects.toThrow();
   });
 
   it.each([

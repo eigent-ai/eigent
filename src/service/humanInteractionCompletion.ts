@@ -22,9 +22,10 @@ export function completeHumanInteraction(
   runId: string,
   interactionId: string
 ) {
-  if (state.activeTaskId !== runId) return;
+  if (state.activeTaskId !== runId) return false;
   const task = state.tasks[runId];
-  if (!task || task.resolvedInteractionIds?.includes(interactionId)) return;
+  if (!task) return false;
+  if (task.resolvedInteractionIds?.includes(interactionId)) return true;
   const active = task.messages.findLast(
     (message) => message.step === AgentStep.ASK
   );
@@ -33,12 +34,13 @@ export function completeHumanInteraction(
     (message) => message.interaction?.interaction_id !== interactionId
   );
   state.markHumanInteractionResolved(runId, interactionId);
-  if (!advances) return;
+  if (!advances) return true;
   const [next, ...queue] = remaining;
   state.setActiveAskList(runId, queue);
   state.setActiveAsk(runId, next?.agent_name || '');
   state.setIsPending(runId, false);
   if (next) state.addMessages(runId, next);
+  return true;
 }
 
 export function completeProjectHumanInteraction(
@@ -47,7 +49,7 @@ export function completeProjectHumanInteraction(
   interactionId: string
 ) {
   const project = useProjectStore.getState();
-  if (project.activeProjectId !== projectId) return;
+  if (project.activeProjectId !== projectId) return false;
   const state = project.getActiveChatStore(projectId)?.getState();
-  if (state) completeHumanInteraction(state, runId, interactionId);
+  return state ? completeHumanInteraction(state, runId, interactionId) : false;
 }

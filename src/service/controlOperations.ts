@@ -41,6 +41,8 @@ export type ControlOperation = {
   body: Readonly<Record<string, unknown>>;
   phase: 'pending' | 'unknown' | 'acknowledged' | 'checking' | 'resolved';
   receipt?: ControlReceipt;
+  // A canonical decision can precede cleanup of its inactive legacy ask.
+  completionPending?: boolean;
   retryAllowed: boolean;
   generation: number;
 };
@@ -63,7 +65,6 @@ function maintainOwner() {
 }
 function compactTerminal(op: ControlOperation) {
   if (op.owner !== registryOwner) return;
-  operations.delete(op.key);
   // No terminal operation can be retried. Retain a bounded, minimal tombstone
   // for stale mounted controls; the backend's CAS still protects older evictions.
   op.body = Object.freeze({});
@@ -82,6 +83,13 @@ function compactTerminal(op: ControlOperation) {
     };
   }
   terminalOperations.delete(op.key);
+  op.completionPending ??= op.kind === 'interaction' && Boolean(op.projectId);
+  if (op.completionPending) {
+    // Drop the request payload, but never evict unfinished local completion.
+    operations.set(op.key, op);
+    return;
+  }
+  operations.delete(op.key);
   terminalOperations.set(op.key, op);
   while (terminalOperations.size > TERMINAL_CONTROL_LIMIT)
     terminalOperations.delete(terminalOperations.keys().next().value!);
@@ -120,7 +128,13 @@ function freeze<T>(value: T): T {
 export function createControlOperation(
   input: Omit<
     ControlOperation,
-    'key' | 'owner' | 'phase' | 'retryAllowed' | 'generation' | 'receipt'
+    | 'key'
+    | 'owner'
+    | 'phase'
+    | 'retryAllowed'
+    | 'generation'
+    | 'receipt'
+    | 'completionPending'
   >
 ): ControlOperation {
   maintainOwner();
@@ -277,7 +291,7 @@ function execute(
           options
         );
         options.beforeRequest?.();
-        completeProjectHumanInteraction(
+        op.completionPending = !completeProjectHumanInteraction(
           op.projectId,
           op.runId,
           op.interactionId!
@@ -375,6 +389,15 @@ export function reconcileControlOperations(
       interaction.version < (op.version ?? 0)
     )
       continue;
+    const alreadyResolved = op.phase === 'resolved';
+    const completionPending = op.completionPending;
+    if (op.interactionId)
+      op.completionPending = !completeProjectHumanInteraction(
+        op.projectId!,
+        op.runId,
+        op.interactionId
+      );
+    if (alreadyResolved && op.completionPending === completionPending) continue;
     op.receipt = {
       ...op.receipt,
       run_id: op.runId,
@@ -385,12 +408,6 @@ export function reconcileControlOperations(
     op.phase = 'resolved';
     op.generation++;
     flights.delete(op.key);
-    if (op.interactionId)
-      completeProjectHumanInteraction(
-        op.projectId!,
-        op.runId,
-        op.interactionId
-      );
     compactTerminal(op);
     changed = true;
   }
