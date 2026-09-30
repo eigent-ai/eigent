@@ -2578,6 +2578,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             "This task is no longer waiting for a human reply. Please send a new message.",
         )
     run_context = getattr(task_lock, "run_context", None)
+    resolved_interaction_id: str | None = None
     if isinstance(run_context, RunContext):
         journal = get_default_run_journal()
         pending_interactions = await asyncio.to_thread(
@@ -2655,6 +2656,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                 expected_run_id=run_context.run_id,
                 continue_active_attempt=True,
             )
+            resolved_interaction_id = interaction.interaction_id
             try:
                 from app.run_sync.runtime import (
                     notify_default_cloud_sync_worker,
@@ -2677,10 +2679,12 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             "This task is no longer waiting for a human reply. Please send a new message.",
         ) from exc
 
-    task_lock.add_conversation(
-        "human_reply",
-        {"agent": data.agent, "reply": data.reply},
-    )
+    reply_payload = {"agent": data.agent, "reply": data.reply}
+    if resolved_interaction_id is not None:
+        # The canonical decision and its compatibility mirror share identity,
+        # so replay can retain one receipt without comparing answer text.
+        reply_payload["interaction_id"] = resolved_interaction_id
+    task_lock.add_conversation("human_reply", reply_payload)
     current_context = getattr(task_lock, "run_context", None)
     if isinstance(current_context, RunContext):
         await sync_step_event(
@@ -2688,7 +2692,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             project_id=id,
             run_id=current_context.run_id,
             step="human_reply",
-            data={"agent": data.agent, "reply": data.reply},
+            data=reply_payload,
             authorization=request.headers.get("authorization"),
         )
     else:
