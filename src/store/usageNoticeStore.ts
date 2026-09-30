@@ -13,7 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { createHost } from '@/host/createHost';
-import { errorCopy, type UsageReason } from '@/lib/usageErrors';
+import { usageNoticeCopy } from '@/lib/trialQuotaCopy';
+import type { UsageReason } from '@/lib/usageErrors';
 import i18n from 'i18next';
 import { toast } from 'sonner';
 import { create } from 'zustand';
@@ -41,6 +42,7 @@ interface UsageNoticeState {
   incidents: UsageIncident[];
   acknowledged: string[];
   presented: string | null;
+  presentedCopy: string | null;
   credits: number | null;
   subscription: SubscriptionUsage | null;
   refreshing: boolean;
@@ -50,6 +52,7 @@ const initial = {
   incidents: [],
   acknowledged: [],
   presented: null,
+  presentedCopy: null,
   credits: null,
   subscription: null,
   refreshing: false,
@@ -119,20 +122,21 @@ function syncReminder() {
     return;
   }
   const identity = key(incident);
-  // No Sonner call on repeats: even updating an identical toast restarts its timer.
+  // Preserve dismissal across copy changes; only update an open toast when its copy changes.
   if (state.acknowledged.includes(identity)) {
     if (state.presented) toast.dismiss(slot(state.account));
     useUsageNoticeStore.setState({ presented: null });
     return;
   }
-  if (state.presented === identity) return;
-  useUsageNoticeStore.setState({ presented: identity });
+  const message = usageNoticeCopy(incident.reason, state.subscription);
+  if (state.presented === identity && state.presentedCopy === message) return;
+  useUsageNoticeStore.setState({ presented: identity, presentedCopy: message });
   const account = state.account;
   const acknowledge = () => {
     if (useUsageNoticeStore.getState().account === account)
       acknowledgeUsageNotice();
   };
-  toast.error(errorCopy(incident.reason), {
+  toast.error(message, {
     id: slot(account),
     duration: Infinity,
     closeButton: true,
