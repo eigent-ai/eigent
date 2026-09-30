@@ -16,6 +16,7 @@ import asyncio
 import logging
 import time
 import weakref
+from concurrent.futures import Future
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
@@ -23,7 +24,7 @@ from enum import Enum
 from typing import Any, Literal
 
 from camel.tasks import Task
-from pydantic import BaseModel
+from pydantic import BaseModel, PrivateAttr
 from typing_extensions import TypedDict
 
 from app.exception.exception import ProgramException
@@ -92,6 +93,9 @@ class ActionImproveData(BaseModel):
     request_id: str | None = None
     run_id: str | None = None
     attempt_id: str | None = None
+    # Staging an envelope is not permission to execute it. This gate is local
+    # to the warm consumer and deliberately excluded from serialized actions.
+    _publication: Future[bool] | None = PrivateAttr(default=None)
 
 
 class ActionStartData(BaseModel):

@@ -330,13 +330,23 @@ class WorkspaceWriterScheduler:
             if waited and request.acquired_at is not None
             else None
         )
+        # Warm abort can enqueue the same stable key again. Separate those
+        # acquisition events while retaining existing event ids in other lanes.
+        epoch = (
+            f":{request.created_at}"
+            if any(
+                attempt.resume_reason == "follow_up_execution"
+                for attempt in self.journal.list_run_attempts(run_id)
+            )
+            else ""
+        )
         self.journal.append_event(
             run_id,
             RunEventDraft(
                 event_id=(
                     f"{event_type}:{request.request_id}:"
                     f"{request.queue_position or 0}:"
-                    f"{request.blocker_task_id or 'none'}"
+                    f"{request.blocker_task_id or 'none'}{epoch}"
                 ),
                 event_type=event_type,
                 payload={

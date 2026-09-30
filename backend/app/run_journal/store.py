@@ -89,6 +89,7 @@ from app.run_journal.models import (
     SpacePermissionProfileRevisionRecord,
     StartupReconciliationResult,
     ToolCallRecord,
+    WarmAdmissionReceipt,
     WorkspaceBundleInstallProposalRecord,
     WorkspaceBundleLocalBindingRecord,
     WorkspaceBundleSecretBindingRecord,
@@ -147,6 +148,10 @@ from app.workspace_runtime.schema import (
 )
 
 SCHEMA_VERSION = 40
+
+# Pending-only markers; never a terminal execution outcome.
+_WARM_ADMISSION_PREFIX = "warm_admission_preparing:"
+_WARM_ADMISSION_ABORTED = "warm_admission_aborted"
 logger = logging.getLogger("run_journal")
 # Per redacted request or response. Oversized documents retain a bounded JSON
 # prefix plus the byte count and digest of the full redacted projection.
@@ -9984,37 +9989,12 @@ class SQLiteRunJournal:
                 (final_status, timestamp, timestamp, request_id),
             )
             if row["status"] == "acquired":
-                queued = connection.execute(
-                    """
-                    SELECT request_id FROM workspace_writer_requests
-                    WHERE repository_id = ? AND checkout_id = ?
-                      AND status = 'queued'
-                    ORDER BY created_at, request_id
-                    LIMIT 1
-                    """,
-                    (row["repository_id"], row["checkout_id"]),
-                ).fetchone()
-                if queued is not None:
-                    self._acquire_workspace_writer_in_transaction(
-                        connection,
-                        request_id=queued["request_id"],
-                        now=timestamp,
-                    )
-                    acquired_row = connection.execute(
-                        """
-                        SELECT * FROM workspace_writer_requests
-                        WHERE request_id = ?
-                        """,
-                        (queued["request_id"],),
-                    ).fetchone()
-                    assert acquired_row is not None
-                    if acquired_row["status"] == "acquired":
-                        next_acquired = (
-                            self._workspace_writer_request_from_row(
-                                connection,
-                                acquired_row,
-                            )
-                        )
+                next_acquired = self._promote_workspace_writer_in_transaction(
+                    connection,
+                    repository_id=row["repository_id"],
+                    checkout_id=row["checkout_id"],
+                    now=timestamp,
+                )
             finished_row = connection.execute(
                 "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
                 (request_id,),
@@ -10027,6 +10007,32 @@ class SQLiteRunJournal:
                 ),
                 next_acquired=next_acquired,
             )
+
+    def _promote_workspace_writer_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        repository_id: str,
+        checkout_id: str,
+        now: float,
+    ) -> WorkspaceWriterRequestRecord | None:
+        """Shared FIFO promotion for finalization and unpublished abort."""
+        queued = connection.execute(
+            """SELECT request_id FROM workspace_writer_requests
+            WHERE repository_id=? AND checkout_id=? AND status='queued'
+            ORDER BY created_at,request_id LIMIT 1""",
+            (repository_id, checkout_id),
+        ).fetchone()
+        if queued is None or not self._acquire_workspace_writer_in_transaction(
+            connection, request_id=queued[0], now=now
+        ):
+            return None
+        row = connection.execute(
+            "SELECT * FROM workspace_writer_requests WHERE request_id=?",
+            (queued[0],),
+        ).fetchone()
+        assert row is not None
+        return self._workspace_writer_request_from_row(connection, row)
 
     @staticmethod
     def _acquire_workspace_writer_in_transaction(
@@ -12620,6 +12626,259 @@ class SQLiteRunJournal:
             assert row is not None
             return self._run_from_row(row)
 
+    def begin_warm_admission(
+        self,
+        receipt: WarmAdmissionReceipt,
+        *,
+        environment: AttemptEnvironmentBinding | None = None,
+    ) -> RunAttemptRecord:
+        """Reserve one pending Attempt without claiming queue publication.
+
+        Only this API may rearm an explicitly aborted admission. Existing
+        published/legacy Attempts are idempotent observations, not new owners.
+        """
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT project_id FROM runs WHERE run_id=?", (receipt.run_id,)
+            ).fetchone()
+            if run is None or run[0] != receipt.project_id:
+                raise IdempotencyConflictError(
+                    "warm admission Run owner changed"
+                )
+            attempt = self._create_run_attempt_in_transaction(
+                connection,
+                receipt.run_id,
+                request_id=receipt.request_id,
+                reason="follow_up_execution",
+                environment=environment,
+                warm_admission_token=receipt.token,
+            )
+            owned = attempt.outcome == _WARM_ADMISSION_PREFIX + receipt.token
+            if (
+                owned
+                and connection.execute(
+                    "SELECT 1 FROM workspace_writer_requests WHERE request_id=?",
+                    (f"workspace-writer:{receipt.run_id}",),
+                ).fetchone()
+            ):
+                raise InvalidRunTransitionError(
+                    "warm admission has a prior writer"
+                )
+        receipt.attempt_id = attempt.attempt_id
+        receipt.owned = owned
+        return attempt
+
+    def _require_warm_admission_owner(
+        self, connection: sqlite3.Connection, receipt: WarmAdmissionReceipt
+    ) -> None:
+        attempt = connection.execute(
+            """SELECT a.* FROM run_attempts a JOIN runs r USING(run_id)
+            JOIN project_run_execution_leases l ON l.attempt_id=a.attempt_id
+            WHERE a.attempt_id=? AND a.run_id=? AND a.resume_request_id=?
+              AND a.status='pending' AND a.outcome=?
+              AND r.project_id=? AND r.status='pending'
+              AND r.active_attempt_id=a.attempt_id AND r.cancel_request_id IS NULL
+              AND r.origin='local' AND a.last_consumer_heartbeat_at IS NULL
+              AND l.project_id=r.project_id AND l.run_id=r.run_id""",
+            (
+                receipt.attempt_id,
+                receipt.run_id,
+                receipt.request_id,
+                _WARM_ADMISSION_PREFIX + receipt.token,
+                receipt.project_id,
+            ),
+        ).fetchone()
+        if attempt is None:
+            raise InvalidRunTransitionError("warm admission ownership changed")
+        from app.workspace_runtime.entry_guard import (
+            owns_managed_execution_in_connection,
+        )
+
+        if owns_managed_execution_in_connection(
+            connection, project_id=receipt.project_id, run_id=receipt.run_id
+        ):
+            raise InvalidRunTransitionError("warm admission became managed")
+        # An in-process receipt is not authority to erase execution evidence.
+        if connection.execute(
+            """SELECT 1 FROM tool_calls WHERE run_id=?
+            UNION ALL SELECT 1 FROM model_invocations WHERE run_id=?
+            UNION ALL SELECT 1 FROM git_change_sets WHERE run_id=? LIMIT 1""",
+            (receipt.run_id, receipt.run_id, receipt.run_id),
+        ).fetchone():
+            raise InvalidRunTransitionError(
+                "warm admission has execution evidence"
+            )
+        git = connection.execute(
+            "SELECT materialization_state FROM git_run_materializations WHERE run_id=?",
+            (receipt.run_id,),
+        ).fetchone()
+        if git is not None and git[0] != "unmaterialized":
+            raise InvalidRunTransitionError(
+                "warm admission workspace was materialized"
+            )
+
+    def publish_warm_admission(self, receipt: WarmAdmissionReceipt) -> None:
+        """Commit publication only after an envelope is staged behind its gate."""
+        if not receipt.owned:
+            receipt.published = True
+            return
+        with self._write_transaction() as connection:
+            self._require_warm_admission_owner(connection, receipt)
+            connection.execute(
+                "UPDATE run_attempts SET outcome=NULL WHERE attempt_id=?",
+                (receipt.attempt_id,),
+            )
+            connection.execute(
+                """UPDATE follow_up_requests SET status='admitted',
+                admitted_run_id=?,last_error=NULL,updated_at=?
+                WHERE request_id=? AND project_id=? AND status='pending'""",
+                (
+                    receipt.run_id,
+                    time.time(),
+                    receipt.run_id,
+                    receipt.project_id,
+                ),
+            )
+        receipt.published = True
+
+    def abort_warm_admission(
+        self,
+        receipt: WarmAdmissionReceipt,
+    ) -> WorkspaceWriterReleaseResult | None:
+        """Undo only this still-unpublished owner, retaining retry identities.
+
+        This is not terminal finalization. No tools may have dispatched; the
+        controller must drain preparation and close the envelope gate first.
+        Registered targets keep their settled revision, and terminal writers
+        outside this receipt remain immutable.
+        """
+        if not receipt.owned or receipt.published:
+            return None
+        timestamp = time.time()
+        with self._write_transaction() as connection:
+            self._require_warm_admission_owner(connection, receipt)
+            request_id = f"workspace-writer:{receipt.run_id}"
+            writer = connection.execute(
+                "SELECT * FROM workspace_writer_requests WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            result = None
+            if writer is not None:
+                expected = receipt.writer
+                if (
+                    expected is None
+                    or writer["created_at"] != expected.created_at
+                    or writer["project_id"] != receipt.project_id
+                    or writer["task_id"] != receipt.task_id
+                    or writer["repository_id"] != expected.repository_id
+                    or writer["checkout_id"] != expected.checkout_id
+                    or writer["target_ref"] != expected.target_ref
+                    or writer["status"] not in {"queued", "acquired"}
+                ):
+                    raise InvalidRunTransitionError(
+                        "warm admission writer changed"
+                    )
+                lease = connection.execute(
+                    "SELECT * FROM workspace_writer_leases WHERE request_id=?",
+                    (request_id,),
+                ).fetchone()
+                if writer["status"] == "acquired" and (
+                    lease is None
+                    or lease["task_id"] != receipt.task_id
+                    or lease["project_id"] != receipt.project_id
+                    or lease["acquired_at"] != writer["acquired_at"]
+                ):
+                    raise InvalidRunTransitionError(
+                        "warm admission writer lease changed"
+                    )
+                target = connection.execute(
+                    """SELECT * FROM workspace_physical_targets
+                    WHERE owner_kind='legacy' AND owner_id=?""",
+                    (request_id,),
+                ).fetchone()
+                mapped = connection.execute(
+                    """SELECT target_id FROM workspace_legacy_targets
+                    WHERE repository_id=? AND checkout_id=?""",
+                    (writer["repository_id"], writer["checkout_id"]),
+                ).fetchone()
+                if (
+                    writer["status"] == "acquired"
+                    and mapped is not None
+                    and (target is None or target["target_id"] != mapped[0])
+                ):
+                    raise InvalidRunTransitionError(
+                        "warm admission physical owner changed"
+                    )
+                if target is not None:
+                    if (
+                        target["state"] != "writing"
+                        or writer["status"] != "acquired"
+                    ):
+                        raise InvalidRunTransitionError(
+                            "warm admission target needs settlement"
+                        )
+                    # No execution was published. Release this exact request's
+                    # acquisition, without claiming a new settled revision.
+                    connection.execute(
+                        """UPDATE workspace_physical_targets SET state='settled',
+                        owner_kind=NULL,owner_id=NULL,owner_generation=owner_generation+1,
+                        write_epoch=write_epoch+1 WHERE target_id=?
+                        AND owner_generation=? AND write_epoch=?""",
+                        (
+                            target["target_id"],
+                            target["owner_generation"],
+                            target["write_epoch"],
+                        ),
+                    )
+                connection.execute(
+                    "DELETE FROM workspace_writer_leases WHERE request_id=?",
+                    (request_id,),
+                )
+                connection.execute(
+                    """UPDATE workspace_writer_requests SET status='interrupted',
+                    finished_at=?,updated_at=? WHERE request_id=?""",
+                    (timestamp, timestamp, request_id),
+                )
+                finished = self._workspace_writer_request_from_row(
+                    connection,
+                    connection.execute(
+                        "SELECT * FROM workspace_writer_requests WHERE request_id=?",
+                        (request_id,),
+                    ).fetchone(),
+                )
+                # The old acquisition is audited by its creation epoch. A new
+                # publication attempt may enqueue the same stable request key.
+                connection.execute(
+                    "DELETE FROM workspace_writer_requests WHERE request_id=?",
+                    (request_id,),
+                )
+                next_acquired = None
+                if writer["status"] == "acquired":
+                    next_acquired = (
+                        self._promote_workspace_writer_in_transaction(
+                            connection,
+                            repository_id=writer["repository_id"],
+                            checkout_id=writer["checkout_id"],
+                            now=timestamp,
+                        )
+                    )
+                result = WorkspaceWriterReleaseResult(finished, next_acquired)
+            elif receipt.writer is not None:
+                raise InvalidRunTransitionError(
+                    "warm admission writer disappeared"
+                )
+            connection.execute(
+                """DELETE FROM project_run_execution_leases
+                WHERE project_id=? AND run_id=? AND attempt_id=?""",
+                (receipt.project_id, receipt.run_id, receipt.attempt_id),
+            )
+            connection.execute(
+                "UPDATE run_attempts SET outcome=? WHERE attempt_id=?",
+                (_WARM_ADMISSION_ABORTED, receipt.attempt_id),
+            )
+        receipt.owned = False
+        return result
+
     def create_run_attempt(
         self,
         run_id: str,
@@ -12658,6 +12917,7 @@ class SQLiteRunJournal:
         workload_profile: WorkloadProfileRecord | None = None,
         now: float | None = None,
         admission_claim: tuple[str, int] | None = None,
+        warm_admission_token: str | None = None,
     ) -> RunAttemptRecord:
         if connection is not self._connection or not connection.in_transaction:
             raise RunJournalError(
@@ -12714,7 +12974,21 @@ class SQLiteRunJournal:
             # An idempotent row loaded from SQLite is audit/recovery data,
             # not a fresh control-plane attestation. The original process
             # already attested a genuinely in-process creation.
-            return self._attempt_from_row(duplicate)
+            if (
+                duplicate["outcome"] == _WARM_ADMISSION_ABORTED
+                and warm_admission_token
+            ):
+                if duplicate["status"] != "pending":
+                    raise InvalidRunTransitionError(
+                        "aborted admission is no longer pending"
+                    )
+                identifier = duplicate["attempt_id"]
+            elif str(duplicate["outcome"] or "").startswith("warm_admission_"):
+                raise InvalidRunTransitionError(
+                    "warm admission requires its publication owner"
+                )
+            else:
+                return self._attempt_from_row(duplicate)
         if run["origin"] == "cloud_restore":
             raise InvalidRunTransitionError(
                 f"run {run_id!r} was restored from Cloud without its local "
@@ -12781,9 +13055,10 @@ class SQLiteRunJournal:
             """
             SELECT attempt_id FROM run_attempts
             WHERE run_id = ? AND status IN ('pending', 'running', 'waiting_for_user')
+              AND attempt_id != ?
             LIMIT 1
             """,
-            (run_id,),
+            (run_id, identifier if duplicate is not None else ""),
         ).fetchone()
         if active is not None:
             raise InvalidRunTransitionError(
@@ -12907,38 +13182,46 @@ class SQLiteRunJournal:
                 (run_id,),
             ).fetchone()[0]
         )
+        if duplicate is not None:
+            number = duplicate["attempt_number"]
         status = "running" if activate else "pending"
-        connection.execute(
-            """
-            INSERT INTO run_attempts(
-                attempt_id, run_id, attempt_number, status, started_at,
-                ended_at, outcome, timeout_reason, resume_request_id,
-                resume_reason, policy_version, elapsed_active_ms,
-                last_consumer_heartbeat_at, environment_spec_id,
-                environment_spec_digest, bundle_revision_id,
-                permission_profile_revision, thinking_effort_requested,
-                thinking_effort_effective, provider_capability_revision,
-                workload_kind, workload_profile_json,
-                workload_profile_digest
-            ) VALUES (
-                ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, 0, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        if duplicate is None:
+            connection.execute(
+                """
+                INSERT INTO run_attempts(
+                    attempt_id, run_id, attempt_number, status, started_at,
+                    ended_at, outcome, timeout_reason, resume_request_id,
+                    resume_reason, policy_version, elapsed_active_ms,
+                    last_consumer_heartbeat_at, environment_spec_id,
+                    environment_spec_digest, bundle_revision_id,
+                    permission_profile_revision, thinking_effort_requested,
+                    thinking_effort_effective, provider_capability_revision,
+                    workload_kind, workload_profile_json,
+                    workload_profile_digest
+                ) VALUES (
+                    ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, 0, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                """,
+                (
+                    identifier,
+                    run_id,
+                    number,
+                    status,
+                    timestamp,
+                    request_id,
+                    reason,
+                    run["timeout_policy_version"],
+                    timestamp if activate else None,
+                    *environment_values,
+                    *workload_values,
+                ),
             )
-            """,
-            (
-                identifier,
-                run_id,
-                number,
-                status,
-                timestamp,
-                request_id,
-                reason,
-                run["timeout_policy_version"],
-                timestamp if activate else None,
-                *environment_values,
-                *workload_values,
-            ),
-        )
+        if warm_admission_token:
+            connection.execute(
+                "UPDATE run_attempts SET outcome=? WHERE attempt_id=?",
+                (_WARM_ADMISSION_PREFIX + warm_admission_token, identifier),
+            )
         try:
             connection.execute(
                 """
@@ -13011,9 +13294,15 @@ class SQLiteRunJournal:
             UPDATE follow_up_requests
             SET status = 'admitted', admitted_run_id = ?,
                 last_error = NULL, updated_at = ?
-            WHERE request_id = ? AND project_id = ? AND status = 'pending'
+            WHERE request_id = ? AND project_id = ? AND status = 'pending' AND ?
             """,
-            (run_id, timestamp, run_id, run["project_id"]),
+            (
+                run_id,
+                timestamp,
+                run_id,
+                run["project_id"],
+                warm_admission_token is None,
+            ),
         )
         row = connection.execute(
             "SELECT * FROM run_attempts WHERE attempt_id = ?",
@@ -13273,6 +13562,10 @@ class SQLiteRunJournal:
             ):
                 raise IdempotencyConflictError(
                     f"attempt {attempt_id!r} does not belong to run {expected_run_id!r}"
+                )
+            if str(attempt["outcome"] or "").startswith("warm_admission_"):
+                raise InvalidRunTransitionError(
+                    "warm admission has not been published"
                 )
             owner_run = connection.execute(
                 "SELECT * FROM runs WHERE run_id=?", (attempt["run_id"],)

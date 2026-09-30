@@ -64,6 +64,11 @@ from app.run_journal import (
     get_default_run_journal,
 )
 from app.run_runtime import get_default_run_coordinator
+from app.run_runtime.admission import (
+    WarmRunAdmission,
+    admission_to_thread,
+    drain_admission,
+)
 from app.service.chat_service import step_solve
 from app.service.task import (
     Action,
@@ -2184,11 +2189,14 @@ async def improve(id: str, data: SupplementChat, request: Request):
                 return await _improve_chat(
                     id, data, request, admission_request_id=request_id
                 )
-            except Exception:
+            except BaseException:
                 if _is_weak_continuation(data.question):
-                    await asyncio.to_thread(
-                        get_default_run_journal().release_unadmitted_continuation,
-                        request_id=data.task_id,
+                    await drain_admission(
+                        asyncio.to_thread(
+                            get_default_run_journal().release_unadmitted_continuation,
+                            request_id=data.task_id,
+                        ),
+                        propagate_cancellation=False,
                     )
                 raise
     return await _improve_chat(id, data, request)
@@ -2204,6 +2212,101 @@ async def _improve_chat(
     await guard_legacy_execution_entry(
         get_default_run_journal(), project_id=id, run_id=data.task_id
     )
+    task_lock = get_task_lock(id)
+    previous = {
+        name: getattr(task_lock, name, None)
+        for name in (
+            "run_context",
+            "status",
+            "working_directory",
+            "task_output_root",
+            "new_folder_path",
+            "task_start_time",
+            "email",
+            "user_id",
+            "project_id",
+            "space_id",
+            "current_task_id",
+            "workdir_mode",
+            "base_snapshot_id",
+            "environment_spec_id",
+            "permission_profile_revision",
+            "environment_admission_template",
+            "resolved_runtime_environment",
+            "thinking_effort_requested",
+            "thinking_effort_effective",
+            "provider_effort_parameter_name",
+            "provider_effort_parameter_value",
+            "provider_capability_revision",
+            "provider_model_transport",
+        )
+    }
+    background_tasks = set(getattr(task_lock, "background_tasks", ()))
+    context = previous["run_context"]
+    coordinator = get_default_run_coordinator()
+    old_handle = (
+        await coordinator.get_handle(context.run_id)
+        if isinstance(context, RunContext)
+        else None
+    )
+    admission = WarmRunAdmission(
+        get_default_run_journal(), task_lock, logger=chat_logger
+    )
+    try:
+        return await _prepare_improve_chat(
+            id,
+            data,
+            request,
+            admission_request_id=admission_request_id,
+            warm_admission=admission,
+        )
+    except BaseException:
+        if not admission.published:
+
+            async def rollback():
+                try:
+                    await admission.abort()
+                finally:
+                    if (
+                        isinstance(context, RunContext)
+                        and data.task_id
+                        and data.task_id != context.run_id
+                        and old_handle is not None
+                        and await coordinator.get_handle(data.task_id)
+                        is old_handle
+                    ):
+                        restored = await coordinator.rebind_run(
+                            data.task_id, context.run_id
+                        )
+                        if not restored:
+                            chat_logger.critical(
+                                "Failed to roll back follow-up runtime binding",
+                                extra={
+                                    "previous_run_id": context.run_id,
+                                    "new_run_id": data.task_id,
+                                },
+                            )
+                    restore_environment = task_lock.run_context is not context
+                    for name, value in previous.items():
+                        setattr(task_lock, name, value)
+                    task_lock.background_tasks = background_tasks
+                    if isinstance(context, RunContext) and restore_environment:
+                        await asyncio.to_thread(
+                            apply_run_env_for_third_party, context
+                        )
+
+            await drain_admission(rollback(), propagate_cancellation=False)
+        raise
+
+
+async def _prepare_improve_chat(
+    id: str,
+    data: SupplementChat,
+    request: Request,
+    *,
+    admission_request_id: str | None = None,
+    warm_admission: WarmRunAdmission,
+):
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
@@ -2252,7 +2355,7 @@ async def _improve_chat(
             # the file_save_path
             if current_email and id:
                 resolver = get_workspace_resolver()
-                frozen_dirs = await asyncio.to_thread(
+                frozen_dirs = await admission_to_thread(
                     resolver.freeze_task_directories_for,
                     space_id=getattr(task_lock, "space_id", id),
                     project_id=id,
@@ -2262,7 +2365,7 @@ async def _improve_chat(
                     user_id=getattr(task_lock, "user_id", None),
                 )
                 try:
-                    await asyncio.to_thread(
+                    await admission_to_thread(
                         resolver.write_task_snapshot,
                         current_email,
                         frozen_dirs.snapshot,
@@ -2280,7 +2383,7 @@ async def _improve_chat(
                     data.task_id,
                     getattr(task_lock, "user_id", None),
                 )
-                await asyncio.to_thread(
+                await admission_to_thread(
                     camel_log.mkdir, parents=True, exist_ok=True
                 )
                 current_context = getattr(task_lock, "run_context", None)
@@ -2301,10 +2404,10 @@ async def _improve_chat(
                             request.state, "cdp_url", current_context.cdp_url
                         ),
                     )
-                    await asyncio.to_thread(
+                    task_lock.run_context = updated_context
+                    await admission_to_thread(
                         apply_run_env_for_third_party, updated_context
                     )
-                    task_lock.run_context = updated_context
                 chat_logger.info(
                     f"Updated file_save_path to: {new_folder_path}"
                 )
@@ -2347,35 +2450,6 @@ async def _improve_chat(
     )
     if rotation_succeeded:
         coordinator = get_default_run_coordinator()
-        rebound_runtime = False
-
-        async def rollback_runtime_binding() -> None:
-            nonlocal rebound_runtime
-            if (
-                rebound_runtime
-                and previous_run_id is not None
-                and previous_run_id != refreshed_context.run_id
-            ):
-                restored = await coordinator.rebind_run(
-                    refreshed_context.run_id,
-                    previous_run_id,
-                )
-                if not restored:
-                    chat_logger.critical(
-                        "Failed to roll back follow-up runtime binding",
-                        extra={
-                            "previous_run_id": previous_run_id,
-                            "new_run_id": refreshed_context.run_id,
-                        },
-                    )
-            if isinstance(current_context, RunContext):
-                task_lock.run_context = current_context
-                await asyncio.to_thread(
-                    apply_run_env_for_third_party, current_context
-                )
-            task_lock.status = previous_status
-            rebound_runtime = False
-
         if previous_run_id is not None:
             rebound = await coordinator.rebind_run(
                 previous_run_id,
@@ -2388,7 +2462,7 @@ async def _improve_chat(
                 # be retried without leaving a replay-only orphan.
                 if isinstance(current_context, RunContext):
                     task_lock.run_context = current_context
-                    await asyncio.to_thread(
+                    await admission_to_thread(
                         apply_run_env_for_third_party, current_context
                     )
                 task_lock.status = previous_status
@@ -2396,7 +2470,6 @@ async def _improve_chat(
                     code.error,
                     "The previous Run has no live consumer for this follow-up.",
                 )
-            rebound_runtime = previous_run_id != refreshed_context.run_id
         resolved_request_id = admission_request_id or _admission_request_id(
             refreshed_context.run_id,
             question=data.question,
@@ -2405,16 +2478,12 @@ async def _improve_chat(
             project_context=data.project_context,
         )
         journal = get_default_run_journal()
-        try:
-            await asyncio.to_thread(
-                journal.ensure_run,
-                run_id=refreshed_context.run_id,
-                project_id=refreshed_context.project_id,
-                status="pending",
-            )
-        except Exception:
-            await rollback_runtime_binding()
-            raise
+        await admission_to_thread(
+            journal.ensure_run,
+            run_id=refreshed_context.run_id,
+            project_id=refreshed_context.project_id,
+            status="pending",
+        )
         environment = None
         template = getattr(
             task_lock,
@@ -2426,10 +2495,10 @@ async def _improve_chat(
             EnvironmentAdmissionTemplate,
         ):
             try:
-                template = await asyncio.to_thread(
+                template = await admission_to_thread(
                     template.refresh_model_capability
                 )
-                environment = await asyncio.to_thread(
+                environment = await admission_to_thread(
                     EnvironmentAdmissionService(journal).persist_for_run,
                     run_id=refreshed_context.run_id,
                     space_id=refreshed_context.space_id,
@@ -2439,19 +2508,16 @@ async def _improve_chat(
                     template=template,
                 )
             except WorkspaceBundleReconfigurationPendingError as exc:
-                await rollback_runtime_binding()
                 raise _workspace_bundle_admission_error(exc) from exc
             except EnvironmentSetupRequiredError as exc:
-                await rollback_runtime_binding()
                 raise _environment_setup_error(exc) from exc
             except (
                 ModelCapabilityConfigError,
                 UnsupportedThinkingEffortError,
             ) as exc:
-                await rollback_runtime_binding()
                 raise _model_capability_http_error(exc) from exc
             try:
-                runtime_environment = await asyncio.to_thread(
+                runtime_environment = await admission_to_thread(
                     _assemble_runtime_environment,
                     journal,
                     environment.spec,
@@ -2459,7 +2525,6 @@ async def _improve_chat(
                     getattr(request.state, "local_control_principal", None),
                 )
             except EnvironmentSetupRequiredError as exc:
-                await rollback_runtime_binding()
                 raise _environment_setup_error(exc) from exc
             try:
                 _require_supported_bundle_session_mode(
@@ -2467,7 +2532,6 @@ async def _improve_chat(
                     runtime_environment,
                 )
             except EnvironmentSetupRequiredError as exc:
-                await rollback_runtime_binding()
                 raise _environment_setup_error(exc) from exc
             _apply_environment_to_task_lock(
                 task_lock,
@@ -2475,16 +2539,13 @@ async def _improve_chat(
                 template=template,
                 runtime_environment=runtime_environment,
             )
-        try:
-            attempt = await asyncio.to_thread(
-                journal.create_run_attempt,
-                refreshed_context.run_id,
-                request_id=resolved_request_id,
-                reason="follow_up_execution",
-                activate=False,
-                environment=(environment.binding if environment else None),
-            )
-            await _record_canonical_user_message(
+        attempt = await warm_admission.prepare(
+            refreshed_context,
+            request_id=resolved_request_id,
+            environment=(environment.binding if environment else None),
+        )
+        await drain_admission(
+            _record_canonical_user_message(
                 journal,
                 run_context=refreshed_context,
                 request_id=resolved_request_id,
@@ -2493,14 +2554,12 @@ async def _improve_chat(
                 attaches=data.attaches or [],
                 review_handoff_ids=data.review_handoff_ids,
             )
-            refreshed_context = replace(
-                refreshed_context,
-                attempt_id=attempt.attempt_id,
-            )
-            task_lock.run_context = refreshed_context
-        except Exception:
-            await rollback_runtime_binding()
-            raise
+        )
+        refreshed_context = replace(
+            refreshed_context,
+            attempt_id=attempt.attempt_id,
+        )
+        task_lock.run_context = refreshed_context
     elif data.task_id:
         # The client wanted a fresh run but rotation failed upstream. Don't
         # touch durable memory; the in-process turn still proceeds so the
@@ -2510,7 +2569,7 @@ async def _improve_chat(
             "Could not durably prepare the requested follow-up Run.",
         )
 
-    await task_lock.put_queue(
+    await warm_admission.publish(
         ActionImproveData(
             data=ImprovePayload(
                 question=data.question,

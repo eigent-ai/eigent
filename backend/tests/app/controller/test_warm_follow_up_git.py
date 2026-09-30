@@ -16,6 +16,7 @@
 
 import asyncio
 import logging
+import threading
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -44,7 +45,8 @@ from app.workspace_runtime.store import WorkspaceStateStore
 
 
 @pytest_asyncio.fixture
-async def warm(tmp_path, monkeypatch):
+async def warm(tmp_path, monkeypatch, request):
+    git_enabled = getattr(request, "param", True)
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         hooks = tmp_path / "hooks"
         hooks.mkdir()
@@ -54,8 +56,12 @@ async def warm(tmp_path, monkeypatch):
         )
         root = tmp_path / "space"
         root.mkdir()
-        repository = workspace.content.bootstrap(
-            space_id="space", space_root=root, allow_init=True
+        repository = (
+            workspace.content.bootstrap(
+                space_id="space", space_root=root, allow_init=True
+            )
+            if git_enabled
+            else None
         )
         lock = TaskLock("session", asyncio.Queue(), {})
         lock.status = Status.done
@@ -204,6 +210,7 @@ def write_and_finish(warm, name):
 async def test_warm_follow_up_checkpoints_its_own_run(warm, rounds):
     assert write_and_finish(warm, "first.txt") is not None
     for run_id in ("second", "third")[:rounds]:
+        (warm.root / "unrelated.txt").write_text(f"user edit before {run_id}")
         response = await controller.improve(
             "session",
             SupplementChat(question=f"write {run_id}", task_id=run_id),
@@ -213,6 +220,11 @@ async def test_warm_follow_up_checkpoints_its_own_run(warm, rounds):
         item = warm.lock.queue.get_nowait()
         assert item.run_id == run_id
         assert item.attempt_id == warm.lock.run_context.attempt_id
+        writer = warm.journal.get_workspace_writer_request(
+            f"workspace-writer:{run_id}"
+        )
+        assert writer.task_id == run_id and writer.project_id == "session"
+        assert writer.status == "acquired"
         assert await activation.activate_improve_admission(
             warm.lock,
             item,
@@ -344,3 +356,533 @@ async def test_existing_writer_finish_is_not_admission_rollback(
             await warm.workspace.writer_scheduler.wait_until_acquired(
                 run_id="second", task_id="second"
             )
+
+
+async def follow_up(warm, run_id="second"):
+    return await controller.improve(
+        "session",
+        SupplementChat(question=f"write {run_id}", task_id=run_id),
+        warm.request,
+    )
+
+
+async def activate(warm, item):
+    return await activation.activate_improve_admission(
+        warm.lock,
+        item,
+        project_id="session",
+        logger=logging.getLogger(__name__),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("registered_target", [False, True])
+@pytest.mark.parametrize(
+    "fault", ["before_git", "after_git", "queue", "staged_queue", "message"]
+)
+async def test_failed_admission_retries_same_identity(
+    warm, monkeypatch, registered_target, fault
+):
+    write_and_finish(warm, "first.txt")
+    if registered_target:
+        WorkspaceStateStore(warm.journal).register_target(warm.root)
+    warm.journal.put_follow_up_request(
+        request_id="second", project_id="session", content="write second"
+    )
+    original_context = warm.lock.run_context
+    original_handle = await warm.runtime.get_handle("first")
+    put = warm.lock.put_queue
+    admit = warm.workspace.admit_run
+
+    def broken_git(**kwargs):
+        if fault == "after_git":
+            admit(**kwargs)
+        raise RuntimeError("injected admission failure")
+
+    async def broken_queue(item):
+        if fault == "staged_queue":
+            await put(item)
+        raise RuntimeError("injected admission failure")
+
+    with monkeypatch.context() as patcher:
+        if fault in {"before_git", "after_git"}:
+            patcher.setattr(warm.workspace, "admit_run", broken_git)
+        elif fault in {"queue", "staged_queue"}:
+            patcher.setattr(warm.lock, "put_queue", broken_queue)
+        else:
+            patcher.setattr(
+                controller,
+                "_record_canonical_user_message",
+                AsyncMock(
+                    side_effect=RuntimeError("injected admission failure")
+                ),
+            )
+        with pytest.raises(RuntimeError, match="injected admission failure"):
+            await follow_up(warm)
+    attempt = warm.journal.list_run_attempts("second")[0]
+    assert attempt.status == "pending"
+    assert attempt.outcome == "warm_admission_aborted"
+    assert warm.lock.run_context == original_context
+    assert await warm.runtime.get_handle("first") is original_handle
+    assert await warm.runtime.get_handle("second") is None
+    assert warm.journal.get_active_project_run("session") is None
+    assert (
+        warm.journal.get_workspace_writer_request("workspace-writer:second")
+        is None
+    )
+    assert (
+        warm.journal.list_follow_up_requests(
+            project_id="session", statuses=("pending", "admitted", "cancelled")
+        )[0].status
+        == "pending"
+    )
+    if fault == "staged_queue":
+        assert not await activate(warm, warm.lock.queue.get_nowait())
+        assert not warm.lock.processed_improve_request_ids
+    if registered_target:
+        assert (
+            WorkspaceStateStore(warm.journal)
+            .register_target(warm.root)
+            .available
+        )
+    with pytest.raises(InvalidRunTransitionError, match="not been published"):
+        warm.journal.activate_run_attempt(
+            attempt.attempt_id, expected_run_id="second"
+        )
+    assert (await follow_up(warm)).status_code == 201
+    retry = warm.journal.list_run_attempts("second")
+    assert len(retry) == 1 and retry[0].attempt_id == attempt.attempt_id
+    assert retry[0].resume_request_id == attempt.resume_request_id
+    assert retry[0].outcome is None
+    assert (
+        warm.journal.list_follow_up_requests(
+            project_id="session", statuses=("pending", "admitted", "cancelled")
+        )[0].status
+        == "admitted"
+    )
+    assert (
+        warm.journal.get_workspace_writer_request(
+            "workspace-writer:second"
+        ).status
+        == "acquired"
+    )
+    item = warm.lock.queue.get_nowait()
+    assert await activate(warm, item)
+    assert not await activate(warm, item)
+
+
+@pytest.mark.asyncio
+async def test_failed_duplicate_does_not_release_published_writer(
+    warm, monkeypatch
+):
+    write_and_finish(warm, "first.txt")
+    await follow_up(warm)
+    item = warm.lock.queue.get_nowait()
+    writer = warm.journal.get_workspace_writer_request(
+        "workspace-writer:second"
+    )
+    attempt_id = item.attempt_id
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            warm.lock,
+            "put_queue",
+            AsyncMock(side_effect=RuntimeError("duplicate queue failure")),
+        )
+        with pytest.raises(RuntimeError, match="duplicate queue failure"):
+            await follow_up(warm)
+    assert (
+        warm.journal.get_workspace_writer_request("workspace-writer:second")
+        == writer
+    )
+    assert warm.journal.get_active_project_run("session").run_id == "second"
+    assert warm.lock.run_context.attempt_id == attempt_id
+    assert await activate(warm, item)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["attempt", "git", "publication"])
+async def test_cancellation_drains_worker_before_cleanup(
+    warm, monkeypatch, phase
+):
+    write_and_finish(warm, "first.txt")
+    entered = threading.Event()
+    release = threading.Event()
+    owner, name = {
+        "attempt": (warm.journal, "begin_warm_admission"),
+        "git": (warm.workspace, "admit_run"),
+        "publication": (warm.journal, "publish_warm_admission"),
+    }[phase]
+    original = getattr(owner, name)
+
+    def paused(*args, **kwargs):
+        result = original(*args, **kwargs)
+        entered.set()
+        assert release.wait(5), "test did not release the admission worker"
+        return result
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(owner, name, paused)
+        pending = asyncio.create_task(follow_up(warm))
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            pending.cancel()
+            await asyncio.sleep(0)
+            pending.cancel()
+            await asyncio.sleep(0)
+            assert not pending.done(), (
+                "cancellation abandoned the admission worker"
+            )
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+    attempts = warm.journal.list_run_attempts("second")
+    assert len(attempts) == 1
+    if phase == "publication":
+        assert attempts[0].outcome is None
+        assert warm.lock.run_context.run_id == "second"
+        assert (
+            warm.journal.get_workspace_writer_request(
+                "workspace-writer:second"
+            ).status
+            == "acquired"
+        )
+        assert await activate(warm, warm.lock.queue.get_nowait())
+    else:
+        assert attempts[0].outcome == "warm_admission_aborted"
+        assert warm.lock.run_context.run_id == "first"
+        assert (
+            warm.journal.get_workspace_writer_request(
+                "workspace-writer:second"
+            )
+            is None
+        )
+        assert warm.journal.get_active_project_run("session") is None
+        await follow_up(warm)
+        assert warm.lock.run_context.attempt_id == attempts[0].attempt_id
+
+
+@pytest.mark.asyncio
+async def test_cancellation_of_staged_envelope_cannot_execute(
+    warm, monkeypatch
+):
+    write_and_finish(warm, "first.txt")
+    entered = asyncio.Event()
+    original = warm.lock.put_queue
+
+    async def paused(item):
+        await original(item)
+        entered.set()
+        await asyncio.Event().wait()
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(warm.lock, "put_queue", paused)
+        pending = asyncio.create_task(follow_up(warm))
+        await asyncio.wait_for(entered.wait(), 5)
+        item = warm.lock.queue.get_nowait()
+        consumer = asyncio.create_task(activate(warm, item))
+        await asyncio.sleep(0)
+        assert not consumer.done()
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+        assert not await consumer
+    assert (
+        warm.journal.get_workspace_writer_request("workspace-writer:second")
+        is None
+    )
+    assert warm.journal.get_active_project_run("session") is None
+    await follow_up(warm)
+    assert await activate(warm, warm.lock.queue.get_nowait())
+
+
+@pytest.mark.asyncio
+async def test_aborted_receipt_cannot_release_retry_writer(warm):
+    write_and_finish(warm, "first.txt")
+    context = replace(
+        warm.lock.run_context,
+        run_id="second",
+        task_id="second",
+        attempt_id=None,
+    )
+    warm.journal.ensure_run(
+        run_id="second", project_id="session", status="pending"
+    )
+    first = activation.WarmRunAdmission(
+        warm.journal, warm.lock, logger=logging.getLogger(__name__)
+    )
+    attempt = await first.prepare(
+        context, request_id="stable-key", environment=None
+    )
+    stale = replace(first.receipt)
+    await first.abort()
+    second = activation.WarmRunAdmission(
+        warm.journal, warm.lock, logger=logging.getLogger(__name__)
+    )
+    retried = await second.prepare(
+        context, request_id="stable-key", environment=None
+    )
+    assert retried.attempt_id == attempt.attempt_id
+    writer = warm.journal.get_workspace_writer_request(
+        "workspace-writer:second"
+    )
+    with pytest.raises(InvalidRunTransitionError, match="ownership changed"):
+        warm.journal.abort_warm_admission(stale)
+    assert (
+        warm.journal.get_workspace_writer_request("workspace-writer:second")
+        == writer
+    )
+    assert warm.journal.get_active_project_run("session").run_id == "second"
+    await second.abort()
+
+
+def admit_other(warm):
+    warm.journal.ensure_run(
+        run_id="other", project_id="peer", status="pending"
+    )
+    warm.journal.create_run_attempt(
+        "other", request_id="other", reason="initial_execution"
+    )
+    return warm.workspace.admit_run(
+        space_id="space",
+        project_id="peer",
+        run_id="other",
+        task_id="other",
+        session_mode="single-agent",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("promote_during_queue", [False, True])
+async def test_queued_abort_never_releases_the_other_run(
+    warm, monkeypatch, promote_during_queue
+):
+    write_and_finish(warm, "first.txt")
+    other = admit_other(warm).writer.request
+
+    async def reject(item):
+        writer = warm.journal.get_workspace_writer_request(
+            "workspace-writer:second"
+        )
+        assert writer.status == "queued"
+        if promote_during_queue:
+            warm.workspace.writer_scheduler.finish_task(run_id="other")
+            assert (
+                warm.journal.get_workspace_writer_request(
+                    "workspace-writer:second"
+                ).status
+                == "acquired"
+            )
+        raise RuntimeError("queue failure")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(warm.lock, "put_queue", reject)
+        with pytest.raises(RuntimeError, match="queue failure"):
+            await follow_up(warm)
+    assert (
+        warm.journal.get_workspace_writer_request("workspace-writer:second")
+        is None
+    )
+    assert warm.journal.get_active_project_run("peer").run_id == "other"
+    persisted = warm.journal.get_workspace_writer_request(other.request_id)
+    assert persisted.status == (
+        "released" if promote_during_queue else "acquired"
+    )
+    if not promote_during_queue:
+        assert persisted == other
+        warm.workspace.writer_scheduler.finish_task(run_id="other")
+    await follow_up(warm)
+    assert await activate(warm, warm.lock.queue.get_nowait())
+
+
+@pytest.mark.asyncio
+async def test_abort_promotes_only_the_existing_fifo_waiter(warm, monkeypatch):
+    write_and_finish(warm, "first.txt")
+
+    async def reject(item):
+        assert admit_other(warm).writer.request.status == "queued"
+        raise RuntimeError("queue failure")
+
+    monkeypatch.setattr(warm.lock, "put_queue", reject)
+    with pytest.raises(RuntimeError, match="queue failure"):
+        await follow_up(warm)
+    writer = warm.journal.get_workspace_writer_request(
+        "workspace-writer:other"
+    )
+    assert writer.status == "acquired"
+    lease = warm.journal.get_workspace_writer_lease(
+        repository_id=writer.repository_id, checkout_id=writer.checkout_id
+    )
+    assert lease.task_id == "other" and lease.project_id == "peer"
+    assert (
+        warm.journal.get_workspace_writer_request("workspace-writer:second")
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_abort_refuses_unknown_tool_side_effects(warm):
+    from app.run_policy import ToolSafetyClass
+
+    write_and_finish(warm, "first.txt")
+    context = replace(
+        warm.lock.run_context,
+        run_id="second",
+        task_id="second",
+        attempt_id=None,
+    )
+    warm.journal.ensure_run(
+        run_id="second", project_id="session", status="pending"
+    )
+    admission = activation.WarmRunAdmission(
+        warm.journal, warm.lock, logger=logging.getLogger(__name__)
+    )
+    attempt = await admission.prepare(
+        context, request_id="stable-key", environment=None
+    )
+    for status in ("prepared", "dispatched", "outcome_unknown"):
+        warm.journal.checkpoint_tool_call(
+            tool_call_id="unsafe",
+            run_id="second",
+            attempt_id=attempt.attempt_id,
+            tool_name="external_write",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            status=status,
+        )
+    writer = warm.journal.get_workspace_writer_request(
+        "workspace-writer:second"
+    )
+    with pytest.raises(InvalidRunTransitionError, match="execution evidence"):
+        await admission.abort()
+    assert (
+        warm.journal.get_workspace_writer_request(writer.request_id) == writer
+    )
+    assert warm.journal.get_active_project_run("session").run_id == "second"
+    assert (
+        warm.journal.list_tool_calls("second")[0].status == "outcome_unknown"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("warm", [False], indirect=True)
+async def test_gitless_follow_up_still_publishes_and_activates(warm):
+    assert write_and_finish(warm, "first.txt") is None
+    await follow_up(warm)
+    assert (
+        warm.journal.get_workspace_writer_request("workspace-writer:second")
+        is None
+    )
+    assert await activate(warm, warm.lock.queue.get_nowait())
+    assert write_and_finish(warm, "second.txt") is None
+
+
+@pytest.mark.asyncio
+async def test_workforce_follow_up_keeps_internal_writer_identity(warm):
+    write_and_finish(warm, "first.txt")
+    warm.lock.run_context = replace(
+        warm.lock.run_context, session_mode="workforce"
+    )
+    await follow_up(warm)
+    writer = warm.journal.get_workspace_writer_request(
+        "workspace-writer:second"
+    )
+    binding = warm.journal.get_project_workspace_binding("session")
+    assert writer.task_id == "second"
+    assert writer.checkout_id != binding.checkout_id
+    assert writer.checkout_id.startswith("checkout_internal_")
+    assert await activate(warm, warm.lock.queue.get_nowait())
+
+
+@pytest.mark.asyncio
+async def test_publication_gate_works_across_consumer_event_loops(warm):
+    from concurrent.futures import Future
+
+    from app.service.task import ActionImproveData, ImprovePayload
+
+    item = ActionImproveData(data=ImprovePayload(question="test gate"))
+    item._publication = Future()
+    started = threading.Event()
+
+    def consume():
+        async def wait():
+            started.set()
+            return await activate(warm, item)
+
+        return asyncio.run(wait())
+
+    pending = asyncio.create_task(asyncio.to_thread(consume))
+    try:
+        assert await asyncio.to_thread(started.wait, 5)
+    finally:
+        item._publication.set_result(False)
+    assert not await pending
+    assert "_publication" not in item.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_publications_execute_once_and_conflicting_key_is_rejected(
+    warm,
+):
+    write_and_finish(warm, "first.txt")
+    await follow_up(warm)
+    first = warm.lock.queue.get_nowait()
+    writer = warm.journal.get_workspace_writer_request(
+        "workspace-writer:second"
+    )
+    await follow_up(warm)
+    second = warm.lock.queue.get_nowait()
+    assert second.attempt_id == first.attempt_id
+    assert (
+        warm.journal.get_workspace_writer_request(writer.request_id) == writer
+    )
+    assert len(warm.journal.list_run_attempts("second")) == 1
+    conflict = await controller.improve(
+        "session",
+        SupplementChat(question="different input", task_id="second"),
+        warm.request,
+    )
+    assert conflict.status_code == 409
+    assert warm.lock.queue.empty()
+    assert await activate(warm, first)
+    assert not await activate(warm, second)
+    assert (await follow_up(warm)).status_code == 201
+    assert warm.lock.queue.empty()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("committed", [False, True])
+async def test_publication_failure_respects_the_commit_boundary(
+    warm, monkeypatch, committed
+):
+    write_and_finish(warm, "first.txt")
+    original = warm.journal.publish_warm_admission
+
+    def fail(receipt):
+        if committed:
+            original(receipt)
+        raise RuntimeError("publication failed")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(warm.journal, "publish_warm_admission", fail)
+        with pytest.raises(RuntimeError, match="publication failed"):
+            await follow_up(warm)
+    item = warm.lock.queue.get_nowait()
+    assert (await activate(warm, item)) is committed
+    if committed:
+        assert (
+            warm.journal.get_workspace_writer_request(
+                "workspace-writer:second"
+            ).status
+            == "acquired"
+        )
+        assert warm.lock.run_context.run_id == "second"
+    else:
+        assert (
+            warm.journal.get_workspace_writer_request(
+                "workspace-writer:second"
+            )
+            is None
+        )
+        assert warm.lock.run_context.run_id == "first"
+        await follow_up(warm)
+        assert warm.lock.run_context.attempt_id == item.attempt_id

@@ -18,11 +18,165 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
+from collections.abc import Awaitable, Callable
+from concurrent.futures import Future
+from typing import ParamSpec, TypeVar
 
+from app.run_context import RunContext
 from app.run_journal import SQLiteRunJournal, get_default_run_journal
+from app.run_journal.models import (
+    AttemptEnvironmentBinding,
+    RunAttemptRecord,
+    WarmAdmissionReceipt,
+)
 from app.service.task import ActionImproveData, TaskLock
 from app.workspace_git.coordinator import get_default_workspace_git_coordinator
 from app.workspace_git.scheduler import WorkspaceWriterScheduler
+
+_Result = TypeVar("_Result")
+_Params = ParamSpec("_Params")
+
+
+async def drain_admission(
+    awaitable: Awaitable[_Result], *, propagate_cancellation: bool = True
+) -> _Result:
+    """Do not abandon an admission worker or its cleanup on HTTP cancellation."""
+    task = asyncio.ensure_future(awaitable)
+    cancelled = False
+    while True:
+        try:
+            result = await asyncio.shield(task)
+            break
+        except asyncio.CancelledError:
+            cancelled = True
+            if task.done():
+                result = task.result()
+                break
+    if cancelled and propagate_cancellation:
+        raise asyncio.CancelledError
+    return result
+
+
+async def admission_to_thread(
+    function: Callable[_Params, _Result],
+    /,
+    *args: _Params.args,
+    **kwargs: _Params.kwargs,
+) -> _Result:
+    return await drain_admission(asyncio.to_thread(function, *args, **kwargs))
+
+
+class WarmRunAdmission:
+    """Prepare -> stage -> publish, or retryable abort before publication.
+
+    The existing Session admission gate serializes callers. Cancellation drains
+    each worker before abort; a staged envelope waits for the publication result
+    and can never execute an aborted preparation.
+    """
+
+    def __init__(
+        self,
+        journal: SQLiteRunJournal,
+        task_lock: TaskLock,
+        *,
+        logger: logging.Logger,
+    ) -> None:
+        self.journal = journal
+        self.task_lock = task_lock
+        self.logger = logger
+        self.receipt: WarmAdmissionReceipt | None = None
+        self.publication: Future[bool] = Future()
+        self.published = False
+
+    async def prepare(
+        self,
+        context: RunContext,
+        *,
+        request_id: str,
+        environment: AttemptEnvironmentBinding | None,
+    ) -> RunAttemptRecord:
+        if not isinstance(self.journal, SQLiteRunJournal):
+            return await admission_to_thread(
+                self.journal.create_run_attempt,
+                context.run_id,
+                request_id=request_id,
+                reason="follow_up_execution",
+                activate=False,
+                environment=environment,
+            )
+        self.receipt = WarmAdmissionReceipt(
+            run_id=context.run_id,
+            project_id=context.project_id,
+            task_id=context.task_id,
+            request_id=request_id,
+            token=uuid.uuid4().hex,
+        )
+        attempt = await admission_to_thread(
+            self.journal.begin_warm_admission,
+            self.receipt,
+            environment=environment,
+        )
+        receipt = self.receipt
+        if receipt.owned:
+
+            def admit_git():
+                try:
+                    return get_default_workspace_git_coordinator().admit_run(
+                        space_id=context.space_id,
+                        project_id=context.project_id,
+                        run_id=context.run_id,
+                        task_id=context.task_id,
+                        session_mode=context.session_mode,
+                    )
+                finally:
+                    # Admission can fail after creating the writer. Capture its
+                    # exact acquisition even on failure, before draining returns.
+                    receipt.writer = self.journal.get_workspace_writer_request(
+                        WorkspaceWriterScheduler.request_id(context.run_id)
+                    )
+
+            await admission_to_thread(admit_git)
+        return attempt
+
+    async def publish(self, item: ActionImproveData) -> None:
+        item._publication = self.publication
+        try:
+            await self.task_lock.put_queue(item)
+            if self.receipt is not None:
+                await admission_to_thread(
+                    self.journal.publish_warm_admission, self.receipt
+                )
+            self.published = True
+        finally:
+            # A cancelled caller can observe a committed publication. Ownership
+            # has transferred to the consumer; never roll it back in that case.
+            if self.receipt is not None and self.receipt.published:
+                self.published = True
+            if self.published and not self.publication.done():
+                self.publication.set_result(True)
+
+    async def abort(self) -> None:
+        if self.published:
+            return
+        if not self.publication.done():
+            self.publication.set_result(False)
+        if self.receipt is None or not self.receipt.owned:
+            return
+        result = await asyncio.to_thread(
+            self.journal.abort_warm_admission, self.receipt
+        )
+        if result is not None:
+            scheduler = WorkspaceWriterScheduler(self.journal)
+            await asyncio.to_thread(
+                scheduler._record_state,
+                self.receipt.run_id,
+                result.finished,
+                event_type="workspace.writer.interrupted",
+            )
+            await asyncio.to_thread(
+                scheduler._record_promoted_request, result.next_acquired
+            )
 
 
 async def activate_improve_admission(
@@ -34,6 +188,10 @@ async def activate_improve_admission(
 ) -> bool:
     """Activate a pending Attempt once and discard duplicate queue envelopes."""
 
+    if item._publication is not None and not await asyncio.shield(
+        asyncio.wrap_future(item._publication)
+    ):
+        return False
     if not item.request_id:
         return True
     if item.request_id in task_lock.processed_improve_request_ids:
