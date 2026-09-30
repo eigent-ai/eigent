@@ -36,7 +36,10 @@ import {
 } from '@/lib/spaceModelBinding';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import { executionScope } from '@/service/executionApi';
-import { fetchProjectRuns } from '@/service/projectRunsApi';
+import {
+  fetchProjectRuns,
+  projectRunSummaries,
+} from '@/service/projectRunsApi';
 import type { ServerProject } from '@/service/spaceApi';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import {
@@ -69,6 +72,7 @@ import {
   resetProjectEventStore,
 } from './projectEventStore';
 import {
+  getVisibleProjectMetasForSpace,
   projectMetaFromServer,
   useSpaceStore,
   type SpaceProjectMeta,
@@ -1822,6 +1826,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     );
 
     const cacheUserId = getAuthStore().user_id;
+    const hydrationAccountKey = getAccountEnvironmentKey(getAuthStore());
     const restored = get().projects[loadProjectId];
     if (
       (restored?.metadata?.spaceModelDefaultPending ||
@@ -1880,6 +1885,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       >();
       let localCanonicalUpdatedAt: number | null = null;
       try {
+        const hydrationProject = get().projects[loadProjectId];
+        const hydrationChatId = hydrationProject.activeChatId;
+        if (!hydrationChatId) return loadProjectId;
+        const hydrationChatStore = hydrationProject.chatStores[hydrationChatId];
         const localRunController = new AbortController();
         const localRunDeadline = setTimeout(
           () => localRunController.abort(),
@@ -1888,8 +1897,21 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         const localRuns = await fetchProjectRuns(
           loadProjectId,
           100,
-          localRunController.signal
+          localRunController.signal,
+          hydrationAccountKey
         ).finally(() => clearTimeout(localRunDeadline));
+        if (
+          getAccountEnvironmentKey(getAuthStore()) !== hydrationAccountKey ||
+          get().projects[loadProjectId]?.chatStores[hydrationChatId] !==
+            hydrationChatStore
+        )
+          return loadProjectId;
+        // Hydration and sidebar GETs share version arbitration. Preserve the
+        // checkpoint before projecting its status into the unversioned Task.
+        runProjectionStore.upsertRunSummaries(
+          loadProjectId,
+          projectRunSummaries(loadProjectId, localRuns)
+        );
         for (const run of localRuns?.runs ?? []) {
           if (run?.run_id) {
             if (
@@ -3439,10 +3461,9 @@ function resolveProjectNavLead(
   fallback: SessionNavLeadPresentation
 ): SessionNavLeadPresentation {
   const project = state.projects[projectId];
-  if (!project) return fallback;
-  const chatStore = project.activeChatId
+  const chatStore = project?.activeChatId
     ? project.chatStores[project.activeChatId]
-    : Object.values(project.chatStores ?? {})[0];
+    : Object.values(project?.chatStores ?? {})[0];
   const chatState = chatStore?.getState();
   const taskId = chatState?.activeTaskId;
   const task = taskId ? chatState?.tasks[taskId] : undefined;
@@ -3476,7 +3497,7 @@ function resolveProjectNavLead(
 
 const pushLiveNavLead = (projectId: string) => {
   const state = projectStore.getState();
-  if (!state.projects[projectId]) return;
+  if (!navLeadSubscriptions.has(projectId)) return;
   const current = state.navLeadByProjectId[projectId];
   const lead = resolveProjectNavLead(
     state,
@@ -3497,15 +3518,25 @@ const reconcileNavLeadSubscriptions = (
     state.historyLoadingProjectIds === previous.historyLoadingProjectIds
   )
     return;
+  const spaces = useSpaceStore.getState();
+  // Persisted Session rows remain visible even when Cloud Project sync fails.
+  const projectIds = new Set([
+    ...Object.keys(state.projects),
+    ...getVisibleProjectMetasForSpace(
+      spaces.projectsBySpaceId,
+      spaces.activeSpaceId
+    ).map((meta) => meta.id),
+  ]);
   for (const [projectId, entry] of navLeadSubscriptions) {
-    if (state.projects[projectId]) continue;
+    if (projectIds.has(projectId)) continue;
     entry.unsubscribe();
     navLeadSubscriptions.delete(projectId);
   }
-  for (const [projectId, project] of Object.entries(state.projects)) {
-    const chatStore = project.activeChatId
+  for (const projectId of projectIds) {
+    const project = state.projects[projectId];
+    const chatStore = project?.activeChatId
       ? project.chatStores[project.activeChatId]
-      : Object.values(project.chatStores ?? {})[0];
+      : Object.values(project?.chatStores ?? {})[0];
     const eventStore = getProjectEventStore(projectId);
     const existing = navLeadSubscriptions.get(projectId);
     if (
@@ -3531,6 +3562,14 @@ const reconcileNavLeadSubscriptions = (
 };
 
 projectStore.subscribe(reconcileNavLeadSubscriptions);
+useSpaceStore.subscribe((state, previous) => {
+  if (
+    state.projectsBySpaceId !== previous.projectsBySpaceId ||
+    state.activeSpaceId !== previous.activeSpaceId
+  ) {
+    reconcileNavLeadSubscriptions(projectStore.getState());
+  }
+});
 reconcileNavLeadSubscriptions(projectStore.getState());
 
 if (typeof queueMicrotask === 'function') {
