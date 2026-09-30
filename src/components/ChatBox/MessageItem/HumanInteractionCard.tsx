@@ -13,9 +13,18 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
+import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
+import {
+  approvalTerminalReason,
+  isInteractionTerminal,
+} from '@/lib/approvalPresentation';
 import {
   decideHumanInteraction,
+  getHumanInteractionReceipt,
+  invalidatePendingHumanInteractions,
   isHumanInteractionStillPending,
   type HumanInteractionPayload,
 } from '@/service/humanInteractionApi';
@@ -40,37 +49,7 @@ interface HumanInteractionCardProps {
   timelineReceipt?: boolean;
 }
 
-export function isHumanInteractionReadOnly(input: {
-  interaction: HumanInteractionPayload;
-  activeTaskId?: string | null;
-  taskType?: string;
-  taskStatus?: string;
-  durableRunStatus?: string;
-}): boolean {
-  if (input.taskType === 'share') return true;
-  const isExplicitlyTerminal =
-    input.durableRunStatus === 'completed' ||
-    input.durableRunStatus === 'failed' ||
-    input.durableRunStatus === 'cancelled' ||
-    input.durableRunStatus === 'stopped';
-  const belongsToCurrentRun =
-    Boolean(input.interaction.run_id) &&
-    input.interaction.run_id === input.activeTaskId;
-
-  // A requested interaction is a durable, server-CAS-protected action. When
-  // reopening a Project, the legacy task shell can still say replay/finished
-  // for a short time after the Run has already returned to waiting_for_user.
-  // Do not let those stale presentation flags permanently disable the only
-  // recovery control. Explicit canonical terminal status still wins, and a
-  // stale decision is rejected safely by the Brain's version/status checks.
-  if (belongsToCurrentRun && !isExplicitlyTerminal) return false;
-  const isDurablyWaiting =
-    input.durableRunStatus === 'waiting_for_user' &&
-    Boolean(input.interaction.run_id) &&
-    input.interaction.run_id === input.activeTaskId;
-  if (isDurablyWaiting) return false;
-  return input.taskType === 'replay' || input.taskStatus === 'finished';
-}
+export { isHumanInteractionReadOnly } from '@/lib/approvalPresentation';
 
 const requestId = () =>
   globalThis.crypto?.randomUUID?.() ||
@@ -139,7 +118,38 @@ export function HumanInteractionCard({
   const decisionRequestId = useRef(requestId());
   const [submitting, setSubmitting] = useState(false);
   const [resolved, setResolved] = useState(false);
-  const [durablyPending, setDurablyPending] = useState(false);
+  const identity = JSON.stringify([
+    interaction.run_id,
+    interaction.interaction_id,
+    interaction.approval_id,
+    interaction.version,
+    interaction.action_digest,
+  ]);
+  const [journalReceipt, setJournalReceipt] = useState<{
+    identity: string;
+    status?: string;
+    reason?: string;
+    expires_at?: number | string | null;
+  } | null>(null);
+  const receiptInteraction =
+    journalReceipt?.identity === identity
+      ? {
+          ...interaction,
+          ...journalReceipt,
+          status: isInteractionTerminal(interaction)
+            ? interaction.status
+            : journalReceipt.status,
+        }
+      : interaction;
+  const expiredLocally = useHumanInteractionExpiry(receiptInteraction);
+  const receiptOnly =
+    readOnly ||
+    Boolean(interaction.receipt) ||
+    isInteractionTerminal(receiptInteraction);
+  const [pendingCheck, setPendingCheck] = useState<{
+    identity: string;
+    pending: boolean;
+  } | null>(null);
   const [submittedResponse, setSubmittedResponse] = useState<string | null>(
     null
   );
@@ -149,18 +159,25 @@ export function HumanInteractionCard({
     decisionRequestId.current = requestId();
     setSubmitting(false);
     setResolved(false);
-    setDurablyPending(false);
+    setPendingCheck(null);
     setSubmittedResponse(null);
     setSubmissionError(null);
     setFormValues({});
-  }, [interaction.interaction_id]);
+  }, [identity]);
   useEffect(() => {
     let cancelled = false;
-    setDurablyPending(false);
-    if (!readOnly || !interaction.run_id) return;
+    setPendingCheck(null);
+    if (
+      interaction.interaction_type !== 'approval' ||
+      receiptOnly ||
+      timelineReceipt ||
+      expiredLocally ||
+      !interaction.run_id
+    )
+      return;
     void isHumanInteractionStillPending(interaction)
       .then((isPending) => {
-        if (!cancelled) setDurablyPending(isPending);
+        if (!cancelled) setPendingCheck({ identity, pending: isPending });
       })
       .catch((error) => {
         // Keep fail-closed on transport/auth failures; the ordinary inline
@@ -173,14 +190,52 @@ export function HumanInteractionCard({
     return () => {
       cancelled = true;
     };
-  }, [
-    interaction.action_digest,
-    interaction.interaction_id,
-    interaction.run_id,
-    interaction.version,
-    readOnly,
-  ]);
-  const effectiveReadOnly = readOnly && !durablyPending;
+  }, [interaction, identity, receiptOnly, timelineReceipt, expiredLocally]);
+  const durablyPending =
+    pendingCheck?.identity === identity && pendingCheck.pending;
+  const pendingUnavailable =
+    pendingCheck?.identity === identity && pendingCheck.pending === false;
+  const effectiveReadOnly =
+    receiptOnly ||
+    expiredLocally ||
+    (interaction.interaction_type === 'approval' && !durablyPending);
+  const authority = useRef<string | null>(null);
+  authority.current =
+    effectiveReadOnly ||
+    (timelineReceipt && interaction.interaction_type === 'approval')
+      ? null
+      : identity;
+  useEffect(() => {
+    if (interaction.interaction_type !== 'approval') return;
+    let cancelled = false;
+    const readReceipt = () => {
+      void getHumanInteractionReceipt(interaction)
+        .then((receipt) => {
+          if (!cancelled && receipt)
+            setJournalReceipt((previous) =>
+              previous?.identity === identity &&
+              isInteractionTerminal({ ...interaction, ...previous })
+                ? previous
+                : { identity, ...receipt }
+            );
+        })
+        .catch(() => {
+          /* Offline history retains its persisted read-only receipt. */
+        });
+    };
+    readReceipt();
+    window.addEventListener('focus', readReceipt);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', readReceipt);
+    };
+  }, [identity, expiredLocally, pendingUnavailable, interaction]);
+  useEffect(
+    () => () => {
+      authority.current = null;
+    },
+    []
+  );
   const targets = useMemo(
     () => interaction.target_resources?.filter(Boolean) || [],
     [interaction.target_resources]
@@ -191,16 +246,33 @@ export function HumanInteractionCard({
     setSubmitting(true);
     setSubmissionError(null);
     try {
+      invalidatePendingHumanInteractions(interaction.run_id);
+      if (
+        interaction.interaction_type === 'approval' &&
+        !(await isHumanInteractionStillPending(interaction))
+      ) {
+        setPendingCheck({ identity, pending: false });
+        return;
+      }
+      if (authority.current !== identity) return;
       await decideHumanInteraction(interaction, {
         decisionRequestId: decisionRequestId.current,
         decision,
         actorId: userId,
       });
+      if (authority.current !== identity) return;
       const decisionText = decisionDisplayText(interaction, decision, t);
       setSubmittedResponse(decisionText);
       setResolved(true);
       onResolved?.(decisionText || undefined);
     } catch (error) {
+      if (authority.current !== identity) return;
+      if (
+        (error as { response?: { status?: number }; status?: number })?.response
+          ?.status === 409 ||
+        (error as { status?: number })?.status === 409
+      )
+        setPendingCheck({ identity, pending: false });
       console.error('[HumanInteractionCard] decision failed', error);
       const message =
         (error as any)?.response?.data?.detail?.message ||
@@ -212,7 +284,7 @@ export function HumanInteractionCard({
       setSubmissionError(readableMessage);
       toast.error(readableMessage);
     } finally {
-      setSubmitting(false);
+      if (authority.current === identity) setSubmitting(false);
     }
   };
 
@@ -235,20 +307,56 @@ export function HumanInteractionCard({
   // receipts remain mounted so their submitted decision can be displayed.
   if (resolved && !timelineReceipt) return null;
 
-  if (timelineReceipt && interaction.interaction_type === 'approval') {
+  if (
+    interaction.interaction_type === 'approval' &&
+    (timelineReceipt || receiptOnly || expiredLocally || pendingUnavailable)
+  ) {
+    const inactive = receiptOnly || expiredLocally || pendingUnavailable;
+    const label =
+      receiptInteraction.status === 'expired'
+        ? t('chat.approval-expired-title')
+        : receiptInteraction.status === 'cancelled'
+          ? t('chat.approval-cancelled-title')
+          : inactive
+            ? t('chat.approval-inactive-title')
+            : t('chat.control-input-required');
+    const reason = approvalTerminalReason(receiptInteraction.reason, t);
     return (
       <div
         data-human-input-receipt
         data-approval-timeline-receipt
-        className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-x border-y border-ds-border-warning-subtle-default bg-ds-bg-warning-subtle-default px-3 py-2"
+        className="flex w-full min-w-0 items-start gap-ds-stack-related rounded-ds-card border border-x border-y border-ds-hairline-default-default bg-ds-neutral-muted-default p-ds-card-inset"
       >
-        <ShieldAlert
-          aria-hidden
-          className="size-4 shrink-0 text-ds-icon-warning-default-default"
+        <DsIcon
+          icon={ShieldAlert}
+          recipe="main"
+          className="shrink-0 text-ds-ink-muted-default"
         />
-        <span className="text-ds-text-base font-medium text-ds-ink-default-default">
-          {t('chat.control-input-required')}
-        </span>
+        <div className="min-w-0 flex-1 space-y-ds-4 break-words">
+          <DsText
+            as="span"
+            role="base"
+            weight="medium"
+            className="block text-ds-ink-default-default"
+          >
+            {label}
+          </DsText>
+          {inactive && interaction.question ? (
+            <DsText role="base" className="text-ds-ink-muted-default">
+              {interaction.question}
+            </DsText>
+          ) : null}
+          {reason ? (
+            <DsText as="p" role="meta" className="text-ds-ink-muted-default">
+              {reason}
+            </DsText>
+          ) : null}
+          {inactive ? (
+            <DsText as="p" role="meta" className="text-ds-ink-muted-default">
+              {t('chat.approval-read-only-receipt')}
+            </DsText>
+          ) : null}
+        </div>
       </div>
     );
   }

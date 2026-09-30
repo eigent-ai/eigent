@@ -735,6 +735,10 @@ function presentHumanInteractionReceipts(
             pair.resolution.kind === 'interaction'
               ? pair.resolution.status
               : 'responded',
+          reason:
+            pair.resolution.kind === 'interaction'
+              ? pair.resolution.reason
+              : undefined,
           response: pair.response,
           requestEventId: node.eventId,
           resolutionEventId: pair.resolution.eventId,

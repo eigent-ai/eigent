@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "클라우드에서 기록 복원됨",
   "run-cloud-restored-description": "이 실행은 읽기 전용 기록으로 제공됩니다. 이 기기에 원래 로컬 작업 공간과 실행 컨텍스트가 없어 재개할 수 없습니다. 후속 메시지를 보내 새 실행을 시작하세요.",
   "run-interrupted-title": "실행이 중단됨",
-  "run-interrupted-description": "이 실행이 완료되기 전에 Eigent가 종료되었습니다. 완료된 작업은 저장되어 있습니다. 재개하면 새 시도가 생성되며 완료된 외부 작업은 자동으로 반복되지 않습니다.",
+  "run-interrupted-description": "완료된 작업은 저장되었습니다. 재개하면 남은 작업을 다시 평가하고 필요한 경우 새로운 승인을 요청합니다. 이전 승인 요청은 다시 사용할 수 없습니다.",
   "run-resume": "재개",
   "run-resuming": "재개 중…",
   "run-cancel": "실행 종료",
@@ -457,5 +457,12 @@
   "space-model-unconfirmed": "세션의 첫 요청이 아직 확인되지 않았습니다. 다시 연결해 재시도하거나 세션 모델을 선택하세요.",
   "space-model-unavailable": "현재 계정에서 이 모델을 사용할 수 없습니다. 모델 설정을 확인하거나 세션 모델을 선택하세요.",
   "space-model-ambiguous": "일치하는 제공업체가 여러 개입니다. 모델 설정을 확인하거나 세션 모델을 선택하세요.",
-  "space-model-changed": "로드 중 계정 또는 세션 모델이 변경되었습니다. 메시지를 다시 보내세요."
+  "space-model-changed": "로드 중 계정 또는 세션 모델이 변경되었습니다. 메시지를 다시 보내세요.",
+  "approval-expired-title": "승인 만료",
+  "approval-cancelled-title": "승인 취소됨",
+  "approval-inactive-title": "더 이상 유효하지 않은 승인",
+  "approval-expired-description": "결정이 수락되기 전에 승인 요청이 만료되었습니다.",
+  "approval-tool-ended-description": "도구가 실행되기 전에 종료되어 승인이 취소되었습니다.",
+  "approval-recorded-reason": "기록된 사유: {{reason}}",
+  "approval-read-only-receipt": "읽기 전용 기록입니다. 이 승인은 다시 사용할 수 없습니다."
 }

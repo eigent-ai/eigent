@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "Cronologia ripristinata dal cloud",
   "run-cloud-restored-description": "Questo compito è salvato nella storia di lettura. I file e il contesto utilizzati non sono su questo dispositivo, quindi non può essere ripristinato qui. Invia un seguito di messaggio per iniziare una nuova attività.",
   "run-interrupted-title": "Attività interrotta",
-  "run-interrupted-description": "Agente di Eigent ha fermato il lavoro prima che questa attività fosse completata. Il lavoro già effettuato è stato salvato. Riprendere iniziamento a partire da qui — non ripeterà azioni già eseguite, come inviare un'e-mail.",
+  "run-interrupted-description": "Il lavoro completato è salvato. La ripresa rivaluta il lavoro rimanente e richiede una nuova approvazione quando necessario. Le richieste di approvazione precedenti non possono essere riutilizzate.",
   "run-resume": "Riprendi",
   "run-resuming": "Ripresa in corso…",
   "run-cancel": "Seleziona Attività e Cancella",
@@ -465,5 +465,12 @@
   "space-model-unconfirmed": "La prima richiesta della sessione non è ancora stata confermata. Riconnettiti e riprova, oppure scegli un modello per la sessione.",
   "space-model-unavailable": "Questo modello non è disponibile per l’account attuale. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
   "space-model-ambiguous": "Più provider corrispondono al modello. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
-  "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio."
+  "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio.",
+  "approval-expired-title": "Approvazione scaduta",
+  "approval-cancelled-title": "Approvazione annullata",
+  "approval-inactive-title": "Approvazione non più attiva",
+  "approval-expired-description": "La richiesta di approvazione è scaduta prima che venisse accettata una decisione.",
+  "approval-tool-ended-description": "L’approvazione è stata annullata perché lo strumento è terminato prima di avviarsi.",
+  "approval-recorded-reason": "Motivo registrato: {{reason}}",
+  "approval-read-only-receipt": "Ricevuta di sola lettura. Questa approvazione non può essere riutilizzata."
 }

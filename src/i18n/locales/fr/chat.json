@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "Historique restauré depuis le cloud",
   "run-cloud-restored-description": "Cette exécution est disponible en lecture seule. Son espace de travail local et son contexte d’exécution d’origine ne sont pas présents sur cet appareil ; envoyez un suivi pour démarrer une nouvelle exécution.",
   "run-interrupted-title": "Exécution interrompue",
-  "run-interrupted-description": "Eigent s’est arrêté avant la fin de cette exécution. Le travail terminé est enregistré. Reprendre crée une nouvelle tentative sans répéter automatiquement les actions externes déjà effectuées.",
+  "run-interrupted-description": "Le travail terminé est enregistré. La reprise réévalue le travail restant et demande une nouvelle approbation si nécessaire. Les anciennes demandes d’approbation ne peuvent pas être réutilisées.",
   "run-resume": "Reprendre",
   "run-resuming": "Reprise…",
   "run-cancel": "Annuler l’exécution",
@@ -465,5 +465,12 @@
   "space-model-unconfirmed": "La première requête de la session n’a pas encore été confirmée. Reconnectez-vous et réessayez, ou choisissez un modèle pour la session.",
   "space-model-unavailable": "Ce modèle est indisponible pour ce compte. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
   "space-model-ambiguous": "Plusieurs fournisseurs correspondent. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
-  "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message."
+  "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message.",
+  "approval-expired-title": "Approbation expirée",
+  "approval-cancelled-title": "Approbation annulée",
+  "approval-inactive-title": "Approbation inactive",
+  "approval-expired-description": "La demande d’approbation a expiré avant qu’une décision soit acceptée.",
+  "approval-tool-ended-description": "L’approbation a été annulée car l’outil s’est arrêté avant de démarrer.",
+  "approval-recorded-reason": "Motif enregistré : {{reason}}",
+  "approval-read-only-receipt": "Reçu en lecture seule. Cette approbation ne peut pas être réutilisée."
 }

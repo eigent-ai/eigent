@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "Historial restaurado desde la nube",
   "run-cloud-restored-description": "Esta ejecución está disponible como historial de solo lectura. Este dispositivo no tiene el espacio de trabajo ni el contexto de ejecución originales; envía un seguimiento para iniciar una ejecución nueva.",
   "run-interrupted-title": "Ejecución interrumpida",
-  "run-interrupted-description": "Eigent se cerró antes de terminar esta ejecución. El trabajo completado está guardado. Al reanudar se creará un nuevo intento y no se repetirán automáticamente las acciones externas completadas.",
+  "run-interrupted-description": "El trabajo completado está guardado. Al reanudar se vuelve a evaluar el trabajo pendiente y se solicita una nueva aprobación cuando sea necesario. Las solicitudes de aprobación anteriores no se pueden reutilizar.",
   "run-resume": "Reanudar",
   "run-resuming": "Reanudando…",
   "run-cancel": "Cancelar ejecución",
@@ -465,5 +465,12 @@
   "space-model-unconfirmed": "La primera solicitud de la sesión aún no se ha confirmado. Vuelve a conectarte y reinténtalo, o elige un modelo para la sesión.",
   "space-model-unavailable": "Este modelo no está disponible para esta cuenta. Revise los ajustes de modelos o elija un modelo para la sesión.",
   "space-model-ambiguous": "Coinciden varios proveedores. Revise los ajustes de modelos o elija un modelo para la sesión.",
-  "space-model-changed": "La cuenta o el modelo de la sesión cambió durante la carga. Vuelva a enviar el mensaje."
+  "space-model-changed": "La cuenta o el modelo de la sesión cambió durante la carga. Vuelva a enviar el mensaje.",
+  "approval-expired-title": "Aprobación caducada",
+  "approval-cancelled-title": "Aprobación cancelada",
+  "approval-inactive-title": "Aprobación inactiva",
+  "approval-expired-description": "La solicitud de aprobación caducó antes de que se aceptara una decisión.",
+  "approval-tool-ended-description": "La aprobación se canceló porque la herramienta terminó antes de iniciarse.",
+  "approval-recorded-reason": "Motivo registrado: {{reason}}",
+  "approval-read-only-receipt": "Recibo de solo lectura. Esta aprobación no puede volver a utilizarse."
 }

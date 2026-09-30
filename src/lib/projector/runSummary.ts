@@ -27,6 +27,8 @@ export type DurableRunSummaryInput = {
     attempt_number: number;
     status: string;
     resume_request_id?: string;
+    outcome?: string | null;
+    timeout_reason?: string | null;
   } | null;
 };
 
@@ -70,6 +72,15 @@ export function mergeRunSummary(
   )
     return existing;
   const elapsed = summary.total_attempt_elapsed_ms;
+  // A snapshot can jump past Resume while the renderer is offline. Keep an
+  // event reason only when it belongs to this same Attempt/checkpoint.
+  const sameAttemptOrCheckpoint =
+    summary.latest_attempt === undefined ||
+    summary.latest_attempt?.attempt_number ===
+      existing?.latestAttempt?.attemptNumber ||
+    (version != null &&
+      version === existing?.runVersion &&
+      status === existing.status);
   return {
     ...existing,
     runId: summary.run_id,
@@ -82,6 +93,17 @@ export function mergeRunSummary(
       summary.resume_blocked_reason === undefined
         ? (existing?.resumeBlockedReason ?? null)
         : summary.resume_blocked_reason,
+    terminalReason: [
+      'interrupted',
+      'failed',
+      'cancelled',
+      'completed',
+    ].includes(status)
+      ? summary.latest_attempt?.timeout_reason ||
+        summary.latest_attempt?.outcome ||
+        (sameAttemptOrCheckpoint ? existing?.terminalReason : null) ||
+        null
+      : null,
     latestAttempt:
       summary.latest_attempt === undefined
         ? existing?.latestAttempt

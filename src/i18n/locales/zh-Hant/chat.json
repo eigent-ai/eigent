@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "已從雲端還原歷史",
   "run-cloud-restored-description": "此任務已儲存為只讀歷史。此設備上沒有任務使用過的檔案和上下文，因此無法在此還原。傳送後續訊息即可開始新任務。",
   "run-interrupted-title": "任務已中斷",
-  "run-interrupted-description": "Eigent 在此任務完成前停止。已完成的工作已儲存。還原後將從中斷處繼續，不會重復傳送電子郵件等已完成的操作。",
+  "run-interrupted-description": "已完成的工作已儲存。繼續時會重新評估剩餘工作，並在需要時請求新的審批。舊審批請求不能重複使用。",
   "run-resume": "還原任務",
   "run-resuming": "正在還原…",
   "run-cancel": "結束任務",
@@ -457,5 +457,12 @@
   "space-model-unconfirmed": "首次工作階段請求尚未確認。請重新連線後重試，或手動選擇工作階段模型。",
   "space-model-unavailable": "目前帳號無法使用此模型。請檢查模型設定，或為會話選擇模型。",
   "space-model-ambiguous": "多個提供商與此模型符合。請檢查模型設定，或為會話選擇模型。",
-  "space-model-changed": "載入期間帳號或會話模型已變更，請重新傳送訊息。"
+  "space-model-changed": "載入期間帳號或會話模型已變更，請重新傳送訊息。",
+  "approval-expired-title": "審批已到期",
+  "approval-cancelled-title": "審批已取消",
+  "approval-inactive-title": "審批已失效",
+  "approval-expired-description": "審批請求在決定被接受前已到期。",
+  "approval-tool-ended-description": "工具在開始執行前已終止，因此審批已取消。",
+  "approval-recorded-reason": "記錄的原因：{{reason}}",
+  "approval-read-only-receipt": "唯讀收據。此審批不能再次使用。"
 }

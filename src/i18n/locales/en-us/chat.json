@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "History restored from cloud",
   "run-cloud-restored-description": "This task is saved as read-only history. The files and context it used aren't on this device, so it can't be resumed here. Send a follow-up message to start a new task.",
   "run-interrupted-title": "Task interrupted",
-  "run-interrupted-description": "Eigent stopped before this task finished. Work that was already done is saved. Resuming picks up from there — it will not repeat actions it already completed, such as sending an email.",
+  "run-interrupted-description": "Completed work is saved. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
   "run-resume": "Resume",
   "run-resuming": "Resuming…",
   "run-cancel": "Cancel task",
@@ -461,5 +461,12 @@
   "space-model-unconfirmed": "The first session request has not been confirmed. Reconnect and retry, or choose a session model.",
   "space-model-unavailable": "This model is unavailable for the current account. Review Models settings or choose a session model.",
   "space-model-ambiguous": "More than one provider matches this model. Review Models settings or choose a session model.",
-  "space-model-changed": "The account or session model changed while loading. Send your message again."
+  "space-model-changed": "The account or session model changed while loading. Send your message again.",
+  "approval-expired-title": "Approval expired",
+  "approval-cancelled-title": "Approval cancelled",
+  "approval-inactive-title": "Approval no longer active",
+  "approval-expired-description": "The approval request expired before a decision was accepted.",
+  "approval-tool-ended-description": "The approval was cancelled because the tool ended before it started.",
+  "approval-recorded-reason": "Recorded reason: {{reason}}",
+  "approval-read-only-receipt": "Read-only receipt. This approval cannot be used again."
 }

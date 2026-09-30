@@ -1197,6 +1197,48 @@ describe('ChatStore - Core Functionality', () => {
       expect(fetchEventSource).not.toHaveBeenCalled();
     });
 
+    it('persists retired approval receipts through interruption, hydration and Resume', () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create('approval-run');
+      const request = {
+        id: 'old-ask',
+        role: 'agent' as const,
+        content: 'Approve write?',
+        step: AgentStep.ASK,
+        interaction: {
+          interaction_id: 'old-approval',
+          interaction_type: 'approval' as const,
+          run_id: taskId,
+          version: 0,
+          action_digest: 'old-digest',
+        },
+      };
+      result.current.getState().setMessages(taskId, [request]);
+      result.current
+        .getState()
+        .setActiveAskList(taskId, [{ ...request, id: 'queued-ask' }]);
+      result.current.getState().setDurableRunStatus(taskId, 'interrupted');
+      const saved = JSON.parse(
+        JSON.stringify(result.current.getState().tasks[taskId].messages)
+      );
+      expect(saved[0].interaction.receipt).toEqual({
+        runStatus: 'interrupted',
+      });
+      result.current.getState().setMessages(taskId, saved);
+      result.current.getState().setDurableRunStatus(taskId, 'running');
+      expect(
+        result.current.getState().tasks[taskId].messages[0].interaction
+      ).toMatchObject({
+        interaction_id: 'old-approval',
+        version: 0,
+        action_digest: 'old-digest',
+        receipt: { runStatus: 'interrupted' },
+      });
+      expect(
+        result.current.getState().tasks[taskId].askList[0].interaction?.receipt
+      ).toBeTruthy();
+    });
+
     it('settles a live task from a canonical failure when legacy SSE ends without ERROR', () => {
       const { result } = renderHook(() => useChatStore());
       const taskId = result.current.getState().create('failed-run');
