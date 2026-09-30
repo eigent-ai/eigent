@@ -468,5 +468,7 @@
   "control-recovery-status-completed": "已完成",
   "control-recovery-status-cancelled": "已取消",
   "control-recovery-status-failed": "失敗",
-  "control-recovery-status-timed_out": "已逾時"
+  "control-recovery-status-timed_out": "已逾時",
+  "history-evidence": "歷史記錄憑據（{{count}}）",
+  "history-evidence-description": "這些舊回覆保留在此處，因為原始記錄未註明它們對應哪次輸入。"
 }

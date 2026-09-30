@@ -6942,18 +6942,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 content: reply,
                 interactionResponseTo:
                   agentMessages.data?.interaction_id || undefined,
+                interactionResponseSource:
+                  resolution?.__durable_interaction_resolution === true
+                    ? 'canonical'
+                    : 'legacy',
               });
             } else if (
               reply &&
               existingReply &&
               resolution?.__durable_interaction_resolution === true &&
-              existingReply.content !== reply
+              (existingReply.content !== reply ||
+                existingReply.interactionResponseSource !== 'canonical')
             ) {
               // A competing client may have resolved the interaction. Only
               // the journal's answer can replace an optimistic local reply.
               updateMessage(currentTaskId, existingReply.id, {
                 ...existingReply,
                 content: reply,
+                interactionResponseSource: 'canonical',
               });
             }
 

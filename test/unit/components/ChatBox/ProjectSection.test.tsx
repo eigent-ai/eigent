@@ -12,11 +12,31 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep } from '@/types/constants';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
-import { groupMessagesByQuery } from '@/components/ChatBox/ProjectSection';
+import {
+  groupMessagesByQuery,
+  ProjectSection,
+} from '@/components/ChatBox/ProjectSection';
 import { isUserMessageReplyToAsk } from '@/components/ChatBox/UserQueryGroup';
+
+vi.mock('@/components/ChatBox/UserQueryGroup', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/components/ChatBox/UserQueryGroup')
+  >()),
+  UserQueryGroup: ({
+    queryGroup,
+  }: {
+    queryGroup: { userMessage?: Message };
+  }) => (
+    <article aria-label="Conversation entry">
+      {queryGroup.userMessage?.content}
+    </article>
+  ),
+}));
 
 const userMessage = (id: string, content: string) => ({
   id,
@@ -38,6 +58,62 @@ const structuredAsk = (id: string, question: string) => ({
 });
 
 describe('legacy Run query grouping', () => {
+  it.each([true, false])(
+    'renders retained legacy evidence without extra main entries (canonical: %s)',
+    (canonical) => {
+      const messages: Message[] = [
+        ...(canonical
+          ? [
+              {
+                id: 'canonical',
+                role: 'user' as const,
+                content: 'report.csv',
+                interactionResponseTo: 'gui-question',
+                interactionResponseSource: 'canonical' as const,
+              },
+            ]
+          : []),
+        ...['legacy-one', 'legacy-two'].map((id) => ({
+          id,
+          role: 'user' as const,
+          content: 'report.csv',
+          interactionResponseSource: 'legacy' as const,
+        })),
+      ];
+      const store = {
+        getState: () => ({
+          activeTaskId: 'run-1',
+          tasks: { 'run-1': { messages } },
+        }),
+        subscribe: () => () => {},
+      } as unknown as VanillaChatStore;
+      render(
+        <ProjectSection
+          chatId="project-1"
+          chatStore={store}
+          activeQueryId={null}
+          onQueryActive={() => {}}
+        />
+      );
+      expect(screen.getAllByLabelText('Conversation entry')).toHaveLength(
+        canonical ? 1 : 2
+      );
+      if (canonical) {
+        fireEvent.click(
+          screen.getByRole('button', { name: 'History evidence (2)' })
+        );
+        expect(
+          within(
+            screen.getByRole('region', { name: 'History evidence (2)' })
+          ).getAllByText('report.csv')
+        ).toHaveLength(2);
+      } else {
+        expect(
+          screen.queryByRole('button', { name: /History evidence/ })
+        ).toBeNull();
+      }
+    }
+  );
   it('keeps a structured ASK reply in the same group and preserves one work-log owner', () => {
     const prompt = userMessage('user-prompt', 'Research this topic');
     const ask = structuredAsk('ask-1', 'Which market should I use?');

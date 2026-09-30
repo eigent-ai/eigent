@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ProjectEventStoreHydrationState } from '@/hooks/useProjectEventStoreHydration';
+import { normalizeLocalRunEvent } from '@/lib/projector';
 import type {
   ChatActivityNode,
   ChatArtifactNode,
@@ -23,6 +24,7 @@ import type {
   ChatRunStatusNode,
   ChatUnknownNode,
 } from '@/lib/projector/chat';
+import { projectChatEvents } from '@/lib/projector/chat';
 import {
   composeTimelineRuns,
   segmentTimelineRows,
@@ -37,6 +39,7 @@ import {
 } from '@testing-library/react';
 import { animate } from 'framer-motion';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { v104GuiInputEvents } from '../../../fixtures/v104GuiInput';
 
 import {
   EventNativeProjectTimeline,
@@ -248,6 +251,44 @@ describe('EventNativeProjectTimeline', () => {
       } as unknown as typeof ResizeObserver;
     }
   });
+
+  it.each(['narrative', 'trajectory'] as const)(
+    'retains v1.0.4 replies as evidence alongside one canonical receipt in %s',
+    async (detailLevel) => {
+      mocks.projection = projectChatEvents(
+        'project-1',
+        v104GuiInputEvents(['report.csv', 'report.csv']).map((event) =>
+          normalizeLocalRunEvent(event, 'project-1')
+        )
+      );
+      const { container } = render(
+        <EventNativeProjectTimeline
+          projectId="project-1"
+          detailLevel={detailLevel}
+          sessionMode={SessionMode.SINGLE_AGENT}
+          scrollBottomInsetPx={128}
+        />
+      );
+      // Normal mode keeps the existing outer Run disclosure.
+      const runTrigger = screen.queryByRole('button', { name: /Worked for/ });
+      if (runTrigger) fireEvent.click(runTrigger);
+      await waitFor(() =>
+        expect(
+          container.querySelectorAll('[data-interaction-id="gui-question"]')
+        ).toHaveLength(1)
+      );
+      expect(container.querySelector('[data-message-role="user"]')).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'History evidence (2)' })
+      );
+      const evidence = screen.getByRole('region', {
+        name: 'History evidence (2)',
+      });
+      expect(within(evidence).getAllByRole('listitem')).toHaveLength(2);
+      expect(within(evidence).getAllByText('report.csv')).toHaveLength(2);
+      expect(mocks.projection.nodes).toHaveLength(4);
+    }
+  );
 
   it.each(['narrative', 'trajectory'] as const)(
     'hides raw budget errors in %s and its collapsed summary',

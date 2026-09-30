@@ -488,5 +488,7 @@
   "control-recovery-status-completed": "مكتملة",
   "control-recovery-status-cancelled": "ملغاة",
   "control-recovery-status-failed": "فشلت",
-  "control-recovery-status-timed_out": "انتهت المهلة"
+  "control-recovery-status-timed_out": "انتهت المهلة",
+  "history-evidence": "سجلات محفوظة ({{count}})",
+  "history-evidence-description": "تُحفظ الردود القديمة هنا لأن سجلاتها الأصلية لا توضح الإدخال الذي تنتمي إليه."
 }

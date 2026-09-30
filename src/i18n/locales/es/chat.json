@@ -476,5 +476,7 @@
   "control-recovery-status-completed": "Completada",
   "control-recovery-status-cancelled": "Cancelada",
   "control-recovery-status-failed": "Fallida",
-  "control-recovery-status-timed_out": "Tiempo agotado"
+  "control-recovery-status-timed_out": "Tiempo agotado",
+  "history-evidence": "Registros históricos ({{count}})",
+  "history-evidence-description": "Las respuestas anteriores se conservan aquí porque sus registros originales no indican a qué entrada pertenecen."
 }

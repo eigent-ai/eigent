@@ -468,5 +468,7 @@
   "control-recovery-status-completed": "已完成",
   "control-recovery-status-cancelled": "已取消",
   "control-recovery-status-failed": "失败",
-  "control-recovery-status-timed_out": "已超时"
+  "control-recovery-status-timed_out": "已超时",
+  "history-evidence": "历史记录凭据（{{count}}）",
+  "history-evidence-description": "这些旧回复保留在此处，因为原始记录未注明它们对应哪次输入。"
 }

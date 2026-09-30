@@ -472,5 +472,7 @@
   "control-recovery-status-completed": "Abgeschlossen",
   "control-recovery-status-cancelled": "Abgebrochen",
   "control-recovery-status-failed": "Fehlgeschlagen",
-  "control-recovery-status-timed_out": "Zeitüberschreitung"
+  "control-recovery-status-timed_out": "Zeitüberschreitung",
+  "history-evidence": "Historische Belege ({{count}})",
+  "history-evidence-description": "Ältere Antworten bleiben hier erhalten, da aus den ursprünglichen Aufzeichnungen nicht hervorgeht, zu welcher Eingabe sie gehören."
 }

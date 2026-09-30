@@ -39,8 +39,10 @@ vi.mock('@/store/sessionExecutionStore', () => ({
   }),
 }));
 
+import { partitionLegacyMessageEvidence } from '@/components/ChatBox/EventTimeline/legacyReplyEvidence';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { v104GuiInputEvents } from '../../fixtures/v104GuiInput';
 
 // Mock dependencies - moved to top before other imports
 vi.mock('@/api/http', async () => {
@@ -6031,6 +6033,66 @@ describe('ChatStore - Core Functionality', () => {
           expect(task.status).toBe(ChatTaskStatus.FINISHED);
         } else {
           expect(task.activeAsk).toBe('');
+        }
+      }
+    );
+
+    it.each([true, false])(
+      'retains every v1.0.4 reply across store reconstruction (canonical: %s)',
+      async (canonical) => {
+        const events = v104GuiInputEvents([
+          'report.csv',
+          'report.csv',
+          'other.csv',
+        ]).filter(
+          (event) => canonical || event.event_type === 'legacy.human_reply'
+        );
+        vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+          for (const event of events) {
+            const frame = {
+              event: 'run_event',
+              id: String(event.sequence),
+              data: JSON.stringify(event),
+            };
+            await opts.onmessage?.(frame as any);
+            await opts.onmessage?.(frame as any);
+          }
+        });
+        for (let visit = 0; visit < 2; visit++) {
+          const store = createChatStoreInstance();
+          store.getState().create('run-1');
+          await store
+            .getState()
+            .startTask(
+              'run-1',
+              'replay',
+              undefined,
+              0,
+              undefined,
+              undefined,
+              undefined,
+              'project-1',
+              undefined,
+              { replaySource: 'local_durable' }
+            );
+          const retained = store.getState().tasks['run-1'].messages;
+          const presented = partitionLegacyMessageEvidence(retained);
+          expect(
+            retained.filter((message) => message.role === 'user')
+          ).toHaveLength(canonical ? 4 : 3);
+          expect(presented.evidence.map((message) => message.content)).toEqual(
+            canonical ? ['report.csv', 'report.csv', 'other.csv'] : []
+          );
+          expect(
+            presented.messages
+              .filter((message) => message.role === 'user')
+              .map((message) => message.content)
+          ).toEqual(
+            canonical
+              ? ['report.csv']
+              : ['report.csv', 'report.csv', 'other.csv']
+          );
+          closeSSEConnectionsForTasks(['run-1']);
         }
       }
     );
