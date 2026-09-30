@@ -704,11 +704,47 @@ export function WorkspaceBundleInstallWizard(
 ) {
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
-  // Account changes retire all state and outstanding responses from the old actor.
+  const actorId = String(userId ?? email ?? '');
+  const initialProposalId = props.initialProposalId ?? '';
+  const initialHandle = props.initialHandle ?? '';
+  const [recoveryInputs, setRecoveryInputs] = useState({
+    actorId,
+    sourceProposalId: initialProposalId,
+    sourceHandle: initialHandle,
+    proposalId: initialProposalId,
+    handle: initialHandle,
+  });
+  const sameActor = recoveryInputs.actorId === actorId;
+  if (
+    !sameActor ||
+    recoveryInputs.sourceProposalId !== initialProposalId ||
+    recoveryInputs.sourceHandle !== initialHandle
+  ) {
+    // Retire props accepted by the previous actor before the child can restore
+    // them. An unchanged legacy URL is not fresh input for a different account.
+    setRecoveryInputs({
+      actorId,
+      sourceProposalId: initialProposalId,
+      sourceHandle: initialHandle,
+      proposalId: !sameActor
+        ? ''
+        : recoveryInputs.sourceProposalId !== initialProposalId
+          ? initialProposalId
+          : recoveryInputs.proposalId,
+      handle: !sameActor
+        ? ''
+        : recoveryInputs.sourceHandle !== initialHandle
+          ? initialHandle
+          : recoveryInputs.handle,
+    });
+  }
+  // Account changes also retire state and outstanding responses inside the child.
   return (
     <WorkspaceBundleInstallContent
-      key={String(userId ?? email ?? '')}
+      key={actorId}
       {...props}
+      initialProposalId={sameActor ? recoveryInputs.proposalId : ''}
+      initialHandle={sameActor ? recoveryInputs.handle : ''}
     />
   );
 }
