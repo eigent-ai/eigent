@@ -78,6 +78,320 @@ describe('HumanInteractionCard', () => {
     mocks.getHumanInteractionReceipt.mockResolvedValue(null);
   });
 
+  it('clears a failed submission during recovery and permits retry only after revalidation', async () => {
+    let failDecision!: (error: Error) => void;
+    mocks.decideHumanInteraction.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          failDecision = reject;
+        })
+    );
+    render(<HumanInteractionCard interaction={interaction} />);
+    const approve = screen.getByRole('button', { name: 'Approve once' });
+    await waitFor(() => expect(approve).toBeEnabled());
+    fireEvent.click(approve);
+    await waitFor(() =>
+      expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(1)
+    );
+    let finishCheck!: (pending: boolean) => void;
+    mocks.isHumanInteractionStillPending.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finishCheck = resolve;
+        })
+    );
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await act(async () => {
+      failDecision(new Error('Decision transport interrupted'));
+    });
+    expect(approve).toBeDisabled();
+    await act(async () => {
+      finishCheck(true);
+    });
+    expect(approve).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeEnabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Decision transport interrupted'
+    );
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      'Decision transport interrupted'
+    );
+    fireEvent.click(approve);
+    await waitFor(() =>
+      expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(2)
+    );
+  });
+
+  it('accepts the current POST success while recovery validation is pending', async () => {
+    let finishDecision!: (value: object) => void;
+    mocks.decideHumanInteraction.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishDecision = resolve;
+        })
+    );
+    const onResolved = vi.fn();
+    render(
+      <HumanInteractionCard interaction={interaction} onResolved={onResolved} />
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled()
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
+    await waitFor(() =>
+      expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(1)
+    );
+    let finishCheck!: (pending: boolean) => void;
+    mocks.isHumanInteractionStillPending.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finishCheck = resolve;
+        })
+    );
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await act(async () => {
+      finishDecision({ status: 'resolved' });
+    });
+    expect(onResolved).toHaveBeenCalledTimes(1);
+    expect(onResolved).toHaveBeenCalledWith('Approved once');
+    expect(screen.queryByRole('button')).toBeNull();
+    await act(async () => {
+      finishCheck(true);
+    });
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['success', 'failure'])(
+    'ignores an old submission %s without clearing a newer submission',
+    async (outcome) => {
+      let finishOld!: (value: object) => void;
+      let failOld!: (error: Error) => void;
+      let finishNew!: (value: object) => void;
+      mocks.decideHumanInteraction
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              finishOld = resolve;
+              failOld = reject;
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishNew = resolve;
+            })
+        );
+      const onResolved = vi.fn();
+      const view = render(
+        <HumanInteractionCard
+          interaction={interaction}
+          onResolved={onResolved}
+        />
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Approve once' })
+        ).toBeEnabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
+      await waitFor(() =>
+        expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(1)
+      );
+      const next = {
+        ...interaction,
+        interaction_id: 'new-approval',
+        approval_id: 'new-approval',
+        version: 3,
+        action_digest: 'new-digest',
+      };
+      view.rerender(
+        <HumanInteractionCard interaction={next} onResolved={onResolved} />
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Approve once' })
+        ).toBeEnabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
+      await waitFor(() =>
+        expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(2)
+      );
+      await act(async () => {
+        if (outcome === 'success') finishOld({ status: 'resolved' });
+        else failOld(new Error('Old approval failed'));
+      });
+      expect(screen.getByRole('button', { name: 'Approving…' })).toBeDisabled();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(mocks.toastError).not.toHaveBeenCalled();
+      expect(onResolved).not.toHaveBeenCalled();
+      await act(async () => {
+        finishNew({ status: 'resolved' });
+      });
+      expect(onResolved).toHaveBeenCalledTimes(1);
+      expect(onResolved).toHaveBeenCalledWith('Approved once');
+      expect(mocks.decideHumanInteraction.mock.calls[1][0]).toEqual(next);
+      expect(
+        mocks.decideHumanInteraction.mock.calls[1][1].decisionRequestId
+      ).not.toBe(
+        mocks.decideHumanInteraction.mock.calls[0][1].decisionRequestId
+      );
+    }
+  );
+
+  it.each(['success', 'failure'])(
+    'ignores a submission %s after the same approval becomes terminal',
+    async (outcome) => {
+      let finish!: (value: object) => void;
+      let fail!: (error: Error) => void;
+      mocks.decideHumanInteraction.mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finish = resolve;
+            fail = reject;
+          })
+      );
+      const onResolved = vi.fn();
+      const view = render(
+        <HumanInteractionCard
+          interaction={interaction}
+          onResolved={onResolved}
+        />
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Approve once' })
+        ).toBeEnabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
+      await waitFor(() =>
+        expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(1)
+      );
+      view.rerender(
+        <HumanInteractionCard
+          interaction={{
+            ...interaction,
+            status: 'cancelled',
+            reason: 'tool_terminal_before_dispatch',
+          }}
+          onResolved={onResolved}
+        />
+      );
+      await act(async () => {
+        if (outcome === 'success') finish({ status: 'resolved' });
+        else fail(new Error('Retired approval failed'));
+      });
+      expect(screen.getByText('Approval cancelled')).toBeInTheDocument();
+      expect(screen.queryByRole('button')).toBeNull();
+      expect(onResolved).not.toHaveBeenCalled();
+      expect(mocks.toastError).not.toHaveBeenCalled();
+    }
+  );
+
+  it('ignores an old submission preflight result after the approval identity changes', async () => {
+    const view = render(<HumanInteractionCard interaction={interaction} />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled()
+    );
+    let finish!: (pending: boolean) => void;
+    mocks.isHumanInteractionStillPending.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
+    const next = {
+      ...interaction,
+      interaction_id: 'new-approval',
+      version: 3,
+      action_digest: 'new-digest',
+    };
+    view.rerender(<HumanInteractionCard interaction={next} />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled()
+    );
+    await act(async () => {
+      finish(false);
+    });
+    expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled();
+    expect(mocks.decideHumanInteraction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { status: 'requested', reason: undefined },
+    { status: 'requested', reason: 'approval_expired' },
+    { status: 'expired', reason: 'approval_expired' },
+    { status: 'cancelled', reason: undefined },
+  ])(
+    'preserves the terminal interaction reason when snapshot is $status / $reason',
+    async (receipt) => {
+      let finish!: (receipt: object) => void;
+      mocks.getHumanInteractionReceipt.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          })
+      );
+      render(
+        <HumanInteractionCard
+          interaction={{
+            ...interaction,
+            status: 'cancelled',
+            reason: 'tool_terminal_before_dispatch',
+          }}
+        />
+      );
+      const reason =
+        'The approval was cancelled because the tool ended before it started.';
+      expect(screen.getByText(reason)).toBeInTheDocument();
+      await act(async () => {
+        finish(receipt);
+      });
+      expect(screen.getByText('Approval cancelled')).toBeInTheDocument();
+      expect(screen.getByText(reason)).toBeInTheDocument();
+      expect(screen.queryByRole('button')).toBeNull();
+      expect(mocks.isHumanInteractionStillPending).not.toHaveBeenCalled();
+      expect(mocks.decideHumanInteraction).not.toHaveBeenCalled();
+    }
+  );
+
+  it('only enriches a terminal interaction from a matching terminal snapshot', async () => {
+    mocks.getHumanInteractionReceipt.mockResolvedValue({
+      status: 'requested',
+      reason: 'approval_expired',
+    });
+    render(
+      <HumanInteractionCard
+        interaction={{ ...interaction, status: 'cancelled' }}
+      />
+    );
+    await act(async () => {});
+    expect(screen.getByText('Approval cancelled')).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'The approval request expired before a decision was accepted.'
+      )
+    ).toBeNull();
+    mocks.getHumanInteractionReceipt.mockResolvedValue({
+      status: 'cancelled',
+      reason: 'tool_terminal_before_dispatch',
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(
+      screen.getByText(
+        'The approval was cancelled because the tool ended before it started.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it.each(['focus', 'backend-ready'])(
     'retries failed pending validation on %s and waits for fresh authority',
     async (recoveryEvent) => {

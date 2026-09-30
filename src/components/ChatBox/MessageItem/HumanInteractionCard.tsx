@@ -56,6 +56,22 @@ const requestId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `interaction-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+function mergeJournalReceipt(
+  interaction: HumanInteractionPayload,
+  receipt: Pick<HumanInteractionPayload, 'status' | 'reason' | 'expires_at'>
+): HumanInteractionPayload {
+  if (!isInteractionTerminal(interaction))
+    return { ...interaction, ...receipt };
+  // Terminal status and its metadata travel together. Only a matching
+  // terminal receipt can fill missing metadata, never a stale pending read.
+  if (receipt.status !== interaction.status) return interaction;
+  return {
+    ...interaction,
+    reason: interaction.reason || receipt.reason,
+    expires_at: interaction.expires_at ?? receipt.expires_at,
+  };
+}
+
 function decisionDisplayText(
   interaction: HumanInteractionPayload,
   decision: Record<string, unknown>,
@@ -127,6 +143,9 @@ export function HumanInteractionCard({
     interaction.version,
     interaction.action_digest,
   ]);
+  const currentSubmission = useRef<{ identity: string } | null>(null);
+  if (currentSubmission.current?.identity !== identity)
+    currentSubmission.current = null;
   const [journalReceipt, setJournalReceipt] = useState<{
     identity: string;
     status?: string;
@@ -135,13 +154,7 @@ export function HumanInteractionCard({
   } | null>(null);
   const receiptInteraction =
     journalReceipt?.identity === identity
-      ? {
-          ...interaction,
-          ...journalReceipt,
-          status: isInteractionTerminal(interaction)
-            ? interaction.status
-            : journalReceipt.status,
-        }
+      ? mergeJournalReceipt(interaction, journalReceipt)
       : interaction;
   const expiredLocally = useHumanInteractionExpiry(receiptInteraction);
   const receiptOnly =
@@ -222,12 +235,18 @@ export function HumanInteractionCard({
     receiptOnly ||
     expiredLocally ||
     (interaction.interaction_type === 'approval' && !durablyPending);
-  const authority = useRef<string | null>(null);
-  authority.current =
-    effectiveReadOnly ||
-    (timelineReceipt && interaction.interaction_type === 'approval')
-      ? null
-      : identity;
+  const authority = useRef<{
+    identity: string;
+    canSubmit: boolean;
+    canReceiveResult: boolean;
+  } | null>(null);
+  const historicalApproval =
+    timelineReceipt && interaction.interaction_type === 'approval';
+  authority.current = {
+    identity,
+    canSubmit: !effectiveReadOnly && !historicalApproval,
+    canReceiveResult: !receiptOnly && !expiredLocally && !historicalApproval,
+  };
   useEffect(() => {
     if (interaction.interaction_type !== 'approval') return;
     let cancelled = false;
@@ -236,19 +255,17 @@ export function HumanInteractionCard({
         .then((receipt) => {
           if (!cancelled && receipt)
             setJournalReceipt((previous) => {
-              if (
-                previous?.identity === identity &&
-                isInteractionTerminal({ ...interaction, ...previous })
-              ) {
-                // Terminal status is sticky, but the matching journal receipt
-                // can acquire its reason after compensation finishes.
-                return previous.status === receipt.status &&
-                  !previous.reason &&
-                  receipt.reason
-                  ? { ...previous, reason: receipt.reason }
-                  : previous;
-              }
-              return { identity, ...receipt };
+              const currentReceipt =
+                previous?.identity === identity
+                  ? mergeJournalReceipt(interaction, previous)
+                  : interaction;
+              const merged = mergeJournalReceipt(currentReceipt, receipt);
+              return {
+                identity,
+                status: merged.status,
+                reason: merged.reason,
+                expires_at: merged.expires_at,
+              };
             });
         })
         .catch(() => {
@@ -273,6 +290,7 @@ export function HumanInteractionCard({
   useEffect(
     () => () => {
       authority.current = null;
+      currentSubmission.current = null;
     },
     []
   );
@@ -282,31 +300,48 @@ export function HumanInteractionCard({
   );
 
   const submit = async (decision: Record<string, unknown>) => {
-    if (effectiveReadOnly || resolved || submitting) return;
+    if (
+      effectiveReadOnly ||
+      resolved ||
+      submitting ||
+      currentSubmission.current
+    )
+      return;
+    const submission = { identity };
+    currentSubmission.current = submission;
+    const canReceiveResult = () =>
+      currentSubmission.current === submission &&
+      authority.current?.identity === identity &&
+      authority.current.canReceiveResult;
     setSubmitting(true);
     setSubmissionError(null);
     try {
       invalidatePendingHumanInteractions(interaction.run_id);
-      if (
-        interaction.interaction_type === 'approval' &&
-        !(await isHumanInteractionStillPending(interaction))
-      ) {
+      const isPending =
+        interaction.interaction_type !== 'approval' ||
+        (await isHumanInteractionStillPending(interaction));
+      if (currentSubmission.current !== submission) return;
+      if (!isPending) {
         setPendingCheck({ identity, pending: false });
         return;
       }
-      if (authority.current !== identity) return;
+      if (
+        authority.current?.identity !== identity ||
+        !authority.current.canSubmit
+      )
+        return;
       await decideHumanInteraction(interaction, {
         decisionRequestId: decisionRequestId.current,
         decision,
         actorId: userId,
       });
-      if (authority.current !== identity) return;
+      if (!canReceiveResult()) return;
       const decisionText = decisionDisplayText(interaction, decision, t);
       setSubmittedResponse(decisionText);
       setResolved(true);
       onResolved?.(decisionText || undefined);
     } catch (error) {
-      if (authority.current !== identity) return;
+      if (!canReceiveResult()) return;
       if (
         (error as { response?: { status?: number }; status?: number })?.response
           ?.status === 409 ||
@@ -324,7 +359,12 @@ export function HumanInteractionCard({
       setSubmissionError(readableMessage);
       toast.error(readableMessage);
     } finally {
-      if (authority.current === identity) setSubmitting(false);
+      // Recovery may temporarily revoke submit authority. The current
+      // submission still owns cleanup, but an older identity/request does not.
+      if (currentSubmission.current === submission) {
+        currentSubmission.current = null;
+        setSubmitting(false);
+      }
     }
   };
 
