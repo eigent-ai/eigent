@@ -465,5 +465,16 @@
   "space-model-unconfirmed": "La première requête de la session n’a pas encore été confirmée. Reconnectez-vous et réessayez, ou choisissez un modèle pour la session.",
   "space-model-unavailable": "Ce modèle est indisponible pour ce compte. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
   "space-model-ambiguous": "Plusieurs fournisseurs correspondent. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
-  "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message."
+  "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message.",
+  "control-outcome-unknown": "Le résultat n’est pas confirmé. Vérifiez l’état avant de continuer. Réessayer envoie la même demande.",
+  "control-check-status": "Vérifier l’état",
+  "control-checking-status": "Vérification de l’état…",
+  "control-retry-same-request": "Réessayer la même demande",
+  "control-recovery-expired": "Cette demande a expiré.",
+  "control-recovery-cancelled": "Cette demande a été annulée.",
+  "control-recovery-task-status": "État de la tâche : {{status}}",
+  "control-recovery-status-completed": "Terminée",
+  "control-recovery-status-cancelled": "Annulée",
+  "control-recovery-status-failed": "Échec",
+  "control-recovery-status-timed_out": "Délai dépassé"
 }

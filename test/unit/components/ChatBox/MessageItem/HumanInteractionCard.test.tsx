@@ -67,7 +67,15 @@ const interaction = approvalInteraction;
 describe('HumanInteractionCard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.decideHumanInteraction.mockResolvedValue({ status: 'resolved' });
+    mocks.decideHumanInteraction.mockImplementation((interaction, input) =>
+      Promise.resolve({
+        run_id: interaction.run_id,
+        interaction_id: interaction.interaction_id,
+        version: (interaction.version ?? 0) + 1,
+        status: 'resolved',
+        response: input.decision,
+      })
+    );
     mocks.isHumanInteractionStillPending.mockResolvedValue(false);
   });
 
@@ -210,9 +218,9 @@ describe('HumanInteractionCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Approval version changed'
+      'The outcome is not confirmed.'
     );
-    expect(mocks.toastError).toHaveBeenCalledWith('Approval version changed');
+    expect(mocks.toastError).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));

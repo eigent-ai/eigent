@@ -457,5 +457,16 @@
   "space-model-unconfirmed": "セッションの最初のリクエストはまだ確認されていません。再接続して再試行するか、セッションのモデルを選択してください。",
   "space-model-unavailable": "このアカウントではモデルを利用できません。モデル設定を確認するか、セッションのモデルを選択してください。",
   "space-model-ambiguous": "複数のプロバイダーが一致しています。モデル設定を確認するか、セッションのモデルを選択してください。",
-  "space-model-changed": "読み込み中にアカウントまたはセッションのモデルが変更されました。メッセージを再送信してください。"
+  "space-model-changed": "読み込み中にアカウントまたはセッションのモデルが変更されました。メッセージを再送信してください。",
+  "control-outcome-unknown": "結果はまだ確認できません。続行前に状態を確認してください。再試行では同じリクエストを送信します。",
+  "control-check-status": "状態を確認",
+  "control-checking-status": "状態を確認中…",
+  "control-retry-same-request": "同じリクエストを再試行",
+  "control-recovery-expired": "このリクエストは期限切れです。",
+  "control-recovery-cancelled": "このリクエストはキャンセルされました。",
+  "control-recovery-task-status": "タスクの状態：{{status}}",
+  "control-recovery-status-completed": "完了",
+  "control-recovery-status-cancelled": "キャンセル済み",
+  "control-recovery-status-failed": "失敗",
+  "control-recovery-status-timed_out": "タイムアウト"
 }

@@ -418,6 +418,30 @@ async def get_run(run_id: str):
     }
 
 
+def _interaction_receipt(journal, interaction):
+    """Return committed decision data, never echo a retry's proposed decision."""
+    receipt = asdict(interaction)
+    decisions = journal.list_human_interaction_decisions(
+        interaction.interaction_id
+    )
+    receipt["response"] = (
+        decisions[-1].decision
+        if interaction.status == "resolved" and decisions
+        else None
+    )
+    if interaction.interaction_type == "approval":
+        approval = next(
+            (
+                item
+                for item in journal.list_approvals(interaction.run_id)
+                if item.approval_id == interaction.interaction_id
+            ),
+            None,
+        )
+        receipt["action_digest"] = approval.action_digest if approval else None
+    return receipt
+
+
 @router.get("/runs/{run_id}/interactions")
 async def list_run_interactions(
     run_id: str,
@@ -442,7 +466,11 @@ async def list_run_interactions(
         )
         items.append(
             {
-                **asdict(interaction),
+                **(
+                    await asyncio.to_thread(
+                        _interaction_receipt, journal, interaction
+                    )
+                ),
                 "options": [asdict(option) for option in options],
             }
         )
@@ -620,7 +648,7 @@ async def decide_run_interaction(
                             "interaction_id": interaction_id,
                         },
                     )
-    return asdict(result)
+    return await asyncio.to_thread(_interaction_receipt, journal, result)
 
 
 @router.get("/runs/{run_id}/events")

@@ -18,6 +18,7 @@ import {
   selectPendingHumanControlCount,
   type HumanControlInteraction,
 } from '@/lib/projector/control';
+import { controlOwner } from '@/service/controlRequest';
 import {
   decideHumanInteraction,
   type HumanInteractionPayload,
@@ -26,6 +27,7 @@ import { reconcileHumanInteractionEvents } from '@/service/humanInteractionEvent
 import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useControlOperations } from '../ControlRecovery';
 import type {
   BottomBoxApprovalScope,
   BottomBoxContextItem,
@@ -486,6 +488,34 @@ export function useEventNativeHumanControl({
     blankSubmission(controlKey)
   );
   const inFlightKey = useRef<string | null>(null);
+  const owner = controlOwner();
+  const viewKey = JSON.stringify([
+    owner,
+    projectId,
+    controlKey,
+    interaction?.actionDigest,
+  ]);
+  const view = useRef({ key: viewKey, mounted: true, generation: 0 });
+  if (view.current.key !== viewKey)
+    view.current = {
+      key: viewKey,
+      mounted: true,
+      generation: view.current.generation + 1,
+    };
+  useEffect(() => {
+    view.current.mounted = true;
+    return () => {
+      view.current.mounted = false;
+      view.current.generation++;
+    };
+  }, []);
+  const operations = useControlOperations();
+  const operation = operations.find(
+    (op) =>
+      op.kind === 'interaction' &&
+      op.runId === interaction?.runId &&
+      op.interactionId === interaction?.interactionId
+  );
 
   useEffect(() => {
     if (!projectId) return;
@@ -509,7 +539,7 @@ export function useEventNativeHumanControl({
     setDraft(blankDraft(controlKey));
     setSubmission(blankSubmission(controlKey));
     inFlightKey.current = null;
-  }, [controlKey]);
+  }, [viewKey, controlKey]);
 
   const activeDraft = draft.key === controlKey ? draft : blankDraft(controlKey);
   const activeSubmission =
@@ -518,7 +548,14 @@ export function useEventNativeHumanControl({
 
   const submit = useCallback(
     async (decision: Record<string, unknown>) => {
-      if (!projectId || !interaction || !controlKey || submitting) return;
+      if (!projectId || !interaction || !controlKey || submitting || operation)
+        return;
+      const generation = view.current.generation;
+      const isCurrent = () =>
+        view.current.mounted &&
+        view.current.key === viewKey &&
+        view.current.generation === generation &&
+        controlOwner() === owner;
       if (inFlightKey.current === controlKey) return;
       inFlightKey.current = controlKey;
       setSubmission({ key: controlKey, phase: 'submitting', error: null });
@@ -533,8 +570,10 @@ export function useEventNativeHumanControl({
 
       let decisionAccepted = false;
       const reconcileTerminalDecision = async () => {
+        if (!isCurrent()) return;
         setSubmission({ key: controlKey, phase: 'reconciling', error: null });
         await reconcileHumanInteractionEvents({
+          bounded: interaction.interactionType === 'approval',
           projectId,
           runId: interaction.runId,
           interactionId: interaction.interactionId,
@@ -547,7 +586,7 @@ export function useEventNativeHumanControl({
               : 0,
         });
         try {
-          onDurableResolution?.(interaction);
+          if (isCurrent()) onDurableResolution?.(interaction);
         } catch (error) {
           // Compatibility consumers must not turn an authoritative decision
           // into a failed/retryable command if their local cleanup fails.
@@ -567,12 +606,14 @@ export function useEventNativeHumanControl({
           decisionRequestId,
           decision,
           actorId: actorId === undefined ? authenticatedUserId : actorId,
+          projectId,
         });
         decisionAccepted = true;
         await reconcileTerminalDecision();
         // Remain disabled until the durable event is reduced and this pending
         // interaction disappears. There is no optimistic local resolution.
       } catch (error) {
+        if (!isCurrent()) return;
         let failure = error;
         const status =
           error && typeof error === 'object'
@@ -592,6 +633,7 @@ export function useEventNativeHumanControl({
             failure = reconciliationError;
           }
         }
+        if (!isCurrent()) return;
         console.error('[EventNativeHumanControl] decision failed', failure);
         try {
           onSubmissionFailure?.(interaction);
@@ -601,15 +643,23 @@ export function useEventNativeHumanControl({
             bridgeError
           );
         }
-        const message = decisionAccepted
-          ? t('chat.control-decision-unsynced')
-          : t('chat.control-decision-failed');
+        if (!isCurrent()) return;
+        const message =
+          interaction.interactionType === 'approval'
+            ? t('chat.control-outcome-unknown')
+            : decisionAccepted
+              ? t('chat.control-decision-unsynced')
+              : t('chat.control-decision-failed');
         setSubmission({ key: controlKey, phase: 'idle', error: message });
       } finally {
-        if (inFlightKey.current === controlKey) inFlightKey.current = null;
+        if (isCurrent() && inFlightKey.current === controlKey)
+          inFlightKey.current = null;
       }
     },
     [
+      operation,
+      owner,
+      viewKey,
       actorId,
       authenticatedUserId,
       controlKey,
@@ -640,7 +690,7 @@ export function useEventNativeHumanControl({
         count: pendingCount,
       });
     }
-    const common = { header, submitting };
+    const common = { header, submitting, disabled: Boolean(operation) };
     const hasDurableIdentity = !(
       interaction.requestSource !== 'canonical' &&
       interaction.interactionId.startsWith('legacy:')
@@ -671,6 +721,7 @@ export function useEventNativeHumanControl({
       };
       return {
         kind: 'approval',
+        disabled: Boolean(operation),
         header: {
           eyebrow: t('chat.control-input-required'),
           title:
@@ -836,6 +887,7 @@ export function useEventNativeHumanControl({
     activeDraft.formValues,
     activeDraft.selectedIds,
     activeSubmission.error,
+    operation,
     interaction,
     pendingCount,
     submit,

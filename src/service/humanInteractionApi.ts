@@ -13,6 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost } from '@/api/http';
+import {
+  createControlOperation,
+  submitControlOperation,
+} from './controlOperations';
+import {
+  ControlOutcomeUnknown,
+  controlOwner,
+  controlRequest,
+} from './controlRequest';
 
 export type InteractionDecisionScope = 'once' | 'run' | 'space';
 
@@ -87,29 +96,46 @@ const pendingInteractionsByRun = new Map<
 >();
 
 export function invalidatePendingHumanInteractions(runId?: string): void {
-  if (runId) pendingInteractionsByRun.delete(runId);
-  else pendingInteractionsByRun.clear();
+  if (runId) {
+    for (const bounded of [true, false])
+      pendingInteractionsByRun.delete(
+        JSON.stringify([controlOwner(), runId, bounded])
+      );
+  } else pendingInteractionsByRun.clear();
 }
 
 function listPendingHumanInteractions(
-  runId: string
+  runId: string,
+  bounded: boolean
 ): Promise<PendingHumanInteractionRecord[]> {
+  const key = JSON.stringify([controlOwner(), runId, bounded]);
   const now = Date.now();
-  const cached = pendingInteractionsByRun.get(runId);
+  const cached = pendingInteractionsByRun.get(key);
   if (cached && cached.expiresAt > now) return cached.request;
 
   let request: Promise<PendingHumanInteractionRecord[]>;
-  request = fetchGet(pendingHumanInteractionsPath(runId))
+  request = (
+    bounded
+      ? controlRequest((options) =>
+          fetchGet(
+            pendingHumanInteractionsPath(runId),
+            undefined,
+            undefined,
+            options
+          )
+        )
+      : fetchGet(pendingHumanInteractionsPath(runId))
+  )
     .then((response: { interactions?: PendingHumanInteractionRecord[] }) =>
       Array.isArray(response?.interactions) ? response.interactions : []
     )
     .catch((error) => {
-      if (pendingInteractionsByRun.get(runId)?.request === request) {
-        pendingInteractionsByRun.delete(runId);
+      if (pendingInteractionsByRun.get(key)?.request === request) {
+        pendingInteractionsByRun.delete(key);
       }
       throw error;
     });
-  pendingInteractionsByRun.set(runId, {
+  pendingInteractionsByRun.set(key, {
     expiresAt: now + PENDING_INTERACTION_CACHE_TTL_MS,
     request,
   });
@@ -127,7 +153,10 @@ export async function isHumanInteractionStillPending(
   interaction: HumanInteractionPayload
 ): Promise<boolean> {
   if (!interaction.run_id) return false;
-  const interactions = await listPendingHumanInteractions(interaction.run_id);
+  const interactions = await listPendingHumanInteractions(
+    interaction.run_id,
+    interaction.interaction_type === 'approval'
+  );
   return interactions.some(
     (candidate) =>
       candidate.interaction_id === interaction.interaction_id &&
@@ -145,28 +174,54 @@ export async function decideHumanInteraction(
     decisionRequestId: string;
     decision: Record<string, unknown>;
     actorId?: string | number | null;
+    projectId?: string;
   }
 ) {
   if (!interaction.run_id) throw new Error('Missing durable Run id');
-  const response = await fetchPost(
-    humanInteractionDecisionPath(
+  const body = {
+    decision_request_id: input.decisionRequestId,
+    decision: input.decision,
+    expected_version: interaction.version ?? 0,
+    action_digest: interaction.action_digest,
+    actor_type: 'user',
+    actor_id: input.actorId == null ? null : String(input.actorId),
+    source: 'desktop',
+    continue_active_attempt: true,
+  };
+  if (interaction.interaction_type !== 'approval') {
+    const response = await fetchPost(
+      humanInteractionDecisionPath(
+        interaction.run_id,
+        interaction.interaction_id
+      ),
+      body
+    );
+    invalidatePendingHumanInteractions(interaction.run_id);
+    return response;
+  }
+  const op = createControlOperation({
+    kind: 'interaction',
+    runId: interaction.run_id,
+    projectId: input.projectId,
+    interactionId: interaction.interaction_id,
+    version: interaction.version ?? 0,
+    digest: interaction.action_digest,
+    path: humanInteractionDecisionPath(
       interaction.run_id,
       interaction.interaction_id
     ),
-    {
-      decision_request_id: input.decisionRequestId,
-      decision: input.decision,
-      expected_version: interaction.version ?? 0,
-      action_digest: interaction.action_digest,
-      actor_type: 'user',
-      actor_id:
-        input.actorId === undefined || input.actorId === null
-          ? null
-          : String(input.actorId),
-      source: 'desktop',
-      continue_active_attempt: true,
-    }
-  );
+    body,
+  });
+  // A remount may supply a fresh request ID; the frozen envelope owns delivery.
+  if (
+    op.version !== (interaction.version ?? 0) ||
+    op.digest !== interaction.action_digest ||
+    JSON.stringify(op.body.decision) !== JSON.stringify(input.decision) ||
+    op.body.actor_id !== (input.actorId == null ? null : String(input.actorId))
+  ) {
+    throw new ControlOutcomeUnknown();
+  }
+  const response = await submitControlOperation(op);
   invalidatePendingHumanInteractions(interaction.run_id);
   return response;
 }

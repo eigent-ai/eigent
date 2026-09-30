@@ -461,5 +461,16 @@
   "space-model-unconfirmed": "The first session request has not been confirmed. Reconnect and retry, or choose a session model.",
   "space-model-unavailable": "This model is unavailable for the current account. Review Models settings or choose a session model.",
   "space-model-ambiguous": "More than one provider matches this model. Review Models settings or choose a session model.",
-  "space-model-changed": "The account or session model changed while loading. Send your message again."
+  "space-model-changed": "The account or session model changed while loading. Send your message again.",
+  "control-outcome-unknown": "The outcome is not confirmed. Check status before continuing. Retrying sends the same request.",
+  "control-check-status": "Check status",
+  "control-checking-status": "Checking status…",
+  "control-retry-same-request": "Retry same request",
+  "control-recovery-expired": "This request expired.",
+  "control-recovery-cancelled": "This request was cancelled.",
+  "control-recovery-task-status": "Task status: {{status}}",
+  "control-recovery-status-completed": "Completed",
+  "control-recovery-status-cancelled": "Cancelled",
+  "control-recovery-status-failed": "Failed",
+  "control-recovery-status-timed_out": "Timed out"
 }

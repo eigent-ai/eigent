@@ -43,6 +43,7 @@ vi.mock('@/service/humanInteractionEventReconciliation', () => ({
 }));
 
 vi.mock('@/store/authStore', () => ({
+  getAuthStore: () => ({ user_id: 42 }),
   useAuthStore: (selector: (state: { user_id: number }) => unknown) =>
     selector({ user_id: 42 }),
 }));
@@ -163,9 +164,11 @@ describe('useEventNativeHumanControl', () => {
         decisionRequestId: expect.any(String),
         decision: { decision: 'approved', scope: 'once' },
         actorId: 42,
+        projectId: 'project-1',
       }
     );
     expect(mocks.reconcile).toHaveBeenCalledWith({
+      bounded: true,
       projectId: 'project-1',
       runId: 'run-1',
       interactionId: 'approval-1',
@@ -329,6 +332,52 @@ describe('useEventNativeHumanControl', () => {
     );
     consoleError.mockRestore();
   });
+
+  it.each(['decision', 'reconciliation'])(
+    'does not run old callbacks after a Session switch during %s',
+    async (stage) => {
+      mocks.projection = projection([interaction()]);
+      let finish!: (value: unknown) => void;
+      const pending = new Promise((resolve) => {
+        finish = resolve;
+      });
+      if (stage === 'decision') mocks.decide.mockReturnValueOnce(pending);
+      else mocks.reconcile.mockReturnValueOnce(pending);
+      const onDurableResolution = vi.fn();
+      const onSubmissionFailure = vi.fn();
+      const hook = renderHook(
+        ({ runId }) =>
+          useEventNativeHumanControl({
+            projectId: 'project-1',
+            activeRunId: runId,
+            onDurableResolution,
+            onSubmissionFailure,
+          }),
+        { initialProps: { runId: 'run-1' } }
+      );
+      act(() => {
+        if (hook.result.current.variant?.kind === 'approval')
+          hook.result.current.variant.onApprove('once');
+      });
+      await waitFor(() =>
+        expect(
+          stage === 'decision' ? mocks.decide : mocks.reconcile
+        ).toHaveBeenCalledOnce()
+      );
+      mocks.projection = projection([
+        interaction({ runId: 'run-2', interactionId: 'approval-2' }),
+      ]);
+      hook.rerender({ runId: 'run-2' });
+      await act(async () => {
+        finish({ status: 'resolved' });
+      });
+      expect(onDurableResolution).not.toHaveBeenCalled();
+      expect(onSubmissionFailure).not.toHaveBeenCalled();
+      expect(hook.result.current.phase).toBe('idle');
+      expect(hook.result.current.interaction?.runId).toBe('run-2');
+      if (stage === 'decision') expect(mocks.reconcile).not.toHaveBeenCalled();
+    }
+  );
 
   it('maps known controls and fails closed for unknown semantic types', () => {
     const cases = [

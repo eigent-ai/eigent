@@ -40,7 +40,16 @@ describe('local HumanInteraction API', () => {
   });
 
   it('uses the unprefixed FastAPI Run decision route', async () => {
-    fetchPostMock.mockResolvedValue({ status: 'approved' });
+    fetchPostMock.mockImplementation((url, body) =>
+      Promise.resolve({
+        run_id: decodeURIComponent(url.split('/')[2]),
+        interaction_id: decodeURIComponent(url.split('/')[4]),
+        status: 'resolved',
+        version: body.expected_version + 1,
+        response: body.decision,
+        action_digest: body.action_digest,
+      })
+    );
 
     await decideHumanInteraction(
       {
@@ -63,7 +72,9 @@ describe('local HumanInteraction API', () => {
         decision_request_id: 'decision-1',
         expected_version: 2,
         source: 'desktop',
-      })
+      }),
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 
@@ -95,7 +106,10 @@ describe('local HumanInteraction API', () => {
       })
     ).resolves.toBe(true);
     expect(fetchGetMock).toHaveBeenCalledWith(
-      '/runs/run%20%2F%201/interactions?status=pending'
+      '/runs/run%20%2F%201/interactions?status=pending',
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 
@@ -163,7 +177,16 @@ describe('local HumanInteraction API', () => {
   });
 
   it('posts a decision to the local durable Run route', async () => {
-    fetchPostMock.mockResolvedValue({ status: 'resolved' });
+    fetchPostMock.mockImplementation((url, body) =>
+      Promise.resolve({
+        run_id: decodeURIComponent(url.split('/')[2]),
+        interaction_id: decodeURIComponent(url.split('/')[4]),
+        status: 'resolved',
+        version: body.expected_version + 1,
+        response: body.decision,
+        action_digest: body.action_digest,
+      })
+    );
     const interaction: HumanInteractionPayload = {
       interaction_id: 'approval:todo/write',
       interaction_type: 'approval',
@@ -189,7 +212,9 @@ describe('local HumanInteraction API', () => {
         actor_id: '42',
         source: 'desktop',
         continue_active_attempt: true,
-      }
+      },
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 

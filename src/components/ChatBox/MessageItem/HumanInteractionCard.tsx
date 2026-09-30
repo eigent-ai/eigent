@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { controlOwner } from '@/service/controlRequest';
 import {
   decideHumanInteraction,
   isHumanInteractionStillPending,
@@ -23,11 +24,11 @@ import { useAuthStore } from '@/store/authStore';
 import { ShieldAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import {
   approvalScopeLabels,
   type HumanControlTranslate,
 } from '../BottomBox/legacyHumanControl';
+import { ControlRecovery, useControlOperations } from '../ControlRecovery';
 
 interface HumanInteractionCardProps {
   interaction: HumanInteractionPayload;
@@ -136,7 +137,38 @@ export function HumanInteractionCard({
 }: HumanInteractionCardProps) {
   const { t } = useTranslation();
   const userId = useAuthStore((state) => state.user_id);
+  const owner = controlOwner();
+  const viewKey = JSON.stringify([
+    owner,
+    interaction.run_id,
+    interaction.interaction_id,
+    interaction.version,
+    interaction.action_digest,
+  ]);
+  const view = useRef({ key: viewKey, generation: 0, mounted: true });
+  if (view.current.key !== viewKey)
+    view.current = {
+      key: viewKey,
+      generation: view.current.generation + 1,
+      mounted: true,
+    };
+  useEffect(() => {
+    view.current.mounted = true;
+    return () => {
+      view.current.mounted = false;
+      view.current.generation++;
+    };
+  }, []);
+  const operations = useControlOperations();
+  const operation = operations.find(
+    (op) =>
+      op.kind === 'interaction' &&
+      op.runId === interaction.run_id &&
+      op.interactionId === interaction.interaction_id
+  );
   const decisionRequestId = useRef(requestId());
+  const submissionGuard = useRef<string | null>(null);
+  const delivered = useRef<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resolved, setResolved] = useState(false);
   const [durablyPending, setDurablyPending] = useState(false);
@@ -153,7 +185,7 @@ export function HumanInteractionCard({
     setSubmittedResponse(null);
     setSubmissionError(null);
     setFormValues({});
-  }, [interaction.interaction_id]);
+  }, [viewKey]);
   useEffect(() => {
     let cancelled = false;
     setDurablyPending(false);
@@ -173,52 +205,92 @@ export function HumanInteractionCard({
     return () => {
       cancelled = true;
     };
-  }, [
-    interaction.action_digest,
-    interaction.interaction_id,
-    interaction.run_id,
-    interaction.version,
-    readOnly,
-  ]);
+  }, [owner, interaction, readOnly]);
   const effectiveReadOnly = readOnly && !durablyPending;
   const targets = useMemo(
     () => interaction.target_resources?.filter(Boolean) || [],
     [interaction.target_resources]
   );
 
+  const deliver = (receipt: Record<string, unknown>) => {
+    if (
+      receipt.interaction_id !== interaction.interaction_id ||
+      receipt.run_id !== interaction.run_id ||
+      !['resolved', 'expired', 'cancelled'].includes(String(receipt.status))
+    )
+      return;
+    if (delivered.current === viewKey) return;
+    const canonical = receipt.response;
+    if (
+      receipt.status === 'resolved' &&
+      (!canonical || typeof canonical !== 'object')
+    )
+      return;
+    const text =
+      receipt.status === 'expired'
+        ? t('chat.control-recovery-expired')
+        : receipt.status === 'cancelled'
+          ? t('chat.control-recovery-cancelled')
+          : decisionDisplayText(
+              interaction,
+              canonical as Record<string, unknown>,
+              t
+            );
+    delivered.current = viewKey;
+    setSubmittedResponse(text);
+    setResolved(true);
+    onResolved?.(text || undefined);
+  };
+  useEffect(() => {
+    if (
+      operation?.phase === 'resolved' &&
+      operation.receipt &&
+      operation.version === (interaction.version ?? 0) &&
+      operation.digest === interaction.action_digest
+    )
+      deliver(operation.receipt);
+  });
+
   const submit = async (decision: Record<string, unknown>) => {
-    if (effectiveReadOnly || resolved || submitting) return;
+    if (
+      effectiveReadOnly ||
+      resolved ||
+      submitting ||
+      operation ||
+      submissionGuard.current === viewKey
+    )
+      return;
+    submissionGuard.current = viewKey;
+    const generation = view.current.generation;
+    const isCurrent = () =>
+      view.current.mounted &&
+      view.current.key === viewKey &&
+      view.current.generation === generation &&
+      controlOwner() === owner;
     setSubmitting(true);
     setSubmissionError(null);
     try {
-      await decideHumanInteraction(interaction, {
+      const receipt = await decideHumanInteraction(interaction, {
         decisionRequestId: decisionRequestId.current,
         decision,
         actorId: userId,
       });
-      const decisionText = decisionDisplayText(interaction, decision, t);
-      setSubmittedResponse(decisionText);
-      setResolved(true);
-      onResolved?.(decisionText || undefined);
-    } catch (error) {
-      console.error('[HumanInteractionCard] decision failed', error);
-      const message =
-        (error as any)?.response?.data?.detail?.message ||
-        (error as any)?.response?.data?.detail ||
-        (error as Error)?.message ||
-        t('chat.control-decision-failed');
-      const readableMessage =
-        typeof message === 'string' ? message : JSON.stringify(message);
-      setSubmissionError(readableMessage);
-      toast.error(readableMessage);
+      if (isCurrent()) deliver(receipt);
+    } catch {
+      if (isCurrent()) setSubmissionError(t('chat.control-outcome-unknown'));
     } finally {
-      setSubmitting(false);
+      if (isCurrent()) setSubmitting(false);
+      if (submissionGuard.current === viewKey) submissionGuard.current = null;
     }
   };
 
   const displayedResponse = response?.trim() || submittedResponse;
   const disabled =
-    effectiveReadOnly || Boolean(displayedResponse) || resolved || submitting;
+    effectiveReadOnly ||
+    Boolean(displayedResponse) ||
+    resolved ||
+    submitting ||
+    Boolean(operation);
   const title = timelineReceipt
     ? t('chat.control-input-required')
     : interaction.title ||
@@ -475,7 +547,8 @@ export function HumanInteractionCard({
               {t('chat.control-decision-saving')}
             </span>
           ) : null}
-          {submissionError ? (
+          {operation && <ControlRecovery operation={operation} />}
+          {submissionError && !operation ? (
             <span
               role="alert"
               className="block text-xs font-normal text-ds-text-error-default-default"
