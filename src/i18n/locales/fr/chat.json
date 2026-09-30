@@ -478,5 +478,5 @@
   "control-recovery-status-failed": "Échec",
   "control-recovery-status-timed_out": "Délai dépassé",
   "history-evidence": "Traces historiques ({{count}})",
-  "history-evidence-description": "Les anciennes réponses sont conservées ici, car leurs enregistrements d’origine ne précisent pas à quelle saisie elles correspondent."
+  "history-evidence-description": "Les anciennes réponses sont conservées ici lorsque leur lien avec une réponse est absent ou que leur contenu diffère de la réponse enregistrée."
 }

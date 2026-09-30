@@ -225,6 +225,54 @@ describe('isChatTimelineNearBottom', () => {
 });
 
 describe('EventNativeProjectTimeline', () => {
+  it.each([false, true])(
+    'handles a paginated linked mirror in trajectory without its request (conflict: %s)',
+    (conflict) => {
+      const events = v104GuiInputEvents([conflict ? 'other.csv' : 'report.csv'])
+        .filter((event) => event.event_type !== 'interaction.requested')
+        .map((event) =>
+          event.event_type === 'legacy.human_reply'
+            ? {
+                ...event,
+                payload: { ...event.payload, interaction_id: 'gui-question' },
+              }
+            : event
+        );
+      mocks.projection = projectChatEvents(
+        'project-1',
+        events.map((event) => normalizeLocalRunEvent(event, 'project-1'))
+      );
+      const { container } = render(
+        <EventNativeProjectTimeline
+          projectId="project-1"
+          detailLevel="trajectory"
+          scrollBottomInsetPx={128}
+        />
+      );
+      expect(
+        container.querySelectorAll('[data-interaction-id="gui-question"]')
+      ).toHaveLength(1);
+      const receipt = screen.getByLabelText('Agent request');
+      fireEvent.click(within(receipt).getByRole('button'));
+      expect(receipt).toHaveTextContent('report.csv');
+      expect(container.querySelector('[data-message-role="user"]')).toBeNull();
+      if (conflict) {
+        fireEvent.click(
+          screen.getByRole('button', { name: 'History evidence (1)' })
+        );
+        expect(
+          within(
+            screen.getByRole('region', { name: 'History evidence (1)' })
+          ).getByText('other.csv')
+        ).toBeVisible();
+      } else {
+        expect(
+          screen.queryByRole('button', { name: /History evidence/ })
+        ).toBeNull();
+      }
+      expect(mocks.projection.nodes).toHaveLength(2);
+    }
+  );
   beforeEach(() => {
     mocks.runtimeProjectId = 'project-1';
     mocks.projection = projection([]);

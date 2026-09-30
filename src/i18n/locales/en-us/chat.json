@@ -474,5 +474,5 @@
   "control-recovery-status-failed": "Failed",
   "control-recovery-status-timed_out": "Timed out",
   "history-evidence": "History evidence ({{count}})",
-  "history-evidence-description": "Older replies are kept here because their original records do not show which input they belong to."
+  "history-evidence-description": "Older reply records are kept here when their link to a response is missing or their content differs from the recorded response."
 }

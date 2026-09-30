@@ -470,5 +470,5 @@
   "control-recovery-status-failed": "失败",
   "control-recovery-status-timed_out": "已超时",
   "history-evidence": "历史记录凭据（{{count}}）",
-  "history-evidence-description": "这些旧回复保留在此处，因为原始记录未注明它们对应哪次输入。"
+  "history-evidence-description": "旧回复记录会保留在此处，如果它们缺少与响应的关联，或内容与已记录的响应不同。"
 }

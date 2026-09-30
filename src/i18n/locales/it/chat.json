@@ -478,5 +478,5 @@
   "control-recovery-status-failed": "Non riuscita",
   "control-recovery-status-timed_out": "Tempo scaduto",
   "history-evidence": "Registrazioni storiche ({{count}})",
-  "history-evidence-description": "Le risposte precedenti sono conservate qui perché le registrazioni originali non indicano a quale input appartengono."
+  "history-evidence-description": "Le risposte precedenti sono conservate qui quando manca il collegamento a una risposta o il loro contenuto differisce dalla risposta registrata."
 }

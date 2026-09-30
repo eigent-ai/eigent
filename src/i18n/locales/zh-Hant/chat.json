@@ -470,5 +470,5 @@
   "control-recovery-status-failed": "失敗",
   "control-recovery-status-timed_out": "已逾時",
   "history-evidence": "歷史記錄憑據（{{count}}）",
-  "history-evidence-description": "這些舊回覆保留在此處，因為原始記錄未註明它們對應哪次輸入。"
+  "history-evidence-description": "舊回覆記錄會保留在此處，如果它們缺少與回應的關聯，或內容與已記錄的回應不同。"
 }

@@ -2597,19 +2597,21 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             attempt_id = getattr(item, "attempt_id", None)
             return attempt_id is None or attempt_id == active_attempt_id
 
-        interaction = next(
-            (
-                item
-                for item in reversed(pending_interactions)
-                if item.interaction_type != "approval"
-                and belongs_to_current_attempt(item)
-                and item.request.get("agent") == data.agent
-                and (
-                    data.interaction_id is None
-                    or item.interaction_id == data.interaction_id
-                )
-            ),
-            None,
+        matching_interactions = [
+            item
+            for item in reversed(pending_interactions)
+            if item.interaction_type != "approval"
+            and belongs_to_current_attempt(item)
+            and item.request.get("agent") == data.agent
+            and (
+                data.interaction_id is None
+                or item.interaction_id == data.interaction_id
+            )
+        ]
+        interaction = (
+            matching_interactions[0]
+            if len(matching_interactions) == 1
+            else None
         )
         pending_approval = next(
             (
@@ -2631,7 +2633,44 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                 "This task is waiting for an approval decision. Use the "
                 "approval controls instead of sending a human reply.",
             )
-        if data.interaction_id is not None and interaction is None:
+        # Bind post-commit retries to their original durable interaction,
+        # even when the next question for this agent is already pending.
+        # Read this after the pending snapshot: a commit between the reads
+        # either leaves the original candidate or is found by request ID.
+        if data.interaction_id and interaction is None:
+            previous = await asyncio.to_thread(
+                journal.get_human_interaction, data.interaction_id
+            )
+            if (
+                previous is not None
+                and previous.run_id == run_context.run_id
+                and previous.request.get("agent") == data.agent
+                and previous.interaction_type != "approval"
+                and previous.status not in {"requested", "presented"}
+            ):
+                interaction = previous
+        elif not data.interaction_id and data.decision_request_id:
+            previous = await asyncio.to_thread(
+                journal.find_human_interactions_by_decision_request,
+                run_context.run_id,
+                data.decision_request_id,
+            )
+            if previous:
+                if (
+                    len(previous) != 1
+                    or previous[0].request.get("agent") != data.agent
+                    or previous[0].interaction_type == "approval"
+                ):
+                    raise UserException(
+                        code.error, "The reply request identity is ambiguous."
+                    )
+                interaction = previous[0]
+        if not data.interaction_id and not data.decision_request_id:
+            raise UserException(
+                code.error,
+                "This task requires an interaction or request ID for a human reply. Refresh the task and try again.",
+            )
+        if interaction is None:
             raise UserException(
                 code.error,
                 "The requested human interaction is no longer pending.",

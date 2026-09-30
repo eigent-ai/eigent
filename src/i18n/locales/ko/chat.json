@@ -470,5 +470,5 @@
   "control-recovery-status-failed": "실패",
   "control-recovery-status-timed_out": "시간 초과",
   "history-evidence": "이전 기록 ({{count}})",
-  "history-evidence-description": "원본 기록에서 어떤 입력에 대한 응답인지 확인할 수 없어 이전 응답을 여기에 보관합니다."
+  "history-evidence-description": "응답과의 연결 정보가 없거나 기록된 응답과 내용이 다른 이전 답변 기록을 여기에 보관합니다."
 }

@@ -470,5 +470,5 @@
   "control-recovery-status-failed": "失敗",
   "control-recovery-status-timed_out": "タイムアウト",
   "history-evidence": "履歴の記録（{{count}}）",
-  "history-evidence-description": "元の記録からどの入力への返信か確認できないため、過去の返信をここに保持しています。"
+  "history-evidence-description": "返信先の応答との関連が不明な場合や、記録された応答と内容が異なる場合、過去の返信記録をここに保持します。"
 }

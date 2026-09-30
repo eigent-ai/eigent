@@ -29,6 +29,58 @@ function project(events = v104GuiInputEvents()) {
 }
 
 describe('unlinked legacy input evidence', () => {
+  it.each([false, true])(
+    'handles a linked mirror without its earlier request (conflict: %s)',
+    (conflict) => {
+      const events = v104GuiInputEvents([conflict ? 'other.csv' : 'report.csv'])
+        .filter((event) => event.event_type !== 'interaction.requested')
+        .map((event) =>
+          event.event_type === 'legacy.human_reply'
+            ? {
+                ...event,
+                payload: { ...event.payload, interaction_id: 'gui-question' },
+              }
+            : event
+        );
+      const nodes = project(events);
+      const original = structuredClone(nodes);
+      render(<EventTimeline nodes={nodes} />);
+      const main = screen.getByRole('list', { name: 'Chat event timeline' });
+      expect(within(main).getAllByRole('listitem')).toHaveLength(1);
+      expect(within(main).getByText('report.csv')).toBeVisible();
+      expect(within(main).queryByLabelText('Your message')).toBeNull();
+      if (conflict) {
+        fireEvent.click(
+          screen.getByRole('button', { name: 'History evidence (1)' })
+        );
+        expect(
+          within(
+            screen.getByRole('region', { name: 'History evidence (1)' })
+          ).getByText('other.csv')
+        ).toBeVisible();
+      } else {
+        expect(
+          screen.queryByRole('button', { name: /History evidence/ })
+        ).toBeNull();
+      }
+      expect(nodes).toEqual(original);
+    }
+  );
+  it.each(['runId', 'projectId'] as const)(
+    'does not fold a paginated linked mirror across a %s boundary',
+    (scope) => {
+      const nodes = project()
+        .filter((node) => node.eventType !== 'interaction.requested')
+        .map((node) =>
+          node.kind === 'message'
+            ? { ...node, interactionId: 'gui-question', [scope]: 'other' }
+            : node
+        );
+      const presented = partitionLegacyReplyEvidence(nodes);
+      expect(presented.nodes).toEqual(nodes);
+      expect(presented.evidence).toHaveLength(0);
+    }
+  );
   it('shows one canonical receipt and retains the actual v1.0.4 mirror behind a keyboard-accessible disclosure', async () => {
     const nodes = project();
     const original = structuredClone(nodes);

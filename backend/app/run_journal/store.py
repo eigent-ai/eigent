@@ -14902,6 +14902,23 @@ class SQLiteRunJournal:
             rows = self._connection.execute(query, (run_id,)).fetchall()
             return [self._human_interaction_from_row(row) for row in rows]
 
+    def find_human_interactions_by_decision_request(
+        self, run_id: str, decision_request_id: str
+    ) -> list[HumanInteractionRecord]:
+        """Find explicit retry identities without comparing reply content."""
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT i.* FROM human_interactions AS i
+                JOIN human_interaction_decisions AS d
+                  ON d.interaction_id = i.interaction_id
+                WHERE i.run_id = ? AND d.decision_request_id = ?
+                ORDER BY i.created_at, i.interaction_id
+                """,
+                (run_id, decision_request_id),
+            ).fetchall()
+            return [self._human_interaction_from_row(row) for row in rows]
+
     def list_human_interaction_options(
         self, interaction_id: str
     ) -> list[HumanInteractionOptionRecord]:

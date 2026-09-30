@@ -20,6 +20,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.controller import chat_controller, run_controller
+from app.exception.exception import UserException
 from app.model.chat import HumanReply
 from app.run_context import RunContext
 from app.run_journal import (
@@ -49,6 +50,72 @@ def _run_context(tmp_path):
         workdir_mode="workspace",
         browser_port=9222,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("pending", "identity"),
+    [
+        (False, {}),
+        (True, {}),
+        (True, {"interaction_id": "missing"}),
+        (False, {"decision_request_id": "unmatched"}),
+    ],
+)
+async def test_unowned_durable_reply_never_delivers_or_mirrors(
+    tmp_path, monkeypatch, pending, identity
+):
+    with SQLiteRunJournal(tmp_path / "unowned.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="session-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        if pending:
+            journal.create_human_interaction(
+                interaction_id="question",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                interaction_type="question",
+                request={"agent": "worker", "question": "Which file?"},
+            )
+        lock = TaskLock("session-1", asyncio.Queue(), {})
+        lock.run_context = _run_context(tmp_path)
+        lock.add_human_input_listen("worker")
+        waiters = [
+            asyncio.create_task(lock.get_human_input("worker"))
+            for _ in range(2)
+        ]
+        await asyncio.sleep(0)
+        monkeypatch.setattr(
+            chat_controller, "get_default_run_journal", lambda: journal
+        )
+        monkeypatch.setattr(
+            chat_controller, "get_task_lock_if_exists", lambda _: lock
+        )
+        monkeypatch.setattr(
+            "app.utils.server.sync_step.get_default_event_recorder",
+            lambda: EventRecorder(journal),
+        )
+        try:
+            with pytest.raises(UserException):
+                await chat_controller.human_reply(
+                    "session-1",
+                    HumanReply(agent="worker", reply="report.csv", **identity),
+                    SimpleNamespace(headers={}),
+                )
+            assert all(not waiter.done() for waiter in waiters)
+            assert journal.list_human_interaction_decisions("question") == []
+            assert all(
+                e.event_type != "legacy.human_reply"
+                for e in journal.list_events("run-1")
+            )
+        finally:
+            for waiter in waiters:
+                waiter.cancel()
+            await asyncio.gather(*waiters, return_exceptions=True)
 
 
 @pytest.mark.asyncio
@@ -222,8 +289,11 @@ async def test_resumed_gui_reply_commits_before_delivery_and_survives_restart(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("transport", ["typed", "legacy", "legacy-without-id"])
 @pytest.mark.parametrize("identical", [True, False])
+@pytest.mark.parametrize(
+    "read_timing", ["before-commit", "after-commit", "next-question"]
+)
 async def test_overlapping_gui_replies_deliver_only_transition_owner(
-    tmp_path, monkeypatch, transport, identical
+    tmp_path, monkeypatch, transport, identical, read_timing
 ):
     database = tmp_path / "journal.sqlite3"
     with (
@@ -281,10 +351,12 @@ async def test_overlapping_gui_replies_deliver_only_transition_owner(
             lambda: EventRecorder(journal),
         )
 
-        # Both endpoints must read the still-pending interaction before either
-        # enters the journal transaction. No sleeps or probabilistic races.
+        # Force both pending reads, a post-commit retry, or a retry after the
+        # next question appears. No sleeps or probabilistic races.
         original_to_thread = asyncio.to_thread
         both_ready = asyncio.Event()
+        committed = asyncio.Event()
+        retry_finished = asyncio.Event()
         ready = 0
 
         async def synchronized_resolution(fn, *args, **kwargs):
@@ -294,9 +366,18 @@ async def test_overlapping_gui_replies_deliver_only_transition_owner(
                 and ready < 2
             ):
                 ready += 1
-                if ready == 2:
-                    both_ready.set()
-                await both_ready.wait()
+                invocation = ready
+                if read_timing == "before-commit":
+                    if ready == 2:
+                        both_ready.set()
+                    await both_ready.wait()
+                result = await original_to_thread(fn, *args, **kwargs)
+                if read_timing != "before-commit" and invocation == 1:
+                    # Keep the owner in flight after committing but before
+                    # delivery. A retry now observes no pending question.
+                    committed.set()
+                    await retry_finished.wait()
+                return result
             return await original_to_thread(fn, *args, **kwargs)
 
         monkeypatch.setattr(asyncio, "to_thread", synchronized_resolution)
@@ -304,6 +385,8 @@ async def test_overlapping_gui_replies_deliver_only_transition_owner(
         async def submit(index, interaction_id="gui-question"):
             reply = "report.csv" if identical or index == 0 else "other.csv"
             request_id = "gui-submit" if identical else f"gui-submit-{index}"
+            if interaction_id != "gui-question":
+                request_id = f"submit-{interaction_id}"
             if transport == "typed":
                 return await run_controller.decide_run_interaction(
                     "run-1",
@@ -328,19 +411,44 @@ async def test_overlapping_gui_replies_deliver_only_transition_owner(
                 SimpleNamespace(headers={}),
             )
 
+        async def retry():
+            if read_timing != "before-commit":
+                await committed.wait()
+                if identical and read_timing == "next-question":
+                    # An explicitly identified retry must not be rebound to
+                    # the next question for the same agent.
+                    journal.create_human_interaction(
+                        interaction_id="next-question",
+                        run_id="run-1",
+                        attempt_id=attempt.attempt_id,
+                        interaction_type="question",
+                        request={"agent": "worker", "question": "Next?"},
+                    )
+            try:
+                return await submit(1)
+            finally:
+                retry_finished.set()
+
         try:
             results = await asyncio.wait_for(
-                asyncio.gather(submit(0), submit(1), return_exceptions=True), 5
+                asyncio.gather(submit(0), retry(), return_exceptions=True), 5
             )
-            assert ready == 2
+            assert ready >= 1
             errors = [r for r in results if isinstance(r, Exception)]
-            assert len(errors) == (0 if identical else 1)
+            terminal_typed_retry = (
+                transport == "typed" and read_timing != "before-commit"
+            )
+            assert len(errors) == (
+                0 if identical or terminal_typed_retry else 1
+            )
             if errors:
                 if transport == "typed":
                     assert isinstance(errors[0], HTTPException)
                     assert errors[0].status_code == 409
                 else:
-                    assert isinstance(errors[0], InvalidRunTransitionError)
+                    assert isinstance(
+                        errors[0], (InvalidRunTransitionError, UserException)
+                    )
             decisions = journal.list_human_interaction_decisions(
                 "gui-question"
             )
@@ -369,13 +477,17 @@ async def test_overlapping_gui_replies_deliver_only_transition_owner(
                 )
             # An equal answer for a different interaction is a distinct input
             # and must still reach the next waiter after the retry is ignored.
-            journal.create_human_interaction(
-                interaction_id="next-question",
-                run_id="run-1",
-                attempt_id=attempt.attempt_id,
-                interaction_type="question",
-                request={"agent": "worker", "question": "Which other file?"},
-            )
+            if journal.get_human_interaction("next-question") is None:
+                journal.create_human_interaction(
+                    interaction_id="next-question",
+                    run_id="run-1",
+                    attempt_id=attempt.attempt_id,
+                    interaction_type="question",
+                    request={
+                        "agent": "worker",
+                        "question": "Which other file?",
+                    },
+                )
             await submit(0, "next-question")
             assert await asyncio.wait_for(waiters[1], 1) == "report.csv"
             assert (
