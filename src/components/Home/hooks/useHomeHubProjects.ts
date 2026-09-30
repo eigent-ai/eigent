@@ -161,6 +161,9 @@ export function useHomeHubProjects() {
         const targetProject = projects.find(
           (project) => project.project_id === projectId
         );
+        const chatState = projectStore
+          .peekActiveChatStore(projectId)
+          ?.getState();
         await deleteSessionTaskData({
           projectId,
           spaceId:
@@ -168,7 +171,13 @@ export function useHomeHubProjects() {
             targetProject?.space_id ??
             undefined,
           ...identity,
-          knownTasks: targetProject?.tasks ?? [],
+          knownTasks: [
+            ...(targetProject?.tasks ?? []),
+            ...Object.keys(chatState?.tasks ?? {}).map((taskId) => ({
+              task_id: taskId,
+              project_id: projectId,
+            })),
+          ],
           ipcRenderer,
         });
         assertSessionCleanupIdentity(identity);

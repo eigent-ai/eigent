@@ -23,7 +23,12 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { app } from 'electron';
+import fs from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FileReader } from '../../../electron/main/fileReader';
 
 const mocks = vi.hoisted(() => {
   const auth = { email: 'alex@example.com', user_id: 42 };
@@ -49,11 +54,12 @@ const mocks = vi.hoisted(() => {
     task,
     project,
     spaceState,
-    runtime: { removeProject: vi.fn() },
+    runtime: { removeProject: vi.fn(), peekActiveChatStore: vi.fn() },
     invoke: vi.fn(),
     toastError: vi.fn(),
   };
 });
+vi.mock('electron', () => ({ app: { getPath: vi.fn() } }));
 vi.mock('@/api/http', () => ({
   proxyFetchGet: vi.fn(),
   proxyFetchDelete: vi.fn(),
@@ -134,6 +140,8 @@ async function openDialog() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.runtime.peekActiveChatStore.mockReset();
+  mocks.runtime.removeProject.mockReset();
   mocks.auth.user_id = 42;
   vi.mocked(proxyFetchGet).mockResolvedValue({
     project_id: 'session-a',
@@ -144,6 +152,95 @@ beforeEach(() => {
 });
 
 describe('Home Session deletion', () => {
+  it('cleans server-omitted local Tasks before removing the selected Session', async () => {
+    const home = fs.realpathSync(
+      fs.mkdtempSync(path.join(tmpdir(), 'eigent-home-session-delete-'))
+    );
+    try {
+      vi.mocked(app.getPath).mockReturnValue(home);
+      const reader = new FileReader(null as never);
+      const taskFiles = (projectId: string, taskId: string) => [
+        path.join(
+          home,
+          'eigent',
+          'user_42',
+          `project_${projectId}`,
+          taskId,
+          'output.txt'
+        ),
+        path.join(
+          home,
+          '.eigent',
+          'user_42',
+          `project_${projectId}`,
+          taskId,
+          'camel_logs',
+          'log.json'
+        ),
+      ];
+      const selectedFiles = [
+        ...taskFiles('session-a', 'task_a'),
+        ...taskFiles('session-a', 'task_local'),
+      ];
+      const otherSessionFiles = taskFiles('session-b', 'task_other');
+      for (const file of [...selectedFiles, ...otherSessionFiles]) {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, 'keep until its Session is deleted');
+      }
+      mocks.invoke.mockImplementation(
+        async (_channel, email, taskId, projectId, userId, spaceId) =>
+          reader.deleteTaskFiles(email, taskId, projectId, userId, spaceId)
+      );
+      let remainingAtRemoval: string[] | undefined;
+      mocks.runtime.removeProject.mockImplementation(() => {
+        remainingAtRemoval = selectedFiles.filter((file) =>
+          fs.existsSync(file)
+        );
+      });
+
+      const dialog = await openDialog();
+      // Read the selected Session's latest runtime Tasks when deletion is confirmed.
+      mocks.runtime.peekActiveChatStore.mockImplementation((projectId) => ({
+        getState: () => ({
+          tasks:
+            projectId === 'session-a'
+              ? { task_a: {}, task_local: {} }
+              : { task_other: {} },
+        }),
+      }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+      await waitFor(() =>
+        expect(mocks.runtime.removeProject).toHaveBeenCalledWith('session-a')
+      );
+
+      expect(remainingAtRemoval).toEqual([]);
+      expect(mocks.runtime.peekActiveChatStore).toHaveBeenCalledWith(
+        'session-a'
+      );
+      expect(mocks.invoke).toHaveBeenCalledTimes(2);
+      for (const taskId of ['task_a', 'task_local']) {
+        expect(mocks.invoke).toHaveBeenCalledWith(
+          'delete-task-files',
+          'alex@example.com',
+          taskId,
+          'session-a',
+          42,
+          'space-a'
+        );
+      }
+      expect(proxyFetchDelete).toHaveBeenCalledTimes(1);
+      expect(proxyFetchDelete).toHaveBeenCalledWith('/api/v1/chat/history/1');
+      otherSessionFiles.forEach((file) =>
+        expect(fs.existsSync(file)).toBe(true)
+      );
+      await waitFor(() =>
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+      );
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it('keeps the dialog and Session on success:false and lets Retry finish deletion', async () => {
     mocks.invoke.mockResolvedValueOnce({ success: false });
     const dialog = await openDialog();
