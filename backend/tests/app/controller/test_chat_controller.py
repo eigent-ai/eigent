@@ -725,19 +725,23 @@ class TestChatController:
         await coordinator.close()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("session_mode", ["single-agent", "workforce"])
     async def test_resume_silently_backfills_legacy_environment_spec(
         self,
         sample_chat_data,
         mock_request,
         mock_task_lock,
         tmp_path,
+        session_mode,
     ):
+        from app.run_journal.models import RunEventDraft
+
         run_id = sample_chat_data["task_id"]
         chat_data = Chat(
             **sample_chat_data,
             run_id=run_id,
             resume_request_id="resume-with-current-environment",
-            session_mode="single-agent",
+            session_mode=session_mode,
         )
         resolver = MagicMock()
         resolver.freeze_task_directories.return_value = SimpleNamespace(
@@ -750,12 +754,22 @@ class TestChatController:
         )
         resolver.space_root.return_value = tmp_path
         git_coordinator = MagicMock()
+        mock_task_lock.conversation_history = []
+        mock_task_lock.agent_memory_history = []
+        mock_task_lock.memory_summary = ""
 
         with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
             journal.ensure_run(
                 run_id=run_id,
                 project_id=chat_data.project_id,
                 status="interrupted",
+            )
+            journal.append_event(
+                run_id,
+                RunEventDraft(
+                    event_type="user.message",
+                    payload={"content": "Original durable objective"},
+                ),
             )
             resume_attempt = journal.create_run_attempt(
                 run_id,
@@ -821,6 +835,48 @@ class TestChatController:
                 "legacy_environment_backfill"
             )
             git_coordinator.admit_run.assert_called_once()
+
+            # Preparation binds the durable Attempt consumed by either builder.
+            # Renderer fallback text must not carry a second ledger projection.
+            assert (
+                prepared.initial_action.data.project_context
+                == chat_data.project_context
+            )
+            from app.service import chat_service, single_agent_service
+
+            service = (
+                single_agent_service
+                if session_mode == "single-agent"
+                else chat_service
+            )
+            with (
+                patch.object(
+                    service, "get_default_run_journal", return_value=journal
+                ),
+                patch.object(
+                    service,
+                    "build_durable_context_projection_for_task_lock",
+                    return_value=SimpleNamespace(
+                        text="Reference Memory", source_memory_ids=()
+                    ),
+                ),
+            ):
+                if session_mode == "single-agent":
+                    prompt = service._build_single_agent_prompt(
+                        mock_task_lock,
+                        prepared.initial_action.data.question,
+                        [],
+                        prepared.initial_action.data.project_context,
+                    )
+                else:
+                    prompt = service.build_context_for_workforce(
+                        mock_task_lock, chat_data
+                    )
+                assert prompt.count("Original durable objective") == 1
+                assert (
+                    prompt.count("Canonical Project Recovery Context ===") == 2
+                )
+                assert "Reference Memory" in prompt
 
     @pytest.mark.asyncio
     async def test_initial_attempt_precedes_workspace_writer_admission(

@@ -27,10 +27,11 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
-from app.run_journal.models import CommittedRunEvent
+from app.permission_policy.models import redact_action_arguments
+from app.run_journal.models import CommittedRunEvent, ToolCallRecord
 from app.run_journal.store import SQLiteRunJournal
 
 _TERMINAL_TOOL_EVENT_TYPES = frozenset(
@@ -45,7 +46,13 @@ _TOOL_EVENT_PREFIX = "tool."
 _DEFAULT_MAX_RUNS = 8
 _DEFAULT_CHAR_BUDGET = 18_000
 _MAX_EVENT_VALUE_CHARS = 3_000
+# Preserve the former controller ledger's per-result evidence allowance.
+_RESUME_EVENT_VALUE_CHARS = 1_000
 logger = logging.getLogger("run_journal.context_projection")
+
+
+class ResumeContextError(RuntimeError):
+    """Mandatory recovery facts cannot safely be projected for inference."""
 
 
 @dataclass(frozen=True)
@@ -92,7 +99,9 @@ def _latest_tool_events(
     return latest
 
 
-def _render_tool(event: CommittedRunEvent) -> list[str]:
+def _render_tool(
+    event: CommittedRunEvent, *, value_limit: int = _MAX_EVENT_VALUE_CHARS
+) -> list[str]:
     payload = event.payload
     name = str(payload.get("tool_name") or "unknown")
     status = str(
@@ -100,7 +109,9 @@ def _render_tool(event: CommittedRunEvent) -> list[str]:
     )
     request = payload.get("request")
     result = payload.get("result")
-    lines = [f"Assistant tool call: {name}({_json(request or {})})"]
+    lines = [
+        f"Assistant tool call: {name}({_json(request or {}, limit=value_limit)})"
+    ]
     if event.event_type in _TERMINAL_TOOL_EVENT_TYPES or result is not None:
         outcome: dict[str, Any] = {"result": result}
         if payload.get("outcome") is not None:
@@ -109,7 +120,9 @@ def _render_tool(event: CommittedRunEvent) -> list[str]:
             outcome["timeout_reason"] = payload["timeout_reason"]
         if event.event_type == "tool.outcome_unknown":
             outcome["external_effect_may_have_occurred"] = True
-        lines.append(f"Tool result [{status}]: {_json(outcome)}")
+        lines.append(
+            f"Tool result [{status}]: {_json(outcome, limit=value_limit)}"
+        )
     else:
         lines.append(
             f"Tool result [{status}]: no durable outcome was observed"
@@ -118,7 +131,10 @@ def _render_tool(event: CommittedRunEvent) -> list[str]:
 
 
 def _render_run(
-    events: list[CommittedRunEvent], run_id: str
+    events: list[CommittedRunEvent],
+    run_id: str,
+    *,
+    recovery_tools: dict[str, ToolCallRecord] | None = None,
 ) -> tuple[list[str], list[str]]:
     latest_tools = _latest_tool_events(events)
     has_typed_user = any(
@@ -132,6 +148,8 @@ def _render_run(
     for event in events:
         event_type = event.event_type
         payload = event.payload
+        if recovery_tools is not None:
+            payload = redact_action_arguments(payload)
         if event_type == "user.message":
             lines.append(f"User: {_message(payload)}")
             source_event_ids.append(event.event_id)
@@ -148,8 +166,67 @@ def _render_run(
                 isinstance(tool_call_id, str)
                 and latest_tools.get(tool_call_id) is event
             ):
-                lines.extend(_render_tool(event))
+                if recovery_tools is not None:
+                    # Startup outcome events can omit the name/request/result.
+                    # The canonical ledger supplies those fields, not Memory
+                    # or the renderer bridge. Redact before rendering raw rows.
+                    tool = recovery_tools[tool_call_id]
+                    payload = redact_action_arguments(
+                        {
+                            "tool_call_id": tool.tool_call_id,
+                            "attempt_id": tool.attempt_id,
+                            "tool_name": tool.tool_name,
+                            "safety_class": tool.safety_class,
+                            "idempotency_key": tool.idempotency_key,
+                            "status": tool.status,
+                            "outcome": tool.outcome,
+                            "timeout_reason": tool.timeout_reason,
+                            "external_effect_may_have_occurred": tool.status
+                            == "outcome_unknown",
+                            "request": tool.request,
+                            "result": tool.result,
+                        }
+                    )
+                    # Keep identity and safety outside truncatable evidence.
+                    lines.append(
+                        "Tool checkpoint: "
+                        + json.dumps(
+                            {
+                                key: value
+                                for key, value in payload.items()
+                                if key not in {"request", "result"}
+                            },
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                    )
+                    event = replace(
+                        event,
+                        payload=payload,
+                        event_type=f"tool.{tool.status}",
+                    )
+                lines.extend(
+                    _render_tool(
+                        event,
+                        value_limit=_RESUME_EVENT_VALUE_CHARS
+                        if recovery_tools is not None
+                        else _MAX_EVENT_VALUE_CHARS,
+                    )
+                )
                 source_event_ids.append(event.event_id)
+        elif recovery_tools is not None and (
+            event_type.startswith(("approval.", "interaction.", "step."))
+            or event_type in {"run.interrupted", "runtime.interrupted"}
+        ):
+            lines.append(
+                f"Checkpoint [{event_type}]: "
+                + json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            source_event_ids.append(event.event_id)
         elif event_type == "interaction.resolved":
             decision = payload.get("decision")
             if decision is not None:
@@ -187,8 +264,32 @@ def build_project_execution_context_projection(
     current_run_id: str,
     max_runs: int = _DEFAULT_MAX_RUNS,
     char_budget: int = _DEFAULT_CHAR_BUDGET,
+    current_attempt_id: str | None = None,
 ) -> ExecutionContextProjection:
-    """Build a bounded, oldest-to-newest projection of prior Project Runs."""
+    """Project prior Runs; an explicit Resume reserves its current Run first."""
+
+    if isinstance(current_attempt_id, str):
+        try:
+            attempt = journal.get_run_attempt(current_attempt_id)
+        except Exception as exc:
+            raise ResumeContextError("Canonical Attempt unavailable") from exc
+        if attempt is None or attempt.run_id != current_run_id:
+            raise ResumeContextError("Recovery Attempt does not belong to Run")
+        if attempt.resume_reason == "explicit_resume":
+            try:
+                return _build_resume_execution_context(
+                    journal,
+                    project_id=project_id,
+                    run_id=current_run_id,
+                    max_runs=max_runs,
+                    char_budget=char_budget,
+                )
+            except ResumeContextError:
+                raise
+            except Exception as exc:
+                raise ResumeContextError(
+                    "Canonical recovery context unavailable"
+                ) from exc
 
     if max_runs < 1 or char_budget < 1:
         return ExecutionContextProjection(
@@ -254,6 +355,87 @@ def build_project_execution_context_projection(
     return ExecutionContextProjection(
         text=text,
         source_event_ids=tuple(selected_event_ids),
+        projection_digest=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        token_count=(len(text) + 3) // 4,
+    )
+
+
+def _build_resume_execution_context(
+    journal: SQLiteRunJournal,
+    *,
+    project_id: str,
+    run_id: str,
+    max_runs: int,
+    char_budget: int,
+) -> ExecutionContextProjection:
+    """Reserve the existing history budget for current-Run recovery first.
+
+    Never tail-slice a recovery checkpoint or silently drop old unsafe calls.
+    If mandatory facts cannot fit, fail before inference. Prior Runs use only
+    the remainder and are included whole, oldest-to-newest, before this Run.
+    Memory retains its own existing policy and is not a recovery fact source.
+    """
+    run = journal.get_run(run_id)
+    if run is None or run.project_id != project_id:
+        raise ResumeContextError("Recovery Run does not belong to Project")
+    events = journal.list_events(run_id)
+    if not any(
+        event.event_type == "user.message"
+        or (
+            event.event_type == "legacy.confirmed"
+            and event.payload.get("question")
+        )
+        for event in events
+    ):
+        raise ResumeContextError("Canonical recovery intent unavailable")
+    tools = {
+        tool.tool_call_id: tool for tool in journal.list_tool_calls(run_id)
+    }
+    if set(tools) != set(_latest_tool_events(events)):
+        raise ResumeContextError("Canonical recovery ledger is incomplete")
+    current, current_ids = _render_run(events, run_id, recovery_tools=tools)
+    header = (
+        "=== Canonical Project Recovery Context ===\n"
+        "Older Runs may be omitted to fit the recovery budget; omitted "
+        "history does not prove that an action never occurred."
+    )
+    footer = "=== End Canonical Project Recovery Context ==="
+    used = len("\n".join([header, *current, footer]))
+    if used > char_budget:
+        raise ResumeContextError(
+            "context_budget_exhausted: mandatory Resume checkpoint"
+        )
+    prior = []
+    if max_runs > 0:
+        for previous in journal.list_runs(
+            project_id=project_id, limit=max_runs + 1
+        ):
+            if previous.run_id == run_id:
+                continue
+            lines, ids = _render_run(
+                journal.list_events(previous.run_id), previous.run_id
+            )
+            if not lines:
+                continue
+            cost = len("\n".join(lines)) + 1
+            if used + cost > char_budget:
+                break
+            prior.append((lines, ids))
+            used += cost
+            if len(prior) == max_runs:
+                break
+    lines = [header]
+    source_ids = []
+    for rendered, ids in reversed(prior):
+        lines.extend(rendered)
+        source_ids.extend(ids)
+    lines.extend(current)
+    source_ids.extend(current_ids)
+    lines.append(footer)
+    text = "\n".join(lines)
+    return ExecutionContextProjection(
+        text=text,
+        source_event_ids=tuple(source_ids),
         projection_digest=hashlib.sha256(text.encode("utf-8")).hexdigest(),
         token_count=(len(text) + 3) // 4,
     )

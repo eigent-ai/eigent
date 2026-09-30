@@ -66,6 +66,7 @@ from app.memory import (
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.model.subscription_runtime import is_subscription_auth
 from app.run_journal.context_projection import (
+    ResumeContextError,
     build_project_execution_context_projection,
     persist_context_projection_diagnostic,
 )
@@ -554,9 +555,12 @@ def build_context_for_workforce(
                 get_default_run_journal(),
                 project_id=project_id,
                 current_run_id=run_id,
+                current_attempt_id=getattr(run_context, "attempt_id", None),
             )
             canonical_execution = execution_projection.text
             execution_event_ids = execution_projection.source_event_ids
+        except ResumeContextError:
+            raise
         except Exception:
             logger.warning(
                 "Canonical execution context unavailable; using Memory fallback",

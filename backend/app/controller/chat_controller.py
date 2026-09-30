@@ -235,8 +235,6 @@ external side effects as already performed; do not repeat them unless the
 persisted result proves that repetition is both necessary and safe. If the
 durable context is insufficient, ask the user instead of guessing.
 """.strip()
-_RESUME_TOOL_LEDGER_MAX_CALLS = 50
-_RESUME_TOOL_RESULT_MAX_CHARS = 1000
 
 
 def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
@@ -1510,47 +1508,13 @@ async def _prepare_chat_run(
     # Set the initial current_task_id in task_lock
     set_current_task_id(data.project_id, data.task_id)
 
-    resume_checkpoint = data.project_context
-    if is_resume:
-        tool_calls = await asyncio.to_thread(
-            get_default_run_journal().list_tool_calls,
-            run_context.run_id,
-        )
-        ledger_lines = ["=== Durable Tool Ledger (canonical) ==="]
-        for tool in tool_calls[-_RESUME_TOOL_LEDGER_MAX_CALLS:]:
-            ledger_lines.append(
-                f"- {tool.tool_call_id}: {tool.tool_name}; "
-                f"status={tool.status}; safety={tool.safety_class}; "
-                f"outcome={tool.outcome or 'none'}"
-            )
-            if tool.result is not None:
-                encoded_result = json.dumps(
-                    tool.result,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-                ledger_lines.append(
-                    "  persisted_result="
-                    + encoded_result[:_RESUME_TOOL_RESULT_MAX_CHARS]
-                )
-        ledger_lines.append("=== End Durable Tool Ledger ===")
-        resume_checkpoint = "\n\n".join(
-            part
-            for part in (
-                data.project_context,
-                "\n".join(ledger_lines),
-            )
-            if part
-        )
-
     initial_action = ActionImproveData(
         data=ImprovePayload(
             question=(
                 _EXPLICIT_RESUME_INSTRUCTION if is_resume else data.question
             ),
             attaches=data.attaches or [],
-            project_context=resume_checkpoint,
+            project_context=data.project_context,
         ),
         new_task_id=data.task_id,
         request_id=request_id,
