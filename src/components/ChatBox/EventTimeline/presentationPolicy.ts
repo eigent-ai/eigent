@@ -755,14 +755,41 @@ function presentHumanInteractionReceipts(
 function presentLegacyTranscriptFallbacks(
   nodes: readonly ChatProjectionNode[]
 ): readonly ChatProjectionNode[] {
-  const canonicalUserRuns = new Set(
-    nodes
-      .filter(
-        (node): node is MessageNode =>
-          node.kind === 'message' && node.eventType === 'user.message'
+  const inputOwnerKey = (node: MessageNode) =>
+    JSON.stringify([node.projectId, node.runId]);
+  const canonicalInputs = new Map<string, MessageNode | null>();
+  for (const node of nodes) {
+    if (
+      node.kind !== 'message' ||
+      node.role !== 'user' ||
+      node.eventType !== 'user.message'
+    )
+      continue;
+    const key = inputOwnerKey(node);
+    // A Run's admitted input owns its confirmed echo. If history contains
+    // multiple canonical inputs, do not guess which one an unlinked echo owns.
+    canonicalInputs.set(key, canonicalInputs.has(key) ? null : node);
+  }
+
+  const isConfirmedInputMirror = (node: MessageNode) => {
+    if (
+      node.role !== 'user' ||
+      !(
+        node.eventType === 'legacy.confirmed' ||
+        (node.eventType === 'legacy.step' && node.legacyStep === 'confirmed')
       )
-      .map((node) => node.runId)
-  );
+    )
+      return false;
+    const owner = canonicalInputs.get(inputOwnerKey(node));
+    // Cloud playback has no message/source identity for confirmed. Use only
+    // the unique input owner in this Project/Run and its exact content; retain
+    // conflicting explicit message identities and all legacy-only history.
+    return Boolean(
+      owner &&
+      owner.content === node.content &&
+      owner.messageId === node.messageId
+    );
+  };
   const canonicalAssistantRuns = new Set(
     nodes
       .filter(
@@ -776,8 +803,7 @@ function presentLegacyTranscriptFallbacks(
     (node) =>
       !(
         node.kind === 'message' &&
-        ((node.eventType === 'legacy.confirmed' &&
-          canonicalUserRuns.has(node.runId)) ||
+        (isConfirmedInputMirror(node) ||
           (node.eventType === 'legacy.end' &&
             canonicalAssistantRuns.has(node.runId)))
       )
