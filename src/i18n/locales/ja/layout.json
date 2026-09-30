@@ -1060,7 +1060,7 @@
   "workspace-bundle-local-secrets-sent": "この MCP に送信するローカルシークレット",
   "workspace-bundle-local-value-for": "{{name}} のローカル値",
   "workspace-bundle-local-value-unavailable": "以前のローカル値を利用できません。再入力してバインディングを修復してください。",
-  "workspace-bundle-materialization-interrupted": "前回の生成処理は中断されました。再試行前に永続提案を更新してください。",
+  "workspace-bundle-materialization-interrupted": "インストールがまだ実行中の可能性があります。更新して保存済みの状態を確認してから、別の操作を行ってください。",
   "workspace-bundle-mcp-definition-unavailable": "この MCP 定義は利用できないため、承認も起動もできません。",
   "workspace-bundle-mcp-destination-kind": "MCP 宛先 · {{kind}}",
   "workspace-bundle-mcp-executable-unpinned": "この MCP 実行ファイルはレビュー済みのバンドルアセットに固定されていないため、承認も起動もできません。",
@@ -1515,5 +1515,8 @@
   "space-discovery-resource-disabled": "グローバル設定で無効",
   "space-discovery-resource-invalid": "グローバル設定が無効か利用できません",
   "space-discovery-model-partial": "一部のモデル一覧を読み込めませんでした。利用可能なモデルを表示しています。再試行してください。",
-  "space-discovery-connectors-disabled": "コネクター一覧は無効です。グローバル設定で有効にしてから再試行してください。"
+  "space-discovery-connectors-disabled": "コネクター一覧は無効です。グローバル設定で有効にしてから再試行してください。",
+  "workspace-bundle-cancel-import": "インポートをキャンセル",
+  "workspace-bundle-cancel-keeps-files": "キャンセルしても Space の下書き、ローカルの設定値、インストール済みファイルは保持されます。",
+  "workspace-bundle-failure-retained": "インストールは完了していません。Space の下書き、ローカルの設定値、インストール済みファイルは保持されています。"
 }

@@ -3688,6 +3688,13 @@ class SQLiteRunJournal:
                     f"Bundle install proposal {proposal_id!r} does not exist"
                 )
             if row["state"] == state:
+                if state == "materializing":
+                    # This transition grants exclusive write authority, not a
+                    # replayable receipt. A second worker could otherwise fail
+                    # early and expose rejection while the first still writes.
+                    raise InvalidRunTransitionError(
+                        "Bundle installation is already materializing"
+                    )
                 if state in {"approved", "rejected"} and (
                     not decided_by or row["decided_by"] != decided_by
                 ):
@@ -3725,7 +3732,7 @@ class SQLiteRunJournal:
                     state,
                     decision_actor,
                     decision_at,
-                    error_code,
+                    row["error_code"] if state == "rejected" else error_code,
                     timestamp,
                     proposal_id,
                     expected_version,

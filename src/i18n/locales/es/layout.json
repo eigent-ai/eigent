@@ -1070,7 +1070,7 @@
   "workspace-bundle-local-secrets-sent": "Secretos locales enviados a este MCP",
   "workspace-bundle-local-value-for": "Valor local de {{name}}",
   "workspace-bundle-local-value-unavailable": "El valor local anterior no está disponible. Vuelve a introducirlo para reparar este enlace.",
-  "workspace-bundle-materialization-interrupted": "La materialización anterior se interrumpió. Actualiza la propuesta persistente antes de volver a intentarlo.",
+  "workspace-bundle-materialization-interrupted": "Es posible que la instalación siga en curso. Actualiza para comprobar su estado guardado antes de realizar otra acción.",
   "workspace-bundle-mcp-definition-unavailable": "Esta definición MCP no está disponible y no se puede aprobar ni iniciar.",
   "workspace-bundle-mcp-destination-kind": "Destino MCP · {{kind}}",
   "workspace-bundle-mcp-executable-unpinned": "Este ejecutable MCP no está fijado a un recurso de Bundle revisado y no se puede aprobar ni iniciar.",
@@ -1559,5 +1559,8 @@
   "space-discovery-resource-disabled": "Desactivado en los ajustes globales",
   "space-discovery-resource-invalid": "Configuración global no válida o no disponible",
   "space-discovery-model-partial": "No se pudieron cargar algunas fuentes de modelos. Se muestran los modelos disponibles. Vuelve a intentarlo.",
-  "space-discovery-connectors-disabled": "El catálogo de conectores está desactivado. Actívalo en los ajustes globales y vuelve a intentarlo."
+  "space-discovery-connectors-disabled": "El catálogo de conectores está desactivado. Actívalo en los ajustes globales y vuelve a intentarlo.",
+  "workspace-bundle-cancel-import": "Cancelar importación",
+  "workspace-bundle-cancel-keeps-files": "Al cancelar se conservan el borrador del Space, los valores locales y los archivos ya instalados.",
+  "workspace-bundle-failure-retained": "La instalación no terminó. Se conservan el borrador del Space, los valores locales y los archivos ya instalados."
 }

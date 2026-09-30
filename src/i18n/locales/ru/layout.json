@@ -1075,7 +1075,7 @@
   "workspace-bundle-local-secrets-sent": "Локальные секреты отправлены этому MCP",
   "workspace-bundle-local-value-for": "Локальное значение для {{name}}",
   "workspace-bundle-local-value-unavailable": "Предыдущее локальное значение недоступно. Введите его снова, чтобы исправить привязку.",
-  "workspace-bundle-materialization-interrupted": "Предыдущая материализация была прервана. Обновите постоянное предложение перед повторной попыткой.",
+  "workspace-bundle-materialization-interrupted": "Установка может ещё выполняться. Обновите сохранённое состояние перед следующим действием.",
   "workspace-bundle-mcp-definition-unavailable": "Это определение MCP недоступно, его нельзя одобрить или запустить.",
   "workspace-bundle-mcp-destination-kind": "Назначение MCP · {{kind}}",
   "workspace-bundle-mcp-executable-unpinned": "Этот исполняемый файл MCP не привязан к проверенному ресурсу Bundle, поэтому его нельзя одобрить или запустить.",
@@ -1581,5 +1581,8 @@
   "space-discovery-resource-disabled": "Отключено в глобальных настройках",
   "space-discovery-resource-invalid": "Глобальная конфигурация недействительна или недоступна",
   "space-discovery-model-partial": "Не удалось загрузить некоторые источники моделей. Показаны доступные модели. Повторите попытку.",
-  "space-discovery-connectors-disabled": "Каталог коннекторов отключён. Включите его в глобальных настройках и повторите попытку."
+  "space-discovery-connectors-disabled": "Каталог коннекторов отключён. Включите его в глобальных настройках и повторите попытку.",
+  "workspace-bundle-cancel-import": "Отменить импорт",
+  "workspace-bundle-cancel-keeps-files": "При отмене сохраняются черновик Space, локальные значения и уже установленные файлы.",
+  "workspace-bundle-failure-retained": "Установка не завершена. Черновик Space, локальные значения и уже установленные файлы сохранены."
 }

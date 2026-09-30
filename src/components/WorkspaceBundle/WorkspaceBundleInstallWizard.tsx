@@ -15,6 +15,7 @@
 import { fetchConnectedProviders, providerLabel } from '@/api/connectors';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { useHost } from '@/host';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
@@ -56,7 +57,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-type RetryMode = 'review' | 'resume' | 'start' | 'materialize' | null;
+type RetryMode =
+  'review' | 'resume' | 'start' | 'materialize' | 'reject' | null;
 
 interface InstallSeed {
   proposalId: string;
@@ -516,8 +518,17 @@ function writeInstallSeed(
   );
 }
 
-function clearInstallSeed(revisionId: string, actorId: string): void {
-  window.localStorage.removeItem(installSeedKey(revisionId, actorId));
+function clearInstallSeed(
+  revisionId: string,
+  actorId: string,
+  proposalId: string
+): void {
+  const seed = JSON.parse(
+    window.localStorage.getItem(installSeedKey(revisionId, actorId)) || 'null'
+  ) as InstallSeed | null;
+  if (seed?.proposalId === proposalId) {
+    window.localStorage.removeItem(installSeedKey(revisionId, actorId));
+  }
 }
 
 const activeInstallKey = (actorId: string): string =>
@@ -551,9 +562,16 @@ function writeActiveInstall(actorId: string, install: ActiveInstall): void {
   );
 }
 
-function clearActiveInstall(actorId: string): void {
-  if (!actorId) return;
-  window.localStorage.removeItem(activeInstallKey(actorId));
+function clearActiveInstall(actorId: string, expected: ActiveInstall): void {
+  const current = JSON.parse(
+    window.localStorage.getItem(activeInstallKey(actorId)) || 'null'
+  ) as ActiveInstall | null;
+  if (
+    current?.proposalId === expected.proposalId &&
+    current.handle === expected.handle
+  ) {
+    window.localStorage.removeItem(activeInstallKey(actorId));
+  }
 }
 
 const errorMessage = (error: unknown, fallback: string): string =>
@@ -681,7 +699,21 @@ export interface WorkspaceBundleInstallWizardProps {
   onWorkspaceOpen?: () => void;
 }
 
-export function WorkspaceBundleInstallWizard({
+export function WorkspaceBundleInstallWizard(
+  props: WorkspaceBundleInstallWizardProps
+) {
+  const email = useAuthStore((state) => state.email);
+  const userId = useAuthStore((state) => state.user_id);
+  // Account changes retire all state and outstanding responses from the old actor.
+  return (
+    <WorkspaceBundleInstallContent
+      key={String(userId ?? email ?? '')}
+      {...props}
+    />
+  );
+}
+
+function WorkspaceBundleInstallContent({
   initialHandle = '',
   initialProposalId = '',
   targetSpaceId,
@@ -732,6 +764,29 @@ export function WorkspaceBundleInstallWizard({
   const [installSeed, setInstallSeed] = useState<InstallSeed | null>(null);
   const requestedProposalIdRef = useRef('');
   const requestedHandleRef = useRef('');
+  const restoredRef = useRef(false);
+  const initialSourceRef = useRef('');
+  const generationRef = useRef(0);
+  const busyRef = useRef(false);
+  useEffect(
+    () => () => {
+      generationRef.current += 1;
+      restoredRef.current = false;
+      busyRef.current = false;
+    },
+    []
+  );
+  const beginOperation = useCallback((key: string) => {
+    const generation = ++generationRef.current;
+    busyRef.current = true;
+    setBusyKey(key);
+    return () => generationRef.current === generation;
+  }, []);
+  const finishOperation = useCallback((current: () => boolean) => {
+    if (!current()) return;
+    busyRef.current = false;
+    setBusyKey(null);
+  }, []);
 
   const proposal = snapshot?.proposal;
   const mcpDestinations = useMemo(
@@ -825,13 +880,16 @@ export function WorkspaceBundleInstallWizard({
         setRetryMode(null);
         return;
       }
-      setBusyKey('review');
+      const current = beginOperation('review');
+      requestedHandleRef.current = parsed.coordinate;
+      setInstallSeed(readInstallSeed(parsed.coordinate, actorId));
       setError(null);
       try {
         const next = await fetchWorkspaceBundleInstallReview(parsed);
+        if (!current()) return;
+        setHandleInput(parsed.coordinate);
         setHandle(parsed);
         setReview(next);
-        setInstallSeed(readInstallSeed(parsed.coordinate, actorId));
         requestedHandleRef.current = parsed.coordinate;
         writeActiveInstall(actorId, {
           proposalId: '',
@@ -840,71 +898,79 @@ export function WorkspaceBundleInstallWizard({
         onProposalChange?.(null, parsed.coordinate);
         setRetryMode(null);
       } catch (nextError) {
+        if (!current()) return;
         setError(errorMessage(nextError, installationErrorFallback));
         setRetryMode('review');
       } finally {
-        setBusyKey(null);
+        finishOperation(current);
       }
     },
-    [actorId, installationErrorFallback, onProposalChange, t]
+    [
+      beginOperation,
+      finishOperation,
+      actorId,
+      installationErrorFallback,
+      onProposalChange,
+      t,
+    ]
   );
 
   const resumeProposal = useCallback(
     async (proposalId: string) => {
-      setBusyKey('resume');
+      const current = beginOperation('resume');
+      requestedProposalIdRef.current = proposalId;
       setError(null);
       try {
         const next = await fetchWorkspaceBundleInstallProposal(proposalId);
+        if (!current()) return;
         setSnapshot(next);
-        setHandle(
-          parseWorkspaceBundleHandle(
-            next.proposal.install_plan.public_coordinate || ''
-          )
+        const active = readActiveInstall(actorId);
+        const restoredHandle = parseWorkspaceBundleHandle(
+          next.proposal.install_plan.public_coordinate ||
+            (active?.proposalId === proposalId ? active.handle : '') ||
+            requestedHandleRef.current
         );
+        setHandle(restoredHandle);
+        if (restoredHandle) {
+          requestedHandleRef.current = restoredHandle.coordinate;
+          setHandleInput(restoredHandle.coordinate);
+        }
         setRetryMode(null);
       } catch (nextError) {
+        if (!current()) return;
         setError(errorMessage(nextError, installationErrorFallback));
         setRetryMode('resume');
       } finally {
-        setBusyKey(null);
+        finishOperation(current);
       }
     },
-    [installationErrorFallback]
+    [actorId, beginOperation, finishOperation, installationErrorFallback]
   );
 
   useEffect(() => {
-    if (initialProposalId) {
-      if (requestedProposalIdRef.current === initialProposalId) return;
-      requestedProposalIdRef.current = initialProposalId;
-      void resumeProposal(initialProposalId);
+    const source = JSON.stringify([initialProposalId, initialHandle]);
+    if (restoredRef.current && initialSourceRef.current === source) return;
+    restoredRef.current = true;
+    initialSourceRef.current = source;
+    const active =
+      initialProposalId || initialHandle
+        ? { proposalId: initialProposalId, handle: initialHandle }
+        : readActiveInstall(actorId);
+    if (!active) return;
+    if (
+      requestedProposalIdRef.current === active.proposalId &&
+      requestedHandleRef.current === active.handle &&
+      busyRef.current
+    )
       return;
-    }
-    if (initialHandle) {
-      if (requestedHandleRef.current === initialHandle) return;
-      requestedHandleRef.current = initialHandle;
-      void loadReview(initialHandle);
-      return;
-    }
-    const activeInstall = readActiveInstall(actorId);
-    if (activeInstall) {
-      requestedProposalIdRef.current = activeInstall.proposalId;
-      requestedHandleRef.current = activeInstall.handle;
-      setHandleInput(activeInstall.handle);
-      onProposalChange?.(activeInstall.proposalId, activeInstall.handle);
-      if (activeInstall.proposalId) {
-        void resumeProposal(activeInstall.proposalId);
-      } else {
-        void loadReview(activeInstall.handle);
-      }
-    }
-  }, [
-    actorId,
-    initialHandle,
-    initialProposalId,
-    loadReview,
-    onProposalChange,
-    resumeProposal,
-  ]);
+    requestedProposalIdRef.current = active.proposalId;
+    requestedHandleRef.current = active.handle;
+    setHandleInput(active.handle);
+    setReview(null);
+    setSnapshot(null);
+    if (active.proposalId) void resumeProposal(active.proposalId);
+    else void loadReview(active.handle);
+  }, [actorId, initialHandle, initialProposalId, loadReview, resumeProposal]);
 
   useEffect(() => {
     if (
@@ -920,7 +986,8 @@ export function WorkspaceBundleInstallWizard({
 
   const startInstall = useCallback(async () => {
     if (!review || !handle || !email || !actorId) return;
-    setBusyKey('start');
+    if (busyRef.current) return;
+    const current = beginOperation('start');
     setError(null);
     try {
       let seed = installSeed;
@@ -960,9 +1027,11 @@ export function WorkspaceBundleInstallWizard({
               setActive: false,
               metadata,
             });
+        if (!current()) return;
         if (reuseTargetSpace) {
           await updateSpaceOnServer(spaceId, { name, metadata });
         }
+        if (!current()) return;
         seed = { proposalId, requestId, spaceId };
         setInstallSeed(seed);
         try {
@@ -995,8 +1064,9 @@ export function WorkspaceBundleInstallWizard({
           userId,
           space,
         });
+        if (!current()) return;
         if (!root) {
-          clearInstallSeed(handle.coordinate, actorId);
+          clearInstallSeed(handle.coordinate, actorId, seed.proposalId);
           setInstallSeed(null);
           if (reuseTargetSpace && targetSpace) {
             await updateSpaceOnServer(spaceId, {
@@ -1019,6 +1089,7 @@ export function WorkspaceBundleInstallWizard({
           );
         }
       }
+      if (!current()) return;
       const proposed = await createWorkspaceBundleInstallProposal({
         proposalId: seed.proposalId,
         requestId: seed.requestId,
@@ -1027,7 +1098,8 @@ export function WorkspaceBundleInstallWizard({
         slug: handle.slug,
         version: handle.version,
       });
-      clearInstallSeed(handle.coordinate, actorId);
+      if (!current()) return;
+      clearInstallSeed(handle.coordinate, actorId, seed.proposalId);
       requestedProposalIdRef.current = seed.proposalId;
       writeActiveInstall(actorId, {
         proposalId: seed.proposalId,
@@ -1039,12 +1111,15 @@ export function WorkspaceBundleInstallWizard({
       setSnapshot(proposed);
       setRetryMode(null);
     } catch (nextError) {
+      if (!current()) return;
       setError(errorMessage(nextError, installationErrorFallback));
       setRetryMode('start');
     } finally {
-      setBusyKey(null);
+      finishOperation(current);
     }
   }, [
+    beginOperation,
+    finishOperation,
     actorId,
     createSpaceOnServer,
     deleteSpaceOnServer,
@@ -1070,12 +1145,14 @@ export function WorkspaceBundleInstallWizard({
         );
         return false;
       }
-      setBusyKey(item.requirement_key);
+      if (busyRef.current) return false;
+      const current = beginOperation(item.requirement_key);
       setError(null);
       let storedSecretRef: string | null = null;
       let accountScopeDigest: string | null = null;
       try {
         accountScopeDigest = await workspaceBundleAccountScopeDigest(actorId);
+        if (!current()) return false;
         const stored = await host.electronAPI.workspaceSecretPut({
           account_scope_digest: accountScopeDigest,
           space_id: proposal.space_id,
@@ -1083,6 +1160,7 @@ export function WorkspaceBundleInstallWizard({
           slot_id: item.requirement_key,
           value,
         });
+        if (!current()) return false;
         storedSecretRef = stored.secret_ref;
         const next = await bindWorkspaceBundleLocalValues({
           proposalId: proposal.proposal_id,
@@ -1099,6 +1177,7 @@ export function WorkspaceBundleInstallWizard({
             },
           ],
         });
+        if (!current()) return false;
         setSnapshot(next);
         await Promise.allSettled(
           (next.cleanup_secret_refs ?? []).map((secretRef) =>
@@ -1113,12 +1192,14 @@ export function WorkspaceBundleInstallWizard({
         );
         return true;
       } catch (nextError) {
+        if (!current()) return false;
         setError(errorMessage(nextError, installationErrorFallback));
         let bindingWasCommitted = false;
         try {
           const recovered = await fetchWorkspaceBundleInstallProposal(
             proposal.proposal_id
           );
+          if (!current()) return false;
           setSnapshot(recovered);
           const requirement = recovered.value_requirements.find(
             (candidate) =>
@@ -1152,44 +1233,63 @@ export function WorkspaceBundleInstallWizard({
         }
         return false;
       } finally {
-        setBusyKey(null);
+        finishOperation(current);
       }
     },
-    [actorId, host, installationErrorFallback, proposal, t]
+    [
+      beginOperation,
+      finishOperation,
+      actorId,
+      host,
+      installationErrorFallback,
+      proposal,
+      t,
+    ]
   );
 
   const bindPath = useCallback(
     async (slotId: string) => {
       if (!proposal || !host?.electronAPI?.selectFile || !actorId) return;
-      const selected = await host.electronAPI.selectFile({
-        properties: ['openDirectory'],
-      });
-      const localPath = selected?.files?.[0]?.filePath;
-      if (!selected?.success || !localPath) return;
-      setBusyKey(slotId);
+      if (busyRef.current) return;
+      const current = beginOperation(slotId);
       setError(null);
       try {
-        setSnapshot(
-          await bindWorkspaceBundleLocalPath({
-            proposalId: proposal.proposal_id,
-            expectedVersion: proposal.version,
-            slotId,
-            localPath,
-            actorId,
-          })
-        );
+        const selected = await host.electronAPI.selectFile({
+          properties: ['openDirectory'],
+        });
+        if (!current()) return;
+        const localPath = selected?.files?.[0]?.filePath;
+        if (!selected?.success || !localPath) return;
+        const next = await bindWorkspaceBundleLocalPath({
+          proposalId: proposal.proposal_id,
+          expectedVersion: proposal.version,
+          slotId,
+          localPath,
+          actorId,
+        });
+        if (!current()) return;
+        setSnapshot(next);
       } catch (nextError) {
+        if (!current()) return;
         setError(errorMessage(nextError, installationErrorFallback));
       } finally {
-        setBusyKey(null);
+        finishOperation(current);
       }
     },
-    [actorId, host, installationErrorFallback, proposal]
+    [
+      beginOperation,
+      finishOperation,
+      actorId,
+      host,
+      installationErrorFallback,
+      proposal,
+    ]
   );
 
   const bindConnector = useCallback(
     async (slot: WorkspaceBundleInstallPlan['connector_slots'][number]) => {
       if (!proposal || !actorId) return;
+      if (busyRef.current) return;
       const provider = connectedProviders.find(
         (item) => item.service.toLowerCase() === slot.connector_id.toLowerCase()
       );
@@ -1204,133 +1304,290 @@ export function WorkspaceBundleInstallWizard({
         );
         return;
       }
-      setBusyKey(slot.slot_id);
+      const current = beginOperation(slot.slot_id);
       setError(null);
       try {
-        setSnapshot(
-          await bindWorkspaceBundleConnector({
-            proposalId: proposal.proposal_id,
-            expectedVersion: proposal.version,
-            slotId: slot.slot_id,
-            connectorId: slot.connector_id,
-            connectionId,
-            actorId,
-          })
-        );
+        const next = await bindWorkspaceBundleConnector({
+          proposalId: proposal.proposal_id,
+          expectedVersion: proposal.version,
+          slotId: slot.slot_id,
+          connectorId: slot.connector_id,
+          connectionId,
+          actorId,
+        });
+        if (!current()) return;
+        setSnapshot(next);
       } catch (nextError) {
+        if (!current()) return;
         setError(errorMessage(nextError, installationErrorFallback));
       } finally {
-        setBusyKey(null);
+        finishOperation(current);
       }
     },
-    [actorId, connectedProviders, installationErrorFallback, proposal, t]
+    [
+      beginOperation,
+      finishOperation,
+      actorId,
+      connectedProviders,
+      installationErrorFallback,
+      proposal,
+      t,
+    ]
   );
 
   const approveScript = useCallback(
     async (actionId: string) => {
       if (!proposal || !actorId) return;
-      setBusyKey(actionId);
+      if (busyRef.current) return;
+      const current = beginOperation(actionId);
       setError(null);
       try {
-        setSnapshot(
-          await approveWorkspaceBundleScript({
-            proposalId: proposal.proposal_id,
-            expectedVersion: proposal.version,
-            actionId,
-            actorId,
-          })
-        );
+        const next = await approveWorkspaceBundleScript({
+          proposalId: proposal.proposal_id,
+          expectedVersion: proposal.version,
+          actionId,
+          actorId,
+        });
+        if (!current()) return;
+        setSnapshot(next);
       } catch (nextError) {
+        if (!current()) return;
         setError(errorMessage(nextError, installationErrorFallback));
       } finally {
-        setBusyKey(null);
+        finishOperation(current);
       }
     },
-    [actorId, installationErrorFallback, proposal]
+    [
+      beginOperation,
+      finishOperation,
+      actorId,
+      installationErrorFallback,
+      proposal,
+    ]
   );
 
   const continueApproval = useCallback(async () => {
     if (!proposal || proposal.state !== 'proposed' || !actorId) return;
-    setBusyKey('approval');
+    if (busyRef.current) return;
+    const current = beginOperation('approval');
     setError(null);
     try {
-      setSnapshot(
-        await decideWorkspaceBundleInstall({
-          proposalId: proposal.proposal_id,
-          expectedVersion: proposal.version,
-          approved: true,
-          actorId,
-        })
-      );
+      const next = await decideWorkspaceBundleInstall({
+        proposalId: proposal.proposal_id,
+        expectedVersion: proposal.version,
+        approved: true,
+        actorId,
+      });
+      if (!current()) return;
+      setSnapshot(next);
       setRetryMode(null);
     } catch (nextError) {
+      if (!current()) return;
       setError(errorMessage(nextError, installationErrorFallback));
       setRetryMode('resume');
     } finally {
-      setBusyKey(null);
+      finishOperation(current);
     }
-  }, [actorId, installationErrorFallback, proposal]);
+  }, [
+    beginOperation,
+    finishOperation,
+    actorId,
+    installationErrorFallback,
+    proposal,
+  ]);
 
   const materialize = useCallback(async () => {
     if (!proposal || !email || !actorId) return;
-    setBusyKey('materialize');
+    if (
+      !['approved', 'needs_attention', 'materialized'].includes(proposal.state)
+    )
+      return;
+    if (busyRef.current) return;
+    const current = beginOperation('materialize');
     setError(null);
     try {
-      setSnapshot(
-        await materializeWorkspaceBundle({
-          proposalId: proposal.proposal_id,
-          expectedVersion: proposal.version,
-          email,
-          userId,
-          actorId,
-        })
-      );
+      const next = await materializeWorkspaceBundle({
+        proposalId: proposal.proposal_id,
+        expectedVersion: proposal.version,
+        email,
+        userId,
+        actorId,
+      });
+      if (!current()) return;
+      setSnapshot(next);
       setRetryMode(null);
     } catch (nextError) {
+      if (!current()) return;
       const message = errorMessage(nextError, installationErrorFallback);
       setError(message);
       setRetryMode('materialize');
       try {
-        setSnapshot(
-          await fetchWorkspaceBundleInstallProposal(proposal.proposal_id)
+        const next = await fetchWorkspaceBundleInstallProposal(
+          proposal.proposal_id
         );
+        if (current()) {
+          setSnapshot(next);
+          setRetryMode(
+            next.proposal.state === 'materializing'
+              ? 'resume'
+              : next.proposal.state === 'needs_attention'
+                ? 'materialize'
+                : null
+          );
+        }
       } catch {
         // Preserve the materialization failure as the actionable error.
       }
     } finally {
-      setBusyKey(null);
+      finishOperation(current);
     }
-  }, [actorId, email, installationErrorFallback, proposal, userId]);
+  }, [
+    beginOperation,
+    finishOperation,
+    actorId,
+    email,
+    installationErrorFallback,
+    proposal,
+    userId,
+  ]);
 
   const openWorkspace = () => {
     if (!proposal) return;
     setActiveSpace(proposal.space_id);
     projectStore.setActiveProject(null);
     setActiveWorkspaceTab('workforce');
-    clearActiveInstall(actorId);
+    clearActiveInstall(actorId, {
+      proposalId: requestedProposalIdRef.current,
+      handle: requestedHandleRef.current,
+    });
     onWorkspaceOpen?.();
     navigate('/');
   };
 
   const retry = () => {
     if (retryMode === 'review') void loadReview(handleInput);
-    if (retryMode === 'resume' && initialProposalId)
-      void resumeProposal(initialProposalId);
+    if (retryMode === 'resume' && requestedProposalIdRef.current)
+      void resumeProposal(requestedProposalIdRef.current);
+    if (retryMode === 'reject') void cancelImport();
     if (retryMode === 'start') void startInstall();
     if (retryMode === 'materialize') void materialize();
   };
 
   const resetInstall = () => {
-    setHandleInput('');
-    setHandle(null);
-    setReview(null);
-    setSnapshot(null);
-    setError(null);
-    setRetryMode(null);
-    setInstallSeed(null);
-    clearActiveInstall(actorId);
-    onProposalChange?.(null, null);
+    // Storage is cleared before the visible state; failures leave a retryable receipt.
+    try {
+      const coordinate = requestedHandleRef.current;
+      const seedId = installSeed?.proposalId || proposal?.proposal_id;
+      if (coordinate && seedId) clearInstallSeed(coordinate, actorId, seedId);
+      clearActiveInstall(actorId, {
+        proposalId: requestedProposalIdRef.current,
+        handle: coordinate,
+      });
+      generationRef.current += 1;
+      busyRef.current = false;
+      setBusyKey(null);
+      requestedHandleRef.current = '';
+      requestedProposalIdRef.current = '';
+      setHandleInput('');
+      setHandle(null);
+      setReview(null);
+      setSnapshot(null);
+      setError(null);
+      setRetryMode(null);
+      setInstallSeed(null);
+      onProposalChange?.(null, null);
+    } catch (nextError) {
+      setError(errorMessage(nextError, installationErrorFallback));
+    }
   };
+
+  const cancelImport = async () => {
+    if (busyRef.current || !actorId) return;
+    const proposalId =
+      proposal?.proposal_id ||
+      requestedProposalIdRef.current ||
+      installSeed?.proposalId;
+    if (!proposalId) {
+      resetInstall();
+      return;
+    }
+    const current = beginOperation('reject');
+    setError(null);
+    try {
+      // Resolve ambiguous start failures before deciding. A missing unapproved
+      // seed can be abandoned: proposal creation never grants write authority.
+      let latest = snapshot;
+      if (!latest) {
+        try {
+          latest = await fetchWorkspaceBundleInstallProposal(proposalId);
+        } catch (failure) {
+          if (
+            current() &&
+            installSeed?.proposalId === proposalId &&
+            (failure as { status?: number }).status === 404
+          ) {
+            resetInstall();
+            return;
+          }
+          throw failure;
+        }
+      }
+      if (!current()) return;
+      setSnapshot(latest);
+      if (
+        !['proposed', 'approved', 'needs_attention', 'rejected'].includes(
+          latest.proposal.state
+        )
+      )
+        return;
+      const rejected = await decideWorkspaceBundleInstall({
+        proposalId,
+        expectedVersion: latest.proposal.version,
+        approved: false,
+        actorId,
+      });
+      if (!current()) return;
+      setSnapshot(rejected);
+      setRetryMode(null);
+    } catch (nextError) {
+      if (!current()) return;
+      setError(errorMessage(nextError, installationErrorFallback));
+      setRetryMode('reject');
+      try {
+        const recovered = await fetchWorkspaceBundleInstallProposal(proposalId);
+        if (!current()) return;
+        setSnapshot(recovered);
+        setRetryMode(
+          recovered.proposal.state === 'materializing'
+            ? 'resume'
+            : recovered.proposal.state === 'materialized'
+              ? null
+              : 'reject'
+        );
+      } catch {
+        /* Keep the exact import until its outcome can be confirmed. */
+      }
+    } finally {
+      finishOperation(current);
+    }
+  };
+
+  const failureEvidence = proposal?.error_code ? (
+    <div
+      role="alert"
+      className="space-y-ds-stack-related text-ds-text-error-strong-default"
+    >
+      <DsText>
+        {t('layout.workspace-bundle-failure-retained', {
+          defaultValue:
+            'Installation did not finish. The Space draft, local values and any installed files are retained.',
+        })}
+      </DsText>
+      <DsText channel="code" className="break-all">
+        {proposal.error_code}
+      </DsText>
+    </div>
+  ) : null;
 
   if (proposal?.state === 'rejected') {
     return (
@@ -1342,7 +1599,13 @@ export function WorkspaceBundleInstallWizard({
             })}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-ds-stack-related">
+          {failureEvidence}
+          {error ? (
+            <div role="alert">
+              <DsText>{error}</DsText>
+            </div>
+          ) : null}
           <p className="text-ds-text-base text-ds-ink-muted-default">
             {t('layout.workspace-bundle-proposal-rejected', {
               defaultValue:
@@ -1360,7 +1623,11 @@ export function WorkspaceBundleInstallWizard({
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-5">
+    <fieldset
+      disabled={busyKey !== null}
+      aria-busy={busyKey !== null}
+      className="m-0 mx-auto w-full max-w-4xl min-w-0 space-y-5 border-0 border-x-0 border-y-0 p-0"
+    >
       {showHeader ? (
         <header>
           <h1 className="!text-ds-text-display font-semibold">
@@ -1377,8 +1644,42 @@ export function WorkspaceBundleInstallWizard({
         </header>
       ) : null}
 
+      {failureEvidence}
+      {(
+        proposal
+          ? ['proposed', 'approved', 'needs_attention'].includes(proposal.state)
+          : Boolean(
+              review ||
+              installSeed ||
+              requestedHandleRef.current ||
+              requestedProposalIdRef.current
+            )
+      ) ? (
+        <div className="space-y-ds-stack-related">
+          <Button
+            type="button"
+            variant="secondary"
+            tone="error"
+            size="sm"
+            onClick={() => void cancelImport()}
+          >
+            {t('layout.workspace-bundle-cancel-import', {
+              defaultValue: 'Cancel import',
+            })}
+          </Button>
+          <DsText as="p" role="meta" className="text-ds-ink-muted-default">
+            {t('layout.workspace-bundle-cancel-keeps-files', {
+              defaultValue:
+                'Cancelling keeps the Space draft, local values and any installed files.',
+            })}
+          </DsText>
+        </div>
+      ) : null}
       {error ? (
-        <div className="rounded-xl border border-x border-y border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-4 text-ds-text-base text-ds-text-error-strong-default">
+        <div
+          role="alert"
+          className="rounded-xl border border-x border-y border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-4 text-ds-text-base text-ds-text-error-strong-default"
+        >
           <p>{error}</p>
           {retryMode === 'start' && installSeed ? (
             <p className="mt-2 text-ds-ink-muted-default">
@@ -1434,7 +1735,12 @@ export function WorkspaceBundleInstallWizard({
                   defaultValue: 'Workspace Bundle share handle',
                 })}
               />
-              <Button type="submit" disabled={busyKey === 'review'}>
+              <Button
+                type="submit"
+                disabled={
+                  busyKey !== null || Boolean(requestedProposalIdRef.current)
+                }
+              >
                 {busyKey === 'review' ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -1769,7 +2075,7 @@ export function WorkspaceBundleInstallWizard({
                 <p className="text-ds-text-base text-ds-ink-muted-default">
                   {t('layout.workspace-bundle-materialization-interrupted', {
                     defaultValue:
-                      'The previous materialization was interrupted. Refresh the durable proposal before retrying.',
+                      'Installation may still be running. Refresh to check its saved state before taking another action.',
                   })}
                 </p>
                 <Button
@@ -2054,6 +2360,6 @@ export function WorkspaceBundleInstallWizard({
           ) : null}
         </>
       ) : null}
-    </div>
+    </fieldset>
   );
 }

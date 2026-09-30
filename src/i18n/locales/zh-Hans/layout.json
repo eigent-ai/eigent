@@ -1060,7 +1060,7 @@
   "workspace-bundle-local-secrets-sent": "发送到此 MCP 的本地机密",
   "workspace-bundle-local-value-for": "{{name}} 的本地值",
   "workspace-bundle-local-value-unavailable": "先前的本地值不可用。请重新输入以修复此绑定。",
-  "workspace-bundle-materialization-interrupted": "上次生成过程已中断。重试前请刷新持久提案。",
+  "workspace-bundle-materialization-interrupted": "安装可能仍在进行。请刷新查看已保存的状态，再执行其他操作。",
   "workspace-bundle-mcp-definition-unavailable": "此 MCP 定义不可用，无法批准或启动。",
   "workspace-bundle-mcp-destination-kind": "MCP 目标 · {{kind}}",
   "workspace-bundle-mcp-executable-unpinned": "此 MCP 可执行文件未固定到已审阅的套件资源，因此无法批准或启动。",
@@ -1515,5 +1515,8 @@
   "space-discovery-resource-disabled": "已在全局设置中禁用",
   "space-discovery-resource-invalid": "全局配置无效或不可用",
   "space-discovery-model-partial": "部分模型来源加载失败。已显示可用模型，请重试加载全部来源。",
-  "space-discovery-connectors-disabled": "连接器目录已禁用。请在全局设置中启用后重试。"
+  "space-discovery-connectors-disabled": "连接器目录已禁用。请在全局设置中启用后重试。",
+  "workspace-bundle-cancel-import": "取消导入",
+  "workspace-bundle-cancel-keeps-files": "取消后将保留 Space 草稿、本地配置值和已安装的文件。",
+  "workspace-bundle-failure-retained": "安装未完成。Space 草稿、本地配置值和已安装的文件已保留。"
 }

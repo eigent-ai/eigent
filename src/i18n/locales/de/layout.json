@@ -1065,7 +1065,7 @@
   "workspace-bundle-local-secrets-sent": "Lokale Geheimnisse an diesen MCP gesendet",
   "workspace-bundle-local-value-for": "Lokale Wert für {{name}}",
   "workspace-bundle-local-value-unavailable": "Der vorherige lokale Wert ist nicht verfügbar. Sie müssen ihn wieder eingeben, um diese Bindung zu reparieren.",
-  "workspace-bundle-materialization-interrupted": "Die vorherige Materialisierung wurde abgebrochen. Aktualisieren Sie den dauerhaften Vorschlag, bevor Sie noch einmal versuchen.",
+  "workspace-bundle-materialization-interrupted": "Die Installation läuft möglicherweise noch. Aktualisieren Sie den gespeicherten Status, bevor Sie eine weitere Aktion ausführen.",
   "workspace-bundle-mcp-definition-unavailable": "Diese MCP-Definition ist nicht verfügbar und kann nicht genehmigt oder gestartet werden.",
   "workspace-bundle-mcp-destination-kind": "MCP-Ziel · {{kind}}",
   "workspace-bundle-mcp-executable-unpinned": "Dieses MCP-Executable ist nicht an eine geprüfte Bundle-Ressource gebunden und kann nicht genehmigt oder gestartet werden.",
@@ -1537,5 +1537,8 @@
   "space-discovery-resource-disabled": "In den globalen Einstellungen deaktiviert",
   "space-discovery-resource-invalid": "Globale Konfiguration ungültig oder nicht verfügbar",
   "space-discovery-model-partial": "Einige Modellquellen konnten nicht geladen werden. Verfügbare Modelle werden angezeigt. Versuchen Sie es erneut.",
-  "space-discovery-connectors-disabled": "Der Connector-Katalog ist deaktiviert. Aktivieren Sie ihn in den globalen Einstellungen und versuchen Sie es erneut."
+  "space-discovery-connectors-disabled": "Der Connector-Katalog ist deaktiviert. Aktivieren Sie ihn in den globalen Einstellungen und versuchen Sie es erneut.",
+  "workspace-bundle-cancel-import": "Import abbrechen",
+  "workspace-bundle-cancel-keeps-files": "Beim Abbrechen bleiben der Space-Entwurf, lokale Werte und bereits installierte Dateien erhalten.",
+  "workspace-bundle-failure-retained": "Die Installation wurde nicht abgeschlossen. Der Space-Entwurf, lokale Werte und bereits installierte Dateien bleiben erhalten."
 }
