@@ -1310,9 +1310,10 @@ class AdvancedGitService:
                 "for-each-ref",
                 "--sort=-committerdate",
                 "--format=%(refname)%00%(objectname)%00"
-                "%(committerdate:unix)%00%(subject)",
+                "%(committerdate:unix)%00%(subject)%00%(objecttype)",
                 "refs/heads",
                 "refs/eigent/archive",
+                "refs/eigent/tasks",
             ),
         )
         commits = self.git.run_advanced_argv(
@@ -1332,7 +1333,6 @@ class AdvancedGitService:
             object_stats.get("size", 0) + object_stats.get("size-pack", 0)
         ) * 1024
         policy = DEFAULT_GIT_RETENTION_POLICY
-        parsed_branches = self._parse_branches(branches.stdout)
         branch_owners = {
             project.integration_ref: {"project_id": project.project_id}
             for project in self.journal.list_project_git_states()
@@ -1345,6 +1345,22 @@ class AdvancedGitService:
             if run.repository_id == repository_id
         }
         for run in runs.values():
+            # Direct checkout finalization retains Task boundaries outside
+            # refs/heads. Resolve their opaque Run digest using this
+            # repository's journal, never a commit subject or shared OID.
+            task_prefix = (
+                "refs/eigent/tasks/"
+                + canonical_digest({"run_id": run.run_id})[:32]
+            )
+            for suffix in (
+                "completed",
+                "recovery-failed",
+                "recovery-cancelled",
+            ):
+                branch_owners[f"{task_prefix}/{suffix}"] = {
+                    "project_id": run.project_id,
+                    "run_id": run.run_id,
+                }
             if run.run_ref is not None:
                 branch_owners[run.run_ref] = {
                     "project_id": run.project_id,
@@ -1373,8 +1389,9 @@ class AdvancedGitService:
                     + canonical_digest({"agent_id": agent.agent_id})[:24]
                 )
                 branch_owners[archive_ref] = owner
-        for branch in parsed_branches:
-            branch.update(branch_owners.get(branch["ref"], {}))
+        parsed_branches = self._parse_branches(
+            branches.stdout, owners=branch_owners
+        )
         parsed_commits = self._parse_commits(commits.stdout)
         checkpoints_by_oid = {
             checkpoint.commit_oid: checkpoint
@@ -1593,13 +1610,13 @@ class AdvancedGitService:
         )
 
     @staticmethod
-    def _parse_branches(value: str) -> list[dict]:
+    def _parse_branches(value: str, *, owners: dict[str, dict]) -> list[dict]:
         records = []
         for line in value.splitlines():
-            parts = line.split("\x00", 3)
-            if len(parts) != 4:
+            parts = line.split("\x00", 4)
+            if len(parts) != 5:
                 continue
-            ref, oid, timestamp, subject = parts
+            ref, oid, timestamp, subject, object_type = parts
             records.append(
                 {
                     "ref": ref,
@@ -1607,6 +1624,12 @@ class AdvancedGitService:
                     "committed_at": int(timestamp or 0),
                     "subject": subject,
                     "archived": ref.startswith("refs/eigent/archive/"),
+                    **(
+                        owners.get(ref, {})
+                        if object_type == "commit"
+                        or not ref.startswith("refs/eigent/tasks/")
+                        else {}
+                    ),
                 }
             )
         return records
