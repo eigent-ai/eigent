@@ -487,3 +487,32 @@ def test_task_changes_endpoint_requires_local_capability(
         "scan_status": "complete",
         "truncated": False,
     }
+
+
+def test_list_project_files_requires_local_capability(monkeypatch, tmp_path):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    project_root = tmp_path / "project-1"
+    project_root.mkdir()
+    (project_root / "report.md").write_text("hello")
+    monkeypatch.setattr(
+        file_controller,
+        "_resolve_file_root",
+        lambda email, project_id, space_id=None, user_id=None: project_root,
+    )
+
+    app = FastAPI()
+    app.include_router(file_controller.router)
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    params = {"project_id": "project-1", "email": "user@example.com"}
+
+    # Without the renderer capability the listing is not served: the email
+    # query parameter names a user, it does not authenticate one.
+    assert client.get("/files", params=params).status_code == 401
+    response = client.get(
+        "/files",
+        params=params,
+        headers={LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"},
+    )
+    assert response.status_code == 200
+    assert [item["filename"] for item in response.json()] == ["report.md"]
