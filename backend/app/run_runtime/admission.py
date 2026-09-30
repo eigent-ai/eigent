@@ -24,7 +24,11 @@ from concurrent.futures import Future
 from typing import ParamSpec, TypeVar
 
 from app.run_context import RunContext
-from app.run_journal import SQLiteRunJournal, get_default_run_journal
+from app.run_journal import (
+    InvalidRunTransitionError,
+    SQLiteRunJournal,
+    get_default_run_journal,
+)
 from app.run_journal.models import (
     AttemptEnvironmentBinding,
     RunAttemptRecord,
@@ -81,6 +85,7 @@ class WarmRunAdmission:
         task_lock: TaskLock,
         *,
         logger: logging.Logger,
+        run_id: str | None = None,
     ) -> None:
         self.journal = journal
         self.task_lock = task_lock
@@ -88,6 +93,42 @@ class WarmRunAdmission:
         self.receipt: WarmAdmissionReceipt | None = None
         self.publication: Future[bool] = Future()
         self.published = False
+        self.run_id = run_id
+        self._owner = asyncio.current_task()
+        self._finished: Future[None] = Future()
+        self._aborted = False
+
+    def finish(self) -> None:
+        """Signal only after the controller has drained workers and rollback."""
+        self._finished.set_result(None)
+
+    async def cancel_before_publication(self) -> bool:
+        """Stop may not terminalize while a preparatory worker can acquire Git."""
+        owner = self._owner
+        if owner is None:
+            return False
+
+        def cancel_owner() -> None:
+            # Execute on the request loop: publication may have committed while
+            # the consumer was scheduling this callback from another loop.
+            if (
+                not self._finished.done()
+                and not self.published
+                and not (self.receipt is not None and self.receipt.published)
+            ):
+                owner.cancel()
+
+        owner.get_loop().call_soon_threadsafe(cancel_owner)
+        await drain_admission(asyncio.wrap_future(self._finished))
+        if (
+            not self.published
+            and self.receipt is not None
+            and self.receipt.owned
+        ):
+            raise InvalidRunTransitionError(
+                "warm admission rollback did not release ownership"
+            )
+        return self._aborted
 
     async def prepare(
         self,
@@ -161,11 +202,16 @@ class WarmRunAdmission:
             return
         if not self.publication.done():
             self.publication.set_result(False)
-        if self.receipt is None or not self.receipt.owned:
+        if self.receipt is None:
+            self._aborted = True
+            return
+        if not self.receipt.owned:
+            self._aborted = self.receipt.attempt_id is None
             return
         result = await asyncio.to_thread(
             self.journal.abort_warm_admission, self.receipt
         )
+        self._aborted = True
         if result is not None:
             scheduler = WorkspaceWriterScheduler(self.journal)
             await asyncio.to_thread(
@@ -177,6 +223,19 @@ class WarmRunAdmission:
             await asyncio.to_thread(
                 scheduler._record_promoted_request, result.next_acquired
             )
+
+
+async def abort_pending_warm_admission(task_lock: TaskLock) -> bool:
+    """Consume Stop as a retryable abort when its turn is still unpublished."""
+    admission = getattr(task_lock, "_warm_admission", None)
+    context = getattr(task_lock, "run_context", None)
+    if (
+        not isinstance(admission, WarmRunAdmission)
+        or not isinstance(context, RunContext)
+        or admission.run_id not in {context.run_id, task_lock.current_task_id}
+    ):
+        return False
+    return await admission.cancel_before_publication()
 
 
 async def activate_improve_admission(

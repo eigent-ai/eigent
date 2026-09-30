@@ -2250,8 +2250,12 @@ async def _improve_chat(
         else None
     )
     admission = WarmRunAdmission(
-        get_default_run_journal(), task_lock, logger=chat_logger
+        get_default_run_journal(),
+        task_lock,
+        logger=chat_logger,
+        run_id=data.task_id,
     )
+    task_lock._warm_admission = admission
     try:
         return await _prepare_improve_chat(
             id,
@@ -2297,6 +2301,10 @@ async def _improve_chat(
 
             await drain_admission(rollback(), propagate_cancellation=False)
         raise
+    finally:
+        admission.finish()
+        if task_lock._warm_admission is admission:
+            task_lock._warm_admission = None
 
 
 async def _prepare_improve_chat(

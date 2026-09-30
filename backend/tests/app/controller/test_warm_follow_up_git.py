@@ -15,6 +15,7 @@
 """Exercise legacy warm admission with the real journal, writer and Git flow."""
 
 import asyncio
+import json
 import logging
 import threading
 from dataclasses import replace
@@ -560,6 +561,176 @@ async def test_cancellation_drains_worker_before_cleanup(
         assert warm.journal.get_active_project_run("session") is None
         await follow_up(warm)
         assert warm.lock.run_context.attempt_id == attempts[0].attempt_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("repeat_cancel", [False, True])
+@pytest.mark.parametrize("phase", ["before_git", "after_git"])
+async def test_skip_drains_unpublished_git_worker_before_stopping(
+    warm, monkeypatch, repeat_cancel, phase
+):
+    from app.service import run_cancellation, single_agent_service
+    from app.utils.event_loop_utils import set_main_event_loop
+
+    write_and_finish(warm, "first.txt")
+    targets = WorkspaceStateStore(warm.journal)
+    targets.register_target(warm.root)
+    entered = threading.Event()
+    release = threading.Event()
+    admit = warm.workspace.admit_run
+
+    def paused(**kwargs):
+        result = admit(**kwargs) if phase == "after_git" else None
+        # Pause on both sides of acquisition, after the Attempt is owned.
+        entered.set()
+        assert release.wait(5), "test did not release Git admission"
+        return admit(**kwargs) if phase == "before_git" else result
+
+    monkeypatch.setattr(warm.workspace, "admit_run", paused)
+    monkeypatch.setattr(
+        controller, "get_task_lock_if_exists", lambda _: warm.lock
+    )
+    resolver = controller.get_workspace_resolver()
+    frozen = resolver.freeze_task_directories_for.return_value
+
+    def freeze(**kwargs):
+        warm.lock.current_task_id = kwargs["task_id"]
+        return frozen
+
+    resolver.freeze_task_directories_for.side_effect = freeze
+    monkeypatch.setattr(
+        run_cancellation, "get_default_run_coordinator", lambda: warm.runtime
+    )
+    monkeypatch.setattr(warm.runtime, "_run_journal", lambda: warm.journal)
+    monkeypatch.setattr(
+        "app.workspace_git.get_default_workspace_git_lifecycle",
+        lambda: warm.lifecycle,
+    )
+    finalize_memory = Mock()
+    monkeypatch.setattr(
+        single_agent_service, "_finalize_memory_for_turn", finalize_memory
+    )
+    monkeypatch.setattr(
+        single_agent_service,
+        "set_current_task_id",
+        lambda _, task_id: setattr(warm.lock, "current_task_id", task_id),
+    )
+    waiting_after_duplicate_stop = asyncio.Event()
+    get_queue = warm.lock.get_queue
+    queue_reads = 0
+
+    async def read_queue():
+        nonlocal queue_reads
+        queue_reads += 1
+        if queue_reads == 3:
+            waiting_after_duplicate_stop.set()
+        return await get_queue()
+
+    monkeypatch.setattr(warm.lock, "get_queue", read_queue)
+    set_main_event_loop(asyncio.get_running_loop())
+    stream = single_agent_service.single_agent_solve(
+        SimpleNamespace(project_id="session", task_id="first"),
+        warm.request,
+        warm.lock,
+    )
+    pending = asyncio.create_task(follow_up(warm))
+    stopped = asyncio.create_task(anext(stream))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        attempt = warm.journal.list_run_attempts("second")[0]
+        response = await asyncio.to_thread(
+            controller.skip_task, "session", expected_task_id="second"
+        )
+        assert response.status_code == 201
+        done, _ = await asyncio.wait({stopped, pending}, timeout=0.1)
+        assert not done, (
+            "Stop terminalized while Git could still acquire a writer"
+        )
+        assert pending.cancelling(), (
+            "Stop must interrupt unpublished admission"
+        )
+        if repeat_cancel:
+            await asyncio.to_thread(
+                controller.skip_task, "session", expected_task_id="second"
+            )
+            pending.cancel()
+            pending.cancel()
+            await asyncio.sleep(0)
+        assert warm.journal.get_run("second").status == "pending"
+        assert warm.journal.get_run("second").cancel_request_id is None
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+        event = json.loads((await asyncio.wait_for(stopped, 5))[6:])
+        assert event["step"] == "end"
+        assert not finalize_memory.called, (
+            "Stop must not rewrite the restored Run"
+        )
+        assert warm.lock.run_context.run_id == "first"
+        assert (
+            warm.journal.list_run_attempts("second")[0].outcome
+            == "warm_admission_aborted"
+        )
+        assert warm.journal.get_active_project_run("session") is None
+        assert (
+            warm.journal.get_workspace_writer_request(
+                "workspace-writer:second"
+            )
+            is None
+        )
+        assert targets.register_target(warm.root).available
+        if repeat_cancel:
+            # Resume the real consumer: the repeated Stop is stale after the
+            # previous context is restored, and must not cancel that Run.
+            stopped = asyncio.create_task(anext(stream))
+            await asyncio.wait_for(waiting_after_duplicate_stop.wait(), 5)
+            assert not stopped.done()
+            assert warm.journal.get_run("first").status == "completed"
+        monkeypatch.setattr(warm.workspace, "admit_run", admit)
+        # A peer can immediately acquire the registered physical checkout.
+        warm.journal.ensure_run(
+            run_id="other", project_id="peer", status="pending"
+        )
+        peer = activation.WarmRunAdmission(
+            warm.journal, warm.lock, logger=logging.getLogger(__name__)
+        )
+        await peer.prepare(
+            replace(
+                warm.lock.run_context,
+                run_id="other",
+                task_id="other",
+                project_id="peer",
+                attempt_id=None,
+            ),
+            request_id="other",
+            environment=None,
+        )
+        assert peer.receipt.writer.status == "acquired"
+        # Stop preserves the aborted Attempt identity for the same-key retry.
+        await follow_up(warm)
+        assert warm.lock.run_context.attempt_id == attempt.attempt_id
+        assert (
+            warm.journal.get_workspace_writer_request(
+                "workspace-writer:second"
+            ).status
+            == "queued"
+        )
+        # Abort the unpublished peer through the same owned cleanup. FIFO
+        # promotion lets the retry execute and checkpoint its own Run.
+        await peer.abort()
+        if not repeat_cancel:
+            stopped = asyncio.create_task(anext(stream))
+        confirmed = json.loads((await asyncio.wait_for(stopped, 5))[6:])
+        assert confirmed["step"] == "confirmed"
+        assert warm.journal.list_run_attempts("second")[0].status == "running"
+        assert write_and_finish(warm, "second.txt") is not None
+    finally:
+        release.set()
+        await asyncio.gather(pending, return_exceptions=True)
+        stopped.cancel()
+        await asyncio.gather(stopped, return_exceptions=True)
+        await stream.aclose()
+        set_main_event_loop(None)
 
 
 @pytest.mark.asyncio
