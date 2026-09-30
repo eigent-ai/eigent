@@ -16,8 +16,10 @@ import Workspace from '@/components/Workspace';
 import {
   fetchSpaceModelSelection,
   resolveSpaceModelBinding,
+  spaceModelError,
 } from '@/lib/spaceModelBinding';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
+import { errorCopy } from '@/lib/usageErrors';
 import { useAuthStore } from '@/store/authStore';
 import { openSettings } from '@/store/settingsStore';
 import {
@@ -366,15 +368,25 @@ describe('Workspace delegates current Space model validation to launch', () => {
     );
   });
 
-  it.each(variants)(
-    'surfaces the %s launch rejection without pinning or confirming success',
-    async (variant) => {
-      const failure = new Error('Synthetic Space model cannot be resolved');
+  it.each(
+    variants.flatMap((variant) =>
+      ['local', 'remote'].map((origin) => ({ variant, origin }))
+    )
+  )(
+    'surfaces the $origin $variant launch rejection without pinning or confirming success',
+    async ({ variant, origin }) => {
+      const failure =
+        origin === 'local'
+          ? spaceModelError('unavailable')
+          : new Error('SYNTHETIC_PRIVATE');
       mocks.newChatState.startTask.mockRejectedValueOnce(failure);
       await renderAfterGlobalProviderReset(variant);
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
       await waitFor(() =>
-        expect(toast.error).toHaveBeenCalledWith(failure.message, undefined)
+        expect(toast.error).toHaveBeenCalledWith(
+          origin === 'local' ? failure.message : errorCopy('task'),
+          undefined
+        )
       );
       expect(createSyncedProjectInSpace).toHaveBeenCalledTimes(1);
       expect(mocks.newChatState.startTask).toHaveBeenCalledTimes(1);

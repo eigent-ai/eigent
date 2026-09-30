@@ -23,6 +23,7 @@ import {
 import { setConnectionConfig } from '@/store/connectionStore';
 import { setUsageAccount, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { cleanup, render, waitFor } from '@testing-library/react';
+import i18next from 'i18next';
 import { toast } from 'sonner';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
@@ -94,6 +95,7 @@ vi.mock('@/api/http', async (importOriginal) => ({
   proxyFetchPut: async () => ({}),
 }));
 beforeEach(() => {
+  mocks.modelType = 'cloud';
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
   setConnectionConfig({
@@ -352,3 +354,24 @@ it.each(['network rejection', 'admission diagnostic'])(
     ).not.toContain('SYNTHETIC_PRIVATE');
   }
 );
+
+it('preserves local no-provider guidance from actual startTask in Sonner', async () => {
+  mocks.modelType = 'custom';
+  const fetch = vi.spyOn(globalThis, 'fetch');
+  const error = await start();
+  expect(error).toBeInstanceOf(Error);
+  expect(error.message).toBe(i18next.t('chat.no-model-provider'));
+  render(<Toaster />);
+  notifyError(error);
+  await waitFor(() =>
+    expect(document.querySelector('[data-sonner-toast]')?.textContent).toBe(
+      i18next.t('chat.no-model-provider')
+    )
+  );
+  expect(fetch).not.toHaveBeenCalled();
+  expect(useUsageNoticeStore.getState().incidents).toEqual([]);
+  expect(mocks.store.getState().tasks['quota-run']).toMatchObject({
+    isPending: false,
+    status: 'finished',
+  });
+});

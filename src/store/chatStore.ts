@@ -43,6 +43,7 @@ import {
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
 import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
+import { createLocalError } from '@/lib/localError';
 import {
   resolveSourceEventId,
   resolveSourceMessageId,
@@ -3237,7 +3238,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         if (!provider) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.no-model-provider', {
               defaultValue:
                 'No model provider is configured. Go to Agents > Models and configure at least one default model provider.',

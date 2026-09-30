@@ -18,6 +18,7 @@ import {
 } from '@/store/usageNoticeStore';
 import { toast } from 'sonner';
 import { ownErrorField } from './errorEnvelope';
+import { localErrorMessage } from './localError';
 import {
   classifyError,
   errorCopy,
@@ -104,8 +105,11 @@ export function notifyError(
         { modelType }
       )
     : reason;
-  const text = envelope ? ownErrorField(message, 'message') : message;
-  const raw = isRawErrorMessage(text) || envelope;
+  const localMessage = localErrorMessage(message);
+  const text =
+    localMessage ?? (envelope ? ownErrorField(message, 'message') : message);
+  const raw =
+    isRawErrorMessage(text) || (envelope && localMessage === undefined);
   const safeOptions =
     options && isRawErrorMessage(options.description)
       ? { ...options, description: errorCopy(presentationReason) }
