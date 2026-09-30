@@ -31,6 +31,8 @@ import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { useHost } from '@/host';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
 import {
   isProjectAchieved,
   setProjectAchievedState,
@@ -47,6 +49,7 @@ import { AUTOMATION_ICON, AUTOMATION_OFF_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { executionScope } from '@/service/executionApi';
+import { refreshSessionNavStatuses } from '@/service/sessionNavStatus';
 import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
@@ -152,6 +155,41 @@ export default function SpaceSidebar({
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
   const host = useHost();
+  const accountKey = useAuthStore(getAccountEnvironmentKey);
+  const navProjectIdsKey = JSON.stringify(
+    projectMetasForActiveSpace.map((project) => project.id).sort()
+  );
+  useEffect(() => {
+    let disposed = false;
+    const projectIds = JSON.parse(navProjectIdsKey) as string[];
+    const refresh = () =>
+      void refreshSessionNavStatuses(
+        projectIds,
+        accountKey,
+        (projectId) =>
+          !disposed &&
+          useSpaceStore.getState().getProjectMeta(projectId)?.spaceId ===
+            activeSpaceId
+      );
+    const onStatusChanged = (event: Event) => {
+      const projectId = (event as CustomEvent<{ projectId?: string }>).detail
+        ?.projectId;
+      if (!projectId || projectIds.includes(projectId)) refresh();
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    window.addEventListener(DURABLE_RUN_STATUS_CHANGED_EVENT, onStatusChanged);
+    host?.ipcRenderer?.on('backend-ready', refresh);
+    return () => {
+      disposed = true;
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener(
+        DURABLE_RUN_STATUS_CHANGED_EVENT,
+        onStatusChanged
+      );
+      host?.ipcRenderer?.off('backend-ready', refresh);
+    };
+  }, [accountKey, activeSpaceId, navProjectIdsKey, host?.ipcRenderer]);
   const ipcRenderer = host?.ipcRenderer;
 
   useEffect(() => {

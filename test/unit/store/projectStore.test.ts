@@ -2753,6 +2753,9 @@ describe('projectStore runtime shape', () => {
         .task_cloud_interrupted;
     expect(task.elapsed).toBeCloseTo(29_922, 0);
     expect(task.durableRunStatus).toBe('interrupted');
+    expect(
+      useProjectStore.getState().navLeadByProjectId.project_cloud.kind
+    ).toBe('warning');
   });
 
   it('hydrates a canonical local snapshot when its SQLite anchor matches', async () => {
