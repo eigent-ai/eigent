@@ -18,7 +18,8 @@ import asyncio
 
 import pytest
 
-from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.run_journal import RunEventDraft, SQLiteRunJournal, UnsafeResumeError
+from app.run_policy import ToolSafetyClass
 from app.workspace_git import WorkspaceWriterScheduler
 
 
@@ -191,7 +192,9 @@ def test_scheduler_does_not_reemit_a_legacy_terminal_writer_event(journal):
     assert stored.payload == {"legacy": True}
 
 
-def test_startup_reclaims_only_writer_admissions_without_an_attempt(journal):
+def test_startup_reclaims_orphan_without_promoting_interrupted_attempt(
+    journal,
+):
     scheduler = WorkspaceWriterScheduler(journal)
     for run_id, project_id in (
         ("run-orphan", "project-orphan"),
@@ -227,7 +230,7 @@ def test_startup_reclaims_only_writer_admissions_without_an_attempt(journal):
     result = scheduler.reconcile_orphaned_admissions()
 
     assert result.interrupted_request_ids == (orphan.request.request_id,)
-    assert result.promoted_request_ids == (resumable.request.request_id,)
+    assert result.promoted_request_ids == ()
     assert result.preserved_request_ids == (resumable.request.request_id,)
     assert result.failed_request_ids == ()
     assert (
@@ -238,18 +241,21 @@ def test_startup_reclaims_only_writer_admissions_without_an_attempt(journal):
         journal.get_workspace_writer_request(
             resumable.request.request_id
         ).status
-        == "acquired"
+        == "queued"
     )
     lease = journal.get_workspace_writer_lease(
         repository_id="repo-1",
         checkout_id="checkout-primary",
     )
-    assert lease is not None and lease.task_id == "task-resumable"
+    assert lease is None
+    assert journal.get_run("run-resumable").status == "interrupted"
     assert journal.get_run("run-orphan").status == "cancelled"
     assert journal.list_events("run-orphan")[-1].event_type == "run.cancelled"
     assert journal.list_events("run-resumable")[-1].event_type == (
-        "workspace.writer.acquired"
+        "runtime.interrupted"
     )
+    later, _ = _admit_pending(scheduler, "later")
+    assert later.status == "acquired"
 
 
 def test_startup_terminalizes_zero_attempt_run_after_writer_was_reclaimed(
@@ -279,4 +285,238 @@ def test_startup_terminalizes_zero_attempt_run_after_writer_was_reclaimed(
     assert journal.get_run("run-already-reclaimed").status == "cancelled"
     assert journal.list_events("run-already-reclaimed")[-1].event_type == (
         "run.cancelled"
+    )
+
+
+def _admit_pending(scheduler, run_id):
+    journal = scheduler.journal
+    project_id = f"project-{run_id}"
+    journal.ensure_run(run_id=run_id, project_id=project_id, status="pending")
+    admission = scheduler.admit_task(
+        run_id=run_id,
+        task_id=run_id,
+        project_id=project_id,
+        binding=_binding(journal, project_id),
+    )
+    attempt = journal.create_run_attempt(
+        run_id,
+        request_id=f"initial:{run_id}",
+        reason="initial_execution",
+        activate=False,
+    )
+    return admission.request, attempt
+
+
+@pytest.mark.asyncio
+async def test_restart_skips_unstarted_writer_and_explicit_resume_can_acquire(
+    tmp_path,
+):
+    path = tmp_path / "restart.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        scheduler = WorkspaceWriterScheduler(journal)
+        owner, owner_attempt = _admit_pending(scheduler, "owner")
+        journal.activate_run_attempt(owner_attempt.attempt_id)
+        waiting, waiting_attempt = _admit_pending(scheduler, "waiting")
+        assert waiting.status == "queued"
+
+    for _ in range(2):
+        with SQLiteRunJournal(path) as journal:
+            scheduler = WorkspaceWriterScheduler(journal)
+            journal.reconcile_startup()
+            scheduler.reconcile_orphaned_admissions()
+            assert journal.get_run_attempt(
+                waiting_attempt.attempt_id
+            ).status == ("interrupted")
+            assert (
+                journal.get_workspace_writer_lease(
+                    repository_id="repo-1", checkout_id="checkout-primary"
+                ).request_id
+                == owner.request_id
+            )
+
+    with SQLiteRunJournal(path) as journal:
+        scheduler = WorkspaceWriterScheduler(
+            journal, poll_interval_seconds=0.01
+        )
+        later, _ = _admit_pending(scheduler, "later")
+        scheduler.finish_task(run_id="owner", task_id="owner")
+        assert journal.get_workspace_writer_request(
+            waiting.request_id
+        ).status == ("queued")
+        assert journal.get_workspace_writer_request(
+            later.request_id
+        ).status == ("acquired")
+        assert not any(
+            event.event_type == "workspace.writer.acquired"
+            for event in journal.list_events("waiting")
+        )
+        scheduler.finish_task(run_id="later", task_id="later")
+        assert (
+            journal.get_workspace_writer_lease(
+                repository_id="repo-1", checkout_id="checkout-primary"
+            )
+            is None
+        )
+
+        resumed = journal.create_run_attempt(
+            "waiting", request_id="explicit-resume", reason="explicit_resume"
+        )
+        assert resumed.status == "pending"
+        acquired = await asyncio.wait_for(
+            scheduler.wait_until_acquired(run_id="waiting", task_id="waiting"),
+            timeout=1,
+        )
+        assert acquired.status == "acquired"
+        assert journal.get_run_attempt(waiting_attempt.attempt_id).status == (
+            "interrupted"
+        )
+        journal.activate_run_attempt(resumed.attempt_id)
+        assert journal.get_run_attempt(resumed.attempt_id).status == "running"
+
+
+@pytest.mark.parametrize("cancel_first", [True, False])
+def test_cancel_and_promotion_do_not_acquire_interrupted_waiter(
+    tmp_path, cancel_first
+):
+    path = tmp_path / "cancel.sqlite3"
+    with SQLiteRunJournal(path) as journal, SQLiteRunJournal(path) as peer:
+        scheduler = WorkspaceWriterScheduler(journal)
+        _admit_pending(scheduler, "owner")
+        waiting, _ = _admit_pending(scheduler, "waiting")
+        journal.reconcile_startup()
+        later, _ = _admit_pending(scheduler, "later")
+
+        def cancel():
+            peer.request_cancel("waiting", request_id="cancel", reason="user")
+            peer.complete_cancel("waiting", request_id="cancel")
+            WorkspaceWriterScheduler(peer).finish_task(run_id="waiting")
+
+        def release():
+            scheduler.finish_task(run_id="owner")
+
+        for action in (cancel, release) if cancel_first else (release, cancel):
+            action()
+        assert journal.get_workspace_writer_request(
+            waiting.request_id
+        ).status == ("interrupted")
+        assert (
+            journal.get_workspace_writer_lease(
+                repository_id="repo-1", checkout_id="checkout-primary"
+            ).request_id
+            == later.request_id
+        )
+        assert not any(
+            event.event_type == "workspace.writer.acquired"
+            for event in journal.list_events("waiting")
+        )
+
+
+@pytest.mark.parametrize("queued", [False, True])
+def test_restart_preserves_unknown_write_barrier(journal, queued):
+    scheduler = WorkspaceWriterScheduler(journal)
+    if queued:
+        _admit_pending(scheduler, "owner")
+    unsafe, attempt = _admit_pending(scheduler, "unsafe")
+    # Exercise incomplete legacy evidence too: a tool dispatch is authoritative
+    # even if its Attempt never recorded activation/consumer heartbeat.
+    values = dict(
+        tool_call_id="unsafe-tool",
+        run_id="unsafe",
+        attempt_id=attempt.attempt_id,
+        tool_name="send_email",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        request={"to": "user@example.com"},
+    )
+    journal.checkpoint_tool_call(status="prepared", **values)
+    journal.checkpoint_tool_call(status="dispatched", **values)
+    journal.reconcile_startup()
+    scheduler.reconcile_orphaned_admissions()
+    later, _ = _admit_pending(scheduler, "later")
+    if queued:
+        scheduler.finish_task(run_id="owner")
+    assert journal.get_workspace_writer_request(unsafe.request_id).status == (
+        "queued" if queued else "acquired"
+    )
+    assert (
+        journal.get_workspace_writer_request(later.request_id).status
+        == "queued"
+    )
+    assert journal.list_tool_calls("unsafe")[0].status == "outcome_unknown"
+    with pytest.raises(UnsafeResumeError):
+        journal.create_run_attempt(
+            "unsafe", request_id="resume", reason="explicit_resume"
+        )
+    # A free lease does not allow a newly enqueued request to bypass uncertainty.
+    newest, _ = _admit_pending(scheduler, "newest")
+    assert newest.status == "queued"
+
+
+@pytest.mark.parametrize(
+    "evidence", ["activation", "changeset", "missing_creation"]
+)
+def test_restart_does_not_bypass_uncertain_queued_execution(journal, evidence):
+    scheduler = WorkspaceWriterScheduler(journal)
+    _admit_pending(scheduler, "owner")
+    waiting, attempt = _admit_pending(scheduler, "waiting")
+    if evidence == "activation":
+        journal.activate_run_attempt(attempt.attempt_id)
+    elif evidence == "changeset":
+        journal.admit_git_run_workspace(
+            run_id="waiting",
+            project_id="project-waiting",
+            repository_id="repo-1",
+            user_head="a" * 40,
+            user_ref="refs/heads/main",
+        )
+        journal.ensure_git_change_set(
+            change_set_id="changes",
+            run_id="waiting",
+            repository_id="repo-1",
+            worktree_ref="refs/heads/main",
+            base_commit="a" * 40,
+        )
+    else:
+        # Simulate legacy history without proof of pending-only admission.
+        with journal._write_transaction() as connection:
+            connection.execute(
+                "UPDATE run_events SET payload_json='{}' WHERE event_id=?",
+                (f"attempt:{attempt.attempt_id}:created",),
+            )
+    journal.reconcile_startup()
+    scheduler.reconcile_orphaned_admissions()
+    later, _ = _admit_pending(scheduler, "later")
+    scheduler.finish_task(run_id="owner")
+    assert (
+        journal.get_workspace_writer_request(waiting.request_id).status
+        == "queued"
+    )
+    assert (
+        journal.get_workspace_writer_request(later.request_id).status
+        == "queued"
+    )
+    assert (
+        journal.get_workspace_writer_lease(
+            repository_id="repo-1", checkout_id="checkout-primary"
+        )
+        is None
+    )
+
+
+def test_cancel_intent_prevents_promotion_before_attempt_is_closed(journal):
+    scheduler = WorkspaceWriterScheduler(journal)
+    _admit_pending(scheduler, "owner")
+    waiting, attempt = _admit_pending(scheduler, "waiting")
+    later, _ = _admit_pending(scheduler, "later")
+    journal.request_cancel("waiting", request_id="cancel", reason="user")
+    assert journal.get_run_attempt(attempt.attempt_id).status == "pending"
+    scheduler.finish_task(run_id="owner")
+    assert (
+        journal.get_workspace_writer_request(waiting.request_id).status
+        == "queued"
+    )
+    assert (
+        journal.get_workspace_writer_lease(
+            repository_id="repo-1", checkout_id="checkout-primary"
+        ).request_id
+        == later.request_id
     )
