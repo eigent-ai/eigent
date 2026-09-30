@@ -166,6 +166,7 @@ import {
 } from '@/lib/projector/chat/presentation';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { getAuthStore } from '@/store/authStore';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
   getProjectEventStore,
   releaseProjectEventStore,
@@ -190,6 +191,7 @@ import {
   hasActiveSSEConnection,
   hasAnyActiveLegacySSEConnection,
   hasSSETransportForTasks,
+  injectHost,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
@@ -1742,11 +1744,17 @@ describe('ChatStore - Core Functionality', () => {
 
       const startObservedLiveTask = async ({
         initialRunId = 'live-run',
+        projectId = 'project-1',
+        prompt = 'Create a game',
+        resetObservers = true,
         projectedStatus,
         executionId,
         resumeRequestId,
       }: {
         initialRunId?: string;
+        projectId?: string;
+        prompt?: string;
+        resetObservers?: boolean;
         projectedStatus?: 'failed' | 'completed' | 'cancelled' | 'interrupted';
         executionId?: string;
         resumeRequestId?: string;
@@ -1757,9 +1765,11 @@ describe('ChatStore - Core Functionality', () => {
           items: [],
           warning_code: null,
         });
-        runDomainEventHub.clear();
-        runEventIngressRegistry.clear();
-        runProjectionStore.clear();
+        if (resetObservers) {
+          runDomainEventHub.clear();
+          runEventIngressRegistry.clear();
+          runProjectionStore.clear();
+        }
 
         const streams = new Map<string, any>();
         vi.mocked(fetchEventSource).mockImplementation(async (url, options) => {
@@ -1785,11 +1795,11 @@ describe('ChatStore - Core Functionality', () => {
           }
         );
         projectStoreState.mockReturnValue({
-          activeProjectId: 'project-1',
+          activeProjectId: projectId,
           appendInitChatStore,
           getChatStore: () => store,
           getProjectById: () => ({
-            id: 'project-1',
+            id: projectId,
             mode: 'single',
             spaceId: 'space-1',
           }),
@@ -1820,10 +1830,10 @@ describe('ChatStore - Core Functionality', () => {
           undefined,
           undefined,
           undefined,
-          'Create a game',
+          prompt,
           [],
           executionId,
-          'project-1',
+          projectId,
           'single' as any,
           resumeRequestId
             ? {
@@ -1850,11 +1860,13 @@ describe('ChatStore - Core Functionality', () => {
         streamContaining,
         initialRunId = 'live-run',
         followUpRunId = 'follow-up-run',
+        prompt = 'Improve the game',
       }: {
         store: ReturnType<typeof createChatStoreInstance>;
         streamContaining: (path: string) => any;
         initialRunId?: string;
         followUpRunId?: string;
+        prompt?: string;
       }) => {
         const legacyStream = streamContaining('/chat');
         const signal = legacyStream.signal as AbortSignal;
@@ -1880,7 +1892,7 @@ describe('ChatStore - Core Functionality', () => {
             step: AgentStep.NEW_TASK_STATE,
             data: {
               task_id: followUpRunId,
-              content: 'Improve the game',
+              content: prompt,
             },
           }),
         });
@@ -1912,6 +1924,310 @@ describe('ChatStore - Core Functionality', () => {
             originalProjectStoreImplementation
           );
         }
+      });
+
+      describe('browser preview event delivery', () => {
+        const url = 'http://localhost:8080/index.html';
+        const preview = () =>
+          usePageTabStore.getState().sessionPreviewByProject['project-1'];
+        // Browser Toolkit's listener emits these method/argument strings;
+        // exercise the live reducer, not the handoff helper directly.
+        const visitEvent = async (
+          stream: any,
+          step: (typeof AgentStep)[keyof typeof AgentStep],
+          message: string,
+          callId = 'visit-1',
+          runId?: string
+        ) => {
+          await stream.onmessage({
+            data: JSON.stringify({
+              step,
+              ...(runId ? { run_id: runId } : {}),
+              data: {
+                agent_name: 'single_agent',
+                process_task_id: runId || 'live-run',
+                toolkit_name: 'Browser Toolkit',
+                method_name: 'browser visit page',
+                tool_call_id: callId,
+                message,
+              },
+            }),
+          });
+        };
+        const activate = (
+          stream: any,
+          target = url,
+          callId?: string,
+          runId?: string
+        ) =>
+          visitEvent(stream, AgentStep.ACTIVATE_TOOLKIT, target, callId, runId);
+        const complete = (
+          stream: any,
+          target = url,
+          callId?: string,
+          runId?: string
+        ) =>
+          visitEvent(
+            stream,
+            AgentStep.DEACTIVATE_TOOLKIT,
+            JSON.stringify({ result: `Navigated to ${target}` }),
+            callId,
+            runId
+          );
+
+        beforeEach(() => {
+          injectHost({ electronAPI: null, ipcRenderer: window.ipcRenderer });
+          usePageTabStore.setState({
+            sessionPreviewProjectId: 'project-1',
+            sessionPreviewByProject: {},
+          });
+        });
+        afterEach(() => {
+          injectHost(null);
+          usePageTabStore.setState({ sessionPreviewByProject: {} });
+        });
+
+        it.each([url, 'http://localhost:8080/revised.html'])(
+          'reveals a later explicit preview request for %s on the reused Session stream',
+          async (nextUrl) => {
+            const started = await startObservedLiveTask({
+              prompt: `Open and preview ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream);
+            await complete(stream);
+            expect(preview()).toMatchObject({ open: true });
+            usePageTabStore.getState().closeSessionPreview();
+            await switchLegacyStreamToFollowUp({
+              ...started,
+              prompt: `Open and preview ${nextUrl}`,
+            });
+            await activate(stream, nextUrl, 'visit-2', 'follow-up-run');
+            await complete(stream, nextUrl, 'visit-2', 'follow-up-run');
+            expect(preview()).toMatchObject({
+              open: true,
+              tabs: expect.arrayContaining([
+                expect.objectContaining({ type: 'browser', url: nextUrl }),
+              ]),
+            });
+            // Replayed receipts must not reopen a panel the user just closed.
+            usePageTabStore.getState().closeSessionPreview();
+            await activate(stream, nextUrl, 'visit-2', 'follow-up-run');
+            await complete(stream, nextUrl, 'visit-2', 'follow-up-run');
+            expect(preview()?.open).toBe(false);
+            expect(preview()?.tabs).toHaveLength(nextUrl === url ? 1 : 2);
+          }
+        );
+
+        it('discards an unfinished visit when the stream advances to another Run', async () => {
+          const started = await startObservedLiveTask({
+            prompt: `Preview ${url}`,
+          });
+          const stream = started.streamContaining('/chat');
+          // A receipt in another Run cannot consume the previous Run's URL.
+          await visitEvent(stream, AgentStep.ACTIVATE_TOOLKIT, url, undefined);
+          await switchLegacyStreamToFollowUp(started);
+          await complete(stream, url, 'visit-1', 'follow-up-run');
+          expect(preview()).toBeUndefined();
+        });
+
+        it('routes parallel visits to their owners while another Session is selected', async () => {
+          const first = await startObservedLiveTask({ prompt: `Open ${url}` });
+          const second = await startObservedLiveTask({
+            initialRunId: 'other-run',
+            projectId: 'project-2',
+            prompt: `Preview ${url}`,
+            resetObservers: false,
+          });
+          usePageTabStore.getState().setSessionPreviewProject('project-2');
+          const a = first.streamContaining('/chat');
+          const b = second.streamContaining('/chat');
+          await activate(a);
+          await activate(b, url, 'visit-1', 'other-run');
+          await complete(a);
+          expect(getSessionPreviewSlice(usePageTabStore.getState()).open).toBe(
+            false
+          );
+          await complete(b, url, 'visit-1', 'other-run');
+          expect(usePageTabStore.getState().sessionPreviewProjectId).toBe(
+            'project-2'
+          );
+          const firstTab = preview()!.tabs[0];
+          const secondTab = getSessionPreviewSlice(usePageTabStore.getState())
+            .tabs[0];
+          expect(firstTab).toMatchObject({
+            url,
+            webviewId: expect.stringContaining('project-1:'),
+          });
+          expect(secondTab).toMatchObject({
+            url,
+            webviewId: expect.stringContaining('project-2:'),
+          });
+          usePageTabStore.getState().setSessionPreviewProject('project-1');
+          expect(
+            getSessionPreviewSlice(usePageTabStore.getState()).activeTabId
+          ).toBe(firstTab.id);
+        });
+
+        it.each([
+          ['', '{"success":true}'],
+          ['javascript:alert(1)', '{"success":true}'],
+          ['file:///tmp/index.html', '{"success":true}'],
+          ['https://example.com', '{"success":true}'],
+          [url, ''],
+          [url, '{"success":false,"result":"Navigation completed"}'],
+          [url, '{"error":"failed","result":"Navigation completed"}'],
+          [url, '{"snapshot":"Navigation completed"}'],
+        ])(
+          'does not reveal an unsupported URL or failed receipt: %s / %s',
+          async (target, receipt) => {
+            const started = await startObservedLiveTask({
+              prompt: `Preview ${target}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream, target);
+            await visitEvent(stream, AgentStep.DEACTIVATE_TOOLKIT, receipt);
+            expect(preview()).toBeUndefined();
+          }
+        );
+
+        it('ignores a stale Run receipt and waits for the matching tool call', async () => {
+          const started = await startObservedLiveTask({
+            prompt: `Preview ${url}`,
+          });
+          const stream = started.streamContaining('/chat');
+          await activate(stream);
+          await visitEvent(
+            stream,
+            AgentStep.DEACTIVATE_TOOLKIT,
+            '{"success":true}',
+            'visit-1',
+            'old-run'
+          );
+          await complete(stream, url, 'unrelated-call');
+          expect(preview()).toBeUndefined();
+          await complete(stream);
+          expect(preview()?.open).toBe(true);
+        });
+
+        it('restores the owning preview after a cold store hydration without stale navigation state', async () => {
+          const started = await startObservedLiveTask({
+            prompt: `Preview ${url}`,
+          });
+          const stream = started.streamContaining('/chat');
+          await activate(stream);
+          await complete(stream);
+          const tab = preview()!.tabs[0];
+          if (tab.type !== 'browser') throw new Error('Expected a browser tab');
+          usePageTabStore.getState().updateBrowserPreviewTab(tab.id, {
+            navigation: { ...tab.navigation, isLoading: true, canGoBack: true },
+          });
+          const saved = window.localStorage.getItem('eigent-page-tab')!;
+          closeSSEConnectionsForTasks(['live-run']);
+          usePageTabStore.setState({
+            sessionPreviewProjectId: null,
+            sessionPreviewByProject: {},
+          });
+          window.localStorage.setItem('eigent-page-tab', saved);
+          await usePageTabStore.persist.rehydrate();
+          usePageTabStore.getState().setSessionPreviewProject('other-session');
+          expect(getSessionPreviewSlice(usePageTabStore.getState()).open).toBe(
+            false
+          );
+          usePageTabStore.getState().setSessionPreviewProject('project-1');
+          expect(
+            getSessionPreviewSlice(usePageTabStore.getState())
+          ).toMatchObject({
+            open: true,
+            activeTabId: tab.id,
+            tabs: [
+              {
+                id: tab.id,
+                url,
+                webviewId: tab.webviewId,
+                navigation: { isLoading: false, canGoBack: false },
+              },
+            ],
+          });
+          usePageTabStore.getState().closeSessionPreview();
+          // Even a late callback retained by the old renderer cannot reopen it.
+          await complete(stream);
+          expect(preview()?.open).toBe(false);
+        });
+
+        it.each(['cloud', 'local_durable'] as const)(
+          'does not reveal historical browser events through %s replay',
+          async (replaySource) => {
+            await startObservedLiveTask({ prompt: `Open ${url}` });
+            closeSSEConnectionsForTasks(['live-run']);
+            const replay = createChatStoreInstance();
+            stores.push(replay);
+            replay.getState().create('historical-run');
+            if (replaySource === 'cloud')
+              vi.mocked(proxyFetchGet).mockResolvedValueOnce([]);
+            vi.mocked(fetchEventSource).mockImplementationOnce(
+              async (_url, options) => {
+                await options.onopen?.(
+                  new Response('', {
+                    status: 200,
+                    headers: { 'content-type': 'text/event-stream' },
+                  })
+                );
+                for (const [index, step] of [
+                  AgentStep.ACTIVATE_TOOLKIT,
+                  AgentStep.DEACTIVATE_TOOLKIT,
+                ].entries()) {
+                  const data = {
+                    agent_name: 'single_agent',
+                    process_task_id: 'historical-run',
+                    toolkit_name: 'Browser Toolkit',
+                    method_name: 'browser visit page',
+                    tool_call_id: 'old-call',
+                    message:
+                      index === 0
+                        ? url
+                        : JSON.stringify({ result: `Navigated to ${url}` }),
+                  };
+                  await options.onmessage?.({
+                    id: String(index + 1),
+                    event: 'message',
+                    data: JSON.stringify(
+                      replaySource === 'cloud'
+                        ? { step, data }
+                        : {
+                            event_id: `old-${index}`,
+                            run_id: 'historical-run',
+                            project_id: 'project-1',
+                            sequence: index + 1,
+                            event_type: `legacy.${step}`,
+                            legacy_step: step,
+                            payload: data,
+                          }
+                    ),
+                  });
+                }
+              }
+            );
+            await replay
+              .getState()
+              .startTask(
+                'historical-run',
+                'replay',
+                undefined,
+                0,
+                undefined,
+                undefined,
+                undefined,
+                'project-1',
+                undefined,
+                { replaySource }
+              );
+            expect(preview()).toBeUndefined();
+            expect(
+              replay.getState().tasks['historical-run'].webViewUrls
+            ).toHaveLength(1);
+          }
+        );
       });
 
       describe('durable Trigger delivery integration', () => {

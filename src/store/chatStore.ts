@@ -3656,6 +3656,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let lockedChatStore: VanillaChatStore =
         targetChatStore as VanillaChatStore;
       let lockedTaskId = newTaskId;
+      const createRunBrowserPreviewHandoff = () =>
+        createBrowserPreviewHandoff(
+          !isLiveTask || !getHostIpcRenderer() ? null : project_id,
+          (url, ownerProjectId) =>
+            usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
+        );
+      let handoffBrowserPreview = createRunBrowserPreviewHandoff();
       // Resume keeps its Run ID. Until this admitted Attempt reaches either
       // the stream or a GET snapshot, older terminal receipts are history only.
       let resumedAttemptObserved = false;
@@ -3962,6 +3969,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         newChatStore: VanillaChatStore,
         newTaskId: string
       ) => {
+        if (lockedTaskId !== newTaskId) {
+          // Follow-up Runs reuse this SSE transport, but each owns its one
+          // preview reveal and pending tool receipts. Never carry either
+          // across the same ownership boundary as the reducer lock.
+          handoffBrowserPreview = createRunBrowserPreviewHandoff();
+        }
         lockedChatStore = newChatStore;
         lockedTaskId = newTaskId;
         bindSSEConnectionToTask(sseConnection, newTaskId);
@@ -4104,11 +4117,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         : undefined;
 
-      const handoffBrowserPreview = createBrowserPreviewHandoff(
-        !isLiveTask || !getHostIpcRenderer() ? null : project_id,
-        (url, ownerProjectId) =>
-          usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
-      );
       let resumeStreamOpened = false;
       let resolveResumeStreamOpen: (() => void) | undefined;
       let rejectResumeStreamOpen: ((error: unknown) => void) | undefined;
