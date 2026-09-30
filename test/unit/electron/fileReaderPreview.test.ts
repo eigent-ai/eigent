@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { loadFilePreview } from '@/lib/filePreviewLoader';
 import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
 import {
   mkdir,
@@ -55,6 +56,56 @@ async function temporaryFile(name: string, content: string): Promise<string> {
 }
 
 describe('FileReader bounded preview', () => {
+  it.each([
+    '',
+    'weird ext\n',
+    'x'.repeat(FILE_PREVIEW_LIMITS.textBytes),
+    'x'.repeat(FILE_PREVIEW_LIMITS.textBytes + 1),
+    '\u0000binary',
+  ])(
+    'loads real unknown-extension file bytes through the desktop IPC contract (%#)',
+    async (content) => {
+      const filePath = await temporaryFile('unsupported.xyz', content);
+      const reader = new FileReader(null as never);
+      const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+        if (channel === 'get-file-preview-metadata')
+          return reader.getPreviewMetadata(args[0] as string);
+        if (channel === 'preview-text-file')
+          return reader.previewTextFile(args[0] as string, args[1] as number);
+        throw new Error(`Unexpected channel: ${channel}`);
+      });
+      const result = await loadFilePreview(
+        { name: 'unsupported.xyz', type: 'xyz', path: filePath },
+        { ipcRenderer: { invoke } }
+      );
+      if (content.startsWith('\u0000')) {
+        expect(result.preview).toMatchObject({
+          kind: 'blocked',
+          reason: 'unsupported',
+        });
+        expect(result.content).toBeUndefined();
+      } else {
+        expect(result.content).toBe(
+          content.slice(0, FILE_PREVIEW_LIMITS.textBytes)
+        );
+        expect(result.preview).toEqual({
+          kind: 'text',
+          completeness:
+            content.length > FILE_PREVIEW_LIMITS.textBytes
+              ? 'truncated'
+              : 'complete',
+          bytesRead: Math.min(content.length, FILE_PREVIEW_LIMITS.textBytes),
+          totalBytes: content.length,
+        });
+      }
+      expect(invoke).toHaveBeenLastCalledWith(
+        'preview-text-file',
+        filePath,
+        FILE_PREVIEW_LIMITS.textBytes
+      );
+    }
+  );
+
   it.each([4, 10])('fully reads a %i MiB HTML document', async (mib) => {
     const size = mib * 1024 * 1024;
     const content = `<html>${' '.repeat(size - 13)}</html>`;
