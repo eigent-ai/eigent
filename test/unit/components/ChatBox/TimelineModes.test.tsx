@@ -616,6 +616,59 @@ describe('ChatBox timeline modes', () => {
     );
   });
 
+  it.each([
+    [
+      'expired',
+      'approval_expired',
+      'The approval request expired before a decision was accepted.',
+    ],
+    [
+      'cancelled',
+      'tool_terminal_before_dispatch',
+      'The approval was cancelled because the tool ended before it started.',
+    ],
+  ] as const)(
+    'shows the recorded %s approval reason in expanded Detailed history',
+    (status, reason, description) => {
+      const { container } = render(
+        <TimelineModeRenderer
+          detailLevel="trajectory"
+          runs={composeTimelineRuns([
+            {
+              ...base,
+              kind: 'interaction',
+              id: 'approval-receipt',
+              eventId: 'approval-receipt',
+              eventType: `interaction.${status}`,
+              runSequence: 1,
+              createdAt: '2026-08-19T00:00:00Z',
+              interactionId: 'approval-1',
+              interactionType: 'approval',
+              prompt: 'Allow this tool?',
+              status,
+              reason,
+            },
+          ])}
+        />
+      );
+      const row = container.querySelector(
+        '[data-trace-category="input-required"]'
+      ) as HTMLElement;
+      const toggle = within(row).getByRole('button');
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(within(row).getByText(description)).toHaveClass(
+        '!text-ds-text-meta',
+        'text-ds-ink-muted-default'
+      );
+      expect(
+        within(row).queryByRole('button', { name: 'Approve once' })
+      ).toBeNull();
+      expect(within(row).queryByText(reason)).toBeNull();
+    }
+  );
+
   it('uses lightly tinted backgrounds with strong text for agent tags', () => {
     const agentNode: ChatProjectionNode = {
       ...base,

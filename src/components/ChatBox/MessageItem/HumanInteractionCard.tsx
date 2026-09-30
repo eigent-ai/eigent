@@ -17,6 +17,7 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
+import { useHost } from '@/host';
 import {
   approvalTerminalReason,
   isInteractionTerminal,
@@ -114,6 +115,7 @@ export function HumanInteractionCard({
   timelineReceipt = false,
 }: HumanInteractionCardProps) {
   const { t } = useTranslation();
+  const host = useHost();
   const userId = useAuthStore((state) => state.user_id);
   const decisionRequestId = useRef(requestId());
   const [submitting, setSubmitting] = useState(false);
@@ -166,6 +168,7 @@ export function HumanInteractionCard({
   }, [identity]);
   useEffect(() => {
     let cancelled = false;
+    let checkNumber = 0;
     setPendingCheck(null);
     if (
       interaction.interaction_type !== 'approval' ||
@@ -175,22 +178,42 @@ export function HumanInteractionCard({
       !interaction.run_id
     )
       return;
-    void isHumanInteractionStillPending(interaction)
-      .then((isPending) => {
-        if (!cancelled) setPendingCheck({ identity, pending: isPending });
-      })
-      .catch((error) => {
-        // Keep fail-closed on transport/auth failures; the ordinary inline
-        // decision path must not silently treat an unavailable Brain as safe.
-        console.warn(
-          '[HumanInteractionCard] pending interaction revalidation failed',
-          error
-        );
-      });
+    const validatePending = () => {
+      const currentCheck = ++checkNumber;
+      setPendingCheck(null);
+      void isHumanInteractionStillPending(interaction)
+        .then((isPending) => {
+          if (!cancelled && currentCheck === checkNumber)
+            setPendingCheck({ identity, pending: isPending });
+        })
+        .catch((error) => {
+          // Keep fail-closed until a lifecycle recovery retries the check.
+          console.warn(
+            '[HumanInteractionCard] pending interaction revalidation failed',
+            error
+          );
+        });
+    };
+    const revalidatePending = () => {
+      invalidatePendingHumanInteractions(interaction.run_id);
+      validatePending();
+    };
+    validatePending();
+    window.addEventListener('focus', revalidatePending);
+    host?.ipcRenderer?.on('backend-ready', revalidatePending);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', revalidatePending);
+      host?.ipcRenderer?.off('backend-ready', revalidatePending);
     };
-  }, [interaction, identity, receiptOnly, timelineReceipt, expiredLocally]);
+  }, [
+    interaction,
+    identity,
+    receiptOnly,
+    timelineReceipt,
+    expiredLocally,
+    host?.ipcRenderer,
+  ]);
   const durablyPending =
     pendingCheck?.identity === identity && pendingCheck.pending;
   const pendingUnavailable =
@@ -212,12 +235,21 @@ export function HumanInteractionCard({
       void getHumanInteractionReceipt(interaction)
         .then((receipt) => {
           if (!cancelled && receipt)
-            setJournalReceipt((previous) =>
-              previous?.identity === identity &&
-              isInteractionTerminal({ ...interaction, ...previous })
-                ? previous
-                : { identity, ...receipt }
-            );
+            setJournalReceipt((previous) => {
+              if (
+                previous?.identity === identity &&
+                isInteractionTerminal({ ...interaction, ...previous })
+              ) {
+                // Terminal status is sticky, but the matching journal receipt
+                // can acquire its reason after compensation finishes.
+                return previous.status === receipt.status &&
+                  !previous.reason &&
+                  receipt.reason
+                  ? { ...previous, reason: receipt.reason }
+                  : previous;
+              }
+              return { identity, ...receipt };
+            });
         })
         .catch(() => {
           /* Offline history retains its persisted read-only receipt. */
@@ -225,11 +257,19 @@ export function HumanInteractionCard({
     };
     readReceipt();
     window.addEventListener('focus', readReceipt);
+    host?.ipcRenderer?.on('backend-ready', readReceipt);
     return () => {
       cancelled = true;
       window.removeEventListener('focus', readReceipt);
+      host?.ipcRenderer?.off('backend-ready', readReceipt);
     };
-  }, [identity, expiredLocally, pendingUnavailable, interaction]);
+  }, [
+    identity,
+    expiredLocally,
+    pendingUnavailable,
+    interaction,
+    host?.ipcRenderer,
+  ]);
   useEffect(
     () => () => {
       authority.current = null;
