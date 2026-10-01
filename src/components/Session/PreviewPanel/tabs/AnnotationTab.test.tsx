@@ -90,7 +90,10 @@ describe('AnnotationTab', () => {
     });
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it('filters from the header search and folds or expands the visible cards', async () => {
     render(<AnnotationTab />);
@@ -204,5 +207,69 @@ describe('AnnotationTab', () => {
     expect(
       within(groups[1]).getByRole('button', { name: 'View work: London poem' })
     ).toHaveAttribute('data-variant', 'ghost');
+  });
+
+  it('does not follow a matching file source in another Session', () => {
+    useTeachModeStore.setState({
+      feedbackById: {
+        collision: {
+          ...entries.pdf,
+          id: 'collision',
+          projectId: 'session-2',
+        },
+      },
+    });
+    render(<AnnotationTab />);
+    fireEvent.click(screen.getByRole('button', { name: /This space/ }));
+
+    const wrongSource = document.createElement('div');
+    wrongSource.dataset.teachFeedbackSource = 'file:summary.pdf';
+    document.body.append(wrongSource);
+    const scroll = vi.fn();
+    wrongSource.scrollIntoView = scroll;
+    const selectTab = vi.spyOn(
+      usePageTabStore.getState(),
+      'selectSessionPreviewTab'
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View work: summary.pdf' })
+    );
+
+    expect(scroll).not.toHaveBeenCalled();
+    expect(selectTab).not.toHaveBeenCalled();
+    wrongSource.remove();
+  });
+
+  it('opens the annotated Review file using its stored path', () => {
+    useTeachModeStore.setState({
+      feedbackById: {
+        review: {
+          ...entries.pdf,
+          id: 'review',
+          sourceType: 'review',
+          sourceId: 'review:run-1:src/second.ts',
+          runId: 'run-1',
+          contextLabel: 'Second change',
+          contextDetail: 'Review',
+          sourcePath: 'src/second.ts',
+        },
+      },
+    });
+    vi.stubGlobal('CSS', { escape: (value: string) => value });
+    render(<AnnotationTab />);
+    const openReview = vi.spyOn(
+      usePageTabStore.getState(),
+      'openReviewPreview'
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View work: Second change' })
+    );
+
+    expect(openReview).toHaveBeenCalledWith({
+      runId: 'run-1',
+      path: 'src/second.ts',
+    });
   });
 });

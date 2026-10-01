@@ -40,6 +40,7 @@ export interface TeachCommentPopoverProps {
   sourceId: string;
   contextLabel: string;
   contextDetail?: string;
+  sourcePath?: string;
   selectedText?: string;
   triggerVariant?: 'icon' | 'text';
   triggerSize?: 'xs' | 'sm';
@@ -53,6 +54,7 @@ export function TeachCommentPopover({
   sourceId,
   contextLabel,
   contextDetail,
+  sourcePath,
   selectedText,
   triggerVariant = 'text',
   triggerSize,
@@ -72,12 +74,14 @@ export function TeachCommentPopover({
             sourceId,
             contextLabel,
             contextDetail,
+            sourcePath,
           }
         : null,
     [
       activeSpaceId,
       contextDetail,
       contextLabel,
+      sourcePath,
       projectId,
       runId,
       sourceId,

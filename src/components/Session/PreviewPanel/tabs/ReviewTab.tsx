@@ -674,6 +674,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                 contextDetail={t('layout.review', {
                   defaultValue: 'Review',
                 })}
+                sourcePath={selectedFile.path}
                 triggerVariant="icon"
               />
             ) : null}

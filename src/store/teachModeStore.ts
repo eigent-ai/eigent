@@ -33,6 +33,7 @@ export interface TeachFeedbackTarget {
   sourceId: string;
   contextLabel: string;
   contextDetail?: string;
+  sourcePath?: string;
   selectedText?: string;
 }
 

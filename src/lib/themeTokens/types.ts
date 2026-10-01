@@ -46,6 +46,7 @@ export const TOKEN_TONES = [
   'status-cancelled',
   'single-agent',
   'workforce',
+  'teach-mode',
   'browser',
   'terminal',
   'document',

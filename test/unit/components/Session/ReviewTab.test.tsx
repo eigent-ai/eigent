@@ -20,6 +20,8 @@ import type {
   SessionReviewTarget,
 } from '@/store/pageTabStore';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
+import { useTeachModeStore } from '@/store/teachModeStore';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -77,6 +79,7 @@ vi.mock(
 );
 
 vi.mock('@/store/authStore', () => ({
+  getAuthStore: () => ({ language: 'en-us' }),
   useAuthStore: (selector: (state: { appearance: string }) => unknown) =>
     selector({ appearance: 'light' }),
 }));
@@ -147,6 +150,7 @@ describe('ReviewTab', () => {
     mockUseReviewChanges.mockReset();
     mockUseLatestReviewRunId.mockReset();
     mockUseLatestReviewRunId.mockReturnValue('run-latest');
+    useTeachModeStore.setState({ enabled: false, feedbackById: {} });
     usePageTabStore.setState({
       sessionPreviewProjectId: 'project-1',
       sessionPreviewByProject: {
@@ -256,6 +260,46 @@ describe('ReviewTab', () => {
     expect(
       screen.getByRole('button', { name: 'Show file tree' })
     ).toBeInTheDocument();
+  });
+
+  it('persists the selected Review file path separately from its display text', () => {
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
+    useTeachModeStore.setState({ enabled: true });
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'file:src/example.ts',
+          path: 'src/example.ts',
+          status: 'modified',
+          absPath: '/outside/src/example.ts',
+          bakPath: '/outside/src/example.ts.bak',
+        },
+      ],
+    });
+
+    render(<ReviewTab tab={reviewTab} />);
+    fireEvent.click(
+      within(screen.getByTestId('review-header-actions')).getByRole('button', {
+        name: 'Add comment',
+      })
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Comment' }), {
+      target: { value: 'Check this change.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+
+    expect(Object.values(useTeachModeStore.getState().feedbackById)).toEqual([
+      expect.objectContaining({
+        contextLabel: 'src/example.ts',
+        contextDetail: 'Review',
+        sourcePath: 'src/example.ts',
+      }),
+    ]);
   });
 
   it('shows the task-wide added and removed line totals', () => {

@@ -189,6 +189,16 @@ export function AnnotationTab() {
   };
 
   const viewSource = (entry: TeachFeedback) => {
+    const tabs = usePageTabStore.getState();
+    if (tabs.sessionPreviewProjectId !== entry.projectId) {
+      toast.info(
+        t('chat.teach-work-unavailable', {
+          defaultValue: 'This work is not open in the current session.',
+        })
+      );
+      return;
+    }
+
     const escapedSourceId = CSS.escape(entry.sourceId);
     const selector = `[data-teach-feedback-source="${escapedSourceId}"], [data-run-id="${escapedSourceId}"], [data-narrative-event-motion-id="${escapedSourceId}"], [data-detailed-trace-row="${escapedSourceId}"]`;
     const source = document.querySelector<HTMLElement>(selector);
@@ -197,34 +207,31 @@ export function AnnotationTab() {
       return;
     }
 
-    const tabs = usePageTabStore.getState();
-    if (tabs.sessionPreviewProjectId === entry.projectId) {
-      const preview = getSessionPreviewSlice(tabs);
-      const matchingTab = preview.tabs.find((tab) => {
-        if (entry.sourceType === 'file' && tab.type === 'file' && tab.file) {
-          return (
-            `file:${getWorkspaceRelativeFilePath(tab.file)}` === entry.sourceId
-          );
-        }
-        if (entry.sourceType === 'browser' && tab.type === 'browser') {
-          return `browser:${tab.id}` === entry.sourceId;
-        }
-        if (entry.sourceType === 'terminal' && tab.type === 'terminal') {
-          return `terminal:${tab.agentSourceId ?? tab.id}` === entry.sourceId;
-        }
-        return false;
+    const preview = getSessionPreviewSlice(tabs);
+    const matchingTab = preview.tabs.find((tab) => {
+      if (entry.sourceType === 'file' && tab.type === 'file' && tab.file) {
+        return (
+          `file:${getWorkspaceRelativeFilePath(tab.file)}` === entry.sourceId
+        );
+      }
+      if (entry.sourceType === 'browser' && tab.type === 'browser') {
+        return `browser:${tab.id}` === entry.sourceId;
+      }
+      if (entry.sourceType === 'terminal' && tab.type === 'terminal') {
+        return `terminal:${tab.agentSourceId ?? tab.id}` === entry.sourceId;
+      }
+      return false;
+    });
+    if (matchingTab) {
+      tabs.selectSessionPreviewTab(matchingTab.id);
+      return;
+    }
+    if (entry.sourceType === 'review') {
+      tabs.openReviewPreview({
+        runId: entry.runId,
+        path: entry.sourcePath ?? entry.contextLabel,
       });
-      if (matchingTab) {
-        tabs.selectSessionPreviewTab(matchingTab.id);
-        return;
-      }
-      if (entry.sourceType === 'review') {
-        tabs.openReviewPreview({
-          runId: entry.runId,
-          path: entry.contextDetail,
-        });
-        return;
-      }
+      return;
     }
     toast.info(
       t('chat.teach-work-unavailable', {
