@@ -179,6 +179,27 @@ describe('Models collections and configuration dialogs', () => {
     expect(screen.getAllByRole('status')).toEqual([loading]);
   });
 
+  it('keeps loaded models and the default selector usable during a focus refresh', async () => {
+    renderPage();
+    expect(await screen.findByText('model-a')).toBeInTheDocument();
+    const providerCallsBeforeFocus = mocks.get.mock.calls.filter(
+      ([url]) => url === '/api/v1/providers'
+    ).length;
+    mocks.get.mockImplementation((url: string) =>
+      url === '/api/v1/providers'
+        ? new Promise(() => undefined)
+        : Promise.resolve({})
+    );
+    act(() => window.dispatchEvent(new Event('focus')));
+    expect(screen.getByText('model-a')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /select default model/i })
+    ).toBeEnabled();
+    expect(
+      mocks.get.mock.calls.filter(([url]) => url === '/api/v1/providers')
+    ).toHaveLength(providerCallsBeforeFocus + 1);
+  });
+
   it('lists every saved record under its provider, not the catalog', async () => {
     renderPage();
     expect(await screen.findByText('model-a')).toBeInTheDocument();
@@ -551,12 +572,16 @@ describe('Models collections and configuration dialogs', () => {
     ]);
     expect(screen.queryByRole('switch', { name: 'Claude' })).toBeNull();
     const viewAll = screen.getByRole('button', { name: 'View all models' });
-    expect(viewAll).toHaveClass('!h-[52px]', 'px-ds-8', 'py-ds-16');
+    expect(viewAll).toHaveClass('!h-[var(--ds-button-xl-height)]');
     expect(viewAll).toHaveClass('hover:!bg-transparent', 'active:scale-100');
     expect(screen.getByText('View all models')).toHaveClass(
       'group-hover:underline'
     );
-    expect(claudeRow).toHaveClass('h-[52px]', 'px-ds-8', 'py-ds-16');
+    expect(claudeRow).toHaveClass(
+      'min-h-[var(--ds-row-comfortable-min-height)]',
+      'px-ds-12',
+      'py-ds-12'
+    );
     expect(viewAll.parentElement).toHaveClass(
       'mx-ds-16',
       'divide-ds-hairline-subtle-disabled'
@@ -567,6 +592,20 @@ describe('Models collections and configuration dialogs', () => {
     expect(useModelVisibilityStore.getState().hiddenByAccount['1']).toEqual([]);
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.put).not.toHaveBeenCalled();
+  });
+
+  it('does not present paid models as available before the plan is known', async () => {
+    useUsageNoticeStore.setState({ subscription: null });
+    renderPage();
+    await screen.findByText('model-a');
+    const claudeRow = screen.getByText('Claude').parentElement as HTMLElement;
+    expect(
+      within(claudeRow).getByText('Plan status unavailable')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /select default model/i })
+    ).toBeEnabled();
+    expect(screen.getByRole('switch', { name: 'Claude' })).not.toBeChecked();
   });
   it('previews an unavailable toggle before showing a plan upgrade popup', async () => {
     const user = userEvent.setup();

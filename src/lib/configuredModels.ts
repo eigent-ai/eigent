@@ -14,8 +14,11 @@
 
 import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import { LOCAL_MODEL_OPTIONS } from '@/components/Settings/Models/localModels';
+import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { getProviderValid } from '@/lib/providerStatus';
 import { getAuthStore } from '@/store/authStore';
+import type { CloudModel } from '@/store/cloudModelStore';
 import type { Provider } from '@/types';
 
 export type ConfiguredProvider = {
@@ -29,6 +32,61 @@ export type ConfiguredProvider = {
   is_valid?: number | boolean;
   is_vaild?: number | boolean;
 };
+
+export type ConfiguredModelChoice =
+  | { id: string; group: 'eigent'; name: string; cloudModel: CloudModel }
+  | { id: string; group: string; name: string; record: ConfiguredProvider }
+  | { id: 'codex'; group: 'codex-subscription'; name: string };
+
+export function selectableConfiguredModels({
+  records,
+  cloudModels,
+  hidden,
+  cloudAvailable,
+  codexConnected,
+  codexModelType,
+  planKey,
+}: {
+  records: ConfiguredProvider[];
+  cloudModels: CloudModel[];
+  hidden: string[];
+  cloudAvailable: boolean;
+  codexConnected: boolean;
+  codexModelType: string;
+  planKey?: string | null;
+}): ConfiguredModelChoice[] {
+  return [
+    ...(cloudAvailable
+      ? cloudModels
+          .filter(
+            (model) =>
+              !hidden.includes(model.id) &&
+              isCloudModelAvailable(model, planKey)
+          )
+          .map((model) => ({
+            id: `cloud:${model.id}`,
+            group: 'eigent' as const,
+            name: model.display_name,
+            cloudModel: model,
+          }))
+      : []),
+    ...records.filter(getProviderValid).map((record) => ({
+      id: `provider:${record.id}`,
+      group: record.provider_name,
+      name: record.model_type,
+      record,
+    })),
+    ...(codexConnected
+      ? [
+          {
+            id: 'codex' as const,
+            group: 'codex-subscription' as const,
+            name: codexModelType,
+          },
+        ]
+      : []),
+  ];
+}
 
 export const MODEL_CONFIGURATIONS_CHANGED =
   'eigent:model-configurations-changed';
@@ -75,9 +133,22 @@ export async function fetchConfiguredProviders(): Promise<
       page,
       size: 100,
     });
+    if (
+      !Array.isArray(response) &&
+      response?.code != null &&
+      response.code !== 0
+    ) {
+      throw new Error('Configured providers request failed');
+    }
+    if (
+      !Array.isArray(response) &&
+      (!response || !Array.isArray(response.items))
+    ) {
+      throw new Error('Invalid configured providers response');
+    }
     const items: ConfiguredProvider[] = Array.isArray(response)
       ? response
-      : (response.items ?? []);
+      : response.items;
     const previousSize = records.size;
     for (const record of items) records.set(record.id, record);
     if (page > 1 && items.length > 0 && previousSize === records.size) {

@@ -28,13 +28,12 @@ import {
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
-import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
 import {
   providerCategory,
   providerDefinition,
+  selectableConfiguredModels,
   setConfiguredProviderDefault,
 } from '@/lib/configuredModels';
-import { getProviderValid } from '@/lib/providerStatus';
 import { cn } from '@/lib/utils';
 import {
   getModelImage,
@@ -48,7 +47,7 @@ import { useSpaceStore } from '@/store/spaceStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { ThinkingEffort, type ThinkingEffortType } from '@/types/constants';
 import { Check } from 'lucide-react';
-import type { ChangeEvent, KeyboardEvent } from 'react';
+import type { ChangeEvent, KeyboardEvent, MouseEvent } from 'react';
 import { useId, useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -132,6 +131,15 @@ function ThinkingEffortSlider({
     if (next) onValueChange(next);
   };
 
+  const selectDefaultHigh = (event: MouseEvent<HTMLInputElement>) => {
+    if (value !== undefined || event.currentTarget.valueAsNumber !== 2) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (!bounds.width) return;
+    const position = (event.clientX - bounds.left) / bounds.width;
+    if (position >= 0.375 && position <= 0.625)
+      onValueChange(ThinkingEffort.HIGH);
+  };
+
   const keepSliderKeys = (event: KeyboardEvent<HTMLInputElement>) => {
     if (
       [
@@ -161,6 +169,7 @@ function ThinkingEffortSlider({
           aria-label={ariaLabel}
           aria-valuetext={value === undefined ? defaultLabel : getLabel(value)}
           onChange={changeValue}
+          onClick={selectDefaultHigh}
           onKeyDown={keepSliderKeys}
           className="peer absolute inset-0 z-20 m-0 h-full w-full cursor-pointer opacity-0"
         />
@@ -243,6 +252,14 @@ export function ModelAndThinkingEffortSelect({
   const runtimeSelection = useProjectRuntimeStore((state) =>
     projectId ? state.projects[projectId]?.metadata?.modelSelection : null
   );
+  const runtimeSpaceDefaultPending = useProjectRuntimeStore((state) => {
+    const session = projectId ? state.projects[projectId] : null;
+    return Boolean(
+      session?.metadata?.spaceModelDefaultPending &&
+      session.spaceId &&
+      !session.spaceId.startsWith('legacy_')
+    );
+  });
   const storedSelection = useSpaceStore((state) => {
     if (!projectId) return null;
     const spaceId = state.projectIdIndex[projectId];
@@ -265,6 +282,9 @@ export function ModelAndThinkingEffortSelect({
     return () => observer.disconnect();
   }, [modelSubmenuContent, modelSubmenuTrigger]);
   const pinned = projectId ? (runtimeSelection ?? storedSelection) : null;
+  const spaceDefaultPending = Boolean(
+    projectId && !pinned && runtimeSpaceDefaultPending
+  );
   const preferred = inventory.records.find(
     (record) =>
       record.prefer && providerCategory(record.provider_name) === auth.modelType
@@ -276,8 +296,9 @@ export function ModelAndThinkingEffortSelect({
     provider_id: preferred?.id,
     model_type: preferred?.model_type,
   };
-  const selectedId =
-    selection.modelType === 'cloud'
+  const selectedId = spaceDefaultPending
+    ? ''
+    : selection.modelType === 'cloud'
       ? `cloud:${selection.cloud_model_type}`
       : selection.modelType === 'codex_subscription'
         ? 'codex'
@@ -295,48 +316,33 @@ export function ModelAndThinkingEffortSelect({
       ? 'setting.default'
       : `layout.thinking-effort-${thinkingEffort}`
   );
-  const modelLabel = selectedName || t('setting.not-configured');
+  const modelLabel = spaceDefaultPending
+    ? t('layout.space-default-model')
+    : selectedName || t('setting.not-configured');
   const triggerLabel = `${modelLabel}, ${effortLabel}`;
-  const options: Option[] = [
-    ...(inventory.cloudAvailable
-      ? inventory.cloudModels
-          .filter(
-            (model) =>
-              !inventory.hidden.includes(model.id) &&
-              isCloudModelAvailable(model, planKey)
-          )
-          .map((model): Option => ({
-            id: `cloud:${model.id}`,
-            name: model.display_name,
-            group: 'eigent',
-            selection: { modelType: 'cloud', cloud_model_type: model.id },
-          }))
-      : []),
-    ...inventory.records.filter(getProviderValid).map((record): Option => ({
-      id: `provider:${record.id}`,
-      name: record.model_type,
-      group: record.provider_name,
-      selection: {
-        modelType: providerCategory(record.provider_name),
-        provider_id: record.id,
-        model_platform: record.provider_name,
-        model_type: record.model_type,
-      },
-    })),
-    ...(inventory.codexConnected
-      ? [
-          {
-            id: 'codex',
-            name: auth.codex_model_type,
-            group: 'codex-subscription',
-            selection: {
-              modelType: 'codex_subscription' as const,
+  const options: Option[] = selectableConfiguredModels({
+    ...inventory,
+    codexModelType: auth.codex_model_type,
+    planKey,
+  }).map((option) => ({
+    id: option.id,
+    name: option.name,
+    group: option.group,
+    selection:
+      'cloudModel' in option
+        ? { modelType: 'cloud', cloud_model_type: option.cloudModel.id }
+        : 'record' in option
+          ? {
+              modelType: providerCategory(option.record.provider_name),
+              provider_id: option.record.id,
+              model_platform: option.record.provider_name,
+              model_type: option.record.model_type,
+            }
+          : {
+              modelType: 'codex_subscription',
               codex_model_type: auth.codex_model_type,
             },
-          },
-        ]
-      : []),
-  ];
+  }));
   async function choose(option: Option) {
     if (busy) return;
     if (projectId) {

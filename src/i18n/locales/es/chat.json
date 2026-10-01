@@ -281,7 +281,6 @@
   "legacy-task-replay-failed": "No se puede reproducir esta tarea antigua",
   "legacy-task-replay-unavailable": "No se puede reproducir esta tarea antigua. No se pudieron cargar los datos de reproducción guardados.",
   "message-queued": "Mensaje en cola. Eigent lo enviará cuando termine la tarea actual.",
-  "model-fallback-warning": "El modelo usado anteriormente en esta conversación ya no está disponible. Se usará el modelo predeterminado.",
   "multimodal-agent": "Agente multimodal",
   "no-active-session": "No hay ninguna sesión activa seleccionada.",
   "no-additional-details": "Sin detalles adicionales",

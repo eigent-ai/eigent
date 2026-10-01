@@ -281,7 +281,6 @@
   "legacy-task-replay-failed": "Impossibile riprodurre questa attività precedente",
   "legacy-task-replay-unavailable": "Impossibile riprodurre questa attività precedente. Non è stato possibile caricare i dati di riproduzione salvati.",
   "message-queued": "Si è segnato un messaggio, Eigent lo invierà quando l'attività corrente si chiuderà.",
-  "model-fallback-warning": "Il modello utilizzato in precedenza non è più disponibile. Si ricade sulla modella predefinita.",
   "multimodal-agent": "Agente multimodale",
   "no-active-session": "Non sono selezionata nessuna sessione attiva.",
   "no-additional-details": "Non ci sono ulteriori dettagli disponibili.",

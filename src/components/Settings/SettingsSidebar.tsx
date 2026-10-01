@@ -26,8 +26,7 @@ import {
 } from '@/components/Layout/AppSidebar';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
 import { useHost } from '@/host';
-import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
-import { getProviderValid } from '@/lib/providerStatus';
+import { selectableConfiguredModels } from '@/lib/configuredModels';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import type { SettingsSectionId } from '@/store/settingsStore';
@@ -58,6 +57,7 @@ export default function SettingsSidebar({
   const { t } = useTranslation();
   const host = useHost();
   const email = useAuthStore((state) => state.email);
+  const codexModelType = useAuthStore((state) => state.codex_model_type);
   const {
     entries: skills,
     loading: skillsLoading,
@@ -147,15 +147,11 @@ export default function SettingsSidebar({
     : connectorItems.length;
   const modelCount = models.loading
     ? null
-    : models.records.filter(getProviderValid).length +
-      (models.cloudAvailable
-        ? models.cloudModels.filter(
-            (model) =>
-              !models.hidden.includes(model.id) &&
-              isCloudModelAvailable(model, planKey)
-          ).length
-        : 0) +
-      (models.codexConnected ? 1 : 0);
+    : selectableConfiguredModels({
+        ...models,
+        codexModelType,
+        planKey,
+      }).length;
   const sectionCounts: Partial<Record<SettingsSectionId, number | null>> = {
     models: modelCount,
     skills: skillsLoading || skillProfilesLoading ? null : skills.length,

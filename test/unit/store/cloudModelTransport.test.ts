@@ -67,9 +67,12 @@ describe('cloudModelRequestExtraParams', () => {
 });
 
 describe('isCloudModelAvailable', () => {
-  it('allows unrestricted models and delays gating until the plan is known', () => {
+  it('allows unrestricted models but waits for the plan before paid choices', () => {
     expect(isCloudModelAvailable({ min_plan_key: null }, 'free')).toBe(true);
-    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, null)).toBe(true);
+    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, null)).toBe(false);
+    expect(isCloudModelAvailable({ min_plan_key: 'pro' }, 'future-plan')).toBe(
+      false
+    );
   });
 
   it('applies the catalog minimum plan to free and paid accounts', () => {

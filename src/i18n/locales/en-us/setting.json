@@ -1,6 +1,5 @@
 {
   "model-list": {
-    "description": "Keep the models you use, organized by provider.",
     "all-providers": "All model providers",
     "default-model": "Default model",
     "default-model-description": "This default model will be used for new Sessions until you change it.",
@@ -16,10 +15,6 @@
     "effort-hint": "Thinking effort is controlled in the input box, not in model configuration.",
     "default-guard": "Choose another default before hiding, removing, or disconnecting this model.",
     "actions": "Actions for {{model}}",
-    "built-in": "Built in · Included with your account",
-    "local-provider": "Local model server",
-    "your-credentials": "Your own credentials",
-    "hide-model": "Hide model",
     "view-all-models": "View all models",
     "available": "Available",
     "unavailable": "Unavailable",
@@ -31,12 +26,12 @@
     "search-models": "Search configured models",
     "provider-hint": "Choose a provider. Each configuration pairs one model with its own credentials.",
     "search-providers": "Search providers",
-    "manage-eigent": "Manage Eigent models",
-    "visibility-hint": "Hidden models are removed from your lists on this device. Existing Sessions are unchanged.",
     "remove-model": "Remove model?",
     "remove-hint": "Remove {{model}} and its saved credentials? Sessions using this configuration will need another model.",
     "missing-configuration": "This Session’s model configuration is unavailable. Select another model or restore the configuration in Settings → Models.",
-    "no-results": "No matching models or providers."
+    "no-results": "No matching models or providers.",
+    "availability-unknown": "Plan status unavailable",
+    "pinned-load-failed": "Could not load this Session's saved model. Check your connection and retry."
   },
   "settings": "Settings",
   "general": "General",

@@ -1,6 +1,5 @@
 {
   "model-list": {
-    "description": "Verwendete Modelle nach Anbieter organisieren.",
     "all-providers": "Alle Modellanbieter",
     "default-model": "Standardmodell",
     "default-model-description": "Dieses Standardmodell wird für neue Sitzungen verwendet, bis du es änderst.",
@@ -16,10 +15,6 @@
     "effort-hint": "Der Denkaufwand wird im Eingabefeld eingestellt, nicht in der Modellkonfiguration.",
     "default-guard": "Wähle zuerst ein anderes Standardmodell, bevor du dieses Modell ausblendest, entfernst oder trennst.",
     "actions": "Aktionen für {{model}}",
-    "built-in": "Integriert · Im Konto enthalten",
-    "local-provider": "Lokaler Modellserver",
-    "your-credentials": "Eigene Zugangsdaten",
-    "hide-model": "Modell ausblenden",
     "view-all-models": "Alle Modelle anzeigen",
     "available": "Verfügbar",
     "unavailable": "Nicht verfügbar",
@@ -31,12 +26,12 @@
     "search-models": "Konfigurierte Modelle suchen",
     "provider-hint": "Wähle einen Anbieter. Jede Konfiguration verbindet ein Modell mit eigenen Zugangsdaten.",
     "search-providers": "Anbieter suchen",
-    "manage-eigent": "Eigent-Modelle verwalten",
-    "visibility-hint": "Ausgeblendete Modelle werden auf diesem Gerät nicht aufgelistet. Bestehende Sitzungen bleiben unverändert.",
     "remove-model": "Modell entfernen?",
     "remove-hint": "{{model}} und die gespeicherten Zugangsdaten entfernen? Sitzungen mit dieser Konfiguration benötigen ein anderes Modell.",
     "missing-configuration": "Die Modellkonfiguration dieser Sitzung ist nicht verfügbar. Wähle ein anderes Modell oder stelle die Konfiguration unter Einstellungen → Modelle wieder her.",
-    "no-results": "Keine passenden Modelle oder Anbieter."
+    "no-results": "Keine passenden Modelle oder Anbieter.",
+    "availability-unknown": "Planstatus nicht verfügbar",
+    "pinned-load-failed": "Das gespeicherte Modell dieser Sitzung konnte nicht geladen werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
   },
   "settings": "Einstellungen",
   "general": "Allgemein",

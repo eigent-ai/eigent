@@ -277,7 +277,6 @@
   "legacy-task-replay-failed": "이 이전 작업을 다시 재생할 수 없습니다",
   "legacy-task-replay-unavailable": "이 이전 작업을 다시 재생할 수 없습니다. 저장된 재생 데이터를 불러오지 못했습니다.",
   "message-queued": "메시지가 대기열에 추가되었습니다. 현재 작업이 끝나면 Eigent가 전송합니다.",
-  "model-fallback-warning": "이 대화에서 이전에 사용한 모델을 더 이상 사용할 수 없습니다. 기본 모델로 전환합니다.",
   "multimodal-agent": "멀티모달 에이전트",
   "no-active-session": "선택된 활성 세션이 없습니다.",
   "no-additional-details": "추가 정보 없음",

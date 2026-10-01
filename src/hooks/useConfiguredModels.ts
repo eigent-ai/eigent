@@ -21,12 +21,102 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { useModelVisibilityStore } from '@/store/modelVisibilityStore';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 const EMPTY_IDS: string[] = [];
+type InventoryState = {
+  key: string;
+  records: ConfiguredProvider[];
+  loading: boolean;
+  error: boolean;
+  loaded: boolean;
+};
+const emptyInventory: InventoryState = {
+  key: '',
+  records: [],
+  loading: true,
+  error: false,
+  loaded: false,
+};
+let inventoryState = emptyInventory;
+let generation = 0;
+let pending: { key: string; promise: Promise<void> } | null = null;
+const listeners = new Set<() => void>();
+
+function setInventory(next: InventoryState) {
+  inventoryState = next;
+  listeners.forEach((listener) => listener());
+}
+
+function loadInventory(key: string, force = false): Promise<void> {
+  if (pending?.key === key) return pending.promise;
+  if (!force && inventoryState.key === key && inventoryState.loaded)
+    return Promise.resolve();
+  const request = ++generation;
+  const previous = inventoryState.key === key ? inventoryState : emptyInventory;
+  setInventory({
+    ...previous,
+    key,
+    loading: !previous.loaded,
+    error: false,
+  });
+  const promise = fetchConfiguredProviders()
+    .then((records) => {
+      if (request === generation)
+        setInventory({
+          key,
+          records,
+          loading: false,
+          error: false,
+          loaded: true,
+        });
+    })
+    .catch(() => {
+      if (request === generation)
+        setInventory({
+          ...inventoryState,
+          loading: false,
+          error: true,
+          loaded: true,
+        });
+    })
+    .finally(() => {
+      if (pending?.promise === promise) pending = null;
+    });
+  pending = { key, promise };
+  return promise;
+}
+
+function refreshInventory() {
+  if (inventoryState.key) void loadInventory(inventoryState.key, true);
+}
+
+function subscribeInventory(listener: () => void) {
+  listeners.add(listener);
+  if (listeners.size === 1) {
+    window.addEventListener(MODEL_CONFIGURATIONS_CHANGED, refreshInventory);
+    window.addEventListener('focus', refreshInventory);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) {
+      window.removeEventListener(
+        MODEL_CONFIGURATIONS_CHANGED,
+        refreshInventory
+      );
+      window.removeEventListener('focus', refreshInventory);
+      generation++;
+      pending = null;
+      inventoryState = emptyInventory;
+    }
+  };
+}
+
+const getInventorySnapshot = () => inventoryState;
 export function useConfiguredModels() {
   const { email, token, user_id } = useAuthStore();
   const account = String(user_id || email || 'local');
+  const key = `${account}:${token || ''}`;
   const cloudModels = useCloudModelStore((state) => state.models);
   const fetchCloudModels = useCloudModelStore(
     (state) => state.fetchCloudModels
@@ -35,41 +125,20 @@ export function useConfiguredModels() {
     (state) => state.hiddenByAccount[account] ?? EMPTY_IDS
   );
   const setHidden = useModelVisibilityStore((state) => state.setHidden);
-  const [state, setState] = useState<{
-    account: string;
-    records: ConfiguredProvider[];
-    loading: boolean;
-    error: boolean;
-  }>({ account, records: [], loading: true, error: false });
+  const state = useSyncExternalStore(
+    subscribeInventory,
+    getInventorySnapshot,
+    getInventorySnapshot
+  );
   const [codex, setCodex] = useState({
     account,
     connected: false,
     accountLabel: '',
   });
-  const request = useRef({ generation: 0 });
-  const refresh = useCallback(async () => {
-    const generation = ++request.current.generation;
-    setState((old) => ({ ...old, loading: true, error: false }));
-    try {
-      const records = await fetchConfiguredProviders();
-      if (generation === request.current.generation)
-        setState({ account, records, loading: false, error: false });
-    } catch {
-      if (generation === request.current.generation)
-        setState({ account, records: [], loading: false, error: true });
-    }
-  }, [account]);
+  const refresh = useCallback(() => loadInventory(key, true), [key]);
   useEffect(() => {
-    const pending = request.current;
-    void refresh();
-    window.addEventListener(MODEL_CONFIGURATIONS_CHANGED, refresh);
-    window.addEventListener('focus', refresh);
-    return () => {
-      pending.generation++;
-      window.removeEventListener(MODEL_CONFIGURATIONS_CHANGED, refresh);
-      window.removeEventListener('focus', refresh);
-    };
-  }, [refresh, token]);
+    void loadInventory(key);
+  }, [key]);
   useEffect(() => {
     if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true')
       void fetchCloudModels();
@@ -102,9 +171,9 @@ export function useConfiguredModels() {
     };
   }, [account, email]);
   return {
-    records: state.account === account ? state.records : [],
-    loading: state.account !== account || state.loading,
-    error: state.account === account && state.error,
+    records: state.key === key ? state.records : [],
+    loading: state.key !== key || state.loading,
+    error: state.key === key && state.error,
     refresh,
     cloudModels,
     hidden,

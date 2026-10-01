@@ -38,12 +38,16 @@ import { itemFadeMotion } from '@/components/ui/motion';
 import { Switch } from '@/components/ui/switch';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
 import { SITE_URL } from '@/lib';
-import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
+import {
+  cloudModelAvailabilityStatus,
+  isCloudModelAvailable,
+} from '@/lib/cloudModelAvailability';
 import {
   modelProviders,
   notifyModelConfigurationsChanged,
   providerCategory,
   providerDefinition,
+  selectableConfiguredModels,
   setConfiguredProviderDefault,
   type ConfiguredProvider,
 } from '@/lib/configuredModels';
@@ -211,36 +215,11 @@ function ModelsContent() {
     providerIcons.slice(0, providerRowLength),
     providerIcons.slice(providerRowLength),
   ].filter((row) => row.length);
-  const defaultModelOptions = [
-    ...(inventory.cloudAvailable
-      ? inventory.cloudModels
-          .filter(
-            (model) =>
-              !inventory.hidden.includes(model.id) &&
-              isCloudModelAvailable(model, planKey)
-          )
-          .map((model) => ({
-            id: `cloud:${model.id}`,
-            group: 'eigent',
-            name: model.display_name,
-          }))
-      : []),
-    ...inventory.records.filter(getProviderValid).map((record) => ({
-      id: `provider:${record.id}`,
-      group: record.provider_name,
-      name: record.model_type,
-      record,
-    })),
-    ...(inventory.codexConnected
-      ? [
-          {
-            id: 'codex',
-            group: 'codex-subscription',
-            name: auth.codex_model_type,
-          },
-        ]
-      : []),
-  ];
+  const defaultModelOptions = selectableConfiguredModels({
+    ...inventory,
+    codexModelType: auth.codex_model_type,
+    planKey,
+  });
   const preferredRecord = inventory.records.find(
     (record) =>
       record.prefer && providerCategory(record.provider_name) === auth.modelType
@@ -363,20 +342,45 @@ function ModelsContent() {
       {t(configured ? 'setting.configured' : 'setting.not-configured')}
     </Badge>
   );
-  const availabilityStatus = (available: boolean) => (
-    <Badge variant="secondary" size="xs" tone={available ? 'success' : 'error'}>
-      {t(
-        available
-          ? 'setting.model-list.available'
-          : 'setting.model-list.unavailable'
-      )}
-    </Badge>
-  );
-  const modelRowClass = 'flex h-[52px] items-center gap-ds-12 px-ds-8 py-ds-16';
+  const availabilityStatus = (model: CloudModel) => {
+    const status = cloudModelAvailabilityStatus(model, planKey);
+    return (
+      <Badge
+        variant="secondary"
+        size="xs"
+        tone={
+          status === 'available'
+            ? 'success'
+            : status === 'upgrade'
+              ? 'error'
+              : 'information'
+        }
+      >
+        {t(
+          status === 'available'
+            ? 'setting.model-list.available'
+            : status === 'upgrade'
+              ? 'setting.model-list.unavailable'
+              : 'setting.model-list.availability-unknown'
+        )}
+      </Badge>
+    );
+  };
+  const modelRowClass =
+    'flex min-h-[var(--ds-row-comfortable-min-height)] items-center gap-ds-12 px-ds-12 py-ds-12';
   const modelNameClass = (configured: boolean) =>
     `min-w-0 flex-1 truncate ${configured ? '' : 'text-ds-text-error-default-default'}`;
   const setCloudModelVisibility = (model: CloudModel, visible: boolean) => {
-    if (!isCloudModelAvailable(model, planKey)) {
+    const status = cloudModelAvailabilityStatus(model, planKey);
+    if (status === 'unknown') {
+      toast.info(t('setting.model-list.availability-unknown'), {
+        id: 'eigent-plan-unavailable',
+        closeButton: true,
+        action: { label: t('setting.model-list.retry'), onClick: refreshUsage },
+      });
+      return;
+    }
+    if (status === 'upgrade') {
       if (!visible) return;
       if (unavailableToggleTimer.current !== null)
         window.clearTimeout(unavailableToggleTimer.current);
@@ -605,9 +609,9 @@ function ModelsContent() {
                                         {option.name}
                                       </span>
                                       {selectedDefaultValue === option.id && (
-                                        <Check
-                                          className="h-4 w-4 shrink-0 text-ds-accent-default-default"
-                                          aria-hidden
+                                        <DsIcon
+                                          icon={Check}
+                                          className="text-ds-accent-default-default"
                                         />
                                       )}
                                     </DropdownMenuItem>
@@ -797,7 +801,7 @@ function ModelsContent() {
                                     {model.display_name}
                                   </DsText>
                                   {cloudDefault(model.id) && badge}
-                                  {availabilityStatus(available)}
+                                  {availabilityStatus(model)}
                                   <Switch
                                     size="sm"
                                     variant="outline"
@@ -838,9 +842,9 @@ function ModelsContent() {
                                 {!query.trim() && (
                                   <Button
                                     variant="ghost"
-                                    size="sm"
+                                    size="xl"
                                     textWeight="medium"
-                                    className={`${modelRowClass} group !h-[52px] w-full justify-between hover:!bg-transparent active:scale-100`}
+                                    className="group w-full justify-between hover:!bg-transparent active:scale-100"
                                     aria-expanded={showAllEigent}
                                     aria-controls="hidden-eigent-models"
                                     onClick={() =>
@@ -863,10 +867,6 @@ function ModelsContent() {
                                     className="flex flex-col divide-y divide-ds-hairline-subtle-disabled"
                                   >
                                     {hiddenCloud.map((model) => {
-                                      const available = isCloudModelAvailable(
-                                        model,
-                                        planKey
-                                      );
                                       return (
                                         <div
                                           key={model.id}
@@ -878,7 +878,7 @@ function ModelsContent() {
                                           >
                                             {model.display_name}
                                           </DsText>
-                                          {availabilityStatus(available)}
+                                          {availabilityStatus(model)}
                                           <Switch
                                             size="sm"
                                             variant="outline"

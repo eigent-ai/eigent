@@ -3216,6 +3216,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ) || null;
           } catch (error) {
             console.error('Failed to load pinned model provider:', error);
+            finishStartupFailure();
+            throw new Error(i18next.t('setting.model-list.pinned-load-failed'));
           }
           if (!provider) {
             finishStartupFailure();

@@ -48,6 +48,8 @@ const mocks = vi.hoisted(() => ({
     cloud_model_type?: string;
     provider_id?: number;
   },
+  spaceDefaultPending: false,
+  spaceId: 'space-1',
 }));
 vi.mock('@/api/http', () => ({
   proxyFetchGet: mocks.get,
@@ -73,7 +75,15 @@ vi.mock('@/host/createHost', () => ({ createHost: () => ({}) }));
 vi.mock('@/store/projectRuntimeStore', () => ({
   useProjectRuntimeStore: (selector: (state: unknown) => unknown) =>
     selector({
-      projects: { session: { metadata: { modelSelection: mocks.selection } } },
+      projects: {
+        session: {
+          spaceId: mocks.spaceId,
+          metadata: {
+            modelSelection: mocks.selection,
+            spaceModelDefaultPending: mocks.spaceDefaultPending,
+          },
+        },
+      },
       setProjectModel: mocks.setProjectModel,
     }),
 }));
@@ -113,6 +123,8 @@ beforeAll(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.selection = null;
+  mocks.spaceDefaultPending = false;
+  mocks.spaceId = 'space-1';
   mocks.auth.modelType = 'cloud';
   mocks.get.mockResolvedValue({ items: records });
   mocks.post.mockResolvedValue({});
@@ -138,6 +150,26 @@ async function open(selectedModel = 'GPT') {
   return user;
 }
 describe('Configured model input menu', () => {
+  it('shows a pending Space default without checking the global model, then pins an explicit choice', async () => {
+    mocks.spaceDefaultPending = true;
+    render(
+      <ModelAndThinkingEffortSelect
+        projectId="session"
+        thinkingEffort={undefined}
+      />
+    );
+    expect(
+      screen.getByRole('button', { name: /select model/i })
+    ).toHaveTextContent('Space default');
+    await open('Space default');
+    const defaultModel = screen.getByRole('menuitemradio', { name: 'GPT' });
+    expect(defaultModel).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(defaultModel);
+    expect(mocks.setProjectModel).toHaveBeenCalledWith('session', {
+      modelType: 'cloud',
+      cloud_model_type: 'gpt',
+    });
+  });
   it('shows a single model list grouped by provider without unconfigured or invalid providers', async () => {
     render(
       <ModelAndThinkingEffortSelect thinkingEffort={ThinkingEffort.HIGH} />
@@ -238,6 +270,23 @@ describe('Configured model input menu', () => {
     expect(onChange).toHaveBeenCalledWith(ThinkingEffort.XHIGH);
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.setProjectModel).not.toHaveBeenCalled();
+  });
+  it('selects High with one click from Default', async () => {
+    const onChange = vi.fn();
+    render(
+      <ModelAndThinkingEffortSelect
+        thinkingEffort={undefined}
+        onThinkingEffortChange={onChange}
+      />
+    );
+    await openRoot();
+    const slider = screen.getByRole('slider', { name: 'Thinking effort' });
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      width: 100,
+    } as DOMRect);
+    fireEvent.click(slider, { clientX: 50 });
+    expect(onChange).toHaveBeenCalledWith(ThinkingEffort.HIGH);
   });
   it('shows the selected effort in the header and resets to inheritance', async () => {
     const onChange = vi.fn();

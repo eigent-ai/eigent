@@ -26,18 +26,22 @@ export function isCloudModelAvailable(
   model: Pick<CloudModel, 'min_plan_key'>,
   planKey?: string | null
 ): boolean {
+  return cloudModelAvailabilityStatus(model, planKey) === 'available';
+}
+
+export function cloudModelAvailabilityStatus(
+  model: Pick<CloudModel, 'min_plan_key'>,
+  planKey?: string | null
+): 'available' | 'upgrade' | 'unknown' {
   const requiredPlan = model.min_plan_key?.trim().toLowerCase();
-  if (!requiredPlan || requiredPlan === 'free') return true;
+  if (!requiredPlan || requiredPlan === 'free') return 'available';
 
   const currentPlan = planKey?.trim().toLowerCase();
-  if (!currentPlan) return true;
-  if (currentPlan === requiredPlan) return true;
+  if (!currentPlan) return 'unknown';
+  if (currentPlan === requiredPlan) return 'available';
 
   const requiredRank = PLAN_RANK[requiredPlan];
   const currentRank = PLAN_RANK[currentPlan];
-  return (
-    requiredRank !== undefined &&
-    currentRank !== undefined &&
-    currentRank >= requiredRank
-  );
+  if (requiredRank === undefined || currentRank === undefined) return 'unknown';
+  return currentRank >= requiredRank ? 'available' : 'upgrade';
 }

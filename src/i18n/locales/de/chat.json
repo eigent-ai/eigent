@@ -279,7 +279,6 @@
   "legacy-task-replay-failed": "Diese ältere Aufgabe kann nicht wiedergegeben werden",
   "legacy-task-replay-unavailable": "Diese ältere Aufgabe kann nicht wiedergegeben werden. Die gespeicherten Wiedergabedaten konnten nicht geladen werden.",
   "message-queued": "Die Nachricht wurde in der Warteschlange gespeichert. Eigent wird sie an Sie senden, sobald der aktuelle Aufgabenprozess abgeschlossen ist.",
-  "model-fallback-warning": "Das Modell, das früher im Gespräch verwendet wurde, ist nicht mehr verfügbar. Es fällt zurück auf das Standardmodell.",
   "multimodal-agent": "Multimodaler Agent",
   "no-active-session": "Keine aktive Sitzung ausgewählt.",
   "no-additional-details": "Keine zusätzlichen Informationen",

@@ -277,7 +277,6 @@
   "legacy-task-replay-failed": "この旧形式のタスクを再生できません",
   "legacy-task-replay-unavailable": "この旧形式のタスクを再生できません。保存された再生データを読み込めませんでした。",
   "message-queued": "メッセージをキューに追加しました。現在のタスクが完了すると Eigent が送信します。",
-  "model-fallback-warning": "この会話で以前使用したモデルは利用できません。既定のモデルに切り替えます。",
   "multimodal-agent": "マルチモーダルエージェント",
   "no-active-session": "アクティブなセッションが選択されていません。",
   "no-additional-details": "追加の詳細はありません",

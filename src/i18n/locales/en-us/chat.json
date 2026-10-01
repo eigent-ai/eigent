@@ -279,7 +279,6 @@
   "legacy-task-replay-failed": "Unable to replay this legacy task",
   "legacy-task-replay-unavailable": "Unable to replay this legacy task. The saved playback data could not be loaded.",
   "message-queued": "Message queued. Eigent will send it when the current task finishes.",
-  "model-fallback-warning": "The model used earlier in this conversation is no longer available. Falling back to the default model.",
   "multimodal-agent": "Multimodal agent",
   "no-active-session": "No active session selected.",
   "no-additional-details": "No additional details",

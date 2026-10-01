@@ -277,7 +277,6 @@
   "legacy-task-replay-failed": "無法回放此舊版任務",
   "legacy-task-replay-unavailable": "無法回放此舊版任務，無法載入已儲存的回放資料。",
   "message-queued": "訊息已排隊，Eigent 會在當前任務完成後傳送。",
-  "model-fallback-warning": "此對話先前使用的模型已不可用，將改用預設模型。",
   "multimodal-agent": "多模態智能體",
   "no-active-session": "未選擇活動工作階段。",
   "no-additional-details": "沒有其他詳細資料",

@@ -14,6 +14,7 @@
 
 import {
   fetchConfiguredProviders,
+  selectableConfiguredModels,
   setConfiguredProviderDefault,
 } from '@/lib/configuredModels';
 import { useModelVisibilityStore } from '@/store/modelVisibilityStore';
@@ -59,6 +60,82 @@ describe('Configured model identity', () => {
     mocks.get.mockResolvedValue([{ id: 5, provider_name: 'ollama' }]);
     expect(await fetchConfiguredProviders()).toHaveLength(1);
     expect(mocks.get).toHaveBeenCalledTimes(1);
+  });
+  it('rejects error envelopes instead of treating them as an empty inventory', async () => {
+    mocks.get.mockResolvedValue({ code: 1, text: 'Server unavailable' });
+    await expect(fetchConfiguredProviders()).rejects.toThrow(
+      'Configured providers request failed'
+    );
+    mocks.get.mockResolvedValue({ code: 1, items: [] });
+    await expect(fetchConfiguredProviders()).rejects.toThrow(
+      'Configured providers request failed'
+    );
+    mocks.get.mockResolvedValue({ detail: 'Server unavailable' });
+    await expect(fetchConfiguredProviders()).rejects.toThrow(
+      'Invalid configured providers response'
+    );
+  });
+  it('keeps repeated provider and model names distinct by record ID', () => {
+    const choices = selectableConfiguredModels({
+      records: [
+        {
+          id: 11,
+          provider_name: 'openai',
+          model_type: 'gpt-5',
+          api_key: 'first',
+          endpoint_url: '',
+          is_valid: 2,
+        },
+        {
+          id: 12,
+          provider_name: 'openai',
+          model_type: 'gpt-5',
+          api_key: 'second',
+          endpoint_url: '',
+          is_valid: 2,
+        },
+      ],
+      cloudModels: [],
+      hidden: [],
+      cloudAvailable: false,
+      codexConnected: false,
+      codexModelType: '',
+    });
+    expect(choices.map((choice) => choice.id)).toEqual([
+      'provider:11',
+      'provider:12',
+    ]);
+  });
+  it('excludes paid Eigent choices until the account plan is known', () => {
+    const choices = selectableConfiguredModels({
+      records: [],
+      cloudModels: [
+        {
+          id: 'free',
+          display_name: 'Free',
+          model_type: 'free',
+          model_platform: 'eigent',
+          provider_family: 'eigent',
+          kind: 'chat',
+          min_plan_key: 'free',
+        },
+        {
+          id: 'pro',
+          display_name: 'Pro',
+          model_type: 'pro',
+          model_platform: 'eigent',
+          provider_family: 'eigent',
+          kind: 'chat',
+          min_plan_key: 'pro',
+        },
+      ],
+      hidden: [],
+      cloudAvailable: true,
+      codexConnected: false,
+      codexModelType: '',
+      planKey: null,
+    });
+    expect(choices.map((choice) => choice.id)).toEqual(['cloud:free']);
   });
   it('fails safely when a paginated endpoint repeats the same page', async () => {
     mocks.get.mockResolvedValue({ items: [{ id: 1 }], total: 200, pages: 2 });

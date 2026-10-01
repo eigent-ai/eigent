@@ -1,6 +1,5 @@
 {
   "model-list": {
-    "description": "Organisez les modèles que vous utilisez par fournisseur.",
     "all-providers": "Tous les fournisseurs de modèles",
     "default-model": "Modèle par défaut",
     "default-model-description": "Ce modèle par défaut sera utilisé pour les nouvelles sessions jusqu’à ce que vous le changiez.",
@@ -16,10 +15,6 @@
     "effort-hint": "L’effort de réflexion se règle dans la zone de saisie, pas dans la configuration du modèle.",
     "default-guard": "Choisissez un autre modèle par défaut avant de masquer, supprimer ou déconnecter ce modèle.",
     "actions": "Actions pour {{model}}",
-    "built-in": "Intégré · Inclus avec votre compte",
-    "local-provider": "Serveur de modèles local",
-    "your-credentials": "Vos propres identifiants",
-    "hide-model": "Masquer le modèle",
     "view-all-models": "Voir tous les modèles",
     "available": "Disponible",
     "unavailable": "Indisponible",
@@ -31,12 +26,12 @@
     "search-models": "Rechercher les modèles configurés",
     "provider-hint": "Choisissez un fournisseur. Chaque configuration associe un modèle à ses propres identifiants.",
     "search-providers": "Rechercher un fournisseur",
-    "manage-eigent": "Gérer les modèles Eigent",
-    "visibility-hint": "Les modèles masqués sont retirés des listes sur cet appareil. Les sessions existantes restent inchangées.",
     "remove-model": "Supprimer le modèle ?",
     "remove-hint": "Supprimer {{model}} et ses identifiants enregistrés ? Les sessions utilisant cette configuration auront besoin d’un autre modèle.",
     "missing-configuration": "La configuration du modèle de cette session est indisponible. Sélectionnez un autre modèle ou restaurez la configuration dans Paramètres → Modèles.",
-    "no-results": "Aucun modèle ou fournisseur correspondant."
+    "no-results": "Aucun modèle ou fournisseur correspondant.",
+    "availability-unknown": "Statut de l’abonnement indisponible",
+    "pinned-load-failed": "Impossible de charger le modèle enregistré pour cette session. Vérifiez votre connexion et réessayez."
   },
   "settings": "Réglages",
   "general": "Général",

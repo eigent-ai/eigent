@@ -1,6 +1,5 @@
 {
   "model-list": {
-    "description": "Organiza los modelos que usas por proveedor.",
     "all-providers": "Todos los proveedores de modelos",
     "default-model": "Modelo predeterminado",
     "default-model-description": "Este modelo predeterminado se usará en las sesiones nuevas hasta que lo cambies.",
@@ -16,10 +15,6 @@
     "effort-hint": "El esfuerzo de razonamiento se controla en el cuadro de entrada, no en la configuración del modelo.",
     "default-guard": "Elige otro modelo predeterminado antes de ocultar, eliminar o desconectar este modelo.",
     "actions": "Acciones para {{model}}",
-    "built-in": "Integrado · Incluido en tu cuenta",
-    "local-provider": "Servidor de modelos local",
-    "your-credentials": "Tus propias credenciales",
-    "hide-model": "Ocultar modelo",
     "view-all-models": "Ver todos los modelos",
     "available": "Disponible",
     "unavailable": "No disponible",
@@ -31,12 +26,12 @@
     "search-models": "Buscar modelos configurados",
     "provider-hint": "Elige un proveedor. Cada configuración vincula un modelo con sus propias credenciales.",
     "search-providers": "Buscar proveedores",
-    "manage-eigent": "Administrar modelos de Eigent",
-    "visibility-hint": "Los modelos ocultos se eliminan de las listas de este dispositivo. Las sesiones existentes no cambian.",
     "remove-model": "¿Eliminar modelo?",
     "remove-hint": "¿Eliminar {{model}} y sus credenciales guardadas? Las sesiones que usen esta configuración necesitarán otro modelo.",
     "missing-configuration": "La configuración del modelo de esta sesión no está disponible. Selecciona otro modelo o restáurala en Ajustes → Modelos.",
-    "no-results": "No hay modelos ni proveedores coincidentes."
+    "no-results": "No hay modelos ni proveedores coincidentes.",
+    "availability-unknown": "Estado del plan no disponible",
+    "pinned-load-failed": "No se pudo cargar el modelo guardado de esta sesión. Comprueba la conexión y vuelve a intentarlo."
   },
   "settings": "Ajustes",
   "general": "Generales",

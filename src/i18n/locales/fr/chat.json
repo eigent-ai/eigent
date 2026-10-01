@@ -280,7 +280,6 @@
   "legacy-task-replay-failed": "Impossible de relire cette ancienne tâche",
   "legacy-task-replay-unavailable": "Impossible de relire cette ancienne tâche. Les données de lecture enregistrées n’ont pas pu être chargées.",
   "message-queued": "Message mis en attente. Eigent l’enverra une fois la tâche en cours terminée.",
-  "model-fallback-warning": "Le modèle utilisé précédemment dans cette conversation n’est plus disponible. Retour au modèle par défaut.",
   "multimodal-agent": "Agent multimodal",
   "no-active-session": "Aucune session active sélectionnée.",
   "no-additional-details": "Aucun détail supplémentaire",

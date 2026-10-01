@@ -1,6 +1,5 @@
 {
   "model-list": {
-    "description": "按提供商整理你常用的模型。",
     "all-providers": "所有模型提供商",
     "default-model": "默认模型",
     "default-model-description": "在您更改之前，新会话将使用此默认模型。",
@@ -16,10 +15,6 @@
     "effort-hint": "思考强度仅在输入框中控制，不在模型配置中设置。",
     "default-guard": "隐藏、移除或断开此模型前，请先选择其他默认模型。",
     "actions": "{{model}} 的操作",
-    "built-in": "内置 · 随账户提供",
-    "local-provider": "本地模型服务",
-    "your-credentials": "自备凭据",
-    "hide-model": "隐藏模型",
     "view-all-models": "查看所有模型",
     "available": "可用",
     "unavailable": "不可用",
@@ -31,12 +26,12 @@
     "search-models": "搜索已配置的模型",
     "provider-hint": "选择提供商。每条配置将一个模型与独立凭据绑定。",
     "search-providers": "搜索提供商",
-    "manage-eigent": "管理 Eigent 模型",
-    "visibility-hint": "隐藏的模型不会显示在此设备的列表中。已有会话不受影响。",
     "remove-model": "移除模型？",
     "remove-hint": "移除 {{model}} 及其已保存的凭据？使用此配置的会话需要选择其他模型。",
     "missing-configuration": "此会话的模型配置不可用。请选择其他模型，或在设置 → 模型中恢复配置。",
-    "no-results": "没有匹配的模型或提供商。"
+    "no-results": "没有匹配的模型或提供商。",
+    "availability-unknown": "无法获取套餐状态",
+    "pinned-load-failed": "无法加载此会话保存的模型。请检查网络连接后重试。"
   },
   "settings": "设置",
   "general": "通用",
