@@ -22,6 +22,7 @@ from typing import Any
 from app.workspace_config.capabilities import ModelCapabilityRegistry
 from app.workspace_config.models import (
     ModelCapabilityConfigError,
+    ProviderModelCapability,
     ThinkingEffort,
     UnsupportedThinkingEffortError,
 )
@@ -41,6 +42,7 @@ def resolve_model_effort_config(
     pinned_transport: str | None = None,
     has_function_tools: bool = False,
     is_cloud: bool = False,
+    pinned_capability: ProviderModelCapability | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Return a copied request config and the selected CAMEL api_mode.
 
@@ -87,19 +89,23 @@ def resolve_model_effort_config(
     )
     supplied = [value for value in candidates if value is not None]
     pinned = pinned_value is not None
-    capability = ModelCapabilityRegistry().resolve(
-        model_platform=model_platform,
-        model_type=model_type,
-        auth_source=auth_source,
-        api_mode=pinned_transport or api_mode,
-        has_function_tools=has_function_tools,
-        provider_override=provider_override,
-        is_cloud=is_cloud,
-        has_reasoning_effort=(
-            (pinned and pinned_value != "provider_default")
-            or requested_effort is not None
-            or bool(supplied)
-        ),
+    capability = (
+        pinned_capability
+        if pinned_capability is not None
+        else ModelCapabilityRegistry().resolve(
+            model_platform=model_platform,
+            model_type=model_type,
+            auth_source=auth_source,
+            api_mode=pinned_transport or api_mode,
+            has_function_tools=has_function_tools,
+            provider_override=provider_override,
+            is_cloud=is_cloud,
+            has_reasoning_effort=(
+                (pinned and pinned_value != "provider_default")
+                or requested_effort is not None
+                or bool(supplied)
+            ),
+        )
     )
     transport = capability.transport
     if pinned_transport and pinned_transport != transport:

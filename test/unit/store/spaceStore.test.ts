@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ServerProject } from '@/service/spaceApi';
+import { useInstallationStore } from '@/store/installationStore';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
   isDisposableBlankSpace,
@@ -21,7 +22,7 @@ import {
   type Space,
   type SpaceSourceType,
 } from '@/store/spaceStore';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const authStoreMock = vi.hoisted(() => ({
   state: {
@@ -38,7 +39,10 @@ vi.mock('@/store/authStore', () => ({
   getAuthStore: () => authStoreMock.state,
 }));
 
-vi.mock('@/store/installationStore', () => backendReadinessMock);
+vi.mock('@/store/installationStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store/installationStore')>()),
+  ...backendReadinessMock,
+}));
 
 vi.mock('@/api/http', () => ({
   proxyFetchGet: vi.fn().mockResolvedValue({ projects: [] }),
@@ -46,14 +50,19 @@ vi.mock('@/api/http', () => ({
 
 vi.mock('@/service/spaceApi', () => ({
   proxyCreateSpace: vi.fn(),
+  proxyDeleteSpace: vi.fn(),
   proxyEnsureLegacySpace: vi.fn(),
   proxyFetchSpaceProjects: vi.fn(),
   proxyFetchSpaces: vi.fn(),
   proxyUpdateSpace: vi.fn(),
+  proxyArchiveSpace: vi.fn(),
+  proxyUnarchiveSpace: vi.fn(),
+  proxyRelocateSpace: vi.fn(),
 }));
 
 vi.mock('@/service/workspaceApi', () => ({
   reconcileWorkspaceBindings: vi.fn().mockResolvedValue(undefined),
+  unbindWorkspaceFromBrain: vi.fn(),
 }));
 
 const makeSpace = (
@@ -88,6 +97,1137 @@ const makeServerProject = (
   status,
   created_at: '2026-01-01T00:00:00.000Z',
   updated_at: '2026-01-01T00:00:00.000Z',
+});
+
+describe('spaceStore server deletion', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const spaceApi = await import('@/service/spaceApi');
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(spaceApi.proxyDeleteSpace)
+      .mockReset()
+      .mockResolvedValue(undefined);
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
+      makeSpace('space_kept', 'Keep', 'folder'),
+    ]);
+    vi.mocked(spaceApi.proxyFetchSpaceProjects).mockResolvedValue([]);
+    vi.mocked(workspaceApi.reconcileWorkspaceBindings)
+      .mockReset()
+      .mockResolvedValue({
+        email: 'new@example.com',
+        active_space_ids: ['space_kept'],
+        removed_space_ids: [],
+        removed_count: 0,
+      });
+    vi.mocked(workspaceApi.unbindWorkspaceFromBrain)
+      .mockReset()
+      .mockResolvedValue({
+        space_id: 'space_deleted',
+        email: 'new@example.com',
+        user_id: 2,
+        bound: false,
+      });
+    backendReadinessMock.waitForBackendReadiness.mockResolvedValue(undefined);
+    useInstallationStore.setState({ isBackendReady: true });
+    authStoreMock.state = { email: 'new@example.com', user_id: 2 };
+    usePageTabStore.setState({
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
+    });
+    useSpaceStore.setState({
+      activeSpaceId: 'space_deleted',
+      spaces: {
+        space_deleted: makeSpace('space_deleted', 'Delete', 'folder'),
+        space_kept: makeSpace('space_kept', 'Keep', 'folder'),
+      },
+      projectsBySpaceId: {
+        space_deleted: {
+          project_deleted: {
+            id: 'project_deleted',
+            userId: '2',
+            spaceId: 'space_deleted',
+            name: 'Session',
+            status: 'archived',
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        },
+      },
+      projectIdIndex: { project_deleted: 'space_deleted' },
+      lastVisitedProjectBySpace: { space_deleted: 'project_deleted' },
+      projectsSyncedAt: { space_deleted: 1, space_kept: Date.now() },
+    });
+  });
+
+  afterEach(async () => {
+    // Release any failed cleanup subscriptions without sending another request.
+    authStoreMock.state = { email: 'signed-out@example.com', user_id: -1 };
+    useInstallationStore.setState({ isBackendReady: false });
+    useInstallationStore.setState({ isBackendReady: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    vi.mocked(console.warn).mockRestore();
+  });
+
+  it.each([204, 404])(
+    'removes local Space state after cloud %s even when Brain unbind fails',
+    async (status) => {
+      const spaceApi = await import('@/service/spaceApi');
+      const workspaceApi = await import('@/service/workspaceApi');
+      const unbindError = new TypeError('Failed to fetch');
+      const warn = vi.mocked(console.warn);
+      if (status === 404) {
+        vi.mocked(spaceApi.proxyDeleteSpace).mockRejectedValueOnce({ status });
+      }
+      vi.mocked(workspaceApi.unbindWorkspaceFromBrain).mockRejectedValueOnce(
+        unbindError
+      );
+      usePageTabStore.getState().setSessionPreviewProject('project_deleted');
+
+      await expect(
+        useSpaceStore.getState().deleteSpaceOnServer('space_deleted')
+      ).resolves.toBeUndefined();
+
+      const state = useSpaceStore.getState();
+      expect(Object.keys(state.spaces)).toEqual(['space_kept']);
+      expect(state.activeSpaceId).toBe('space_kept');
+      expect(state.projectsBySpaceId.space_deleted).toBeUndefined();
+      expect(state.projectIdIndex.project_deleted).toBeUndefined();
+      expect(state.lastVisitedProjectBySpace.space_deleted).toBeUndefined();
+      expect(state.projectsSyncedAt.space_deleted).toBeUndefined();
+      expect(
+        usePageTabStore.getState().sessionPreviewByProject.project_deleted
+      ).toBeUndefined();
+      await vi.waitFor(() => {
+        expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledWith(
+          'space_deleted',
+          'new@example.com',
+          2,
+          expect.objectContaining({
+            signal: expect.any(AbortSignal),
+            expectedAccountKey: expect.any(String),
+          })
+        );
+        expect(warn).toHaveBeenCalledWith(expect.any(String), unbindError);
+      });
+    }
+  );
+
+  it('waits for cloud confirmation before removing local state', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    const workspaceApi = await import('@/service/workspaceApi');
+    let confirmDeletion!: () => void;
+    vi.mocked(spaceApi.proxyDeleteSpace).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        confirmDeletion = resolve;
+      })
+    );
+
+    const deletion = useSpaceStore
+      .getState()
+      .deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() => {
+      expect(spaceApi.proxyDeleteSpace).toHaveBeenCalledWith('space_deleted');
+    });
+    expect(useSpaceStore.getState().spaces.space_deleted).toBeDefined();
+    expect(workspaceApi.unbindWorkspaceFromBrain).not.toHaveBeenCalled();
+
+    confirmDeletion();
+    await deletion;
+
+    expect(useSpaceStore.getState().spaces.space_deleted).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it.each([403, 409, 500, undefined])(
+    'preserves local state and reports cloud deletion failure %s',
+    async (status) => {
+      const spaceApi = await import('@/service/spaceApi');
+      const workspaceApi = await import('@/service/workspaceApi');
+      const error = Object.assign(new Error('Cloud deletion failed'), {
+        status,
+      });
+      vi.mocked(spaceApi.proxyDeleteSpace).mockRejectedValueOnce(error);
+      const before = useSpaceStore.getState();
+
+      await expect(
+        useSpaceStore.getState().deleteSpaceOnServer('space_deleted')
+      ).rejects.toBe(error);
+
+      expect(useSpaceStore.getState()).toBe(before);
+      expect(workspaceApi.unbindWorkspaceFromBrain).not.toHaveBeenCalled();
+    }
+  );
+
+  it('completes deletion without waiting for a stalled Brain unbind', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    let finishUnbind!: () => void;
+    vi.mocked(workspaceApi.unbindWorkspaceFromBrain).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishUnbind = () =>
+          resolve({
+            space_id: 'space_deleted',
+            email: 'new@example.com',
+            bound: false,
+          });
+      })
+    );
+    let completed = false;
+    const deletion = useSpaceStore
+      .getState()
+      .deleteSpaceOnServer('space_deleted')
+      .then(() => {
+        completed = true;
+      });
+    try {
+      await vi.waitFor(() => {
+        expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1);
+        expect(completed).toBe(true);
+      });
+      expect(useSpaceStore.getState().spaces.space_deleted).toBeUndefined();
+    } finally {
+      finishUnbind();
+      await deletion;
+    }
+  });
+
+  it('reconciles the orphaned binding on the next hydration after Brain recovers', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.unbindWorkspaceFromBrain).mockRejectedValueOnce(
+      new TypeError('Failed to fetch')
+    );
+    await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() => {
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1);
+    });
+    backendReadinessMock.waitForBackendReadiness.mockClear();
+    let backendReady!: () => void;
+    backendReadinessMock.waitForBackendReadiness.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        backendReady = resolve;
+      })
+    );
+
+    await useSpaceStore.getState().hydrateFromServer(2);
+    await vi.waitFor(() => {
+      expect(
+        backendReadinessMock.waitForBackendReadiness
+      ).toHaveBeenCalledTimes(1);
+    });
+    expect(workspaceApi.reconcileWorkspaceBindings).not.toHaveBeenCalled();
+    backendReady();
+
+    await vi.waitFor(() => {
+      expect(workspaceApi.reconcileWorkspaceBindings).toHaveBeenCalledWith(
+        'new@example.com',
+        ['space_kept'],
+        2
+      );
+    });
+    expect(useSpaceStore.getState().spaces.space_deleted).toBeUndefined();
+  });
+
+  it.each([204, 404])(
+    'does not restore a Space from an older hydration after cloud deletion %s',
+    async (status) => {
+      const spaceApi = await import('@/service/spaceApi');
+      let returnOldSnapshot!: () => void;
+      vi.mocked(spaceApi.proxyFetchSpaces).mockReturnValueOnce(
+        new Promise((resolve) => {
+          returnOldSnapshot = () =>
+            resolve([
+              makeSpace('space_deleted', 'Delete', 'folder'),
+              makeSpace('space_kept', 'Keep', 'folder'),
+            ]);
+        })
+      );
+      if (status === 404) {
+        vi.mocked(spaceApi.proxyDeleteSpace).mockRejectedValueOnce({ status });
+      }
+      const hydration = useSpaceStore.getState().hydrateFromServer(2);
+      await vi.waitFor(() =>
+        expect(spaceApi.proxyFetchSpaces).toHaveBeenCalledTimes(1)
+      );
+
+      try {
+        await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+      } finally {
+        returnOldSnapshot();
+        await hydration;
+      }
+
+      expect(Object.keys(useSpaceStore.getState().spaces)).toEqual([
+        'space_kept',
+      ]);
+      expect(useSpaceStore.getState().activeSpaceId).toBe('space_kept');
+    }
+  );
+
+  it('keeps a Space in a concurrent hydration when cloud deletion fails', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    let returnSnapshot!: () => void;
+    vi.mocked(spaceApi.proxyFetchSpaces).mockReturnValueOnce(
+      new Promise((resolve) => {
+        returnSnapshot = () =>
+          resolve([
+            makeSpace('space_deleted', 'Still present', 'folder'),
+            makeSpace('space_kept', 'Keep', 'folder'),
+          ]);
+      })
+    );
+    vi.mocked(spaceApi.proxyDeleteSpace).mockRejectedValueOnce({ status: 409 });
+    const hydration = useSpaceStore.getState().hydrateFromServer(2);
+    await vi.waitFor(() =>
+      expect(spaceApi.proxyFetchSpaces).toHaveBeenCalledTimes(1)
+    );
+    try {
+      await expect(
+        useSpaceStore.getState().deleteSpaceOnServer('space_deleted')
+      ).rejects.toEqual({ status: 409 });
+    } finally {
+      returnSnapshot();
+      await hydration;
+    }
+    expect(useSpaceStore.getState().spaces.space_deleted.name).toBe(
+      'Still present'
+    );
+  });
+
+  it('uses current Spaces when an earlier hydration resumes reconciliation after backend readiness', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValueOnce([
+      makeSpace('space_deleted', 'Delete', 'folder'),
+      makeSpace('space_kept', 'Keep', 'folder'),
+    ]);
+    let backendReady!: () => void;
+    backendReadinessMock.waitForBackendReadiness.mockReturnValue(
+      new Promise<void>((resolve) => {
+        backendReady = resolve;
+      })
+    );
+    await useSpaceStore.getState().hydrateFromServer(2);
+    await vi.waitFor(() =>
+      expect(backendReadinessMock.waitForBackendReadiness).toHaveBeenCalled()
+    );
+    try {
+      await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+      useSpaceStore
+        .getState()
+        .upsertSpaces([makeSpace('space_new', 'New', 'folder')]);
+      expect(workspaceApi.reconcileWorkspaceBindings).not.toHaveBeenCalled();
+    } finally {
+      backendReady();
+    }
+    await vi.waitFor(() =>
+      expect(workspaceApi.reconcileWorkspaceBindings).toHaveBeenCalledWith(
+        'new@example.com',
+        ['space_kept', 'space_new'],
+        2
+      )
+    );
+  });
+
+  it('refreshes the Space list before retrying a failed reconciliation', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValueOnce([
+      makeSpace('space_deleted', 'Delete', 'folder'),
+      makeSpace('space_kept', 'Keep', 'folder'),
+    ]);
+    let failReconcile!: () => void;
+    vi.mocked(workspaceApi.reconcileWorkspaceBindings).mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        failReconcile = () => reject(new TypeError('Failed to fetch'));
+      })
+    );
+    await useSpaceStore.getState().hydrateFromServer(2);
+    await vi.waitFor(() =>
+      expect(workspaceApi.reconcileWorkspaceBindings).toHaveBeenCalledTimes(1)
+    );
+    try {
+      await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+      useSpaceStore
+        .getState()
+        .upsertSpaces([makeSpace('space_new', 'New', 'folder')]);
+    } finally {
+      failReconcile();
+    }
+    await vi.waitFor(() =>
+      expect(workspaceApi.reconcileWorkspaceBindings).toHaveBeenNthCalledWith(
+        2,
+        'new@example.com',
+        ['space_kept', 'space_new'],
+        2
+      )
+    );
+  });
+
+  it('completes deletion of the last Space while offline and unbinds it when Brain is ready', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    useSpaceStore.setState({
+      spaces: { space_deleted: makeSpace('space_deleted', 'Delete', 'folder') },
+    });
+    useInstallationStore.setState({ isBackendReady: false });
+    try {
+      await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+      expect(useSpaceStore.getState().spaces).toEqual({});
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(workspaceApi.unbindWorkspaceFromBrain).not.toHaveBeenCalled();
+    } finally {
+      useInstallationStore.setState({ isBackendReady: true });
+    }
+    await vi.waitFor(() =>
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledWith(
+        'space_deleted',
+        'new@example.com',
+        2,
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+          expectedAccountKey: expect.any(String),
+        })
+      )
+    );
+  });
+
+  it('does not restore a Space deleted while hydration is inspecting legacy projects', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValueOnce([
+      makeSpace('space_deleted', 'Delete', 'folder'),
+      makeSpace('space_kept', 'Keep', 'folder'),
+      makeSpace('legacy_2', 'Legacy Space', 'legacy'),
+    ]);
+    let finishLegacyInspection!: () => void;
+    vi.mocked(spaceApi.proxyFetchSpaceProjects).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishLegacyInspection = () => resolve([]);
+      })
+    );
+    const hydration = useSpaceStore.getState().hydrateFromServer(2);
+    await vi.waitFor(() =>
+      expect(spaceApi.proxyFetchSpaceProjects).toHaveBeenCalledWith('legacy_2')
+    );
+    try {
+      await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+    } finally {
+      finishLegacyInspection();
+      await hydration;
+    }
+    expect(Object.keys(useSpaceStore.getState().spaces)).toEqual([
+      'space_kept',
+    ]);
+  });
+
+  it('skips deferred cleanup after the account changes', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    useInstallationStore.setState({ isBackendReady: false });
+    let backendReady!: () => void;
+    backendReadinessMock.waitForBackendReadiness.mockReturnValue(
+      new Promise<void>((resolve) => {
+        backendReady = resolve;
+      })
+    );
+    await useSpaceStore.getState().hydrateFromServer(2);
+    await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() =>
+      expect(
+        backendReadinessMock.waitForBackendReadiness
+      ).toHaveBeenCalledTimes(1)
+    );
+    authStoreMock.state = { email: 'other@example.com', user_id: 3 };
+    useSpaceStore.getState().resetForUser(3);
+    backendReady();
+    useInstallationStore.setState({ isBackendReady: true });
+    // Both readiness continuations and their async wrappers must finish before
+    // asserting that neither cleanup request was issued for the old account.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(workspaceApi.unbindWorkspaceFromBrain).not.toHaveBeenCalled();
+    expect(workspaceApi.reconcileWorkspaceBindings).not.toHaveBeenCalled();
+  });
+
+  it('does not retry reconciliation after switching accounts', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.reconcileWorkspaceBindings).mockRejectedValueOnce(
+      new TypeError('Failed to fetch')
+    );
+    await useSpaceStore.getState().hydrateFromServer(2);
+    await vi.waitFor(() =>
+      expect(console.warn).toHaveBeenCalledWith(
+        '[spaceStore] Brain workspace reconcile failed; retrying once:',
+        expect.any(TypeError)
+      )
+    );
+    authStoreMock.state = { email: 'other@example.com', user_id: 3 };
+    useSpaceStore.getState().resetForUser(3);
+    await new Promise((resolve) => setTimeout(resolve, 550));
+    expect(workspaceApi.reconcileWorkspaceBindings).toHaveBeenCalledTimes(1);
+  });
+
+  it('scopes cloud deletion completion to the account that started it', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    const workspaceApi = await import('@/service/workspaceApi');
+    let confirmDeletion!: () => void;
+    vi.mocked(spaceApi.proxyDeleteSpace).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        confirmDeletion = resolve;
+      })
+    );
+    const deletion = useSpaceStore
+      .getState()
+      .deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() =>
+      expect(spaceApi.proxyDeleteSpace).toHaveBeenCalled()
+    );
+    authStoreMock.state = { email: 'other@example.com', user_id: 3 };
+    const otherAccountSpace = makeSpace(
+      'space_deleted',
+      'Other account',
+      'folder',
+      '3'
+    );
+    useSpaceStore.setState({ spaces: { space_deleted: otherAccountSpace } });
+    confirmDeletion();
+    await deletion;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(useSpaceStore.getState().spaces.space_deleted).toEqual(
+      otherAccountSpace
+    );
+    expect(workspaceApi.unbindWorkspaceFromBrain).not.toHaveBeenCalled();
+  });
+
+  it.each(['rename', 'archive', 'unarchive', 'relocate'] as const)(
+    'does not restore a deleted Space from a late %s response',
+    async (operation) => {
+      const api = await import('@/service/spaceApi');
+      const workspaceApi = await import('@/service/workspaceApi');
+      const calls = {
+        rename: () =>
+          useSpaceStore
+            .getState()
+            .renameSpaceOnServer('space_deleted', 'Renamed'),
+        archive: () =>
+          useSpaceStore.getState().archiveSpaceOnServer('space_deleted'),
+        unarchive: () =>
+          useSpaceStore.getState().unarchiveSpaceOnServer('space_deleted'),
+        relocate: () =>
+          useSpaceStore
+            .getState()
+            .relocateSpaceOnServer('space_deleted', '/new-folder'),
+      };
+      const requests = {
+        rename: api.proxyUpdateSpace,
+        archive: api.proxyArchiveSpace,
+        unarchive: api.proxyUnarchiveSpace,
+        relocate: api.proxyRelocateSpace,
+      };
+      let finishUpdate!: () => void;
+      vi.mocked(requests[operation]).mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishUpdate = () =>
+            resolve(makeSpace('space_deleted', 'Updated', 'folder'));
+        })
+      );
+      const update = calls[operation]();
+      await vi.waitFor(() =>
+        expect(requests[operation]).toHaveBeenCalledTimes(1)
+      );
+      try {
+        await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+      } finally {
+        finishUpdate();
+        await update;
+      }
+      await vi.waitFor(() =>
+        expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1)
+      );
+      expect(useSpaceStore.getState().spaces.space_deleted).toBeUndefined();
+      expect(useSpaceStore.getState().activeSpaceId).toBe('space_kept');
+    }
+  );
+
+  it('applies a pending rename when cloud deletion is rejected', async () => {
+    const api = await import('@/service/spaceApi');
+    let finishRename!: () => void;
+    vi.mocked(api.proxyUpdateSpace).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishRename = () =>
+          resolve(makeSpace('space_deleted', 'Renamed', 'folder'));
+      })
+    );
+    vi.mocked(api.proxyDeleteSpace).mockRejectedValueOnce({ status: 409 });
+    const rename = useSpaceStore
+      .getState()
+      .renameSpaceOnServer('space_deleted', 'Renamed');
+    await vi.waitFor(() =>
+      expect(api.proxyUpdateSpace).toHaveBeenCalledTimes(1)
+    );
+    try {
+      await expect(
+        useSpaceStore.getState().deleteSpaceOnServer('space_deleted')
+      ).rejects.toEqual({ status: 409 });
+    } finally {
+      finishRename();
+      await rename;
+    }
+    expect(useSpaceStore.getState().spaces.space_deleted.name).toBe('Renamed');
+  });
+
+  it('does not apply a previous account rename to the current account', async () => {
+    const api = await import('@/service/spaceApi');
+    let finishRename!: () => void;
+    vi.mocked(api.proxyUpdateSpace).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishRename = () =>
+          resolve(makeSpace('space_deleted', 'Renamed', 'folder'));
+      })
+    );
+    const rename = useSpaceStore
+      .getState()
+      .renameSpaceOnServer('space_deleted', 'Renamed');
+    await vi.waitFor(() =>
+      expect(api.proxyUpdateSpace).toHaveBeenCalledTimes(1)
+    );
+    authStoreMock.state = { email: 'other@example.com', user_id: 3 };
+    const other = makeSpace('space_deleted', 'Other account', 'folder', '3');
+    useSpaceStore.setState({ spaces: { space_deleted: other } });
+    finishRename();
+    await rename;
+    expect(useSpaceStore.getState().spaces.space_deleted).toEqual(other);
+  });
+
+  it('retains failed unbinds across backend recovery until cleanup succeeds', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.unbindWorkspaceFromBrain)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Still unavailable'));
+    await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() => expect(console.warn).toHaveBeenCalledTimes(1));
+    expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1);
+    useInstallationStore.setState({ isBackendReady: false });
+    useInstallationStore.setState({ isBackendReady: true });
+    await vi.waitFor(() => expect(console.warn).toHaveBeenCalledTimes(2));
+    expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(2);
+    useInstallationStore.setState({ isBackendReady: false });
+    useInstallationStore.setState({ isBackendReady: true });
+    await vi.waitFor(() =>
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(3)
+    );
+    useInstallationStore.setState({ isBackendReady: false });
+    useInstallationStore.setState({ isBackendReady: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(3);
+    expect(useSpaceStore.getState().spaces.space_deleted).toBeUndefined();
+  });
+
+  it('retries after recovery that occurs while the previous unbind is settling', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    let failUnbind!: () => void;
+    vi.mocked(workspaceApi.unbindWorkspaceFromBrain).mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        failUnbind = () => reject(new TypeError('Connection closed'));
+      })
+    );
+    await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() =>
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1)
+    );
+    useInstallationStore.setState({ isBackendReady: false });
+    useInstallationStore.setState({ isBackendReady: true });
+    failUnbind();
+    await vi.waitFor(() =>
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(2)
+    );
+    expect(
+      vi.mocked(workspaceApi.unbindWorkspaceFromBrain).mock.calls[0][3]?.signal
+        ?.aborted
+    ).toBe(true);
+  });
+
+  it('drops failed cleanup when backend recovery belongs to a different account', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.unbindWorkspaceFromBrain).mockRejectedValueOnce(
+      new TypeError('Failed to fetch')
+    );
+    await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() => expect(console.warn).toHaveBeenCalledTimes(1));
+    authStoreMock.state = { email: 'other@example.com', user_id: 3 };
+    useInstallationStore.setState({ isBackendReady: false });
+    useInstallationStore.setState({ isBackendReady: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels a hung unbind after its deadline and retries on the next recovery', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    // Warm the scheduler imports before switching timers so this test controls
+    // the request deadline without depending on dynamic-import timing.
+    await import('@/lib/workspaceUnbind');
+    vi.mocked(workspaceApi.unbindWorkspaceFromBrain).mockImplementationOnce(
+      (_spaceId, _email, _userId, options) =>
+        new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true }
+          );
+        })
+    );
+    vi.useFakeTimers();
+    try {
+      await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+      await vi.waitFor(() =>
+        expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1)
+      );
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ name: 'AbortError' })
+      );
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1);
+      useInstallationStore.setState({ isBackendReady: false });
+      useInstallationStore.setState({ isBackendReady: true });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(2);
+      expect(useSpaceStore.getState().spaces.space_deleted).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([204, 404])(
+    'discards an in-flight Session list after Space deletion %s',
+    async (status) => {
+      const api = await import('@/service/spaceApi');
+      const { useProjectRuntimeStore } =
+        await import('@/store/projectRuntimeStore');
+      const runtimeWrite = vi.spyOn(
+        useProjectRuntimeStore.getState(),
+        'upsertProjectsFromServer'
+      );
+      let finishSync!: () => void;
+      vi.mocked(api.proxyFetchSpaceProjects).mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishSync = () =>
+            resolve([makeServerProject('project_deleted', 'space_deleted')]);
+        })
+      );
+      if (status === 404)
+        vi.mocked(api.proxyDeleteSpace).mockRejectedValueOnce({ status });
+      const sync = useSpaceStore
+        .getState()
+        .syncProjectsFromServer('space_deleted', []);
+      try {
+        await vi.waitFor(() =>
+          expect(api.proxyFetchSpaceProjects).toHaveBeenCalledTimes(1)
+        );
+        // The server snapshot predates deletion of the last Session and its Space.
+        useSpaceStore.getState().removeProjectMeta('project_deleted');
+        await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+        finishSync();
+        await sync;
+        const state = useSpaceStore.getState();
+        expect(state.spaces.space_deleted).toBeUndefined();
+        expect(state.projectsBySpaceId.space_deleted).toBeUndefined();
+        expect(state.projectIdIndex.project_deleted).toBeUndefined();
+        expect(state.projectsSyncedAt.space_deleted).toBeUndefined();
+        expect(runtimeWrite).not.toHaveBeenCalled();
+      } finally {
+        finishSync();
+        await sync;
+        runtimeWrite.mockRestore();
+      }
+    }
+  );
+
+  it('clears Session metadata when hydration removes the Space before deletion completes', async () => {
+    const api = await import('@/service/spaceApi');
+    let confirmDeletion!: () => void;
+    vi.mocked(api.proxyDeleteSpace).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        confirmDeletion = resolve;
+      })
+    );
+    usePageTabStore.getState().setSessionPreviewProject('project_deleted');
+    usePageTabStore.getState().openPreviewTab('file');
+    expect(
+      getSessionPreviewSlice(usePageTabStore.getState()).tabs
+    ).toHaveLength(1);
+    const deletion = useSpaceStore
+      .getState()
+      .deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() =>
+      expect(api.proxyDeleteSpace).toHaveBeenCalledTimes(1)
+    );
+    try {
+      await useSpaceStore.getState().hydrateFromServer(2);
+      expect(useSpaceStore.getState().spaces.space_deleted).toBeUndefined();
+      expect(
+        useSpaceStore.getState().getProjectMeta('project_deleted')
+      ).not.toBeNull();
+    } finally {
+      confirmDeletion();
+      await deletion;
+    }
+    const state = useSpaceStore.getState();
+    expect(state.projectsBySpaceId.space_deleted).toBeUndefined();
+    expect(state.projectIdIndex.project_deleted).toBeUndefined();
+    expect(state.projectsSyncedAt.space_deleted).toBeUndefined();
+    expect(state.lastVisitedProjectBySpace.space_deleted).toBeUndefined();
+    expect(usePageTabStore.getState().sessionPreviewProjectId).toBeNull();
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject.project_deleted
+    ).toBeUndefined();
+  });
+
+  describe('placeholder cleanup responses', () => {
+    beforeEach(async () => {
+      const { useProjectRuntimeStore } =
+        await import('@/store/projectRuntimeStore');
+      useProjectRuntimeStore.setState({ projects: {} });
+      useSpaceStore.setState({
+        activeSpaceId: 'space_kept',
+        spaces: {
+          space_deleted: makeSpace(
+            'space_deleted',
+            'Untitled Space',
+            'blank',
+            '2',
+            { autoCreatedPlaceholder: true, createdFrom: 'initial_hydrate' }
+          ),
+          space_kept: makeSpace('space_kept', 'Keep', 'folder'),
+        },
+        projectsBySpaceId: {},
+        projectIdIndex: {},
+      });
+    });
+
+    const startInspection = async () => {
+      const api = await import('@/service/spaceApi');
+      let finish!: (projects: ServerProject[]) => void;
+      let fail!: (error: unknown) => void;
+      vi.mocked(api.proxyFetchSpaceProjects).mockReturnValueOnce(
+        new Promise((resolve, reject) => {
+          finish = resolve;
+          fail = reject;
+        })
+      );
+      const cleanup = useSpaceStore
+        .getState()
+        .cleanupInactiveEmptySpacesOnServer();
+      await vi.waitFor(() =>
+        expect(api.proxyFetchSpaceProjects).toHaveBeenCalledWith(
+          'space_deleted'
+        )
+      );
+      return { api, cleanup, finish, fail };
+    };
+
+    it.each([204, 404])(
+      'ignores a stale Session response after cloud deletion %s',
+      async (status) => {
+        const workspace = await import('@/service/workspaceApi');
+        const { useProjectRuntimeStore } =
+          await import('@/store/projectRuntimeStore');
+        let finishUnbind!: () => void;
+        vi.mocked(workspace.unbindWorkspaceFromBrain).mockReturnValueOnce(
+          new Promise((resolve) => {
+            finishUnbind = () =>
+              resolve({
+                space_id: 'space_deleted',
+                email: 'new@example.com',
+                bound: false,
+              });
+          })
+        );
+        const { api, cleanup, finish } = await startInspection();
+        if (status === 404)
+          vi.mocked(api.proxyDeleteSpace).mockRejectedValueOnce({ status });
+        const deletion = useSpaceStore
+          .getState()
+          .deleteSpaceOnServer('space_deleted');
+        try {
+          await vi.waitFor(() =>
+            expect(workspace.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1)
+          );
+          // This snapshot predates deletion of the last Session and its Space.
+          finish([makeServerProject('stale_project', 'space_deleted')]);
+          await cleanup;
+        } finally {
+          finish([]);
+          await cleanup;
+          finishUnbind();
+          await deletion;
+        }
+        const state = useSpaceStore.getState();
+        expect(state.spaces.space_deleted).toBeUndefined();
+        expect(state.projectsBySpaceId.space_deleted).toBeUndefined();
+        expect(state.projectIdIndex.stale_project).toBeUndefined();
+        expect(state.projectsSyncedAt.space_deleted).toBeUndefined();
+        expect(
+          useProjectRuntimeStore.getState().projects.stale_project
+        ).toBeUndefined();
+      }
+    );
+
+    it('preserves discovered Sessions when cloud deletion is rejected', async () => {
+      const { useProjectRuntimeStore } =
+        await import('@/store/projectRuntimeStore');
+      const { api, cleanup, finish } = await startInspection();
+      vi.mocked(api.proxyDeleteSpace).mockRejectedValueOnce({ status: 409 });
+      try {
+        await expect(
+          useSpaceStore.getState().deleteSpaceOnServer('space_deleted')
+        ).rejects.toEqual({ status: 409 });
+      } finally {
+        finish([makeServerProject('kept_project', 'space_deleted')]);
+        await cleanup;
+      }
+      expect(useSpaceStore.getState().spaces.space_deleted).toBeDefined();
+      expect(
+        useSpaceStore.getState().getProjectMeta('kept_project')
+      ).not.toBeNull();
+      expect(
+        useProjectRuntimeStore.getState().projects.kept_project
+      ).toBeDefined();
+      expect(api.proxyDeleteSpace).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['sessions', 'empty', 'missing'] as const)(
+      'ignores a previous account inspection returning %s',
+      async (result) => {
+        const { useProjectRuntimeStore } =
+          await import('@/store/projectRuntimeStore');
+        useSpaceStore.getState().upsertSpaces([
+          {
+            ...useSpaceStore.getState().spaces.space_deleted,
+            id: 'space_queued',
+          },
+        ]);
+        const { api, cleanup, finish, fail } = await startInspection();
+        authStoreMock.state = { email: 'other@example.com', user_id: 3 };
+        const otherSpace = makeSpace('space_deleted', 'Other', 'folder', '3');
+        useSpaceStore.getState().resetForUser(3);
+        useSpaceStore.getState().upsertSpaces([otherSpace]);
+        if (result === 'missing') fail({ status: 404 });
+        else
+          finish(
+            result === 'empty'
+              ? []
+              : [makeServerProject('old_project', 'space_deleted')]
+          );
+        await cleanup;
+        expect(useSpaceStore.getState().spaces.space_deleted).toEqual(
+          otherSpace
+        );
+        expect(
+          useSpaceStore.getState().getProjectMeta('old_project')
+        ).toBeNull();
+        expect(
+          useProjectRuntimeStore.getState().projects.old_project
+        ).toBeUndefined();
+        expect(api.proxyDeleteSpace).not.toHaveBeenCalled();
+        expect(api.proxyFetchSpaceProjects).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it.each(['selected', 'configured'] as const)(
+      'keeps a placeholder that becomes %s while its inspection is pending',
+      async (change) => {
+        const { api, cleanup, finish } = await startInspection();
+        if (change === 'selected')
+          useSpaceStore.setState({ activeSpaceId: 'space_deleted' });
+        else
+          useSpaceStore.getState().updateSpace('space_deleted', {
+            name: 'My Space',
+            sourceType: 'folder',
+            rootPath: '/workspace',
+          });
+        finish([]);
+        await cleanup;
+        expect(useSpaceStore.getState().spaces.space_deleted).toBeDefined();
+        expect(api.proxyDeleteSpace).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(['empty', 'missing'] as const)(
+      'still removes an unchanged placeholder when the response is %s',
+      async (result) => {
+        const { api, cleanup, finish, fail } = await startInspection();
+        if (result === 'missing') fail({ status: 404 });
+        else finish([]);
+        await cleanup;
+        expect(useSpaceStore.getState().spaces.space_deleted).toBeUndefined();
+        expect(api.proxyDeleteSpace).toHaveBeenCalledTimes(
+          result === 'empty' ? 1 : 0
+        );
+      }
+    );
+  });
+
+  it('still applies an in-flight Session list when Space deletion is rejected', async () => {
+    const api = await import('@/service/spaceApi');
+    let finishSync!: () => void;
+    vi.mocked(api.proxyFetchSpaceProjects).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSync = () =>
+          resolve([makeServerProject('project_deleted', 'space_deleted')]);
+      })
+    );
+    vi.mocked(api.proxyDeleteSpace).mockRejectedValueOnce({ status: 409 });
+    const sync = useSpaceStore
+      .getState()
+      .syncProjectsFromServer('space_deleted', []);
+    await vi.waitFor(() =>
+      expect(api.proxyFetchSpaceProjects).toHaveBeenCalledTimes(1)
+    );
+    try {
+      await expect(
+        useSpaceStore.getState().deleteSpaceOnServer('space_deleted')
+      ).rejects.toEqual({ status: 409 });
+    } finally {
+      finishSync();
+      await sync;
+    }
+    expect(
+      useSpaceStore.getState().getProjectMeta('project_deleted')?.status
+    ).toBe('active');
+  });
+
+  it('discards a previous account Session list without blocking the current account sync', async () => {
+    const api = await import('@/service/spaceApi');
+    const { useProjectRuntimeStore } =
+      await import('@/store/projectRuntimeStore');
+    const runtimeWrite = vi.spyOn(
+      useProjectRuntimeStore.getState(),
+      'upsertProjectsFromServer'
+    );
+    let finishOldSync!: () => void;
+    vi.mocked(api.proxyFetchSpaceProjects)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishOldSync = () =>
+            resolve([
+              makeServerProject('old_account_project', 'space_deleted'),
+            ]);
+        })
+      )
+      .mockResolvedValueOnce([
+        {
+          ...makeServerProject('new_account_project', 'space_deleted'),
+          user_id: '3',
+        },
+      ]);
+    const oldSync = useSpaceStore
+      .getState()
+      .syncProjectsFromServer('space_deleted', []);
+    try {
+      await vi.waitFor(() =>
+        expect(api.proxyFetchSpaceProjects).toHaveBeenCalledTimes(1)
+      );
+      authStoreMock.state = { email: 'other@example.com', user_id: 3 };
+      useSpaceStore.getState().resetForUser(3);
+      useSpaceStore
+        .getState()
+        .upsertSpaces([makeSpace('space_deleted', 'Other', 'folder', '3')]);
+      await useSpaceStore
+        .getState()
+        .syncProjectsFromServer('space_deleted', []);
+      finishOldSync();
+      await oldSync;
+      expect(
+        useSpaceStore.getState().getProjectMeta('old_account_project')
+      ).toBeNull();
+      expect(
+        useSpaceStore.getState().getProjectMeta('new_account_project')?.userId
+      ).toBe('3');
+      expect(runtimeWrite).toHaveBeenCalledTimes(1);
+    } finally {
+      finishOldSync();
+      await oldSync;
+      runtimeWrite.mockRestore();
+    }
+  });
+
+  it.each([false, true])(
+    'handles legacy remapping before a Session response (delete remapped Space: %s)',
+    async (deleteRemapped) => {
+      const api = await import('@/service/spaceApi');
+      useSpaceStore.getState().ensureLegacySpace(2);
+      vi.mocked(api.proxyEnsureLegacySpace).mockResolvedValueOnce(
+        makeSpace('server_legacy', 'Legacy', 'legacy')
+      );
+      let finishSync!: () => void;
+      vi.mocked(api.proxyFetchSpaceProjects).mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishSync = () =>
+            resolve([makeServerProject('remapped_project', 'server_legacy')]);
+        })
+      );
+      const sync = useSpaceStore
+        .getState()
+        .syncProjectsFromServer('legacy_2', []);
+      try {
+        await vi.waitFor(() =>
+          expect(api.proxyFetchSpaceProjects).toHaveBeenCalledWith(
+            'server_legacy'
+          )
+        );
+        if (deleteRemapped)
+          await useSpaceStore.getState().deleteSpaceOnServer('server_legacy');
+      } finally {
+        finishSync();
+        await sync;
+      }
+      expect(useSpaceStore.getState().spaces.legacy_2).toBeUndefined();
+      expect(
+        useSpaceStore.getState().getProjectMeta('remapped_project')?.spaceId ??
+          null
+      ).toBe(deleteRemapped ? null : 'server_legacy');
+    }
+  );
+
+  it('retries on a repeated backend-ready notification without an intervening false state', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    useInstallationStore.setState({ state: 'completed', isBackendReady: true });
+    vi.mocked(workspaceApi.unbindWorkspaceFromBrain).mockRejectedValueOnce(
+      new TypeError('Connection refused')
+    );
+    await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() => expect(console.warn).toHaveBeenCalledTimes(1));
+    useInstallationStore.getState().setVisible(true);
+    useInstallationStore.getState().updateProgress(90);
+    expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1);
+    useInstallationStore.getState().setSuccess();
+    await vi.waitFor(() =>
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(2)
+    );
+    useInstallationStore.getState().setSuccess();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(2);
+  });
+
+  it('coalesces repeated readiness notifications while a failed unbind is settling', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    useInstallationStore.setState({ state: 'completed', isBackendReady: true });
+    let failUnbind!: () => void;
+    vi.mocked(workspaceApi.unbindWorkspaceFromBrain).mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        failUnbind = () => reject(new TypeError('Previous connection closed'));
+      })
+    );
+    await useSpaceStore.getState().deleteSpaceOnServer('space_deleted');
+    await vi.waitFor(() =>
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(1)
+    );
+    useInstallationStore.getState().setSuccess();
+    useInstallationStore.getState().setSuccess();
+    failUnbind();
+    await vi.waitFor(() =>
+      expect(workspaceApi.unbindWorkspaceFromBrain).toHaveBeenCalledTimes(2)
+    );
+  });
 });
 
 describe('spaceStore user scoping', () => {

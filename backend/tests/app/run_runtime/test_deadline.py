@@ -50,16 +50,28 @@ async def test_coordinator_enforces_only_a_persisted_run_deadline(tmp_path):
             run_id="run-1",
             stream_factory=source,
         )
-        await asyncio.sleep(0.1)
-
-        assert subscription.handle.execution_task is not None
-        assert subscription.handle.execution_task.cancelled()
-        assert journal.get_run("run-1").status == "failed"
-        assert (
-            journal.list_events("run-1")[-1].event_type
-            == "run.deadline_reached"
-        )
-        await coordinator.close()
+        try:
+            execution = subscription.handle.execution_task
+            watcher = subscription.handle.deadline_task
+            assert execution is not None
+            assert watcher is not None
+            # Deadline enforcement includes threaded SQLite work. Observe both
+            # tasks without cancelling either when the bound expires: the
+            # deadline watcher must own execution cancellation and settlement.
+            _, pending = await asyncio.wait({execution, watcher}, timeout=5)
+            assert not pending
+            assert execution.cancelled()
+            assert journal.get_run("run-1").status == "failed"
+            assert (
+                journal.list_events("run-1")[-1].event_type
+                == "run.deadline_reached"
+            )
+        finally:
+            await coordinator.close()
+            if subscription.handle.deadline_task is not None:
+                await asyncio.gather(
+                    subscription.handle.deadline_task, return_exceptions=True
+                )
 
 
 @pytest.mark.asyncio
@@ -216,20 +228,27 @@ async def test_deadline_configured_after_admission_is_enforced(tmp_path):
             run_id="run-1",
             stream_factory=source,
         )
-        journal.set_timeout_policy(
-            "run-1",
-            RunTimeoutPolicy(
-                policy_version="v2",
-                run_deadline_at=time.time() + 0.05,
-            ),
-        )
-        await coordinator.notify_deadline_changed("run-1")
-        await asyncio.sleep(0.1)
-
-        assert subscription.handle.execution_task is not None
-        assert subscription.handle.execution_task.cancelled()
-        assert journal.get_run("run-1").status == "failed"
-        await coordinator.close()
+        try:
+            journal.set_timeout_policy(
+                "run-1",
+                RunTimeoutPolicy(
+                    policy_version="v2",
+                    run_deadline_at=time.time() + 0.05,
+                ),
+            )
+            assert await coordinator.notify_deadline_changed("run-1")
+            execution = subscription.handle.execution_task
+            assert execution is not None
+            done, _ = await asyncio.wait({execution}, timeout=5)
+            assert execution in done
+            assert execution.cancelled()
+            assert journal.get_run("run-1").status == "failed"
+            assert (
+                journal.list_events("run-1")[-1].event_type
+                == "run.deadline_reached"
+            )
+        finally:
+            await coordinator.close()
 
 
 @pytest.mark.asyncio

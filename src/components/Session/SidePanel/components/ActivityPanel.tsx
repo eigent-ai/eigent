@@ -18,6 +18,7 @@ import {
 } from '@/api/connectors';
 import { uploadFileToBrain } from '@/api/http';
 import { isWeb } from '@/client/platform';
+import { useSessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
 import { SidePanelAccordionBox } from '@/components/Session/SidePanel/components/AccordionBox';
 import {
   buildProjectSessionPanelData,
@@ -595,6 +596,7 @@ export function SessionActivityPanel({
   agentHeaderAction?: ReactNode;
   scope: SessionPanelScope;
 }) {
+  const managedPreview = useSessionArtifactPreview();
   const { t } = useTranslation();
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
@@ -602,7 +604,9 @@ export function SessionActivityPanel({
   const { projectId } = useProjectEventRuntime();
   const overview = useProjectSessionOverview(projectId);
   const scopedChatStore =
-    projectId && projectStore.activeProjectId === projectId ? chatStore : null;
+    !managedPreview && projectId && projectStore.activeProjectId === projectId
+      ? chatStore
+      : null;
   const activeTaskId = scopedChatStore?.activeTaskId ?? null;
   const composerTaskId =
     activeTaskId &&
@@ -659,6 +663,7 @@ export function SessionActivityPanel({
 
   useEffect(() => {
     let cancelled = false;
+    if (managedPreview) return;
     void fetchConnectedProviders()
       .then((providers) => {
         if (!cancelled) setConnectors(providers);
@@ -669,7 +674,7 @@ export function SessionActivityPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [managedPreview]);
 
   const scopedRuns = useMemo(
     () => selectSessionPanelRuns(overview.runs, scope),
@@ -683,7 +688,7 @@ export function SessionActivityPanel({
   );
   // Keep discovery subscribed even while empty, but do not give SectionList an
   // empty child: it owns the separators between the sections that are present.
-  const processRows = useTerminalProcessRows(projectId);
+  const processRows = useTerminalProcessRows(managedPreview ? null : projectId);
   const environmentItems = panelData.environments.filter(
     (item) => item.label !== 'Terminal'
   );
@@ -711,15 +716,21 @@ export function SessionActivityPanel({
   // Compatibility boundary: legacy ChatStore file-list changes still trigger
   // resolver refreshes, but mergeProjectFiles may only enrich durable rows.
   const projectFiles = useProjectOutputFiles(
-    projectId,
+    managedPreview ? null : projectId,
     activeTask,
     activeTaskId,
     workspaceRoot,
     workspaceRelativePaths
   );
   const files = useMemo(
-    () => mergeProjectFiles(panelData.files, projectFiles),
-    [panelData.files, projectFiles]
+    () =>
+      managedPreview
+        ? panelData.files.map((item) => ({
+            ...item,
+            previewable: Boolean(item.file.artifactId),
+          }))
+        : mergeProjectFiles(panelData.files, projectFiles),
+    [panelData.files, projectFiles, managedPreview]
   );
 
   const attachToRun = (
@@ -732,6 +743,7 @@ export function SessionActivityPanel({
   ) => {
     const current = attachmentScopeRef.current;
     if (
+      managedPreview ||
       selectedFiles.length === 0 ||
       current.projectId !== target.projectId ||
       current.chatStore !== target.chatStore ||
@@ -916,9 +928,11 @@ export function SessionActivityPanel({
                 scope={scope}
                 onSelect={(item) => {
                   if (item.kind === 'url' && item.url) {
-                    if (projectId) openBrowserPreview(item.url, projectId);
+                    if (projectId && !managedPreview)
+                      openBrowserPreview(item.url, projectId);
                   } else if (item.file) {
-                    openFilePreview(item.file);
+                    if (managedPreview) managedPreview(item.taskId, item.file);
+                    else openFilePreview(item.file);
                   }
                 }}
               />
@@ -928,7 +942,11 @@ export function SessionActivityPanel({
                 key="files"
                 items={files}
                 scope={scope}
-                onSelect={(item) => openFilePreview(item.file)}
+                onSelect={(item) =>
+                  managedPreview
+                    ? managedPreview(item.taskId, item.file)
+                    : openFilePreview(item.file)
+                }
                 headerAction={
                   <TooltipSimple
                     content={addFilesTooltip}

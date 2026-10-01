@@ -48,6 +48,8 @@ export type Provider = {
    * provider prefix instead of a free-form text input.
    */
   modelsEndpoint?: string;
+  /** Optional model ID prefix used to limit a provider's discovery results. */
+  modelIdPrefix?: string;
   /**
    * Optional marketing / docs website. When set, the card renders a
    * clickable link below the description (opened in the user's default
@@ -94,11 +96,7 @@ export enum TriggerType {
 /** Slack event input data from slack_trigger execution */
 export interface SlackInputData {
   event_type:
-    | 'app_mention'
-    | 'message'
-    | 'reaction_added'
-    | 'reaction_removed'
-    | string;
+    'app_mention' | 'message' | 'reaction_added' | 'reaction_removed' | string;
   event_ts: string;
   team_id: string;
   user_id: string;

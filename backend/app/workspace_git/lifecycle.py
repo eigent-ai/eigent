@@ -35,6 +35,7 @@ from app.workspace_config import canonical_digest
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_git.coordinator import WorkspaceGitCoordinator
 from app.workspace_git.workforce import WorkforceGitService
+from app.workspace_runtime.entry_guard import has_isolated_workspace_binding
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,10 @@ class WorkspaceGitLifecycle:
         )
 
     def finalize_run(self, run_id: str) -> GitRunFinalization:
+        # Isolated Runs are finalized by the provider-neutral service. This
+        # return must precede the legacy writer-scheduler finally block.
+        if has_isolated_workspace_binding(self.journal, run_id):
+            return GitRunFinalization(run_id, "isolated_runtime", None, None)
         canonical_run = self.journal.get_run(run_id)
         if canonical_run is None:
             raise ContentRepositoryError(f"Run {run_id!r} is unavailable")
@@ -113,7 +118,8 @@ class WorkspaceGitLifecycle:
         finally:
             # Git projection/finalization may need attention, but a terminal
             # Task must never retain the physical checkout writer forever.
-            self.coordinator.writer_scheduler.finish_task(run_id=run_id)
+            if not has_isolated_workspace_binding(self.journal, run_id):
+                self.coordinator.writer_scheduler.finish_task(run_id=run_id)
 
     def _finalize_terminal_run(
         self,
@@ -121,6 +127,8 @@ class WorkspaceGitLifecycle:
         *,
         terminal_status: str,
     ) -> GitRunFinalization:
+        if has_isolated_workspace_binding(self.journal, run_id):
+            return GitRunFinalization(run_id, "isolated_runtime", None, None)
         run = self.journal.get_run_git_materialization(run_id)
         binding = (
             self.journal.get_project_workspace_binding(run.project_id)
@@ -326,6 +334,8 @@ class WorkspaceGitLifecycle:
         for the durable terminal event.
         """
 
+        if has_isolated_workspace_binding(self.journal, run_id):
+            return GitRunFinalization(run_id, "isolated_runtime", None, None)
         canonical_run = self.journal.get_run(run_id)
         if canonical_run is None:
             raise ContentRepositoryError(f"Run {run_id!r} is unavailable")
@@ -404,6 +414,10 @@ class WorkspaceGitLifecycle:
         )
 
     def _auto_apply_project_to_space(self, run_id: str) -> bool:
+        # Archive/retry paths can call this independently of finalize_run.
+        # An old Git projection never owns isolated publication to the Space.
+        if has_isolated_workspace_binding(self.journal, run_id):
+            return False
         run = self.journal.get_run_git_materialization(run_id)
         if (
             run is None

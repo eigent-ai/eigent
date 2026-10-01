@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,6 +24,61 @@ from app.model.chat import Chat
 from app.service.task import Agents
 
 pytestmark = pytest.mark.unit
+
+
+def test_openai_workforce_audio_uses_saved_credentials(
+    sample_chat_data, monkeypatch, tmp_path
+):
+    """Real audio initialization must not depend on process-level API keys."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    options = Chat(
+        **{
+            **sample_chat_data,
+            "model_platform": "openai",
+            "model_type": "gpt-4o-mini",
+            "api_key": "saved-provider-test-key",
+            "api_url": "https://provider.example/v1",
+        }
+    )
+    module = "app.agent.factory.multi_modal"
+    audio_instances = []
+
+    def make_audio(*args, **kwargs):
+        toolkit = AudioAnalysisToolkit(*args, **kwargs)
+        audio_instances.append(toolkit)
+        return toolkit
+
+    with ExitStack() as stack:
+        for name in (
+            "HumanToolkit",
+            "VideoDownloaderToolkit",
+            "ScreenshotToolkit",
+            "OpenAIImageToolkit",
+            "TerminalToolkit",
+            "NoteTakingToolkit",
+            "SearchToolkit",
+            "SkillToolkit",
+            "ToolkitMessageIntegration",
+            "add_memory_tools",
+        ):
+            stack.enter_context(patch(f"{module}.{name}"))
+        stack.enter_context(
+            patch(
+                f"{module}.get_working_directory", return_value=str(tmp_path)
+            )
+        )
+        mock_agent = stack.enter_context(patch(f"{module}.agent_model"))
+        stack.enter_context(
+            patch(f"{module}.AudioAnalysisToolkit", side_effect=make_audio)
+        )
+
+        assert multi_modal_agent(options) is mock_agent.return_value
+
+    assert len(audio_instances) == 1
+    model = audio_instances[0].audio_agent.model_backend.models[0]
+    assert model._client.api_key == options.api_key
+    assert str(model._client.base_url).rstrip("/") == options.api_url
+    assert model.model_type == options.model_type
 
 
 def test_multi_modal_agent_creation(sample_chat_data):

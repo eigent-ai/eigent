@@ -12,19 +12,30 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { fetchGet } from '@/api/http';
 import { AddWorker } from '@/components/AddWorker';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DsText } from '@/components/ui/ds-text';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
+import { useNewSessionModelQuota } from '@/hooks/useNewSessionModelQuota';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
+import {
+  createWorkspaceSessionDraft,
+  reviseWorkspaceSessionDraft,
+  submitWorkspaceSessionDraft,
+  type WorkspaceSessionDraft,
+} from '@/service/sessionMessage';
 import { getAuthStore, useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
@@ -77,7 +88,7 @@ export default function Workspace({
     (s) => s.workspaceChatFocusRequestId
   );
   const workerList = useWorkerList();
-  const { modelType, setWorkerList } = useAuthStore();
+  const { modelType, token, user_id, setWorkerList } = useAuthStore();
   const [draftSessionMode, setDraftSessionMode] = useState<SessionModeType>(
     SessionMode.SINGLE_AGENT
   );
@@ -95,13 +106,95 @@ export default function Workspace({
   );
 
   const [message, setMessage] = useState('');
+  const messageRevision = useRef(0);
+  const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
   const [draftFiles, setDraftFiles] = useState<FileAttachment[]>([]);
+  const accountKey = useAuthStore(getAccountEnvironmentKey);
+  const [managedAvailable, setManagedAvailable] = useState(false);
+  const [managedSelected, setManagedSelected] = useState(false);
+  const managedDraftRef = useRef<WorkspaceSessionDraft | null>(null);
+  const managedLifetime = useRef(new AbortController());
+  useEffect(() => {
+    setManagedAvailable(false);
+    setManagedSelected(false);
+    managedDraftRef.current = null;
+    const controller = new AbortController();
+    managedLifetime.current = controller;
+    void fetchGet('/executions/capabilities', undefined, undefined, {
+      expectedAccountKey: accountKey,
+      signal: controller.signal,
+    })
+      .then((capabilities) => {
+        if (!controller.signal.aborted)
+          setManagedAvailable(capabilities?.local_single_session === true);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [accountKey, activeSpaceId]);
   const directProjectStartRef = useRef(false);
+  const activeSubmission = useRef<symbol | null>(null);
+  const composerGeneration = useRef(0);
   const mountedRef = useRef(false);
   const [isStartingDirectProject, setIsStartingDirectProject] = useState(false);
-  const { hasModel, cloudUsageLimitReached } = useModelConfigCheck();
-  const isCloudUsageLimited = modelType === 'cloud' && cloudUsageLimitReached;
-  const usageLimitBanner = useUsageIncidentBanner(modelType);
+  useEffect(() => {
+    composerGeneration.current += 1;
+    if (managedSelected) {
+      // A newer selection owns a new composer. The older accepted execution
+      // may finish in the background, but cannot clear or navigate this view.
+      managedDraftRef.current = null;
+      activeSubmission.current = null;
+      directProjectStartRef.current = false;
+      setIsStartingDirectProject(false);
+    }
+  }, [
+    activeProjectId,
+    workspaceChatFocusRequestId,
+    accountKey,
+    activeSpaceId,
+    managedSelected,
+  ]);
+  const { hasModel } = useModelConfigCheck();
+  // A fresh Session resolves its materialized Space model at launch. The
+  // unrelated global preference cannot establish whether that model is usable.
+  const canResolveSpaceModelAtLaunch = Boolean(
+    !managedSelected &&
+    token &&
+    activeSpace &&
+    activeSpace.id === activeSpaceId &&
+    !isLegacyActiveSpace &&
+    !activeSpace.id.startsWith('legacy_') &&
+    (!activeSpace.userId || activeSpace.userId === String(user_id))
+  );
+  const canStartWithModel = hasModel || canResolveSpaceModelAtLaunch;
+  const modelQuota = useNewSessionModelQuota(
+    canResolveSpaceModelAtLaunch ? activeSpaceId : null,
+    modelType
+  );
+  const incidentBanner = useUsageIncidentBanner(
+    modelQuota.isCurrentAccount ? (modelQuota.effectiveModelType ?? '') : ''
+  );
+  const usageLimitBanner = modelQuota.error
+    ? {
+        message: modelQuota.error.message,
+        actionLabel: t('chat.notice-refresh'),
+        severity: 'danger' as const,
+        onAction: modelQuota.refresh,
+      }
+    : incidentBanner
+      ? {
+          ...incidentBanner,
+          onAction: () => {
+            incidentBanner.onAction();
+            modelQuota.refresh();
+          },
+          onRefresh: incidentBanner.onRefresh
+            ? () => {
+                incidentBanner.onRefresh?.();
+                modelQuota.refresh();
+              }
+            : undefined,
+        }
+      : null;
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
   const [editingWorkerAgent, setEditingWorkerAgent] = useState<Agent | null>(
@@ -147,10 +240,10 @@ export default function Workspace({
       return;
     }
 
-    // A known account limit should not create another empty Session.
-    if (isCloudUsageLimited) return;
+    // Resolve the actual Space category before creating a quota-blocked Session.
+    if (modelQuota.blocked) return;
 
-    if (!hasModel) {
+    if (!canStartWithModel) {
       toast.error(t('layout.please-select-model-first'));
       openSettings('models');
       return;
@@ -160,6 +253,25 @@ export default function Workspace({
       return;
     }
     directProjectStartRef.current = true;
+    const submission = Symbol('workspace-send');
+    activeSubmission.current = submission;
+    const owner = {
+      projectId: useProjectRuntimeStore.getState().activeProjectId,
+      focusRequest: usePageTabStore.getState().workspaceChatFocusRequestId,
+      generation: composerGeneration.current,
+      messageRevision: messageRevision.current,
+    };
+    const ownsComposer = () =>
+      mountedRef.current &&
+      activeSubmission.current === submission &&
+      composerGeneration.current === owner.generation &&
+      messageRevision.current === owner.messageRevision &&
+      useProjectRuntimeStore.getState().activeProjectId === owner.projectId &&
+      usePageTabStore.getState().workspaceChatFocusRequestId ===
+        owner.focusRequest &&
+      getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+      useSpaceStore.getState().activeSpaceId === activeSpaceId &&
+      usePageTabStore.getState().activeWorkspaceTab === activeWorkspaceTab;
     setIsStartingDirectProject(true);
     const startingAuth = getAuthStore();
     const startingAccount =
@@ -183,8 +295,45 @@ export default function Workspace({
         return;
       }
 
+      const assertStartingContext = await modelQuota.beforeCreate();
+      if (!mountedRef.current) return;
       const projectStore = useProjectRuntimeStore.getState();
       const composerThinkingEffort = projectStore.getComposerThinkingEffort();
+      if (managedSelected) {
+        if (
+          effectiveSessionMode !== SessionMode.SINGLE_AGENT ||
+          draftFiles.length ||
+          !isLocalWorkspaceSpace(activeSpace) ||
+          !['custom', 'local'].includes(modelType)
+        ) {
+          toast.error(t('chat.parallel-unsupported'));
+          return;
+        }
+        let draft = managedDraftRef.current;
+        if (!draft) {
+          draft = createWorkspaceSessionDraft(
+            activeSpaceId,
+            trimmedMessage,
+            composerThinkingEffort ?? null,
+            managedLifetime.current.signal
+          );
+          managedDraftRef.current = draft;
+        } else {
+          reviseWorkspaceSessionDraft(
+            draft,
+            trimmedMessage,
+            composerThinkingEffort ?? null
+          );
+        }
+        const projectId = await submitWorkspaceSessionDraft(draft);
+        if (ownsComposer()) {
+          useProjectRuntimeStore.getState().setActiveProject(projectId);
+          setMessage('');
+          managedDraftRef.current = null;
+          setActiveWorkspaceTab('project');
+        }
+        return;
+      }
       const syncedProject = await createSyncedProjectInSpace({
         projectStore,
         spaceId: activeSpaceId,
@@ -200,6 +349,8 @@ export default function Workspace({
             : {}),
         },
       });
+      assertStartingContext();
+      if (!mountedRef.current) return;
       useSpaceStore.getState().setActiveSpace(syncedProject.spaceId);
       const targetProjectId = syncedProject.projectId;
       const targetChatStore =
@@ -254,14 +405,24 @@ export default function Workspace({
         currentAuth.token && currentAuth.user_id != null
           ? String(currentAuth.user_id)
           : null;
-      if (currentAccount === startingAccount) {
+      if (
+        currentAccount === startingAccount &&
+        (!managedSelected || ownsComposer())
+      ) {
         notifyError(
-          err instanceof Error ? err.message : t('layout.failed-to-start-task')
+          managedSelected
+            ? t('chat.parallel-request-failed')
+            : err instanceof Error
+              ? err.message
+              : t('layout.failed-to-start-task')
         );
       }
     } finally {
-      directProjectStartRef.current = false;
-      setIsStartingDirectProject(false);
+      if (activeSubmission.current === submission) {
+        activeSubmission.current = null;
+        directProjectStartRef.current = false;
+        setIsStartingDirectProject(false);
+      }
     }
   };
 
@@ -287,14 +448,17 @@ export default function Workspace({
 
   const composerInputProps = {
     value: message,
-    onChange: setMessage,
+    onChange: (value: string) => {
+      messageRevision.current += 1;
+      setMessage(value);
+    },
     onSend: handleSend,
     files: draftFiles,
     onFilesChange: setDraftFiles,
     onAddFile: handleFileSelect,
     disabled:
-      !hasModel ||
-      isCloudUsageLimited ||
+      !canStartWithModel ||
+      modelQuota.blocked ||
       isStartingDirectProject ||
       isLegacyActiveSpace,
     textareaRef,
@@ -427,15 +591,35 @@ export default function Workspace({
 
   const composerInput = (
     <>
+      {(managedAvailable || managedSelected) && (
+        <label className="mb-3 flex items-center gap-2 text-ds-ink-default-default">
+          <Checkbox
+            checked={managedSelected}
+            onCheckedChange={(checked) => setManagedSelected(checked === true)}
+            disabled={
+              isStartingDirectProject || Boolean(managedDraftRef.current)
+            }
+          />
+          <DsText as="span" role="base">
+            {t('chat.parallel-opt-in')}
+          </DsText>
+        </label>
+      )}
       <div data-workspace-bottom-box className="w-full">
         <BottomBox
+          resourcePickersEnabled={!managedSelected}
           state="input"
           queuedMessages={[]}
           onRemoveQueuedMessage={() => {}}
-          noModelOverlay={!hasModel && !isCloudUsageLimited}
+          noModelOverlay={!canStartWithModel && !modelQuota.blocked}
           usageLimitBanner={usageLimitBanner}
           onSelectModel={() => openSettings('models')}
-          inputProps={composerInputProps}
+          inputProps={{
+            ...composerInputProps,
+            attachmentsEnabled: !managedSelected,
+            onUnsupportedAttachment: () =>
+              toast.error(t('chat.parallel-unsupported')),
+          }}
           sessionMode={effectiveSessionMode}
           onSessionModeChange={setActiveProjectMode}
           sessionModeSelectInteractive

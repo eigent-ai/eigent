@@ -125,6 +125,8 @@ interface BottomBoxCommonProps {
   modelSelectProjectId?: string | null;
   /** Override input disablement for model recovery; controlled variants stay locked. */
   modelSelectDisabled?: boolean;
+  /** Restricted file workflows do not offer connector or skill pickers. */
+  resourcePickersEnabled?: boolean;
 
   // Loading states
   loading?: boolean;
@@ -161,6 +163,7 @@ export default function BottomBox({
   sessionModeSelectInteractive = false,
   modelSelectProjectId,
   modelSelectDisabled,
+  resourcePickersEnabled = true,
   loading = false,
   noModelOverlay = false,
   onSelectModel,
@@ -271,7 +274,9 @@ export default function BottomBox({
 
   const showQueuedBox = enableQueuedBox && queuedMessages.length > 0;
   const activePickerPanel =
-    normalizedVariant.kind === 'input' ? openPanel : null;
+    resourcePickersEnabled && normalizedVariant.kind === 'input'
+      ? openPanel
+      : null;
   const hasOverlay = !!usageLimitBanner || !!activePickerPanel;
 
   const variantHeader = normalizedVariant.header;
@@ -417,9 +422,15 @@ export default function BottomBox({
             variant={normalizedVariant}
             inputProps={inputProps}
             connectorPanelOpen={activePickerPanel === 'connector'}
-            onToggleConnectorPanel={() => togglePanel('connector')}
+            onToggleConnectorPanel={
+              resourcePickersEnabled
+                ? () => togglePanel('connector')
+                : undefined
+            }
             skillPanelOpen={activePickerPanel === 'skill'}
-            onToggleSkillPanel={() => togglePanel('skill')}
+            onToggleSkillPanel={
+              resourcePickersEnabled ? () => togglePanel('skill') : undefined
+            }
           />
         </motion.div>
 

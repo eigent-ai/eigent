@@ -84,6 +84,56 @@ describe('useWorkspaceConfiguration', () => {
     saveMock.mockReset();
   });
 
+  it.each(['space', 'account'])(
+    'quarantines the old document, callbacks and CAS timer on %s change',
+    async (change) => {
+      let completeNext!: (value: WorkspaceConfigurationDraft) => void;
+      fetchMock
+        .mockResolvedValueOnce(draft(4, makeDocument('Previous')))
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              completeNext = resolve;
+            })
+        );
+      const { result, rerender } = renderHook(
+        ({ spaceId, userId }) =>
+          useWorkspaceConfiguration({
+            spaceId,
+            identity: { email: `user-${userId}@example.com`, userId },
+            autosaveDelayMs: 10,
+          }),
+        { initialProps: { spaceId: 'space-1', userId: 7 } }
+      );
+      await waitFor(() =>
+        expect(result.current.document?.metadata.name).toBe('Previous')
+      );
+      const staleSetDocument = result.current.setDocument;
+      act(() => result.current.setDocument(makeDocument('Unsaved previous')));
+      rerender(
+        change === 'space'
+          ? { spaceId: 'space-2', userId: 7 }
+          : { spaceId: 'space-1', userId: 8 }
+      );
+      expect(result.current.document).toBeNull();
+      act(() => staleSetDocument(makeDocument('Late previous callback')));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      expect(saveMock).not.toHaveBeenCalled();
+      await act(async () =>
+        completeNext(draft(12, makeDocument('Next scope')))
+      );
+      expect(result.current.document?.metadata.name).toBe('Next scope');
+      act(() => staleSetDocument(makeDocument('Late callback after load')));
+      expect(result.current.document?.metadata.name).toBe('Next scope');
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      expect(saveMock).not.toHaveBeenCalled();
+    }
+  );
+
   it('does not write the unchanged document after loading', async () => {
     fetchMock.mockResolvedValue(draft(0, makeDocument()));
     const { result } = renderHook(() =>

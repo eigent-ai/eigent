@@ -148,6 +148,15 @@ export function ModelAndThinkingEffortSelect({
   const pinnedSelection = projectId
     ? (runtimePinnedSelection ?? spacePinnedSelection)
     : null;
+  const spaceDefaultPending = useProjectRuntimeStore((state) => {
+    const session = projectId ? state.projects[projectId] : null;
+    return Boolean(
+      !pinnedSelection &&
+      session?.metadata?.spaceModelDefaultPending &&
+      session.spaceId &&
+      !session.spaceId.startsWith('legacy_')
+    );
+  });
   const cloudModelOptions = useMemo(
     () =>
       cloudModels.map((model) => ({
@@ -337,6 +346,7 @@ export function ModelAndThinkingEffortSelect({
 
   /** Model name only in the trigger (e.g. "Gemini 3.1 Pro Preview", no cloud/source prefix). */
   const triggerModelName = useMemo(() => {
+    if (spaceDefaultPending) return t('layout.space-default-model');
     if (pinnedSelection) {
       if (pinnedSelection.modelType === 'codex_subscription') {
         const pinnedCodexModelType = pinnedSelection.codex_model_type || '';
@@ -418,6 +428,7 @@ export function ModelAndThinkingEffortSelect({
     localTypes,
     modelType,
     pinnedSelection,
+    spaceDefaultPending,
     t,
   ]);
 
@@ -428,7 +439,7 @@ export function ModelAndThinkingEffortSelect({
   const selectedCloudModelId =
     (pinnedSelection?.modelType === 'cloud'
       ? pinnedSelection.cloud_model_type || effectiveCloudModelId
-      : !pinnedSelection && cloudPrefer
+      : !pinnedSelection && !spaceDefaultPending && cloudPrefer
         ? effectiveCloudModelId
         : '') ?? '';
   const codexSubscriptionItemId =
@@ -448,11 +459,13 @@ export function ModelAndThinkingEffortSelect({
               form[index]?.provider_id === pinnedSelection.provider_id
           )?.id ?? '')
         : ''
-    : modelType === 'codex_subscription'
-      ? codexSubscriptionItemId
-      : preferredCustomIndex >= 0
-        ? items[preferredCustomIndex].id
-        : '';
+    : spaceDefaultPending
+      ? ''
+      : modelType === 'codex_subscription'
+        ? codexSubscriptionItemId
+        : preferredCustomIndex >= 0
+          ? items[preferredCustomIndex].id
+          : '';
   const selectedLocalModelId =
     // Same guard as above: `localProviderIds` holds `undefined` for every
     // unconfigured platform, so a pin without `provider_id` must match none.
@@ -462,7 +475,7 @@ export function ModelAndThinkingEffortSelect({
           (platform) =>
             localProviderIds[platform] === pinnedSelection.provider_id
         ) ?? '')
-      : !pinnedSelection && localPrefer
+      : !pinnedSelection && !spaceDefaultPending && localPrefer
         ? localPlatform
         : '';
   const combinedTriggerText = `${triggerModelName} ${triggerThinkingEffortName}`;
@@ -531,6 +544,7 @@ export function ModelAndThinkingEffortSelect({
         setLocalPrefer,
         setLocalPlatform,
         localProviderIds,
+        localTypes,
         localPlatform,
         setModelType,
         setCloudModelType: (id: string) => {

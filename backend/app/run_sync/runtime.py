@@ -156,6 +156,16 @@ async def current_authenticated_account_owner_id() -> str:
     return await worker.authenticated_account_owner_id()
 
 
+def current_control_configuration() -> CloudSyncConfiguration | None:
+    """Borrow the existing credential channel without opening DBs or workers.
+
+    This is NOT authenticated identity. Consumers must authenticate it with
+    the configured server and reject stale/account/device mismatches.
+    """
+    worker = _default_command_worker
+    return None if worker is None else worker.current_configuration
+
+
 async def persist_and_confirm_remote_command(
     command: dict,
 ) -> tuple[object, bool]:

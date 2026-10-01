@@ -26,6 +26,23 @@
  * 3. IF triggered new task while on a different page → show toast, add to project queue / run in background
  */
 
+// These cases exercise the existing legacy lane. C6 ownership/transport is
+// covered separately by sessionExecution and real ASGI IPC integration tests.
+const sessionEntryGuard = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined)
+);
+vi.mock('@/store/sessionExecutionStore', () => ({
+  requireLegacyExecution: sessionEntryGuard,
+  readSessionExecutionRoute: async (scope: { projectId: string }) => ({
+    project_id: scope.projectId,
+    route: 'legacy',
+  }),
+  getSessionExecutionState: (scope: { projectId: string }) => ({
+    route: { project_id: scope.projectId, route: 'legacy' },
+    managed: false,
+  }),
+}));
+
 import { fetchPost } from '@/api/http';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -258,6 +275,23 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
   // ╔═══════════════════════════════════════════════════════════════╗
   // ║  PLAN 1: If current project is running → add to queue       ║
   // ╚═══════════════════════════════════════════════════════════════╝
+
+  it('rejects a managed Session before legacy queue admission', async () => {
+    sessionEntryGuard.mockRejectedValueOnce(
+      new Error('managed_execution_required')
+    );
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+    await act(async () => {
+      await result.current.executeTask(
+        makeTask({ projectId: 'proj-A', executionId: 'blocked' })
+      );
+    });
+    expect(sessionEntryGuard).toHaveBeenCalled();
+    expect(fetchPost).not.toHaveBeenCalled();
+    expect(
+      useProjectStore.getState().getProjectById('proj-A')!.queuedMessages
+    ).toHaveLength(0);
+  });
 
   it('should add task to project queuedMessages when executeTask is called', async () => {
     const { result } = renderHook(() => useTriggerTaskExecutor());

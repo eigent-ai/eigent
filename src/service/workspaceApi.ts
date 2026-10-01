@@ -93,13 +93,18 @@ export const fetchWorkspaceCapabilities =
 export const fetchWorkspaceCurrent = async (
   spaceId: string,
   email: string,
-  userId?: string | number | null
-): Promise<WorkspaceCurrent> =>
-  fetchGet('/workspace/current', {
+  userId?: string | number | null,
+  options: { signal?: AbortSignal } = {}
+): Promise<WorkspaceCurrent> => {
+  const params = {
     space_id: spaceId,
     email,
     ...(userId === undefined || userId === null ? {} : { user_id: userId }),
-  });
+  };
+  return options.signal
+    ? fetchGet('/workspace/current', params, undefined, options)
+    : fetchGet('/workspace/current', params);
+};
 
 export const bindWorkspaceToSpace = async (
   payload: WorkspaceBindPayload
@@ -112,15 +117,18 @@ export const createScratchWorkspaceForSpace = async (
 export const unbindWorkspaceFromBrain = async (
   spaceId: string,
   email: string,
-  userId?: string | number | null
-): Promise<WorkspaceCurrent> =>
-  fetchDelete(
-    `/workspace/${encodeURIComponent(spaceId)}?email=${encodeURIComponent(email)}${
-      userId === undefined || userId === null
-        ? ''
-        : `&user_id=${encodeURIComponent(String(userId))}`
-    }`
-  );
+  userId?: string | number | null,
+  options?: Parameters<typeof fetchDelete>[3]
+): Promise<WorkspaceCurrent> => {
+  const url = `/workspace/${encodeURIComponent(spaceId)}?email=${encodeURIComponent(email)}${
+    userId === undefined || userId === null
+      ? ''
+      : `&user_id=${encodeURIComponent(String(userId))}`
+  }`;
+  return options
+    ? fetchDelete(url, undefined, undefined, options)
+    : fetchDelete(url);
+};
 
 export const reconcileWorkspaceBindings = async (
   email: string,

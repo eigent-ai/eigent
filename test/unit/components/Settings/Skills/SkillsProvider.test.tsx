@@ -30,14 +30,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   language: 'en',
-  skillState: { skills: [], syncFromDisk: vi.fn(), updateSkill: vi.fn() },
+  authState: { email: 'preview@example.invalid', user_id: 7 },
+  skillState: {
+    skills: [] as Skill[],
+    syncFromDisk: vi.fn(),
+    updateSkill: vi.fn(),
+  },
   spaceState: { spaces: {}, projectsBySpaceId: {} },
+  fetchWorkspaceCurrent: vi.fn(),
   fetchWorkspaceConfiguration: vi.fn(),
 }));
 
 vi.mock('@/api/http', () => ({ getBaseURL: vi.fn().mockResolvedValue('') }));
 vi.mock('@/service/workspaceConfigurationApi', () => ({
   fetchWorkspaceConfiguration: mocks.fetchWorkspaceConfiguration,
+}));
+vi.mock('@/service/workspaceApi', () => ({
+  fetchWorkspaceCurrent: mocks.fetchWorkspaceCurrent,
 }));
 vi.mock('@/store/skillsStore', async (importOriginal) => ({
   SkillSignInRequiredError: (
@@ -57,7 +66,7 @@ vi.mock('@/store/spaceStore', () => ({
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (
     selector: (state: { email: string; user_id: number }) => unknown
-  ) => selector({ email: 'preview@example.invalid', user_id: 7 }),
+  ) => selector(mocks.authState),
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -84,6 +93,23 @@ const skill: Skill = {
   isExample: false,
   scope: { isGlobal: true, selectedAgents: [] },
 };
+
+const setSpaces = (...ids: string[]) => {
+  mocks.spaceState.spaces = Object.fromEntries(
+    ids.map((id) => [
+      id,
+      { id, name: `Space ${id}`, status: 'active', sourceType: 'cloud' },
+    ])
+  );
+};
+const profile = (ref = 'bundle://skills/research/SKILL.md') => ({
+  document: { spec: { skills: [{ ref, assignTo: [] }] } },
+});
+const httpError = (status: number, code: string) =>
+  Object.assign(new Error(code), {
+    status,
+    response: { data: { detail: { code } }, status },
+  });
 let library: ReturnType<typeof useSkillsLibrary>;
 
 function LibraryProbe() {
@@ -124,8 +150,14 @@ function Library({
 describe('Skills library state', () => {
   beforeEach(() => {
     mocks.language = 'en';
+    mocks.authState = { email: 'preview@example.invalid', user_id: 7 };
+    mocks.skillState.skills = [];
     mocks.skillState.syncFromDisk.mockReset().mockResolvedValue(undefined);
     mocks.skillState.updateSkill.mockReset().mockResolvedValue(undefined);
+    mocks.fetchWorkspaceCurrent.mockReset().mockImplementation(async (id) => ({
+      space_id: id,
+      bound: true,
+    }));
     mocks.fetchWorkspaceConfiguration.mockReset();
     mocks.spaceState.spaces = {};
     mocks.spaceState.projectsBySpaceId = {};
@@ -142,6 +174,228 @@ describe('Skills library state', () => {
       expect(mocks.skillState.syncFromDisk).toHaveBeenCalledTimes(1)
     );
     await waitFor(() => expect(library.loading).toBe(false));
+  });
+
+  it('keeps global Skills visible and avoids configuration requests for unbound Spaces', async () => {
+    setSpaces('local-unbound', 'bound');
+    mocks.skillState.skills = [skill];
+    mocks.fetchWorkspaceCurrent.mockImplementation(async (id) => ({
+      space_id: id,
+      bound: id === 'bound',
+    }));
+    mocks.fetchWorkspaceConfiguration.mockResolvedValue(profile());
+    render(<Library />);
+
+    await waitFor(() => expect(library.profilesLoading).toBe(false));
+    expect(library.errors).toEqual([]);
+    expect(library.entries.map(({ id }) => id)).toEqual([
+      'global:research',
+      'space:bound:bundle://skills/research/SKILL.md',
+    ]);
+    expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledWith(
+      'bound',
+      { email: 'preview@example.invalid', userId: 7 },
+      'Space bound',
+      { signal: expect.any(AbortSignal) }
+    );
+    expect(mocks.fetchWorkspaceCurrent).toHaveBeenCalledWith(
+      'local-unbound',
+      'preview@example.invalid',
+      7,
+      { signal: expect.any(AbortSignal) }
+    );
+  });
+
+  it('treats only the explicit missing-binding race as a normal absent profile', async () => {
+    setSpaces('removed');
+    mocks.skillState.skills = [skill];
+    mocks.fetchWorkspaceConfiguration.mockRejectedValue(
+      httpError(404, 'workspace_binding_not_found')
+    );
+    render(<Library />);
+
+    await waitFor(() => expect(library.profilesLoading).toBe(false));
+    expect(library.errors).toEqual([]);
+    expect(library.entries.map(({ id }) => id)).toEqual(['global:research']);
+  });
+
+  it.each([
+    { label: 'unrelated 404', error: httpError(404, 'route_not_found') },
+    {
+      label: 'permission failure',
+      error: httpError(403, 'workspace_binding_not_found'),
+    },
+    { label: 'network failure', error: new TypeError('Failed to fetch') },
+    {
+      label: 'unstructured missing-binding text',
+      error: new Error('workspace_binding_not_found'),
+    },
+  ])('reports $label without hiding global Skills', async ({ error }) => {
+    setSpaces('failed');
+    mocks.skillState.skills = [skill];
+    mocks.fetchWorkspaceConfiguration.mockRejectedValue(error);
+    render(<Library />);
+
+    await waitFor(() => expect(library.profilesLoading).toBe(false));
+    expect(library.errors).toEqual(['en:agents.library-space-load-failed']);
+    expect(library.entries.map(({ id }) => id)).toEqual(['global:research']);
+  });
+
+  it.each([
+    {
+      label: 'failed binding lookup',
+      error: httpError(404, 'route_not_found'),
+      response: undefined,
+    },
+    {
+      label: 'missing bound state',
+      error: undefined,
+      response: { space_id: 'failed' },
+    },
+    {
+      label: 'wrong Space response',
+      error: undefined,
+      response: { space_id: 'other', bound: false },
+    },
+  ])(
+    'reports $label and allows a successful retry',
+    async ({ error, response }) => {
+      setSpaces('failed');
+      if (error) mocks.fetchWorkspaceCurrent.mockRejectedValueOnce(error);
+      else mocks.fetchWorkspaceCurrent.mockResolvedValueOnce(response);
+      mocks.fetchWorkspaceConfiguration.mockResolvedValue(profile());
+      render(<Library />);
+
+      await waitFor(() => expect(library.profilesLoading).toBe(false));
+      expect(library.errors).toEqual(['en:agents.library-space-load-failed']);
+      expect(mocks.fetchWorkspaceConfiguration).not.toHaveBeenCalled();
+
+      act(() => library.refresh());
+      await waitFor(() => expect(library.entries).toHaveLength(1));
+      expect(library.errors).toEqual([]);
+      expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('rechecks an unbound Space on refresh without creating a binding', async () => {
+    setSpaces('later-bound');
+    mocks.fetchWorkspaceCurrent.mockResolvedValueOnce({
+      space_id: 'later-bound',
+      bound: false,
+    });
+    mocks.fetchWorkspaceConfiguration.mockResolvedValue(profile());
+    render(<Library />);
+
+    await waitFor(() => expect(library.profilesLoading).toBe(false));
+    expect(mocks.fetchWorkspaceConfiguration).not.toHaveBeenCalled();
+    act(() => library.refresh());
+    await waitFor(() => expect(library.entries).toHaveLength(1));
+    expect(mocks.fetchWorkspaceCurrent).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts an old account lookup and never starts its subsequent profile request', async () => {
+    setSpaces('same-space');
+    let finishOldLookup!: (value: unknown) => void;
+    let oldSignal!: AbortSignal;
+    mocks.fetchWorkspaceCurrent.mockImplementationOnce(
+      (_id, _email, _userId, options) => {
+        oldSignal = options.signal;
+        return new Promise((resolve) => {
+          finishOldLookup = resolve;
+        });
+      }
+    );
+    mocks.fetchWorkspaceConfiguration.mockResolvedValue(profile());
+    const view = render(<Library />);
+
+    mocks.authState = { email: 'second@example.invalid', user_id: 8 };
+    view.rerender(<Library />);
+    await waitFor(() => expect(library.profilesLoading).toBe(false));
+    expect(oldSignal.aborted).toBe(true);
+    await act(async () =>
+      finishOldLookup({ space_id: 'same-space', bound: true })
+    );
+
+    expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledWith(
+      'same-space',
+      { email: 'second@example.invalid', userId: 8 },
+      'Space same-space',
+      { signal: expect.any(AbortSignal) }
+    );
+    expect(library.errors).toEqual([]);
+    expect(library.entries).toHaveLength(1);
+  });
+
+  it('bounds binding lookups in the same batch timeout while global Skills remain available', async () => {
+    vi.useFakeTimers();
+    setSpaces('one', 'two', 'three', 'queued');
+    mocks.skillState.skills = [skill];
+    mocks.fetchWorkspaceCurrent.mockImplementation(
+      (_id, _email, _userId, { signal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError'))
+          );
+        })
+    );
+    render(<Library />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+
+    expect(library.loading).toBe(false);
+    expect(library.profilesLoading).toBe(false);
+    expect(library.entries.map(({ id }) => id)).toEqual(['global:research']);
+    expect(library.errors).toHaveLength(4);
+    expect(mocks.fetchWorkspaceCurrent).toHaveBeenCalledTimes(3);
+    expect(mocks.fetchWorkspaceConfiguration).not.toHaveBeenCalled();
+  });
+
+  it('aborts a previous account profile and discards its late completion', async () => {
+    setSpaces('same-space');
+    let finishOldProfile!: (value: unknown) => void;
+    let oldSignal!: AbortSignal;
+    mocks.fetchWorkspaceConfiguration
+      .mockImplementationOnce((_id, _identity, _name, options) => {
+        oldSignal = options.signal;
+        return new Promise((resolve) => {
+          finishOldProfile = resolve;
+        });
+      })
+      .mockResolvedValue(profile('bundle://skills/current/SKILL.md'));
+    const view = render(<Library />);
+    await waitFor(() =>
+      expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledTimes(1)
+    );
+
+    mocks.authState = { email: 'second@example.invalid', user_id: 8 };
+    view.rerender(<Library />);
+    await waitFor(() => expect(library.profilesLoading).toBe(false));
+    expect(oldSignal.aborted).toBe(true);
+    await act(async () =>
+      finishOldProfile(profile('bundle://skills/old-account/SKILL.md'))
+    );
+
+    expect(library.entries.map(({ id }) => id)).toEqual([
+      'space:same-space:bundle://skills/current/SKILL.md',
+    ]);
+    expect(library.errors).toEqual([]);
+  });
+
+  it('requires sign-in for Space reads while continuing to show global Skills', async () => {
+    setSpaces('signed-out');
+    mocks.authState.email = '';
+    mocks.skillState.skills = [skill];
+    render(<Library />);
+
+    await waitFor(() => expect(library.loading).toBe(false));
+    expect(library.errors).toEqual(['en:agents.library-sign-in']);
+    expect(library.entries.map(({ id }) => id)).toEqual(['global:research']);
+    expect(mocks.fetchWorkspaceCurrent).not.toHaveBeenCalled();
+    expect(mocks.fetchWorkspaceConfiguration).not.toHaveBeenCalled();
   });
 
   it('bounds the whole Space batch without blocking global Skill writes', async () => {

@@ -145,17 +145,32 @@ export async function getBaseURL() {
   return '';
 }
 
-type FetchRequestOptions = {
+export type FetchRequestOptions = {
   signal?: AbortSignal;
   expectedAccountKey?: string;
+  /** Revalidate mutable admission context after asynchronous header lookup. */
+  beforeRequest?: () => void;
 };
 
 function assertRequestAccount(options: FetchRequestOptions): void {
+  if (options.signal?.aborted)
+    throw new DOMException('Request owner left', 'AbortError');
   if (
     options.expectedAccountKey !== undefined &&
     options.expectedAccountKey !== getAccountEnvironmentKey(getAuthStore())
   )
     throw new Error('Request account changed before delivery');
+}
+
+async function accountResponse<T>(
+  request: Promise<T>,
+  options: FetchRequestOptions
+): Promise<T> {
+  const result = await request;
+  assertRequestAccount(options);
+  if (options.signal?.aborted)
+    throw new DOMException('Request owner left', 'AbortError');
+  return result;
 }
 
 async function fetchRequest(
@@ -170,6 +185,7 @@ async function fetchRequest(
   assertRequestAccount(requestOptions);
   const headers = await buildBrainHeaders(url, customHeaders);
   assertRequestAccount(requestOptions);
+  requestOptions.beforeRequest?.();
 
   const options: RequestInit = {
     method,
@@ -188,19 +204,26 @@ async function fetchRequest(
       });
     });
     const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
-    return handleResponse(fetch(fullUrl + query, options), data);
+    return accountResponse(
+      handleResponse(fetch(fullUrl + query, options), data, requestOptions),
+      requestOptions
+    );
   }
 
   if (data) {
     options.body = JSON.stringify(data);
   }
 
-  return handleResponse(fetch(fullUrl, options), data);
+  return accountResponse(
+    handleResponse(fetch(fullUrl, options), data, requestOptions),
+    requestOptions
+  );
 }
 
 async function handleResponse(
   responsePromise: Promise<Response>,
-  requestData?: Record<string, any>
+  requestData?: Record<string, any>,
+  requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
   const auth = getAuthStore();
   const requestAccount =
@@ -208,6 +231,7 @@ async function handleResponse(
   setUsageAccount(requestAccount);
   try {
     const res = await responsePromise;
+    assertRequestAccount(requestOptions);
     persistSessionIdFromResponse(res);
     if (res.status === 204) {
       return { code: 0, text: '' };
@@ -236,6 +260,7 @@ async function handleResponse(
       return null;
     }
     const resData = await res.json();
+    assertRequestAccount(requestOptions);
     if (!resData) {
       return null;
     }
@@ -288,6 +313,7 @@ async function handleResponse(
 
     return resData;
   } catch (err: any) {
+    assertRequestAccount(requestOptions);
     if (err?.name === 'AbortError') {
       throw err;
     }
@@ -340,11 +366,15 @@ export async function fetchGetBlob(
     });
   });
   const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
+  assertRequestAccount(options);
+  const headers = await buildBrainHeaders(url, { Accept: '*/*' }, false);
+  assertRequestAccount(options);
   const response = await fetch(`${baseURL}${url}${query}`, {
     method: 'GET',
-    headers: await buildBrainHeaders(url, { Accept: '*/*' }, false),
+    headers,
     signal: options.signal,
   });
+  assertRequestAccount(options);
   persistSessionIdFromResponse(response);
   if (!response.ok) {
     const contentType = response.headers.get('content-type') || '';
@@ -366,7 +396,7 @@ export async function fetchGetBlob(
     error.response = response;
     throw error;
   }
-  return response.blob();
+  return accountResponse(response.blob(), options);
 }
 
 export const fetchPost = (
@@ -376,8 +406,12 @@ export const fetchPost = (
   options?: FetchRequestOptions
 ) => fetchRequest('POST', url, data, headers, options);
 
-export const fetchPut = (url: string, data?: any, headers?: any) =>
-  fetchRequest('PUT', url, data, headers);
+export const fetchPut = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => fetchRequest('PUT', url, data, headers, options);
 
 export const fetchPatch = (url: string, data?: any, headers?: any) =>
   fetchRequest('PATCH', url, data, headers);
@@ -418,8 +452,11 @@ export interface SSETransportOptions {
   method?: 'GET' | 'POST';
   body?: Record<string, any> | string;
   signal?: AbortSignal;
+  expectedAccountKey?: string;
   extraHeaders?: Record<string, string>;
   openWhenHidden?: boolean;
+  /** Runs before every delivery, including the SSE library's own retries. */
+  beforeRequest?: () => void;
   onmessage: (event: EventSourceMessage) => void | Promise<void>;
   onopen?: (response: Response) => void | Promise<void>;
   onerror?: (err: any) => number | null | undefined | void;
@@ -435,7 +472,9 @@ export async function sseTransport(
       ? options.url
       : `${baseURL}${options.url}`;
 
+  assertRequestAccount(options);
   const headers = await buildBrainHeaders(options.url, options.extraHeaders);
+  assertRequestAccount(options);
   const body =
     typeof options.body === 'string'
       ? options.body
@@ -443,22 +482,55 @@ export async function sseTransport(
         ? JSON.stringify(options.body)
         : undefined;
 
+  const requestFetch = window.fetch;
+  let guardRejected = false;
+  let guardError: unknown;
   await fetchEventSource(fullUrl, {
     method: options.method || 'POST',
     openWhenHidden: options.openWhenHidden ?? true,
     signal: options.signal,
     headers,
     body,
-    onmessage: options.onmessage,
+    fetch:
+      options.beforeRequest || options.expectedAccountKey
+        ? (input, init) => {
+            if (guardRejected) throw guardError;
+            try {
+              assertRequestAccount(options);
+              options.beforeRequest?.();
+            } catch (error) {
+              guardRejected = true;
+              guardError = error;
+              throw error;
+            }
+            return requestFetch(input, init);
+          }
+        : undefined,
+    onmessage(event) {
+      assertRequestAccount(options);
+      if (!options.signal?.aborted) return options.onmessage(event);
+    },
     async onopen(response) {
+      assertRequestAccount(options);
       persistSessionIdFromResponse(response);
       if (options.onopen) {
         await options.onopen(response);
       }
     },
-    onerror: options.onerror,
-    onclose: options.onclose,
+    onerror(error) {
+      // Admission failures must never enter the network retry policy.
+      if (guardRejected) throw guardError;
+      assertRequestAccount(options);
+      return options.onerror?.(error);
+    },
+    onclose() {
+      assertRequestAccount(options);
+      options.onclose?.();
+    },
   });
+  // Caller cleanup inside the guard can abort the input signal. The library
+  // resolves on abort; preserve the admission error instead of reporting success.
+  if (guardRejected) throw guardError;
 }
 
 // =============== porxy ===============
@@ -513,6 +585,7 @@ async function proxyFetchRequest(
     }
   }
 
+  requestOptions.beforeRequest?.();
   const options: RequestInit = {
     method,
     headers,
@@ -529,21 +602,39 @@ async function proxyFetchRequest(
           )
           .join('&')
       : '';
-    return handleResponse(fetch(fullUrl + query, options));
+    return accountResponse(
+      handleResponse(
+        fetch(fullUrl + query, options),
+        undefined,
+        requestOptions
+      ),
+      requestOptions
+    );
   }
 
   if (data) {
     options.body = JSON.stringify(data);
   }
 
-  return handleResponse(fetch(fullUrl, options));
+  return accountResponse(
+    handleResponse(fetch(fullUrl, options), undefined, requestOptions),
+    requestOptions
+  );
 }
 
-export const proxyFetchGet = (url: string, params?: any, headers?: any) =>
-  proxyFetchRequest('GET', url, params, headers);
+export const proxyFetchGet = (
+  url: string,
+  params?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('GET', url, params, headers, options);
 
-export const proxyFetchPost = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('POST', url, data, headers);
+export const proxyFetchPost = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('POST', url, data, headers, options);
 
 export const proxyFetchPut = (
   url: string,
@@ -552,8 +643,12 @@ export const proxyFetchPut = (
   options?: FetchRequestOptions
 ) => proxyFetchRequest('PUT', url, data, headers, options);
 
-export const proxyFetchPatch = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('PATCH', url, data, headers);
+export const proxyFetchPatch = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('PATCH', url, data, headers, options);
 
 export const proxyFetchDelete = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('DELETE', url, data, headers);

@@ -14,7 +14,7 @@
 import platform
 
 from camel.messages import BaseMessage
-from camel.models import OpenAIAudioModels
+from camel.models import ModelFactory, OpenAIAudioModels
 from camel.toolkits import ToolkitMessageIntegration
 from camel.types import ModelPlatformType
 
@@ -170,6 +170,15 @@ def multi_modal_agent(
             options.project_id,
             working_directory,
             OpenAIAudioModels(
+                api_key=options.api_key,
+                url=options.api_url,
+            ),
+            # The audio toolkit also creates a text reasoning agent. Supply
+            # its model explicitly so saved provider credentials are used
+            # instead of requiring a process-level OPENAI_API_KEY.
+            audio_reasoning_model=ModelFactory.create(
+                model_platform=ModelPlatformType.OPENAI,
+                model_type=options.model_type,
                 api_key=options.api_key,
                 url=options.api_url,
             ),

@@ -20,7 +20,6 @@ from typing import Literal
 from camel.messages import BaseMessage
 
 from app.agent.agent_model import agent_model
-from app.agent.factory.toolkit_assembler import assemble_single_agent_toolkits
 from app.agent.prompt import (
     SINGLE_AGENT_SYS_PROMPT,
     append_connected_app_mcp_notice,
@@ -31,6 +30,15 @@ from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
 from app.workspace_bundle.runtime import ResolvedRuntimeEnvironment
+
+
+async def assemble_single_agent_toolkits(*args, **kwargs):
+    # Managed assembly must not import or initialize legacy third-party tools.
+    from app.agent.factory.toolkit_assembler import (
+        assemble_single_agent_toolkits as assemble,
+    )
+
+    return await assemble(*args, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -52,23 +60,31 @@ async def single_agent(
     pause_event: asyncio.Event | None = None,
     runtime: AgentRuntimeConfig | None = None,
     runtime_environment: ResolvedRuntimeEnvironment | None = None,
+    managed_execution=None,
 ):
     """Create the root Single Agent using CAMEL-first tool assembly."""
 
     runtime = runtime or AgentRuntimeConfig()
-    working_directory = get_working_directory(options)
+    working_directory = (
+        managed_execution.working_directory
+        if managed_execution is not None
+        else get_working_directory(options)
+    )
     current_task_id = task_id or options.task_id
 
-    assembly = await assemble_single_agent_toolkits(
-        options,
-        task_id=current_task_id,
-        working_directory=working_directory,
-        hands=hands,
-        can_delegate=runtime.can_delegate,
-        current_depth=runtime.depth,
-        max_depth=runtime.max_depth,
-        runtime_environment=runtime_environment,
-    )
+    if managed_execution is not None:
+        assembly = managed_execution.assemble(options)
+    else:
+        assembly = await assemble_single_agent_toolkits(
+            options,
+            task_id=current_task_id,
+            working_directory=working_directory,
+            hands=hands,
+            can_delegate=runtime.can_delegate,
+            current_depth=runtime.depth,
+            max_depth=runtime.max_depth,
+            runtime_environment=runtime_environment,
+        )
 
     system_message = SINGLE_AGENT_SYS_PROMPT.format(
         platform_system=platform.system(),
@@ -76,7 +92,12 @@ async def single_agent(
         working_directory=working_directory,
         now_str=NOW_STR,
     )
-    system_message = append_connected_app_mcp_notice(system_message)
+    if managed_execution is None:
+        system_message = append_connected_app_mcp_notice(system_message)
+    else:
+        system_message += (
+            "\nOnly the supplied private-workspace file tools are available."
+        )
     if runtime_environment is not None:
         bundle_context = runtime_environment.prompt_context()
         if bundle_context:
@@ -92,6 +113,11 @@ async def single_agent(
         assembly.tools,
         tool_names=assembly.tool_names,
         toolkits_to_register_agent=assembly.toolkits_to_register_agent,
+        **(
+            {"managed_resources": managed_execution.model_resources}
+            if managed_execution is not None
+            else {}
+        ),
     )
     if pause_event is not None:
         agent.pause_event = pause_event

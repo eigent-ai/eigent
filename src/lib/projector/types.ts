@@ -175,6 +175,7 @@ export type ProjectedRun = {
   latestAttempt?: {
     attemptNumber: number;
     status: string;
+    resumeRequestId?: string;
   } | null;
   totalAttemptElapsedMs?: number | null;
   /** Renderer receipt time for a canonical elapsed checkpoint; never persisted. */

@@ -272,14 +272,8 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                     )
 
             try:
-                task_lock = get_task_lock(worker_agent.api_task_id)
-                record_agent_memory_snapshot(
-                    task_lock,
-                    worker_agent,
-                    scope="workforce_worker",
-                    task_id=task.id,
-                    task_content=task.content,
-                    task_result=response_content,
+                self._record_memory_snapshot(
+                    worker_agent, task, response_content
                 )
             except Exception as e:
                 logger.warning(f"Failed to record worker memory snapshot: {e}")
@@ -373,3 +367,14 @@ class SingleAgentWorker(BaseSingleAgentWorker):
             )
             return TaskState.FAILED
         return TaskState.DONE
+
+    def _record_memory_snapshot(self, worker_agent, task, response_content):
+        task_lock = get_task_lock(worker_agent.api_task_id)
+        record_agent_memory_snapshot(
+            task_lock,
+            worker_agent,
+            scope="workforce_worker",
+            task_id=task.id,
+            task_content=task.content,
+            task_result=response_content,
+        )

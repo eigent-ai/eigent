@@ -24,6 +24,7 @@ from fastapi import Depends, FastAPI
 from app.auth import get_brain_auth_context
 from app.controller import (
     chat_controller,
+    execution_controller,
     file_controller,
     health_controller,
     mcp_controller,
@@ -89,6 +90,12 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": message_controller.router,
             "tags": ["Message Router"],
             "description": "Phase 2 Message Router - /messages endpoint (prefix-aware)",
+        },
+        {
+            "router": execution_controller.router,
+            "tags": ["Execution Admission"],
+            "description": "Authenticated opt-in managed execution admission",
+            "self_authenticated": True,
         },
         {
             "router": run_controller.router,

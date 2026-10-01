@@ -12,6 +12,22 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+const sessionExecutionMocks = vi.hoisted(() => ({ routeLoading: false }));
+
+vi.mock('@/hooks/useSessionExecution', () => ({
+  useSessionExecution: (projectId: string) => ({
+    scope: { projectId, accountKey: 'legacy-test' },
+    state: {
+      route: sessionExecutionMocks.routeLoading
+        ? null
+        : { route: 'legacy', project_id: projectId },
+      managed: false,
+      error: null,
+      loading: sessionExecutionMocks.routeLoading,
+    },
+  }),
+}));
+
 import Session from '@/components/Session';
 import {
   act,
@@ -34,6 +50,7 @@ const mocks = vi.hoisted(() => ({
     previewSlice: { open: true, tabs: [], activeTabId: null },
   },
   projectState: {
+    chatStoreAvailable: true,
     activeProjectId: 'project-1',
     getAllChatStores: vi.fn(() => []),
   },
@@ -61,7 +78,12 @@ vi.mock('@/components/Workspace', () => ({
   default: () => <div data-testid="workspace" />,
 }));
 vi.mock('@/components/Session/HeaderBox', () => ({
-  HeaderBox: () => <div data-testid="session-header" />,
+  HeaderBox: ({ totalTokens }: { totalTokens?: number }) => (
+    <div
+      data-testid="session-header"
+      data-total-tokens={totalTokens ?? 'unset'}
+    />
+  ),
 }));
 vi.mock('@/components/Session/PreviewPanel', () => ({
   PreviewPanel: () => <div data-testid="preview-panel" />,
@@ -71,7 +93,7 @@ vi.mock('@/components/Session/SidePanel', () => ({
 }));
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
   default: () => ({
-    chatStore: mocks.chatState,
+    chatStore: mocks.projectState.chatStoreAvailable ? mocks.chatState : null,
     projectStore: mocks.projectState,
   }),
 }));
@@ -204,6 +226,8 @@ describe('Session preview resize', () => {
     mocks.pageState.previewSlice.open = true;
     mocks.pageState.sessionPreviewProjectId = 'project-1';
     mocks.pageState.activeWorkspaceTab = 'project';
+    mocks.projectState.chatStoreAvailable = true;
+    sessionExecutionMocks.routeLoading = false;
     scheduledFrame = null;
 
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
@@ -222,6 +246,19 @@ describe('Session preview resize', () => {
 
   afterAll(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('renders while the active chat store rebuilds during route loading', () => {
+    mocks.projectState.chatStoreAvailable = false;
+    sessionExecutionMocks.routeLoading = true;
+
+    render(<Session />);
+
+    expect(screen.getByTestId('session-header')).toHaveAttribute(
+      'data-total-tokens',
+      '0'
+    );
+    expect(screen.getByTestId('chat-box')).toBeInTheDocument();
   });
 
   it('coalesces pointer moves and ends a lost pointerup when no button is pressed', async () => {

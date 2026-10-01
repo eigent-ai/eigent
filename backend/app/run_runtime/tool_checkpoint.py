@@ -732,6 +732,19 @@ def prepare_tool_checkpoint(
         tool_name, arguments
     )
     call_id = raw_tool_call_id.strip() or uuid.uuid4().hex
+    if getattr(run_context, "session_mode", None) == "workforce":
+        from app.run_runtime.owned_tasks import current_owned_tasks
+
+        if current_owned_tasks() is not None:
+            # Independent worker model conversations can return the same
+            # provider call ID. Bind receipts/checkpoints to the authored
+            # subtask so one worker cannot consume another worker's result.
+            worker_step = get_current_step_id()
+            if worker_step is None:
+                raise ToolCheckpointPersistenceError(
+                    "managed Workforce tool requires an authored subtask"
+                )
+            call_id = f"{worker_step}:{call_id}"
     canonical_id = f"{run_context.run_id}:{call_id}"
     request = _bounded_record(arguments)
     display = build_tool_display_projection(
@@ -1074,6 +1087,10 @@ def finish_tool_checkpoint(
 
 
 def _notify_cloud_sync() -> None:
+    from app.run_journal.runtime import has_scoped_run_journal
+
+    if has_scoped_run_journal():
+        return
     try:
         from app.run_sync.runtime import notify_default_cloud_sync_worker
 

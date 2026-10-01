@@ -57,6 +57,7 @@ from app.run_runtime import (
     get_default_run_coordinator,
 )
 from app.workspace_git.content import ContentRepositoryError
+from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 logger = logging.getLogger("run_controller")
@@ -710,8 +711,12 @@ def _control_error(exc: Exception) -> HTTPException:
 
 @router.post("/runs/{run_id}/resume", status_code=202)
 async def resume_run(run_id: str, body: ResumeRunBody):
+    coordinator = get_default_run_coordinator()
+    await guard_legacy_execution_entry(
+        coordinator._run_journal(), run_id=run_id
+    )
     try:
-        attempt = await get_default_run_coordinator().resume(
+        attempt = await coordinator.resume(
             run_id,
             request_id=body.request_id,
             reason=body.reason,
@@ -745,8 +750,12 @@ async def fork_run(run_id: str, body: ForkRunBody):
 
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(run_id: str, body: CancelRunBody):
+    coordinator = get_default_run_coordinator()
+    await guard_legacy_execution_entry(
+        coordinator._run_journal(), run_id=run_id
+    )
     try:
-        run = await get_default_run_coordinator().cancel_durable(
+        run = await coordinator.cancel_durable(
             run_id,
             request_id=body.request_id,
             reason=body.reason,
@@ -760,6 +769,8 @@ async def cancel_run(run_id: str, body: CancelRunBody):
 async def signal_run(run_id: str, body: RunSignalBody):
     journal = get_default_run_journal()
     payload = body.payload
+    if body.signal_type == "attempt.activated":
+        await guard_legacy_execution_entry(journal, run_id=run_id)
     try:
         if body.signal_type == "runtime.heartbeat":
             result = await asyncio.to_thread(

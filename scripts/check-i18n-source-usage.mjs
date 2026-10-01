@@ -108,6 +108,7 @@ const PROVIDER_METADATA_DESCRIPTIONS = [
   'Azure OpenAI model configuration.',
   'Baidu Ernie model configuration.',
   'OrcaRouter model configuration.',
+  'Meta Model API model configuration.',
   'Nebius Token Factory model configuration.',
   'Ant Ling model configuration',
   'OpenAI-compatible API endpoint configuration.',
@@ -175,20 +176,6 @@ const ALLOWLIST = [
     text: '· sha256:',
     count: 1,
     reason: 'sha256 is a technical metadata field name.',
-  },
-  {
-    file: 'src/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel.tsx',
-    kind: 'jsx-attribute:placeholder',
-    text: 'lead, researcher',
-    count: 2,
-    reason: 'Examples are serialized agent IDs, not natural-language copy.',
-  },
-  {
-    file: 'src/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel.tsx',
-    kind: 'jsx-attribute:placeholder',
-    text: 'repository.read, issues.read',
-    count: 1,
-    reason: 'Examples are serialized grant identifiers.',
   },
   {
     file: 'src/store/spaceStore.ts',

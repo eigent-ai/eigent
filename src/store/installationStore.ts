@@ -47,6 +47,7 @@ interface InstallationStoreState {
   backendError?: string; // Separate error for backend startup failures
   isVisible: boolean;
   isBackendReady: boolean; // Non-persisted, defaults to false on each app launch
+  backendReadyRevision: number; // Advances for every readiness confirmation, including true → true
   needsBackendRestart: boolean; // Flag to indicate backend is restarting after logout
 
   // Actions
@@ -78,6 +79,7 @@ const initialState = {
   backendError: undefined,
   isVisible: false,
   isBackendReady: false,
+  backendReadyRevision: 0,
   needsBackendRestart: false,
 };
 
@@ -110,11 +112,12 @@ export const useInstallationStore = create<InstallationStoreState>()(
       }),
 
     setSuccess: () =>
-      set({
+      set((state) => ({
         state: 'completed',
         progress: 100,
         isBackendReady: true,
-      }),
+        backendReadyRevision: state.backendReadyRevision + 1,
+      })),
 
     setError: (error: string) =>
       set((state) => ({

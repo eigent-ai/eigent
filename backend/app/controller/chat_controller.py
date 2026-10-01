@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.auth import require_local_control_principal
+from app.auth.local_control import LocalControlPrincipal
 from app.component import code
 from app.component.environment import env, sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
@@ -113,6 +114,10 @@ from app.workspace_config.admission import (
     LegacyEnvironmentImporter,
 )
 from app.workspace_git import get_default_workspace_git_coordinator
+from app.workspace_runtime.entry_guard import (
+    ManagedExecutionRequired,
+    guard_legacy_execution_entry,
+)
 
 router = APIRouter()
 _CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
@@ -154,6 +159,14 @@ def _follow_up_response(record: FollowUpRequestRecord) -> dict[str, Any]:
 
 
 def _raise_follow_up_http_error(exc: Exception) -> None:
+    if isinstance(exc, ManagedExecutionRequired):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "managed_execution_required",
+                "message": "This Session requires the managed execution API.",
+            },
+        ) from exc
     if isinstance(exc, RunNotFoundError):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if isinstance(exc, (IdempotencyConflictError, InvalidRunTransitionError)):
@@ -172,6 +185,7 @@ async def _record_canonical_user_message(
     source: str,
     attaches: list[str],
     review_handoff_ids: list[str] | None = None,
+    session_model_selection: dict[str, Any] | None = None,
 ) -> None:
     """Persist admission input against the injected journal instance."""
 
@@ -183,6 +197,11 @@ async def _record_canonical_user_message(
         source=source,
         attachment_names=[Path(path).name for path in attaches],
         review_handoff_ids=review_handoff_ids,
+        **(
+            {"session_model_selection": session_model_selection}
+            if session_model_selection is not None
+            else {}
+        ),
     )
 
 
@@ -236,7 +255,7 @@ def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
                 exc_info=True,
             )
     mcp_configs = data.installed_mcp.get("mcpServers") or {}
-    return LegacyEnvironmentImporter().build_template(
+    template = LegacyEnvironmentImporter().build_template(
         model_platform=data.model_platform,
         model_type=data.model_type,
         auth_source=data.auth_source,
@@ -249,6 +268,24 @@ def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
         mcp_server_configs=mcp_configs,
         skill_config=skill_config,
         session_mode=data.session_mode,
+    )
+    if data.workspace_model_selection is None:
+        return replace(
+            template,
+            workspace_model_selection_checked=(
+                "workspace_model_selection" in data.model_fields_set
+            ),
+        )
+    return replace(
+        template,
+        workspace_model_selection=data.workspace_model_selection,
+        workspace_model_selection_checked=True,
+        runtime_capability_manifest={
+            **template.runtime_capability_manifest,
+            "space_model_selection": data.workspace_model_selection.model_dump(
+                mode="json", exclude={"materialization_id"}
+            ),
+        },
     )
 
 
@@ -330,7 +367,19 @@ def _apply_environment_to_task_lock(
     template: EnvironmentAdmissionTemplate | None,
     runtime_environment: ResolvedRuntimeEnvironment | None = None,
 ) -> None:
-    task_lock.environment_admission_template = template
+    task_lock.environment_admission_template = (
+        replace(
+            template,
+            workspace_model_selection=None,
+            workspace_model_selection_checked=False,
+        )
+        if template is not None
+        and (
+            template.workspace_model_selection is not None
+            or template.workspace_model_selection_checked
+        )
+        else template
+    )
     task_lock.environment_spec_id = spec.spec_id
     task_lock.thinking_effort_requested = spec.thinking_effort_requested.value
     task_lock.thinking_effort_effective = spec.thinking_effort_effective.value
@@ -359,7 +408,20 @@ def _assemble_runtime_environment(
     journal: SQLiteRunJournal,
     spec: EffectiveEnvironmentSpec,
     run_context: RunContext,
+    principal: LocalControlPrincipal | None = None,
 ) -> ResolvedRuntimeEnvironment | None:
+    # Global Skill settings are account-owned. Chat body / persisted RunContext
+    # identity is not an authenticated remote owner. Only the trusted Desktop
+    # capability may supply its local legacy email identity; remote Brain users
+    # resolve canonical settings for their authenticated principal exclusively.
+    user_id = None
+    email = ""
+    if isinstance(principal, LocalControlPrincipal):
+        if principal.kind == "brain_user":
+            user_id = principal.user_id or None
+        elif principal.kind == "desktop_renderer":
+            user_id = run_context.user_id
+            email = run_context.email
     return RuntimeEnvironmentAssembler(
         journal,
         state_root=(configured_run_journal_path().parent / "workspace-git"),
@@ -367,6 +429,8 @@ def _assemble_runtime_environment(
         spec,
         space_id=run_context.space_id,
         space_root=_space_root_for_run(run_context),
+        user_id=user_id,
+        email=email,
     )
 
 
@@ -610,7 +674,10 @@ async def _reject_pending_continuation(
             request_id=request_id,
             project_id=project_id,
             error=f"{code_value}: {message}",
+            reject_managed=True,
         )
+    except ManagedExecutionRequired as exc:
+        _raise_follow_up_http_error(exc)
     except RunNotFoundError:
         # Direct messages are resolved before a queue row exists. The typed
         # HTTP response is their complete clarification contract.
@@ -1132,6 +1199,14 @@ async def _prepare_chat_run(
     admission_request_id: str | None = None,
 ) -> _PreparedChatRun:
     """Bind fresh runtime inputs for a new Run or explicit Resume Attempt."""
+    if data.session_model_selection is not None and (
+        data.session_model_selection.model_platform != data.model_platform
+        or data.session_model_selection.model_type != data.model_type
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Session model does not match the Run binding",
+        )
     # TODO(brain-auth): Phase B should derive canonical user_id from
     # request.state.brain_auth, then verify/replace Chat.email before any
     # workspace snapshot, artifact path, or task lock is resolved.
@@ -1271,6 +1346,7 @@ async def _prepare_chat_run(
                     journal,
                     persisted_spec,
                     run_context,
+                    getattr(request.state, "local_control_principal", None),
                 )
             except EnvironmentSetupRequiredError as exc:
                 raise _environment_setup_error(exc) from exc
@@ -1354,6 +1430,7 @@ async def _prepare_chat_run(
                     journal,
                     environment.spec,
                     run_context,
+                    getattr(request.state, "local_control_principal", None),
                 )
             except EnvironmentSetupRequiredError as exc:
                 raise _environment_setup_error(exc) from exc
@@ -1411,6 +1488,16 @@ async def _prepare_chat_run(
             source="chat",
             attaches=data.attaches or [],
             review_handoff_ids=data.review_handoff_ids,
+            session_model_selection=(
+                {
+                    "space_id": run_context.space_id,
+                    "selection": data.session_model_selection.model_dump(
+                        mode="json", by_alias=True, exclude_none=True
+                    ),
+                }
+                if data.session_model_selection is not None
+                else None
+            ),
         )
     if attempt is not None:
         run_context = replace(run_context, attempt_id=attempt.attempt_id)
@@ -1493,11 +1580,29 @@ async def start_chat_stream(data: Chat, request: Request):
     """Admit one detached execution or attach this SSE to an existing one."""
 
     run_id = data.run_id or data.task_id
-    coordinator = get_default_run_coordinator()
     journal = get_default_run_journal()
+    await guard_legacy_execution_entry(
+        journal, project_id=data.project_id, run_id=run_id
+    )
+    coordinator = get_default_run_coordinator()
     if isinstance(journal, SQLiteRunJournal):
         coordinator.bind_journal(journal)
     async with coordinator.admission_scope(run_id, project_id=data.project_id):
+        if isinstance(journal, SQLiteRunJournal):
+            from app.workspace_runtime.entry_guard import (
+                ManagedExecutionRequired,
+            )
+            from app.workspace_runtime.routing import claim_legacy_session
+
+            try:
+                await asyncio.to_thread(
+                    claim_legacy_session, journal, data.project_id
+                )
+            except ManagedExecutionRequired:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "managed_execution_required"},
+                ) from None
         subscription = await coordinator.attach_if_running(run_id)
         if subscription is not None:
             chat_logger.info(
@@ -1751,8 +1856,18 @@ async def start_chat_stream(data: Chat, request: Request):
     "/chat", name="start chat", dependencies=_CHAT_CONTROL_DEPENDENCIES
 )
 async def post(data: Chat, request: Request):
+    from app.workspace_config.models import WorkspaceModelSelectionChangedError
+
     try:
         stream = await start_chat_stream(data, request)
+    except WorkspaceModelSelectionChangedError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "workspace_model_selection_changed",
+                "message": str(exc),
+            },
+        ) from exc
     except (ModelCapabilityConfigError, UnsupportedThinkingEffortError) as exc:
         raise _model_capability_http_error(exc) from exc
     return StreamingResponse(
@@ -1813,6 +1928,9 @@ async def status(project_id: str):
 async def retire_idle_runtime(project_id: str, data: RetireIdleRuntimeRequest):
     """Await disposal of a completed warm consumer before cold admission."""
 
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id, run_id=data.run_id
+    )
     coordinator = get_default_run_coordinator()
     async with coordinator.admission_scope(data.run_id, project_id=project_id):
         task_lock = get_task_lock_if_exists(project_id)
@@ -1882,6 +2000,9 @@ async def retire_idle_runtime(project_id: str, data: RetireIdleRuntimeRequest):
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def enqueue_follow_up(project_id: str, data: FollowUpRequestCreate):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
     try:
         record = await asyncio.to_thread(
             get_default_run_journal().put_follow_up_request,
@@ -1893,6 +2014,7 @@ async def enqueue_follow_up(project_id: str, data: FollowUpRequestCreate):
             delivery_mode=data.delivery_mode,
             source=data.source,
             source_command_id=data.source_command_id,
+            reject_managed=True,
         )
     except Exception as exc:
         _raise_follow_up_http_error(exc)
@@ -1955,12 +2077,16 @@ async def follow_up_by_source_command(source_command_id: str):
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def send_follow_up_now(project_id: str, request_id: str):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
     try:
         record = await asyncio.to_thread(
             get_default_run_journal().set_follow_up_delivery_mode,
             request_id=request_id,
             project_id=project_id,
             delivery_mode="send_now",
+            reject_managed=True,
         )
     except Exception as exc:
         _raise_follow_up_http_error(exc)
@@ -1972,11 +2098,15 @@ async def send_follow_up_now(project_id: str, request_id: str):
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def cancel_follow_up(project_id: str, request_id: str):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
     try:
         record = await asyncio.to_thread(
             get_default_run_journal().cancel_follow_up_request,
             request_id=request_id,
             project_id=project_id,
+            reject_managed=True,
         )
     except Exception as exc:
         _raise_follow_up_http_error(exc)
@@ -1992,12 +2122,16 @@ async def mark_follow_up_admitted(
     request_id: str,
     data: FollowUpRequestAdmitted,
 ):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
     try:
         record = await asyncio.to_thread(
             get_default_run_journal().mark_follow_up_admitted,
             request_id=request_id,
             project_id=project_id,
             run_id=data.run_id,
+            reject_managed=True,
         )
     except Exception as exc:
         _raise_follow_up_http_error(exc)
@@ -2010,6 +2144,9 @@ async def mark_follow_up_admitted(
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def improve(id: str, data: SupplementChat, request: Request):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=id, run_id=data.task_id
+    )
     if data.task_id:
         coordinator = get_default_run_coordinator()
         async with coordinator.admission_scope(data.task_id, project_id=id):
@@ -2064,6 +2201,9 @@ async def _improve_chat(
     *,
     admission_request_id: str | None = None,
 ):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=id, run_id=data.task_id
+    )
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
@@ -2316,6 +2456,7 @@ async def _improve_chat(
                     journal,
                     environment.spec,
                     refreshed_context,
+                    getattr(request.state, "local_control_principal", None),
                 )
             except EnvironmentSetupRequiredError as exc:
                 await rollback_runtime_binding()
@@ -2415,6 +2556,9 @@ def supplement(id: str, data: SupplementChat):
 )
 async def stop(id: str):
     """stop the task"""
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=id
+    )
     chat_logger.info("=" * 80)
     chat_logger.info(
         "🛑 [STOP-BUTTON] DELETE /chat/{id} request received from frontend"

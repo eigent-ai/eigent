@@ -53,6 +53,7 @@ from app.run_context import RunContext
 from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
 from app.run_runtime import RunCoordinator
 from app.workspace_bundle.runtime import EnvironmentSetupRequiredError
+from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
 
 
 @pytest.fixture(autouse=True)
@@ -67,9 +68,23 @@ def controller_run_journal():
         attempt_id="attempt-1",
         status="pending",
     )
-    with patch(
-        "app.controller.chat_controller.get_default_run_journal",
-        return_value=journal,
+
+    async def unit_admission_guard(candidate, **owner):
+        # This fixture deliberately supplies a non-durable unit double. Real
+        # SQLite fixtures still execute the production guard; its managed lane
+        # and unavailable-Journal cases have dedicated entry-guard tests.
+        if candidate is not journal:
+            await guard_legacy_execution_entry(candidate, **owner)
+
+    with (
+        patch(
+            "app.controller.chat_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.chat_controller.guard_legacy_execution_entry",
+            side_effect=unit_admission_guard,
+        ),
     ):
         yield journal
 
@@ -468,12 +483,14 @@ class TestChatController:
         assert "already finished" in chunks[0]
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("preadmitted", [False, True])
     async def test_explicit_resume_creates_new_attempt_on_same_run(
         self,
         sample_chat_data,
         mock_request,
         mock_task_lock,
         tmp_path,
+        preadmitted,
     ):
         run_id = sample_chat_data["task_id"]
         chat_data = Chat(
@@ -505,6 +522,10 @@ class TestChatController:
 
         async def source():
             await release.wait()
+            journal.activate_run_attempt(
+                journal.list_run_attempts(run_id)[-1].attempt_id,
+                expected_run_id=run_id,
+            )
             yield "data: resumed\n\n"
 
         with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
@@ -517,6 +538,18 @@ class TestChatController:
                 now=1,
             )
             journal.reconcile_startup(now=2)
+            if preadmitted:
+                coordinator.bind_journal(journal)
+                admitted = await coordinator.resume(
+                    run_id, request_id="resume-request-1"
+                )
+                # A lost control ACK / stale frontend preflight must retry the
+                # same identity before /chat, without reserving another Attempt.
+                recovered = await coordinator.resume(
+                    run_id, request_id="resume-request-1"
+                )
+                assert recovered.attempt_id == admitted.attempt_id
+                assert recovered.status == "pending"
             prepare = AsyncMock(
                 return_value=_PreparedChatRun(
                     task_lock=mock_task_lock,
@@ -550,6 +583,8 @@ class TestChatController:
                 assert attempts[1].attempt_number == 2
                 assert attempts[1].resume_reason == "explicit_resume"
                 assert attempts[1].resume_request_id == "resume-request-1"
+                if preadmitted:
+                    assert attempts[1].attempt_id == admitted.attempt_id
                 prepare.assert_awaited_once()
                 assert prepare.await_args.kwargs[
                     "resume_attempt"
@@ -557,7 +592,77 @@ class TestChatController:
 
                 release.set()
                 assert await stream.__anext__() == "data: resumed\n\n"
+                assert journal.get_run(run_id).status == "running"
+                assert len(journal.list_run_attempts(run_id)) == 2
                 await stream.aclose()
+        await coordinator.close()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "boundary", ["cancelled", "newer_attempt", "other_project"]
+    )
+    async def test_pending_resume_retry_cannot_reopen_or_replace_other_work(
+        self, sample_chat_data, mock_request, tmp_path, boundary
+    ):
+        run_id = sample_chat_data["task_id"]
+        coordinator = RunCoordinator()
+        with SQLiteRunJournal(tmp_path / "retry.sqlite3") as journal:
+            journal.ensure_run(
+                run_id=run_id,
+                project_id=sample_chat_data["project_id"],
+                status="interrupted",
+            )
+            coordinator.bind_journal(journal)
+            admitted = await coordinator.resume(
+                run_id, request_id="retained-request"
+            )
+            if boundary == "cancelled":
+                journal.request_cancel(
+                    run_id, request_id="cancel-1", reason="explicit_cancel"
+                )
+                journal.complete_cancel(run_id, request_id="cancel-1")
+            elif boundary == "newer_attempt":
+                journal.reconcile_startup()
+                newer = await coordinator.resume(
+                    run_id, request_id="newer-request"
+                )
+            data = {
+                **sample_chat_data,
+                "run_id": run_id,
+                "resume_request_id": "retained-request",
+            }
+            if boundary == "other_project":
+                data["project_id"] = "another-project"
+            before = journal.get_run(run_id)
+            before_attempts = journal.list_run_attempts(run_id)
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_default_run_coordinator",
+                    return_value=coordinator,
+                ),
+                patch(
+                    "app.controller.chat_controller._prepare_chat_run",
+                    new=AsyncMock(),
+                ) as prepare,
+            ):
+                with pytest.raises(UserException):
+                    await start_chat_stream(Chat(**data), mock_request)
+                prepare.assert_not_awaited()
+            assert journal.get_run(run_id) == before
+            assert journal.list_run_attempts(run_id) == before_attempts
+            if boundary == "newer_attempt":
+                assert (
+                    journal.get_run(run_id).active_attempt_id
+                    == newer.attempt_id
+                )
+                assert (
+                    journal.get_run_attempt(admitted.attempt_id).status
+                    == "interrupted"
+                )
         await coordinator.close()
 
     @pytest.mark.asyncio
@@ -1169,6 +1274,9 @@ class TestChatController:
         mock_task_lock.status = Status.processing
         mock_task_lock.runtime_session_mode = "single-agent"
         mock_task_lock.environment_admission_template = MagicMock()
+        refreshed_template = mock_task_lock.environment_admission_template.refresh_model_capability.return_value
+        refreshed_template.workspace_model_selection = None
+        refreshed_template.workspace_model_selection_checked = False
         mock_task_lock.email = "u@example.com"
         mock_task_lock.user_id = "42"
         mock_task_lock.space_id = "space-1"

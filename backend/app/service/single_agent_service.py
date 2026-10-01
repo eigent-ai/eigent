@@ -303,6 +303,23 @@ def _build_single_agent_prompt(
     return f"{context}{attachment_context}User task:\n{question}"
 
 
+async def managed_single_agent_turn(options: Chat, execution) -> str:
+    """Execute one admitted, private-workspace turn through the real factory.
+
+    Lifecycle, cancellation and finalization belong to ExecutionService.
+    Rebuild for each immutable binding; this function never reuses a warm agent.
+    """
+    agent = await single_agent(
+        options, task_id=options.task_id, managed_execution=execution
+    )
+    agent.process_task_id = options.task_id
+    response = await agent.astep(options.question)
+    if response is None or getattr(response, "terminated", False):
+        raise RuntimeError("managed agent did not finish its turn")
+    content, _tokens = await _response_content(response)
+    return content
+
+
 async def _response_content(
     response: ChatAgentResponse | AsyncStreamingChatAgentResponse,
 ) -> tuple[str, int]:

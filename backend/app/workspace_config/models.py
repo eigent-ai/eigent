@@ -52,6 +52,15 @@ class ModelCapabilityConfigError(WorkspaceConfigError):
     """Raised for invalid capability metadata or transport configuration."""
 
 
+class WorkspaceModelSelectionChangedError(WorkspaceConfigError):
+    """The initial Session selection no longer matches the installed generation."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The Space model changed while loading. Send your message again or choose a session model."
+        )
+
+
 class UnsafeCloudProjectionError(WorkspaceConfigError):
     """Raised when a Cloud projection contains device-local identity."""
 
@@ -586,6 +595,18 @@ class ModelProfile(_StrictFrozenModel):
         if not value.startswith("provider://"):
             raise ValueError("modelRef must use provider://")
         return value
+
+
+class WorkspaceModelSelection(_StrictFrozenModel):
+    """Logical launch snapshot; provider credentials remain in the Chat binding."""
+
+    materialization_id: str = Field(min_length=1, max_length=256)
+    revision_id: str = Field(min_length=1, max_length=256)
+    model_profile: str = Field(min_length=1, max_length=200)
+    model_ref: str = Field(
+        min_length=1, max_length=1024, pattern=r"^provider://"
+    )
+    thinking_effort: ThinkingEffort
 
 
 class PermissionRule(_StrictFrozenModel):

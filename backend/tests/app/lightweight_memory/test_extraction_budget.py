@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Offline regression fixtures for incremental extraction progress."""
 
 from __future__ import annotations
@@ -18,7 +32,7 @@ from app.lightweight_memory import (
     service as memory_service,
 )
 from app.lightweight_memory.maintainer import ProposedMemoryMutation
-from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.run_journal import SCHEMA_VERSION, RunEventDraft, SQLiteRunJournal
 from app.tool_validation import ToolPreWriteValidationError
 
 
@@ -427,7 +441,7 @@ def test_v34_migration_preserves_history_and_existing_watermarks(tmp_path):
         )
         connection.execute("PRAGMA user_version = 34")
     with SQLiteRunJournal(path) as journal:
-        assert journal.schema_version == 35
+        assert journal.schema_version == SCHEMA_VERSION
         service = LightweightMemoryService(journal)
         assert (
             service.scope("project", "project-1").processed_through_watermark

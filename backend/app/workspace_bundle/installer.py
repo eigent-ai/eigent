@@ -49,6 +49,12 @@ from app.workspace_config import (
     assert_bundle_asset_safe,
     canonical_digest,
 )
+from app.workspace_config.global_resources import (
+    GLOBAL_MCP_PREFIX,
+    GLOBAL_SKILL_PREFIX,
+    GlobalResourceUnavailable,
+    resolve_global_mcp,
+)
 from app.workspace_git import ConfigurationRepositoryService
 
 
@@ -758,7 +764,7 @@ class WorkspaceBundleInstaller:
         script_actions = [
             f"skill.script.execute:{item.ref}"
             for item in manifest.spec.skills
-            if item.ref.startswith("bundle://")
+            if item.ref.startswith(("bundle://", GLOBAL_SKILL_PREFIX))
         ] + [
             f"mcp.server.start:{item.id}" for item in manifest.spec.mcp_servers
         ]
@@ -830,6 +836,22 @@ class WorkspaceBundleInstaller:
         }
         destinations: list[dict[str, Any]] = []
         for server in manifest.spec.mcp_servers:
+            if server.definition.startswith(GLOBAL_MCP_PREFIX):
+                destination = registry_unavailable_destination(
+                    mcp_id=server.id,
+                    definition_ref=server.definition,
+                    secret_slots=server.secret_slots,
+                )
+                destination["destination_kind"] = "global_configuration"
+                try:
+                    resolve_global_mcp(
+                        server.definition, secret_slots=server.secret_slots
+                    )
+                    destination["availability_issue"] = None
+                except GlobalResourceUnavailable as exc:
+                    destination["availability_issue"] = str(exc)
+                destinations.append(destination)
+                continue
             if server.definition.startswith("registry://"):
                 destinations.append(
                     registry_unavailable_destination(

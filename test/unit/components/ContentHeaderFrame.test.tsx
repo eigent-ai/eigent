@@ -14,6 +14,7 @@
 
 import ContentHeader, {
   ContentHeaderFrame,
+  useFocusContentHeading,
 } from '@/components/Layout/ContentHeader';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -21,6 +22,35 @@ import { lazy, Suspense } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('ContentHeaderFrame', () => {
+  it('does not focus a heading when its pane becomes outgoing', () => {
+    function Heading() {
+      const ref = useFocusContentHeading('detail');
+      return (
+        <h1 tabIndex={-1} ref={ref}>
+          Detail heading
+        </h1>
+      );
+    }
+    const page = (present: boolean) => (
+      <>
+        <button>Next section</button>
+        <AnimatePresence initial={false}>
+          {present ? (
+            <motion.div key="detail" exit={{ opacity: 0 }}>
+              <Heading />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </>
+    );
+    const view = render(page(true));
+    expect(
+      screen.getByRole('heading', { name: 'Detail heading' })
+    ).toHaveFocus();
+    screen.getByRole('button', { name: 'Next section' }).focus();
+    view.rerender(page(false));
+    expect(screen.getByRole('button', { name: 'Next section' })).toHaveFocus();
+  });
   it('keeps the divider outside fading content and preserves header interaction', () => {
     const onAdd = vi.fn();
     const page = (title: string) => (

@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -24,6 +23,7 @@ from typing import Any
 from app.run_journal.models import CommittedRunEvent, RunEventDraft
 from app.run_journal.semantic_events import project_legacy_semantic_event
 from app.run_journal.store import SQLiteRunJournal
+from app.run_runtime.owned_tasks import run_owned_thread
 
 logger = logging.getLogger("event_recorder")
 
@@ -69,7 +69,7 @@ class EventRecorder:
     ) -> CommittedRunEvent:
         """Commit a typed event and its sync outbox row before publication."""
 
-        event = await asyncio.to_thread(
+        event = await run_owned_thread(
             self._journal.append_event,
             run_id,
             draft,
@@ -126,7 +126,7 @@ class EventRecorder:
             if step_id is None:
                 step_id = get_current_step_id()
             if step_id is None:
-                step_id = await asyncio.to_thread(
+                step_id = await run_owned_thread(
                     RunStepCoordinator(self._journal).current_running_step_id,
                     run_id,
                 )
@@ -163,14 +163,14 @@ class EventRecorder:
             semantic is not None
             and semantic.event_type in _WORKFORCE_SUBTASK_EVENT_TYPES
         ):
-            event = await asyncio.to_thread(
+            event = await run_owned_thread(
                 self._journal.append_event_with_workforce_step_projection,
                 run_id,
                 draft,
                 expected_project_id=project_id,
             )
         else:
-            event = await asyncio.to_thread(
+            event = await run_owned_thread(
                 self._journal.append_event,
                 run_id,
                 draft,
@@ -211,6 +211,7 @@ class EventRecorder:
         source: str,
         attachment_names: list[str] | None = None,
         review_handoff_ids: list[str] | None = None,
+        session_model_selection: dict[str, Any] | None = None,
         created_at: float | None = None,
     ) -> CommittedRunEvent:
         """Commit the Run's canonical user instruction before execution."""
@@ -221,6 +222,8 @@ class EventRecorder:
             "attachment_names": list(attachment_names or []),
             "review_handoff_ids": list(review_handoff_ids or []),
         }
+        if session_model_selection is not None:
+            payload["session_model_selection"] = session_model_selection
         values: dict[str, Any] = {
             "event_id": f"user-message:{request_id}",
             "event_type": "user.message",
@@ -228,7 +231,7 @@ class EventRecorder:
         }
         if created_at is not None:
             values["created_at"] = created_at
-        event = await asyncio.to_thread(
+        event = await run_owned_thread(
             self._journal.append_event,
             run_id,
             RunEventDraft(**values),

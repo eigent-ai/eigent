@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -29,6 +30,7 @@ from app.controller import workspace_config_controller
 from app.router import register_routers
 from app.run_journal import SQLiteRunJournal
 from app.workspace_bundle.agent_plugins import MCP_SCHEMA, PLUGIN_SCHEMA
+from app.workspace_config import WorkspaceBundleManifest
 
 
 @dataclass
@@ -94,6 +96,275 @@ def workspace_config_api(tmp_path, monkeypatch):
 
 def _headers() -> dict[str, str]:
     return {LOCAL_CONTROL_CAPABILITY_HEADER: "test-secret"}
+
+
+def test_session_model_recovery_uses_local_control_scope_and_preserves_unknown_restore(
+    workspace_config_api, monkeypatch
+):
+    from app.run_sync import runtime
+
+    client, journal = workspace_config_api
+    path = "/api/v1/spaces/space-1/workspace-configuration/session-model"
+    params = {"email": "user@example.com", "project_id": "session-1"}
+    assert client.get(path, params=params).status_code == 401
+    journal.ensure_run(
+        run_id="unaccepted", project_id="session-1", status="pending"
+    )
+    monkeypatch.setattr(
+        runtime, "is_default_cloud_history_bootstrap_pending", lambda: True
+    )
+    before = journal._connection.total_changes
+    response = client.get(path, params=params, headers=_headers())
+    assert response.status_code == 200
+    assert response.json() == {
+        "space_id": "space-1",
+        "project_id": "session-1",
+        "accepted": None,
+        "restore_pending": True,
+    }
+    assert journal._connection.total_changes == before
+    monkeypatch.setattr(
+        workspace_config_controller,
+        "accepted_session_model",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ValueError("private diagnostic")
+        ),
+    )
+    failure = client.get(path, params=params, headers=_headers())
+    assert failure.status_code == 409
+    assert "private diagnostic" not in failure.text
+
+
+def test_model_selection_is_protected_and_uses_only_materialized_policy(
+    workspace_config_api,
+):
+    client, journal = workspace_config_api
+    url = "/api/v1/spaces/space-1/workspace-configuration/model-selection"
+    assert (
+        client.get(url, params={"email": "user@example.com"}).status_code
+        == 401
+    )
+    params = {"email": "user@example.com"}
+    assert client.get(url, params=params, headers=_headers()).json() == {
+        "space_id": "space-1",
+        "selection": None,
+    }
+    manifest = WorkspaceBundleManifest.model_validate(
+        _get(client).json()["document"]
+    )
+    journal.put_workspace_config_revision(
+        revision_id=manifest.revision_id,
+        bundle_id=manifest.metadata.id,
+        revision_number=1,
+        manifest=manifest.canonical_payload(),
+        created_by="fixture",
+    )
+    journal.put_workspace_config_materialization(
+        materialization_id="models-fixture",
+        space_id="space-1",
+        revision_id=manifest.revision_id,
+        config_placement="sidecar",
+    )
+    draft = manifest.canonical_payload()
+    draft["spec"]["models"]["default"]["modelRef"] = (
+        "provider://cloud/unpublished"
+    )
+    journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=draft,
+        updated_by="fixture",
+    )
+    before = journal._connection.total_changes
+    response = client.get(url, params=params, headers=_headers())
+    assert response.status_code == 200
+    assert response.json()["selection"] == {
+        "materialization_id": "models-fixture",
+        "revision_id": manifest.revision_id,
+        "model_profile": "default",
+        "model_ref": "provider://default",
+        "thinking_effort": "medium",
+    }
+    assert journal._connection.total_changes == before
+
+
+def test_model_selection_failure_does_not_echo_private_details(
+    workspace_config_api, monkeypatch
+):
+    client, _ = workspace_config_api
+
+    def fail(*_args):
+        raise ValueError("synthetic-private-content /private/fixture")
+
+    monkeypatch.setattr(
+        workspace_config_controller, "installed_model_selection", fail
+    )
+    response = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/model-selection",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": {"code": "workspace_model_selection_unavailable"}
+    }
+
+
+def test_discovery_is_capability_protected_and_does_not_save(
+    workspace_config_api, monkeypatch
+):
+    client, journal = workspace_config_api
+
+    def fail_global_config(*_args, **_kwargs):
+        raise AssertionError(
+            "Discovery must not read global MCP configuration"
+        )
+
+    monkeypatch.setattr(
+        workspace_config_controller, "read_mcp_config", fail_global_config
+    )
+    url = "/api/v1/spaces/space-1/workspace-configuration/discovery"
+    denied = client.get(url, params={"email": "user@example.com"})
+    assert denied.status_code == 401
+    rows_before = journal._connection.total_changes
+    result = client.get(
+        url, params={"email": "user@example.com"}, headers=_headers()
+    )
+    assert result.status_code == 200
+    assert result.json() == {
+        "space_id": "space-1",
+        "skills": [],
+        "mcp_servers": [],
+    }
+    assert journal.get_workspace_config_draft("space-1") is None
+    assert journal._connection.total_changes == rows_before
+
+
+def test_discovery_checks_the_requested_account_binding(
+    workspace_config_api, monkeypatch
+):
+    client, journal = workspace_config_api
+    resolver = workspace_config_controller.get_workspace_resolver()
+    calls = []
+
+    def no_binding(email, space_id, user_id):
+        calls.append((email, space_id, user_id))
+        return None
+
+    monkeypatch.setattr(resolver.store, "get_binding", no_binding)
+    result = client.get(
+        "/api/v1/spaces/space-other/workspace-configuration/discovery",
+        params={"email": "other@example.com", "user_id": "other-user"},
+        headers=_headers(),
+    )
+    assert result.status_code == 404
+    assert calls == [("other@example.com", "space-other", "other-user")]
+
+
+def test_discovery_error_does_not_expose_validation_inputs(
+    workspace_config_api, monkeypatch
+):
+    client, journal = workspace_config_api
+
+    def fail(*_args, **_kwargs):
+        raise ValueError(
+            "fixture-private-content at /private/fixture/location"
+        )
+
+    monkeypatch.setattr(
+        workspace_config_controller.WorkspaceResourceDiscovery,
+        "discover",
+        fail,
+    )
+    result = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/discovery",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert result.status_code == 500
+    assert result.json() == {
+        "detail": {"code": "workspace_configuration_discovery_failed"}
+    }
+
+
+@pytest.mark.parametrize("placement", ["in_repo", "sidecar"])
+@pytest.mark.parametrize("contract", ["workspace.yaml", "workspace.lock"])
+def test_discovery_contract_boundary_returns_only_a_generic_error(
+    workspace_config_api, tmp_path, monkeypatch, placement, contract
+):
+    client, journal = workspace_config_api
+    manifest = WorkspaceBundleManifest.model_validate(
+        {
+            "apiVersion": "eigent.ai/v1alpha1",
+            "kind": "WorkspaceBundle",
+            "metadata": {"id": "boundary", "name": "Boundary", "revision": 1},
+            "spec": {
+                "models": {"default": {"modelRef": "provider://default"}}
+            },
+        }
+    )
+    journal.put_workspace_config_revision(
+        revision_id=manifest.revision_id,
+        bundle_id=manifest.metadata.id,
+        revision_number=1,
+        manifest=manifest.canonical_payload(),
+        created_by="fixture",
+    )
+    journal.put_workspace_config_materialization(
+        materialization_id="boundary-materialization",
+        space_id="space-1",
+        revision_id=manifest.revision_id,
+        config_placement=placement,
+    )
+    configuration = (
+        tmp_path / "space" / ".eigent"
+        if placement == "in_repo"
+        else tmp_path
+        / "workspace-git"
+        / "spaces"
+        / "space-1"
+        / "configuration"
+    )
+    configuration.mkdir(parents=True)
+    (configuration / "workspace.yaml").write_text(
+        yaml.safe_dump(manifest.canonical_payload())
+    )
+    (configuration / "workspace.lock").write_text(
+        yaml.safe_dump(
+            {
+                "apiVersion": "eigent.ai/lock/v1alpha1",
+                "bundleRevision": manifest.revision_id,
+                "manifestDigest": manifest.digest,
+            }
+        )
+    )
+    outside = tmp_path / "synthetic-private-config.json"
+    outside.write_text('{"token":"synthetic-boundary-marker"}')
+    path = configuration / contract
+    path.unlink()
+    path.symlink_to(outside)
+    opened = []
+    original_open = Path.open
+
+    def checked_open(path, *args, **kwargs):
+        if path.resolve() == outside:
+            opened.append(path)
+            raise AssertionError("forbidden fixture was opened")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", checked_open)
+    rows_before = journal._connection.total_changes
+    result = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/discovery",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert opened == []
+    assert journal._connection.total_changes == rows_before
+    assert result.status_code == 500
+    assert result.json() == {
+        "detail": {"code": "workspace_configuration_discovery_failed"}
+    }
 
 
 def _agent_plugin(root: Path, *, schema: str = PLUGIN_SCHEMA) -> Path:

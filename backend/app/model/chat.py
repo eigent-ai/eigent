@@ -26,9 +26,11 @@ from app.model.model_platform import (
     NormalizedModelPlatform,
     NormalizedOptionalModelPlatform,
 )
+from app.model.session_model import SessionModelSelection
 from app.remote_sub_agent.config import RemoteSubAgentConfig
 from app.utils.workspace_paths import task_dir_name
 from app.workspace_config import ThinkingEffort, normalize_thinking_effort
+from app.workspace_config.models import WorkspaceModelSelection
 
 logger = logging.getLogger("chat_model")
 
@@ -110,6 +112,9 @@ class Chat(BaseModel):
     # extra_params for backward compatibility.
     model_config_dict: dict[str, Any] | None = None
     thinking_effort: ThinkingEffort | None = None
+    # Initial Space-default resolution only; admission compares the installed generation.
+    workspace_model_selection: WorkspaceModelSelection | None = None
+    session_model_selection: SessionModelSelection | None = None
     # For provider-specific parameters like Azure
     extra_params: dict | None = None
     # User-specific search engine configurations

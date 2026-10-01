@@ -16,6 +16,7 @@ import {
   ArtifactChangeList,
   type ArtifactChangeListProps,
 } from '@/components/ChatBox/MessageItem/ArtifactChangeList';
+import { useSessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import {
   reconcileRunOutputFiles,
@@ -228,6 +229,7 @@ export function useRunFileInfo({
 }
 
 export function RunFilesGroup(props: RunFilesProps) {
+  const managedPreview = useSessionArtifactPreview();
   const files = useRunFileInfo(props);
   const previewProjectId = usePageTabStore(
     (state) => state.sessionPreviewProjectId
@@ -247,13 +249,23 @@ export function RunFilesGroup(props: RunFilesProps) {
       files={files}
       scanStatus={props.artifactManifest?.scanStatus}
       truncated={props.artifactManifest?.truncated}
-      onViewChanges={() => openReviewPreview({ runId: props.runId })}
+      onViewChanges={
+        managedPreview
+          ? undefined
+          : () => openReviewPreview({ runId: props.runId })
+      }
       onOpen={(file) => {
+        if (managedPreview) {
+          managedPreview(props.runId, file);
+          return;
+        }
         const preview = resolveRunFilePreview(file, workspaceRoot);
         if (preview) openFilePreview(preview);
       }}
       canOpenFile={(file) =>
-        resolveRunFilePreview(file, workspaceRoot) !== null
+        managedPreview
+          ? Boolean(file.artifactId)
+          : resolveRunFilePreview(file, workspaceRoot) !== null
       }
     />
   );
@@ -266,6 +278,7 @@ export function RunArtifactChangeList({
   files: sourceFiles,
   ...props
 }: ArtifactChangeListProps & { runId: string; projectId?: string }) {
+  const managedPreview = useSessionArtifactPreview();
   const files = useMemo(
     () => (sourceFiles || []).filter(isDisplayableOutputFile),
     [sourceFiles]
@@ -273,7 +286,11 @@ export function RunArtifactChangeList({
   const { active: loadDiffStats, rootRef } = useRunFileDiffStatsActivation(
     files.length > 0
   );
-  const diffStats = useRunFileDiffStats(runId, projectId, loadDiffStats);
+  const diffStats = useRunFileDiffStats(
+    runId,
+    projectId,
+    loadDiffStats && !managedPreview
+  );
   const lineChangesForFile = useCallback(
     (file: FileInfo) => {
       const path = runFileReviewPath(file);

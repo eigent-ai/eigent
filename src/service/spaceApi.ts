@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  type FetchRequestOptions,
   proxyFetchDelete,
   proxyFetchGet,
   proxyFetchPatch,
@@ -140,6 +141,12 @@ export interface ProjectPayload {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface ProjectUpdatePayload extends Partial<ProjectPayload> {
+  expected_model_admission_run_id?: string | null;
+  expected_model_admission_revision?: string | null;
+  model_admission_revision?: string;
+}
+
 export interface ServerProject {
   id: string;
   user_id: string;
@@ -206,11 +213,14 @@ export const proxyFetchSpaceProjects = async (
 
 export const proxyCreateSpaceProject = async (
   spaceId: string,
-  payload: ProjectPayload
+  payload: ProjectPayload,
+  options?: FetchRequestOptions
 ): Promise<ServerProject> => {
   const project = await proxyFetchPost(
     `/api/v1/spaces/${spaceId}/projects`,
-    payload
+    payload,
+    undefined,
+    options
   );
   return project;
 };
@@ -218,12 +228,20 @@ export const proxyCreateSpaceProject = async (
 export const proxyUpdateSpaceProject = async (
   spaceId: string,
   projectId: string,
-  payload: Partial<ProjectPayload>
+  payload: ProjectUpdatePayload,
+  options?: FetchRequestOptions
 ): Promise<ServerProject> => {
-  const project = await proxyFetchPatch(
-    `/api/v1/spaces/${spaceId}/projects/${projectId}`,
-    payload
-  );
+  // Older servers must reject a conditional cleanup rather than silently
+  // ignoring its precondition and treating it as an unconditional PATCH.
+  const suffix = payload.model_admission_revision
+    ? '/model-admission/transition'
+    : payload.expected_model_admission_run_id
+      ? '/model-admission'
+      : '';
+  const url = `/api/v1/spaces/${spaceId}/projects/${projectId}${suffix}`;
+  const project = options
+    ? await proxyFetchPatch(url, payload, undefined, options)
+    : await proxyFetchPatch(url, payload);
   return project;
 };
 

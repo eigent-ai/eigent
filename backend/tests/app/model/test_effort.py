@@ -135,10 +135,11 @@ def test_unknown_model_cannot_sneak_effort_through_provider_json(pinned):
 
 
 @pytest.mark.parametrize("platform", ["openai", "azure"])
-def test_astra_tools_select_responses_even_without_explicit_effort(platform):
+@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6-luna"])
+def test_tools_select_responses_even_without_explicit_effort(platform, model):
     config, transport = resolve_model_effort_config(
         model_platform=platform,
-        model_type="gpt-6-astra",
+        model_type=model,
         model_config={},
         api_mode="chat_completions",
         has_function_tools=True,

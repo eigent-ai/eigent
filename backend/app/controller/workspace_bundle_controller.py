@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import require_local_control_principal
+from app.auth.local_control import LocalControlPrincipal
 from app.component.environment import env
 from app.router_layer.hands_resolver import get_environment_hands
 from app.run_journal import (
@@ -51,6 +52,13 @@ from app.workspace_bundle.mcp_destination import (
     secret_binding_attestation_from_grants,
 )
 from app.workspace_config import ConfigPlacement
+from app.workspace_config.global_resources import (
+    GLOBAL_MCP_PREFIX,
+    GLOBAL_SKILL_PREFIX,
+    GlobalResourceUnavailable,
+    resolve_global_mcp,
+    resolve_global_skill,
+)
 from app.workspace_git import ConfigurationRepositoryService
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
@@ -165,7 +173,22 @@ def _cloud(authorization: str) -> HttpWorkspaceBundleCloudTransport:
     )
 
 
-def _payload(proposal_id: str) -> dict:
+def _payload(
+    proposal_id: str,
+    *,
+    principal: LocalControlPrincipal | None = None,
+    email: str = "",
+    user_id: str | int | None = None,
+) -> dict:
+    # Match Chat's runtime identity boundary. A remote user's body/query is not
+    # an authority for another account's global settings or legacy email.
+    if isinstance(principal, LocalControlPrincipal):
+        if principal.kind == "brain_user":
+            user_id, email = principal.user_id or None, ""
+        elif principal.kind != "desktop_renderer":
+            user_id, email = None, ""
+    else:
+        user_id, email = None, ""
     journal = get_default_run_journal()
     proposal = journal.get_workspace_bundle_install_proposal(proposal_id)
     if proposal is None:
@@ -339,7 +362,7 @@ def _payload(proposal_id: str) -> dict:
         and any(
             isinstance(skill, dict)
             and isinstance(skill.get("ref"), str)
-            and not skill["ref"].startswith("bundle://")
+            and not skill["ref"].startswith(("bundle://", GLOBAL_SKILL_PREFIX))
             for skill in manifest_skills
         )
     ) or bool(
@@ -347,7 +370,9 @@ def _payload(proposal_id: str) -> dict:
         and any(
             isinstance(server, dict)
             and isinstance(server.get("definition"), str)
-            and not server["definition"].startswith("bundle://")
+            and not server["definition"].startswith(
+                ("bundle://", GLOBAL_MCP_PREFIX)
+            )
             for server in manifest_mcp_servers
         )
     )
@@ -398,6 +423,45 @@ def _payload(proposal_id: str) -> dict:
         runtime_issues.append("multi_agent_runtime_adapter_unavailable")
     if has_unmaterialized_registry_dependencies:
         runtime_issues.append("registry_dependencies_unmaterialized")
+    # Supported global references remain live configuration, not Bundle assets.
+    # Use the runtime's read-only resolvers so missing/disabled/invalid resources
+    # cannot become Ready merely because their reference has a known prefix.
+    global_resource_issues: list[str] = []
+    script_approvals = {
+        item.slot_id
+        for item in local_bindings
+        if item.binding_kind == "script_approval"
+    }
+    for skill in manifest_skills if isinstance(manifest_skills, list) else []:
+        ref = skill.get("ref") if isinstance(skill, dict) else None
+        if not isinstance(ref, str) or not ref.startswith(GLOBAL_SKILL_PREFIX):
+            continue
+        action = f"skill.script.execute:{ref}"
+        if action not in script_approvals:
+            global_resource_issues.append(f"script_approval_missing:{action}")
+        try:
+            resolve_global_skill(ref, user_id=user_id, email=email)
+        except GlobalResourceUnavailable as exc:
+            global_resource_issues.append(str(exc))
+    for server in (
+        manifest_mcp_servers if isinstance(manifest_mcp_servers, list) else []
+    ):
+        ref = server.get("definition") if isinstance(server, dict) else None
+        if not isinstance(ref, str) or not ref.startswith(GLOBAL_MCP_PREFIX):
+            continue
+        action = f"mcp.server.start:{server.get('id', '')}"
+        if action not in script_approvals:
+            global_resource_issues.append(f"script_approval_missing:{action}")
+        try:
+            resolve_global_mcp(
+                ref,
+                secret_slots=server.get(
+                    "secretSlots", server.get("secret_slots", [])
+                ),
+            )
+        except GlobalResourceUnavailable as exc:
+            global_resource_issues.append(str(exc))
+    runtime_issues.extend(dict.fromkeys(global_resource_issues))
     if missing:
         runtime_issues.append("local_setup_incomplete")
     is_materialized = proposal.state == "materialized"
@@ -408,6 +472,7 @@ def _payload(proposal_id: str) -> dict:
         connector_slots
         or has_unsupported_agents
         or has_unmaterialized_registry_dependencies
+        or global_resource_issues
         or has_unavailable_secret_mcp
         or missing
         or not is_materialized
@@ -431,6 +496,23 @@ def _payload(proposal_id: str) -> dict:
         "runtime_readiness": runtime_readiness,
         "runtime_readiness_issues": runtime_issues,
     }
+
+
+def _request_payload(
+    proposal_id: str,
+    request: Request,
+    body: BundleMaterializeBody | None = None,
+) -> dict:
+    return _payload(
+        proposal_id,
+        principal=getattr(request.state, "local_control_principal", None),
+        email=body.email
+        if body is not None
+        else request.query_params.get("email", ""),
+        user_id=body.user_id
+        if body is not None
+        else request.query_params.get("user_id"),
+    )
 
 
 def _error(exc: Exception) -> HTTPException:
@@ -493,6 +575,7 @@ def _authorized_local_path(request: Request, value: str) -> Path:
 @router.post("/workspace-bundles/install-proposals")
 async def propose_bundle_install(
     body: BundleProposalBody,
+    request: Request,
     authorization: Annotated[str, Header(alias="Authorization")],
 ) -> dict:
     cloud = None
@@ -507,7 +590,7 @@ async def propose_bundle_install(
             version=body.version,
             config_placement=ConfigPlacement(body.config_placement),
         )
-        return _payload(body.proposal_id)
+        return _request_payload(body.proposal_id, request)
     except Exception as exc:
         raise _error(exc) from exc
     finally:
@@ -516,12 +599,16 @@ async def propose_bundle_install(
 
 
 @router.get("/workspace-bundles/install-proposals/{proposal_id}")
-async def get_bundle_install_proposal(proposal_id: str) -> dict:
-    return _payload(proposal_id)
+async def get_bundle_install_proposal(
+    proposal_id: str, request: Request
+) -> dict:
+    return _request_payload(proposal_id, request)
 
 
 @router.get("/spaces/{space_id}/workspace-bundle-installation")
-async def get_space_bundle_installation(space_id: str) -> dict:
+async def get_space_bundle_installation(
+    space_id: str, request: Request
+) -> dict:
     proposal = (
         get_default_run_journal().get_latest_workspace_bundle_install_proposal(
             space_id=space_id
@@ -534,12 +621,12 @@ async def get_space_bundle_installation(space_id: str) -> dict:
         # the proposal-id endpoint, where the caller asked for a concrete
         # resource that does not exist.
         return {"proposal": None}
-    return _payload(proposal.proposal_id)
+    return _request_payload(proposal.proposal_id, request)
 
 
 @router.post("/workspace-bundles/install-proposals/{proposal_id}/decision")
 async def decide_bundle_install(
-    proposal_id: str, body: BundleDecisionBody
+    proposal_id: str, body: BundleDecisionBody, request: Request
 ) -> dict:
     try:
         _installer().decide(
@@ -548,7 +635,7 @@ async def decide_bundle_install(
             approved=body.approved,
             decided_by=body.actor_id,
         )
-        return _payload(proposal_id)
+        return _request_payload(proposal_id, request)
     except Exception as exc:
         raise _error(exc) from exc
 
@@ -557,7 +644,7 @@ async def decide_bundle_install(
     "/workspace-bundles/install-proposals/{proposal_id}/connector-bindings"
 )
 async def bind_bundle_connector(
-    proposal_id: str, body: BundleConnectorBindingBody
+    proposal_id: str, body: BundleConnectorBindingBody, request: Request
 ) -> dict:
     try:
         _installer().bind_connector(
@@ -568,7 +655,7 @@ async def bind_bundle_connector(
             opaque_connection_id=body.connection_id,
             authorized_by=body.actor_id,
         )
-        return _payload(proposal_id)
+        return _request_payload(proposal_id, request)
     except Exception as exc:
         raise _error(exc) from exc
 
@@ -587,7 +674,7 @@ async def bind_bundle_local_path(
             local_path=_authorized_local_path(request, body.local_path),
             authorized_by=body.actor_id,
         )
-        return _payload(proposal_id)
+        return _request_payload(proposal_id, request)
     except Exception as exc:
         raise _error(exc) from exc
 
@@ -596,7 +683,7 @@ async def bind_bundle_local_path(
     "/workspace-bundles/install-proposals/{proposal_id}/script-approvals"
 )
 async def approve_bundle_script(
-    proposal_id: str, body: BundleScriptApprovalBody
+    proposal_id: str, body: BundleScriptApprovalBody, request: Request
 ) -> dict:
     try:
         _installer().approve_script_action(
@@ -605,7 +692,7 @@ async def approve_bundle_script(
             action_id=body.action_id,
             authorized_by=body.actor_id,
         )
-        return _payload(proposal_id)
+        return _request_payload(proposal_id, request)
     except Exception as exc:
         raise _error(exc) from exc
 
@@ -614,13 +701,14 @@ async def approve_bundle_script(
 async def materialize_bundle(
     proposal_id: str,
     body: BundleMaterializeBody,
+    request: Request,
     authorization: Annotated[str, Header(alias="Authorization")],
 ) -> dict:
     proposal = get_default_run_journal().get_workspace_bundle_install_proposal(
         proposal_id
     )
     if proposal is None:
-        return _payload(proposal_id)
+        return _request_payload(proposal_id, request, body)
     binding = get_workspace_resolver().store.get_binding(
         body.email,
         proposal.space_id,
@@ -647,7 +735,7 @@ async def materialize_bundle(
             actor_id=body.actor_id,
             allow_content_repository_init=(body.allow_content_repository_init),
         )
-        return _payload(proposal_id)
+        return _request_payload(proposal_id, request, body)
     except Exception as exc:
         raise _error(exc) from exc
     finally:
@@ -659,6 +747,7 @@ async def materialize_bundle(
 async def bind_bundle_local_values(
     proposal_id: str,
     body: BundleLocalValuesBody,
+    request: Request,
 ) -> dict:
     try:
         journal = get_default_run_journal()
@@ -675,7 +764,7 @@ async def bind_bundle_local_values(
             bindings=[item.model_dump() for item in body.bindings],
             authorized_by=body.actor_id,
         )
-        payload = _payload(proposal_id)
+        payload = _request_payload(proposal_id, request)
         payload["cleanup_secret_refs"] = sorted(
             {
                 previous_refs[item.requirement_key]

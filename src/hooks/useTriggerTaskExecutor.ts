@@ -15,11 +15,13 @@
 import { proxyFetchGet } from '@/api/http';
 import i18n from '@/i18n';
 import { notifyExecutionError } from '@/lib/notifyError';
+import { executionScope } from '@/service/executionApi';
 import { createFollowUpRequest } from '@/service/followUpQueueApi';
 import {
   ProjectType,
   useProjectRuntimeStore,
 } from '@/store/projectRuntimeStore';
+import { requireLegacyExecution } from '@/store/sessionExecutionStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import {
@@ -153,6 +155,8 @@ export function useTriggerTaskExecutor() {
       try {
         const store = projectStoreRef.current;
         let targetProjectId = task.projectId;
+        if (targetProjectId)
+          await requireLegacyExecution(executionScope(targetProjectId));
 
         if (!targetProjectId) {
           // No project specified, create a new project for this automation.

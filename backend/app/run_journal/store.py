@@ -138,8 +138,15 @@ from app.workspace_config.models import (
     canonical_digest,
     canonical_json,
 )
+from app.workspace_runtime.schema import (
+    MIGRATION_V36,
+    MIGRATION_V37,
+    MIGRATION_V38,
+    MIGRATION_V39,
+    MIGRATION_V40,
+)
 
-SCHEMA_VERSION = 35
+SCHEMA_VERSION = 40
 logger = logging.getLogger("run_journal")
 # Per redacted request or response. Oversized documents retain a bounded JSON
 # prefix plus the byte count and digest of the full redacted projection.
@@ -7773,47 +7780,68 @@ class SQLiteRunJournal:
         deadline_at: float | None = None,
         now: float | None = None,
     ) -> RunRecord:
-        timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO runs(
-                    run_id, project_id, status, version, active_attempt_id,
-                    deadline_at, timeout_policy_version, created_at, updated_at
-                ) VALUES (?, ?, ?, 0, NULL, ?, ?, ?, ?)
-                """,
-                (
-                    run_id,
-                    project_id,
-                    status,
-                    deadline_at,
-                    timeout_policy_version,
-                    timestamp,
-                    timestamp,
-                ),
+            return self._ensure_run_in_transaction(
+                connection,
+                run_id=run_id,
+                project_id=project_id,
+                status=status,
+                timeout_policy_version=timeout_policy_version,
+                deadline_at=deadline_at,
+                now=now,
             )
-            row = connection.execute(
-                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
-            assert row is not None
-            if row["project_id"] != project_id:
-                raise IdempotencyConflictError(
-                    f"run_id {run_id!r} already belongs to another project"
-                )
-            if row["timeout_policy_version"] != timeout_policy_version:
-                raise IdempotencyConflictError(
-                    f"run_id {run_id!r} was reused with a different timeout policy"
-                )
-            persisted_deadline = (
-                float(row["deadline_at"])
-                if row["deadline_at"] is not None
-                else None
+
+    def _ensure_run_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        project_id: str,
+        status: str = "running",
+        timeout_policy_version: str = "v1",
+        deadline_at: float | None = None,
+        now: float | None = None,
+    ) -> RunRecord:
+        timestamp = now if now is not None else time.time()
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO runs(
+                run_id, project_id, status, version, active_attempt_id,
+                deadline_at, timeout_policy_version, created_at, updated_at
+            ) VALUES (?, ?, ?, 0, NULL, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                project_id,
+                status,
+                deadline_at,
+                timeout_policy_version,
+                timestamp,
+                timestamp,
+            ),
+        )
+        row = connection.execute(
+            "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        assert row is not None
+        if row["project_id"] != project_id:
+            raise IdempotencyConflictError(
+                f"run_id {run_id!r} already belongs to another project"
             )
-            if persisted_deadline != deadline_at:
-                raise IdempotencyConflictError(
-                    f"run_id {run_id!r} was reused with a different deadline"
-                )
-            return self._run_from_row(row)
+        if row["timeout_policy_version"] != timeout_policy_version:
+            raise IdempotencyConflictError(
+                f"run_id {run_id!r} was reused with a different timeout policy"
+            )
+        persisted_deadline = (
+            float(row["deadline_at"])
+            if row["deadline_at"] is not None
+            else None
+        )
+        if persisted_deadline != deadline_at:
+            raise IdempotencyConflictError(
+                f"run_id {run_id!r} was reused with a different deadline"
+            )
+        return self._run_from_row(row)
 
     def get_run(self, run_id: str) -> RunRecord | None:
         with self._lock:
@@ -8974,8 +9002,61 @@ class SQLiteRunJournal:
                 for row in rows
             ]
 
+    def _require_legacy_follow_up_in_transaction(
+        self, connection: sqlite3.Connection, *, project_id: str
+    ) -> None:
+        """Recheck queue ownership under the legacy mutation's writer lock."""
+        if connection is not self._connection or not connection.in_transaction:
+            raise RunJournalError(
+                "legacy follow-up mutation requires its owning transaction"
+            )
+        from app.workspace_runtime.entry_guard import (
+            ManagedExecutionRequired,
+            owns_managed_execution_in_connection,
+        )
+
+        if owns_managed_execution_in_connection(
+            connection, project_id=project_id
+        ):
+            raise ManagedExecutionRequired(
+                "This Session requires the managed execution API."
+            )
+
     def put_follow_up_request(
         self,
+        *,
+        request_id: str,
+        project_id: str,
+        content: str,
+        attachment_paths: list[str] | tuple[str, ...] = (),
+        review_handoff_ids: list[str] | tuple[str, ...] = (),
+        delivery_mode: str = "wait",
+        source: str = "local",
+        source_command_id: str | None = None,
+        now: float | None = None,
+        reject_managed: bool = False,
+    ) -> FollowUpRequestRecord:
+        with self._write_transaction() as connection:
+            if reject_managed:
+                self._require_legacy_follow_up_in_transaction(
+                    connection, project_id=project_id.strip()
+                )
+            return self._put_follow_up_request_in_transaction(
+                connection,
+                request_id=request_id,
+                project_id=project_id,
+                content=content,
+                attachment_paths=attachment_paths,
+                review_handoff_ids=review_handoff_ids,
+                delivery_mode=delivery_mode,
+                source=source,
+                source_command_id=source_command_id,
+                now=now,
+            )
+
+    def _put_follow_up_request_in_transaction(
+        self,
+        connection: sqlite3.Connection,
         *,
         request_id: str,
         project_id: str,
@@ -9043,83 +9124,82 @@ class SQLiteRunJournal:
             separators=(",", ":"),
         )
         timestamp = now if now is not None else time.time()
-        with self._write_transaction() as connection:
-            if normalized_command_id is not None:
-                command_row = connection.execute(
-                    """SELECT * FROM follow_up_requests
-                    WHERE source_command_id = ?""",
-                    (normalized_command_id,),
-                ).fetchone()
-                if command_row is not None:
-                    if command_row["request_id"] != normalized_id:
-                        raise IdempotencyConflictError(
-                            f"remote command {normalized_command_id!r} was "
-                            "already mapped to another follow-up"
-                        )
-                    if (
-                        command_row["project_id"] != normalized_project
-                        or command_row["content"] != normalized_content
-                        or command_row["attachment_paths_json"] != paths_json
-                        or command_row["review_handoff_ids_json"]
-                        != handoff_ids_json
-                    ):
-                        raise IdempotencyConflictError(
-                            f"remote command {normalized_command_id!r} was reused"
-                        )
-                    return self._follow_up_request_from_row(command_row)
-            existing = connection.execute(
-                "SELECT * FROM follow_up_requests WHERE request_id = ?",
-                (normalized_id,),
+        if normalized_command_id is not None:
+            command_row = connection.execute(
+                """SELECT * FROM follow_up_requests
+                WHERE source_command_id = ?""",
+                (normalized_command_id,),
             ).fetchone()
-            if existing is not None:
+            if command_row is not None:
+                if command_row["request_id"] != normalized_id:
+                    raise IdempotencyConflictError(
+                        f"remote command {normalized_command_id!r} was "
+                        "already mapped to another follow-up"
+                    )
                 if (
-                    existing["project_id"] != normalized_project
-                    or existing["content"] != normalized_content
-                    or existing["attachment_paths_json"] != paths_json
-                    or existing["review_handoff_ids_json"] != handoff_ids_json
-                    or existing["source"] != source
-                    or existing["source_command_id"] != normalized_command_id
+                    command_row["project_id"] != normalized_project
+                    or command_row["content"] != normalized_content
+                    or command_row["attachment_paths_json"] != paths_json
+                    or command_row["review_handoff_ids_json"]
+                    != handoff_ids_json
                 ):
                     raise IdempotencyConflictError(
-                        f"follow-up request_id {normalized_id!r} was reused"
+                        f"remote command {normalized_command_id!r} was reused"
                     )
-                return self._follow_up_request_from_row(existing)
-            if delivery_mode == "send_now":
-                connection.execute(
-                    """UPDATE follow_up_requests
-                    SET delivery_mode = 'wait', updated_at = ?
-                    WHERE project_id = ? AND status = 'pending'
-                      AND delivery_mode = 'send_now'""",
-                    (timestamp, normalized_project),
+                return self._follow_up_request_from_row(command_row)
+        existing = connection.execute(
+            "SELECT * FROM follow_up_requests WHERE request_id = ?",
+            (normalized_id,),
+        ).fetchone()
+        if existing is not None:
+            if (
+                existing["project_id"] != normalized_project
+                or existing["content"] != normalized_content
+                or existing["attachment_paths_json"] != paths_json
+                or existing["review_handoff_ids_json"] != handoff_ids_json
+                or existing["source"] != source
+                or existing["source_command_id"] != normalized_command_id
+            ):
+                raise IdempotencyConflictError(
+                    f"follow-up request_id {normalized_id!r} was reused"
                 )
+            return self._follow_up_request_from_row(existing)
+        if delivery_mode == "send_now":
             connection.execute(
-                """
-                INSERT INTO follow_up_requests(
-                    request_id, project_id, content, attachment_paths_json,
-                    review_handoff_ids_json,
-                    delivery_mode, status, admitted_run_id, last_error,
-                    created_at, updated_at, source, source_command_id
-                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?)
-                """,
-                (
-                    normalized_id,
-                    normalized_project,
-                    normalized_content,
-                    paths_json,
-                    handoff_ids_json,
-                    delivery_mode,
-                    timestamp,
-                    timestamp,
-                    source,
-                    normalized_command_id,
-                ),
+                """UPDATE follow_up_requests
+                SET delivery_mode = 'wait', updated_at = ?
+                WHERE project_id = ? AND status = 'pending'
+                  AND delivery_mode = 'send_now'""",
+                (timestamp, normalized_project),
             )
-            row = connection.execute(
-                "SELECT * FROM follow_up_requests WHERE request_id = ?",
-                (normalized_id,),
-            ).fetchone()
-            assert row is not None
-            return self._follow_up_request_from_row(row)
+        connection.execute(
+            """
+            INSERT INTO follow_up_requests(
+                request_id, project_id, content, attachment_paths_json,
+                review_handoff_ids_json,
+                delivery_mode, status, admitted_run_id, last_error,
+                created_at, updated_at, source, source_command_id
+            ) VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?)
+            """,
+            (
+                normalized_id,
+                normalized_project,
+                normalized_content,
+                paths_json,
+                handoff_ids_json,
+                delivery_mode,
+                timestamp,
+                timestamp,
+                source,
+                normalized_command_id,
+            ),
+        )
+        row = connection.execute(
+            "SELECT * FROM follow_up_requests WHERE request_id = ?",
+            (normalized_id,),
+        ).fetchone()
+        assert row is not None
+        return self._follow_up_request_from_row(row)
 
     def list_follow_up_requests(
         self,
@@ -9208,11 +9288,16 @@ class SQLiteRunJournal:
         project_id: str,
         delivery_mode: str,
         now: float | None = None,
+        reject_managed: bool = False,
     ) -> FollowUpRequestRecord:
         if delivery_mode not in {"wait", "send_now"}:
             raise ValueError("unsupported follow-up delivery mode")
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
+            if reject_managed:
+                self._require_legacy_follow_up_in_transaction(
+                    connection, project_id=project_id
+                )
             row = connection.execute(
                 "SELECT * FROM follow_up_requests WHERE request_id = ?",
                 (request_id,),
@@ -9252,9 +9337,14 @@ class SQLiteRunJournal:
         request_id: str,
         project_id: str,
         now: float | None = None,
+        reject_managed: bool = False,
     ) -> FollowUpRequestRecord:
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
+            if reject_managed:
+                self._require_legacy_follow_up_in_transaction(
+                    connection, project_id=project_id
+                )
             row = connection.execute(
                 "SELECT * FROM follow_up_requests WHERE request_id = ?",
                 (request_id,),
@@ -9283,6 +9373,7 @@ class SQLiteRunJournal:
         project_id: str,
         error: str,
         now: float | None = None,
+        reject_managed: bool = False,
     ) -> FollowUpRequestRecord:
         """Close a pending request that cannot be semantically admitted.
 
@@ -9297,6 +9388,10 @@ class SQLiteRunJournal:
             raise ValueError("follow-up rejection error is required")
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
+            if reject_managed:
+                self._require_legacy_follow_up_in_transaction(
+                    connection, project_id=project_id
+                )
             row = connection.execute(
                 "SELECT * FROM follow_up_requests WHERE request_id = ?",
                 (request_id,),
@@ -9326,6 +9421,7 @@ class SQLiteRunJournal:
         project_id: str,
         run_id: str,
         now: float | None = None,
+        reject_managed: bool = False,
     ) -> FollowUpRequestRecord:
         timestamp = now if now is not None else time.time()
         if run_id != request_id:
@@ -9333,6 +9429,10 @@ class SQLiteRunJournal:
                 "a follow-up request must be admitted as its deterministic Run"
             )
         with self._write_transaction() as connection:
+            if reject_managed:
+                self._require_legacy_follow_up_in_transaction(
+                    connection, project_id=project_id
+                )
             row = connection.execute(
                 "SELECT * FROM follow_up_requests WHERE request_id = ?",
                 (request_id,),
@@ -9595,6 +9695,9 @@ class SQLiteRunJournal:
             raise ValueError("workspace writer identity is required")
         if any(len(value) > 512 for value in values.values()):
             raise ValueError("workspace writer identity is too long")
+        from app.workspace_runtime.store import WorkspaceStateStore
+
+        WorkspaceStateStore(self).map_registered_legacy_binding(project_id)
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
             existing = connection.execute(
@@ -9842,6 +9945,17 @@ class SQLiteRunJournal:
                     next_acquired=None,
                 )
             next_acquired = None
+            from app.workspace_runtime.store import WorkspaceStateStore
+
+            if WorkspaceStateStore.legacy_requires_settlement(
+                connection, request_id
+            ):
+                return WorkspaceWriterReleaseResult(
+                    finished=self._workspace_writer_request_from_row(
+                        connection, row
+                    ),
+                    next_acquired=None,
+                )
             if row["status"] == "acquired":
                 lease = connection.execute(
                     """
@@ -9894,10 +10008,13 @@ class SQLiteRunJournal:
                         (queued["request_id"],),
                     ).fetchone()
                     assert acquired_row is not None
-                    next_acquired = self._workspace_writer_request_from_row(
-                        connection,
-                        acquired_row,
-                    )
+                    if acquired_row["status"] == "acquired":
+                        next_acquired = (
+                            self._workspace_writer_request_from_row(
+                                connection,
+                                acquired_row,
+                            )
+                        )
             finished_row = connection.execute(
                 "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
                 (request_id,),
@@ -9917,7 +10034,7 @@ class SQLiteRunJournal:
         *,
         request_id: str,
         now: float,
-    ) -> None:
+    ) -> bool:
         row = connection.execute(
             "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
             (request_id,),
@@ -9926,6 +10043,12 @@ class SQLiteRunJournal:
             raise InvalidRunTransitionError(
                 "only a queued workspace writer can acquire the lease"
             )
+        from app.workspace_runtime.store import WorkspaceStateStore
+
+        if not WorkspaceStateStore.legacy_acquire_in_transaction(
+            connection, row
+        ):
+            return False
         connection.execute(
             """
             INSERT INTO workspace_writer_leases(
@@ -9951,6 +10074,7 @@ class SQLiteRunJournal:
             """,
             (now, now, request_id),
         )
+        return True
 
     def list_all_runs(self) -> list[RunRecord]:
         """Return canonical Runs for startup projection reconciliation."""
@@ -10536,6 +10660,26 @@ class SQLiteRunJournal:
         artifact_manifest: CommittedRunEvent,
         expected_project_id: str,
     ) -> tuple[CommittedRunEvent, CommittedRunEvent]:
+        with self._write_transaction() as connection:
+            return self._complete_successful_run_in_transaction(
+                connection,
+                run_id=run_id,
+                assistant_final=assistant_final,
+                terminal=terminal,
+                artifact_manifest=artifact_manifest,
+                expected_project_id=expected_project_id,
+            )
+
+    def _complete_successful_run_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        run_id: str,
+        *,
+        assistant_final: RunEventDraft,
+        terminal: RunEventDraft,
+        artifact_manifest: CommittedRunEvent,
+        expected_project_id: str,
+    ) -> tuple[CommittedRunEvent, CommittedRunEvent]:
         """Atomically commit the canonical result and successful Run terminal.
 
         Artifact discovery intentionally happens before this short transaction.
@@ -10556,101 +10700,116 @@ class SQLiteRunJournal:
             raise IdempotencyConflictError(
                 "Successful completion requires an Artifact manifest"
             )
-        with self._write_transaction() as connection:
-            run = connection.execute(
-                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
-            if run is None:
-                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
-            if run["project_id"] != expected_project_id:
-                raise IdempotencyConflictError(
-                    f"run_id {run_id!r} belongs to another project"
-                )
-
-            unresolved_tools = connection.execute(
-                """
-                SELECT tool_call_id, safety_class, idempotency_key
-                FROM tool_calls
-                WHERE run_id = ? AND status IN ('dispatched', 'outcome_unknown')
-                ORDER BY created_at, tool_call_id
-                """,
-                (run_id,),
-            ).fetchall()
-            blocking_tool = next(
-                (
-                    tool
-                    for tool in unresolved_tools
-                    if self._tool_call_requires_fail_closed(tool)
-                ),
-                None,
-            )
-            if blocking_tool is not None:
-                raise InvalidRunTransitionError(
-                    "a Run with an unresolved Tool outcome that is "
-                    "non-replayable cannot complete successfully "
-                    f"({blocking_tool['tool_call_id']})"
-                )
-
-            self._close_dispatched_model_invocations_in_transaction(
-                connection,
-                run_id=run_id,
-                terminal_event_type=terminal.event_type,
-                timestamp=terminal.created_at,
+        run = connection.execute(
+            "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if run is None:
+            raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+        if run["project_id"] != expected_project_id:
+            raise IdempotencyConflictError(
+                f"run_id {run_id!r} belongs to another project"
             )
 
-            # Artifact discovery happens outside this short transaction and
-            # two terminal paths may race. Pin the newest committed manifest
-            # under the same writer lock as run.completed; never trust the
-            # manifest object observed before this transaction began.
-            latest_manifest = self._latest_artifact_manifest_in_transaction(
-                connection,
-                run_id,
-            )
-            terminal_payload = {
-                **dict(terminal.payload),
-                "artifact_manifest_event_id": latest_manifest.event_id,
-                "artifact_count": int(
-                    latest_manifest.payload.get("artifact_count", 0)
-                ),
-                "result_event_id": assistant_final.event_id,
-            }
-            terminal_draft = RunEventDraft(
-                event_id=terminal.event_id,
-                event_type=terminal.event_type,
-                payload=terminal_payload,
-                legacy_step=terminal.legacy_step,
-                created_at=terminal.created_at,
+        unresolved_tools = connection.execute(
+            """
+            SELECT tool_call_id, safety_class, idempotency_key
+            FROM tool_calls
+            WHERE run_id = ? AND status IN ('dispatched', 'outcome_unknown')
+            ORDER BY created_at, tool_call_id
+            """,
+            (run_id,),
+        ).fetchall()
+        blocking_tool = next(
+            (
+                tool
+                for tool in unresolved_tools
+                if self._tool_call_requires_fail_closed(tool)
+            ),
+            None,
+        )
+        if blocking_tool is not None:
+            raise InvalidRunTransitionError(
+                "a Run with an unresolved Tool outcome that is "
+                "non-replayable cannot complete successfully "
+                f"({blocking_tool['tool_call_id']})"
             )
 
-            result_event = self._append_event_in_transaction(
-                connection,
-                run_id,
-                assistant_final,
-                expected_project_id=expected_project_id,
-                allow_assistant_final=True,
-            )
-            terminal_event = self._append_event_in_transaction(
-                connection,
-                run_id,
-                terminal_draft,
-                expected_project_id=expected_project_id,
-                run_status="completed",
-                clear_active_attempt=True,
-            )
-            connection.execute(
-                """
-                UPDATE run_attempts
-                SET status = 'completed', ended_at = COALESCE(ended_at, ?),
-                    outcome = COALESCE(outcome, 'run.completed')
-                WHERE run_id = ?
-                  AND status IN ('pending', 'running', 'waiting_for_user')
-                """,
-                (terminal_draft.created_at, run_id),
-            )
-            return result_event, terminal_event
+        self._close_dispatched_model_invocations_in_transaction(
+            connection,
+            run_id=run_id,
+            terminal_event_type=terminal.event_type,
+            timestamp=terminal.created_at,
+        )
+
+        # Artifact discovery happens outside this short transaction and
+        # two terminal paths may race. Pin the newest committed manifest
+        # under the same writer lock as run.completed; never trust the
+        # manifest object observed before this transaction began.
+        latest_manifest = self._latest_artifact_manifest_in_transaction(
+            connection,
+            run_id,
+        )
+        terminal_payload = {
+            **dict(terminal.payload),
+            "artifact_manifest_event_id": latest_manifest.event_id,
+            "artifact_count": int(
+                latest_manifest.payload.get("artifact_count", 0)
+            ),
+            "result_event_id": assistant_final.event_id,
+        }
+        terminal_draft = RunEventDraft(
+            event_id=terminal.event_id,
+            event_type=terminal.event_type,
+            payload=terminal_payload,
+            legacy_step=terminal.legacy_step,
+            created_at=terminal.created_at,
+        )
+
+        result_event = self._append_event_in_transaction(
+            connection,
+            run_id,
+            assistant_final,
+            expected_project_id=expected_project_id,
+            allow_assistant_final=True,
+        )
+        terminal_event = self._append_event_in_transaction(
+            connection,
+            run_id,
+            terminal_draft,
+            expected_project_id=expected_project_id,
+            run_status="completed",
+            clear_active_attempt=True,
+        )
+        connection.execute(
+            """
+            UPDATE run_attempts
+            SET status = 'completed', ended_at = COALESCE(ended_at, ?),
+                outcome = COALESCE(outcome, 'run.completed')
+            WHERE run_id = ?
+              AND status IN ('pending', 'running', 'waiting_for_user')
+            """,
+            (terminal_draft.created_at, run_id),
+        )
+        return result_event, terminal_event
 
     def append_terminal_with_latest_artifact_manifest(
         self,
+        run_id: str,
+        draft: RunEventDraft,
+        *,
+        expected_project_id: str | None = None,
+    ) -> CommittedRunEvent:
+        with self._write_transaction() as connection:
+            return self._append_terminal_with_latest_artifact_manifest_in_transaction(
+                connection,
+                run_id=run_id,
+                draft=draft,
+                expected_project_id=expected_project_id,
+            )
+
+    def _append_terminal_with_latest_artifact_manifest_in_transaction(
+        self,
+        connection: sqlite3.Connection,
         run_id: str,
         draft: RunEventDraft,
         *,
@@ -10663,59 +10822,56 @@ class SQLiteRunJournal:
             raise ValueError(
                 "Artifact terminal commit requires a terminal Run event"
             )
-        with self._write_transaction() as connection:
-            latest_manifest = self._latest_artifact_manifest_in_transaction(
-                connection,
-                run_id,
-            )
-            self._close_dispatched_model_invocations_in_transaction(
-                connection,
-                run_id=run_id,
-                terminal_event_type=draft.event_type,
-                timestamp=draft.created_at,
-            )
-            enriched = RunEventDraft(
-                event_id=draft.event_id,
-                event_type=draft.event_type,
-                payload={
-                    **dict(draft.payload),
-                    "artifact_manifest_event_id": latest_manifest.event_id,
-                    "artifact_count": int(
-                        latest_manifest.payload.get("artifact_count", 0)
-                    ),
-                },
-                legacy_step=draft.legacy_step,
-                created_at=draft.created_at,
-            )
-            event = self._append_event_in_transaction(
-                connection,
-                run_id,
-                enriched,
-                expected_project_id=expected_project_id,
-                run_status=terminal_status,
-                clear_active_attempt=True,
-            )
-            attempt_status = (
-                "completed"
-                if terminal_status == "completed"
-                else terminal_status
-            )
-            connection.execute(
-                """
-                UPDATE run_attempts
-                SET status = ?, ended_at = COALESCE(ended_at, ?),
-                    outcome = COALESCE(outcome, ?)
-                WHERE run_id = ?
-                  AND status IN ('pending', 'running', 'waiting_for_user')
-                """,
-                (
-                    attempt_status,
-                    enriched.created_at,
-                    enriched.event_type,
-                    run_id,
+        latest_manifest = self._latest_artifact_manifest_in_transaction(
+            connection,
+            run_id,
+        )
+        self._close_dispatched_model_invocations_in_transaction(
+            connection,
+            run_id=run_id,
+            terminal_event_type=draft.event_type,
+            timestamp=draft.created_at,
+        )
+        enriched = RunEventDraft(
+            event_id=draft.event_id,
+            event_type=draft.event_type,
+            payload={
+                **dict(draft.payload),
+                "artifact_manifest_event_id": latest_manifest.event_id,
+                "artifact_count": int(
+                    latest_manifest.payload.get("artifact_count", 0)
                 ),
-            )
-            return event
+            },
+            legacy_step=draft.legacy_step,
+            created_at=draft.created_at,
+        )
+        event = self._append_event_in_transaction(
+            connection,
+            run_id,
+            enriched,
+            expected_project_id=expected_project_id,
+            run_status=terminal_status,
+            clear_active_attempt=True,
+        )
+        attempt_status = (
+            "completed" if terminal_status == "completed" else terminal_status
+        )
+        connection.execute(
+            """
+            UPDATE run_attempts
+            SET status = ?, ended_at = COALESCE(ended_at, ?),
+                outcome = COALESCE(outcome, ?)
+            WHERE run_id = ?
+              AND status IN ('pending', 'running', 'waiting_for_user')
+            """,
+            (
+                attempt_status,
+                enriched.created_at,
+                enriched.event_type,
+                run_id,
+            ),
+        )
+        return event
 
     def _latest_artifact_manifest_in_transaction(
         self,
@@ -12476,6 +12632,37 @@ class SQLiteRunJournal:
         workload_profile: WorkloadProfileRecord | None = None,
         now: float | None = None,
     ) -> RunAttemptRecord:
+        with self._write_transaction() as connection:
+            return self._create_run_attempt_in_transaction(
+                connection,
+                run_id,
+                request_id=request_id,
+                reason=reason,
+                activate=activate,
+                attempt_id=attempt_id,
+                environment=environment,
+                workload_profile=workload_profile,
+                now=now,
+            )
+
+    def _create_run_attempt_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        run_id: str,
+        *,
+        request_id: str,
+        reason: str,
+        activate: bool = False,
+        attempt_id: str | None = None,
+        environment: AttemptEnvironmentBinding | None = None,
+        workload_profile: WorkloadProfileRecord | None = None,
+        now: float | None = None,
+        admission_claim: tuple[str, int] | None = None,
+    ) -> RunAttemptRecord:
+        if connection is not self._connection or not connection.in_transaction:
+            raise RunJournalError(
+                "Attempt handoff requires the owning transaction"
+            )
         if not request_id.strip() or not reason.strip():
             raise ValueError("attempt request_id and reason are required")
         timestamp = now if now is not None else time.time()
@@ -12483,329 +12670,361 @@ class SQLiteRunJournal:
         environment_values = self._attempt_environment_values(environment)
         workload = workload_profile or default_workload_profile()
         workload_values = self._attempt_workload_values(workload)
-        with self._write_transaction() as connection:
-            run = connection.execute(
-                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
-            if run is None:
-                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
-            duplicate = connection.execute(
-                """
-                SELECT * FROM run_attempts
-                WHERE run_id = ? AND resume_request_id = ?
-                """,
-                (run_id, request_id),
-            ).fetchone()
-            if duplicate is not None:
-                if duplicate["resume_reason"] != reason:
-                    raise IdempotencyConflictError(
-                        f"attempt request_id {request_id!r} was reused with a different reason"
-                    )
-                persisted_environment = (
-                    duplicate["environment_spec_id"],
-                    duplicate["environment_spec_digest"],
-                    duplicate["bundle_revision_id"],
-                    duplicate["permission_profile_revision"],
-                    duplicate["thinking_effort_requested"],
-                    duplicate["thinking_effort_effective"],
-                    duplicate["provider_capability_revision"],
+        run = connection.execute(
+            "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if run is None:
+            raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+        duplicate = connection.execute(
+            """
+            SELECT * FROM run_attempts
+            WHERE run_id = ? AND resume_request_id = ?
+            """,
+            (run_id, request_id),
+        ).fetchone()
+        if duplicate is not None:
+            if duplicate["resume_reason"] != reason:
+                raise IdempotencyConflictError(
+                    f"attempt request_id {request_id!r} was reused with a different reason"
                 )
-                if persisted_environment != environment_values:
-                    raise IdempotencyConflictError(
-                        f"attempt request_id {request_id!r} was reused with "
-                        "a different environment"
-                    )
-                persisted_workload = (
-                    duplicate["workload_kind"],
-                    duplicate["workload_profile_json"],
-                    duplicate["workload_profile_digest"],
-                )
-                if persisted_workload != workload_values:
-                    raise IdempotencyConflictError(
-                        f"attempt request_id {request_id!r} was reused with "
-                        "a different workload profile"
-                    )
-                # An idempotent row loaded from SQLite is audit/recovery data,
-                # not a fresh control-plane attestation. The original process
-                # already attested a genuinely in-process creation.
-                return self._attempt_from_row(duplicate)
-            if run["origin"] == "cloud_restore":
-                raise InvalidRunTransitionError(
-                    f"run {run_id!r} was restored from Cloud without its local "
-                    "workspace and execution context; start a new Run or fork it "
-                    "after explicitly binding a workspace"
-                )
-            if run["status"] in {"completed", "failed", "cancelled"}:
-                raise InvalidRunTransitionError(
-                    f"cannot create an attempt for terminal run {run_id!r}"
-                )
-            if run["cancel_request_id"] is not None:
-                raise InvalidRunTransitionError(
-                    f"run {run_id!r} has a persisted cancel intent"
-                )
-            self._cancel_orphaned_tool_approvals_in_transaction(
-                connection,
-                run_id=run_id,
-                timestamp=timestamp,
-                source="recovery",
+            persisted_environment = (
+                duplicate["environment_spec_id"],
+                duplicate["environment_spec_digest"],
+                duplicate["bundle_revision_id"],
+                duplicate["permission_profile_revision"],
+                duplicate["thinking_effort_requested"],
+                duplicate["thinking_effort_effective"],
+                duplicate["provider_capability_revision"],
             )
-            self._repair_restart_interrupted_internal_controls_in_transaction(
-                connection,
-                run_id=run_id,
-                timestamp=timestamp,
-                source="resume_admission",
-                include_dispatched=False,
+            if persisted_environment != environment_values:
+                raise IdempotencyConflictError(
+                    f"attempt request_id {request_id!r} was reused with "
+                    "a different environment"
+                )
+            persisted_workload = (
+                duplicate["workload_kind"],
+                duplicate["workload_profile_json"],
+                duplicate["workload_profile_digest"],
             )
-            active = connection.execute(
-                """
-                SELECT attempt_id FROM run_attempts
-                WHERE run_id = ? AND status IN ('pending', 'running', 'waiting_for_user')
-                LIMIT 1
-                """,
-                (run_id,),
-            ).fetchone()
-            if active is not None:
-                raise InvalidRunTransitionError(
-                    f"run {run_id!r} already has active attempt {active['attempt_id']!r}"
+            if persisted_workload != workload_values:
+                raise IdempotencyConflictError(
+                    f"attempt request_id {request_id!r} was reused with "
+                    "a different workload profile"
                 )
-            project_lease = connection.execute(
-                """
-                SELECT run_id, attempt_id
-                FROM project_run_execution_leases
-                WHERE project_id = ?
-                """,
-                (run["project_id"],),
-            ).fetchone()
-            if project_lease is not None:
-                if project_lease["run_id"] != run_id:
-                    raise InvalidRunTransitionError(
-                        f"project {run['project_id']!r} already executes Run "
-                        f"{project_lease['run_id']!r}"
-                    )
-                # A same-Run lease without an active Attempt is stale. This
-                # can only be left by a pre-v21 crash or manual DB repair;
-                # reclaim it inside the same writer transaction.
-                connection.execute(
-                    """DELETE FROM project_run_execution_leases
-                    WHERE project_id = ? AND run_id = ?""",
-                    (run["project_id"], run_id),
-                )
-            blockers = self._unsafe_resume_blockers(connection, run_id)
-            if blockers:
-                raise UnsafeResumeError(blockers)
-            unresolved_tools = connection.execute(
-                """
-                SELECT calls.tool_call_id, calls.run_id
-                FROM tool_calls AS calls
-                JOIN runs AS owner ON owner.run_id = calls.run_id
-                WHERE owner.project_id = ?
-                  AND calls.status IN ('prepared', 'dispatched')
-                ORDER BY calls.created_at
-                LIMIT 1
-                """,
-                (run["project_id"],),
-            ).fetchone()
-            if unresolved_tools is not None:
-                raise InvalidRunTransitionError(
-                    f"project {run['project_id']!r} still has unresolved Tool "
-                    f"call {unresolved_tools['tool_call_id']!r} in Run "
-                    f"{unresolved_tools['run_id']!r}"
-                )
-            pending_approvals = connection.execute(
-                """
-                SELECT approval_id FROM approvals
-                WHERE run_id = ? AND status = 'pending'
-                ORDER BY created_at
-                """,
-                (run_id,),
-            ).fetchall()
-            if pending_approvals:
-                raise InvalidRunTransitionError(
-                    f"run {run_id!r} has pending approvals: "
-                    + ", ".join(
-                        row["approval_id"] for row in pending_approvals
-                    )
-                )
-            pending_interactions = connection.execute(
-                """
-                SELECT interaction_id FROM human_interactions
-                WHERE run_id = ? AND interaction_type != 'approval'
-                  AND status IN ('requested', 'presented')
-                ORDER BY created_at
-                """,
-                (run_id,),
-            ).fetchall()
-            if pending_interactions:
-                raise InvalidRunTransitionError(
-                    f"run {run_id!r} has pending human interactions: "
-                    + ", ".join(
-                        row["interaction_id"] for row in pending_interactions
-                    )
-                )
-            if environment is not None:
-                spec = connection.execute(
-                    """
-                    SELECT * FROM effective_environment_specs
-                    WHERE environment_spec_id = ?
-                    """,
-                    (environment.environment_spec_id,),
-                ).fetchone()
-                if spec is None:
-                    raise RunNotFoundError(
-                        f"EnvironmentSpec "
-                        f"{environment.environment_spec_id!r} does not exist"
-                    )
-                expected_owner_id = (
-                    run_id if spec["owner_type"] == "run" else identifier
-                )
-                if spec["owner_id"] != expected_owner_id:
-                    raise IdempotencyConflictError(
-                        "EnvironmentSpec belongs to another Run/Attempt"
-                    )
-                persisted_spec_values = (
-                    spec["environment_spec_digest"],
-                    spec["bundle_revision_id"],
-                    spec["permission_profile_revision"],
-                    spec["provider_capability_revision"],
-                )
-                binding_spec_values = (
-                    environment.environment_spec_digest,
-                    environment.bundle_revision_id,
-                    environment.permission_profile_revision,
-                    environment.provider_capability_revision,
-                )
-                if persisted_spec_values != binding_spec_values:
-                    raise IdempotencyConflictError(
-                        "Attempt environment binding does not match its "
-                        "immutable EnvironmentSpec"
-                    )
-            number = int(
-                connection.execute(
-                    """
-                    SELECT COALESCE(MAX(attempt_number), 0) + 1
-                    FROM run_attempts WHERE run_id = ?
-                    """,
-                    (run_id,),
-                ).fetchone()[0]
+            # An idempotent row loaded from SQLite is audit/recovery data,
+            # not a fresh control-plane attestation. The original process
+            # already attested a genuinely in-process creation.
+            return self._attempt_from_row(duplicate)
+        if run["origin"] == "cloud_restore":
+            raise InvalidRunTransitionError(
+                f"run {run_id!r} was restored from Cloud without its local "
+                "workspace and execution context; start a new Run or fork it "
+                "after explicitly binding a workspace"
             )
-            status = "running" if activate else "pending"
-            connection.execute(
-                """
-                INSERT INTO run_attempts(
-                    attempt_id, run_id, attempt_number, status, started_at,
-                    ended_at, outcome, timeout_reason, resume_request_id,
-                    resume_reason, policy_version, elapsed_active_ms,
-                    last_consumer_heartbeat_at, environment_spec_id,
-                    environment_spec_digest, bundle_revision_id,
-                    permission_profile_revision, thinking_effort_requested,
-                    thinking_effort_effective, provider_capability_revision,
-                    workload_kind, workload_profile_json,
-                    workload_profile_digest
-                ) VALUES (
-                    ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, 0, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                )
-                """,
-                (
-                    identifier,
-                    run_id,
-                    number,
-                    status,
-                    timestamp,
-                    request_id,
-                    reason,
-                    run["timeout_policy_version"],
-                    timestamp if activate else None,
-                    *environment_values,
-                    *workload_values,
-                ),
+        if run["status"] in {"completed", "failed", "cancelled"}:
+            raise InvalidRunTransitionError(
+                f"cannot create an attempt for terminal run {run_id!r}"
             )
-            try:
-                connection.execute(
-                    """
-                    INSERT INTO project_run_execution_leases(
-                        project_id, run_id, attempt_id, acquired_at
-                    ) VALUES (?, ?, ?, ?)
-                    """,
-                    (run["project_id"], run_id, identifier, timestamp),
-                )
-            except sqlite3.IntegrityError as exc:
-                owner = connection.execute(
-                    """SELECT run_id FROM project_run_execution_leases
-                    WHERE project_id = ?""",
-                    (run["project_id"],),
-                ).fetchone()
-                owner_id = owner["run_id"] if owner is not None else "unknown"
+        if run["cancel_request_id"] is not None:
+            raise InvalidRunTransitionError(
+                f"run {run_id!r} has a persisted cancel intent"
+            )
+        admission = connection.execute(
+            "SELECT * FROM project_admission_claims WHERE project_id=?",
+            (run["project_id"],),
+        ).fetchone()
+        if admission_claim is not None:
+            if (
+                admission is None
+                or (admission["request_id"], admission["generation"])
+                != admission_claim
+                or admission["state"] != "claimed"
+            ):
+                raise InvalidRunTransitionError("admission claim is stale")
+        elif (
+            admission is not None and admission["state"] != "released"
+        ) or connection.execute(
+            """SELECT 1 FROM execution_requests WHERE project_id=?
+            AND status IN ('pending','preparing') LIMIT 1""",
+            (run["project_id"],),
+        ).fetchone():
+            raise InvalidRunTransitionError(
+                "Project is owned by durable admission"
+            )
+        unfinished_workspace = connection.execute(
+            """SELECT binding.run_id FROM run_workspace_bindings binding
+            JOIN runs owner ON owner.run_id=binding.run_id
+            LEFT JOIN run_workspace_finalizations final
+                ON final.run_id=binding.run_id
+            WHERE owner.project_id=?
+              AND (final.run_id IS NULL OR final.state!='settled') LIMIT 1""",
+            (run["project_id"],),
+        ).fetchone()
+        if unfinished_workspace is not None:
+            raise InvalidRunTransitionError(
+                "Project workspace requires settlement before a new Attempt"
+            )
+        self._cancel_orphaned_tool_approvals_in_transaction(
+            connection,
+            run_id=run_id,
+            timestamp=timestamp,
+            source="recovery",
+        )
+        self._repair_restart_interrupted_internal_controls_in_transaction(
+            connection,
+            run_id=run_id,
+            timestamp=timestamp,
+            source="resume_admission",
+            include_dispatched=False,
+        )
+        active = connection.execute(
+            """
+            SELECT attempt_id FROM run_attempts
+            WHERE run_id = ? AND status IN ('pending', 'running', 'waiting_for_user')
+            LIMIT 1
+            """,
+            (run_id,),
+        ).fetchone()
+        if active is not None:
+            raise InvalidRunTransitionError(
+                f"run {run_id!r} already has active attempt {active['attempt_id']!r}"
+            )
+        project_lease = connection.execute(
+            """
+            SELECT run_id, attempt_id
+            FROM project_run_execution_leases
+            WHERE project_id = ?
+            """,
+            (run["project_id"],),
+        ).fetchone()
+        if project_lease is not None:
+            if project_lease["run_id"] != run_id:
                 raise InvalidRunTransitionError(
                     f"project {run['project_id']!r} already executes Run "
-                    f"{owner_id!r}"
-                ) from exc
-            environment_payload = (
-                {
-                    "environment_spec_id": environment.environment_spec_id,
-                    "environment_spec_digest": (
-                        environment.environment_spec_digest
-                    ),
-                    "bundle_revision_id": environment.bundle_revision_id,
-                    "permission_profile_revision": (
-                        environment.permission_profile_revision
-                    ),
-                    "thinking_effort_requested": (
-                        environment.thinking_effort_requested
-                    ),
-                    "thinking_effort_effective": (
-                        environment.thinking_effort_effective
-                    ),
-                    "provider_capability_revision": (
-                        environment.provider_capability_revision
-                    ),
-                }
-                if environment is not None
-                else {}
+                    f"{project_lease['run_id']!r}"
+                )
+            # A same-Run lease without an active Attempt is stale. This
+            # can only be left by a pre-v21 crash or manual DB repair;
+            # reclaim it inside the same writer transaction.
+            connection.execute(
+                """DELETE FROM project_run_execution_leases
+                WHERE project_id = ? AND run_id = ?""",
+                (run["project_id"], run_id),
             )
-            self._append_event_in_transaction(
-                connection,
-                run_id,
-                RunEventDraft(
-                    event_id=f"attempt:{identifier}:created",
-                    event_type="run.attempt_created",
-                    payload={
-                        "attempt_id": identifier,
-                        "attempt_number": number,
-                        "reason": reason,
-                        "status": status,
-                        "policy_version": run["timeout_policy_version"],
-                        "workload_profile": workload_profile_payload(workload),
-                        "workload_profile_digest": workload_values[2],
-                        **environment_payload,
-                    },
-                    created_at=timestamp,
-                ),
-                run_status=status,
-                active_attempt_id=identifier,
+        blockers = self._unsafe_resume_blockers(connection, run_id)
+        if blockers:
+            raise UnsafeResumeError(blockers)
+        unresolved_tools = connection.execute(
+            """
+            SELECT calls.tool_call_id, calls.run_id
+            FROM tool_calls AS calls
+            JOIN runs AS owner ON owner.run_id = calls.run_id
+            WHERE owner.project_id = ?
+              AND calls.status IN ('prepared', 'dispatched')
+            ORDER BY calls.created_at
+            LIMIT 1
+            """,
+            (run["project_id"],),
+        ).fetchone()
+        if unresolved_tools is not None:
+            raise InvalidRunTransitionError(
+                f"project {run['project_id']!r} still has unresolved Tool "
+                f"call {unresolved_tools['tool_call_id']!r} in Run "
+                f"{unresolved_tools['run_id']!r}"
             )
-            # A follow-up's request_id is its deterministic Run id.  Admit the
-            # durable queue row in the same transaction as its first Attempt,
-            # so a renderer crash cannot leave an executing Run queued forever.
+        pending_approvals = connection.execute(
+            """
+            SELECT approval_id FROM approvals
+            WHERE run_id = ? AND status = 'pending'
+            ORDER BY created_at
+            """,
+            (run_id,),
+        ).fetchall()
+        if pending_approvals:
+            raise InvalidRunTransitionError(
+                f"run {run_id!r} has pending approvals: "
+                + ", ".join(row["approval_id"] for row in pending_approvals)
+            )
+        pending_interactions = connection.execute(
+            """
+            SELECT interaction_id FROM human_interactions
+            WHERE run_id = ? AND interaction_type != 'approval'
+              AND status IN ('requested', 'presented')
+            ORDER BY created_at
+            """,
+            (run_id,),
+        ).fetchall()
+        if pending_interactions:
+            raise InvalidRunTransitionError(
+                f"run {run_id!r} has pending human interactions: "
+                + ", ".join(
+                    row["interaction_id"] for row in pending_interactions
+                )
+            )
+        if environment is not None:
+            spec = connection.execute(
+                """
+                SELECT * FROM effective_environment_specs
+                WHERE environment_spec_id = ?
+                """,
+                (environment.environment_spec_id,),
+            ).fetchone()
+            if spec is None:
+                raise RunNotFoundError(
+                    f"EnvironmentSpec "
+                    f"{environment.environment_spec_id!r} does not exist"
+                )
+            expected_owner_id = (
+                run_id if spec["owner_type"] == "run" else identifier
+            )
+            if spec["owner_id"] != expected_owner_id:
+                raise IdempotencyConflictError(
+                    "EnvironmentSpec belongs to another Run/Attempt"
+                )
+            persisted_spec_values = (
+                spec["environment_spec_digest"],
+                spec["bundle_revision_id"],
+                spec["permission_profile_revision"],
+                spec["provider_capability_revision"],
+            )
+            binding_spec_values = (
+                environment.environment_spec_digest,
+                environment.bundle_revision_id,
+                environment.permission_profile_revision,
+                environment.provider_capability_revision,
+            )
+            if persisted_spec_values != binding_spec_values:
+                raise IdempotencyConflictError(
+                    "Attempt environment binding does not match its "
+                    "immutable EnvironmentSpec"
+                )
+        number = int(
             connection.execute(
                 """
-                UPDATE follow_up_requests
-                SET status = 'admitted', admitted_run_id = ?,
-                    last_error = NULL, updated_at = ?
-                WHERE request_id = ? AND project_id = ? AND status = 'pending'
+                SELECT COALESCE(MAX(attempt_number), 0) + 1
+                FROM run_attempts WHERE run_id = ?
                 """,
-                (run_id, timestamp, run_id, run["project_id"]),
+                (run_id,),
+            ).fetchone()[0]
+        )
+        status = "running" if activate else "pending"
+        connection.execute(
+            """
+            INSERT INTO run_attempts(
+                attempt_id, run_id, attempt_number, status, started_at,
+                ended_at, outcome, timeout_reason, resume_request_id,
+                resume_reason, policy_version, elapsed_active_ms,
+                last_consumer_heartbeat_at, environment_spec_id,
+                environment_spec_digest, bundle_revision_id,
+                permission_profile_revision, thinking_effort_requested,
+                thinking_effort_effective, provider_capability_revision,
+                workload_kind, workload_profile_json,
+                workload_profile_digest
+            ) VALUES (
+                ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, 0, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
-            row = connection.execute(
-                "SELECT * FROM run_attempts WHERE attempt_id = ?",
-                (identifier,),
+            """,
+            (
+                identifier,
+                run_id,
+                number,
+                status,
+                timestamp,
+                request_id,
+                reason,
+                run["timeout_policy_version"],
+                timestamp if activate else None,
+                *environment_values,
+                *workload_values,
+            ),
+        )
+        try:
+            connection.execute(
+                """
+                INSERT INTO project_run_execution_leases(
+                    project_id, run_id, attempt_id, acquired_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (run["project_id"], run_id, identifier, timestamp),
+            )
+        except sqlite3.IntegrityError as exc:
+            owner = connection.execute(
+                """SELECT run_id FROM project_run_execution_leases
+                WHERE project_id = ?""",
+                (run["project_id"],),
             ).fetchone()
-            assert row is not None
-            resolved = self._attempt_from_row(row)
-            self._trusted_attempt_permission_profiles.add(
-                (resolved.attempt_id, resolved.permission_profile_revision)
-            )
-            return resolved
+            owner_id = owner["run_id"] if owner is not None else "unknown"
+            raise InvalidRunTransitionError(
+                f"project {run['project_id']!r} already executes Run "
+                f"{owner_id!r}"
+            ) from exc
+        environment_payload = (
+            {
+                "environment_spec_id": environment.environment_spec_id,
+                "environment_spec_digest": (
+                    environment.environment_spec_digest
+                ),
+                "bundle_revision_id": environment.bundle_revision_id,
+                "permission_profile_revision": (
+                    environment.permission_profile_revision
+                ),
+                "thinking_effort_requested": (
+                    environment.thinking_effort_requested
+                ),
+                "thinking_effort_effective": (
+                    environment.thinking_effort_effective
+                ),
+                "provider_capability_revision": (
+                    environment.provider_capability_revision
+                ),
+            }
+            if environment is not None
+            else {}
+        )
+        self._append_event_in_transaction(
+            connection,
+            run_id,
+            RunEventDraft(
+                event_id=f"attempt:{identifier}:created",
+                event_type="run.attempt_created",
+                payload={
+                    "attempt_id": identifier,
+                    "attempt_number": number,
+                    "reason": reason,
+                    "status": status,
+                    "policy_version": run["timeout_policy_version"],
+                    "workload_profile": workload_profile_payload(workload),
+                    "workload_profile_digest": workload_values[2],
+                    **environment_payload,
+                },
+                created_at=timestamp,
+            ),
+            run_status=status,
+            active_attempt_id=identifier,
+        )
+        # A follow-up's request_id is its deterministic Run id.  Admit the
+        # durable queue row in the same transaction as its first Attempt,
+        # so a renderer crash cannot leave an executing Run queued forever.
+        connection.execute(
+            """
+            UPDATE follow_up_requests
+            SET status = 'admitted', admitted_run_id = ?,
+                last_error = NULL, updated_at = ?
+            WHERE request_id = ? AND project_id = ? AND status = 'pending'
+            """,
+            (run_id, timestamp, run_id, run["project_id"]),
+        )
+        row = connection.execute(
+            "SELECT * FROM run_attempts WHERE attempt_id = ?",
+            (identifier,),
+        ).fetchone()
+        assert row is not None
+        resolved = self._attempt_from_row(row)
+        self._trusted_attempt_permission_profiles.add(
+            (resolved.attempt_id, resolved.permission_profile_revision)
+        )
+        return resolved
 
     def bind_pending_attempt_environment(
         self,
@@ -13031,8 +13250,13 @@ class SQLiteRunJournal:
         attempt_id: str,
         *,
         expected_run_id: str | None = None,
+        expected_generation: int | None = None,
         now: float | None = None,
     ) -> RunAttemptRecord:
+        if expected_generation is not None and (
+            type(expected_generation) is not int or expected_generation < 1
+        ):
+            raise ValueError("expected generation must be a positive integer")
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
             attempt = connection.execute(
@@ -13050,6 +13274,45 @@ class SQLiteRunJournal:
                 raise IdempotencyConflictError(
                     f"attempt {attempt_id!r} does not belong to run {expected_run_id!r}"
                 )
+            owner_run = connection.execute(
+                "SELECT * FROM runs WHERE run_id=?", (attempt["run_id"],)
+            ).fetchone()
+            if owner_run is None or owner_run["cancel_request_id"] is not None:
+                raise InvalidRunTransitionError(
+                    "cancelled Run cannot activate"
+                )
+            binding = connection.execute(
+                """SELECT * FROM run_workspace_bindings WHERE run_id=?
+                ORDER BY generation DESC LIMIT 1""",
+                (attempt["run_id"],),
+            ).fetchone()
+            if expected_generation is not None and (
+                binding is None or binding["generation"] != expected_generation
+            ):
+                raise InvalidRunTransitionError(
+                    "isolated activation generation is stale"
+                )
+            if binding is not None:
+                barrier = connection.execute(
+                    "SELECT * FROM run_workspace_finalizations WHERE run_id=?",
+                    (attempt["run_id"],),
+                ).fetchone()
+                lease = connection.execute(
+                    "SELECT attempt_id FROM project_run_execution_leases WHERE run_id=?",
+                    (attempt["run_id"],),
+                ).fetchone()
+                if (
+                    binding["attempt_id"] != attempt_id
+                    or barrier is None
+                    or barrier["owner_attempt_id"] != attempt_id
+                    or barrier["generation"] != binding["generation"]
+                    or barrier["state"] != "pending"
+                    or lease is None
+                    or lease[0] != attempt_id
+                ):
+                    raise InvalidRunTransitionError(
+                        "isolated activation fence is stale"
+                    )
             if attempt["status"] == "running":
                 return self._attempt_from_row(attempt)
             if not transition_allowed(
@@ -13211,59 +13474,75 @@ class SQLiteRunJournal:
         reason: str,
         now: float | None = None,
     ) -> RunRecord:
-        timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
-            run = connection.execute(
-                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            return self._request_cancel_in_transaction(
+                connection,
+                run_id,
+                request_id=request_id,
+                reason=reason,
+                now=now,
+            )
+
+    def _request_cancel_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        run_id: str,
+        *,
+        request_id: str,
+        reason: str,
+        now: float | None = None,
+    ) -> RunRecord:
+        if connection is not self._connection or not connection.in_transaction:
+            raise ValueError("cancel requires the owning journal transaction")
+        timestamp = now if now is not None else time.time()
+        run = connection.execute(
+            "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if run is None:
+            raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+        if run["status"] == "cancelled":
+            return self._run_from_row(run)
+        if run["status"] in {"completed", "failed"}:
+            raise InvalidRunTransitionError(
+                f"cannot cancel terminal run {run_id!r}"
+            )
+        if run["cancel_request_id"] not in {None, request_id}:
+            raise InvalidRunTransitionError(
+                f"run {run_id!r} already has another cancel intent"
+            )
+        if run["cancel_request_id"] is not None:
+            event = connection.execute(
+                "SELECT payload_json FROM run_events WHERE event_id = ?",
+                (f"cancel:{request_id}:requested",),
             ).fetchone()
-            if run is None:
-                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
-            if run["status"] == "cancelled":
-                return self._run_from_row(run)
-            if run["status"] in {"completed", "failed"}:
-                raise InvalidRunTransitionError(
-                    f"cannot cancel terminal run {run_id!r}"
+            if (
+                event is None
+                or json.loads(event["payload_json"]).get("reason") != reason
+            ):
+                raise IdempotencyConflictError(
+                    f"cancel request_id {request_id!r} was reused with different data"
                 )
-            if run["cancel_request_id"] not in {None, request_id}:
-                raise InvalidRunTransitionError(
-                    f"run {run_id!r} already has another cancel intent"
-                )
-            if run["cancel_request_id"] is not None:
-                event = connection.execute(
-                    "SELECT payload_json FROM run_events WHERE event_id = ?",
-                    (f"cancel:{request_id}:requested",),
-                ).fetchone()
-                if (
-                    event is None
-                    or json.loads(event["payload_json"]).get("reason")
-                    != reason
-                ):
-                    raise IdempotencyConflictError(
-                        f"cancel request_id {request_id!r} was reused with different data"
-                    )
-            else:
-                connection.execute(
-                    """
-                    UPDATE runs SET cancel_request_id = ?, cancel_requested_at = ?
-                    WHERE run_id = ?
-                    """,
-                    (request_id, timestamp, run_id),
-                )
-                self._append_event_in_transaction(
-                    connection,
-                    run_id,
-                    RunEventDraft(
-                        event_id=f"cancel:{request_id}:requested",
-                        event_type="run.cancel_requested",
-                        payload={"request_id": request_id, "reason": reason},
-                        created_at=timestamp,
-                    ),
-                )
-            row = connection.execute(
-                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
-            assert row is not None
-            return self._run_from_row(row)
+        else:
+            connection.execute(
+                """UPDATE runs SET cancel_request_id = ?, cancel_requested_at = ?
+                WHERE run_id = ?""",
+                (request_id, timestamp, run_id),
+            )
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=f"cancel:{request_id}:requested",
+                    event_type="run.cancel_requested",
+                    payload={"request_id": request_id, "reason": reason},
+                    created_at=timestamp,
+                ),
+            )
+        row = connection.execute(
+            "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        assert row is not None
+        return self._run_from_row(row)
 
     def complete_cancel(
         self,
@@ -19246,8 +19525,15 @@ class SQLiteRunJournal:
             "cancelled",
         }:
             connection.execute(
-                "DELETE FROM project_run_execution_leases WHERE run_id = ?",
-                (run_id,),
+                """DELETE FROM project_run_execution_leases WHERE run_id = ?
+                AND NOT EXISTS (
+                    SELECT 1 FROM run_workspace_bindings binding
+                    LEFT JOIN run_workspace_finalizations final
+                        ON final.run_id=binding.run_id
+                    WHERE binding.run_id=?
+                      AND (final.run_id IS NULL OR final.state!='settled')
+                )""",
+                (run_id, run_id),
             )
             if draft.payload.get("advance_project_state", True) is not False:
                 self._refresh_project_execution_state_in_transaction(
@@ -19548,6 +19834,16 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
 
         if version < 35:
             self._connection.executescript(_MIGRATION_V35)
+        if version < 36:
+            self._connection.executescript(MIGRATION_V36)
+        if version < 37:
+            self._connection.executescript(MIGRATION_V37)
+        if version < 38:
+            self._connection.executescript(MIGRATION_V38)
+        if version < 39:
+            self._connection.executescript(MIGRATION_V39)
+        if version < 40:
+            self._connection.executescript(MIGRATION_V40)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:

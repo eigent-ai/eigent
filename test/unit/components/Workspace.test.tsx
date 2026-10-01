@@ -85,6 +85,7 @@ const mocks = vi.hoisted(() => {
       'space-1': {
         id: 'space-1',
         sourceType: 'blank',
+        rootPath: undefined as string | undefined,
         status: 'active',
       },
     },
@@ -100,6 +101,9 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
+    capability: false,
+    spaceModelRef: null as string | null,
+    managedSubmit: vi.fn(),
     modelType: 'local',
     auth: { token: 'fixture-a', user_id: 101 as number | null },
     modelConfig: { hasModel: true, cloudUsageLimitReached: false },
@@ -113,6 +117,24 @@ const mocks = vi.hoisted(() => {
     spaceState,
   };
 });
+
+vi.mock('@/api/http', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/http')>()),
+  fetchGet: vi.fn(async (url: string) =>
+    url === '/executions/capabilities'
+      ? { local_single_session: mocks.capability }
+      : {
+          space_id: 'space-1',
+          selection: mocks.spaceModelRef
+            ? { model_ref: mocks.spaceModelRef }
+            : null,
+        }
+  ),
+}));
+vi.mock('@/service/sessionMessage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/service/sessionMessage')>()),
+  submitWorkspaceSessionDraft: mocks.managedSubmit,
+}));
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
   default: () => ({
@@ -139,13 +161,18 @@ vi.mock('@/host', () => ({
 vi.mock('@/store/authStore', () => ({
   getAuthStore: () => ({
     ...mocks.auth,
+    modelType: mocks.modelType,
     language: 'en',
     setLanguage: vi.fn(),
   }),
-  useAuthStore: () => ({
-    modelType: mocks.modelType,
-    setWorkerList: vi.fn(),
-  }),
+  useAuthStore: (selector?: (state: any) => unknown) => {
+    const state = {
+      ...mocks.auth,
+      modelType: mocks.modelType,
+      setWorkerList: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  },
   useWorkerList: () => [],
 }));
 
@@ -259,10 +286,15 @@ describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.modelType = 'local';
+    mocks.capability = false;
+    mocks.spaceModelRef = null;
+    mocks.spaceState.spaces['space-1'].rootPath = undefined;
+    mocks.managedSubmit.mockResolvedValue('managed-session');
     mocks.auth = { token: 'fixture-a', user_id: 101 };
     mocks.modelConfig = { hasModel: true, cloudUsageLimitReached: false };
     mocks.spaceState.activeSpaceId = 'space-1';
     mocks.pageState.activeWorkspaceTab = 'workforce';
+    mocks.pageState.workspaceChatFocusRequestId = 0;
     mocks.projectState.activeProjectId = 'old-project';
     setUsageAccount(null);
     setUsageAccount('101');
@@ -280,6 +312,185 @@ describe('Workspace', () => {
     });
     mocks.projectState.getComposerThinkingEffort.mockReturnValue('high');
     mocks.newStartTask.mockResolvedValue(undefined);
+  });
+
+  it('applies corrected thinking effort after a pre-delivery failure', async () => {
+    mocks.capability = true;
+    mocks.spaceState.spaces['space-1'].rootPath = '/synthetic/local-space';
+    mocks.managedSubmit.mockRejectedValueOnce(
+      new Error('creation response unavailable')
+    );
+    renderWorkspace();
+    fireEvent.click(await screen.findByRole('checkbox'));
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Unsent request' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(mocks.managedSubmit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText('Send')).not.toBeDisabled());
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-model-disabled', 'false');
+    mocks.projectState.getComposerThinkingEffort.mockReturnValue('low' as any);
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(mocks.managedSubmit).toHaveBeenCalledTimes(2));
+    const sent = mocks.managedSubmit.mock.calls[1][0];
+    expect(sent.thinkingEffort).toBe('low');
+    expect(sent.intent.deliveryAttempted).toBe(false);
+  });
+
+  it.each([null, 'newer-session'])(
+    'keeps a newer selection %s and its composer when an older managed request is accepted',
+    async (newSelection) => {
+      mocks.capability = true;
+      mocks.spaceState.spaces['space-1'].rootPath = '/synthetic/local-space';
+      mocks.pageState.activeWorkspaceTab = 'new-project';
+      let accept!: (id: string) => void;
+      mocks.managedSubmit.mockImplementation(
+        () =>
+          new Promise<string>((resolve) => {
+            accept = resolve;
+          })
+      );
+      const view = renderWorkspace({ variant: 'new-project' });
+      fireEvent.click(await screen.findByRole('checkbox'));
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'First managed request' },
+      });
+      fireEvent.click(screen.getByText('Send'));
+      await waitFor(() => expect(mocks.managedSubmit).toHaveBeenCalledTimes(1));
+      mocks.projectState.activeProjectId = newSelection;
+      mocks.pageState.workspaceChatFocusRequestId += 1;
+      view.rerender(
+        <MemoryRouter>
+          <Workspace variant="new-project" />
+        </MemoryRouter>
+      );
+      expect(screen.getByLabelText('workspace-message')).not.toBeDisabled();
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'New draft' },
+      });
+      await act(async () => accept('old-managed-session'));
+      expect(mocks.projectState.setActiveProject).not.toHaveBeenCalled();
+      expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('workspace-message')).toHaveValue(
+        'New draft'
+      );
+    }
+  );
+
+  it('does not release a newer submission lock when the old acceptance finishes', async () => {
+    mocks.capability = true;
+    mocks.spaceState.spaces['space-1'].rootPath = '/synthetic/local-space';
+    const completions: ((id: string) => void)[] = [];
+    mocks.managedSubmit.mockImplementation(
+      () => new Promise<string>((resolve) => completions.push(resolve))
+    );
+    const view = renderWorkspace({ variant: 'new-project' });
+    fireEvent.click(await screen.findByRole('checkbox'));
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'First' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(completions).toHaveLength(1));
+    mocks.projectState.activeProjectId = null;
+    mocks.pageState.workspaceChatFocusRequestId += 1;
+    view.rerender(
+      <MemoryRouter>
+        <Workspace variant="new-project" />
+      </MemoryRouter>
+    );
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Second' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(completions).toHaveLength(2));
+    await act(async () => completions[0]('old-managed-session'));
+    expect(screen.getByText('Send')).toBeDisabled();
+    expect(screen.getByLabelText('workspace-message')).toHaveValue('Second');
+    expect(mocks.projectState.setActiveProject).not.toHaveBeenCalled();
+    await act(async () => completions[1]('new-managed-session'));
+    expect(mocks.projectState.setActiveProject).toHaveBeenCalledTimes(1);
+    expect(mocks.projectState.setActiveProject).toHaveBeenCalledWith(
+      'new-managed-session'
+    );
+    expect(screen.getByLabelText('workspace-message')).toHaveValue('');
+    expect(screen.getByText('Send')).not.toBeDisabled();
+  });
+
+  it('requires explicit opt-in and retries the same managed draft without a legacy start', async () => {
+    mocks.capability = true;
+    mocks.spaceState.spaces['space-1'].rootPath = '/synthetic/local-space';
+    mocks.managedSubmit.mockImplementationOnce(async (draft) => {
+      draft.intent.deliveryAttempted = true;
+      throw new Error('synthetic lost acknowledgement');
+    });
+    renderWorkspace();
+    const optIn = await screen.findByRole('checkbox');
+    expect(optIn).not.toBeChecked();
+    fireEvent.click(optIn);
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Managed draft' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(mocks.managedSubmit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText('Send')).not.toBeDisabled());
+    expect(screen.getByLabelText('workspace-message')).toHaveValue(
+      'Managed draft'
+    );
+    const draft = mocks.managedSubmit.mock.calls[0][0];
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(mocks.managedSubmit).toHaveBeenCalledTimes(2));
+    expect(mocks.managedSubmit.mock.calls[1][0]).toBe(draft);
+    expect(mocks.newStartTask).not.toHaveBeenCalled();
+    expect(createSyncedProjectInSpace).not.toHaveBeenCalled();
+    expect(mocks.projectState.setActiveProject).toHaveBeenCalledWith(
+      'managed-session'
+    );
+  });
+
+  it('uses the local default for opted-in execution despite a quota-blocked Space Cloud model', async () => {
+    mocks.capability = true;
+    mocks.spaceModelRef = 'provider://cloud/space-model';
+    mocks.spaceState.spaces['space-1'].rootPath = '/synthetic/local-space';
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+    renderWorkspace();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      errorCopy('credits')
+    );
+    expect(screen.getByLabelText('workspace-message')).toBeDisabled();
+    fireEvent.click(await screen.findByRole('checkbox'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('workspace-message')).toBeEnabled()
+    );
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Use my local model' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(mocks.managedSubmit).toHaveBeenCalledOnce());
+    expect(mocks.newStartTask).not.toHaveBeenCalled();
+    expect(createSyncedProjectInSpace).not.toHaveBeenCalled();
+  });
+
+  it('retains an unsupported attached draft before creating a managed Session', async () => {
+    mocks.capability = true;
+    mocks.spaceState.spaces['space-1'].rootPath = '/synthetic/local-space';
+    renderWorkspace();
+    const optIn = await screen.findByRole('checkbox');
+    fireEvent.click(screen.getByText('Attach draft'));
+    fireEvent.click(optIn);
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Keep text and attachment' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(screen.getByText('draft.txt')).toBeInTheDocument();
+    expect(screen.getByLabelText('workspace-message')).toHaveValue(
+      'Keep text and attachment'
+    );
+    expect(mocks.managedSubmit).not.toHaveBeenCalled();
+    expect(mocks.newStartTask).not.toHaveBeenCalled();
+    expect(createSyncedProjectInSpace).not.toHaveBeenCalled();
   });
 
   it('creates a fresh project and sends only Workspace draft attachments', async () => {
@@ -562,7 +773,7 @@ describe('Workspace', () => {
     useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
     const view = renderWorkspace({ variant: 'new-project' });
     expect(screen.getByLabelText('workspace-message')).toBeDisabled();
-    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(
       screen.getByTestId('workspace-bottom-box-footer-props')
     ).toHaveAttribute('data-model-disabled', 'false');
@@ -575,7 +786,9 @@ describe('Workspace', () => {
         <Workspace variant="new-project" />
       </MemoryRouter>
     );
-    expect(screen.getByLabelText('workspace-message')).not.toBeDisabled();
+    await waitFor(() =>
+      expect(screen.getByLabelText('workspace-message')).not.toBeDisabled()
+    );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('workspace-message'), {
       target: { value: 'Use my custom model' },
@@ -750,7 +963,9 @@ describe('Workspace', () => {
     fireEvent.click(screen.getByText('Send'));
     fireEvent.click(screen.getByText('Send'));
 
-    expect(createSyncedProjectInSpace).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(createSyncedProjectInSpace).toHaveBeenCalledTimes(1)
+    );
     resolveCreation?.({ projectId: 'new-project', spaceId: 'space-1' });
     await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
   });

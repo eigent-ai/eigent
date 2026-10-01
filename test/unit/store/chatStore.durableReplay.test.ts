@@ -137,6 +137,37 @@ describe('canonical Run replay projection', () => {
     });
   });
 
+  it.each([
+    {
+      run_id: 'other-run',
+      attempt: {
+        attempt_number: 2,
+        status: 'pending',
+        resume_request_id: 'resume-1',
+      },
+    },
+    {
+      run_id: 'run-1',
+      attempt: {
+        attempt_number: 2,
+        status: 'pending',
+        resume_request_id: 'other-request',
+      },
+    },
+    ...['interrupted', 'cancelled', 'completed', 'failed'].map((status) => ({
+      run_id: 'run-1',
+      attempt: { attempt_number: 2, status, resume_request_id: 'resume-1' },
+    })),
+  ])('rejects an ended or foreign Resume ACK: %j', async (response) => {
+    await expect(
+      admitDurableRunResume(
+        'run-1',
+        'resume-1',
+        vi.fn().mockResolvedValue(response)
+      )
+    ).rejects.toThrow('active request');
+  });
+
   it('unwraps legacy UI events and projects durable interaction decisions', () => {
     expect(
       canonicalRunEventToLegacyMessage({

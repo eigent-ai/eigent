@@ -18,11 +18,17 @@ import {
   useInterruptedRunStatus,
 } from '@/hooks/useInterruptedRunStatus';
 import { HostProvider } from '@/host';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
   DURABLE_RUN_STATUS_CHANGED_EVENT,
   notifyDurableRunStatusChanged,
 } from '@/lib/events/durableRunEvents';
 import { runProjectionStore } from '@/lib/runEvents';
+import {
+  beginResumeRequest,
+  finishResumeRequest,
+} from '@/lib/runResumeRequest';
+import { useAuthStore } from '@/store/authStore';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,10 +57,92 @@ describe('useInterruptedRunStatus', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     runProjectionStore.clear();
     listeners.clear();
     fetchGetMock.mockResolvedValue({ runs: [] });
   });
+
+  it.each([
+    'owned',
+    'other-account',
+    'other-request',
+    'other-project',
+    'other-run',
+    'older-attempt',
+    'running',
+    'cancelled',
+    'cloud-restore',
+    'blocked',
+  ])(
+    'offers a pending retry only for its own unstarted request: %s',
+    async (boundary) => {
+      const owner = {
+        accountKey: getAccountEnvironmentKey(useAuthStore.getState()),
+        projectId: 'project_one',
+        runId: 'pending-one',
+      };
+      const original = {
+        run_id: owner.runId,
+        project_id: owner.projectId,
+        status: 'interrupted',
+        updated_at: 1,
+        latest_attempt: { attempt_number: 1, status: 'interrupted' },
+      };
+      const id = beginResumeRequest(owner, original);
+      finishResumeRequest(owner, id, false);
+      const pending = {
+        ...original,
+        status: 'pending',
+        version: 2,
+        updated_at: 2,
+        latest_attempt: {
+          attempt_number: 2,
+          status: 'pending',
+          resume_request_id: id,
+        },
+      };
+      const { result, rerender } = renderHook(
+        () => useInterruptedRunStatus('project_one'),
+        { wrapper }
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      if (boundary === 'other-account') owner.accountKey = 'different-account';
+      if (boundary === 'other-request')
+        pending.latest_attempt.resume_request_id = 'somebody-else';
+      if (boundary === 'other-project') pending.project_id = 'another-project';
+      if (boundary === 'other-run') pending.run_id = 'another-run';
+      if (boundary === 'older-attempt')
+        pending.latest_attempt.attempt_number = 1;
+      if (boundary === 'running' || boundary === 'cancelled') {
+        pending.status = boundary;
+        pending.latest_attempt.status = boundary;
+      }
+      const summary = {
+        ...pending,
+        origin:
+          boundary === 'cloud-restore'
+            ? ('cloud_restore' as const)
+            : ('local' as const),
+        resume_blocked_reason: boundary === 'blocked' ? 'unsafe tool' : null,
+      };
+      act(() =>
+        runProjectionStore.upsertRunSummaries(pending.project_id, [summary])
+      );
+      if (boundary === 'other-account') {
+        act(() => useAuthStore.setState({ user_id: 902 }));
+        rerender();
+      }
+      expect(result.current.run?.retry_request_id ?? null).toBe(
+        boundary === 'owned' ? id : null
+      );
+      expect(
+        runProjectionStore.getRun(pending.project_id, pending.run_id)?.status
+      ).toBe(pending.status);
+    }
+  );
 
   it('normalizes state retained from the pre-map Fast Refresh shape', () => {
     expect(normalizeInterruptedRunState(null)).toEqual({});

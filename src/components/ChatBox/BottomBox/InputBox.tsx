@@ -99,6 +99,9 @@ export interface InputboxProps {
   textareaRef?: React.RefObject<HTMLDivElement | null>;
   /** Allow drag and drop */
   allowDragDrop?: boolean;
+  /** Restricted execution surfaces disable every file ingestion path. */
+  attachmentsEnabled?: boolean;
+  onUnsupportedAttachment?: () => void;
   /** Privacy mode enabled */
   privacy?: boolean;
   /** Use cloud model in dev */
@@ -171,6 +174,8 @@ export const Inputbox = ({
   className,
   textareaRef: externalTextareaRef,
   allowDragDrop = false,
+  attachmentsEnabled = true,
+  onUnsupportedAttachment,
   privacy = true,
   useCloudModelInDev = false,
   connectorPanelOpen = false,
@@ -296,7 +301,8 @@ export const Inputbox = ({
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+    if (!attachmentsEnabled || !allowDragDrop || !privacy || useCloudModelInDev)
+      return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -305,7 +311,8 @@ export const Inputbox = ({
   };
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+    if (!attachmentsEnabled || !allowDragDrop || !privacy || useCloudModelInDev)
+      return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -325,7 +332,12 @@ export const Inputbox = ({
     e.stopPropagation();
     setIsDragging(false);
     dragCounter.current = 0;
-    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+    if (!attachmentsEnabled) {
+      onUnsupportedAttachment?.();
+      return;
+    }
+    if (!attachmentsEnabled || !allowDragDrop || !privacy || useCloudModelInDev)
+      return;
 
     try {
       const dropped = Array.from(e.dataTransfer?.files || []);
@@ -359,9 +371,13 @@ export const Inputbox = ({
   };
 
   const handlePasteFiles = async (pasted: File[]) => {
+    if (!attachmentsEnabled) {
+      onUnsupportedAttachment?.();
+      return;
+    }
     // Mirror the drag-and-drop gating: attachments are unavailable in
     // privacy-off / cloud-model-in-dev states.
-    if (!privacy || useCloudModelInDev) return;
+    if (!attachmentsEnabled || !privacy || useCloudModelInDev) return;
     try {
       const result = await processPastedFiles(pasted, files);
       if (result.success) {
@@ -597,6 +613,7 @@ export const Inputbox = ({
               buttonRadius="lg"
               disabled={
                 disabled ||
+                !attachmentsEnabled ||
                 !privacy ||
                 useCloudModelInDev ||
                 typeof onAddFile !== 'function'
