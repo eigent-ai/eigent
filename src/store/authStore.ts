@@ -25,6 +25,7 @@ import {
   getRecommendedContrast,
 } from '@/lib/themeTokens/catalog';
 import type { Mode, ThemeCatalog, ThemeSeed } from '@/lib/themeTokens/types';
+import { DEFAULT_WORK_PROFILE, type WorkProfileId } from '@/lib/workProfiles';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useSpaceStore } from './spaceStore';
@@ -38,12 +39,7 @@ const LEGACY_DEFAULT_CLOUD_MODEL_ID = 'gpt-5.5';
 
 /** Main workspace panel background (Workforce + Session tabs only). */
 export type WorkspaceMainBackground =
-  | 'empty'
-  | 'dots'
-  | 'blocks'
-  | 'ruled'
-  | 'dotted'
-  | 'dashed';
+  'empty' | 'dots' | 'blocks' | 'ruled' | 'dotted' | 'dashed';
 export type CloudModelType = string;
 export type CodexSubscriptionModelType = string;
 
@@ -90,6 +86,9 @@ interface AuthState {
   /** Pattern behind the main workspace area (Workforce / Session). */
   workspaceMainBackground: WorkspaceMainBackground;
 
+  /** Role used to tailor automation examples; `general` when skipped. */
+  workProfile: WorkProfileId;
+
   // shared token
   share_token?: string | null;
 
@@ -129,6 +128,7 @@ interface AuthState {
   setOnboardingCompleted: (completed: boolean) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
   setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
+  setWorkProfile: (workProfile: WorkProfileId) => void;
 
   // worker related methods
   setWorkerList: (workerList: Agent[]) => void;
@@ -228,6 +228,7 @@ const authStore = create<AuthState>()(
       hasModelConfigured: false,
       preferredIDE: 'system',
       workspaceMainBackground: 'empty',
+      workProfile: DEFAULT_WORK_PROFILE,
       initState: 'carousel',
       share_token: null,
       localProxyValue: null,
@@ -383,6 +384,8 @@ const authStore = create<AuthState>()(
 
       setWorkspaceMainBackground: (workspaceMainBackground) =>
         set({ workspaceMainBackground }),
+
+      setWorkProfile: (workProfile) => set({ workProfile }),
 
       setLocalProxyValue: (value) => set({ localProxyValue: value }),
 
@@ -553,6 +556,7 @@ const authStore = create<AuthState>()(
         onboardingCompleted: state.onboardingCompleted,
         preferredIDE: state.preferredIDE,
         workspaceMainBackground: state.workspaceMainBackground,
+        workProfile: state.workProfile,
         localProxyValue: state.localProxyValue,
         authEnvironmentKey: state.authEnvironmentKey,
         workerListData: state.workerListData,

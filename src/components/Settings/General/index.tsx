@@ -17,6 +17,12 @@ import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
+import {
+  DEFAULT_WORK_PROFILE,
+  isWorkProfileId,
+  WORK_PROFILE_IDS,
+  WORK_PROFILE_LABEL_KEYS,
+} from '@/lib/workProfiles';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { LogOut, Settings } from 'lucide-react';
@@ -38,7 +44,8 @@ import { useHost } from '@/host';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
 
-type GeneralSettingsSection = 'all' | 'profile' | 'language' | 'network-proxy';
+type GeneralSettingsSection =
+  'all' | 'account' | 'language' | 'profile' | 'network-proxy';
 
 interface SettingGeneralProps {
   section?: GeneralSettingsSection;
@@ -60,6 +67,8 @@ export default function SettingGeneral({
   const [_isLoading, _setIsLoading] = useState(false);
   const language = authStore.language;
   const _setLanguage = authStore.setLanguage;
+  const workProfile = authStore.workProfile;
+  const setWorkProfile = authStore.setWorkProfile;
   const _fullNameRef: RefObject<HTMLInputElement> = createRef();
   const _nickNameRef: RefObject<HTMLInputElement> = createRef();
   const _workDescRef: RefObject<HTMLInputElement> = createRef();
@@ -210,9 +219,9 @@ export default function SettingGeneral({
   return (
     <SettingsSectionPage>
       <SettingsRowGroup>
-        {(section === 'all' || section === 'profile') && (
+        {(section === 'all' || section === 'account') && (
           <SettingsRow
-            title={t('setting.profile')}
+            title={t('setting.account')}
             description={
               <Trans
                 i18nKey="setting.you-are-currently-signed-in-with"
@@ -295,6 +304,43 @@ export default function SettingGeneral({
                         className="hover:!bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[highlighted]:ring-2 data-[highlighted]:ring-ds-ring-focus data-[highlighted]:ring-inset"
                       >
                         {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            }
+          />
+        )}
+
+        {(section === 'all' || section === 'profile') && (
+          <SettingsRow
+            title={t('setting.profile')}
+            description={t('setting.work-profile-description')}
+            actionClassName="w-[280px]"
+            action={
+              <Select
+                value={workProfile}
+                onValueChange={(value) => {
+                  if (isWorkProfileId(value)) setWorkProfile(value);
+                }}
+              >
+                <SelectTrigger
+                  variant="secondary"
+                  aria-label={t('setting.profile')}
+                  className="w-[280px] !bg-ds-neutral-subtle-default hover:!bg-ds-neutral-subtle-default data-[state=open]:!bg-ds-neutral-subtle-default"
+                >
+                  <SelectValue placeholder={t('setting.select-work-profile')} />
+                </SelectTrigger>
+                <SelectContent className="border border-x border-y border-solid bg-ds-neutral-default-default">
+                  <SelectGroup>
+                    {[DEFAULT_WORK_PROFILE, ...WORK_PROFILE_IDS].map((id) => (
+                      <SelectItem
+                        key={id}
+                        value={id}
+                        className="hover:!bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[highlighted]:ring-2 data-[highlighted]:ring-ds-ring-focus data-[highlighted]:ring-inset"
+                      >
+                        {t(WORK_PROFILE_LABEL_KEYS[id])}
                       </SelectItem>
                     ))}
                   </SelectGroup>
