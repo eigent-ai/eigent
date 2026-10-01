@@ -153,7 +153,6 @@
   "message-reattach-files": "Ajoutez de nouveau les pièces jointes avant l’envoi.",
   "control-region-label": "Demande de l’agent",
   "control-review-next-request": "Examiner la demande suivante",
-  "control-once-only-explanation": "Cette action ne permet qu’une approbation ponctuelle.",
   "control-input-required": "Action requise",
   "control-input-required-message": "Action requise : {{message}}",
   "control-input-required-count": "Action requise · {{count}} en attente",

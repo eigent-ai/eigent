@@ -153,7 +153,6 @@
   "message-reattach-files": "Allega nuovamente i file prima di inviare.",
   "control-region-label": "Richiesta dell’agente",
   "control-review-next-request": "Esamina la richiesta successiva",
-  "control-once-only-explanation": "Questa azione supporta solo l’approvazione una tantum.",
   "control-input-required": "Serve la tua risposta",
   "control-input-required-message": "È necessaria una risposta: {{message}}",
   "control-input-required-count": "Serve la tua risposta · {{count}} in attesa",

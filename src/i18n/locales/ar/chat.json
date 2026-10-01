@@ -153,7 +153,6 @@
   "message-reattach-files": "أعد إضافة المرفقات قبل الإرسال.",
   "control-region-label": "طلب من الوكيل",
   "control-review-next-request": "مراجعة الطلب التالي",
-  "control-once-only-explanation": "هذا الإجراء يدعم الموافقة لمرة واحدة فقط.",
   "control-input-required": "مطلوب ردّك",
   "control-input-required-message": "مطلوب ردّك: {{message}}",
   "control-input-required-count": "مطلوب ردّك · {{count}} قيد الانتظار",

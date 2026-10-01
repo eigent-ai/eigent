@@ -80,16 +80,14 @@ export interface TimelineCall {
   interactionFamily?: TimelineInteractionFamily;
 }
 
-/** Legacy terminal receipts often omit toolkit_name, but keep activityType. */
-function displayToolkitName(
+/** Legacy terminal receipts use the same stable identity as current calls. */
+function stableToolkitName(
   toolkitName: string | undefined,
   activityType: ChatActivityNode['activityType']
 ): string | undefined {
   return (
     toolkitName ||
-    (activityType === 'terminal'
-      ? i18next.t('layout.preview-terminal', { defaultValue: 'Terminal' })
-      : undefined)
+    (activityType === 'terminal' ? 'Terminal Toolkit' : undefined)
   );
 }
 
@@ -234,7 +232,7 @@ function toolCall(invocation: TimelineToolInvocation): TimelineCall {
     taskId: invocation.taskId,
     stepId: invocation.stepId,
     toolCallId: invocation.toolCallId,
-    toolkitName: displayToolkitName(
+    toolkitName: stableToolkitName(
       invocation.toolkitName,
       invocation.activityType
     ),
@@ -307,7 +305,7 @@ function activityCall(id: string, node: ChatActivityNode): TimelineCall {
     taskId: node.taskId,
     stepId: node.stepId,
     toolCallId: node.toolCallId,
-    toolkitName: displayToolkitName(node.toolkitName, node.activityType),
+    toolkitName: stableToolkitName(node.toolkitName, node.activityType),
     methodName: node.methodName || node.toolName,
   };
 }

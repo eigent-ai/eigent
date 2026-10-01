@@ -153,7 +153,6 @@
   "message-reattach-files": "Vuelve a adjuntar los archivos antes de enviar.",
   "control-region-label": "Solicitud del agente",
   "control-review-next-request": "Revisar la siguiente solicitud",
-  "control-once-only-explanation": "Esta acción solo permite una aprobación única.",
   "control-input-required": "Se necesita tu respuesta",
   "control-input-required-message": "Se necesita tu respuesta: {{message}}",
   "control-input-required-count": "Se necesita tu respuesta · {{count}} pendientes",

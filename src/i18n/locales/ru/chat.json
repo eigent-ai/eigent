@@ -153,7 +153,6 @@
   "message-reattach-files": "Перед отправкой прикрепите файлы заново.",
   "control-region-label": "Запрос агента",
   "control-review-next-request": "Просмотреть следующий запрос",
-  "control-once-only-explanation": "Для этого действия доступно только разовое разрешение.",
   "control-input-required": "Нужен ваш ответ",
   "control-input-required-message": "Требуется ввод: {{message}}",
   "control-input-required-count": "Нужен ваш ответ · в очереди: {{count}}",

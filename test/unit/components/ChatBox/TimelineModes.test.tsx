@@ -488,6 +488,87 @@ describe('ChatBox timeline modes', () => {
     ).toHaveLength(3);
   });
 
+  it('groups legacy Terminal receipts with current Terminal Toolkit calls', () => {
+    const legacy = {
+      ...normalToolActivity({
+        id: 'legacy-terminal',
+        runSequence: 1,
+        status: 'completed',
+        title: 'Terminal',
+        input: 'ls',
+      }),
+      activityType: 'terminal' as const,
+      toolkitName: undefined,
+    };
+    const current = {
+      ...normalToolActivity({
+        id: 'current-terminal',
+        runSequence: 2,
+        status: 'completed',
+        toolkitName: 'Terminal Toolkit',
+        input: 'pwd',
+      }),
+      activityType: 'terminal' as const,
+    };
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([legacy, current, runningRunStatus(3)])}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+
+    expect(
+      container.querySelectorAll('[data-narrative-segment-trigger]')
+    ).toHaveLength(1);
+    expect(
+      container.querySelector('[data-narrative-segment-trigger]')
+    ).toHaveAttribute('data-narrative-segment-call-count', '2');
+  });
+
+  it('keeps a manually expanded call visible when Balanced turns it into a group', () => {
+    const first = normalToolActivity({
+      id: 'file-first',
+      runSequence: 1,
+      status: 'completed',
+      toolkitName: 'File Toolkit',
+      input: 'first.txt',
+    });
+    const second = normalToolActivity({
+      id: 'file-second',
+      runSequence: 2,
+      status: 'running',
+      toolkitName: 'File Toolkit',
+      input: 'second.txt',
+    });
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const view = (calls: ChatProjectionNode[]) => (
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([...calls, runningRunStatus(3)])}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+
+    const { container, rerender } = render(view([first]));
+    const firstTrigger = container.querySelector(
+      '[data-timeline-call-trigger]'
+    ) as HTMLButtonElement;
+    fireEvent.click(firstTrigger);
+    expect(firstTrigger).toHaveAttribute('aria-expanded', 'true');
+
+    rerender(view([first, second]));
+
+    const group = container.querySelector('[data-narrative-segment-trigger]');
+    expect(group).toHaveAttribute('aria-expanded', 'true');
+    const preservedCall = container.querySelector(
+      '[data-timeline-call-id="file-first"] [data-timeline-call-trigger]'
+    );
+    expect(preservedCall).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('refreshes a Balanced group heading as new calls arrive and hides unsafe subjects', () => {
     const search = (id: string, runSequence: number, input: string) =>
       normalToolActivity({

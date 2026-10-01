@@ -153,7 +153,6 @@
   "message-reattach-files": "发送前请重新添加附件。",
   "control-region-label": "智能体请求",
   "control-review-next-request": "查看下一个请求",
-  "control-once-only-explanation": "此操作仅支持单次批准。",
   "control-input-required": "需要你的确认",
   "control-input-required-message": "需要你的输入：{{message}}",
   "control-input-required-count": "需要你的确认 · {{count}} 项待处理",

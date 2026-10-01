@@ -62,6 +62,9 @@ interface CallRowProps {
   call: TimelineCall;
   /** Narrative Balanced can surface the call's display description at rest. */
   displayTitle?: string;
+  /** Keep disclosure open if this call becomes a Balanced toolkit group. */
+  initialOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
   runActive: boolean;
   /** Row id that currently owns the single running shimmer, if any. */
   latestRunningCallId?: string | null;
@@ -81,6 +84,8 @@ interface CallRowProps {
 export function CallRow({
   call,
   displayTitle,
+  initialOpen,
+  onOpenChange,
   runActive,
   latestRunningCallId = null,
   reducedMotion,
@@ -168,8 +173,8 @@ export function CallRow({
   // A pending human call is the one thing the user must act on, so it opens
   // itself. Everything else follows the shimmer/auto-collapse rule.
   const autoExpanded = highlighted || pendingHuman;
-  const [open, setOpen] = useState(autoExpanded);
-  const manuallyToggled = useRef(false);
+  const [open, setOpen] = useState(initialOpen ?? autoExpanded);
+  const manuallyToggled = useRef(initialOpen !== undefined);
 
   useEffect(() => {
     if (!manuallyToggled.current) setOpen(autoExpanded);
@@ -190,7 +195,9 @@ export function CallRow({
         aria-expanded={open}
         onClick={() => {
           manuallyToggled.current = true;
-          setOpen((value) => !value);
+          const nextOpen = !open;
+          setOpen(nextOpen);
+          onOpenChange?.(nextOpen);
         }}
         className={cn(
           'group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left transition-opacity hover:opacity-80',

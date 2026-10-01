@@ -230,19 +230,25 @@ function NarrativeWorkLogSummary({
 function NarrativeToolGroup({
   calls,
   label,
+  initialOpen,
+  initiallyOpenCallIds,
+  onCallOpenChange,
   runActive,
   latestRunningCallId,
   reducedMotion,
 }: {
   calls: readonly TimelineCall[];
   label?: string;
+  initialOpen?: boolean;
+  initiallyOpenCallIds?: ReadonlySet<string>;
+  onCallOpenChange?: (callId: string, open: boolean) => void;
   runActive: boolean;
   latestRunningCallId: string | null;
   reducedMotion: boolean;
 }) {
   const { t } = useTranslation();
   const autoOpen = calls.some((call) => isCallErrorStatus(call.status));
-  const [open, setOpen] = useState(autoOpen);
+  const [open, setOpen] = useState(initialOpen || autoOpen);
   const wasAutoOpen = useRef(autoOpen);
 
   useEffect(() => {
@@ -346,6 +352,10 @@ function NarrativeToolGroup({
                   >
                     <CallRow
                       call={call}
+                      initialOpen={
+                        initiallyOpenCallIds?.has(call.id) ? true : undefined
+                      }
+                      onOpenChange={(open) => onCallOpenChange?.(call.id, open)}
                       latestRunningCallId={latestRunningCallId}
                       reducedMotion={reducedMotion}
                       runActive={runActive}
@@ -745,6 +755,18 @@ function NarrativeSegment({
   reducedMotion: boolean;
 }) {
   const { t } = useTranslation();
+  const [manuallyOpenCalls, setManuallyOpenCalls] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const rememberCallOpen = (callId: string, open: boolean) => {
+    setManuallyOpenCalls((current) => {
+      if (current.has(callId) === open) return current;
+      const next = new Set(current);
+      if (open) next.add(callId);
+      else next.delete(callId);
+      return next;
+    });
+  };
   return (
     <div
       className={cn(
@@ -798,6 +820,10 @@ function NarrativeSegment({
               <CallRow
                 call={calls[0]}
                 displayTitle={toolkitGroupLabel(calls, t)}
+                initialOpen={
+                  manuallyOpenCalls.has(calls[0].id) ? true : undefined
+                }
+                onOpenChange={(open) => rememberCallOpen(calls[0].id, open)}
                 key={calls[0].id}
                 latestRunningCallId={latestRunningCallId}
                 reducedMotion={reducedMotion}
@@ -808,6 +834,11 @@ function NarrativeSegment({
                 calls={calls}
                 key={calls[0].id}
                 label={toolkitGroupLabel(calls, t)}
+                initialOpen={calls.some((call) =>
+                  manuallyOpenCalls.has(call.id)
+                )}
+                initiallyOpenCallIds={manuallyOpenCalls}
+                onCallOpenChange={rememberCallOpen}
                 latestRunningCallId={latestRunningCallId}
                 reducedMotion={reducedMotion}
                 runActive={runActive}

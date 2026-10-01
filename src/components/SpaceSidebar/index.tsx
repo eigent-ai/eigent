@@ -524,7 +524,7 @@ export default function SpaceSidebar({
       setRenameProjectId(null);
     } catch (error) {
       console.error('[SpaceSidebar] Failed to rename session:', error);
-      toast.error(t('layout.rename-project'));
+      toast.error(t('layout.failed-to-rename-session'));
     } finally {
       setRenameProjectLoading(false);
     }
@@ -711,6 +711,7 @@ export default function SpaceSidebar({
           if (!renameProjectLoading) setRenameProjectId(null);
         }}
         onConfirm={() => void confirmRenameSession()}
+        closeOnConfirm={false}
         title={t('layout.rename-project')}
         confirmText={t('layout.save')}
         cancelText={t('layout.cancel')}

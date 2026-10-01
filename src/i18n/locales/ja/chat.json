@@ -153,7 +153,6 @@
   "message-reattach-files": "送信前にファイルを再添付してください。",
   "control-region-label": "エージェントからのリクエスト",
   "control-review-next-request": "次のリクエストを確認",
-  "control-once-only-explanation": "この操作は一度限りの承認にのみ対応しています。",
   "control-input-required": "確認が必要です",
   "control-input-required-message": "入力が必要です：{{message}}",
   "control-input-required-count": "確認が必要です · 保留中 {{count}} 件",

@@ -153,7 +153,6 @@
   "message-reattach-files": "傳送前請重新加入附件。",
   "control-region-label": "智慧代理請求",
   "control-review-next-request": "檢視下一個請求",
-  "control-once-only-explanation": "此操作僅支援單次核准。",
   "control-input-required": "需要你的確認",
   "control-input-required-message": "需要你的輸入：{{message}}",
   "control-input-required-count": "需要你的確認 · {{count}} 項待處理",

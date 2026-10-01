@@ -153,7 +153,6 @@
   "message-reattach-files": "Reattach files before sending.",
   "control-region-label": "Agent request",
   "control-review-next-request": "Review next request",
-  "control-once-only-explanation": "This action supports one-time approval only.",
   "control-input-required": "Input required",
   "control-input-required-message": "Input required: {{message}}",
   "control-input-required-count": "Input required · {{count}} pending",
