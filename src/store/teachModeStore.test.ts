@@ -33,6 +33,7 @@ describe('teachModeStore', () => {
     useTeachModeStore.setState({
       enabled: false,
       feedbackById: {},
+      draftAnnotationIdsByProjectId: {},
       pendingAnnotation: null,
     });
   });
@@ -92,6 +93,29 @@ describe('teachModeStore', () => {
       'First passage',
       'Second passage',
     ]);
+    expect(
+      useTeachModeStore.getState().draftAnnotationIdsByProjectId['project-1']
+    ).toEqual(annotations.map((entry) => entry.id));
+  });
+
+  it('removes only sent annotations from a Session draft', () => {
+    const store = useTeachModeStore.getState();
+    store.addAnnotation(target, 'First note');
+    store.addAnnotation(target, 'Second note');
+    const [first, second] = Object.values(
+      useTeachModeStore.getState().feedbackById
+    );
+    store.clearDraftAnnotations('project-1', [first.id]);
+    expect(
+      useTeachModeStore.getState().draftAnnotationIdsByProjectId['project-1']
+    ).toEqual([second.id]);
+    expect(
+      Object.values(useTeachModeStore.getState().feedbackById)
+    ).toHaveLength(2);
+    store.removeDraftAnnotation('project-1', second.id);
+    expect(
+      useTeachModeStore.getState().draftAnnotationIdsByProjectId['project-1']
+    ).toEqual([]);
   });
 
   it('keeps only file references still present in the saved comment', () => {
@@ -163,5 +187,25 @@ describe('teachModeStore', () => {
       feedbackById: { existing: { createdAt: number } };
     };
     expect(migrated.feedbackById.existing.createdAt).toBe(123);
+  });
+
+  it('preserves version-2 annotations while adding an empty composer draft', () => {
+    const migrate = useTeachModeStore.persist.getOptions().migrate;
+    const existing = {
+      ...target,
+      id: 'existing',
+      comment: 'Keep this.',
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const migrated = migrate?.(
+      { enabled: true, feedbackById: { existing } },
+      2
+    ) as {
+      feedbackById: Record<string, unknown>;
+      draftAnnotationIdsByProjectId: Record<string, string[]>;
+    };
+    expect(migrated.feedbackById.existing).toEqual(existing);
+    expect(migrated.draftAnnotationIdsByProjectId).toEqual({});
   });
 });

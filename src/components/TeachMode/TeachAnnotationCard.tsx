@@ -144,7 +144,9 @@ export function TeachAnnotationCard({
               ? t('chat.teach-update-comment', {
                   defaultValue: 'Update comment',
                 })
-              : t('chat.teach-save-comment', { defaultValue: 'Save comment' })}
+              : t('chat.teach-save-comment', {
+                  defaultValue: 'Save annotation',
+                })}
           </Button>
         </footer>
       </div>

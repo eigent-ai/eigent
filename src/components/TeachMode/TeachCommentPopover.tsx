@@ -24,7 +24,6 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
-  teachFeedbackId,
   type TeachFeedbackSourceType,
   type TeachFileReference,
   useTeachModeStore,
@@ -88,38 +87,33 @@ export function TeachCommentPopover({
       sourceType,
     ]
   );
-  const feedbackId = target ? teachFeedbackId(target) : '';
-  const feedback = useTeachModeStore((state) =>
-    feedbackId ? state.feedbackById[feedbackId] : undefined
-  );
-  const saveFeedback = useTeachModeStore((state) => state.saveFeedback);
+  const addAnnotation = useTeachModeStore((state) => state.addAnnotation);
   const [open, setOpen] = useState(false);
-  const [comment, setComment] = useState(feedback?.comment ?? '');
-  const [references, setReferences] = useState<TeachFileReference[]>(
-    feedback?.fileReferences ?? []
-  );
+  const [comment, setComment] = useState('');
+  const [references, setReferences] = useState<TeachFileReference[]>([]);
   const [capturedOutput, setCapturedOutput] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) {
-      setComment(feedback?.comment ?? '');
-      setReferences(feedback?.fileReferences ?? []);
+      setComment('');
+      setReferences([]);
     }
-  }, [feedback?.comment, feedback?.fileReferences, feedbackId, open]);
+  }, [open]);
 
   if (!enabled || !target) return null;
 
-  const addCommentLabel = t('chat.teach-add-comment', {
-    defaultValue: 'Add comment',
+  const addAnnotationLabel = t('chat.teach-add-comment', {
+    defaultValue: 'Add annotation',
   });
   const save = () => {
-    saveFeedback(
+    addAnnotation(
       {
         ...target,
-        selectedText: capturedOutput || selectedText || feedback?.selectedText,
+        selectedText: capturedOutput || selectedText,
       },
-      { comment, fileReferences: references }
+      comment,
+      references
     );
     setOpen(false);
   };
@@ -130,17 +124,11 @@ export function TeachCommentPopover({
       variant="ghost"
       size={triggerSize ?? (triggerVariant === 'icon' ? 'sm' : 'xs')}
       buttonContent={triggerVariant === 'icon' ? 'icon-only' : 'text'}
-      aria-label={addCommentLabel}
-      aria-pressed={Boolean(feedback?.comment)}
-      className={cn(
-        triggerVariant === 'text' && 'gap-1',
-        feedback?.comment &&
-          '!bg-ds-bg-teach-mode-muted-default !text-ds-text-teach-mode-strong-default',
-        className
-      )}
+      aria-label={addAnnotationLabel}
+      className={cn(triggerVariant === 'text' && 'gap-1', className)}
     >
       <DsIcon icon={SquareDashedMousePointer} recipe="main" />
-      {triggerVariant === 'text' ? addCommentLabel : null}
+      {triggerVariant === 'text' ? addAnnotationLabel : null}
     </Button>
   );
 
@@ -167,24 +155,21 @@ export function TeachCommentPopover({
               ? marker?.innerText.trim()
               : '';
           setCapturedOutput(
-            (
-              selectedWithinSource ||
-              selectedText ||
-              markerText ||
-              feedback?.selectedText ||
-              ''
-            ).slice(0, 10000)
+            (selectedWithinSource || selectedText || markerText || '').slice(
+              0,
+              10000
+            )
           );
         }
         setOpen(nextOpen);
         if (!nextOpen) {
-          setComment(feedback?.comment ?? '');
-          setReferences(feedback?.fileReferences ?? []);
+          setComment('');
+          setReferences([]);
         }
       }}
     >
       {triggerVariant === 'icon' ? (
-        <TooltipSimple content={addCommentLabel}>
+        <TooltipSimple content={addAnnotationLabel}>
           <PopoverTrigger asChild>{trigger}</PopoverTrigger>
         </TooltipSimple>
       ) : (
@@ -198,23 +183,13 @@ export function TeachCommentPopover({
         <TeachAnnotationCard
           target={{
             ...target,
-            selectedText:
-              capturedOutput || selectedText || feedback?.selectedText,
+            selectedText: capturedOutput || selectedText,
           }}
           comment={comment}
           onCommentChange={setComment}
           references={references}
           onReferencesChange={setReferences}
           onSave={save}
-          isEditing={Boolean(feedback?.comment)}
-          onRemove={
-            feedback?.comment
-              ? () => {
-                  saveFeedback(target, { comment: '' });
-                  setOpen(false);
-                }
-              : undefined
-          }
         />
       </PopoverContent>
     </Popover>

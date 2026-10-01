@@ -43,6 +43,7 @@ import {
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
+import { formatTeachAnnotationContext } from '@/lib/teachAnnotationContext';
 import { errorCopy } from '@/lib/usageErrors';
 import {
   cancelFollowUpRequest,
@@ -63,6 +64,7 @@ import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import { useTeachModeStore } from '@/store/teachModeStore';
 import {
   acknowledgeUsageNotice,
   activeUsageIncident,
@@ -390,6 +392,17 @@ function LegacyChatBox(): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
+  const draftAnnotationIdsByProjectId = useTeachModeStore(
+    (state) => state.draftAnnotationIdsByProjectId
+  );
+  const feedbackById = useTeachModeStore((state) => state.feedbackById);
+  const draftAnnotations = useMemo(
+    () =>
+      (draftAnnotationIdsByProjectId[activeProjectId ?? ''] ?? [])
+        .map((id) => feedbackById[id])
+        .filter((entry) => entry?.projectId === activeProjectId),
+    [activeProjectId, draftAnnotationIdsByProjectId, feedbackById]
+  );
   const composerProjectRef = useRef(activeProjectId);
   composerProjectRef.current = activeProjectId;
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
@@ -1134,12 +1147,26 @@ function LegacyChatBox(): JSX.Element {
     queuedReviewHandoffIds?: string[]
   ) => {
     const _taskId = taskId || chatStore.activeTaskId;
+    const targetProjectId = projectStore.activeProjectId;
+    const annotationState = useTeachModeStore.getState();
+    const annotationIds =
+      messageStr === undefined &&
+      queuedAttaches === undefined &&
+      !queuedRequestId &&
+      !(_taskId && chatStore.tasks[_taskId]?.activeAsk) &&
+      targetProjectId
+        ? (annotationState.draftAnnotationIdsByProjectId[targetProjectId] ?? [])
+        : [];
+    const annotationsToSend = annotationIds
+      .map((id) => annotationState.feedbackById[id])
+      .filter((entry) => entry?.projectId === targetProjectId);
     const composerAttachments =
       queuedAttaches || (_taskId ? chatStore.tasks[_taskId]?.attaches : []);
     if (
       message.trim() === '' &&
       !messageStr &&
-      (composerAttachments?.length || 0) === 0
+      (composerAttachments?.length || 0) === 0 &&
+      annotationsToSend.length === 0
     )
       return;
 
@@ -1164,7 +1191,6 @@ function LegacyChatBox(): JSX.Element {
       return;
     }
 
-    const targetProjectId = projectStore.activeProjectId;
     if (!targetProjectId) {
       notifyError(
         t('chat.no-active-session', {
@@ -1197,6 +1223,16 @@ function LegacyChatBox(): JSX.Element {
         defaultValue: 'Please use the attached file(s).',
       });
     }
+    if (!tempMessageContent.trim() && annotationsToSend.length > 0) {
+      tempMessageContent = t('chat.teach-annotation-only-prompt', {
+        defaultValue:
+          'Please use these annotations to improve the previous work.',
+      });
+    }
+    tempMessageContent += formatTeachAnnotationContext(
+      targetProjectId,
+      annotationsToSend
+    );
     const displayContent = tempMessageContent;
     const requestedReviewHandoffIds =
       queuedReviewHandoffIds ?? pendingReviewHandoffIds;
@@ -1319,6 +1355,7 @@ function LegacyChatBox(): JSX.Element {
       });
       chatStore.setAttaches(_taskId, []);
       setMessage('');
+      annotationState.clearDraftAnnotations(targetProjectId, annotationIds);
       acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
       setPendingReviewHandoffIds([]);
       toast.success(
@@ -1872,6 +1909,8 @@ function LegacyChatBox(): JSX.Element {
       if (interruptedAdmissionRef.current === targetProjectId)
         interruptedAdmissionRef.current = null;
       if (messageAccepted && !requiresHumanReply) {
+        if (!preserveComposer)
+          annotationState.clearDraftAnnotations(targetProjectId, annotationIds);
         if (startsAfterInterruption) setInterruptedRun(null);
         acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
         if (!followUpAdmission) setPendingReviewHandoffIds([]);
@@ -2933,6 +2972,22 @@ function LegacyChatBox(): JSX.Element {
                           filePath: f.filePath,
                         })
                       ) || [],
+                    annotationContexts: (activeAsk ? [] : draftAnnotations).map(
+                      (entry) => ({
+                        id: entry.id,
+                        contextLabel: entry.contextLabel,
+                        contextDetail: entry.contextDetail,
+                        runLabel: entry.runId
+                          ? `${t('chat.teach-run-group', { defaultValue: 'Run' })} ${entry.runId.slice(0, 8)}`
+                          : undefined,
+                        comment: entry.comment,
+                        selectedText: entry.selectedText,
+                      })
+                    ),
+                    onRemoveAnnotationContext: (id) =>
+                      useTeachModeStore
+                        .getState()
+                        .removeDraftAnnotation(activeProjectId ?? '', id),
                     onFilesChange: (files) =>
                       chatStore.setAttaches(
                         chatStore.activeTaskId as string,
@@ -3058,6 +3113,22 @@ function LegacyChatBox(): JSX.Element {
                       fileName: f.fileName,
                       filePath: f.filePath,
                     })) || [],
+                  annotationContexts: (activeAsk ? [] : draftAnnotations).map(
+                    (entry) => ({
+                      id: entry.id,
+                      contextLabel: entry.contextLabel,
+                      contextDetail: entry.contextDetail,
+                      runLabel: entry.runId
+                        ? `${t('chat.teach-run-group', { defaultValue: 'Run' })} ${entry.runId.slice(0, 8)}`
+                        : undefined,
+                      comment: entry.comment,
+                      selectedText: entry.selectedText,
+                    })
+                  ),
+                  onRemoveAnnotationContext: (id) =>
+                    useTeachModeStore
+                      .getState()
+                      .removeDraftAnnotation(activeProjectId ?? '', id),
                   onFilesChange: (files) => {
                     if (!chatStore.activeTaskId) return;
                     chatStore.setAttaches(chatStore.activeTaskId, files as any);

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   Popover,
   PopoverContent,
@@ -33,6 +34,7 @@ import {
   Paperclip,
   Play,
   Square,
+  SquareDashedMousePointer,
   UploadCloud,
   WandSparkles,
   X,
@@ -61,6 +63,15 @@ export interface FileAttachment {
   source?: 'local' | 'upload';
 }
 
+export interface AnnotationContextChip {
+  id: string;
+  contextLabel: string;
+  contextDetail?: string;
+  runLabel?: string;
+  comment: string;
+  selectedText?: string;
+}
+
 /**
  * Inputbox Props
  */
@@ -79,6 +90,8 @@ export interface InputboxProps {
   taskControlLoading?: boolean;
   /** Array of file attachments */
   files?: FileAttachment[];
+  annotationContexts?: AnnotationContextChip[];
+  onRemoveAnnotationContext?: (id: string) => void;
   /** Render attachment chips inside the input surface (layer 2). */
   showFileAttachments?: boolean;
   /** Input-required question, details, and non-file context (layer 1). */
@@ -164,6 +177,8 @@ export const Inputbox = ({
   onResumeTask,
   taskControlLoading = false,
   files = [],
+  annotationContexts = [],
+  onRemoveAnnotationContext,
   showFileAttachments = true,
   header,
   onFilesChange,
@@ -224,7 +239,10 @@ export const Inputbox = ({
   }, [value, textareaRef]);
 
   // Determine if we're in the "Input" state (has content or files)
-  const hasContent = value.trim().length > 0 || files.length > 0;
+  const hasContent =
+    value.trim().length > 0 ||
+    files.length > 0 ||
+    annotationContexts.length > 0;
 
   const handleTextChange = useCallback(
     (newValue: string, _cursorPos?: number) => {
@@ -434,6 +452,116 @@ export const Inputbox = ({
       )}
       {/* Layer 1: Input-required question / details */}
       {header && <BoxHeaderDisplay {...header} className="px-0 pt-0 pb-2" />}
+      {annotationContexts.length > 0 && (
+        <div
+          className="flex w-full flex-wrap gap-ds-4 pb-ds-8"
+          aria-label={t('chat.teach-draft-annotations', {
+            defaultValue: 'Annotations to send',
+          })}
+        >
+          <div className="flex min-w-0 items-center rounded-ds-menu-row bg-ds-neutral-default-default text-ds-ink-default-default">
+            <TooltipSimple
+              side="top"
+              align="start"
+              className="w-[min(420px,calc(100vw-24px))] p-0"
+              content={
+                <div className="scrollbar-overlay max-h-[min(320px,var(--radix-tooltip-content-available-height))] overflow-y-auto p-ds-12">
+                  {annotationContexts.map((annotation, index) => {
+                    const metadata = [
+                      annotation.runLabel,
+                      annotation.contextDetail !== annotation.contextLabel
+                        ? annotation.contextDetail
+                        : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ');
+                    return (
+                      <div
+                        key={annotation.id}
+                        className={cn(
+                          'flex min-w-0 flex-col gap-ds-12',
+                          index > 0 &&
+                            'mt-ds-12 border-x-0 border-y-0 border-t border-ds-hairline-subtle-default pt-ds-12'
+                        )}
+                      >
+                        <div className="flex min-w-0 items-center gap-ds-12">
+                          <span className="flex size-ds-control-xl shrink-0 items-center justify-center rounded-ds-menu-row bg-ds-bg-teach-mode-strong-default text-ds-ink-inverse">
+                            <DsIcon
+                              icon={SquareDashedMousePointer}
+                              recipe="main"
+                            />
+                          </span>
+                          <div className="flex min-w-0 flex-1 flex-col gap-ds-2">
+                            <span className="text-ds-text-base font-semibold break-words text-ds-ink-default-default">
+                              {annotation.contextLabel}
+                            </span>
+                            {metadata && (
+                              <span className="text-ds-text-meta break-words text-ds-ink-muted-default">
+                                {metadata}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {annotation.selectedText && (
+                          <div className="flex min-w-0 flex-col gap-ds-4">
+                            <span className="text-ds-text-meta font-semibold text-ds-ink-muted-default">
+                              {t('chat.teach-selected-work', {
+                                defaultValue: 'Selected work',
+                              })}
+                            </span>
+                            <blockquote className="m-0 rounded-ds-menu-row bg-ds-neutral-muted-default p-ds-12 text-ds-text-base break-words whitespace-pre-wrap text-ds-ink-muted-default">
+                              {annotation.selectedText}
+                            </blockquote>
+                          </div>
+                        )}
+                        <div className="flex min-w-0 flex-col gap-ds-4">
+                          <span className="text-ds-text-meta font-semibold text-ds-ink-muted-default">
+                            {t('chat.teach-your-comment', {
+                              defaultValue: 'Your comment',
+                            })}
+                          </span>
+                          <span className="text-ds-text-base break-words whitespace-pre-wrap text-ds-ink-default-default">
+                            {annotation.comment}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              }
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="gap-ds-4"
+              >
+                <DsIcon icon={SquareDashedMousePointer} recipe="main-compact" />
+                {t('chat.teach-annotation-count', {
+                  count: annotationContexts.length,
+                  defaultValue: '{{count}} annotations',
+                })}
+              </Button>
+            </TooltipSimple>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              buttonContent="icon-only"
+              aria-label={t('chat.teach-remove-draft-annotation', {
+                defaultValue: 'Remove annotations from message',
+              })}
+              onClick={() =>
+                annotationContexts.forEach((annotation) =>
+                  onRemoveAnnotationContext?.(annotation.id)
+                )
+              }
+            >
+              <DsIcon icon={X} recipe="main-compact" />
+            </Button>
+          </div>
+        </div>
+      )}
       {/* Layer 2: File attachments (only show if has files) */}
       {showFileAttachments && files.length > 0 && (
         <div className="relative box-border flex w-full flex-wrap items-start gap-1 pb-2">

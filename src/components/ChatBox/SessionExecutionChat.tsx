@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
+import { formatTeachAnnotationContext } from '@/lib/teachAnnotationContext';
 import {
   assertExecutionScope,
   cancelSessionExecution,
@@ -35,8 +36,9 @@ import {
   loadMoreSessionExecutions,
   refreshSessionExecution,
 } from '@/store/sessionExecutionStore';
+import { useTeachModeStore } from '@/store/teachModeStore';
 import { SessionMode } from '@/types/constants';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export function SessionExecutionStatus({ projectId }: { projectId: string }) {
@@ -66,11 +68,23 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
   const { t } = useTranslation();
   const runtime = useProjectEventRuntime();
   const [message, setMessage] = useState('');
+  const draftAnnotationIdsByProjectId = useTeachModeStore(
+    (store) => store.draftAnnotationIdsByProjectId
+  );
+  const feedbackById = useTeachModeStore((store) => store.feedbackById);
+  const draftAnnotations = useMemo(
+    () =>
+      (draftAnnotationIdsByProjectId[projectId] ?? [])
+        .map((id) => feedbackById[id])
+        .filter((entry) => entry?.projectId === projectId),
+    [draftAnnotationIdsByProjectId, feedbackById, projectId]
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [unsupportedInput, setUnsupportedInput] = useState(false);
   const [controls, setControls] = useState<Set<string>>(new Set());
   const intent = useRef<SessionMessageIntent | null>(null);
+  const intentAnnotationIds = useRef<string[]>([]);
   const accepted = useRef(false);
   const externalDraft = usePageTabStore(
     (store) => store.workspaceChatDraftRequest
@@ -110,10 +124,16 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
     canReorder: false,
   }));
   const send = async () => {
+    const annotationState = useTeachModeStore.getState();
+    const annotationIds =
+      annotationState.draftAnnotationIdsByProjectId[projectId] ?? [];
+    const annotations = annotationIds
+      .map((id) => annotationState.feedbackById[id])
+      .filter((entry) => entry?.projectId === projectId);
     if (
       unsupportedHandoff ||
       lock.current ||
-      (!message.trim() && !intent.current)
+      (!message.trim() && !intent.current && annotations.length === 0)
     )
       return;
     lock.current = true;
@@ -121,22 +141,35 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
     setError(false);
     const captured = { ...scope, signal: lifetime.current.signal };
     try {
-      if (!intent.current)
+      if (!intent.current) {
+        intentAnnotationIds.current = annotationIds;
         intent.current = createSessionMessageIntent(
           captured,
-          message,
+          (message.trim() ||
+            (annotations.length > 0
+              ? t('chat.teach-annotation-only-prompt', {
+                  defaultValue:
+                    'Please use these annotations to improve the previous work.',
+                })
+              : '')) + formatTeachAnnotationContext(projectId, annotations),
           accepted.current ||
             state.route?.has_requests ||
             state.requests.length > 0
             ? 'follow_up'
             : 'start'
         );
+      }
       await submitSessionMessage(
         intent.current,
         sessionMessageConfiguration(projectId)
       );
       assertExecutionScope(captured);
       accepted.current = true;
+      annotationState.clearDraftAnnotations(
+        projectId,
+        intentAnnotationIds.current
+      );
+      intentAnnotationIds.current = [];
       intent.current = null;
       setMessage('');
     } catch {
@@ -295,6 +328,20 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
               },
               queuesFollowUp: active.length > 0,
               files: [],
+              annotationContexts: draftAnnotations.map((entry) => ({
+                id: entry.id,
+                contextLabel: entry.contextLabel,
+                contextDetail: entry.contextDetail,
+                runLabel: entry.runId
+                  ? `${t('chat.teach-run-group', { defaultValue: 'Run' })} ${entry.runId.slice(0, 8)}`
+                  : undefined,
+                comment: entry.comment,
+                selectedText: entry.selectedText,
+              })),
+              onRemoveAnnotationContext: (id) =>
+                useTeachModeStore
+                  .getState()
+                  .removeDraftAnnotation(projectId, id),
               allowDragDrop: false,
               attachmentsEnabled: false,
               onUnsupportedAttachment: () => setUnsupportedInput(true),

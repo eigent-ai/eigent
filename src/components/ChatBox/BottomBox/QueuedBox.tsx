@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DsText } from '@/components/ui/ds-text';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { splitTeachAnnotationContext } from '@/lib/teachAnnotationContext';
 import { cn } from '@/lib/utils';
 import {
   CornerDownRight,
@@ -81,6 +82,12 @@ export function QueuedBox({
   className,
 }: QueuedBoxProps) {
   const { t } = useTranslation();
+  const displayQueuedContent = (content: string) => {
+    const { message, annotationCount } = splitTeachAnnotationContext(content);
+    return annotationCount
+      ? `${message} · ${t('chat.teach-annotation-count', { count: annotationCount, defaultValue: '{{count}} annotations' })}`
+      : content;
+  };
   const rootRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -268,7 +275,7 @@ export function QueuedBox({
                   buttonContent="icon-only"
                   className="queued-task-drag-handle"
                   aria-label={t('chat.queue-reorder', {
-                    task: message.content,
+                    task: displayQueuedContent(message.content),
                   })}
                   aria-describedby={reorder.instructionsId}
                   disabled={!reorder.canMove(message)}
@@ -280,9 +287,9 @@ export function QueuedBox({
                   as="p"
                   role="base"
                   className="queued-task-preview"
-                  title={message.content}
+                  title={displayQueuedContent(message.content)}
                 >
-                  {message.content}
+                  {displayQueuedContent(message.content)}
                 </DsText>
               </div>
               {(message.next || message.processing || message.stopping) && (
@@ -421,7 +428,7 @@ export function QueuedBox({
               role="base"
               className="break-words whitespace-pre-wrap"
             >
-              {selected?.content}
+              {selected ? displayQueuedContent(selected.content) : null}
             </DsText>
             {!sameTask && (
               <DsText as="p" role="meta" aria-live="polite">

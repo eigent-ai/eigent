@@ -186,9 +186,13 @@ describe('AnnotationTab', () => {
     render(<AnnotationTab />);
     fireEvent.click(screen.getByRole('button', { name: /This space/ }));
 
-    const groups = screen.getAllByRole('region', {
-      name: /session/i,
-    });
+    const groups = screen
+      .getAllByRole('region')
+      .filter((group) =>
+        ['Recent audit session', 'London poem session'].includes(
+          group.getAttribute('aria-label') ?? ''
+        )
+      );
     expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
       'Recent audit session',
       'London poem session',
@@ -207,6 +211,33 @@ describe('AnnotationTab', () => {
     expect(
       within(groups[1]).getByRole('button', { name: 'View work: London poem' })
     ).toHaveAttribute('data-variant', 'ghost');
+  });
+
+  it('groups multiple annotations under their Run within the Session', () => {
+    useTeachModeStore.setState({
+      feedbackById: {
+        first: { ...entries.poem, id: 'first', runId: 'run-1' },
+        second: {
+          ...entries.poem,
+          id: 'second',
+          runId: 'run-1',
+          comment: 'Check the rhythm.',
+        },
+        third: { ...entries.pdf, id: 'third', runId: 'run-2' },
+      },
+    });
+    render(<AnnotationTab />);
+
+    const session = screen.getByRole('region', { name: 'London poem session' });
+    expect(
+      within(session).getByRole('region', { name: 'Run run-1' })
+    ).toHaveTextContent('Make the final image more specific.');
+    expect(
+      within(session).getByRole('region', { name: 'Run run-1' })
+    ).toHaveTextContent('Check the rhythm.');
+    expect(
+      within(session).getByRole('region', { name: 'Run run-2' })
+    ).toHaveTextContent('The PDF title should match the Markdown title.');
   });
 
   it('does not follow a matching file source in another Session', () => {

@@ -146,6 +146,13 @@ export function AnnotationTab() {
             right.updatedAt - left.updatedAt ||
             left.id.localeCompare(right.id)
         );
+        const byRun = new Map<string, TeachFeedback[]>();
+        for (const annotation of annotations) {
+          const key = annotation.runId ?? '';
+          const group = byRun.get(key) ?? [];
+          group.push(annotation);
+          byRun.set(key, group);
+        }
         return {
           sessionId,
           name: sessionDisplayName(
@@ -156,6 +163,13 @@ export function AnnotationTab() {
           createdAt:
             sessionMetas?.[sessionId]?.createdAt ?? annotations[0].createdAt,
           annotations,
+          runGroups: [...byRun]
+            .map(([runId, runAnnotations]) => ({
+              runId,
+              annotations: runAnnotations,
+              newestAt: runAnnotations[0].createdAt,
+            }))
+            .sort((left, right) => right.newestAt - left.newestAt),
         };
       })
       .sort(
@@ -422,7 +436,9 @@ export function AnnotationTab() {
                   setFileReferences([]);
                 }}
               >
-                {t('chat.teach-save-comment', { defaultValue: 'Save comment' })}
+                {t('chat.teach-save-comment', {
+                  defaultValue: 'Save annotation',
+                })}
               </Button>
             </div>
           </section>
@@ -456,36 +472,57 @@ export function AnnotationTab() {
                 <h2 className="m-0 text-ds-text-base font-semibold text-ds-ink-muted-default">
                   {group.name}
                 </h2>
-                <div className="flex flex-col gap-ds-8">
-                  {group.annotations.map((entry) => (
-                    <AnnotationItem
-                      key={entry.id}
-                      entry={entry}
-                      sourceLabel={sourceLabel(entry.sourceType)}
-                      timeLabel={new Intl.DateTimeFormat(i18n.language, {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      }).format(entry.createdAt)}
-                      expanded={expandedIds.has(entry.id)}
-                      onToggle={() => toggleEntry(entry.id)}
-                      onViewWork={
-                        entry.sourceType === 'session'
-                          ? undefined
-                          : () => viewSource(entry)
+                <div className="flex flex-col gap-ds-12">
+                  {group.runGroups.map((runGroup) => (
+                    <section
+                      key={runGroup.runId || 'session'}
+                      className="flex flex-col gap-ds-8"
+                      aria-label={
+                        runGroup.runId
+                          ? `${t('chat.teach-run-group', { defaultValue: 'Run' })} ${runGroup.runId}`
+                          : t('chat.teach-session-annotations', {
+                              defaultValue: 'Session annotations',
+                            })
                       }
-                      scope={scope}
-                      onSave={(comment, references) =>
-                        updateAnnotation(entry.id, comment, references)
-                      }
-                      onDelete={() => {
-                        deleteAnnotation(entry.id);
-                        setExpandedIds((previous) => {
-                          const next = new Set(previous);
-                          next.delete(entry.id);
-                          return next;
-                        });
-                      }}
-                    />
+                    >
+                      <h3 className="m-0 text-ds-text-meta font-semibold text-ds-ink-muted-default">
+                        {runGroup.runId
+                          ? `${t('chat.teach-run-group', { defaultValue: 'Run' })} · ${runGroup.runId.slice(0, 8)}`
+                          : t('chat.teach-session-annotations', {
+                              defaultValue: 'Session annotations',
+                            })}
+                      </h3>
+                      {runGroup.annotations.map((entry) => (
+                        <AnnotationItem
+                          key={entry.id}
+                          entry={entry}
+                          sourceLabel={sourceLabel(entry.sourceType)}
+                          timeLabel={new Intl.DateTimeFormat(i18n.language, {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          }).format(entry.createdAt)}
+                          expanded={expandedIds.has(entry.id)}
+                          onToggle={() => toggleEntry(entry.id)}
+                          onViewWork={
+                            entry.sourceType === 'session'
+                              ? undefined
+                              : () => viewSource(entry)
+                          }
+                          scope={scope}
+                          onSave={(comment, references) =>
+                            updateAnnotation(entry.id, comment, references)
+                          }
+                          onDelete={() => {
+                            deleteAnnotation(entry.id);
+                            setExpandedIds((previous) => {
+                              const next = new Set(previous);
+                              next.delete(entry.id);
+                              return next;
+                            });
+                          }}
+                        />
+                      ))}
+                    </section>
                   ))}
                 </div>
               </section>

@@ -12,9 +12,17 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
+import { splitTeachAnnotationContext } from '@/lib/teachAnnotationContext';
 import { cn } from '@/lib/utils';
-import { Check, Copy, FileText, Image } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  FileText,
+  Image,
+  SquareDashedMousePointer,
+} from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -70,6 +78,7 @@ export function UserMessageCard({
   const contentRef = useRef<HTMLDivElement>(null);
   const hoverCloseTimerRef = useRef<number | null>(null);
   const { t } = useTranslation();
+  const annotationContext = splitTeachAnnotationContext(content);
 
   useLayoutEffect(() => {
     const el = contentRef.current;
@@ -160,6 +169,15 @@ export function UserMessageCard({
       data-user-query-anchor
     >
       <div className="w-full overflow-visible rounded-xl rounded-br-sm bg-ds-neutral-strong-default px-4 py-2">
+        {annotationContext.annotationCount > 0 && (
+          <div className="mb-ds-8 flex items-center gap-ds-4 text-ds-text-meta text-ds-ink-muted-default">
+            <DsIcon icon={SquareDashedMousePointer} recipe="main-compact" />
+            {t('chat.teach-annotation-count', {
+              count: annotationContext.annotationCount,
+              defaultValue: '{{count}} annotations',
+            })}
+          </div>
+        )}
         {attaches && attaches.length > 0 && (
           <div className="relative mb-2 box-border flex w-full flex-wrap items-start gap-1">
             {(() => {
@@ -306,7 +324,10 @@ export function UserMessageCard({
             }
             className={cn('relative', !expanded && 'overflow-hidden')}
           >
-            <UserMessageRichContent content={content} variant="card" />
+            <UserMessageRichContent
+              content={annotationContext.message}
+              variant="card"
+            />
             {canClamp && !expanded && (
               <div
                 className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-14 bg-ds-neutral-strong-default"

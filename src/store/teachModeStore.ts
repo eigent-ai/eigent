@@ -55,6 +55,7 @@ export interface TeachFeedback extends TeachFeedbackTarget {
 interface TeachModeState {
   enabled: boolean;
   feedbackById: Record<string, TeachFeedback>;
+  draftAnnotationIdsByProjectId: Record<string, string[]>;
   pendingAnnotation: TeachFeedbackTarget | null;
   setEnabled: (enabled: boolean) => void;
   setPendingAnnotation: (target: TeachFeedbackTarget | null) => void;
@@ -69,6 +70,8 @@ interface TeachModeState {
     fileReferences?: TeachFileReference[]
   ) => void;
   deleteAnnotation: (id: string) => void;
+  removeDraftAnnotation: (projectId: string, id: string) => void;
+  clearDraftAnnotations: (projectId: string, ids: string[]) => void;
   saveFeedback: (
     target: TeachFeedbackTarget,
     update: { comment: string; fileReferences?: TeachFileReference[] }
@@ -90,6 +93,7 @@ export const useTeachModeStore = create<TeachModeState>()(
     (set) => ({
       enabled: false,
       feedbackById: {},
+      draftAnnotationIdsByProjectId: {},
       pendingAnnotation: null,
       setEnabled: (enabled) => set({ enabled }),
       setPendingAnnotation: (pendingAnnotation) => set({ pendingAnnotation }),
@@ -112,6 +116,14 @@ export const useTeachModeStore = create<TeachModeState>()(
                 createdAt: now,
                 updatedAt: now,
               },
+            },
+            draftAnnotationIdsByProjectId: {
+              ...state.draftAnnotationIdsByProjectId,
+              [target.projectId]: [
+                ...(state.draftAnnotationIdsByProjectId[target.projectId] ??
+                  []),
+                id,
+              ],
             },
           };
         }),
@@ -139,7 +151,37 @@ export const useTeachModeStore = create<TeachModeState>()(
           if (!state.feedbackById[id]) return state;
           const feedbackById = { ...state.feedbackById };
           delete feedbackById[id];
-          return { feedbackById };
+          const projectId = state.feedbackById[id].projectId;
+          return {
+            feedbackById,
+            draftAnnotationIdsByProjectId: {
+              ...state.draftAnnotationIdsByProjectId,
+              [projectId]: (
+                state.draftAnnotationIdsByProjectId[projectId] ?? []
+              ).filter((draftId) => draftId !== id),
+            },
+          };
+        }),
+      removeDraftAnnotation: (projectId, id) =>
+        set((state) => ({
+          draftAnnotationIdsByProjectId: {
+            ...state.draftAnnotationIdsByProjectId,
+            [projectId]: (
+              state.draftAnnotationIdsByProjectId[projectId] ?? []
+            ).filter((draftId) => draftId !== id),
+          },
+        })),
+      clearDraftAnnotations: (projectId, ids) =>
+        set((state) => {
+          const sentIds = new Set(ids);
+          return {
+            draftAnnotationIdsByProjectId: {
+              ...state.draftAnnotationIdsByProjectId,
+              [projectId]: (
+                state.draftAnnotationIdsByProjectId[projectId] ?? []
+              ).filter((id) => !sentIds.has(id)),
+            },
+          };
         }),
       saveFeedback: (target, update) =>
         set((state) => {
@@ -171,9 +213,17 @@ export const useTeachModeStore = create<TeachModeState>()(
     }),
     {
       name: 'eigent-teach-mode',
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
-        if (version >= 2 || !persistedState) return persistedState;
+        if (!persistedState) return persistedState;
+        if (version >= 2) {
+          return {
+            ...persistedState,
+            draftAnnotationIdsByProjectId:
+              (persistedState as Partial<TeachModeState>)
+                .draftAnnotationIdsByProjectId ?? {},
+          };
+        }
         const previous = persistedState as {
           enabled?: boolean;
           enabledBySpaceId?: Record<string, boolean>;
@@ -207,11 +257,13 @@ export const useTeachModeStore = create<TeachModeState>()(
                 Object.values(previous.enabledBySpaceId ?? {}).some(Boolean))
               : (previous.enabled ?? false),
           feedbackById,
+          draftAnnotationIdsByProjectId: {},
         };
       },
       partialize: (state) => ({
         enabled: state.enabled,
         feedbackById: state.feedbackById,
+        draftAnnotationIdsByProjectId: state.draftAnnotationIdsByProjectId,
       }),
     }
   )
