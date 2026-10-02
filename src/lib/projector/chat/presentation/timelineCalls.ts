@@ -18,7 +18,7 @@ import type {
   ChatInteractionNode,
 } from '../types';
 
-import { approvalTerminalReason } from '@/lib/approvalPresentation';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import i18next from 'i18next';
 import { actionKindForActivities } from './actionKind';
 import type {
@@ -249,7 +249,8 @@ function humanCall(id: string, node: ChatInteractionNode): TimelineCall {
     input: node.prompt,
     output: node.response,
     detail:
-      approvalTerminalReason(node.reason, i18next.t.bind(i18next)) || undefined,
+      runTerminalReasonText(node.terminalReason, i18next.t.bind(i18next)) ||
+      undefined,
     inputLabel: labels.input,
     outputLabel: labels.output,
     emptyOutputText: pending

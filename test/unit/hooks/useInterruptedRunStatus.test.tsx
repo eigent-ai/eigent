@@ -79,11 +79,9 @@ describe('useInterruptedRunStatus', () => {
           status: 'interrupted',
           version: 3,
           updated_at: 100,
-          latest_attempt: {
-            attempt_number: 1,
-            status: 'interrupted',
-            outcome: 'approval_expired',
-          },
+          terminal_reason: 'approval_expired',
+          terminal_detail: 'approval_expired',
+          latest_attempt: { attempt_number: 1, status: 'interrupted' },
         },
       ])
     );

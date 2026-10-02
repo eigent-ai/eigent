@@ -1030,7 +1030,7 @@ async def test_terminal_fact_does_not_skip_stopping_live_writer(
             attempt_id=runtime.binding.attempt_id,
         )
     )
-    assert world.journal.get_run("r").status == "failed"
+    assert world.journal.get_run("r").status == "timed_out"
     if stop == "cancel":
         await world.service.cancel("r", origin=world.origin)
     elif stop == "close":

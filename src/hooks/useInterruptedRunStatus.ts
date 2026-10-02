@@ -26,6 +26,7 @@ import {
   resumeRequestsRevision,
   subscribeResumeRequests,
 } from '@/lib/runResumeRequest';
+import type { RunTerminalReason } from '@/lib/runTerminalReason';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import {
   useCallback,
@@ -42,7 +43,7 @@ export interface DurableRunSummary {
   updated_at: number;
   origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
-  terminalReason?: string | null;
+  terminalReason?: RunTerminalReason | null;
   /** Local retry authority; the canonical Run remains pending. */
   retry_request_id?: string;
   latest_attempt?: {

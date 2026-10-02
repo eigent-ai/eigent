@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { runTerminalReason } from '@/lib/runTerminalReason';
 import type { ProjectedRun } from './types';
 
 export type DurableRunSummaryInput = {
@@ -22,13 +23,13 @@ export type DurableRunSummaryInput = {
   updated_at: number | string;
   origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
+  terminal_reason?: string | null;
+  terminal_detail?: string | null;
   total_attempt_elapsed_ms?: number | null;
   latest_attempt?: {
     attempt_number: number;
     status: string;
     resume_request_id?: string;
-    outcome?: string | null;
-    timeout_reason?: string | null;
   } | null;
 };
 
@@ -36,7 +37,16 @@ export const TERMINAL_RUN_STATUSES = new Set<ProjectedRun['status']>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
 ]);
+
+/** Run statuses that carry the cause of their latest stop. */
+export function isStoppedRunStatus(status: string): boolean {
+  return (
+    status === 'interrupted' ||
+    (TERMINAL_RUN_STATUSES as ReadonlySet<string>).has(status)
+  );
+}
 
 const RUN_STATUSES = new Set<ProjectedRun['status']>([
   'pending',
@@ -72,15 +82,6 @@ export function mergeRunSummary(
   )
     return existing;
   const elapsed = summary.total_attempt_elapsed_ms;
-  // A snapshot can jump past Resume while the renderer is offline. Keep an
-  // event reason only when it belongs to this same Attempt/checkpoint.
-  const sameAttemptOrCheckpoint =
-    summary.latest_attempt === undefined ||
-    summary.latest_attempt?.attempt_number ===
-      existing?.latestAttempt?.attemptNumber ||
-    (version != null &&
-      version === existing?.runVersion &&
-      status === existing.status);
   return {
     ...existing,
     runId: summary.run_id,
@@ -93,17 +94,14 @@ export function mergeRunSummary(
       summary.resume_blocked_reason === undefined
         ? (existing?.resumeBlockedReason ?? null)
         : summary.resume_blocked_reason,
-    terminalReason: [
-      'interrupted',
-      'failed',
-      'cancelled',
-      'completed',
-    ].includes(status)
-      ? summary.latest_attempt?.timeout_reason ||
-        summary.latest_attempt?.outcome ||
-        (sameAttemptOrCheckpoint ? existing?.terminalReason : null) ||
-        null
-      : null,
+    terminalReason:
+      summary.terminal_reason === undefined
+        ? (existing?.terminalReason ?? null)
+        : runTerminalReason(summary.terminal_reason),
+    terminalDetail:
+      summary.terminal_detail === undefined
+        ? (existing?.terminalDetail ?? null)
+        : summary.terminal_detail,
     latestAttempt:
       summary.latest_attempt === undefined
         ? existing?.latestAttempt

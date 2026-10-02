@@ -683,7 +683,7 @@ describe('failed Task facts', () => {
       includeFailureFacts: true,
     });
     expect(result.failureFacts).toMatchObject({
-      terminal: 'failed',
+      terminalReason: null,
       finalResponse: 'absent',
       actionsVerified: true,
       actions: [
@@ -913,7 +913,7 @@ describe('failure evidence safety boundaries', () => {
   it('records that no actions occurred only without tool receipts or legacy tool steps', async () => {
     fetchGetMock.mockResolvedValue(page([event(1, 'run.failed', {})]));
     expect((await readTerminalRunResult(failureInput)).failureFacts).toEqual({
-      terminal: 'failed',
+      terminalReason: null,
       finalResponse: 'absent',
       actionsVerified: true,
       actions: [],
@@ -930,12 +930,23 @@ describe('failure evidence safety boundaries', () => {
     ).toMatchObject({ actionsVerified: false, actions: [] });
   });
 
-  it('distinguishes a Run deadline from a failure', async () => {
-    fetchGetMock.mockResolvedValue(
-      page([event(1, 'run.deadline_reached', {})])
-    );
-    expect(
-      (await readTerminalRunResult(failureInput)).failureFacts
-    ).toMatchObject({ terminal: 'timed_out', finalResponse: 'absent' });
-  });
+  it.each([
+    ['run.deadline_reached', 'deadline_exceeded'],
+    ['run.failed', 'budget_exhausted'],
+  ])(
+    'carries the recorded terminal reason of %s',
+    async (eventType, terminalReason) => {
+      fetchGetMock.mockResolvedValue(
+        page([
+          event(1, eventType, {
+            terminal_reason: terminalReason,
+            terminal_detail: 'detail',
+          }),
+        ])
+      );
+      expect(
+        (await readTerminalRunResult(failureInput)).failureFacts
+      ).toMatchObject({ terminalReason, finalResponse: 'absent' });
+    }
+  );
 });

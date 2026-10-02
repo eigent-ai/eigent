@@ -29,6 +29,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.transitions import RUN_TERMINAL_STATES
+
 if TYPE_CHECKING:
     from app.run_journal.models import (
         AttemptEnvironmentBinding,
@@ -692,7 +694,7 @@ class RunCoordinator:
         run = await asyncio.to_thread(self._journal.get_run, run_id)
         if run is None:
             return False, None
-        if run.status in {"completed", "failed", "cancelled"}:
+        if run.status in RUN_TERMINAL_STATES:
             # A compatibility END frame may close the renderer stream after a
             # durable cancel/failure. It is transport state, not permission to
             # rewrite the canonical Run outcome as success.
@@ -1151,7 +1153,7 @@ class RunCoordinator:
         from app.run_journal.models import RunEventDraft
 
         run = await asyncio.to_thread(self._journal.get_run, run_id)
-        if run is None or run.status in {"completed", "failed", "cancelled"}:
+        if run is None or run.status in RUN_TERMINAL_STATES:
             return
         try:
             await self._settle_unsuccessful_run(run_id)
@@ -1251,11 +1253,7 @@ class RunCoordinator:
                 current = await asyncio.to_thread(
                     self._journal.get_run, handle.run_id
                 )
-                if current is None or current.status in {
-                    "completed",
-                    "failed",
-                    "cancelled",
-                }:
+                if current is None or current.status in RUN_TERMINAL_STATES:
                     return
                 if current.deadline_at is None:
                     # No deadline means there is nothing to poll. Policy
@@ -1283,8 +1281,7 @@ class RunCoordinator:
                     if (
                         current is None
                         or current.deadline_at is None
-                        or current.status
-                        in {"completed", "failed", "cancelled"}
+                        or current.status in RUN_TERMINAL_STATES
                     ):
                         return
                     if time.time() < current.deadline_at:

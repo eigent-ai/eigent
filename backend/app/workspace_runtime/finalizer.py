@@ -27,6 +27,11 @@ import sqlite3
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.transitions import (
+    RUN_STOPPED_STATES,
+    RUN_TERMINAL_STATES,
+)
+
 from .admission import ExecutionRequest
 from .bound_runtime import BoundRuntime, VerifiedSettlement
 from .content import ContentIntegrityError, canonical_json, content_digest
@@ -41,8 +46,6 @@ if TYPE_CHECKING:
     from app.run_journal.store import SQLiteRunJournal
 
 
-_OUTCOMES = {"completed", "failed", "cancelled", "interrupted"}
-_TERMINAL = {"completed", "failed", "cancelled"}
 _ARTIFACT_SCHEMA = "isolated_artifacts.v1"
 
 
@@ -127,7 +130,7 @@ class WorkspaceFinalizer:
         terminal facts stay unchanged; recovery adds the settled manifest. Any
         failure retains the barrier and execution/admission ownership.
         """
-        if outcome not in _OUTCOMES or not isinstance(result, str):
+        if outcome not in RUN_STOPPED_STATES or not isinstance(result, str):
             raise ValueError(
                 "finalization requires a result and supported outcome"
             )
@@ -313,7 +316,7 @@ class WorkspaceFinalizer:
                 "SELECT status,cancel_request_id FROM runs WHERE run_id=?",
                 (owner.run_id,),
             ).fetchone()
-            existing_terminal = run["status"] in _TERMINAL
+            existing_terminal = run["status"] in RUN_TERMINAL_STATES
             effective = (
                 run["status"]
                 if existing_terminal

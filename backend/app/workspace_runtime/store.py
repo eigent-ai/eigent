@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.transitions import RUN_STOPPED_STATES
+
 if TYPE_CHECKING:
     from app.run_journal.store import SQLiteRunJournal
 
@@ -615,7 +617,7 @@ class WorkspaceStateStore:
         Caller validates checkpoint and immutable artifact content first.
         """
         self._require_transaction(connection)
-        if outcome not in {"completed", "failed", "cancelled", "interrupted"}:
+        if outcome not in RUN_STOPPED_STATES:
             raise ValueError("invalid finalization outcome")
         if not checkpoint_revision or not manifest_digest:
             raise ValueError("immutable checkpoint and manifest are required")

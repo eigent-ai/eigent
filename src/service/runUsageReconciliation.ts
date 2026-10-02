@@ -13,6 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet } from '@/api/http';
+import {
+  type RunTerminalReason,
+  runTerminalReason,
+} from '@/lib/runTerminalReason';
 
 const PAGE_LIMIT = 500;
 const MAX_PAGES = 20;
@@ -80,14 +84,15 @@ export type TaskFailureAction = {
 
 /** Read-only presentation evidence; never an assistant result or replay input. */
 export type TaskFailureFacts = {
-  terminal: 'failed' | 'timed_out';
+  /** Recorded by the Brain with the terminal event; null when unknown. */
+  terminalReason: RunTerminalReason | null;
   finalResponse: 'absent' | 'present' | 'unverified';
   actionsVerified: boolean;
   actions: TaskFailureAction[];
 };
 
 export const unverifiedTaskFailureFacts = (): TaskFailureFacts => ({
-  terminal: 'failed',
+  terminalReason: null,
   finalResponse: 'unverified',
   actionsVerified: false,
   actions: [],
@@ -497,10 +502,7 @@ export async function readTerminalRunResult({
             )
               ? {
                   failureFacts: {
-                    terminal:
-                      event.event_type === 'run.deadline_reached'
-                        ? ('timed_out' as const)
-                        : ('failed' as const),
+                    terminalReason: runTerminalReason(payload.terminal_reason),
                     finalResponse: hasFinalResponse
                       ? ('present' as const)
                       : ('absent' as const),

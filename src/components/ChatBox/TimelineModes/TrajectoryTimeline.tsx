@@ -16,12 +16,13 @@ import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/Prepar
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { DsText } from '@/components/ui/ds-text';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
-import { approvalTerminalReason } from '@/lib/approvalPresentation';
+import { approvalRecordedReason } from '@/lib/approvalPresentation';
 import type {
   TimelineRunView,
   TimelineToolInvocation,
   TimelineTraceRow,
 } from '@/lib/projector/chat/presentation';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { errorCopy } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -398,13 +399,31 @@ function nodeStatus(row: NodeTraceRow, paused: boolean): ReactNode {
   return null;
 }
 
+/** The closed cause first, then recorded detail verbatim. */
+function TraceReasons({ reasons }: { reasons: string[] }) {
+  return reasons.map((reason) => (
+    <DsText
+      key={reason}
+      as="p"
+      role="meta"
+      weight="regular"
+      className="break-words whitespace-pre-wrap text-ds-ink-muted-default"
+    >
+      {reason}
+    </DsText>
+  ));
+}
+
 function InteractionTraceDetails({
   node,
 }: {
   node: NodeTraceRow['node'] & { kind: 'interaction' };
 }) {
   const { t } = useTranslation();
-  const reason = approvalTerminalReason(node.reason, t);
+  const reasons = [
+    runTerminalReasonText(node.terminalReason, t),
+    approvalRecordedReason(node.reason, t),
+  ].filter(Boolean);
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {node.prompt ? (
@@ -427,16 +446,7 @@ function InteractionTraceDetails({
           </span>
         </div>
       ) : null}
-      {reason ? (
-        <DsText
-          as="p"
-          role="meta"
-          weight="regular"
-          className="break-words whitespace-pre-wrap text-ds-ink-muted-default"
-        >
-          {reason}
-        </DsText>
-      ) : null}
+      <TraceReasons reasons={reasons} />
     </div>
   );
 }
@@ -539,9 +549,17 @@ function NodeTraceDetails({
   }
   if (node.kind === 'run_status') {
     return (
-      <span className="block !text-ds-text-meta !font-normal text-ds-ink-default-default">
-        {t('chat.run-status', { defaultValue: 'Run status' })}
-      </span>
+      <div className="flex min-w-0 flex-col gap-2">
+        <span className="block !text-ds-text-meta !font-normal text-ds-ink-default-default">
+          {t('chat.run-status', { defaultValue: 'Run status' })}
+        </span>
+        <TraceReasons
+          reasons={[
+            runTerminalReasonText(node.terminalReason, t),
+            node.terminalDetail,
+          ].filter((reason): reason is string => Boolean(reason))}
+        />
+      </div>
     );
   }
   return (

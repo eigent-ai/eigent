@@ -40,7 +40,7 @@ export function TaskFailureSummary({ facts }: { facts?: TaskFailureFacts }) {
         <DsIcon icon={CircleAlert} recipe="main" />
         <DsText as="p" role="base" weight="medium">
           {t(
-            facts.terminal === 'timed_out'
+            facts.terminalReason === 'deadline_exceeded'
               ? 'chat.task-failure-timed-out'
               : facts.finalResponse === 'absent'
                 ? 'chat.task-failure-confirmed'

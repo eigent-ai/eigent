@@ -502,5 +502,14 @@
   "approval-expired-description": "The approval request expired before a decision was accepted. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
   "approval-tool-ended-description": "The approval was cancelled because the tool ended before it started. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
   "approval-recorded-reason": "Recorded reason: {{reason}}",
-  "approval-read-only-receipt": "Read-only record"
+  "approval-read-only-receipt": "Read-only record",
+  "timed-out-after": "Timed out after <elapsed>{{time}}</elapsed>",
+  "run-terminal-reason-completed": "The task finished.",
+  "run-terminal-reason-user_cancelled": "The task was stopped.",
+  "run-terminal-reason-deadline_exceeded": "The task reached its time limit.",
+  "run-terminal-reason-approval_expired": "An approval request expired before it was answered. Resume re-evaluates the remaining work and requests new approval when needed.",
+  "run-terminal-reason-brain_restart": "Eigent restarted while this task was running.",
+  "run-terminal-reason-runtime_lost": "The process running this task stopped unexpectedly.",
+  "run-terminal-reason-error": "The task stopped because of an error.",
+  "run-terminal-reason-budget_exhausted": "The task used up its available budget."
 }
