@@ -142,6 +142,7 @@ const DialogContent = React.forwardRef<
             transition={{ duration: 0.2, ease: DIALOG_ENTER_EASE }}
             style={{ transformOrigin: 'center' }}
             className={cn(
+              'data-[state=closed]:duration-100 data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
               dialogContentVariants({ size }),
               overlayVariant !== 'default' && 'z-[51]',
               className
