@@ -24,6 +24,7 @@ from app.run_journal import (
     ProjectWorkspaceBindingRecord,
     RunEventDraft,
     SQLiteRunJournal,
+    WorkspaceWriterReleaseResult,
     WorkspaceWriterRequestRecord,
     configured_run_journal_path,
     get_default_run_journal,
@@ -44,6 +45,7 @@ class WorkspaceWriterAdmission:
 @dataclass(frozen=True)
 class WorkspaceWriterReconciliation:
     interrupted_request_ids: tuple[str, ...]
+    reclaimed_request_ids: tuple[str, ...]
     promoted_request_ids: tuple[str, ...]
     preserved_request_ids: tuple[str, ...]
     failed_request_ids: tuple[str, ...]
@@ -135,6 +137,16 @@ class WorkspaceWriterScheduler:
                 raise WorkspaceWriterInterruptedError(
                     "workspace writer admission belongs to another Task"
                 )
+            if (
+                request.status == "queued"
+                and request.blocker_task_id is not None
+                and await asyncio.to_thread(
+                    self.reclaim_lost_writer,
+                    repository_id=request.repository_id,
+                    checkout_id=request.checkout_id,
+                )
+            ):
+                continue
             if request.status == "queued" and request.blocker_task_id is None:
                 request = await asyncio.to_thread(
                     self.journal.try_acquire_workspace_writer,
@@ -197,20 +209,47 @@ class WorkspaceWriterScheduler:
         self._record_promoted_request(result.next_acquired)
         return result.finished
 
+    def reclaim_lost_writer(
+        self,
+        *,
+        repository_id: str,
+        checkout_id: str,
+    ) -> WorkspaceWriterReleaseResult | None:
+        """Release a lost holder without unsettled writes and promote FIFO."""
+
+        result = self.journal.reclaim_lost_workspace_writer(
+            repository_id=repository_id,
+            checkout_id=checkout_id,
+        )
+        if result is None:
+            return None
+        run_id = self.run_id_from_request_id(result.finished.request_id)
+        if run_id is not None:
+            self._record_state(
+                run_id,
+                result.finished,
+                event_type="workspace.writer.released",
+            )
+        self._record_promoted_request(result.next_acquired)
+        return result
+
     def reconcile_orphaned_admissions(
         self,
     ) -> WorkspaceWriterReconciliation:
         """Interrupt pre-Attempt writer requests left by a crashed admission.
 
-        An interrupted Run with an acquired writer retains ownership. A
-        never-started queued Attempt remains resumable but is ineligible for
-        promotion until explicit Resume creates a new Attempt. The journal
-        skips only such side-effect-free waiters when releasing an orphan;
-        uncertain execution evidence still blocks the checkout queue.
-        Only Runs without any Attempt are cancelled as orphaned admissions.
+        Restart closes every Attempt, so each acquired writer has lost its
+        holder: it is released unless its Run has unsettled writes, which keep
+        the lease until the user acts on that Run. A never-started queued
+        Attempt remains resumable but is ineligible for promotion until
+        explicit Resume creates a new Attempt. The journal skips only such
+        side-effect-free waiters when promoting; uncertain execution evidence
+        still blocks the checkout queue. Only Runs without any Attempt are
+        cancelled as orphaned admissions.
         """
 
         interrupted: list[str] = []
+        reclaimed: list[str] = []
         promoted: list[str] = []
         preserved: list[str] = []
         failed: list[str] = []
@@ -266,6 +305,25 @@ class WorkspaceWriterScheduler:
                         "run_id": run_id,
                     },
                 )
+        for request in self.journal.list_active_workspace_writer_requests():
+            if request.status != "acquired":
+                continue
+            try:
+                result = self.reclaim_lost_writer(
+                    repository_id=request.repository_id,
+                    checkout_id=request.checkout_id,
+                )
+            except Exception:
+                failed.append(request.request_id)
+                logger.exception(
+                    "Failed to reclaim a lost workspace writer",
+                    extra={"request_id": request.request_id},
+                )
+                continue
+            if result is not None:
+                reclaimed.append(result.finished.request_id)
+                if result.next_acquired is not None:
+                    promoted.append(result.next_acquired.request_id)
         # A previous startup may already have reclaimed the writer before the
         # process stopped. Finish those half-created Runs too so the UI never
         # offers Resume for a Run that has no Attempt to resume.
@@ -288,6 +346,7 @@ class WorkspaceWriterScheduler:
                 )
         return WorkspaceWriterReconciliation(
             interrupted_request_ids=tuple(interrupted),
+            reclaimed_request_ids=tuple(reclaimed),
             promoted_request_ids=tuple(promoted),
             preserved_request_ids=tuple(preserved),
             failed_request_ids=tuple(failed),
@@ -340,11 +399,13 @@ class WorkspaceWriterScheduler:
             if waited and request.acquired_at is not None
             else None
         )
-        # Warm abort can enqueue the same stable key again. Separate those
-        # acquisition events while retaining existing event ids in other lanes.
+        # Warm abort and a lost holder can enqueue the same stable key again.
+        # Separate those acquisition events while retaining existing event ids
+        # in other lanes.
         epoch = (
             f":{request.created_at}"
-            if any(
+            if request.reason == "holder_lost"
+            or any(
                 attempt.resume_reason == "follow_up_execution"
                 for attempt in self.journal.list_run_attempts(run_id)
             )

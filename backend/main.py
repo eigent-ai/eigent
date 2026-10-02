@@ -206,6 +206,9 @@ async def startup_event():
             "interrupted_orphaned_workspace_writers": len(
                 writer_reconciliation.interrupted_request_ids
             ),
+            "reclaimed_workspace_writers": len(
+                writer_reconciliation.reclaimed_request_ids
+            ),
             "promoted_workspace_writers": len(
                 writer_reconciliation.promoted_request_ids
             ),

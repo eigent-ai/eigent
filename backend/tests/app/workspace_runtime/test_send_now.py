@@ -533,6 +533,7 @@ def test_v38_upgrade_preserves_v37_rows_and_delivery_receipt_across_reopen(
         patch("app.run_journal.store.MIGRATION_V38", ""),
         patch("app.run_journal.store.MIGRATION_V39", ""),
         patch("app.run_journal.store.MIGRATION_V40", ""),
+        patch("app.run_journal.store._MIGRATION_V41", ""),
     ):
         with SQLiteRunJournal(path) as old:
             assert old.schema_version == 37
