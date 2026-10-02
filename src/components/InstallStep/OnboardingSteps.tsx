@@ -20,10 +20,19 @@ import {
   RuledLinesBackground,
 } from '@/components/Background';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { LocaleEnum, resolveLocale, switchLanguage } from '@/i18n';
 import { recordOnboardingStepCompleted } from '@/lib/events/appEvents';
 import { getOnboardingThemePresets } from '@/lib/themeTokens/catalog';
 import { cn } from '@/lib/utils';
+import {
+  DEFAULT_WORK_PROFILE,
+  WORK_PROFILE_IDS,
+  WORK_PROFILE_LABEL_KEYS,
+  type WorkProfileId,
+} from '@/lib/workProfiles';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -37,7 +46,10 @@ import {
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
+
+const STEPS: Step[] = [1, 2, 3, 4];
+const LAST_STEP: Step = 4;
 
 // ── Language ──────────────────────────────────────────────────────────────────
 
@@ -132,7 +144,7 @@ function StepLanguage({
               )}
             >
               <span>{displayLabel}</span>
-              {active && <Check size={14} strokeWidth={2.5} />}
+              {active && <DsIcon icon={Check} />}
             </button>
           );
         })}
@@ -141,7 +153,64 @@ function StepLanguage({
   );
 }
 
-// ── Step 2 — Theme ────────────────────────────────────────────────────────────
+// ── Step 2 — Profile ──────────────────────────────────────────────────────────
+
+function StepProfile({
+  selected,
+  onSelect,
+}: {
+  selected: WorkProfileId | null;
+  onSelect: (id: WorkProfileId) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <DsText
+          as="h2"
+          role="page"
+          weight="bold"
+          className="text-ds-ink-default-default"
+        >
+          {t('layout.onboarding-setup-profile-title')}
+        </DsText>
+        <DsText as="p" role="base" className="mt-2 text-ds-ink-muted-default">
+          {t('layout.onboarding-setup-profile-subtitle')}
+        </DsText>
+      </div>
+      {/* Columns follow the onboarding panel width, not the window. */}
+      <div className="@container min-w-0">
+        <div className="grid grid-cols-1 gap-2 @sm:grid-cols-2 @lg:grid-cols-3">
+          {WORK_PROFILE_IDS.map((id) => {
+            const active = selected === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onSelect(id)}
+                className={cn(
+                  'flex min-w-0 items-center justify-between gap-2 rounded-xl border border-x border-y border-solid px-6 py-3 text-left text-ds-text-base font-medium transition-colors duration-100',
+                  DS_FOCUS_RING,
+                  active
+                    ? 'border-ds-hairline-default-default bg-ds-neutral-default-default text-ds-ink-default-default'
+                    : 'border-transparent bg-ds-neutral-default-default text-ds-ink-muted-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover hover:text-ds-ink-muted-hover'
+                )}
+              >
+                <span className="min-w-0 break-words">
+                  {t(WORK_PROFILE_LABEL_KEYS[id])}
+                </span>
+                {active && <DsIcon icon={Check} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Step 3 — Theme ────────────────────────────────────────────────────────────
 
 function StepTheme({
   appearanceMode,
@@ -261,7 +330,7 @@ function StepTheme({
   );
 }
 
-// ── Step 3 — Background pattern ───────────────────────────────────────────────
+// ── Step 4 — Background pattern ───────────────────────────────────────────────
 
 function PatternPreviewCard({
   label,
@@ -350,6 +419,7 @@ function StepBackground({
 export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<Step>(1);
+  const [profileSelected, setProfileSelected] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const shouldReduceMotion = useReducedMotion();
 
@@ -360,9 +430,11 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
     lightColorThemeId,
     darkColorThemeId,
     workspaceMainBackground,
+    workProfile,
     setAppearanceMode,
     setColorThemeForMode,
     setWorkspaceMainBackground,
+    setWorkProfile,
     setOnboardingCompleted,
     setIsFirstLaunch,
   } = useAuthStore();
@@ -371,7 +443,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
     appearance === 'dark' ? darkColorThemeId : lightColorThemeId;
 
   const livePattern =
-    step === 3
+    step === LAST_STEP
       ? BG_PATTERN_DEFS.find((p) => p.id === workspaceMainBackground)
       : null;
   const LivePatternComponent = livePattern?.Component ?? null;
@@ -391,12 +463,45 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
   };
 
   const stepName = (s: Step) =>
-    s === 1 ? 'language' : s === 2 ? 'theme' : 'background';
+    s === 1
+      ? 'language'
+      : s === 2
+        ? 'profile'
+        : s === 3
+          ? 'theme'
+          : 'background';
+
+  const goNext = () => {
+    setDirection(1);
+    setStep((s) => (s + 1) as Step);
+  };
+
+  const handleContinue = () => {
+    recordOnboardingStepCompleted({
+      step_id: step,
+      step_name: stepName(step),
+    });
+    goNext();
+  };
+
+  const handleSkipProfile = () => {
+    setWorkProfile(DEFAULT_WORK_PROFILE);
+    setProfileSelected(false);
+    recordOnboardingStepCompleted({
+      step_id: step,
+      step_name: stepName(step),
+      phase: 'skipped',
+    });
+    goNext();
+  };
+
+  // Others is a valid explicit choice; Continue requires a card click.
+  const canContinue = step !== 2 || profileSelected;
 
   const handleComplete = () => {
     recordOnboardingStepCompleted({
-      step_id: 3,
-      step_name: 'background',
+      step_id: LAST_STEP,
+      step_name: stepName(LAST_STEP),
     });
     setOnboardingCompleted(true);
     setIsFirstLaunch(false);
@@ -437,7 +542,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
       <div className="relative z-[1] flex h-full flex-col px-8 py-6">
         {/* Step indicator dots */}
         <div className="mb-8 flex items-center justify-center gap-2">
-          {([1, 2, 3] as Step[]).map((s) => (
+          {STEPS.map((s) => (
             <div
               key={s}
               className={cn(
@@ -452,7 +557,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
           ))}
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="scrollbar-always-visible min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           <AnimatePresence mode="wait" initial={false} custom={direction}>
             <motion.div
               key={step}
@@ -466,6 +571,15 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
                 <StepLanguage selected={language} onSelect={handleLanguage} />
               )}
               {step === 2 && (
+                <StepProfile
+                  selected={profileSelected ? workProfile : null}
+                  onSelect={(id) => {
+                    setWorkProfile(id);
+                    setProfileSelected(true);
+                  }}
+                />
+              )}
+              {step === 3 && (
                 <StepTheme
                   appearanceMode={appearanceMode}
                   appearance={appearance}
@@ -474,7 +588,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
                   onThemeChange={handleThemePreset}
                 />
               )}
-              {step === 3 && (
+              {step === 4 && (
                 <StepBackground
                   selected={workspaceMainBackground}
                   onSelect={setWorkspaceMainBackground}
@@ -503,25 +617,32 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
             {t('layout.back')}
           </Button>
 
-          {step < 3 ? (
-            <Button
-              variant="primary"
-              size="md"
-              textWeight="semibold"
-              buttonContent="text"
-              buttonRadius="lg"
-              onClick={() => {
-                recordOnboardingStepCompleted({
-                  step_id: step,
-                  step_name: stepName(step),
-                });
-                setDirection(1);
-                setStep((s) => (s + 1) as Step);
-              }}
-            >
-              {t('layout.continue')}
-              <ArrowRightIcon />
-            </Button>
+          {step < LAST_STEP ? (
+            <div className="flex items-center gap-ds-control-gap">
+              {step === 2 && (
+                <Button
+                  variant="ghost"
+                  size="md"
+                  buttonContent="text"
+                  buttonRadius="lg"
+                  onClick={handleSkipProfile}
+                >
+                  {t('layout.onboarding-setup-profile-skip')}
+                </Button>
+              )}
+              <Button
+                variant="primary"
+                size="md"
+                textWeight="semibold"
+                buttonContent="text"
+                buttonRadius="lg"
+                disabled={!canContinue}
+                onClick={handleContinue}
+              >
+                {t('layout.continue')}
+                <ArrowRightIcon />
+              </Button>
+            </div>
           ) : (
             <Button
               variant="primary"

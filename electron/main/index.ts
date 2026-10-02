@@ -2646,9 +2646,16 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'delete-task-files',
-    async (_, email: string, taskId: string, projectId?: string) => {
+    async (
+      _,
+      email: string,
+      taskId: string,
+      projectId?: string,
+      userId?: string | number | null,
+      spaceId?: string
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.deleteTaskFiles(email, taskId, projectId);
+      return manager.deleteTaskFiles(email, taskId, projectId, userId, spaceId);
     }
   );
 

@@ -24,10 +24,12 @@ vi.mock('@/hooks/useSessionExecution', () => ({
   }),
 }));
 
+import BottomBox from '@/components/ChatBox/BottomBox';
 import { generateUniqueId } from '@/lib';
 import { runProjectionStore } from '@/lib/runEvents';
 import { errorCopy } from '@/lib/usageErrors';
 import { createChatStoreInstance } from '@/store/chatStore';
+import { resetConnectionConfig } from '@/store/connectionStore';
 import {
   acknowledgeUsageNotice,
   reportUsageIncident,
@@ -504,6 +506,7 @@ describe('ChatBox Component', async () => {
   });
 
   beforeEach(() => {
+    resetConnectionConfig();
     setUsageAccount(null);
     setUsageModelType('cloud');
     modelConfigHarness.cloudUsageLimitReached = false;
@@ -600,6 +603,59 @@ describe('ChatBox Component', async () => {
       </BrowserRouter>
     );
   };
+
+  describe('subscription quota copy', () => {
+    const trial = {
+      plan_key: 'pro',
+      is_trialing: true,
+      monthly_credits: 10000,
+      trial_daily_credits_limit: 300,
+      trial_daily_credits_used: 288,
+      trial_daily_credits_remaining: 12,
+      trial_total_credits_limit: 1000,
+      trial_total_credits_used: 528,
+      trial_total_credits_remaining: 472,
+    };
+    const latestBanner = () =>
+      vi.mocked(BottomBox).mock.calls.at(-1)?.[0].usageLimitBanner;
+
+    it('passes confirmed Pro trial wording and Refresh to the real composer boundary', () => {
+      useUsageNoticeStore.setState({ subscription: trial, credits: 472 });
+      renderChatBox();
+      expect(latestBanner()).toMatchObject({
+        message: 'chat.usage-limit-plan-trial-daily-warning',
+        actionLabel: 'chat.notice-refresh',
+        severity: 'warning',
+      });
+      act(() =>
+        useUsageNoticeStore.setState({
+          subscription: { ...trial, is_trialing: false },
+          credits: 2000,
+        })
+      );
+      expect(latestBanner()?.message).toBe('chat.usage-limit-monthly-warning');
+      act(() =>
+        useUsageNoticeStore.setState({ subscription: null, credits: null })
+      );
+      expect(latestBanner()).toBeNull();
+    });
+
+    it('retains warning dismissal and hides cloud quota copy for custom models', () => {
+      useUsageNoticeStore.setState({ subscription: trial, credits: 472 });
+      const view = renderChatBox();
+      act(() => latestBanner()?.onDismiss?.());
+      expect(latestBanner()).toBeNull();
+      act(() => useUsageNoticeStore.setState({ subscription: { ...trial } }));
+      expect(latestBanner()).toBeNull();
+      view.unmount();
+      mockUseAuthStore.mockReturnValue({
+        ...defaultAuthStoreState,
+        modelType: 'custom',
+      } as any);
+      renderChatBox();
+      expect(latestBanner()).toBeNull();
+    });
+  });
 
   describe('Initial Render', () => {
     it('should render bottom box when no messages exist', () => {
@@ -3049,8 +3105,10 @@ describe('ChatBox Component', async () => {
       await user.click(stopButton);
       await waitFor(() => {
         expect(_mockFetchPost).toHaveBeenCalledWith(
-          '/chat/test-project-id/skip-task',
-          { project_id: 'test-project-id' }
+          '/chat/test-project-id/skip-task?expected_task_id=test-task-id',
+          { project_id: 'test-project-id' },
+          undefined,
+          expect.objectContaining({ signal: expect.any(AbortSignal) })
         );
       });
     });
@@ -3114,8 +3172,12 @@ describe('ChatBox Component', async () => {
 
       await user.click(stopButton);
       await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(stopButton).not.toBeDisabled());
-      await user.click(stopButton);
+      expect(
+        screen.queryByRole('button', { name: 'Stop Task' })
+      ).not.toBeInTheDocument();
+      await user.click(
+        screen.getByRole('button', { name: 'chat.control-retry-same-request' })
+      );
       await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(2));
 
       const [firstUrl, firstBody] = _mockFetchPost.mock.calls[0];

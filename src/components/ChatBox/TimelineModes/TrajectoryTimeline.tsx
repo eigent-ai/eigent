@@ -14,7 +14,9 @@
 
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
+import { DsText } from '@/components/ui/ds-text';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
+import { approvalTerminalReason } from '@/lib/approvalPresentation';
 import type {
   TimelineRunView,
   TimelineToolInvocation,
@@ -402,6 +404,7 @@ function InteractionTraceDetails({
   node: NodeTraceRow['node'] & { kind: 'interaction' };
 }) {
   const { t } = useTranslation();
+  const reason = approvalTerminalReason(node.reason, t);
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {node.prompt ? (
@@ -423,6 +426,16 @@ function InteractionTraceDetails({
             {node.response}
           </span>
         </div>
+      ) : null}
+      {reason ? (
+        <DsText
+          as="p"
+          role="meta"
+          weight="regular"
+          className="break-words whitespace-pre-wrap text-ds-ink-muted-default"
+        >
+          {reason}
+        </DsText>
       ) : null}
     </div>
   );

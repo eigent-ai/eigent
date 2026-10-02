@@ -135,6 +135,14 @@ class WorkspaceWriterScheduler:
                 raise WorkspaceWriterInterruptedError(
                     "workspace writer admission belongs to another Task"
                 )
+            if request.status == "queued" and request.blocker_task_id is None:
+                request = await asyncio.to_thread(
+                    self.journal.try_acquire_workspace_writer,
+                    request_id=request_id,
+                    task_id=task_id,
+                )
+                if request is None:
+                    return None
             if request.status == "acquired":
                 await asyncio.to_thread(
                     self._record_state,
@@ -194,10 +202,12 @@ class WorkspaceWriterScheduler:
     ) -> WorkspaceWriterReconciliation:
         """Interrupt pre-Attempt writer requests left by a crashed admission.
 
-        An interrupted Run with at least one Attempt remains resumable and
-        deliberately keeps its checkout writer.  Only a request whose Run
-        never created any Attempt is a half-finished admission and safe to
-        reclaim during startup.
+        An interrupted Run with an acquired writer retains ownership. A
+        never-started queued Attempt remains resumable but is ineligible for
+        promotion until explicit Resume creates a new Attempt. The journal
+        skips only such side-effect-free waiters when releasing an orphan;
+        uncertain execution evidence still blocks the checkout queue.
+        Only Runs without any Attempt are cancelled as orphaned admissions.
         """
 
         interrupted: list[str] = []
@@ -330,13 +340,23 @@ class WorkspaceWriterScheduler:
             if waited and request.acquired_at is not None
             else None
         )
+        # Warm abort can enqueue the same stable key again. Separate those
+        # acquisition events while retaining existing event ids in other lanes.
+        epoch = (
+            f":{request.created_at}"
+            if any(
+                attempt.resume_reason == "follow_up_execution"
+                for attempt in self.journal.list_run_attempts(run_id)
+            )
+            else ""
+        )
         self.journal.append_event(
             run_id,
             RunEventDraft(
                 event_id=(
                     f"{event_type}:{request.request_id}:"
                     f"{request.queue_position or 0}:"
-                    f"{request.blocker_task_id or 'none'}"
+                    f"{request.blocker_task_id or 'none'}{epoch}"
                 ),
                 event_type=event_type,
                 payload={
