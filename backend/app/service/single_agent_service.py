@@ -732,6 +732,12 @@ async def single_agent_solve(
                     total_tokens = 0
                 except Exception as e:
                     retryable = _is_retryable_turn_error(e)
+                    if retryable:
+                        reason = "model_transport_error"
+                    elif isinstance(e, ResumeContextError):
+                        reason = e.reason
+                    else:
+                        reason = None
                     logger.error(
                         "Single Agent turn failed",
                         extra={
@@ -752,9 +758,7 @@ async def single_agent_solve(
                         {
                             "message": str(e),
                             "retryable": retryable,
-                            "reason": (
-                                "model_transport_error" if retryable else None
-                            ),
+                            "reason": reason,
                         },
                     )
                     running_turn = None

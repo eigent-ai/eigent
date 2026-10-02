@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -580,21 +581,77 @@ def test_recovery_budget_reserves_current_before_whole_prior_runs(journal):
     assert prior.event_id not in projection.source_event_ids
     from app.run_journal.context_projection import ResumeContextError
 
-    with pytest.raises(ResumeContextError, match="context_budget_exhausted"):
+    with pytest.raises(ResumeContextError) as exhausted:
         _recovery_projection(journal, attempt, char_budget=200)
+    assert exhausted.value.reason == "context_budget_exhausted"
 
 
-def test_recovery_never_silently_drops_old_tools_at_call_count_limit(journal):
+def test_recovery_omits_old_safe_reads_but_keeps_unsafe_checkpoint(journal):
     attempt = _resume(journal)
-    for index in range(51):
-        _tool(journal, f"call-{index}", result={"number": index})
-    from app.run_journal.context_projection import ResumeContextError
+    _tool(journal, "read-0", result={"data": "first-read " + "r" * 1000})
+    _tool(
+        journal,
+        "unsafe-send",
+        status="dispatched",
+        safety=ToolSafetyClass.UNSAFE_WRITE,
+    )
+    for index in range(1, 55):
+        _tool(journal, f"read-{index}", result={"data": "r" * 1000})
+    projection = _recovery_projection(journal, attempt)
+    text = projection.text
+    assert len(text) <= 18000
+    assert "Keep working" in text
+    assert '"tool_call_id": "unsafe-send"' in text
+    assert '"safety_class": "unsafe_write"' in text
+    assert "Tool result [dispatched]: no durable outcome" in text
+    assert '"tool_call_id": "read-54"' in text
+    assert "first-read" not in text
+    marker = re.search(r"\.\.\. \[(\d+) earlier completed tool results", text)
+    assert marker is not None
+    kept = text.count('"safety_class": "safe_read"')
+    assert int(marker.group(1)) + kept == 55
+    # Omitted reads precede everything kept, and the marker sits in their place.
+    assert text.index(marker.group(0)) < text.index('"tool_call_id": "unsafe')
+    assert len(projection.source_event_ids) == 3 + kept
 
-    with pytest.raises(ResumeContextError, match="context_budget_exhausted"):
-        _recovery_projection(journal, attempt)
-    projection = _recovery_projection(journal, attempt, char_budget=100000)
-    assert projection.text.count("Tool checkpoint:") == 51
-    assert '"tool_call_id": "call-0"' in projection.text
+
+def test_recovery_keeps_completed_write_identity_without_its_evidence(journal):
+    attempt = _resume(journal)
+    _tool(
+        journal,
+        "write-report",
+        safety=ToolSafetyClass.IDEMPOTENT_WRITE,
+        result={"data": "write-evidence " + "w" * 1000},
+    )
+    for index in range(30):
+        _tool(journal, f"read-{index}", result={"data": "r" * 1000})
+    text = _recovery_projection(journal, attempt).text
+    assert '"tool_call_id": "write-report"' in text
+    assert '"idempotency_key": "write-once"' in text
+    assert "write-evidence" not in text
+    assert "earlier completed tool results or step updates omitted" in text
+
+
+def test_recovery_collapses_step_progress_to_latest_snapshot(journal):
+    attempt = _resume(journal)
+    for event in ("created", "started", "progress", "completed"):
+        journal.append_event(
+            "current",
+            RunEventDraft(
+                event_type=f"step.{event}",
+                payload={
+                    "step": {"step_id": "step-1", "status": event},
+                    "evidence_refs": ["e" * 5000],
+                },
+            ),
+        )
+    text = _recovery_projection(journal, attempt).text
+    assert text.count("Checkpoint [step.") == 1
+    assert "Checkpoint [step.completed]" in text
+    assert "truncated" in text
+    tight = _recovery_projection(journal, attempt, char_budget=500).text
+    assert "Checkpoint [step." not in tight
+    assert "1 earlier completed tool results or step updates omitted" in tight
 
 
 @pytest.mark.parametrize("mode", ["single_agent", "workforce"])
@@ -620,9 +677,7 @@ def test_recovery_failure_does_not_fall_back_to_memory_or_hot_cache(
             service, "build_durable_context_projection_for_task_lock"
         ) as memory,
     ):
-        with pytest.raises(
-            ResumeContextError, match="context_budget_exhausted"
-        ):
+        with pytest.raises(ResumeContextError) as exhausted:
             if mode == "single_agent":
                 service._build_single_agent_prompt(
                     lock, "Resume", [], "fallback"
@@ -630,6 +685,7 @@ def test_recovery_failure_does_not_fall_back_to_memory_or_hot_cache(
             else:
                 service.build_context_for_workforce(lock, SimpleNamespace())
         memory.assert_not_called()
+    assert exhausted.value.reason == "context_budget_exhausted"
 
 
 def test_ordinary_initial_attempt_still_excludes_current_run(journal):
@@ -686,9 +742,7 @@ def test_recovery_preserves_outcome_with_oversized_result(
         assert '"external_effect_may_have_occurred": true' in projection.text
 
 
-@pytest.mark.parametrize(
-    "failure", ["intent", "events", "ledger", "attempt", "identity"]
-)
+@pytest.mark.parametrize("failure", ["intent", "events", "ledger", "identity"])
 def test_recovery_missing_facts_never_returns_partial_context(
     journal, failure
 ):
@@ -699,7 +753,6 @@ def test_recovery_missing_facts_never_returns_partial_context(
         "intent": "list_events",
         "events": "list_events",
         "ledger": "list_tool_calls",
-        "attempt": "get_run_attempt",
         "identity": "get_run_attempt",
     }[failure]
     if failure == "intent":
@@ -714,5 +767,15 @@ def test_recovery_missing_facts_never_returns_partial_context(
         mocked = patch.object(
             journal, target, side_effect=RuntimeError("unavailable")
         )
-    with mocked, pytest.raises(ResumeContextError):
+    with mocked, pytest.raises(ResumeContextError) as unavailable:
         _recovery_projection(journal, attempt)
+    assert unavailable.value.reason == "resume_context_unavailable"
+
+
+def test_unreadable_attempt_keeps_ordinary_projection(journal):
+    attempt = _resume(journal)
+    with patch.object(
+        journal, "get_run_attempt", side_effect=RuntimeError("unavailable")
+    ):
+        projection = _recovery_projection(journal, attempt)
+    assert "Keep working" not in projection.text

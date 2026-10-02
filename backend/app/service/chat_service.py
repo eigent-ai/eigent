@@ -68,6 +68,7 @@ from app.model.subscription_runtime import is_subscription_auth
 from app.run_journal.context_projection import (
     ResumeContextError,
     build_project_execution_context_projection,
+    is_explicit_resume_attempt,
     persist_context_projection_diagnostic,
 )
 from app.run_journal.runtime import get_default_run_journal
@@ -625,16 +626,11 @@ def _build_workforce_resume_context(task_lock: TaskLock) -> str | None:
     Never cache it on the reusable TaskLock across Attempts or Runs.
     """
     context = getattr(task_lock, "run_context", None)
-    attempt_id = getattr(context, "attempt_id", None)
-    if not isinstance(attempt_id, str):
-        return None
-    try:
-        attempt = get_default_run_journal().get_run_attempt(attempt_id)
-    except Exception as exc:
-        raise ResumeContextError("Canonical Attempt unavailable") from exc
-    if attempt is None or attempt.run_id != getattr(context, "run_id", None):
-        raise ResumeContextError("Recovery Attempt does not belong to Run")
-    if attempt.resume_reason != "explicit_resume":
+    if not is_explicit_resume_attempt(
+        get_default_run_journal(),
+        attempt_id=getattr(context, "attempt_id", None),
+        run_id=getattr(context, "run_id", None),
+    ):
         return None
     return build_context_for_workforce(task_lock)
 
@@ -2261,6 +2257,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     and workforce._running
                 ):
                     workforce.stop()
+        except ResumeContextError as e:
+            logger.error(
+                f"Resume context rejected for task {options.task_id}: {e}",
+                exc_info=True,
+            )
+            yield sse_json("error", {"message": str(e), "reason": e.reason})
+            finalize_task_lock_run_memory(
+                task_lock,
+                state="failed",
+                error=str(e),
+            )
         except Exception as e:
             logger.error(
                 "Unhandled exception for task "

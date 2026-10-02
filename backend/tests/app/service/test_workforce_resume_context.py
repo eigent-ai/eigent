@@ -15,6 +15,7 @@
 """Actual legacy Workforce entry regressions for Resume context ownership."""
 
 import asyncio
+import json
 from functools import partial
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -224,9 +225,10 @@ async def run_entry(
         stream = core(
             options, SimpleNamespace(state=SimpleNamespace(hands=None)), lock
         )
+        frames = []
         try:
             while True:
-                await anext(stream)
+                frames.append(await anext(stream))
         except asyncio.CancelledError:
             pass
         finally:
@@ -238,6 +240,13 @@ async def run_entry(
             projection_count=projector.call_count,
             factory_count=factory.await_count,
             summary_count=summary_factory.call_count,
+            errors=[
+                frame["data"]
+                for frame in (
+                    json.loads(raw.removeprefix("data: ")) for raw in frames
+                )
+                if frame["step"] == "error"
+            ],
         )
 
 
@@ -309,6 +318,28 @@ async def test_resume_budget_gate_prevents_all_inference(
     assert result.decomposition == []
     assert result.factory_count == 0
     assert result.summary_count == 0
+    assert [error["reason"] for error in result.errors] == [
+        "context_budget_exhausted"
+    ]
+
+
+def test_unreadable_attempt_keeps_ordinary_routing(checkpoint):
+    lock = SimpleNamespace(
+        run_context=SimpleNamespace(
+            project_id="project", run_id="current", attempt_id="attempt"
+        )
+    )
+    with (
+        patch.object(
+            chat_service, "get_default_run_journal", return_value=checkpoint
+        ),
+        patch.object(
+            checkpoint,
+            "get_run_attempt",
+            side_effect=RuntimeError("unavailable"),
+        ),
+    ):
+        assert chat_service._build_workforce_resume_context(lock) is None
 
 
 @pytest.mark.asyncio
