@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from app.model.enums import Status
 from app.router_layer.hands_resolver import get_environment_hands
 from app.run_journal import (
+    RUN_ACTIVE_STATES,
     configured_run_journal_path,
     get_default_run_journal,
 )
@@ -95,11 +96,18 @@ def _binding_enabled(manifest: dict[str, Any]) -> bool:
 
 def _project_has_active_run(project_id: str) -> bool:
     task_lock = get_task_lock_if_exists(project_id)
-    if task_lock is None:
-        return False
-    if task_lock.status != Status.done:
+    if task_lock is not None and (
+        task_lock.status != Status.done
+        or any(not task.done() for task in task_lock.background_tasks)
+    ):
         return True
-    return any(not task.done() for task in task_lock.background_tasks)
+    return bool(
+        get_default_run_journal().list_runs(
+            project_id=project_id,
+            statuses=tuple(RUN_ACTIVE_STATES),
+            limit=1,
+        )
+    )
 
 
 def _capability_payload(manifest: dict[str, Any]) -> dict[str, Any]:

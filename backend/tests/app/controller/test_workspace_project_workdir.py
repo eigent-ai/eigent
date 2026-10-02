@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
 from app.controller import workspace_controller
+from app.model.enums import Status
+from app.run_journal import SQLiteRunJournal
 from app.utils.workspace_paths import project_workdir_root
 from app.utils.workspace_resolver import (
     WORKDIR_MARKER,
@@ -34,14 +37,24 @@ USER_ID = "42"
 
 
 @pytest.fixture
-def resolver(tmp_path: Path, monkeypatch) -> WorkspaceResolver:
+def journal(tmp_path: Path, monkeypatch):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    monkeypatch.setattr(
+        workspace_controller, "get_default_run_journal", lambda: journal
+    )
+    yield journal
+    journal.close()
+
+
+@pytest.fixture
+def resolver(tmp_path: Path, monkeypatch, journal) -> WorkspaceResolver:
     monkeypatch.setenv("HOME", str(tmp_path))
     resolver = WorkspaceResolver()
     monkeypatch.setattr(
         workspace_controller, "get_workspace_resolver", lambda: resolver
     )
     monkeypatch.setattr(
-        workspace_controller, "_project_has_active_run", lambda _id: False
+        workspace_controller, "get_task_lock_if_exists", lambda _id: None
     )
     return resolver
 
@@ -83,10 +96,16 @@ async def test_deletes_marked_owner_workdir_and_retries_as_absent(resolver):
 
 
 @pytest.mark.asyncio
-async def test_refuses_while_project_run_is_active(resolver, monkeypatch):
+async def test_refuses_while_legacy_task_lock_is_running(
+    resolver, monkeypatch
+):
     workdir = _workdir()
     monkeypatch.setattr(
-        workspace_controller, "_project_has_active_run", lambda _id: True
+        workspace_controller,
+        "get_task_lock_if_exists",
+        lambda _id: SimpleNamespace(
+            status=Status.processing, background_tasks=[]
+        ),
     )
 
     with pytest.raises(HTTPException) as error:
@@ -95,6 +114,64 @@ async def test_refuses_while_project_run_is_active(resolver, monkeypatch):
     assert error.value.status_code == 409
     assert error.value.detail["code"] == "project_running"
     assert workdir.is_dir()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["pending", "running", "waiting_for_user"])
+async def test_refuses_while_canonical_run_is_active(
+    resolver, journal, status
+):
+    workdir = _workdir()
+    journal.ensure_run(run_id="run-1", project_id="project-1", status=status)
+
+    with pytest.raises(HTTPException) as error:
+        await _delete()
+
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "project_running"
+    assert workdir.is_dir()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
+async def test_terminal_canonical_run_does_not_block_deletion(
+    resolver, journal, status
+):
+    workdir = _workdir()
+    journal.ensure_run(run_id="run-1", project_id="project-1", status=status)
+
+    assert (await _delete())["deleted"] is True
+    assert not workdir.exists()
+
+
+@pytest.mark.asyncio
+async def test_active_run_of_another_project_does_not_block_deletion(
+    resolver, journal
+):
+    workdir = _workdir()
+    journal.ensure_run(run_id="run-1", project_id="project-2")
+
+    assert (await _delete())["deleted"] is True
+    assert not workdir.exists()
+
+
+@pytest.mark.asyncio
+async def test_refresh_refuses_while_canonical_run_is_active(
+    resolver, journal
+):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+
+    with pytest.raises(HTTPException) as error:
+        await workspace_controller.workspace_project_refresh(
+            "space-1",
+            "project-1",
+            workspace_controller.WorkspaceProjectRefreshRequest(
+                email=EMAIL, user_id=USER_ID, server_refresh_confirmed=True
+            ),
+        )
+
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "project_running"
 
 
 @pytest.mark.asyncio
