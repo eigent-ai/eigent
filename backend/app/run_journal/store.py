@@ -33,7 +33,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from app.run_journal.cloud_projection import cloud_event_payload
 from app.run_journal.memory_policy import assert_memory_entry_policy
@@ -9677,8 +9677,9 @@ class SQLiteRunJournal:
     ) -> WorkspaceWriterRequestRecord:
         """Acquire or durably queue one Task for a physical checkout.
 
-        The first request acquires the lease in the same transaction. Later
-        requests remain FIFO queued even when they belong to another Project.
+        The first eligible request acquires the lease in the same transaction.
+        Later requests remain FIFO queued across Projects. Interrupted waiters
+        without execution evidence wait for Resume; uncertain ones still block.
         Repeating one request id with the same payload is idempotent.
         """
 
@@ -9781,9 +9782,10 @@ class SQLiteRunJournal:
                 (values["repository_id"], values["checkout_id"]),
             ).fetchone()
             if lease is None:
-                self._acquire_workspace_writer_in_transaction(
+                self._promote_workspace_writer_in_transaction(
                     connection,
-                    request_id=values["request_id"],
+                    repository_id=values["repository_id"],
+                    checkout_id=values["checkout_id"],
                     now=timestamp,
                 )
             row = connection.execute(
@@ -9984,37 +9986,12 @@ class SQLiteRunJournal:
                 (final_status, timestamp, timestamp, request_id),
             )
             if row["status"] == "acquired":
-                queued = connection.execute(
-                    """
-                    SELECT request_id FROM workspace_writer_requests
-                    WHERE repository_id = ? AND checkout_id = ?
-                      AND status = 'queued'
-                    ORDER BY created_at, request_id
-                    LIMIT 1
-                    """,
-                    (row["repository_id"], row["checkout_id"]),
-                ).fetchone()
-                if queued is not None:
-                    self._acquire_workspace_writer_in_transaction(
-                        connection,
-                        request_id=queued["request_id"],
-                        now=timestamp,
-                    )
-                    acquired_row = connection.execute(
-                        """
-                        SELECT * FROM workspace_writer_requests
-                        WHERE request_id = ?
-                        """,
-                        (queued["request_id"],),
-                    ).fetchone()
-                    assert acquired_row is not None
-                    if acquired_row["status"] == "acquired":
-                        next_acquired = (
-                            self._workspace_writer_request_from_row(
-                                connection,
-                                acquired_row,
-                            )
-                        )
+                next_acquired = self._promote_workspace_writer_in_transaction(
+                    connection,
+                    repository_id=row["repository_id"],
+                    checkout_id=row["checkout_id"],
+                    now=timestamp,
+                )
             finished_row = connection.execute(
                 "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
                 (request_id,),
@@ -10027,6 +10004,146 @@ class SQLiteRunJournal:
                 ),
                 next_acquired=next_acquired,
             )
+
+    def try_acquire_workspace_writer(
+        self, *, request_id: str, task_id: str
+    ) -> WorkspaceWriterRequestRecord | None:
+        """Let a live waiter rejoin FIFO after explicit Resume.
+
+        Startup leaves never-started requests queued but ineligible while
+        their Runs are interrupted. A new pending Attempt makes one eligible
+        again; admission, cancellation and promotion share this transaction.
+        """
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM workspace_writer_requests WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            if row["task_id"] != task_id:
+                raise InvalidRunTransitionError(
+                    "workspace writer admission belongs to another Task"
+                )
+            if (
+                row["status"] == "queued"
+                and not connection.execute(
+                    """SELECT 1 FROM workspace_writer_leases
+                WHERE repository_id=? AND checkout_id=?""",
+                    (row["repository_id"], row["checkout_id"]),
+                ).fetchone()
+            ):
+                self._promote_workspace_writer_in_transaction(
+                    connection,
+                    repository_id=row["repository_id"],
+                    checkout_id=row["checkout_id"],
+                    now=time.time(),
+                )
+                row = connection.execute(
+                    "SELECT * FROM workspace_writer_requests WHERE request_id=?",
+                    (request_id,),
+                ).fetchone()
+            return self._workspace_writer_request_from_row(connection, row)
+
+    @staticmethod
+    def _workspace_writer_promotion_state(
+        connection: sqlite3.Connection, request: sqlite3.Row
+    ) -> Literal["eligible", "dormant", "blocked"]:
+        """Only bypass a dormant Run with durable proof it never executed."""
+        prefix = "workspace-writer:"
+        if not request["request_id"].startswith(prefix):
+            return "eligible"  # Non-Run writers retain their existing policy.
+        run_id = request["request_id"][len(prefix) :]
+        run = connection.execute(
+            "SELECT * FROM runs WHERE run_id=?", (run_id,)
+        ).fetchone()
+        if run is None or run["project_id"] != request["project_id"]:
+            return "blocked"
+        attempts = connection.execute(
+            "SELECT * FROM run_attempts WHERE run_id=?", (run_id,)
+        ).fetchall()
+        if (
+            run["status"] in {"pending", "running", "waiting_for_user"}
+            and run["cancel_request_id"] is None
+            and (
+                not attempts
+                or any(
+                    attempt["attempt_id"] == run["active_attempt_id"]
+                    and attempt["status"]
+                    in {"pending", "running", "waiting_for_user"}
+                    for attempt in attempts
+                )
+            )
+        ):
+            return "eligible"
+        # Queue status alone is insufficient for old/inconsistent records.
+        # Missing creation evidence, activation, or any execution evidence
+        # keeps the queue fenced; in particular, unknown writes are not replayed
+        # or silently bypassed. Acquired owners are never reclaimed here.
+        if (
+            request["acquired_at"] is not None
+            or connection.execute(
+                """SELECT 1 FROM run_attempts a
+            LEFT JOIN run_events e ON e.event_id='attempt:' || a.attempt_id || ':created'
+            WHERE a.run_id=? AND (a.last_consumer_heartbeat_at IS NOT NULL
+                OR COALESCE(json_extract(e.payload_json, '$.status'), '') != 'pending')
+            LIMIT 1""",
+                (run_id,),
+            ).fetchone()
+        ):
+            return "blocked"
+        if connection.execute(
+            """SELECT 1 FROM tool_calls WHERE run_id=?
+            UNION ALL SELECT 1 FROM model_invocations WHERE run_id=?
+            UNION ALL SELECT 1 FROM git_change_sets WHERE run_id=? LIMIT 1""",
+            (run_id, run_id, run_id),
+        ).fetchone():
+            return "blocked"
+        return "dormant"
+
+    def _promote_workspace_writer_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        repository_id: str,
+        checkout_id: str,
+        now: float,
+    ) -> WorkspaceWriterRequestRecord | None:
+        queued = connection.execute(
+            """SELECT * FROM workspace_writer_requests
+            WHERE repository_id=? AND checkout_id=? AND status='queued'
+            ORDER BY created_at, request_id""",
+            (repository_id, checkout_id),
+        ).fetchall()
+        return self._promote_first_eligible_writer_in_transaction(
+            connection, queued, now=now
+        )
+
+    def _promote_first_eligible_writer_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        queued: list[sqlite3.Row],
+        *,
+        now: float,
+    ) -> WorkspaceWriterRequestRecord | None:
+        """Admit FIFO past dormant Runs; a blocked request fences the rest."""
+        for request in queued:
+            state = self._workspace_writer_promotion_state(connection, request)
+            if state == "dormant":
+                continue
+            if (
+                state == "blocked"
+                or not self._acquire_workspace_writer_in_transaction(
+                    connection, request_id=request["request_id"], now=now
+                )
+            ):
+                return None
+            row = connection.execute(
+                "SELECT * FROM workspace_writer_requests WHERE request_id=?",
+                (request["request_id"],),
+            ).fetchone()
+            return self._workspace_writer_request_from_row(connection, row)
+        return None
 
     @staticmethod
     def _acquire_workspace_writer_in_transaction(
@@ -10043,6 +10160,11 @@ class SQLiteRunJournal:
             raise InvalidRunTransitionError(
                 "only a queued workspace writer can acquire the lease"
             )
+        if (
+            SQLiteRunJournal._workspace_writer_promotion_state(connection, row)
+            != "eligible"
+        ):
+            return False
         from app.workspace_runtime.store import WorkspaceStateStore
 
         if not WorkspaceStateStore.legacy_acquire_in_transaction(
