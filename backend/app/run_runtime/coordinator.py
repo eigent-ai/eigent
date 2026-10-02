@@ -963,38 +963,42 @@ class RunCoordinator:
         Skip stops the active model/tool turn but deliberately keeps the
         Project's compatibility generator alive for follow-ups. Cancelling
         the RuntimeHandle here would cancel the pump currently executing this
-        method, so the durable cancel transition is committed directly.
+        method. Share the admission gate with canonical cancel so no durable
+        cancel intent or terminal state can overtake a preparatory worker.
         """
 
-        journal = self._run_journal()
-        await asyncio.to_thread(
-            journal.request_cancel,
-            run_id,
-            request_id=request_id,
-            reason=reason,
-        )
-        await self._settle_unsuccessful_run(run_id)
-        await self._finalize_artifacts_before_terminal(run_id)
-        cancelled = await asyncio.to_thread(
-            journal.complete_cancel,
-            run_id,
-            request_id=request_id,
-        )
-        try:
-            from app.workspace_git import get_default_workspace_git_lifecycle
-
+        async with self.admission_scope(run_id):
+            journal = self._run_journal()
             await asyncio.to_thread(
-                get_default_workspace_git_lifecycle().finalize_run, run_id
+                journal.request_cancel,
+                run_id,
+                request_id=request_id,
+                reason=reason,
             )
-        except Exception:
-            logger.exception(
-                "Cancelled turn Git finalization needs attention",
-                extra={"run_id": run_id},
+            await self._settle_unsuccessful_run(run_id)
+            await self._finalize_artifacts_before_terminal(run_id)
+            cancelled = await asyncio.to_thread(
+                journal.complete_cancel,
+                run_id,
+                request_id=request_id,
             )
-        from app.run_sync.runtime import notify_default_cloud_sync_worker
+            try:
+                from app.workspace_git import (
+                    get_default_workspace_git_lifecycle,
+                )
 
-        notify_default_cloud_sync_worker()
-        return cancelled
+                await asyncio.to_thread(
+                    get_default_workspace_git_lifecycle().finalize_run, run_id
+                )
+            except Exception:
+                logger.exception(
+                    "Cancelled turn Git finalization needs attention",
+                    extra={"run_id": run_id},
+                )
+            from app.run_sync.runtime import notify_default_cloud_sync_worker
+
+            notify_default_cloud_sync_worker()
+            return cancelled
 
     async def _settle_unsuccessful_run(self, run_id: str) -> None:
         """Stop writers on every terminal path without rewriting the outcome."""

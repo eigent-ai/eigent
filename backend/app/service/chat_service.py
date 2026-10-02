@@ -72,7 +72,11 @@ from app.run_journal.context_projection import (
     persist_context_projection_diagnostic,
 )
 from app.run_journal.runtime import get_default_run_journal
-from app.run_runtime.admission import activate_improve_admission
+from app.run_runtime.admission import (
+    abort_pending_warm_admission,
+    activate_improve_admission,
+    skip_targets_current_turn,
+)
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
@@ -1277,12 +1281,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 }
                 yield sse_json("remove_task", returnData)
             elif item.action == Action.skip_task:
-                if (
-                    item.expected_task_id
-                    and item.expected_task_id != task_lock.current_task_id
-                ):
+                if not skip_targets_current_turn(task_lock, item):
                     logger.info(
                         "Ignoring stop for a task that is no longer current"
+                    )
+                    continue
+                if await abort_pending_warm_admission(task_lock):
+                    yield sse_json(
+                        "end",
+                        "<summary>Task stopped</summary>Task stopped by user",
                     )
                     continue
                 logger.info("=" * 80)
@@ -2168,6 +2175,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     Action.budget_not_enough, {"message": "budget not enouth"}
                 )
             elif item.action == Action.stop:
+                if await abort_pending_warm_admission(task_lock):
+                    await delete_task_lock(task_lock.id)
+                    break
                 logger.info("=" * 80)
                 logger.info(
                     "[LIFECYCLE] STOP action received"
