@@ -13,6 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost } from '@/api/http';
+import {
+  createControlOperation,
+  submitControlOperation,
+} from './controlOperations';
 
 export type ProjectRunsResponse = {
   project_id?: unknown;
@@ -176,10 +180,21 @@ export function cancelProjectRun(
   runId: string,
   requestId: string,
   reason: string,
-  request: RunControlRequest = fetchPost
+  request: RunControlRequest = fetchPost,
+  projectId?: string
 ): Promise<unknown> {
-  return request(`/runs/${encodeURIComponent(runId)}/cancel`, {
-    request_id: requestId,
-    reason,
-  });
+  if (request !== fetchPost)
+    return request(`/runs/${encodeURIComponent(runId)}/cancel`, {
+      request_id: requestId,
+      reason,
+    });
+  return submitControlOperation(
+    createControlOperation({
+      kind: 'cancel',
+      runId,
+      projectId,
+      path: `/runs/${encodeURIComponent(runId)}/cancel`,
+      body: { request_id: requestId, reason },
+    })
+  );
 }
