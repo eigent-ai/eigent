@@ -272,6 +272,48 @@ describe('LegacyRouteWorkflowDialog', () => {
     );
   });
 
+  it('removes cancelled Bundle recovery identities from both URL and route state', () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/home',
+            search:
+              '?section=spaces&legacyWorkflow=workspace-bundle&handle=%40owner%2Fbundle%401&proposal=p-1&trace=keep',
+            state: {
+              handle: '@owner/bundle@1',
+              proposal: 'p-1',
+              proposalId: 'p-1',
+              from: 'saved-link',
+            },
+          },
+        ]}
+      >
+        <LegacyRouteWorkflowDialog />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+    act(() =>
+      mocks.newSpaceDialog.mock.calls
+        .at(-1)?.[0]
+        .onWorkspaceBundleProposalChange?.(null, null)
+    );
+    const location = locationSnapshot();
+    const params = new URLSearchParams(location.search);
+    expect(params.has('handle')).toBe(false);
+    expect(params.has('proposal')).toBe(false);
+    expect(params.get('trace')).toBe('keep');
+    expect(params.get(LEGACY_WORKFLOW_QUERY_KEY)).toBe('workspace-bundle');
+    expect(location.state).toEqual({ from: 'saved-link' });
+    expect(
+      mocks.newSpaceDialog.mock.calls.at(-1)?.[0]
+        .initialWorkspaceBundleProposalId
+    ).toBeUndefined();
+    expect(
+      mocks.newSpaceDialog.mock.calls.at(-1)?.[0].initialWorkspaceBundleHandle
+    ).toBeUndefined();
+  });
+
   it('retains state and unconsumed query values when the dialog closes', async () => {
     const routeState = { from: 'legacy-link', targetSpaceId: 'space-state' };
     render(
