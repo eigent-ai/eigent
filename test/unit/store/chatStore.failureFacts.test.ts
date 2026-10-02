@@ -158,6 +158,7 @@ describe('scoped Task failure presentation hydration', () => {
         new AbortController().signal
       )
     ).toEqual({
+      terminal: 'failed',
       finalResponse: 'unverified',
       actionsVerified: false,
       actions: [],

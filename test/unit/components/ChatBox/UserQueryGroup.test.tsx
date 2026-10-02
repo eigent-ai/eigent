@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { unverifiedTaskFailureFacts } from '@/service/runUsageReconciliation';
 import type { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -263,6 +264,7 @@ describe('Task failure summary ownership', () => {
     'preserves %s output and renders one read-only Task summary',
     async (step) => {
       const facts = {
+        terminal: 'failed',
         finalResponse: 'absent',
         actionsVerified: true,
         actions: [
@@ -296,7 +298,7 @@ describe('Task failure summary ownership', () => {
         }
       );
       const before = JSON.stringify(store.getState().tasks);
-      await screen.findByText('Task failed before a final reply was recorded.');
+      await screen.findByText('No final reply was recorded.');
       expect(
         container.querySelectorAll('[data-task-failure-summary]')
       ).toHaveLength(1);
@@ -321,23 +323,110 @@ describe('Task failure summary ownership', () => {
     }
   );
 
-  it('leaves an incomplete read explicitly unverified', () => {
+  it('renders nothing while the read is pending', () => {
+    const { container } = renderGroups(
+      [{ id: 'user', role: 'user', content: 'Request' }],
+      { status: ChatTaskStatus.FINISHED, durableRunStatus: 'failed' }
+    );
+    expect(container.querySelector('[data-task-failure-summary]')).toBeNull();
+  });
+
+  it('leaves an incomplete read explicitly unverified', async () => {
+    const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+      onFacts(unverifiedTaskFailureFacts());
+      return () => {};
+    });
     renderGroups([{ id: 'user', role: 'user', content: 'Request' }], {
       status: ChatTaskStatus.FINISHED,
       durableRunStatus: 'failed',
+      observeTaskFailureFacts,
     });
-    expect(screen.getByText('Task failed.')).toBeInTheDocument();
+    expect(await screen.findByText('Task failed.')).toBeInTheDocument();
     expect(
       screen.getByText('Action outcomes could not be verified.')
     ).toBeInTheDocument();
     expect(
-      screen.queryByText('Task failed before a final reply was recorded.')
+      screen.queryByText('No final reply was recorded.')
     ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['failed', 'No final reply was recorded.'],
+    ['timed_out', 'Task timed out before a final reply was recorded.'],
+  ])(
+    'states that no actions were recorded for a %s Run without tools',
+    async (terminal, title) => {
+      const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+        onFacts({
+          terminal,
+          finalResponse: 'absent',
+          actionsVerified: true,
+          actions: [],
+        });
+        return () => {};
+      });
+      renderGroups([{ id: 'user', role: 'user', content: 'Request' }], {
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus: 'failed',
+        observeTaskFailureFacts,
+      });
+      expect(await screen.findByText(title)).toBeInTheDocument();
+      expect(screen.getByText('No actions were recorded.')).toBeInTheDocument();
+      expect(
+        screen.queryByText('Action outcomes could not be verified.')
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'View recorded actions' })
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it('renders a bounded action list but warns from every action', async () => {
+    const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+      onFacts({
+        terminal: 'failed',
+        finalResponse: 'absent',
+        actionsVerified: true,
+        actions: [
+          ...Array.from({ length: 120 }, (_, index) => ({
+            id: String(index),
+            title: `read_${index}`,
+            outcome: 'completed',
+          })),
+          { id: 'send', title: 'send_email', outcome: 'outcome_unknown' },
+        ],
+      });
+      return () => {};
+    });
+    const { container } = renderGroups(
+      [{ id: 'user', role: 'user', content: 'Request' }],
+      {
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus: 'failed',
+        observeTaskFailureFacts,
+      }
+    );
+    expect(
+      await screen.findByText(
+        'An external action may have occurred; its outcome is unknown.'
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View recorded actions' })
+    );
+    expect(container.querySelectorAll('[data-action-outcome]')).toHaveLength(
+      100
+    );
   });
 
   it('does not add the summary when a final response is durably recorded', async () => {
     const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
-      onFacts({ finalResponse: 'present', actionsVerified: true, actions: [] });
+      onFacts({
+        terminal: 'failed',
+        finalResponse: 'present',
+        actionsVerified: true,
+        actions: [],
+      });
       return () => {};
     });
     const { container } = renderGroups(

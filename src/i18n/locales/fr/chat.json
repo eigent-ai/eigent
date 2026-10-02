@@ -466,7 +466,7 @@
   "space-model-unavailable": "Ce modèle est indisponible pour ce compte. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
   "space-model-ambiguous": "Plusieurs fournisseurs correspondent. Vérifiez les paramètres des modèles ou choisissez un modèle de session.",
   "space-model-changed": "Le compte ou le modèle de session a changé pendant le chargement. Renvoyez votre message.",
-  "task-failure-confirmed": "La tâche a échoué avant qu’une réponse finale soit enregistrée.",
+  "task-failure-confirmed": "Aucune réponse finale n’a été enregistrée.",
   "task-failure-status": "La tâche a échoué.",
   "task-failure-unverified": "Les résultats des actions n’ont pas pu être vérifiés.",
   "task-failure-unknown": "Une action externe a peut-être eu lieu ; son résultat est inconnu.",
@@ -479,5 +479,7 @@
   "task-failure-outcome-failed": "Échec enregistré",
   "task-failure-outcome-timed_out": "Délai dépassé",
   "task-failure-outcome-outcome_unknown": "Résultat inconnu",
-  "task-failure-outcome-unverified": "Résultat non vérifié"
+  "task-failure-outcome-unverified": "Résultat non vérifié",
+  "task-failure-timed-out": "Le délai de la tâche a expiré avant qu’une réponse finale soit enregistrée.",
+  "task-failure-no-actions-recorded": "Aucune action n’a été enregistrée."
 }

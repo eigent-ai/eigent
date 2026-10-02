@@ -21,13 +21,16 @@ import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ToolInputOutputDetails } from './ToolInputOutputDetails';
 
+const MAX_RENDERED_ACTIONS = 100;
+
 /** A Task receipt, never an assistant message or an execution control. */
 export function TaskFailureSummary({ facts }: { facts?: TaskFailureFacts }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
-  if (facts?.finalResponse === 'present') return null;
-  const actions = facts?.actions ?? [];
+  if (!facts || facts.finalResponse === 'present') return null;
+  const { actions } = facts;
+  const noActionsRecorded = facts.actionsVerified && !actions.length;
   return (
     <aside
       data-task-failure-summary
@@ -37,15 +40,20 @@ export function TaskFailureSummary({ facts }: { facts?: TaskFailureFacts }) {
         <DsIcon icon={CircleAlert} recipe="main" />
         <DsText as="p" role="base" weight="medium">
           {t(
-            facts?.finalResponse === 'absent'
-              ? 'chat.task-failure-confirmed'
-              : 'chat.task-failure-status'
+            facts.terminal === 'timed_out'
+              ? 'chat.task-failure-timed-out'
+              : facts.finalResponse === 'absent'
+                ? 'chat.task-failure-confirmed'
+                : 'chat.task-failure-status'
           )}
         </DsText>
       </div>
-      {(!facts ||
-        facts.finalResponse === 'unverified' ||
-        !facts.actionsVerified) && (
+      {noActionsRecorded && (
+        <DsText as="p" role="base" className="text-ds-ink-default-default">
+          {t('chat.task-failure-no-actions-recorded')}
+        </DsText>
+      )}
+      {(facts.finalResponse === 'unverified' || !facts.actionsVerified) && (
         <DsText as="p" role="base" className="text-ds-ink-default-default">
           {t('chat.task-failure-unverified')}
         </DsText>
@@ -58,41 +66,43 @@ export function TaskFailureSummary({ facts }: { facts?: TaskFailureFacts }) {
       <DsText as="p" role="base" className="text-ds-ink-muted-default">
         {t('chat.task-failure-effects')}
       </DsText>
-      <div>
-        <Button
-          type="button"
-          variant="secondary"
-          tone="neutral"
-          size="sm"
-          className="max-w-full"
-          aria-expanded={expanded}
-          aria-controls={detailsId}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          {expanded ? <ChevronUp aria-hidden /> : <ChevronDown aria-hidden />}
-          <span
-            className="min-w-0 truncate"
-            title={t(
-              expanded
-                ? 'chat.task-failure-hide-actions'
-                : 'chat.task-failure-view-actions'
-            )}
+      {!noActionsRecorded && (
+        <div>
+          <Button
+            type="button"
+            variant="secondary"
+            tone="neutral"
+            size="sm"
+            className="max-w-full"
+            aria-expanded={expanded}
+            aria-controls={detailsId}
+            onClick={() => setExpanded((value) => !value)}
           >
-            {t(
-              expanded
-                ? 'chat.task-failure-hide-actions'
-                : 'chat.task-failure-view-actions'
-            )}
-          </span>
-        </Button>
-      </div>
+            {expanded ? <ChevronUp aria-hidden /> : <ChevronDown aria-hidden />}
+            <span
+              className="min-w-0 truncate"
+              title={t(
+                expanded
+                  ? 'chat.task-failure-hide-actions'
+                  : 'chat.task-failure-view-actions'
+              )}
+            >
+              {t(
+                expanded
+                  ? 'chat.task-failure-hide-actions'
+                  : 'chat.task-failure-view-actions'
+              )}
+            </span>
+          </Button>
+        </div>
+      )}
       {expanded && (
         <div
           id={detailsId}
           className="flex min-w-0 flex-col gap-ds-stack-related"
         >
           {actions.length ? (
-            actions.map((action) => (
+            actions.slice(0, MAX_RENDERED_ACTIONS).map((action) => (
               <section
                 key={action.id}
                 className="flex min-w-0 flex-col gap-ds-8"

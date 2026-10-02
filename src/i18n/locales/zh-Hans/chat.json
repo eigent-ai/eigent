@@ -458,7 +458,7 @@
   "space-model-unavailable": "当前账号无法使用此模型。请检查模型设置，或为会话选择模型。",
   "space-model-ambiguous": "多个提供商与此模型匹配。请检查模型设置，或为会话选择模型。",
   "space-model-changed": "加载期间账号或会话模型发生变化，请重新发送消息。",
-  "task-failure-confirmed": "任务失败，未记录最终回复。",
+  "task-failure-confirmed": "未记录最终回复。",
   "task-failure-status": "任务失败。",
   "task-failure-unverified": "无法核实操作结果。",
   "task-failure-unknown": "外部操作可能已发生，其结果未知。",
@@ -471,5 +471,7 @@
   "task-failure-outcome-failed": "已记录失败",
   "task-failure-outcome-timed_out": "已超时",
   "task-failure-outcome-outcome_unknown": "结果未知",
-  "task-failure-outcome-unverified": "结果未核实"
+  "task-failure-outcome-unverified": "结果未核实",
+  "task-failure-timed-out": "任务已超时，未记录最终回复。",
+  "task-failure-no-actions-recorded": "未记录任何操作。"
 }

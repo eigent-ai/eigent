@@ -466,7 +466,7 @@
   "space-model-unavailable": "Este modelo no está disponible para esta cuenta. Revise los ajustes de modelos o elija un modelo para la sesión.",
   "space-model-ambiguous": "Coinciden varios proveedores. Revise los ajustes de modelos o elija un modelo para la sesión.",
   "space-model-changed": "La cuenta o el modelo de la sesión cambió durante la carga. Vuelva a enviar el mensaje.",
-  "task-failure-confirmed": "La tarea falló antes de que se registrara una respuesta final.",
+  "task-failure-confirmed": "No se registró ninguna respuesta final.",
   "task-failure-status": "La tarea falló.",
   "task-failure-unverified": "No se pudieron verificar los resultados de las acciones.",
   "task-failure-unknown": "Es posible que se haya realizado una acción externa; se desconoce su resultado.",
@@ -479,5 +479,7 @@
   "task-failure-outcome-failed": "Fallo registrado",
   "task-failure-outcome-timed_out": "Tiempo agotado",
   "task-failure-outcome-outcome_unknown": "Resultado desconocido",
-  "task-failure-outcome-unverified": "Resultado sin verificar"
+  "task-failure-outcome-unverified": "Resultado sin verificar",
+  "task-failure-timed-out": "La tarea agotó el tiempo de espera antes de que se registrara una respuesta final.",
+  "task-failure-no-actions-recorded": "No se registró ninguna acción."
 }

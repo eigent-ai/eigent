@@ -462,7 +462,7 @@
   "space-model-unavailable": "Dieses Modell ist für das aktuelle Konto nicht verfügbar. Prüfen Sie die Modelleinstellungen oder wählen Sie ein Sitzungsmodell.",
   "space-model-ambiguous": "Mehrere Anbieter passen zu diesem Modell. Prüfen Sie die Modelleinstellungen oder wählen Sie ein Sitzungsmodell.",
   "space-model-changed": "Das Konto oder Sitzungsmodell hat sich beim Laden geändert. Senden Sie Ihre Nachricht erneut.",
-  "task-failure-confirmed": "Die Aufgabe ist fehlgeschlagen, bevor eine abschließende Antwort aufgezeichnet wurde.",
+  "task-failure-confirmed": "Es wurde keine abschließende Antwort aufgezeichnet.",
   "task-failure-status": "Die Aufgabe ist fehlgeschlagen.",
   "task-failure-unverified": "Die Ergebnisse der Aktionen konnten nicht überprüft werden.",
   "task-failure-unknown": "Eine externe Aktion könnte stattgefunden haben; ihr Ergebnis ist unbekannt.",
@@ -475,5 +475,7 @@
   "task-failure-outcome-failed": "Fehlschlag aufgezeichnet",
   "task-failure-outcome-timed_out": "Zeitüberschreitung",
   "task-failure-outcome-outcome_unknown": "Ergebnis unbekannt",
-  "task-failure-outcome-unverified": "Ergebnis nicht überprüft"
+  "task-failure-outcome-unverified": "Ergebnis nicht überprüft",
+  "task-failure-timed-out": "Die Zeit für die Aufgabe ist abgelaufen, bevor eine abschließende Antwort aufgezeichnet wurde.",
+  "task-failure-no-actions-recorded": "Es wurden keine Aktionen aufgezeichnet."
 }

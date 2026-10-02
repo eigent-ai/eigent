@@ -80,12 +80,14 @@ export type TaskFailureAction = {
 
 /** Read-only presentation evidence; never an assistant result or replay input. */
 export type TaskFailureFacts = {
+  terminal: 'failed' | 'timed_out';
   finalResponse: 'absent' | 'present' | 'unverified';
   actionsVerified: boolean;
   actions: TaskFailureAction[];
 };
 
 export const unverifiedTaskFailureFacts = (): TaskFailureFacts => ({
+  terminal: 'failed',
   finalResponse: 'unverified',
   actionsVerified: false,
   actions: [],
@@ -354,7 +356,6 @@ export async function readTerminalRunResult({
                 (previous?.outcome === outcome ? previous.detail : undefined),
             });
             if (
-              failureActions.size > 100 ||
               payload.display_output_truncated === true ||
               payload.display_input_truncated === true
             )
@@ -496,11 +497,14 @@ export async function readTerminalRunResult({
             )
               ? {
                   failureFacts: {
+                    terminal:
+                      event.event_type === 'run.deadline_reached'
+                        ? ('timed_out' as const)
+                        : ('failed' as const),
                     finalResponse: hasFinalResponse
                       ? ('present' as const)
                       : ('absent' as const),
                     actionsVerified:
-                      failureActions.size > 0 &&
                       !unverifiedLegacyActions &&
                       [...legacyToolIds].every((id) =>
                         failureActions.has(id)

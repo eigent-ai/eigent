@@ -466,7 +466,7 @@
   "space-model-unavailable": "Questo modello non è disponibile per l’account attuale. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
   "space-model-ambiguous": "Più provider corrispondono al modello. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
   "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio.",
-  "task-failure-confirmed": "Il compito è fallito prima che venisse registrata una risposta finale.",
+  "task-failure-confirmed": "Non è stata registrata alcuna risposta finale.",
   "task-failure-status": "Il compito è fallito.",
   "task-failure-unverified": "Non è stato possibile verificare gli esiti delle azioni.",
   "task-failure-unknown": "Potrebbe essersi verificata un’azione esterna; il suo esito è sconosciuto.",
@@ -479,5 +479,7 @@
   "task-failure-outcome-failed": "Errore registrato",
   "task-failure-outcome-timed_out": "Tempo scaduto",
   "task-failure-outcome-outcome_unknown": "Esito sconosciuto",
-  "task-failure-outcome-unverified": "Esito non verificato"
+  "task-failure-outcome-unverified": "Esito non verificato",
+  "task-failure-timed-out": "Il tempo del compito è scaduto prima che venisse registrata una risposta finale.",
+  "task-failure-no-actions-recorded": "Non è stata registrata alcuna azione."
 }

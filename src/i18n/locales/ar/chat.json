@@ -478,7 +478,7 @@
   "space-model-unavailable": "هذا النموذج غير متاح للحساب الحالي. راجع إعدادات النماذج أو اختر نموذجاً للجلسة.",
   "space-model-ambiguous": "توجد موفرات متعددة مطابقة. راجع إعدادات النماذج أو اختر نموذجاً للجلسة.",
   "space-model-changed": "تغير الحساب أو نموذج الجلسة أثناء التحميل. أرسل رسالتك مرة أخرى.",
-  "task-failure-confirmed": "فشلت المهمة قبل تسجيل رد نهائي.",
+  "task-failure-confirmed": "لم يُسجَّل رد نهائي.",
   "task-failure-status": "فشلت المهمة.",
   "task-failure-unverified": "تعذر التحقق من نتائج الإجراءات.",
   "task-failure-unknown": "ربما حدث إجراء خارجي؛ نتيجته غير معروفة.",
@@ -491,5 +491,7 @@
   "task-failure-outcome-failed": "تم تسجيل الفشل",
   "task-failure-outcome-timed_out": "انتهت المهلة",
   "task-failure-outcome-outcome_unknown": "النتيجة غير معروفة",
-  "task-failure-outcome-unverified": "النتيجة غير متحقق منها"
+  "task-failure-outcome-unverified": "النتيجة غير متحقق منها",
+  "task-failure-timed-out": "انتهت مهلة المهمة قبل تسجيل رد نهائي.",
+  "task-failure-no-actions-recorded": "لم تُسجَّل أي إجراءات."
 }

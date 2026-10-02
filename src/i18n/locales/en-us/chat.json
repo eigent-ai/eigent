@@ -462,7 +462,7 @@
   "space-model-unavailable": "This model is unavailable for the current account. Review Models settings or choose a session model.",
   "space-model-ambiguous": "More than one provider matches this model. Review Models settings or choose a session model.",
   "space-model-changed": "The account or session model changed while loading. Send your message again.",
-  "task-failure-confirmed": "Task failed before a final reply was recorded.",
+  "task-failure-confirmed": "No final reply was recorded.",
   "task-failure-status": "Task failed.",
   "task-failure-unverified": "Action outcomes could not be verified.",
   "task-failure-unknown": "An external action may have occurred; its outcome is unknown.",
@@ -475,5 +475,7 @@
   "task-failure-outcome-failed": "Failure recorded",
   "task-failure-outcome-timed_out": "Timed out",
   "task-failure-outcome-outcome_unknown": "Outcome unknown",
-  "task-failure-outcome-unverified": "Outcome unverified"
+  "task-failure-outcome-unverified": "Outcome unverified",
+  "task-failure-timed-out": "Task timed out before a final reply was recorded.",
+  "task-failure-no-actions-recorded": "No actions were recorded."
 }

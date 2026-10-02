@@ -470,7 +470,7 @@
   "space-model-unavailable": "Модель недоступна для текущего аккаунта. Проверьте настройки моделей или выберите модель сессии.",
   "space-model-ambiguous": "Найдено несколько подходящих провайдеров. Проверьте настройки моделей или выберите модель сессии.",
   "space-model-changed": "Аккаунт или модель сессии изменились во время загрузки. Отправьте сообщение ещё раз.",
-  "task-failure-confirmed": "Задача завершилась с ошибкой до записи окончательного ответа.",
+  "task-failure-confirmed": "Окончательный ответ не был записан.",
   "task-failure-status": "Задача завершилась с ошибкой.",
   "task-failure-unverified": "Не удалось проверить результаты действий.",
   "task-failure-unknown": "Внешнее действие могло произойти; его результат неизвестен.",
@@ -483,5 +483,7 @@
   "task-failure-outcome-failed": "Ошибка записана",
   "task-failure-outcome-timed_out": "Время ожидания истекло",
   "task-failure-outcome-outcome_unknown": "Результат неизвестен",
-  "task-failure-outcome-unverified": "Результат не проверен"
+  "task-failure-outcome-unverified": "Результат не проверен",
+  "task-failure-timed-out": "Время выполнения задачи истекло до записи окончательного ответа.",
+  "task-failure-no-actions-recorded": "Действия не были записаны."
 }
