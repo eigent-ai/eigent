@@ -14,6 +14,10 @@
 
 import { fetchGet, fetchPost } from '@/api/http';
 import type { DurableRunSummaryInput } from '@/lib/projector/runSummary';
+import {
+  createControlOperation,
+  submitControlOperation,
+} from './controlOperations';
 
 export type ProjectRunsResponse = {
   project_id?: unknown;
@@ -172,14 +176,15 @@ export function fetchProjectRuns(
 /** Read only canonical Runs that still own live execution state. */
 export function fetchActiveProjectRuns(
   projectId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  limit = 1
 ): Promise<ProjectRunsResponse> {
   return fetchGet(
     '/runs',
     {
       project_id: projectId,
       status: ACTIVE_DURABLE_RUN_STATUSES,
-      limit: 1,
+      limit,
     },
     undefined,
     { signal }
@@ -191,10 +196,21 @@ export function cancelProjectRun(
   runId: string,
   requestId: string,
   reason: string,
-  request: RunControlRequest = fetchPost
+  request: RunControlRequest = fetchPost,
+  projectId?: string
 ): Promise<unknown> {
-  return request(`/runs/${encodeURIComponent(runId)}/cancel`, {
-    request_id: requestId,
-    reason,
-  });
+  if (request !== fetchPost)
+    return request(`/runs/${encodeURIComponent(runId)}/cancel`, {
+      request_id: requestId,
+      reason,
+    });
+  return submitControlOperation(
+    createControlOperation({
+      kind: 'cancel',
+      runId,
+      projectId,
+      path: `/runs/${encodeURIComponent(runId)}/cancel`,
+      body: { request_id: requestId, reason },
+    })
+  );
 }

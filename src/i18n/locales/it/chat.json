@@ -465,5 +465,18 @@
   "space-model-unconfirmed": "La prima richiesta della sessione non è ancora stata confermata. Riconnettiti e riprova, oppure scegli un modello per la sessione.",
   "space-model-unavailable": "Questo modello non è disponibile per l’account attuale. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
   "space-model-ambiguous": "Più provider corrispondono al modello. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
-  "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio."
+  "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio.",
+  "control-outcome-unknown": "L’esito non è confermato. Controlla lo stato prima di continuare. Un nuovo tentativo invia la stessa richiesta.",
+  "control-check-status": "Controlla stato",
+  "control-checking-status": "Controllo dello stato…",
+  "control-retry-same-request": "Riprova la stessa richiesta",
+  "control-recovery-expired": "Questa richiesta è scaduta.",
+  "control-recovery-cancelled": "Questa richiesta è stata annullata.",
+  "control-recovery-task-status": "Stato dell’attività: {{status}}",
+  "control-recovery-status-completed": "Completata",
+  "control-recovery-status-cancelled": "Annullata",
+  "control-recovery-status-failed": "Non riuscita",
+  "control-recovery-status-timed_out": "Tempo scaduto",
+  "history-evidence": "Registrazioni di risposte precedenti ({{count}})",
+  "history-evidence-description": "Le risposte precedenti sono conservate qui quando manca il collegamento a una risposta o il loro contenuto differisce dalla risposta registrata."
 }

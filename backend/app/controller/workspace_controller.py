@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from app.model.enums import Status
 from app.router_layer.hands_resolver import get_environment_hands
 from app.run_journal import (
+    RUN_ACTIVE_STATES,
     configured_run_journal_path,
     get_default_run_journal,
 )
@@ -95,11 +96,18 @@ def _binding_enabled(manifest: dict[str, Any]) -> bool:
 
 def _project_has_active_run(project_id: str) -> bool:
     task_lock = get_task_lock_if_exists(project_id)
-    if task_lock is None:
-        return False
-    if task_lock.status != Status.done:
+    if task_lock is not None and (
+        task_lock.status != Status.done
+        or any(not task.done() for task in task_lock.background_tasks)
+    ):
         return True
-    return any(not task.done() for task in task_lock.background_tasks)
+    return bool(
+        get_default_run_journal().list_runs(
+            project_id=project_id,
+            statuses=tuple(RUN_ACTIVE_STATES),
+            limit=1,
+        )
+    )
 
 
 def _capability_payload(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -599,4 +607,68 @@ async def workspace_project_refresh(
         "space_id": space_id,
         "project_id": project_id,
         "base_snapshot_id": base_snapshot_id,
+    }
+
+
+@router.get("/workspace/{space_id}/projects/{project_id}/workdir")
+async def workspace_project_workdir(
+    space_id: str,
+    project_id: str,
+    email: str = Query(..., description="User email"),
+    user_id: str | None = Query(None, description="Canonical user ID"),
+) -> dict[str, Any]:
+    # TODO(brain-auth): Phase B must derive the owner from
+    # request.state.brain_auth.user_id instead of trusting the email query.
+    try:
+        workdir = get_workspace_resolver().owned_project_workdir(
+            space_id=space_id,
+            project_id=project_id,
+            email=email,
+            user_id=user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "workspace_workdir_unsafe", "message": str(exc)},
+        ) from exc
+    return {
+        "space_id": space_id,
+        "project_id": project_id,
+        "exists": workdir is not None,
+    }
+
+
+@router.delete("/workspace/{space_id}/projects/{project_id}/workdir")
+async def workspace_project_workdir_delete(
+    space_id: str,
+    project_id: str,
+    email: str = Query(..., description="User email"),
+    user_id: str | None = Query(None, description="Canonical user ID"),
+) -> dict[str, Any]:
+    # TODO(brain-auth): Phase B must derive the owner from
+    # request.state.brain_auth.user_id instead of trusting the email query.
+    if _project_has_active_run(project_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_running",
+                "message": "Project workdir cannot be deleted while a run is active.",
+            },
+        )
+    try:
+        deleted = get_workspace_resolver().delete_project_workdir(
+            space_id=space_id,
+            project_id=project_id,
+            email=email,
+            user_id=user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "workspace_workdir_unsafe", "message": str(exc)},
+        ) from exc
+    return {
+        "space_id": space_id,
+        "project_id": project_id,
+        "deleted": deleted,
     }

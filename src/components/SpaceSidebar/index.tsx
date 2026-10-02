@@ -12,12 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  fetchDelete,
-  fetchPut,
-  proxyFetchDelete,
-  proxyFetchGet,
-} from '@/api/http';
+import { fetchPut } from '@/api/http';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import {
@@ -27,6 +22,11 @@ import {
   SidebarSeparator,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
+import {
+  DeleteSessionDialog,
+  type DeleteSessionFailure,
+  type DeleteSessionPhase,
+} from '@/components/Session/DeleteSessionDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
@@ -38,7 +38,12 @@ import {
 } from '@/lib/projectAchievement';
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
+import {
+  assertSessionCleanupIdentity,
+  deleteSessionTaskData,
+} from '@/lib/sessionFileCleanup';
 import { resolveSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getFilesTabBindingLabel,
@@ -62,7 +67,14 @@ import {
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { Cast, Inbox, LayoutGrid, Plus, ToolCase } from 'lucide-react';
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -123,7 +135,15 @@ export default function SpaceSidebar({
   const closeSettings = useSettingsStore((state) => state.closeSettings);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
-  const [deleteProjectLoading, setDeleteProjectLoading] = useState(false);
+  const [deleteProjectPhase, setDeleteProjectPhase] =
+    useState<DeleteSessionPhase>('idle');
+  const [deleteProjectFailure, setDeleteProjectFailure] =
+    useState<DeleteSessionFailure>(null);
+  const [deleteProjectWorkdir, setDeleteProjectWorkdir] = useState(false);
+  const deleteProjectIdentity = useRef<{
+    email: string | null;
+    userId: number | null;
+  } | null>(null);
   const [achieveProjectId, setAchieveProjectId] = useState<string | null>(null);
   const [achieveProjectLoading, setAchieveProjectLoading] = useState(false);
   const [achieveDialogOpen, setAchieveDialogOpen] = useState(false);
@@ -498,6 +518,10 @@ export default function SpaceSidebar({
   }, []);
 
   const requestDeleteSession = useCallback((projectId: string) => {
+    const auth = useAuthStore.getState();
+    deleteProjectIdentity.current = { email: auth.email, userId: auth.user_id };
+    setDeleteProjectFailure(null);
+    setDeleteProjectWorkdir(false);
     setDeleteProjectId(projectId);
   }, []);
 
@@ -508,81 +532,38 @@ export default function SpaceSidebar({
 
   const confirmDeleteSession = useCallback(async () => {
     const projectId = deleteProjectId;
-    if (!projectId) return;
+    if (!projectId || deleteProjectPhase !== 'idle') return;
 
-    setDeleteProjectLoading(true);
+    setDeleteProjectPhase('stopping');
     try {
+      const identity = deleteProjectIdentity.current;
+      if (!identity) throw new Error('Missing Session cleanup identity');
+      assertSessionCleanupIdentity(identity);
       const projectMeta = useSpaceStore.getState().getProjectMeta(projectId);
       const spaceId = projectMeta?.spaceId ?? activeSpaceId ?? undefined;
       const wasActive = projectStore.activeProjectId === projectId;
 
-      let historyProject: {
-        tasks?: Array<{
-          id?: number;
-          task_id?: string;
-          project_id?: string;
-        }>;
-      } | null = null;
+      await stopSessionAndWait(projectId);
+      setDeleteProjectPhase('deleting');
+      const chatState = projectStore.peekActiveChatStore(projectId)?.getState();
+      await deleteSessionTaskData({
+        projectId,
+        spaceId,
+        ...identity,
+        knownTasks: Object.keys(chatState?.tasks ?? {}).map((taskId) => ({
+          task_id: taskId,
+          project_id: projectId,
+        })),
+        deleteWorkdir: deleteProjectWorkdir,
+        ipcRenderer,
+      });
 
-      try {
-        historyProject = await proxyFetchGet(
-          `/api/v1/chat/histories/grouped/${projectId}`,
-          { include_tasks: true }
-        );
-      } catch (error) {
-        console.warn(
-          `[SpaceSidebar] No grouped history for project ${projectId}:`,
-          error
-        );
-      }
-
-      // Fan out per-task cleanup in parallel: with many tasks the previous
-      // sequential loop kept the confirm dialog spinning for several seconds
-      // even though every call is independent and best-effort.
-      const cleanupPromises = (historyProject?.tasks ?? [])
-        .filter((task) => task?.id != null)
-        .flatMap((task) => {
-          const work: Promise<unknown>[] = [
-            proxyFetchDelete(`/api/v1/chat/history/${task.id}`).catch(
-              (error) => {
-                console.warn(
-                  `[SpaceSidebar] Failed to delete history task ${task.task_id}:`,
-                  error
-                );
-              }
-            ),
-          ];
-          if (task.task_id && email && ipcRenderer) {
-            work.push(
-              ipcRenderer
-                .invoke(
-                  'delete-task-files',
-                  email,
-                  task.task_id,
-                  task.project_id ?? projectId
-                )
-                .catch((error: unknown) => {
-                  console.warn(
-                    `[SpaceSidebar] Local file cleanup failed for task ${task.task_id}:`,
-                    error
-                  );
-                })
-            );
-          }
-          return work;
-        });
-      await Promise.allSettled(cleanupPromises);
-
-      try {
-        await fetchDelete(`/chat/${projectId}`);
-      } catch {
-        /* Backend may already have removed the chat */
-      }
-
+      assertSessionCleanupIdentity(identity);
       if (spaceId) {
         try {
           const { proxyUpdateSpaceProject } =
             await import('@/service/spaceApi');
+          assertSessionCleanupIdentity(identity);
           await proxyUpdateSpaceProject(spaceId, projectId, {
             status: 'archived',
           });
@@ -594,7 +575,9 @@ export default function SpaceSidebar({
         }
       }
 
+      assertSessionCleanupIdentity(identity);
       projectStore.removeProject(projectId);
+      setDeleteProjectId(null);
 
       if (wasActive) {
         setActiveWorkspaceTab('workforce');
@@ -604,15 +587,23 @@ export default function SpaceSidebar({
       toast.success(t('layout.delete-project'));
     } catch (error) {
       console.error('[SpaceSidebar] Failed to delete project:', error);
-      toast.error(t('layout.delete-project'));
+      const failure = error instanceof SessionStopError ? 'stop' : 'cleanup';
+      setDeleteProjectFailure(failure);
+      toast.error(
+        t(
+          failure === 'stop'
+            ? 'layout.delete-project-stop-failed'
+            : 'layout.delete-project-failed'
+        )
+      );
     } finally {
-      setDeleteProjectLoading(false);
-      setDeleteProjectId(null);
+      setDeleteProjectPhase('idle');
     }
   }, [
     activeSpaceId,
     deleteProjectId,
-    email,
+    deleteProjectPhase,
+    deleteProjectWorkdir,
     ipcRenderer,
     projectStore,
     requestWorkspaceChatFocus,
@@ -681,20 +672,14 @@ export default function SpaceSidebar({
         open={globalSearchOpen}
         onOpenChange={setGlobalSearchOpen}
       />
-      <AlertDialog
-        isOpen={deleteProjectId != null}
-        onClose={() => {
-          if (deleteProjectLoading) return;
-          setDeleteProjectId(null);
-        }}
+      <DeleteSessionDialog
+        projectId={deleteProjectId}
+        phase={deleteProjectPhase}
+        failure={deleteProjectFailure}
+        deleteWorkdir={deleteProjectWorkdir}
+        onDeleteWorkdirChange={setDeleteProjectWorkdir}
+        onClose={() => setDeleteProjectId(null)}
         onConfirm={() => void confirmDeleteSession()}
-        title={t('layout.delete-project')}
-        message={t('layout.delete-project-confirmation')}
-        confirmText={t('layout.delete')}
-        cancelText={t('layout.cancel')}
-        confirmVariant="secondary"
-        confirmTone="error"
-        confirmDisabled={deleteProjectLoading}
       />
 
       <AlertDialog

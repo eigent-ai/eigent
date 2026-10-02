@@ -13,8 +13,14 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchDelete } from '@/api/http';
+import {
+  DeleteSessionDialog,
+  type DeleteSessionFailure,
+  type DeleteSessionPhase,
+} from '@/components/Session/DeleteSessionDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
 import { share } from '@/lib/share';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import {
@@ -25,6 +31,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import {
   HomeHubProvider,
   type HomeSortBy,
@@ -32,7 +39,10 @@ import {
   type HomeViewMode,
 } from './context';
 import { useHomeHubCounts } from './hooks/useHomeHubCounts';
-import { useHomeHubProjects } from './hooks/useHomeHubProjects';
+import {
+  type SessionDeleteCallback,
+  useHomeHubProjects,
+} from './hooks/useHomeHubProjects';
 import { useHomeHubTriggers } from './hooks/useHomeHubTriggers';
 import { useHomeSection } from './hooks/useHomeSection';
 import { useNewSpaceCreation } from './hooks/useNewSpaceCreation';
@@ -68,9 +78,13 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
   const [curHistoryId, setCurHistoryId] = useState('');
   const [deleteProjectModalOpen, setDeleteProjectModalOpen] = useState(false);
   const [curProjectId, setCurProjectId] = useState('');
-  const [projectDeleteCallback, setProjectDeleteCallback] = useState<
-    (() => Promise<void>) | null
-  >(null);
+  const [deleteProjectPhase, setDeleteProjectPhase] =
+    useState<DeleteSessionPhase>('idle');
+  const [deleteProjectFailure, setDeleteProjectFailure] =
+    useState<DeleteSessionFailure>(null);
+  const [deleteProjectWorkdir, setDeleteProjectWorkdir] = useState(false);
+  const [projectDeleteCallback, setProjectDeleteCallback] =
+    useState<SessionDeleteCallback | null>(null);
 
   const [viewMode, setViewModeState] = useState<HomeViewMode>(
     readStoredHomeViewMode
@@ -118,6 +132,8 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
 
   const handleProjectDelete = (projectId: string) => {
     hubHandleProjectDelete(projectId, (deleteCallbackFn) => {
+      setDeleteProjectFailure(null);
+      setDeleteProjectWorkdir(false);
       setCurProjectId(projectId);
       setProjectDeleteCallback(() => deleteCallbackFn);
       setDeleteProjectModalOpen(true);
@@ -126,16 +142,30 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
 
   const confirmProjectDelete = async () => {
     const projectId = curProjectId;
-    if (!projectId || !projectDeleteCallback) return;
+    if (!projectId || !projectDeleteCallback || deleteProjectPhase !== 'idle')
+      return;
 
+    setDeleteProjectPhase('stopping');
     try {
-      await projectDeleteCallback();
-    } catch (error) {
-      console.error('Failed to delete project:', error);
-    } finally {
+      await stopSessionAndWait(projectId);
+      setDeleteProjectPhase('deleting');
+      await projectDeleteCallback({ deleteWorkdir: deleteProjectWorkdir });
       setCurProjectId('');
       setProjectDeleteCallback(null);
       setDeleteProjectModalOpen(false);
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      const failure = error instanceof SessionStopError ? 'stop' : 'cleanup';
+      setDeleteProjectFailure(failure);
+      toast.error(
+        t(
+          failure === 'stop'
+            ? 'layout.delete-project-stop-failed'
+            : 'layout.delete-project-failed'
+        )
+      );
+    } finally {
+      setDeleteProjectPhase('idle');
     }
   };
 
@@ -211,19 +241,14 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
         cancelText={t('layout.cancel')}
       />
 
-      <AlertDialog
-        isOpen={deleteProjectModalOpen}
+      <DeleteSessionDialog
+        projectId={deleteProjectModalOpen ? curProjectId : null}
+        phase={deleteProjectPhase}
+        failure={deleteProjectFailure}
+        deleteWorkdir={deleteProjectWorkdir}
+        onDeleteWorkdirChange={setDeleteProjectWorkdir}
         onClose={() => setDeleteProjectModalOpen(false)}
-        onConfirm={confirmProjectDelete}
-        title={t('layout.delete-project') || 'Delete session'}
-        message={
-          t('layout.delete-project-confirmation') ||
-          'Are you sure you want to delete this session and all its tasks? This action cannot be undone.'
-        }
-        confirmText={t('layout.delete')}
-        cancelText={t('layout.cancel')}
-        confirmVariant="secondary"
-        confirmTone="error"
+        onConfirm={() => void confirmProjectDelete()}
       />
 
       <NewSpaceDialog
