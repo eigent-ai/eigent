@@ -28,6 +28,7 @@ from app.controller.run_controller import (
     cancel_run,
     decide_run_interaction,
     fork_run,
+    get_run,
     list_project_runs,
     list_run_interactions,
     resume_run,
@@ -322,9 +323,63 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
 
     assert [run["run_id"] for run in result["runs"]] == ["older"]
     assert result["runs"][0]["status"] == "interrupted"
+    assert result["runs"][0]["resolved_model"] is None
     assert result["cloud_restore_pending"] is True
     # Startup recovery must not count the unobserved process-down interval as
     # active execution time. This attempt never persisted a later heartbeat.
     assert result["runs"][0]["total_attempt_elapsed_ms"] == 0
     notify_sync.assert_called_once_with()
     bootstrap_history.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_reads_expose_bound_model_without_auth_details(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-env", project_id="project-1")
+        template = LegacyEnvironmentImporter().build_template(
+            model_platform="openai",
+            model_type="gpt-5",
+            auth_source="api_key",
+            requested_effort="high",
+            allow_local_system=True,
+        )
+        environment = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="run-env",
+            space_id="space-1",
+            working_directory=workspace,
+            created_by="test-user",
+            template=template,
+        )
+        journal.create_run_attempt(
+            "run-env",
+            request_id="initial:run-env",
+            reason="initial_execution",
+            activate=True,
+            environment=environment.binding,
+            now=1,
+        )
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.controller.run_controller.get_default_run_coordinator",
+                return_value=RunCoordinator(),
+            ),
+            patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+            patch(
+                "app.run_sync.runtime."
+                "is_default_cloud_history_bootstrap_pending",
+                return_value=False,
+            ),
+        ):
+            listing = await list_project_runs(project_id="project-1", limit=20)
+            detail = await get_run("run-env")
+
+    expected = {"platform": "openai", "type": "gpt-5"}
+    assert listing["runs"][0]["resolved_model"] == expected
+    assert detail["resolved_model"] == expected
+    assert set(listing["runs"][0]["resolved_model"]) == {"platform", "type"}
