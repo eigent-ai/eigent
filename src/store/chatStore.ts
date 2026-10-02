@@ -83,7 +83,11 @@ import { executionScope } from '@/service/executionApi';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
-import { readTerminalRunResult } from '@/service/runUsageReconciliation';
+import {
+  readTerminalRunResult,
+  unverifiedTaskFailureFacts,
+  type TaskFailureFacts,
+} from '@/service/runUsageReconciliation';
 import {
   forgetRejectedTriggerRun,
   proxyUpdateTriggerExecution,
@@ -109,7 +113,7 @@ import i18next from 'i18next';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
-import { getAuthStore, getWorkerList } from './authStore';
+import { getAuthStore, getWorkerList, useAuthStore } from './authStore';
 import { enqueueChatEventProjection } from './chatEventProjectionBridge';
 import {
   cloudModelRequestExtraParams,
@@ -1273,6 +1277,10 @@ export interface ChatStore {
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
+  observeTaskFailureFacts: (
+    taskId: string,
+    onFacts: (facts: TaskFailureFacts | undefined) => void
+  ) => () => void;
   setDurableRunStatus: (
     taskId: string,
     status: DurableRunDisplayStatus | undefined
@@ -2314,6 +2322,67 @@ const updateTriggerExecutionStatus = async (
   }
 };
 
+/** Hydrate mount-scoped failure presentation, without changing history or execution. */
+export async function readTaskFailureFacts(
+  owner: VanillaChatStore,
+  projectId: string,
+  taskId: string,
+  signal: AbortSignal
+): Promise<TaskFailureFacts | null> {
+  const task = owner.getState().tasks[taskId];
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  const controller = new AbortController();
+  const isCurrent = () => {
+    const current = owner.getState().tasks[taskId];
+    const projects = useProjectStore.getState();
+    return (
+      !signal.aborted &&
+      !controller.signal.aborted &&
+      getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+      projects.activeProjectId === projectId &&
+      projects
+        .getAllChatStores(projectId)
+        .some((entry) => entry.chatStore === owner) &&
+      Boolean(
+        task &&
+        current &&
+        current.executionId === task.executionId &&
+        current.durableRunStatus === 'failed' &&
+        current.status === ChatTaskStatus.FINISHED
+      )
+    );
+  };
+  if (!isCurrent()) return null;
+  const invalidate = () => {
+    if (!isCurrent()) controller.abort();
+  };
+  const abort = () => controller.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  const unsubscribe = [
+    owner.subscribe(invalidate),
+    useProjectStore.subscribe(invalidate),
+    useAuthStore.subscribe(invalidate),
+  ];
+  try {
+    const result = await readTerminalRunResult({
+      projectId,
+      runId: taskId,
+      terminalEventTypes: ['run.failed', 'run.deadline_reached'],
+      signal: controller.signal,
+      expectedAccountKey: accountKey,
+      includeFailureFacts: true,
+    });
+    return isCurrent()
+      ? (result.failureFacts ?? unverifiedTaskFailureFacts())
+      : null;
+  } catch {
+    return isCurrent() ? unverifiedTaskFailureFacts() : null;
+  } finally {
+    signal.removeEventListener('abort', abort);
+    unsubscribe.forEach((dispose) => dispose());
+  }
+}
+
 /** Recover terminal receipts and missing display without replaying execution. */
 function recoverClosedTerminalResult(
   owner: Pick<VanillaChatStore, 'getState'>,
@@ -2437,7 +2506,7 @@ function recoverClosedTerminalResult(
 }
 
 const chatStore = (initial?: Partial<ChatStore>) =>
-  createStore<ChatStore>()((set, get) => ({
+  createStore<ChatStore>()((set, get, store) => ({
     activeTaskId: null,
     nextTaskId: null,
     tasks: initial?.tasks ?? {},
@@ -3656,6 +3725,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let lockedChatStore: VanillaChatStore =
         targetChatStore as VanillaChatStore;
       let lockedTaskId = newTaskId;
+      const createRunBrowserPreviewHandoff = () =>
+        createBrowserPreviewHandoff(
+          !isLiveTask || !getHostIpcRenderer() ? null : project_id,
+          (url, ownerProjectId) =>
+            usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
+        );
+      let handoffBrowserPreview = createRunBrowserPreviewHandoff();
       // Resume keeps its Run ID. Until this admitted Attempt reaches either
       // the stream or a GET snapshot, older terminal receipts are history only.
       let resumedAttemptObserved = false;
@@ -3962,6 +4038,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         newChatStore: VanillaChatStore,
         newTaskId: string
       ) => {
+        if (lockedTaskId !== newTaskId) {
+          // Follow-up Runs reuse this SSE transport, but each owns its one
+          // preview reveal and pending tool receipts. Never carry either
+          // across the same ownership boundary as the reducer lock.
+          handoffBrowserPreview = createRunBrowserPreviewHandoff();
+        }
         lockedChatStore = newChatStore;
         lockedTaskId = newTaskId;
         bindSSEConnectionToTask(sseConnection, newTaskId);
@@ -4104,11 +4186,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         : undefined;
 
-      const handoffBrowserPreview = createBrowserPreviewHandoff(
-        !isLiveTask || !getHostIpcRenderer() ? null : project_id,
-        (url, ownerProjectId) =>
-          usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
-      );
       let resumeStreamOpened = false;
       let resolveResumeStreamOpen: (() => void) | undefined;
       let rejectResumeStreamOpen: ((error: unknown) => void) | undefined;
@@ -4255,16 +4332,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           try {
             const parsed = JSON.parse(event.data);
-            if (!type && completionTailSteps.has(parsed?.step)) {
+            if (
+              isLiveTask &&
+              (completionTailSteps.has(parsed?.step) ||
+                parsed?.step === AgentStep.ACTIVATE_TOOLKIT)
+            ) {
               const ownerRunId = getCurrentTaskId();
-              const explicitRunId = parsed?.run_id ?? parsed?.data?.run_id;
+              // Activation can replace an unkeyed pending browser visit.
+              // Validate it before projection or URL recording, just like
+              // its completion. Legacy frames without ids use this transport's
+              // captured ownership; every explicit id must agree with it.
               if (
                 abortController.signal.aborted ||
                 sseConnection.taskId !== ownerRunId ||
                 activeSSEControllers[ownerRunId] !== sseConnection ||
                 legacyEndRunId === ownerRunId ||
-                (typeof explicitRunId === 'string' &&
-                  explicitRunId !== ownerRunId)
+                [parsed?.run_id, parsed?.data?.run_id].some(
+                  (id) => typeof id === 'string' && id !== ownerRunId
+                ) ||
+                [parsed?.project_id, parsed?.data?.project_id].some(
+                  (id) => typeof id === 'string' && id !== project_id
+                )
               ) {
                 return;
               }
@@ -4434,6 +4522,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             agentMessages.step === AgentStep.WAIT_CONFIRM;
 
           const isPostCompletionProjectionEvent =
+            agentMessages.step === AgentStep.HUMAN_REPLY ||
             agentMessages.step === AgentStep.ARTIFACT_MANIFEST ||
             agentMessages.step === AgentStep.ARTIFACT_UPLOADED ||
             agentMessages.step === AgentStep.PROJECT_METADATA;
@@ -6889,6 +6978,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           if (agentMessages.step === AgentStep.SYNC) return;
           if (agentMessages.step === AgentStep.HUMAN_REPLY) {
+            // canonicalRunEventToLegacyMessage carries these migration-only
+            // fields alongside the legacy reply payload.
+            const resolution = agentMessages.data as AgentMessage['data'] & {
+              __durable_interaction_resolution?: boolean;
+              decision?: { reply?: unknown };
+            };
             const resolvedInteractionId =
               typeof agentMessages.data?.interaction_id === 'string'
                 ? agentMessages.data.interaction_id
@@ -6906,25 +7001,63 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 resolvedInteractionId
               );
             }
-            // A local decision closes and advances the queue immediately.
-            // When the canonical decision later arrives, it is confirmation,
-            // not a second signal to consume another queued interaction.
-            if (interactionWasAlreadyResolved) return;
+            // A canonical question decision is persisted under decision.reply;
+            // legacy human_reply frames carry the same answer at the top level.
+            // Project the receipt even if control cleanup already closed ASK.
             const reply =
+              (resolution?.__durable_interaction_resolution === true &&
+              typeof resolution.decision?.reply === 'string'
+                ? resolution.decision.reply
+                : '') ||
               agentMessages.data?.reply ||
               agentMessages.data?.content ||
               (typeof agentMessages.data === 'string'
                 ? agentMessages.data
                 : '');
-            if (reply) {
+            const existingReply = resolvedInteractionId
+              ? getCurrentChatStore().tasks[currentTaskId]?.messages.find(
+                  (message) =>
+                    message.role === 'user' &&
+                    message.interactionResponseTo === resolvedInteractionId
+                )
+              : undefined;
+            if (reply && !existingReply) {
               addMessages(currentTaskId, {
-                id: generateUniqueId(),
+                id: resolvedInteractionId
+                  ? `interaction-response:${resolvedInteractionId}`
+                  : generateUniqueId(),
                 role: 'user',
                 content: reply,
                 interactionResponseTo:
                   agentMessages.data?.interaction_id || undefined,
+                interactionResponseSource:
+                  resolution?.__durable_interaction_resolution === true
+                    ? 'canonical'
+                    : 'legacy',
+              });
+            } else if (
+              reply &&
+              existingReply &&
+              resolution?.__durable_interaction_resolution === true &&
+              (existingReply.content !== reply ||
+                existingReply.interactionResponseSource !== 'canonical')
+            ) {
+              // A competing client may have resolved the interaction. Only
+              // the journal's answer can replace an optimistic local reply.
+              updateMessage(currentTaskId, existingReply.id, {
+                ...existingReply,
+                content: reply,
+                interactionResponseSource: 'canonical',
               });
             }
+
+            // Receipt deduplication is separate from control idempotency. A
+            // repeated resolution must never consume the next queued ASK.
+            if (
+              interactionWasAlreadyResolved ||
+              tasks[currentTaskId].status === ChatTaskStatus.FINISHED
+            )
+              return;
 
             const latestTask =
               getCurrentChatStore().tasks[currentTaskId] ||
@@ -7719,10 +7852,71 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
+    observeTaskFailureFacts(taskId, onFacts) {
+      const projectId = useProjectStore.getState().activeProjectId;
+      if (!projectId) return () => {};
+      const executionId = get().tasks[taskId]?.executionId;
+      const accountKey = getAccountEnvironmentKey(getAuthStore());
+      const controller = new AbortController();
+      const invalidate = () => {
+        if (controller.signal.aborted) return;
+        if (
+          getAccountEnvironmentKey(getAuthStore()) !== accountKey ||
+          useProjectStore.getState().activeProjectId !== projectId ||
+          !useProjectStore
+            .getState()
+            .getAllChatStores(projectId)
+            .some((entry) => entry.chatStore === store) ||
+          get().tasks[taskId]?.durableRunStatus !== 'failed' ||
+          get().tasks[taskId]?.status !== ChatTaskStatus.FINISHED ||
+          get().tasks[taskId]?.executionId !== executionId
+        ) {
+          controller.abort();
+          onFacts(undefined);
+        }
+      };
+      const unsubscribe = [
+        useAuthStore.subscribe(invalidate),
+        useProjectStore.subscribe(invalidate),
+        store.subscribe(invalidate),
+      ];
+      void readTaskFailureFacts(
+        store,
+        projectId,
+        taskId,
+        controller.signal
+      ).then((facts) => {
+        if (!controller.signal.aborted && facts) onFacts(facts);
+      });
+      return () => {
+        controller.abort();
+        unsubscribe.forEach((dispose) => dispose());
+      };
+    },
     setDurableRunStatus(
       taskId: string,
       durableRunStatus: DurableRunDisplayStatus | undefined
     ) {
+      // Retired requests stay attached to history even when Resume starts a
+      // new Attempt in this same Run. This receipt never asserts a decision.
+      const retireApproval = (message: Message): Message => {
+        if (
+          !durableRunStatus ||
+          !['interrupted', 'completed', 'failed', 'cancelled'].includes(
+            durableRunStatus
+          ) ||
+          message.interaction?.interaction_type !== 'approval' ||
+          message.interaction.receipt
+        )
+          return message;
+        return {
+          ...message,
+          interaction: {
+            ...message.interaction,
+            receipt: { runStatus: durableRunStatus },
+          },
+        };
+      };
       set((state) => {
         const task = state.tasks[taskId];
         if (!task) return state;
@@ -7733,6 +7927,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             [taskId]: {
               ...task,
               durableRunStatus,
+              messages: task.messages.map(retireApproval),
+              askList: task.askList.map(retireApproval),
             },
           },
         };

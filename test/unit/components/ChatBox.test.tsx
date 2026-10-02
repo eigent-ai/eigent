@@ -29,6 +29,7 @@ import { generateUniqueId } from '@/lib';
 import { runProjectionStore } from '@/lib/runEvents';
 import { errorCopy } from '@/lib/usageErrors';
 import { createChatStoreInstance } from '@/store/chatStore';
+import { resetConnectionConfig } from '@/store/connectionStore';
 import {
   acknowledgeUsageNotice,
   reportUsageIncident,
@@ -505,6 +506,7 @@ describe('ChatBox Component', async () => {
   });
 
   beforeEach(() => {
+    resetConnectionConfig();
     setUsageAccount(null);
     setUsageModelType('cloud');
     modelConfigHarness.cloudUsageLimitReached = false;
@@ -3103,8 +3105,10 @@ describe('ChatBox Component', async () => {
       await user.click(stopButton);
       await waitFor(() => {
         expect(_mockFetchPost).toHaveBeenCalledWith(
-          '/chat/test-project-id/skip-task',
-          { project_id: 'test-project-id' }
+          '/chat/test-project-id/skip-task?expected_task_id=test-task-id',
+          { project_id: 'test-project-id' },
+          undefined,
+          expect.objectContaining({ signal: expect.any(AbortSignal) })
         );
       });
     });
@@ -3168,8 +3172,12 @@ describe('ChatBox Component', async () => {
 
       await user.click(stopButton);
       await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(stopButton).not.toBeDisabled());
-      await user.click(stopButton);
+      expect(
+        screen.queryByRole('button', { name: 'Stop Task' })
+      ).not.toBeInTheDocument();
+      await user.click(
+        screen.getByRole('button', { name: 'chat.control-retry-same-request' })
+      );
       await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(2));
 
       const [firstUrl, firstBody] = _mockFetchPost.mock.calls[0];

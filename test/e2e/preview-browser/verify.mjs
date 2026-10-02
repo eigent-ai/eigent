@@ -190,6 +190,30 @@ try {
     path.join(out, '04-narrow-zoom.png'),
     Buffer.from(nativeZoomScreenshot, 'base64')
   );
+  await page.evaluate(() =>
+    document.documentElement.setAttribute('dir', 'rtl')
+  );
+  const retry = page.getByRole('button', { name: 'Retry', exact: true });
+  await retry.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(retry).toBeFocused();
+  await expect(retry).toBeInViewport();
+  expect(
+    await retry.evaluate((element) => getComputedStyle(element).boxShadow)
+  ).not.toBe('none');
+  const rtlZoomScreenshot = await electron.evaluate(async ({ BrowserWindow }) =>
+    (await BrowserWindow.getAllWindows()[0].capturePage())
+      .toPNG()
+      .toString('base64')
+  );
+  await writeFile(
+    path.join(out, '04-narrow-zoom-rtl-focus.png'),
+    Buffer.from(rtlZoomScreenshot, 'base64')
+  );
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('alert')).toContainText('Page unavailable');
+  await page.evaluate(() => document.documentElement.removeAttribute('dir'));
   await electron.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
     w.webContents.setZoomFactor(1);
@@ -282,6 +306,7 @@ try {
           'same-link retry after server restart',
           'light/dark',
           'narrow window at 200% zoom',
+          'RTL keyboard retry at narrow 200% zoom',
           'keyboard retry after restart',
           'offline HTML with relative CSS/image/script',
         ],

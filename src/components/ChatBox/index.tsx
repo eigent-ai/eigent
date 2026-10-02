@@ -22,6 +22,7 @@ import {
 } from '@/api/http';
 import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
@@ -29,6 +30,10 @@ import { useSessionExecution } from '@/hooks/useSessionExecution';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
+import {
+  interruptedRunDescription,
+  isHumanInteractionReadOnly,
+} from '@/lib/approvalPresentation';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
 import {
@@ -46,6 +51,11 @@ import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { errorCopy } from '@/lib/usageErrors';
 import { buildUsageLimitBannerState } from '@/lib/usageLimitBanner';
 import {
+  reconcileControlOperations,
+  stopProjectTask,
+} from '@/service/controlOperations';
+import { controlOwner } from '@/service/controlRequest';
+import {
   cancelFollowUpRequest,
   createFollowUpRequest,
   invalidatePendingFollowUps,
@@ -53,7 +63,13 @@ import {
   prioritizeFollowUpRequest,
   terminalContinuationAdmissionRejection,
 } from '@/service/followUpQueueApi';
-import { decideHumanInteraction } from '@/service/humanInteractionApi';
+import {
+  decideHumanInteraction,
+  invalidatePendingHumanInteractions,
+  isHumanInteractionStillPending,
+} from '@/service/humanInteractionApi';
+import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
+import { reconcileHumanInteractionEvents } from '@/service/humanInteractionEventReconciliation';
 import { cancelProjectRun } from '@/service/projectRunsApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
@@ -93,6 +109,7 @@ import type {
   BottomBoxRunControlVariant,
 } from './BottomBox/types';
 import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
+import { ControlRecovery, useControlOperations } from './ControlRecovery';
 import { EventNativeProjectTimeline } from './EventNativeProjectTimeline';
 import {
   InterruptedRunBanner,
@@ -175,32 +192,6 @@ function getCurrentTimestamp() {
   return Date.now();
 }
 
-const runActionRequestId = (action: 'resume' | 'cancel', runId: string) => {
-  const key = `eigent:run:${runId}:${action}:request-id`;
-  try {
-    const existing = window.sessionStorage.getItem(key);
-    if (existing) return existing;
-    const requestId = `${action}:${runId}:${generateUniqueId()}`;
-    window.sessionStorage.setItem(key, requestId);
-    return requestId;
-  } catch {
-    return `${action}:${runId}:${generateUniqueId()}`;
-  }
-};
-
-const clearRunActionRequestId = (
-  action: 'resume' | 'cancel',
-  runId: string
-) => {
-  try {
-    window.sessionStorage.removeItem(
-      `eigent:run:${runId}:${action}:request-id`
-    );
-  } catch {
-    // sessionStorage can be unavailable in hardened browser contexts.
-  }
-};
-
 export default function ChatBox(): JSX.Element {
   const { projectStore } = useChatStoreAdapter();
   const projectId = projectStore.activeProjectId;
@@ -255,6 +246,7 @@ function LegacyChatBox(): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
+  const controlOperations = useControlOperations();
   const composerProjectRef = useRef(activeProjectId);
   composerProjectRef.current = activeProjectId;
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
@@ -293,6 +285,16 @@ function LegacyChatBox(): JSX.Element {
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
     : undefined;
+  useEffect(() => {
+    if (sharedProjectEventSnapshot?.view.projectId === activeProjectId)
+      reconcileControlOperations(sharedProjectEventSnapshot);
+  }, [
+    sharedProjectEventSnapshot,
+    activeProjectId,
+    chatStore?.activeTaskId,
+    activeTask,
+    controlOperations.length,
+  ]);
   // Project mode in three forms: `inferred` is a legacy Run fallback;
   // `effective` always resolves to a concrete mode; `display` stays nullable
   // so a still-loading Project renders empty instead of the wrong mode.
@@ -379,8 +381,23 @@ function LegacyChatBox(): JSX.Element {
       ? pendingModelAdmission === interruptedRun.run_id
       : activeProject?.metadata?.spaceModelDefaultPending === true)
   );
-  const [durableRunAction, setDurableRunAction] =
+  const [resumeRunAction, setDurableRunAction] =
     useState<InterruptedRunBannerAction>(null);
+  const interruptedCancelOperation = controlOperations.find(
+    (op) => op.kind === 'cancel' && op.runId === interruptedRun?.run_id
+  );
+  const cancelRecoveryReason =
+    interruptedCancelOperation?.phase === 'unknown'
+      ? t('chat.control-outcome-unknown')
+      : undefined;
+  const durableRunAction = controlOperations.some(
+    (op) =>
+      op.kind === 'cancel' &&
+      op.runId === interruptedRun?.run_id &&
+      op.phase === 'pending'
+  )
+    ? 'cancelling'
+    : resumeRunAction;
   const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
 
   const scheduleUsageRefresh = useCallback(() => {
@@ -518,7 +535,15 @@ function LegacyChatBox(): JSX.Element {
   }, []);
 
   const [loading, setLoading] = useState(false);
-  const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+  const [pauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+  const isPauseResumeLoading =
+    pauseResumeLoading ||
+    controlOperations.some(
+      (op) =>
+        op.kind !== 'interaction' &&
+        op.runId === chatStore?.activeTaskId &&
+        op.phase === 'pending'
+    );
 
   const activeTaskId = chatStore?.activeTaskId;
   const activeAskTask = chatStore?.tasks[activeTaskId as string];
@@ -571,7 +596,102 @@ function LegacyChatBox(): JSX.Element {
     (item) => item.step === AgentStep.ASK
   );
   const activeInteraction = activeAskMessage?.interaction;
+  const legacyControlViewKey = JSON.stringify([
+    controlOwner(),
+    activeProjectId,
+    activeTaskId,
+    activeInteraction?.interaction_id,
+    activeInteraction?.version,
+    activeInteraction?.action_digest,
+  ]);
+  const legacyControlView = useRef({
+    key: legacyControlViewKey,
+    generation: 0,
+    mounted: true,
+  });
+  if (legacyControlView.current.key !== legacyControlViewKey)
+    legacyControlView.current = {
+      key: legacyControlViewKey,
+      generation: legacyControlView.current.generation + 1,
+      mounted: true,
+    };
+  useEffect(() => {
+    legacyControlView.current.mounted = true;
+    return () => {
+      legacyControlView.current.mounted = false;
+      legacyControlView.current.generation++;
+    };
+  }, []);
+  const legacyInteractionExpired = useHumanInteractionExpiry(activeInteraction);
+  const [verifiedLegacyApproval, setVerifiedLegacyApproval] =
+    useState<string>();
+  useEffect(() => {
+    setVerifiedLegacyApproval(undefined);
+    if (
+      !activeInteraction ||
+      activeInteraction.interaction_type !== 'approval' ||
+      legacyInteractionExpired ||
+      isHumanInteractionReadOnly({
+        interaction: activeInteraction,
+        activeTaskId,
+        taskType: activeAskTask?.type,
+        taskStatus: activeAskTask?.status,
+        durableRunStatus:
+          projectedLegacyRun?.status ?? activeAskTask?.durableRunStatus,
+      })
+    )
+      return;
+    let cancelled = false;
+    let checkNumber = 0;
+    const validatePending = () => {
+      const currentCheck = ++checkNumber;
+      void isHumanInteractionStillPending(activeInteraction)
+        .then((pending) => {
+          if (!cancelled && currentCheck === checkNumber)
+            setVerifiedLegacyApproval(
+              pending ? legacyControlViewKey : undefined
+            );
+        })
+        .catch(() => {
+          /* Keep controls unavailable until a lifecycle recovery retries. */
+        });
+    };
+    const revalidatePending = () => {
+      invalidatePendingHumanInteractions(activeInteraction.run_id);
+      validatePending();
+    };
+    validatePending();
+    window.addEventListener('focus', revalidatePending);
+    host?.ipcRenderer?.on('backend-ready', revalidatePending);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', revalidatePending);
+      host?.ipcRenderer?.off('backend-ready', revalidatePending);
+    };
+  }, [
+    legacyControlViewKey,
+    activeInteraction,
+    activeTaskId,
+    activeAskTask?.type,
+    activeAskTask?.status,
+    activeAskTask?.durableRunStatus,
+    projectedLegacyRun?.status,
+    legacyInteractionExpired,
+    host?.ipcRenderer,
+  ]);
   const isInteractiveHumanReply =
+    (activeInteraction?.interaction_type !== 'approval' ||
+      verifiedLegacyApproval === legacyControlViewKey) &&
+    !legacyInteractionExpired &&
+    (!activeInteraction ||
+      !isHumanInteractionReadOnly({
+        interaction: activeInteraction,
+        activeTaskId,
+        taskType: activeAskTask?.type,
+        taskStatus: activeAskTask?.status,
+        durableRunStatus:
+          projectedLegacyRun?.status ?? activeAskTask?.durableRunStatus,
+      })) &&
     !!activeAskTask &&
     activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
@@ -581,7 +701,7 @@ function LegacyChatBox(): JSX.Element {
 
   useEffect(() => {
     setLegacyApprovalSubmitting(false);
-  }, [activeInteraction?.interaction_id]);
+  }, [legacyControlViewKey]);
 
   const handleLegacyApprovalDecision = async (
     decision: 'approved' | 'rejected',
@@ -593,54 +713,75 @@ function LegacyChatBox(): JSX.Element {
       !interaction ||
       interaction.interaction_type !== 'approval' ||
       !taskId ||
-      legacyApprovalSubmitting
+      legacyApprovalSubmitting ||
+      !isInteractiveHumanReply
     ) {
       return;
     }
 
+    const owner = controlOwner();
+    const generation = legacyControlView.current.generation;
+    const projectId = activeProjectId;
+    const isCurrent = () =>
+      legacyControlView.current.mounted &&
+      legacyControlView.current.generation === generation &&
+      controlOwner() === owner &&
+      composerProjectRef.current === projectId &&
+      projectStore.getActiveChatStore(projectId ?? undefined)?.getState()
+        .activeTaskId === taskId;
     setLegacyApprovalSubmitting(true);
     try {
+      invalidatePendingHumanInteractions(interaction.run_id);
+      const isPending = await isHumanInteractionStillPending(interaction);
+      if (!isCurrent()) return;
+      if (!isPending) {
+        setVerifiedLegacyApproval(undefined);
+        await refreshInterruptedRun();
+        return;
+      }
+      const currentTask = projectStore.getActiveChatStore()?.getState().tasks[
+        taskId
+      ];
+      if (
+        !currentTask ||
+        isHumanInteractionReadOnly({
+          interaction:
+            currentTask.messages.findLast(
+              (message) =>
+                message.interaction?.interaction_id ===
+                interaction.interaction_id
+            )?.interaction || interaction,
+          activeTaskId: projectStore.getActiveChatStore()?.getState()
+            .activeTaskId,
+          taskType: currentTask.type,
+          taskStatus: currentTask.status,
+          durableRunStatus: currentTask.durableRunStatus,
+        })
+      )
+        return;
       await decideHumanInteraction(interaction, {
-        decisionRequestId: [
-          'desktop-approval',
-          encodeURIComponent(interaction.interaction_id),
-          String(interaction.version ?? 0),
-          decision,
-          scope,
-        ].join(':'),
+        decisionRequestId: generateUniqueId(),
         decision: { decision, scope },
         actorId: user_id,
+        projectId: projectId ?? undefined,
       });
-
-      const activeStore = projectStore.getActiveChatStore();
-      if (!activeStore) return;
-      const state = activeStore.getState();
-      if (!state || state.activeTaskId !== taskId) return;
-
-      state.markHumanInteractionResolved(taskId, interaction.interaction_id);
-      const current = activeStore.getState().tasks[taskId];
-      if (!current) return;
-      const [nextAsk, ...remainingAsks] = current.askList;
-      state.setActiveAskList(taskId, remainingAsks);
-      state.setActiveAsk(taskId, nextAsk?.agent_name || '');
-      state.setIsPending(taskId, false);
-      state.setDurableRunStatus(
-        taskId,
-        nextAsk ? 'waiting_for_user' : 'running'
-      );
-      state.setStatus(taskId, ChatTaskStatus.RUNNING);
-      if (nextAsk) state.addMessages(taskId, nextAsk);
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.detail?.message ||
-        error?.response?.data?.detail ||
-        error?.message ||
-        t('chat.control-decision-failed');
-      notifyError(
-        typeof message === 'string' ? message : JSON.stringify(message)
-      );
+      if (!projectId || !isCurrent()) return;
+      await reconcileHumanInteractionEvents({
+        bounded: true,
+        projectId,
+        runId: interaction.run_id!,
+        interactionId: interaction.interaction_id,
+        afterSequence: 0,
+      });
+      if (!isCurrent()) return;
+      const state = projectStore.getActiveChatStore(projectId)?.getState();
+      if (state)
+        completeHumanInteraction(state, taskId, interaction.interaction_id);
+    } catch {
+      // The persistent operation recovery owns ambiguous outcomes. No local
+      // decision or Run transition is inferred from a transport failure.
     } finally {
-      setLegacyApprovalSubmitting(false);
+      if (isCurrent()) setLegacyApprovalSubmitting(false);
     }
   };
 
@@ -657,15 +798,8 @@ function LegacyChatBox(): JSX.Element {
       const current = state.tasks[interaction.runId];
       if (!current) return;
 
-      // Presentation-only migration bridge: the durable interaction remains
-      // authoritative, but the sidebar must react at click time instead of
-      // waiting for the decision POST plus event replay round trip.
+      // Submission progress is presentation state, never a Run transition.
       state.setIsPending(interaction.runId, phase === 'submitting');
-      state.setDurableRunStatus(
-        interaction.runId,
-        phase === 'submitting' ? 'running' : 'waiting_for_user'
-      );
-      state.setStatus(interaction.runId, ChatTaskStatus.RUNNING);
     },
     [projectStore]
   );
@@ -676,38 +810,7 @@ function LegacyChatBox(): JSX.Element {
       if (!activeStore) return;
       const state = activeStore.getState();
       if (state.activeTaskId !== resolved.runId) return;
-      const current = state.tasks[resolved.runId];
-      if (!current) return;
-
-      const activeAskInteractionId = current.messages.findLast(
-        (message) => message.step === AgentStep.ASK
-      )?.interaction?.interaction_id;
-      if (
-        activeAskInteractionId &&
-        activeAskInteractionId !== resolved.interactionId
-      ) {
-        return;
-      }
-
-      // Migration-only compatibility: the durable terminal event is already
-      // loaded at this point. Keep the legacy task queue coherent until all
-      // send/disable and sidebar logic reads HumanControlProjection directly.
-      state.markHumanInteractionResolved(
-        resolved.runId,
-        resolved.interactionId
-      );
-      const reconciled = activeStore.getState().tasks[resolved.runId];
-      if (!reconciled) return;
-      const [nextAsk, ...remainingAsks] = reconciled.askList;
-      state.setActiveAskList(resolved.runId, remainingAsks);
-      state.setActiveAsk(resolved.runId, nextAsk?.agent_name || '');
-      state.setIsPending(resolved.runId, false);
-      state.setDurableRunStatus(
-        resolved.runId,
-        nextAsk ? 'waiting_for_user' : 'running'
-      );
-      state.setStatus(resolved.runId, ChatTaskStatus.RUNNING);
-      if (nextAsk) state.addMessages(resolved.runId, nextAsk);
+      completeHumanInteraction(state, resolved.runId, resolved.interactionId);
     },
     [projectStore]
   );
@@ -1809,35 +1912,15 @@ function LegacyChatBox(): JSX.Element {
   };
 
   const handleCancelInterruptedRun = async () => {
-    if (!interruptedRun) return;
+    if (!interruptedRun || isCloudRestoredRun) return;
     const run = interruptedRun;
-    setDurableRunAction('cancelling');
-    try {
-      await fetchPost(`/runs/${encodeURIComponent(run.run_id)}/cancel`, {
-        request_id: runActionRequestId('cancel', run.run_id),
-        reason: 'explicit_cancel_from_desktop_ui',
-      });
-      // The cancel response confirms the command, not that the renderer has
-      // consumed the canonical run.cancelled event. Replay from the durable
-      // cursor so a prior gap can be filled and needsResync can be released.
-      void runEventIngressRegistry.replayRun(run.project_id, run.run_id);
-      clearRunActionRequestId('cancel', run.run_id);
-      setInterruptedRun(null);
-      for (const { chatStore: store } of projectStore.getAllChatStores(
-        run.project_id
-      )) {
-        const state = store.getState();
-        if (!state.tasks[run.run_id]) continue;
-        state.setIsPending(run.run_id, false);
-        state.setStatus(run.run_id, ChatTaskStatus.FINISHED);
-      }
-    } catch (error: any) {
-      console.error('[RunControl] Failed to cancel Run', error);
-      notifyError(error?.message || t('chat.run-cancel-failed'));
-      await refreshInterruptedRun();
-    } finally {
-      setDurableRunAction(null);
-    }
+    await cancelProjectRun(
+      run.run_id,
+      generateUniqueId(),
+      'explicit_cancel_from_desktop_ui',
+      undefined,
+      run.project_id
+    ).catch(() => {});
   };
 
   const queueWaitingReason = interruptedRun
@@ -2232,68 +2315,11 @@ function LegacyChatBox(): JSX.Element {
     }
   };
 
-  // Stop task handler - triggers Action.skip_task which preserves context
   const handleSkip = async () => {
-    const taskId = chatStore.activeTaskId as string;
-    setIsPauseResumeLoading(true);
-
-    try {
-      // Call skip-task endpoint to trigger Action.skip_task
-      // This will stop the task gracefully while preserving context for multi-turn
-      await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
-        project_id: projectStore.activeProjectId,
-      });
-
-      // DO NOT call chatStore.stopTask here!
-      // Keep SSE connection alive to receive "end" event from backend
-      // The "end" event will set status to 'finished' and allow multi-turn conversation
-
-      // Only set isPending to false so UI shows task is stopped
-      chatStore.setIsPending(taskId, false);
-
-      toast.success(
-        t('chat.task-stopped-successfully', {
-          defaultValue: 'Task stopped successfully',
-        }),
-        {
-          closeButton: true,
-        }
-      );
-    } catch (error) {
-      console.error('[STOP-BUTTON] ❌ Failed to stop task:', error);
-
-      // If backend call failed, close SSE connection as fallback
-      try {
-        chatStore.stopTask(taskId);
-        chatStore.setIsPending(taskId, false);
-        toast.warning(
-          t('chat.task-stopped-backend-notification-failed', {
-            defaultValue:
-              'Task stopped locally, but backend notification failed. Backend task may continue running.',
-          }),
-          {
-            closeButton: true,
-            duration: 5000,
-          }
-        );
-      } catch (localError) {
-        console.error(
-          '[STOP-BUTTON] ❌ Failed to stop task locally:',
-          localError
-        );
-        notifyError(
-          t('chat.task-stop-failed-refresh', {
-            defaultValue:
-              'Failed to stop task completely. Please refresh the page.',
-          }),
-          {
-            closeButton: true,
-          }
-        );
-      }
-    } finally {
-      setIsPauseResumeLoading(false);
-    }
+    const taskId = chatStore.activeTaskId;
+    const projectId = activeProjectId;
+    if (!taskId || !projectId) return;
+    await stopProjectTask(projectId, taskId).catch(() => {});
   };
 
   const handleTaskControl = async (action: 'pause' | 'resume') => {
@@ -2582,29 +2608,13 @@ function LegacyChatBox(): JSX.Element {
       return;
     }
 
-    setIsPauseResumeLoading(true);
-    try {
-      await cancelProjectRun(
-        runId,
-        runActionRequestId('cancel', runId),
-        'explicit_stop_from_event_native_chatbox'
-      );
-      clearRunActionRequestId('cancel', runId);
-      if (chatStore.tasks[runId]) chatStore.setIsPending(runId, false);
-      toast.success(t('chat.task-stopped', { defaultValue: 'Task stopped' }), {
-        closeButton: true,
-      });
-    } catch (error: any) {
-      console.error('[RunControl] Failed to stop Run', error);
-      notifyError(
-        error?.message ||
-          t('chat.run-stop-failed', {
-            defaultValue: 'Failed to stop this Run.',
-          })
-      );
-    } finally {
-      setIsPauseResumeLoading(false);
-    }
+    await cancelProjectRun(
+      runId,
+      generateUniqueId(),
+      'explicit_stop_from_event_native_chatbox',
+      undefined,
+      activeProjectId ?? undefined
+    ).catch(() => {});
   };
 
   let eventNativeRunControlVariant: BottomBoxRunControlVariant | null = null;
@@ -2623,7 +2633,8 @@ function LegacyChatBox(): JSX.Element {
         ),
         description: isCloudRestoredRun
           ? undefined
-          : t('chat.run-interrupted-description'),
+          : (cancelRecoveryReason ??
+            interruptedRunDescription(interruptedRun.terminalReason, t)),
       },
       runId: interruptedRun.run_id,
       state: isCloudRestoredRun
@@ -2631,6 +2642,7 @@ function LegacyChatBox(): JSX.Element {
         : (durableRunAction ?? 'interrupted'),
       resumeLabel: t('chat.run-resume'),
       resumingLabel: t('chat.run-resuming'),
+      disabled: Boolean(interruptedCancelOperation),
       cancelLabel: t('chat.run-cancel'),
       cancellingLabel: t('chat.run-cancelling'),
       readOnlyLabel: t('chat.run-cloud-restored-description'),
@@ -2668,6 +2680,17 @@ function LegacyChatBox(): JSX.Element {
           onReject: () => void handleLegacyApprovalDecision('rejected', 'once'),
         })
       : null;
+  if (
+    legacyApprovalVariant &&
+    controlOperations.some(
+      (op) =>
+        op.kind === 'interaction' &&
+        op.runId === activeInteraction?.run_id &&
+        op.interactionId === activeInteraction?.interaction_id
+    )
+  ) {
+    legacyApprovalVariant.disabled = true;
+  }
   const legacyHumanInputVariant: BottomBoxInputVariant | 'input' =
     activeAsk && isInteractiveHumanReply && activeAskMessage
       ? {
@@ -2704,7 +2727,13 @@ function LegacyChatBox(): JSX.Element {
   const showFloatingStop =
     shouldRenderChatTimeline &&
     composerTaskControlState === 'running' &&
-    eventNativeActiveProjectedRun?.status !== 'cancelling';
+    eventNativeActiveProjectedRun?.status !== 'cancelling' &&
+    !controlOperations.some(
+      (op) =>
+        op.kind !== 'interaction' &&
+        op.runId === (eventNativeActiveRunId ?? activeTaskId) &&
+        op.phase !== 'pending'
+    );
   const handleFloatingStop = () => {
     if (eventNativeActiveProjectedRun?.status === 'running') {
       void handleEventNativeStopRun(eventNativeActiveProjectedRun.runId);
@@ -2714,6 +2743,41 @@ function LegacyChatBox(): JSX.Element {
   };
   const chatColumn = (
     <>
+      {controlOperations
+        .filter(
+          (op) =>
+            op.projectId === activeProjectId &&
+            (op.runId === interruptedRun?.run_id ||
+              op.runId === (eventNativeActiveRunId ?? activeTaskId))
+        )
+        .filter((op) => {
+          if (op.completionPending) return true;
+          // A later canonical event can settle the UI even when its HTTP
+          // reply was lost. Keep the uncertain envelope for deduplication.
+          if (
+            !sharedProjectEventSnapshot ||
+            sharedProjectEventSnapshot.view.projectId !== op.projectId
+          )
+            return true;
+          if (op.kind === 'interaction') {
+            const interaction =
+              sharedProjectEventSnapshot.control.interactionById[
+                op.interactionId!
+              ];
+            return (
+              !interaction ||
+              interaction.runId !== op.runId ||
+              interaction.status === 'requested'
+            );
+          }
+          const run = sharedProjectEventSnapshot.view.runs[op.runId];
+          return (
+            !run || !['completed', 'cancelled', 'failed'].includes(run.status)
+          );
+        })
+        .map((op) => (
+          <ControlRecovery key={op.key} operation={op} />
+        ))}
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
@@ -2748,11 +2812,15 @@ function LegacyChatBox(): JSX.Element {
                       ? 'chat.run-cloud-restored-title'
                       : 'chat.run-interrupted-title'
                   )}
-                  description={t(
+                  description={
                     isCloudRestoredRun
-                      ? 'chat.run-cloud-restored-description'
-                      : 'chat.run-interrupted-description'
-                  )}
+                      ? t('chat.run-cloud-restored-description')
+                      : interruptedRunDescription(
+                          interruptedRun.terminalReason,
+                          t
+                        )
+                  }
+                  disabledReason={cancelRecoveryReason}
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
                   resumingLabel={t('chat.run-resuming')}
@@ -2845,12 +2913,16 @@ function LegacyChatBox(): JSX.Element {
                       ? 'chat.run-cloud-restored-title'
                       : 'chat.run-interrupted-title'
                   )}
-                  description={t(
+                  description={
                     isCloudRestoredRun
-                      ? 'chat.run-cloud-restored-description'
-                      : 'chat.run-interrupted-description'
-                  )}
+                      ? t('chat.run-cloud-restored-description')
+                      : interruptedRunDescription(
+                          interruptedRun.terminalReason,
+                          t
+                        )
+                  }
                   attemptNumber={interruptedRun.latest_attempt?.attempt_number}
+                  disabledReason={cancelRecoveryReason}
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
                   resumingLabel={t('chat.run-resuming')}

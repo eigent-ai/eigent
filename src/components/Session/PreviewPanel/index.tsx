@@ -21,6 +21,7 @@ import {
   usePageTabStore,
   type SessionPreviewTab,
 } from '@/store/pageTabStore';
+import { useIsPresent } from 'framer-motion';
 import { Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -43,7 +44,8 @@ export interface PreviewPanelProps {
   /**
    * False while the display panel's open animation is still running. Browser
    * tabs hold their fixed-position webview guest parked until it settles so
-   * the page doesn't pop in over the chat mid-animation.
+   * the page doesn't pop in over the chat mid-animation. Shells also wait to
+   * fit until these bounds are stable, preserving their parsed scrollback.
    */
   displaySettled?: boolean;
 }
@@ -60,6 +62,9 @@ export function PreviewPanel({
 }: PreviewPanelProps) {
   const { t } = useTranslation();
   const host = useHost();
+  // Exiting children keep their last props, so presence is what tells the
+  // shell to stop fitting while the display panel collapses.
+  const isPresent = useIsPresent();
   const tabs = usePageTabStore((state) => getSessionPreviewSlice(state).tabs);
   const activeTabId = usePageTabStore(
     (state) => getSessionPreviewSlice(state).activeTabId
@@ -173,7 +178,13 @@ export function PreviewPanel({
         return <ReviewTab key={activeTab.id} tab={activeTab} />;
       case 'terminal':
         // Keyed so each terminal tab keeps its own shell / stream state.
-        return <TerminalTab key={activeTab.id} tab={activeTab} />;
+        return (
+          <TerminalTab
+            key={activeTab.id}
+            tab={activeTab}
+            viewportSettled={displaySettled && isPresent}
+          />
+        );
       case 'canvas':
         return <CanvasTab key={activeTab.id} />;
       default:

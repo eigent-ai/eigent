@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ProjectEventStoreHydrationState } from '@/hooks/useProjectEventStoreHydration';
+import { normalizeLocalRunEvent } from '@/lib/projector';
 import type {
   ChatActivityNode,
   ChatArtifactNode,
@@ -23,6 +24,7 @@ import type {
   ChatRunStatusNode,
   ChatUnknownNode,
 } from '@/lib/projector/chat';
+import { projectChatEvents } from '@/lib/projector/chat';
 import {
   composeTimelineRuns,
   segmentTimelineRows,
@@ -37,6 +39,7 @@ import {
 } from '@testing-library/react';
 import { animate } from 'framer-motion';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { v104GuiInputEvents } from '../../../fixtures/v104GuiInput';
 
 import {
   EventNativeProjectTimeline,
@@ -222,6 +225,54 @@ describe('isChatTimelineNearBottom', () => {
 });
 
 describe('EventNativeProjectTimeline', () => {
+  it.each([false, true])(
+    'handles a paginated linked mirror in trajectory without its request (conflict: %s)',
+    (conflict) => {
+      const events = v104GuiInputEvents([conflict ? 'other.csv' : 'report.csv'])
+        .filter((event) => event.event_type !== 'interaction.requested')
+        .map((event) =>
+          event.event_type === 'legacy.human_reply'
+            ? {
+                ...event,
+                payload: { ...event.payload, interaction_id: 'gui-question' },
+              }
+            : event
+        );
+      mocks.projection = projectChatEvents(
+        'project-1',
+        events.map((event) => normalizeLocalRunEvent(event, 'project-1'))
+      );
+      const { container } = render(
+        <EventNativeProjectTimeline
+          projectId="project-1"
+          detailLevel="trajectory"
+          scrollBottomInsetPx={128}
+        />
+      );
+      expect(
+        container.querySelectorAll('[data-interaction-id="gui-question"]')
+      ).toHaveLength(1);
+      const receipt = screen.getByLabelText('Agent request');
+      fireEvent.click(within(receipt).getByRole('button'));
+      expect(receipt).toHaveTextContent('report.csv');
+      expect(container.querySelector('[data-message-role="user"]')).toBeNull();
+      if (conflict) {
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Earlier reply records (1)' })
+        );
+        expect(
+          within(
+            screen.getByRole('region', { name: 'Earlier reply records (1)' })
+          ).getByText('other.csv')
+        ).toBeVisible();
+      } else {
+        expect(
+          screen.queryByRole('button', { name: /Earlier reply records/ })
+        ).toBeNull();
+      }
+      expect(mocks.projection.nodes).toHaveLength(2);
+    }
+  );
   beforeEach(() => {
     mocks.runtimeProjectId = 'project-1';
     mocks.projection = projection([]);
@@ -248,6 +299,44 @@ describe('EventNativeProjectTimeline', () => {
       } as unknown as typeof ResizeObserver;
     }
   });
+
+  it.each(['narrative', 'trajectory'] as const)(
+    'retains v1.0.4 replies as evidence alongside one canonical receipt in %s',
+    async (detailLevel) => {
+      mocks.projection = projectChatEvents(
+        'project-1',
+        v104GuiInputEvents(['report.csv', 'report.csv']).map((event) =>
+          normalizeLocalRunEvent(event, 'project-1')
+        )
+      );
+      const { container } = render(
+        <EventNativeProjectTimeline
+          projectId="project-1"
+          detailLevel={detailLevel}
+          sessionMode={SessionMode.SINGLE_AGENT}
+          scrollBottomInsetPx={128}
+        />
+      );
+      // Normal mode keeps the existing outer Run disclosure.
+      const runTrigger = screen.queryByRole('button', { name: /Worked for/ });
+      if (runTrigger) fireEvent.click(runTrigger);
+      await waitFor(() =>
+        expect(
+          container.querySelectorAll('[data-interaction-id="gui-question"]')
+        ).toHaveLength(1)
+      );
+      expect(container.querySelector('[data-message-role="user"]')).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Earlier reply records (2)' })
+      );
+      const evidence = screen.getByRole('region', {
+        name: 'Earlier reply records (2)',
+      });
+      expect(within(evidence).getAllByRole('listitem')).toHaveLength(2);
+      expect(within(evidence).getAllByText('report.csv')).toHaveLength(2);
+      expect(mocks.projection.nodes).toHaveLength(4);
+    }
+  );
 
   it.each(['narrative', 'trajectory'] as const)(
     'hides raw budget errors in %s and its collapsed summary',
