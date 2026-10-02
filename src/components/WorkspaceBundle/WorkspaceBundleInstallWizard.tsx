@@ -1550,18 +1550,14 @@ function WorkspaceBundleInstallContent({
     const current = beginOperation('reject');
     setError(null);
     try {
-      // Resolve ambiguous start failures before deciding. A missing unapproved
-      // seed can be abandoned: proposal creation never grants write authority.
+      // Resolve ambiguous start failures before deciding. A proposal missing
+      // from the journal holds no write authority or evidence, so abandon it.
       let latest = snapshot;
       if (!latest) {
         try {
           latest = await fetchWorkspaceBundleInstallProposal(proposalId);
         } catch (failure) {
-          if (
-            current() &&
-            installSeed?.proposalId === proposalId &&
-            (failure as { status?: number }).status === 404
-          ) {
+          if (current() && (failure as { status?: number }).status === 404) {
             resetInstall();
             return;
           }
@@ -1638,7 +1634,7 @@ function WorkspaceBundleInstallContent({
         <CardContent className="space-y-ds-stack-related">
           {failureEvidence}
           {error ? (
-            <div role="alert">
+            <div role="alert" className="text-ds-text-error-strong-default">
               <DsText>{error}</DsText>
             </div>
           ) : null}

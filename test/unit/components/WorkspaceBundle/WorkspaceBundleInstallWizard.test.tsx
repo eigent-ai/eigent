@@ -428,6 +428,33 @@ describe('WorkspaceBundleInstallWizard', () => {
     ).toBeInTheDocument();
   });
 
+  it('abandons an active import whose proposal no longer exists', async () => {
+    const activeKey = 'eigent:workspace-bundle-active-install:v1:user-1';
+    localStorage.setItem(
+      activeKey,
+      JSON.stringify({
+        proposalId: 'gone',
+        handle: '@verified-publisher/research@1',
+      })
+    );
+    mocks.fetchProposal.mockRejectedValue(
+      Object.assign(new Error('Not found'), { status: 404 })
+    );
+    const user = userEvent.setup();
+    renderWizard({});
+    await user.click(
+      await screen.findByRole('button', { name: 'Cancel import' })
+    );
+    const handleInput = screen.getByRole('textbox', {
+      name: 'Workspace Bundle share handle',
+    });
+    expect(handleInput).toHaveValue('');
+    expect(localStorage.getItem(activeKey)).toBeNull();
+    expect(mocks.decide).not.toHaveBeenCalled();
+    await user.type(handleInput, '@verified-publisher/another@2');
+    expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled();
+  });
+
   it('clears a reviewed handle without reviving unchanged initial props', async () => {
     mocks.fetchReview.mockResolvedValue(review);
     const user = userEvent.setup();
