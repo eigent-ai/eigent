@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
 import type { ChatMessageNode } from '@/lib/projector/chat';
 import { describe, expect, it } from 'vitest';
@@ -33,7 +47,7 @@ const presentedIds = (nodes: ChatMessageNode[]) =>
 
 describe('confirmed input fallback ownership', () => {
   it.each(['legacy.step', 'legacy.confirmed'])(
-    'prefers the unique canonical input over %s in either order',
+    'prefers the canonical input over %s in either order',
     (eventType) => {
       const echo = legacy({ eventType });
       expect(presentedIds([echo, canonical])).toEqual([canonical.eventId]);
@@ -44,35 +58,21 @@ describe('confirmed input fallback ownership', () => {
   it('keeps historical input without a canonical owner', () => {
     expect(presentedIds([legacy()])).toEqual(['cloud-confirmed']);
   });
+  it('suppresses the resume instruction echoed into a Run with canonical input', () => {
+    const resume = legacy({
+      content: 'Resume the interrupted Run from its persisted Project context.',
+    });
+    expect(presentedIds([canonical, resume])).toEqual([canonical.eventId]);
+    expect(
+      presentedIds([canonical, { ...resume, eventType: 'legacy.confirmed' }])
+    ).toEqual([canonical.eventId]);
+  });
   it.each([
     { runId: 'run-2' },
     { projectId: 'project-2' },
-    { content: 'Delete a different file' },
-    { messageId: 'a-separate-input' },
     { eventType: 'legacy.step', legacyStep: 'human_reply' },
     { eventType: 'ui.optimistic_user_query' },
-  ])('preserves a distinct or unowned input: %j', (overrides) => {
+  ])('preserves an input the Run does not own: %j', (overrides) => {
     expect(presentedIds([canonical, legacy(overrides)])).toHaveLength(2);
-  });
-  it('uses explicit message identity only when both messages agree', () => {
-    const owner = input('user-message:request-1', { messageId: 'message-1' });
-    expect(presentedIds([owner, legacy({ messageId: 'message-1' })])).toEqual([
-      owner.eventId,
-    ]);
-    expect(
-      presentedIds([owner, legacy({ messageId: 'message-2' })])
-    ).toHaveLength(2);
-    expect(presentedIds([owner, legacy()])).toHaveLength(2);
-  });
-  it('preserves two real same-text sends and does not guess ownership in an ambiguous Run', () => {
-    const second = input('user-message:request-2');
-    expect(presentedIds([canonical, second, legacy()])).toHaveLength(3);
-    expect(
-      presentedIds([
-        canonical,
-        input('user-message:request-2', { runId: 'run-2' }),
-        legacy(),
-      ])
-    ).toEqual([canonical.eventId, second.eventId]);
   });
 });
