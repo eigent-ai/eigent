@@ -14,18 +14,63 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from urllib.parse import urlencode
+
 import pytest
-from fastapi import Request
+from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
+from app.auth.local_control import LocalControlPrincipal
 from app.controller import workspace_bundle_controller
 from app.run_journal import SQLiteRunJournal
-from app.workspace_bundle import WorkspaceSecretVerification
+from app.utils.workspace_resolver import WorkspaceStore
+from app.workspace_bundle import (
+    WorkspaceBundleInstaller,
+    WorkspaceSecretVerification,
+)
 from app.workspace_bundle.mcp_destination import (
     attestation_grant,
     secret_binding_attestation,
     secret_binding_grant,
 )
+
+DESKTOP = LocalControlPrincipal(kind="desktop_renderer", user_id="local")
+OWNER = {"email": "owner@example.com", "user_id": "101"}
+OTHER = {"email": "other@example.com", "user_id": "202"}
+
+
+def _space_store(tmp_path, monkeypatch) -> WorkspaceStore:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    store = WorkspaceStore()
+    monkeypatch.setattr(
+        workspace_bundle_controller,
+        "get_workspace_resolver",
+        lambda: SimpleNamespace(store=store),
+    )
+    return store
+
+
+def _bind_space(store, tmp_path, space_id, *, email, user_id=None):
+    root = tmp_path / "spaces" / space_id
+    root.mkdir(parents=True, exist_ok=True)
+    store.save_binding(email, space_id, str(root), user_id=user_id)
+    return root
+
+
+def _request(principal=DESKTOP, **identity) -> Request:
+    request = Request(
+        {
+            "type": "http",
+            "query_string": urlencode(identity).encode(),
+            "headers": [],
+        }
+    )
+    request.state.local_control_principal = principal
+    request.state.hands = SimpleNamespace(
+        validate_workspace_binding_path=lambda value: (True, None)
+    )
+    return request
 
 
 def _mark_materialized(journal, proposal):
@@ -722,6 +767,9 @@ async def test_local_value_put_returns_only_the_exact_ref_replaced_by_cas(
         "get_default_run_journal",
         lambda: journal,
     )
+    _bind_space(
+        _space_store(tmp_path, monkeypatch), tmp_path, "space-1", **OWNER
+    )
     proposal = journal.put_workspace_bundle_install_proposal(
         proposal_id="proposal-cleanup",
         request_id="proposal-cleanup-request",
@@ -795,7 +843,7 @@ async def test_local_value_put_returns_only_the_exact_ref_replaced_by_cas(
                 ],
             }
         ),
-        Request({"type": "http", "query_string": b""}),
+        _request(**OWNER),
     )
 
     assert response["cleanup_secret_refs"] == [old_ref]
@@ -817,14 +865,12 @@ async def test_local_value_put_returns_only_the_exact_ref_replaced_by_cas(
 async def test_recovery_decision_api_uses_durable_state_and_actor(
     tmp_path, monkeypatch, state
 ):
-    from fastapi import HTTPException
-
-    from app.workspace_bundle import WorkspaceBundleInstaller
-
     journal = SQLiteRunJournal(tmp_path / "recovery.sqlite3")
     monkeypatch.setattr(
         workspace_bundle_controller, "get_default_run_journal", lambda: journal
     )
+    store = _space_store(tmp_path, monkeypatch)
+    _bind_space(store, tmp_path, "draft-space", **OWNER)
     service = WorkspaceBundleInstaller(journal, None, None)
     monkeypatch.setattr(
         workspace_bundle_controller, "_installer", lambda: service
@@ -860,7 +906,7 @@ async def test_recovery_decision_api_uses_durable_state_and_actor(
             if target == "needs_attention"
             else None,
         )
-    request = Request({"type": "http", "query_string": b"", "headers": []})
+    request = _request(**OWNER)
     body = workspace_bundle_controller.BundleDecisionBody(
         expected_version=proposal.version, approved=False, actor_id="user-1"
     )
@@ -907,5 +953,260 @@ async def test_recovery_decision_api_uses_durable_state_and_actor(
                 ).state
                 == "rejected"
             )
+    finally:
+        journal.close()
+
+
+def _owned_proposal(tmp_path, monkeypatch):
+    journal = SQLiteRunJournal(tmp_path / "run-journal.sqlite3")
+    monkeypatch.setattr(
+        workspace_bundle_controller, "get_default_run_journal", lambda: journal
+    )
+    service = WorkspaceBundleInstaller(journal, None, None)
+    monkeypatch.setattr(
+        workspace_bundle_controller, "_installer", lambda: service
+    )
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="owned-import",
+        request_id="owned-request",
+        space_id="owner-space",
+        bundle_id="bundle-1",
+        revision_id="bundle-1@1",
+        config_placement="sidecar",
+        manifest={"spec": {}},
+        assets=[],
+        install_plan={
+            "connector_slots": [
+                {
+                    "slot_id": "github",
+                    "connector_id": "github",
+                    "required_grants": [],
+                }
+            ],
+            "local_path_slots": ["data"],
+            "script_actions": ["setup"],
+        },
+    )
+    return journal, proposal
+
+
+async def _proposal_calls(proposal_id, version, request, local_path):
+    controller = workspace_bundle_controller
+    yield await controller.get_bundle_install_proposal(proposal_id, request)
+    yield await controller.decide_bundle_install(
+        proposal_id,
+        controller.BundleDecisionBody(
+            expected_version=version, approved=True, actor_id="actor"
+        ),
+        request,
+    )
+    version += 1
+    yield await controller.bind_bundle_connector(
+        proposal_id,
+        controller.BundleConnectorBindingBody(
+            expected_version=version,
+            slot_id="github",
+            connector_id="github",
+            connection_id="connection-1",
+            actor_id="actor",
+        ),
+        request,
+    )
+    version += 1
+    yield await controller.bind_bundle_local_path(
+        proposal_id,
+        controller.BundleLocalPathBindingBody(
+            expected_version=version,
+            slot_id="data",
+            local_path=str(local_path),
+            actor_id="actor",
+        ),
+        request,
+    )
+    version += 1
+    yield await controller.approve_bundle_script(
+        proposal_id,
+        controller.BundleScriptApprovalBody(
+            expected_version=version, action_id="setup", actor_id="actor"
+        ),
+        request,
+    )
+
+
+@pytest.mark.asyncio
+async def test_bundle_install_proposal_is_scoped_to_space_binding(
+    tmp_path, monkeypatch
+):
+    journal, proposal = _owned_proposal(tmp_path, monkeypatch)
+    store = _space_store(tmp_path, monkeypatch)
+    root = _bind_space(store, tmp_path, "owner-space", **OWNER)
+    _bind_space(store, tmp_path, "other-space", **OTHER)
+    other = _request(**OTHER)
+    controller = workspace_bundle_controller
+    try:
+        rejected = [
+            controller.get_bundle_install_proposal(
+                proposal.proposal_id, other
+            ),
+            controller.get_space_bundle_installation("owner-space", other),
+            controller.decide_bundle_install(
+                proposal.proposal_id,
+                controller.BundleDecisionBody(
+                    expected_version=proposal.version,
+                    approved=False,
+                    actor_id="other",
+                ),
+                other,
+            ),
+            controller.bind_bundle_connector(
+                proposal.proposal_id,
+                controller.BundleConnectorBindingBody(
+                    expected_version=proposal.version,
+                    slot_id="github",
+                    connector_id="github",
+                    connection_id="connection-2",
+                    actor_id="other",
+                ),
+                other,
+            ),
+            controller.bind_bundle_local_path(
+                proposal.proposal_id,
+                controller.BundleLocalPathBindingBody(
+                    expected_version=proposal.version,
+                    slot_id="data",
+                    local_path=str(root),
+                    actor_id="other",
+                ),
+                other,
+            ),
+            controller.approve_bundle_script(
+                proposal.proposal_id,
+                controller.BundleScriptApprovalBody(
+                    expected_version=proposal.version,
+                    action_id="setup",
+                    actor_id="other",
+                ),
+                other,
+            ),
+            controller.bind_bundle_local_values(
+                proposal.proposal_id,
+                controller.BundleLocalValuesBody.model_validate(
+                    {
+                        "client_request_id": "other-values",
+                        "expected_version": proposal.version,
+                        "actor_id": "other",
+                        "bindings": [
+                            {
+                                "requirement_key": "environment:API_TOKEN",
+                                "requirement_kind": "environment",
+                                "secret_ref": f"wsvault_{'X' * 32}",
+                                "account_scope_digest": "b" * 64,
+                            }
+                        ],
+                    }
+                ),
+                other,
+            ),
+            controller.materialize_bundle(
+                proposal.proposal_id,
+                controller.BundleMaterializeBody(
+                    expected_version=proposal.version,
+                    actor_id="other",
+                    **OTHER,
+                ),
+                other,
+                "Bearer other",
+            ),
+        ]
+        for call in rejected:
+            with pytest.raises(HTTPException) as missing:
+                await call
+            assert missing.value.status_code == 404
+            assert missing.value.detail == {
+                "code": "workspace_binding_not_found"
+            }
+        assert (
+            journal.get_workspace_bundle_install_proposal(proposal.proposal_id)
+            == proposal
+        )
+        assert (
+            journal.list_workspace_bundle_local_bindings(proposal.proposal_id)
+            == ()
+        )
+
+        results = [
+            payload
+            async for payload in _proposal_calls(
+                proposal.proposal_id, proposal.version, _request(**OWNER), root
+            )
+        ]
+        assert [item["proposal"]["state"] for item in results] == [
+            "proposed",
+            "approved",
+            "approved",
+            "approved",
+            "approved",
+        ]
+        assert {item["binding_kind"] for item in results[-1]["bindings"]} == {
+            "connector",
+            "local_path",
+            "script_approval",
+        }
+        with pytest.raises(HTTPException) as missing:
+            await controller.get_bundle_install_proposal(
+                proposal.proposal_id, other
+            )
+        assert missing.value.status_code == 404
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_bundle_install_proposal_stays_available_to_its_owner(
+    tmp_path, monkeypatch
+):
+    journal, proposal = _owned_proposal(tmp_path, monkeypatch)
+    store = _space_store(tmp_path, monkeypatch)
+    # A Space bound before account ids were recorded lives under the email
+    # root; the owner still resolves it after signing in with a user id.
+    root = _bind_space(store, tmp_path, "owner-space", email=OWNER["email"])
+    try:
+        results = [
+            payload
+            async for payload in _proposal_calls(
+                proposal.proposal_id, proposal.version, _request(**OWNER), root
+            )
+        ]
+        assert results[-1]["proposal"]["state"] == "approved"
+        assert len(results[-1]["bindings"]) == 3
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+async def test_brain_user_proposal_access_follows_principal_not_query(
+    tmp_path, monkeypatch
+):
+    journal, proposal = _owned_proposal(tmp_path, monkeypatch)
+    store = _space_store(tmp_path, monkeypatch)
+    root = _bind_space(store, tmp_path, "owner-space", **OWNER)
+    owner = LocalControlPrincipal(kind="brain_user", user_id=OWNER["user_id"])
+    other = LocalControlPrincipal(kind="brain_user", user_id=OTHER["user_id"])
+    try:
+        with pytest.raises(HTTPException) as missing:
+            await workspace_bundle_controller.get_bundle_install_proposal(
+                proposal.proposal_id, _request(other, **OWNER)
+            )
+        assert missing.value.status_code == 404
+        results = [
+            payload
+            async for payload in _proposal_calls(
+                proposal.proposal_id,
+                proposal.version,
+                _request(owner, **OTHER),
+                root,
+            )
+        ]
+        assert results[-1]["proposal"]["state"] == "approved"
     finally:
         journal.close()
