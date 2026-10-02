@@ -600,3 +600,67 @@ async def workspace_project_refresh(
         "project_id": project_id,
         "base_snapshot_id": base_snapshot_id,
     }
+
+
+@router.get("/workspace/{space_id}/projects/{project_id}/workdir")
+async def workspace_project_workdir(
+    space_id: str,
+    project_id: str,
+    email: str = Query(..., description="User email"),
+    user_id: str | None = Query(None, description="Canonical user ID"),
+) -> dict[str, Any]:
+    # TODO(brain-auth): Phase B must derive the owner from
+    # request.state.brain_auth.user_id instead of trusting the email query.
+    try:
+        workdir = get_workspace_resolver().owned_project_workdir(
+            space_id=space_id,
+            project_id=project_id,
+            email=email,
+            user_id=user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "workspace_workdir_unsafe", "message": str(exc)},
+        ) from exc
+    return {
+        "space_id": space_id,
+        "project_id": project_id,
+        "exists": workdir is not None,
+    }
+
+
+@router.delete("/workspace/{space_id}/projects/{project_id}/workdir")
+async def workspace_project_workdir_delete(
+    space_id: str,
+    project_id: str,
+    email: str = Query(..., description="User email"),
+    user_id: str | None = Query(None, description="Canonical user ID"),
+) -> dict[str, Any]:
+    # TODO(brain-auth): Phase B must derive the owner from
+    # request.state.brain_auth.user_id instead of trusting the email query.
+    if _project_has_active_run(project_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_running",
+                "message": "Project workdir cannot be deleted while a run is active.",
+            },
+        )
+    try:
+        deleted = get_workspace_resolver().delete_project_workdir(
+            space_id=space_id,
+            project_id=project_id,
+            email=email,
+            user_id=user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "workspace_workdir_unsafe", "message": str(exc)},
+        ) from exc
+    return {
+        "space_id": space_id,
+        "project_id": project_id,
+        "deleted": deleted,
+    }
