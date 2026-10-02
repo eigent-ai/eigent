@@ -21,6 +21,7 @@ import {
   usePageTabStore,
   type SessionPreviewTab,
 } from '@/store/pageTabStore';
+import { useIsPresent } from 'framer-motion';
 import { Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -61,6 +62,9 @@ export function PreviewPanel({
 }: PreviewPanelProps) {
   const { t } = useTranslation();
   const host = useHost();
+  // Exiting children keep their last props, so presence is what tells the
+  // shell to stop fitting while the display panel collapses.
+  const isPresent = useIsPresent();
   const tabs = usePageTabStore((state) => getSessionPreviewSlice(state).tabs);
   const activeTabId = usePageTabStore(
     (state) => getSessionPreviewSlice(state).activeTabId
@@ -178,7 +182,7 @@ export function PreviewPanel({
           <TerminalTab
             key={activeTab.id}
             tab={activeTab}
-            viewportSettled={displaySettled}
+            viewportSettled={displaySettled && isPresent}
           />
         );
       case 'canvas':

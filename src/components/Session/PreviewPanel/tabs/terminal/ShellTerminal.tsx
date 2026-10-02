@@ -160,7 +160,7 @@ export function ShellTerminal({
     );
 
     const safeFit = () => {
-      // Session entrance can temporarily shrink the viewport to two columns.
+      // Display panel entrance and exit can shrink the viewport to two columns.
       // Reflow at that width can evict history from xterm's bounded buffer and
       // trigger shell prompt redraws. Keep parsing at the last settled size.
       if (!viewportSettled) return;

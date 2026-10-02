@@ -21,6 +21,7 @@ import { HostProvider } from '@/host';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { AnimatePresence, motion } from 'framer-motion';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/components/Folder/FilePreview', () => ({
@@ -93,6 +94,29 @@ describe('PreviewPanel', () => {
     expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
       'data-settled',
       'true'
+    );
+  });
+
+  it('stops terminal fitting while the display panel exits', () => {
+    usePageTabStore.getState().openPreviewTab('terminal');
+    const display = (open: boolean) => (
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div key="display" exit={{ opacity: 0 }}>
+            <PreviewPanel displaySettled />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    );
+    const view = render(display(true));
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'true'
+    );
+    view.rerender(display(false));
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'false'
     );
   });
 

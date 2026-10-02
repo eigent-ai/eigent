@@ -1,4 +1,6 @@
-// Run with: node test/e2e/terminal-scrollback/verify.mjs
+// macOS only: the fixture spawns /bin/zsh, relies on zsh brace expansion and
+// Meta shortcuts, and needs node-pty rebuilt for Electron.
+// Run with: npm run test:terminal-scrollback
 import { _electron, expect } from '@playwright/test';
 import react from '@vitejs/plugin-react';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
