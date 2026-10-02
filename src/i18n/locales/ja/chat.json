@@ -468,5 +468,7 @@
   "control-recovery-status-completed": "完了",
   "control-recovery-status-cancelled": "キャンセル済み",
   "control-recovery-status-failed": "失敗",
-  "control-recovery-status-timed_out": "タイムアウト"
+  "control-recovery-status-timed_out": "タイムアウト",
+  "history-evidence": "以前の返信記録（{{count}}）",
+  "history-evidence-description": "返信先の応答との関連が不明な場合や、記録された応答と内容が異なる場合、過去の返信記録をここに保持します。"
 }

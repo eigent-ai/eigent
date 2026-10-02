@@ -476,5 +476,7 @@
   "control-recovery-status-completed": "Terminée",
   "control-recovery-status-cancelled": "Annulée",
   "control-recovery-status-failed": "Échec",
-  "control-recovery-status-timed_out": "Délai dépassé"
+  "control-recovery-status-timed_out": "Délai dépassé",
+  "history-evidence": "Enregistrements de réponses antérieures ({{count}})",
+  "history-evidence-description": "Les anciennes réponses sont conservées ici lorsque leur lien avec une réponse est absent ou que leur contenu diffère de la réponse enregistrée."
 }

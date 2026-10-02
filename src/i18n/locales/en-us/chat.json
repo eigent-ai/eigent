@@ -472,5 +472,7 @@
   "control-recovery-status-completed": "Completed",
   "control-recovery-status-cancelled": "Cancelled",
   "control-recovery-status-failed": "Failed",
-  "control-recovery-status-timed_out": "Timed out"
+  "control-recovery-status-timed_out": "Timed out",
+  "history-evidence": "Earlier reply records ({{count}})",
+  "history-evidence-description": "Older reply records are kept here when their link to a response is missing or their content differs from the recorded response."
 }

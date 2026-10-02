@@ -480,5 +480,7 @@
   "control-recovery-status-completed": "Завершена",
   "control-recovery-status-cancelled": "Отменена",
   "control-recovery-status-failed": "Ошибка",
-  "control-recovery-status-timed_out": "Время ожидания истекло"
+  "control-recovery-status-timed_out": "Время ожидания истекло",
+  "history-evidence": "Записи прежних ответов ({{count}})",
+  "history-evidence-description": "Прежние ответы сохранены здесь, если их связь с ответом не указана или их содержимое отличается от записанного ответа."
 }

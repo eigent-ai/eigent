@@ -29,6 +29,7 @@ vi.mock('@/store/sessionExecutionStore', () => ({
   }),
 }));
 
+import { partitionLegacyMessageEvidence } from '@/components/ChatBox/EventTimeline/legacyReplyEvidence';
 import { PROJECT_CACHE_SCHEMA_VERSION } from '@/lib/projectCache';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import type {
@@ -49,6 +50,7 @@ import {
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { v104GuiInputEvents } from '../../fixtures/v104GuiInput';
 
 const {
   closeIdleSSEConnectionsForTasksMock,
@@ -143,8 +145,8 @@ function deferred<T>() {
 }
 
 describe('projectStore runtime shape', () => {
-  it('uses the cache schema that rebuilds stale legacy failure durations', () => {
-    expect(PROJECT_CACHE_SCHEMA_VERSION).toBe(10);
+  it('uses the cache schema that reconstructs input receipt provenance', () => {
+    expect(PROJECT_CACHE_SCHEMA_VERSION).toBe(11);
   });
 
   beforeEach(() => {
@@ -2582,6 +2584,158 @@ describe('projectStore runtime shape', () => {
 
     releaseReplay?.();
     await loadPromise;
+  });
+
+  it('replays a schema-10 input-history cache despite matching server and local freshness', async () => {
+    const { useAuthStore } = await import('@/store/authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    const oldCache = {
+      schemaVersion: 10,
+      cachedAt: 400,
+      serverUpdatedAt: 200,
+      localCanonicalUpdatedAt: 300,
+      taskIds: ['cached-input-run'],
+      tasks: {
+        'cached-input-run': {
+          taskState: {
+            status: 'finished',
+            durableRunStatus: 'completed',
+            messages: [
+              { id: 'cached-reply', role: 'user', content: 'report.csv' },
+              { id: 'cached-mirror', role: 'user', content: 'report.csv' },
+              {
+                id: 'cached-final',
+                role: 'agent',
+                content: 'Old cached final',
+              },
+            ],
+            taskInfo: [],
+            taskRunning: [],
+            taskAssigning: [],
+          },
+        },
+      },
+    };
+    const request = <T>(result: T): IDBRequest<T> => {
+      const value = { result } as IDBRequest<T>;
+      queueMicrotask(() => value.onsuccess?.call(value, new Event('success')));
+      return value;
+    };
+    const discard = vi.fn(() => request(undefined));
+    vi.stubGlobal('indexedDB', {
+      open: () =>
+        request({
+          transaction: () => ({
+            objectStore: () => ({
+              get: () => request(oldCache),
+              delete: discard,
+            }),
+          }),
+        }),
+    });
+    try {
+      const realCache =
+        await vi.importActual<typeof import('@/lib/projectCache')>(
+          '@/lib/projectCache'
+        );
+      getCachedProjectMock.mockImplementationOnce(realCache.getCachedProject);
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          { run_id: 'cached-input-run', status: 'completed', updated_at: 300 },
+        ],
+      });
+      sseTransportMock.mockImplementationOnce(async (options) => {
+        for (const event of v104GuiInputEvents()) {
+          await options.onmessage({
+            event: 'run_event',
+            id: String(event.sequence),
+            data: JSON.stringify({
+              ...event,
+              run_id: 'cached-input-run',
+              project_id: 'cached-input-project',
+            }),
+          });
+        }
+      });
+      // Keep the suite's replay spy, but exercise the real SSE projection
+      // in the store that loadProjectFromHistory created for this Session.
+      replayMock.mockImplementationOnce(
+        async (taskId, _question, time, projectId, source) => {
+          const project = useProjectStore.getState().projects[projectId];
+          const store = project.chatStores[project.activeChatId];
+          store.getState().create(taskId, 'replay');
+          await store
+            .getState()
+            .startTask(
+              taskId,
+              'replay',
+              undefined,
+              time,
+              undefined,
+              undefined,
+              undefined,
+              projectId,
+              undefined,
+              { replaySource: source }
+            );
+        }
+      );
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['cached-input-run'],
+          'Create a report',
+          'cached-input-project',
+          'cached-input-history',
+          'Input history',
+          'space_test',
+          { 'cached-input-run': 'Create a report' },
+          200
+        );
+      expect(discard).toHaveBeenCalledWith('10|cached-input-project');
+      expect(replayMock).toHaveBeenCalledWith(
+        'cached-input-run',
+        'Create a report',
+        0,
+        'cached-input-project',
+        'local_durable',
+        { detachAfterCatchUp: false }
+      );
+      const project =
+        useProjectStore.getState().projects['cached-input-project'];
+      const messages = Object.values(
+        project.chatStores[project.activeChatId].getState().tasks
+      ).flatMap((task) => task.messages);
+      expect(
+        messages.some(
+          (message) =>
+            message.id === 'cached-reply' || message.id === 'cached-mirror'
+        )
+      ).toBe(false);
+      const presented = partitionLegacyMessageEvidence(messages);
+      expect(
+        presented.messages.filter((message) => message.role === 'user')
+      ).toEqual([
+        expect.objectContaining({
+          content: 'report.csv',
+          interactionResponseSource: 'canonical',
+          interactionResponseTo: 'gui-question',
+        }),
+      ]);
+      expect(presented.evidence).toEqual([
+        expect.objectContaining({
+          content: 'report.csv',
+          interactionResponseSource: 'legacy',
+        }),
+      ]);
+    } finally {
+      const { closeSSEConnectionsForTasks } = await import('@/store/chatStore');
+      closeSSEConnectionsForTasks(['cached-input-run']);
+      sseTransportMock.mockReset();
+      vi.unstubAllGlobals();
+      useAuthStore.setState({ user_id: previousUserId });
+    }
   });
 
   it('reanchors a cached running clock without counting the offline gap', async () => {

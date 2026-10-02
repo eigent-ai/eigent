@@ -56,6 +56,7 @@ from app.run_journal import (
     FollowUpRequestRecord,
     IdempotencyConflictError,
     InvalidRunTransitionError,
+    OptimisticConcurrencyError,
     RunAttemptRecord,
     RunEventDraft,
     RunNotFoundError,
@@ -2578,6 +2579,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             "This task is no longer waiting for a human reply. Please send a new message.",
         )
     run_context = getattr(task_lock, "run_context", None)
+    resolved_interaction_id: str | None = None
     if isinstance(run_context, RunContext):
         journal = get_default_run_journal()
         pending_interactions = await asyncio.to_thread(
@@ -2596,19 +2598,21 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             attempt_id = getattr(item, "attempt_id", None)
             return attempt_id is None or attempt_id == active_attempt_id
 
-        interaction = next(
-            (
-                item
-                for item in reversed(pending_interactions)
-                if item.interaction_type != "approval"
-                and belongs_to_current_attempt(item)
-                and item.request.get("agent") == data.agent
-                and (
-                    data.interaction_id is None
-                    or item.interaction_id == data.interaction_id
-                )
-            ),
-            None,
+        matching_interactions = [
+            item
+            for item in reversed(pending_interactions)
+            if item.interaction_type != "approval"
+            and belongs_to_current_attempt(item)
+            and item.request.get("agent") == data.agent
+            and (
+                data.interaction_id is None
+                or item.interaction_id == data.interaction_id
+            )
+        ]
+        interaction = (
+            matching_interactions[0]
+            if len(matching_interactions) == 1
+            else None
         )
         pending_approval = next(
             (
@@ -2630,7 +2634,44 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                 "This task is waiting for an approval decision. Use the "
                 "approval controls instead of sending a human reply.",
             )
-        if data.interaction_id is not None and interaction is None:
+        # Bind post-commit retries to their original durable interaction,
+        # even when the next question for this agent is already pending.
+        # Read this after the pending snapshot: a commit between the reads
+        # either leaves the original candidate or is found by request ID.
+        if data.interaction_id and interaction is None:
+            previous = await asyncio.to_thread(
+                journal.get_human_interaction, data.interaction_id
+            )
+            if (
+                previous is not None
+                and previous.run_id == run_context.run_id
+                and previous.request.get("agent") == data.agent
+                and previous.interaction_type != "approval"
+                and previous.status not in {"requested", "presented"}
+            ):
+                interaction = previous
+        elif not data.interaction_id and data.decision_request_id:
+            previous = await asyncio.to_thread(
+                journal.find_human_interactions_by_decision_request,
+                run_context.run_id,
+                data.decision_request_id,
+            )
+            if previous:
+                if (
+                    len(previous) != 1
+                    or previous[0].request.get("agent") != data.agent
+                    or previous[0].interaction_type == "approval"
+                ):
+                    raise UserException(
+                        code.error, "The reply request identity is ambiguous."
+                    )
+                interaction = previous[0]
+        if not data.interaction_id and not data.decision_request_id:
+            raise UserException(
+                code.error,
+                "This task requires an interaction or request ID for a human reply. Refresh the task and try again.",
+            )
+        if interaction is None:
             raise UserException(
                 code.error,
                 "The requested human interaction is no longer pending.",
@@ -2646,15 +2687,32 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                     }
                 )
             )
-            await asyncio.to_thread(
-                journal.resolve_human_interaction,
-                interaction.interaction_id,
-                decision_request_id=request_id,
-                decision=reply_decision,
-                expected_version=interaction.version,
-                expected_run_id=run_context.run_id,
-                continue_active_attempt=True,
-            )
+            try:
+                _, decision_applied = await asyncio.to_thread(
+                    journal.resolve_human_interaction,
+                    interaction.interaction_id,
+                    include_transition=True,
+                    decision_request_id=request_id,
+                    decision=reply_decision,
+                    expected_version=interaction.version,
+                    expected_run_id=run_context.run_id,
+                    continue_active_attempt=True,
+                )
+            except (
+                IdempotencyConflictError,
+                InvalidRunTransitionError,
+                OptimisticConcurrencyError,
+            ) as exc:
+                raise UserException(
+                    code.error,
+                    "The requested human interaction is no longer pending.",
+                ) from exc
+            if not decision_applied:
+                # An overlapping retry read the same pending interaction, but
+                # only the transaction owner may answer a live waiter or emit
+                # the legacy mirror. Reuse the journal's atomic ownership bit.
+                return Response(status_code=201)
+            resolved_interaction_id = interaction.interaction_id
             try:
                 from app.run_sync.runtime import (
                     notify_default_cloud_sync_worker,
@@ -2677,10 +2735,12 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             "This task is no longer waiting for a human reply. Please send a new message.",
         ) from exc
 
-    task_lock.add_conversation(
-        "human_reply",
-        {"agent": data.agent, "reply": data.reply},
-    )
+    reply_payload = {"agent": data.agent, "reply": data.reply}
+    if resolved_interaction_id is not None:
+        # The canonical decision and its compatibility mirror share identity,
+        # so replay can retain one receipt without comparing answer text.
+        reply_payload["interaction_id"] = resolved_interaction_id
+    task_lock.add_conversation("human_reply", reply_payload)
     current_context = getattr(task_lock, "run_context", None)
     if isinstance(current_context, RunContext):
         await sync_step_event(
@@ -2688,7 +2748,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             project_id=id,
             run_id=current_context.run_id,
             step="human_reply",
-            data={"agent": data.agent, "reply": data.reply},
+            data=reply_payload,
             authorization=request.headers.get("authorization"),
         )
     else:

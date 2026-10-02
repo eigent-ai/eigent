@@ -50,6 +50,8 @@ import {
   animateChatTimelineAnchor,
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
+import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
+import { partitionLegacyReplyEvidence } from './EventTimeline/legacyReplyEvidence';
 import { presentChatSemanticEntities } from './EventTimeline/presentationPolicy';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { TimelineModeRenderer } from './TimelineModes';
@@ -372,9 +374,13 @@ export function EventNativeProjectTimeline({
       optimisticUserQuery,
     ]
   );
-  const timelineWindow = useMemo(
-    () => prepareEventNativeTimelineWindow(allNodes),
+  const conversation = useMemo(
+    () => partitionLegacyReplyEvidence(allNodes),
     [allNodes]
+  );
+  const timelineWindow = useMemo(
+    () => prepareEventNativeTimelineWindow(conversation.nodes),
+    [conversation.nodes]
   );
   const { nodes: visibleNodes } = timelineWindow;
   const projectedRunsById =
@@ -712,20 +718,23 @@ export function EventNativeProjectTimeline({
           </div>
         ) : null}
         {visibleRuns.length > 0 ? (
-          <TimelineModeRenderer
-            detailLevel={detailLevel}
-            interactivePlansByRun={interactivePlansByRun}
-            paused={paused}
-            projectedArtifactsByRun={projectedArtifactsByRun}
-            artifactManifestsByRun={
-              runtime.projectId === projectId &&
-              runtime.snapshot?.view.projectId === projectId
-                ? runtime.snapshot.view.artifactManifestsByRun
-                : undefined
-            }
-            runs={visibleRuns}
-            sessionMode={sessionMode}
-          />
+          <>
+            <TimelineModeRenderer
+              detailLevel={detailLevel}
+              interactivePlansByRun={interactivePlansByRun}
+              paused={paused}
+              projectedArtifactsByRun={projectedArtifactsByRun}
+              artifactManifestsByRun={
+                runtime.projectId === projectId &&
+                runtime.snapshot?.view.projectId === projectId
+                  ? runtime.snapshot.view.artifactManifestsByRun
+                  : undefined
+              }
+              runs={visibleRuns}
+              sessionMode={sessionMode}
+            />
+            <HistoryEvidence entries={conversation.evidence} />
+          </>
         ) : hydration.status === 'error' ? (
           <div
             className="flex flex-col items-center gap-2 px-4 py-6"

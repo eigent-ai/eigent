@@ -523,6 +523,10 @@ describe('useEventNativeHumanControl', () => {
           : ''
       ).toBe('src/report.ts')
     );
+    // Editing is only a local draft. Neither persistence nor a resolution
+    // receipt is requested until the user explicitly submits.
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(mocks.reconcile).not.toHaveBeenCalled();
     act(() => {
       if (result.current.variant?.kind === 'feedback') {
         result.current.variant.onSubmit();
@@ -540,6 +544,35 @@ describe('useEventNativeHumanControl', () => {
     expect(mocks.reconcile).toHaveBeenCalledWith(
       expect.objectContaining({ interactionId: 'question-1' })
     );
+  });
+
+  it('does not submit an unsubmitted question draft on Session switching or remount', () => {
+    mocks.projection = projection([
+      interaction({
+        interactionId: 'draft-question',
+        interactionType: 'question',
+      }),
+    ]);
+    const { result, rerender, unmount } = renderHook(
+      ({ projectId, runId }) =>
+        useEventNativeHumanControl({ projectId, activeRunId: runId }),
+      { initialProps: { projectId: 'project-1', runId: 'run-1' } }
+    );
+    act(() => {
+      if (result.current.variant?.kind !== 'feedback')
+        throw new Error('Expected question');
+      result.current.variant.onChange('Unsubmitted local draft');
+    });
+    rerender({ projectId: 'other-project', runId: 'other-run' });
+    unmount();
+    renderHook(() =>
+      useEventNativeHumanControl({
+        projectId: 'project-1',
+        activeRunId: 'run-1',
+      })
+    );
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(mocks.reconcile).not.toHaveBeenCalled();
   });
 
   it('blocks option interactions that omit backend-provided options', () => {
