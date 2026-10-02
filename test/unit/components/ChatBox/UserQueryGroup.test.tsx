@@ -381,7 +381,7 @@ describe('Task failure summary ownership', () => {
     }
   );
 
-  it('renders a bounded action list but warns from every action', async () => {
+  it('renders the first actions in order, counts the rest, and warns from every action', async () => {
     const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
       onFacts({
         terminal: 'failed',
@@ -414,9 +414,11 @@ describe('Task failure summary ownership', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'View recorded actions' })
     );
-    expect(container.querySelectorAll('[data-action-outcome]')).toHaveLength(
-      100
-    );
+    const rendered = container.querySelectorAll('[data-action-outcome] h3');
+    expect(rendered).toHaveLength(100);
+    expect(rendered[0]).toHaveTextContent('read_0');
+    expect(rendered[99]).toHaveTextContent('read_99');
+    expect(screen.getByText('21 more actions not shown.')).toBeInTheDocument();
   });
 
   it('does not add the summary when a final response is durably recorded', async () => {

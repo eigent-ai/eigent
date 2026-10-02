@@ -102,35 +102,48 @@ export function TaskFailureSummary({ facts }: { facts?: TaskFailureFacts }) {
           className="flex min-w-0 flex-col gap-ds-stack-related"
         >
           {actions.length ? (
-            actions.slice(0, MAX_RENDERED_ACTIONS).map((action) => (
-              <section
-                key={action.id}
-                className="flex min-w-0 flex-col gap-ds-8"
-                data-action-outcome={action.outcome}
-              >
-                <DsText
-                  as="h3"
-                  role="base"
-                  weight="medium"
-                  className="break-words text-ds-ink-default-default"
+            <>
+              {actions.slice(0, MAX_RENDERED_ACTIONS).map((action) => (
+                <section
+                  key={action.id}
+                  className="flex min-w-0 flex-col gap-ds-8"
+                  data-action-outcome={action.outcome}
                 >
-                  {action.title || t('chat.task-failure-action')}
-                </DsText>
+                  <DsText
+                    as="h3"
+                    role="base"
+                    weight="medium"
+                    className="break-words text-ds-ink-default-default"
+                  >
+                    {action.title || t('chat.task-failure-action')}
+                  </DsText>
+                  <DsText
+                    as="p"
+                    role="meta"
+                    className="text-ds-ink-default-default"
+                  >
+                    {t(`chat.task-failure-outcome-${action.outcome}`)}
+                  </DsText>
+                  <ToolInputOutputDetails
+                    appearance="code-scroll"
+                    description={action.detail}
+                    input={action.input}
+                    output={action.output}
+                  />
+                </section>
+              ))}
+              {actions.length > MAX_RENDERED_ACTIONS && (
                 <DsText
                   as="p"
                   role="meta"
-                  className="text-ds-ink-default-default"
+                  className="text-ds-ink-muted-default"
                 >
-                  {t(`chat.task-failure-outcome-${action.outcome}`)}
+                  {t('chat.task-failure-more-actions', {
+                    count: actions.length - MAX_RENDERED_ACTIONS,
+                  })}
                 </DsText>
-                <ToolInputOutputDetails
-                  appearance="code-scroll"
-                  description={action.detail}
-                  input={action.input}
-                  output={action.output}
-                />
-              </section>
-            ))
+              )}
+            </>
           ) : (
             <DsText as="p" role="base" className="text-ds-ink-muted-default">
               {t('chat.task-failure-no-actions')}

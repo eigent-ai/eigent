@@ -493,5 +493,6 @@
   "task-failure-outcome-outcome_unknown": "النتيجة غير معروفة",
   "task-failure-outcome-unverified": "النتيجة غير متحقق منها",
   "task-failure-timed-out": "انتهت مهلة المهمة قبل تسجيل رد نهائي.",
-  "task-failure-no-actions-recorded": "لم تُسجَّل أي إجراءات."
+  "task-failure-no-actions-recorded": "لم تُسجَّل أي إجراءات.",
+  "task-failure-more-actions": "لم يتم عرض {{count}} إجراءات أخرى."
 }

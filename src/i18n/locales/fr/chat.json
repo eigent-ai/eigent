@@ -481,5 +481,6 @@
   "task-failure-outcome-outcome_unknown": "Résultat inconnu",
   "task-failure-outcome-unverified": "Résultat non vérifié",
   "task-failure-timed-out": "Le délai de la tâche a expiré avant qu’une réponse finale soit enregistrée.",
-  "task-failure-no-actions-recorded": "Aucune action n’a été enregistrée."
+  "task-failure-no-actions-recorded": "Aucune action n’a été enregistrée.",
+  "task-failure-more-actions": "{{count}} autres actions ne sont pas affichées."
 }

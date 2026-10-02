@@ -459,7 +459,7 @@
   "space-model-ambiguous": "複数のプロバイダーが一致しています。モデル設定を確認するか、セッションのモデルを選択してください。",
   "space-model-changed": "読み込み中にアカウントまたはセッションのモデルが変更されました。メッセージを再送信してください。",
   "task-failure-confirmed": "最終返信は記録されていません。",
-  "task-failure-status": "Task が失敗しました。",
+  "task-failure-status": "タスクが失敗しました。",
   "task-failure-unverified": "操作の結果を確認できませんでした。",
   "task-failure-unknown": "外部操作が行われた可能性がありますが、結果は不明です。",
   "task-failure-effects": "失敗したという事実だけでは、ファイルや外部サービスが変更されたかは判断できません。",
@@ -473,5 +473,6 @@
   "task-failure-outcome-outcome_unknown": "結果不明",
   "task-failure-outcome-unverified": "結果未確認",
   "task-failure-timed-out": "最終返信が記録される前にタスクがタイムアウトしました。",
-  "task-failure-no-actions-recorded": "操作は記録されていません。"
+  "task-failure-no-actions-recorded": "操作は記録されていません。",
+  "task-failure-more-actions": "ほか {{count}} 件の操作は表示されていません。"
 }

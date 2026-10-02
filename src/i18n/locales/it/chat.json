@@ -481,5 +481,6 @@
   "task-failure-outcome-outcome_unknown": "Esito sconosciuto",
   "task-failure-outcome-unverified": "Esito non verificato",
   "task-failure-timed-out": "Il tempo del compito è scaduto prima che venisse registrata una risposta finale.",
-  "task-failure-no-actions-recorded": "Non è stata registrata alcuna azione."
+  "task-failure-no-actions-recorded": "Non è stata registrata alcuna azione.",
+  "task-failure-more-actions": "Altre {{count}} azioni non sono mostrate."
 }

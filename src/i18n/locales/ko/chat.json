@@ -473,5 +473,6 @@
   "task-failure-outcome-outcome_unknown": "결과 알 수 없음",
   "task-failure-outcome-unverified": "결과 미확인",
   "task-failure-timed-out": "최종 답변이 기록되기 전에 작업 시간이 초과되었습니다.",
-  "task-failure-no-actions-recorded": "기록된 작업이 없습니다."
+  "task-failure-no-actions-recorded": "기록된 작업이 없습니다.",
+  "task-failure-more-actions": "표시되지 않은 작업이 {{count}}개 더 있습니다."
 }

@@ -485,5 +485,6 @@
   "task-failure-outcome-outcome_unknown": "Результат неизвестен",
   "task-failure-outcome-unverified": "Результат не проверен",
   "task-failure-timed-out": "Время выполнения задачи истекло до записи окончательного ответа.",
-  "task-failure-no-actions-recorded": "Действия не были записаны."
+  "task-failure-no-actions-recorded": "Действия не были записаны.",
+  "task-failure-more-actions": "Ещё не показано действий: {{count}}."
 }

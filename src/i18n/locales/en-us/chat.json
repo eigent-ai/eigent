@@ -477,5 +477,6 @@
   "task-failure-outcome-outcome_unknown": "Outcome unknown",
   "task-failure-outcome-unverified": "Outcome unverified",
   "task-failure-timed-out": "Task timed out before a final reply was recorded.",
-  "task-failure-no-actions-recorded": "No actions were recorded."
+  "task-failure-no-actions-recorded": "No actions were recorded.",
+  "task-failure-more-actions": "{{count}} more actions not shown."
 }

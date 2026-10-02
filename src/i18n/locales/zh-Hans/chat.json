@@ -473,5 +473,6 @@
   "task-failure-outcome-outcome_unknown": "结果未知",
   "task-failure-outcome-unverified": "结果未核实",
   "task-failure-timed-out": "任务已超时，未记录最终回复。",
-  "task-failure-no-actions-recorded": "未记录任何操作。"
+  "task-failure-no-actions-recorded": "未记录任何操作。",
+  "task-failure-more-actions": "另有 {{count}} 个操作未显示。"
 }
