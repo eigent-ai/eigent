@@ -18,6 +18,7 @@ import {
 } from '@/components/ChatBox/MessageItem/ArtifactChangeList';
 import { useSessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
+import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
 import {
   reconcileRunOutputFiles,
   type RunOutputSources,
@@ -33,6 +34,7 @@ import {
 } from '@/service/workspaceGitApi';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { FileText } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -235,10 +237,12 @@ export function RunFilesGroup(props: RunFilesProps) {
     (state) => state.sessionPreviewProjectId
   );
   const projectId = props.projectId ?? previewProjectId;
-  const workspaceRoot = useSpaceStore((state) => {
-    const spaceId = projectId ? state.getProjectMeta(projectId)?.spaceId : null;
-    return spaceId ? state.spaces[spaceId]?.rootPath : null;
-  });
+  const runtimeSpaceId = useProjectRuntimeStore((state) =>
+    projectId ? state.projects[projectId]?.spaceId : undefined
+  );
+  const workspaceRoot = useSpaceStore((state) =>
+    selectProjectWorkspaceRoot(state, projectId, runtimeSpaceId)
+  );
   const openFilePreview = usePageTabStore((state) => state.openFilePreview);
   const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
 

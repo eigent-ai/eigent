@@ -227,6 +227,57 @@ const spaceBelongsToUser = (space: Space, userId?: string | number | null) => {
   return String(space.userId) === ownerId;
 };
 
+/**
+ * Scratch workspace roots belong to this machine and are intentionally kept
+ * in the persisted renderer store. Cloud Space responses can omit that local
+ * binding, so merging one must not make an already-confirmed root disappear.
+ */
+const mergeServerSpaceWithLocalBinding = (
+  serverSpace: Space,
+  localSpace: Space | undefined
+): Space => {
+  if (
+    !localSpace ||
+    serverSpace.sourceType !== 'blank' ||
+    localSpace.sourceType !== 'blank' ||
+    serverSpace.status !== 'active' ||
+    localSpace.status !== 'active' ||
+    (serverSpace.userId &&
+      localSpace.userId &&
+      String(serverSpace.userId) !== String(localSpace.userId))
+  ) {
+    return serverSpace;
+  }
+
+  const serverRoot = serverSpace.rootPath;
+  if (serverRoot) return serverSpace;
+
+  const localRoot = localSpace.rootPath;
+  const rememberedRoot =
+    typeof localSpace.metadata?.localWorkspaceRoot === 'string'
+      ? localSpace.metadata.localWorkspaceRoot
+      : '';
+  if (
+    !localRoot ||
+    rememberedRoot !== localRoot ||
+    localSpace.metadata?.localWorkspaceSource !== 'scratch_space'
+  ) {
+    return serverSpace;
+  }
+
+  return {
+    ...serverSpace,
+    rootPath: localRoot,
+    rootFingerprint:
+      serverSpace.rootFingerprint ?? localSpace.rootFingerprint ?? null,
+    metadata: {
+      ...serverSpace.metadata,
+      localWorkspaceRoot: localRoot,
+      localWorkspaceSource: 'scratch_space',
+    },
+  };
+};
+
 export const legacySpaceIdForUser = (userId?: string | number | null) =>
   `legacy_${canonicalUserId(userId)}`;
 
@@ -842,7 +893,10 @@ export const useSpaceStore = create<SpaceStore>()(
           set((state) => {
             const nextSpaces: Record<string, Space> = {};
             for (const space of spaces) {
-              nextSpaces[space.id] = space;
+              nextSpaces[space.id] = mergeServerSpaceWithLocalBinding(
+                space,
+                state.spaces[space.id]
+              );
             }
             return {
               spaces: nextSpaces,
@@ -904,7 +958,10 @@ export const useSpaceStore = create<SpaceStore>()(
         set((state) => {
           const nextSpaces = { ...state.spaces };
           for (const space of spaces) {
-            nextSpaces[space.id] = space;
+            nextSpaces[space.id] = mergeServerSpaceWithLocalBinding(
+              space,
+              state.spaces[space.id]
+            );
           }
           return {
             spaces: nextSpaces,

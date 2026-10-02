@@ -168,6 +168,30 @@ describe('useReviewChanges', () => {
     ).toEqual(['/workspace/run-one.txt']);
   });
 
+  it('uses the finalized artifact manifest as a direct-write Review source', () => {
+    expect(
+      collectChangedFilePaths(
+        [
+          {
+            tasks: {
+              'run-1': {
+                artifactManifestFiles: [
+                  {
+                    name: 'ISS_Orbital_Atlas.html',
+                    type: 'html',
+                    path: '/workspace/ISS_Orbital_Atlas.html',
+                    relativePath: 'ISS_Orbital_Atlas.html',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+        'run-1'
+      )
+    ).toEqual(['/workspace/ISS_Orbital_Atlas.html']);
+  });
+
   it('selects the newest task across the project chat stores', () => {
     expect(
       selectLatestReviewRunId([
