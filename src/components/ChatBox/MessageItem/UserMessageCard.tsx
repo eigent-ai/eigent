@@ -14,11 +14,20 @@
 
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
-import { Check, Copy, FileText, Image } from 'lucide-react';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import {
+  Check,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Copy,
+  FileText,
+  Image,
+  Pencil,
+} from 'lucide-react';
+import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
+import { DsIcon } from '../../ui/ds-icon';
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover';
 import { UserMessageRichContent } from './UserMessageRichContent';
 
@@ -52,6 +61,8 @@ interface UserMessageCardProps {
   content: string;
   className?: string;
   attaches?: readonly UserMessageAttachment[];
+  createdAt?: string | number | null;
+  onEditAndResend?: () => void;
 }
 
 export function UserMessageCard({
@@ -59,6 +70,8 @@ export function UserMessageCard({
   content,
   className,
   attaches,
+  createdAt,
+  onEditAndResend,
 }: UserMessageCardProps) {
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
@@ -68,8 +81,29 @@ export function UserMessageCard({
   const [expanded, setExpanded] = useState(false);
   const [canClamp, setCanClamp] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const contentId = useId();
   const hoverCloseTimerRef = useRef<number | null>(null);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const date = createdAt
+    ? new Date(
+        typeof createdAt === 'number' && createdAt < 1e12
+          ? createdAt * 1000
+          : createdAt
+      )
+    : null;
+  const validDate = date && !Number.isNaN(date.getTime()) ? date : null;
+  const timeLabel = validDate
+    ? new Intl.DateTimeFormat(i18n.language, {
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(validDate)
+    : null;
+  const fullTimeLabel = validDate
+    ? new Intl.DateTimeFormat(i18n.language, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(validDate)
+    : null;
 
   useLayoutEffect(() => {
     const el = contentRef.current;
@@ -300,6 +334,7 @@ export function UserMessageCard({
         )}
         <div className="relative w-full">
           <div
+            id={contentId}
             ref={contentRef}
             style={
               !expanded ? { maxHeight: USER_MESSAGE_COLLAPSED_MAX } : undefined
@@ -316,42 +351,31 @@ export function UserMessageCard({
             )}
           </div>
         </div>
-        <div className="pointer-events-none absolute right-2 bottom-1 z-10 flex w-full shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-300 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
-          {canClamp && !expanded && (
-            <Button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded(true);
-              }}
-              variant="ghost"
-              size="xs"
-              buttonContent="text"
-              textWeight="normal"
+      </div>
+      <div
+        className="mt-ds-4 flex w-full items-center justify-end gap-ds-4"
+        data-user-message-actions
+      >
+        <div
+          className="pointer-events-none flex items-center justify-end gap-ds-4 opacity-0 transition-opacity group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
+          data-user-message-hover-actions
+        >
+          {timeLabel && (
+            <time
+              dateTime={validDate!.toISOString()}
+              title={fullTimeLabel ?? undefined}
+              className="px-ds-6 text-ds-text-meta text-ds-ink-muted-default"
             >
-              {t('chat.agent-outcome-expand')}
-            </Button>
-          )}
-          {canClamp && expanded && (
-            <Button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded(false);
-              }}
-              variant="ghost"
-              size="xs"
-              buttonContent="text"
-              textWeight="normal"
-            >
-              {t('chat.agent-outcome-collapse')}
-            </Button>
+              {timeLabel}
+            </time>
           )}
           <Button
             onClick={handleCopy}
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
+            aria-label={t('chat.message-copy')}
+            title={t('chat.message-copy')}
           >
             {copied ? (
               <Check className="h-4 w-4 text-ds-text-success-default-default" />
@@ -359,6 +383,44 @@ export function UserMessageCard({
               <Copy />
             )}
           </Button>
+          {canClamp ? (
+            <Button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpanded((value) => !value);
+              }}
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              aria-label={t(
+                expanded
+                  ? 'chat.agent-outcome-collapse'
+                  : 'chat.agent-outcome-expand'
+              )}
+              title={t(
+                expanded
+                  ? 'chat.agent-outcome-collapse'
+                  : 'chat.agent-outcome-expand'
+              )}
+              aria-controls={contentId}
+              aria-expanded={expanded}
+            >
+              <DsIcon icon={expanded ? ChevronsDownUp : ChevronsUpDown} />
+            </Button>
+          ) : onEditAndResend ? (
+            <Button
+              type="button"
+              onClick={onEditAndResend}
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              aria-label={t('chat.message-edit-and-resend')}
+              title={t('chat.message-edit-and-resend')}
+            >
+              <Pencil aria-hidden className="size-4" />
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

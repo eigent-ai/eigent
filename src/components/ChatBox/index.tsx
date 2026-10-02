@@ -85,6 +85,7 @@ import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
+import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
 import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
@@ -360,6 +361,7 @@ function LegacyChatBox(): JSX.Element {
     composerRevisionRef.current += 1;
     setMessageState(value);
   }, []);
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [pendingReviewHandoffIds, setPendingReviewHandoffIds] = useState<
     string[]
   >([]);
@@ -369,6 +371,9 @@ function LegacyChatBox(): JSX.Element {
   const { chatStore, projectStore } = useChatStoreAdapter();
 
   const { t } = useTranslation();
+  useEffect(() => {
+    if (!message) setEditingSourceId(null);
+  }, [message]);
   const textareaRef = useRef<HTMLDivElement>(null);
   const handledChatDraftRequestRef = useRef<number | null>(null);
   const workspaceChatFocusRequestId = usePageTabStore(
@@ -589,6 +594,14 @@ function LegacyChatBox(): JSX.Element {
       return;
     }
     handledChatDraftRequestRef.current = workspaceChatDraftRequest.requestId;
+    if (
+      workspaceChatDraftRequest.ifEmpty &&
+      (message.trim() || activeTask?.attaches?.length)
+    ) {
+      toast.info(t('chat.message-draft-exists'));
+      consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
+      return;
+    }
     setMessage((current) => {
       const existing = current.trimEnd();
       return existing
@@ -604,9 +617,12 @@ function LegacyChatBox(): JSX.Element {
     consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
   }, [
     activeProjectId,
+    activeTask?.attaches?.length,
     consumeWorkspaceChatDraft,
-    workspaceChatDraftRequest,
+    message,
     setMessage,
+    t,
+    workspaceChatDraftRequest,
   ]);
 
   useEffect(() => {
@@ -2834,8 +2850,44 @@ function LegacyChatBox(): JSX.Element {
       ? 'input'
       : legacyHumanInputVariant,
   });
-  const bottomBoxVariant = bottomBoxControl.variant;
+  const bottomBoxVariant =
+    bottomBoxControl.source === 'composer' && editingSourceId
+      ? {
+          kind: 'input' as const,
+          header: {
+            eyebrow: t('chat.message-editing-copy'),
+          },
+        }
+      : bottomBoxControl.variant;
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
+  const humanDecisionVariant =
+    bottomBoxControl.source === 'human_interaction' &&
+    typeof bottomBoxVariant !== 'string' &&
+    bottomBoxVariant.kind !== 'input' &&
+    bottomBoxVariant.kind !== 'run_control'
+      ? bottomBoxVariant
+      : null;
+  const humanDecisionKey = humanDecisionVariant
+    ? eventNativeTimelineEnabled && eventNativeHumanControl.interaction
+      ? `${activeProjectId}:${eventNativeHumanControl.interaction.runId}:${eventNativeHumanControl.interaction.interactionId}:${eventNativeHumanControl.interaction.version ?? 0}`
+      : `${activeProjectId}:${activeTaskId}:${activeInteraction?.interaction_id ?? activeAskMessage?.id ?? ''}`
+    : null;
+  const handleEditUserMessage = (source: {
+    id: string;
+    content: string;
+    attaches?: readonly { fileName: string; filePath?: string }[];
+  }) => {
+    if (message.trim() || activeTask?.attaches?.length) {
+      toast.info(t('chat.message-draft-exists'));
+      return;
+    }
+    setMessage(source.content);
+    setEditingSourceId(source.id);
+    if (source.attaches?.length) {
+      toast.info(t('chat.message-reattach-files'));
+    }
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
   const composerTaskControlState = selectComposerTaskControlState({
     eventNativeTimelineEnabled,
     legacyControlRunId: legacyControlTaskId,
@@ -2845,6 +2897,7 @@ function LegacyChatBox(): JSX.Element {
   });
   const showFloatingStop =
     shouldRenderChatTimeline &&
+    !humanDecisionVariant &&
     composerTaskControlState === 'running' &&
     eventNativeActiveProjectedRun?.status !== 'cancelling';
   const handleFloatingStop = () => {
@@ -2873,11 +2926,13 @@ function LegacyChatBox(): JSX.Element {
               sessionMode={displaySessionMode}
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
             />
           ) : shouldRenderChatTimeline ? (
             <ProjectChatContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
@@ -2979,6 +3034,10 @@ function LegacyChatBox(): JSX.Element {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+              <HumanDecisionCard
+                requestKey={humanDecisionKey}
+                variant={humanDecisionVariant}
+              />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   compact
@@ -3009,7 +3068,7 @@ function LegacyChatBox(): JSX.Element {
                     ? 'running'
                     : getBottomBoxState()
                 }
-                variant={bottomBoxVariant}
+                variant={humanDecisionVariant ? 'input' : bottomBoxVariant}
                 queuedMessages={queuedMessages}
                 queueContext={queueContext}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
@@ -3064,7 +3123,7 @@ function LegacyChatBox(): JSX.Element {
                   },
                   onAddFile: handleFileSelect,
                   placeholder: t('chat.follow-up-placeholder'),
-                  disabled: isInputDisabled,
+                  disabled: isInputDisabled || Boolean(humanDecisionVariant),
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,

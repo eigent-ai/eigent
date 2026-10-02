@@ -249,6 +249,7 @@
   "project-name": "会话名称",
   "enter-project-name": "输入会话名称",
   "rename-project": "重命名会话",
+  "failed-to-rename-session": "无法重命名会话，请重试。",
   "no-description": "暂无描述。",
   "completed": "已完成",
   "failed": "失败",

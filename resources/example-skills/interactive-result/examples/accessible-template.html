@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Interactive result</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font:
+          1rem/1.5 system-ui,
+          sans-serif;
+      }
+      body {
+        margin: 0 auto;
+        max-width: 48rem;
+        padding: 1rem;
+      }
+      label {
+        display: block;
+        margin-block: 1rem 0.25rem;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.5rem;
+      }
+      li {
+        margin-block: 0.5rem;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Explore the result</h1>
+      <p>
+        Summary of the result remains useful when interaction is unavailable.
+      </p>
+      <label for="filter">Filter items</label>
+      <input id="filter" type="search" autocomplete="off" />
+      <p id="count" role="status" aria-live="polite"></p>
+      <ul id="items"></ul>
+    </main>
+    <script>
+      const data = ['First item', 'Second item', 'Third item']; // Replace with safely serialized task data.
+      const field = document.getElementById('filter');
+      const list = document.getElementById('items');
+      const count = document.getElementById('count');
+      function render() {
+        const match = data.filter((item) =>
+          item.toLowerCase().includes(field.value.toLowerCase())
+        );
+        list.replaceChildren(
+          ...match.map((item) => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            return li;
+          })
+        );
+        count.textContent = `${match.length} items`;
+      }
+      field.addEventListener('input', render);
+      render();
+    </script>
+  </body>
+</html>

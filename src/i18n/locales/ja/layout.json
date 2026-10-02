@@ -249,6 +249,7 @@
   "project-name": "セッション名",
   "enter-project-name": "セッション名を入力",
   "rename-project": "セッション名を変更",
+  "failed-to-rename-session": "セッション名を変更できませんでした。もう一度お試しください。",
   "no-description": "説明はまだありません。",
   "completed": "完了",
   "failed": "失敗",

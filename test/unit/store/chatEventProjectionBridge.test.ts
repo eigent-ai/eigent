@@ -304,6 +304,89 @@ describe.each(['per-event', 'batch'] as const)(
       ]);
     });
 
+    it('keeps a live tool in journal order when its /chat mirror arrives later', () => {
+      const store = getProjectEventStore(projectId, {
+        scheduleFlush: () => () => {},
+      });
+      const firstEvents = [
+        canonical(1, 'user.message', { content: 'Inspect the workspace' }),
+        canonical(2, 'step.started', {
+          step: {
+            step_id: 'step-1',
+            status: 'running',
+            title: 'Inspect the workspace',
+          },
+        }),
+        canonical(3, 'tool.prepared', {
+          tool_call_id: 'tool-1',
+          toolkit_name: 'File Toolkit',
+          tool_name: 'read_file',
+          status: 'prepared',
+        }),
+      ];
+      for (const event of firstEvents) {
+        expect(enqueueChatEventProjection(event, true, true)).toBe('accepted');
+        if (flushMode === 'per-event') store.flushAll();
+      }
+      store.flushAll();
+
+      const trace = () =>
+        composeTimelineRuns(
+          presentChatSemanticEntities(
+            selectRenderableChatNodes(store.getSnapshot().chat)
+          )
+        )[0]!.traceRows.map((row) =>
+          row.kind === 'tool'
+            ? `tool:${row.invocation.toolCallId}`
+            : row.node.kind === 'step'
+              ? `step:${row.node.stepId}`
+              : row.node.kind
+        );
+      expect(trace()).toEqual(['message', 'step:step-1', 'tool:tool-1']);
+
+      const liveMirror: ChatEventProjectionInput = {
+        projectId,
+        runId,
+        sequence: 1,
+        sourceId: 'live-chat',
+        transport: 'legacy_chat',
+        raw: {
+          step: 'activate_toolkit',
+          data: {
+            tool_call_id: 'tool-1',
+            toolkit_name: 'File Toolkit',
+            method_name: 'read_file',
+          },
+        },
+      };
+      expect(enqueueChatEventProjection(liveMirror, true, true)).toBe(
+        'filtered'
+      );
+      store.flushAll();
+      expect(trace()).toEqual(['message', 'step:step-1', 'tool:tool-1']);
+
+      // The same legacy fact may arrive inside the durable journal with its
+      // real Run sequence. It can enrich the call without changing its slot.
+      expect(
+        enqueueChatEventProjection(
+          canonical(
+            4,
+            'legacy.activate_toolkit',
+            {
+              tool_call_id: 'tool-1',
+              toolkit_name: 'File Toolkit',
+              method_name: 'read_file',
+            },
+            'activate_toolkit'
+          ),
+          true,
+          true
+        )
+      ).toBe('accepted');
+      store.flushAll();
+      expect(trace()).toEqual(['message', 'step:step-1', 'tool:tool-1']);
+    });
+
     it('pairs repeated equal fragments once and retains the legacy-only tail', () => {
       const { run, snapshot } = projectEvents(
         [

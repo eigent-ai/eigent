@@ -24,6 +24,7 @@ import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
+import { isProjectAchieved } from '@/lib/projectAchievement';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import {
@@ -576,7 +577,9 @@ export default function Session({ isNewProject = false }: SessionProps) {
             )}
           >
             <HeaderBox
+              projectId={activeProjectId}
               projectName={activeProjectMeta?.name}
+              projectAchieved={isProjectAchieved(activeProjectMeta?.metadata)}
               totalTokens={activeTask?.tokens ?? 0}
             />
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

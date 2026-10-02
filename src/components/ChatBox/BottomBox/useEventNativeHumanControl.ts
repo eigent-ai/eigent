@@ -677,10 +677,10 @@ export function useEventNativeHumanControl({
             interaction.prompt ||
             interaction.title ||
             t('chat.control-approval-required'),
-          description: activeSubmission.error || undefined,
           contextItems: header.contextItems,
           details: header.details,
         },
+        error: activeSubmission.error || undefined,
         submitting,
         options: [...new Set(offeredScopes)].map((scope) => ({
           scope,

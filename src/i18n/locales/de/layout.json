@@ -258,6 +258,7 @@
   "project-name": "Sitzungsname",
   "enter-project-name": "Sitzungsnamen eingeben",
   "rename-project": "Sitzung umbenennen",
+  "failed-to-rename-session": "Die Sitzung konnte nicht umbenannt werden. Versuche es erneut.",
   "no-description": "Noch keine Beschreibung.",
   "completed": "Abgeschlossen",
   "failed": "Fehlgeschlagen",

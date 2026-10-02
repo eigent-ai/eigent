@@ -1164,7 +1164,7 @@ const ToolDetailRow = memo(function ToolDetailRow({
             'shrink-0 text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
             open
               ? 'rotate-90 opacity-100'
-              : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
           )}
         />
       </button>
@@ -1251,7 +1251,7 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
             'shrink-0 text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
             open
               ? 'rotate-90 opacity-100'
-              : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
           )}
         />
       </button>
@@ -1428,7 +1428,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="my-1 flex w-fit max-w-full min-w-0 items-center gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80"
+        className="group my-1 flex w-fit max-w-full min-w-0 items-center gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80"
       >
         <span className="inline-flex max-w-full min-w-0 items-baseline gap-1.5 truncate">
           {headerRunning ? (
@@ -1465,7 +1465,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
           <ChevronRight
             size={16}
             aria-hidden
-            className="shrink-0 text-ds-ink-subtle-default"
+            className="shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           />
         )}
       </button>
@@ -1644,7 +1644,7 @@ const AgentGroupRow = memo(function AgentGroupRow({
         aria-expanded={open}
         onClick={onToggle}
         className={cn(
-          'my-1 flex w-fit max-w-full min-w-0 gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80',
+          'group my-1 flex w-fit max-w-full min-w-0 gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80',
           useSingleAgentLiveHeader ? 'items-start' : 'items-center'
         )}
       >
@@ -1737,7 +1737,7 @@ const AgentGroupRow = memo(function AgentGroupRow({
             size={16}
             aria-hidden
             className={cn(
-              'shrink-0 text-ds-ink-subtle-default',
+              'shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100',
               useSingleAgentLiveHeader ? 'my-0.5' : ''
             )}
           />
@@ -1987,15 +1987,14 @@ export function TaskWorkLogAccordion({
 
   const { isOpen, toggle } = useGroupOpenState(effectiveGroups);
 
-  const [outerOpen, setOuterOpen] = useState(() => taskRunning);
-
-  useEffect(() => {
-    if (status === ChatTaskStatus.FINISHED) {
-      setOuterOpen(false);
-    } else if (status === ChatTaskStatus.RUNNING) {
-      setOuterOpen(true);
-    }
-  }, [status]);
+  const [manualOuterOpen, setManualOuterOpen] = useState<{
+    taskId: string;
+    open: boolean;
+  } | null>(null);
+  const outerOpen =
+    manualOuterOpen?.taskId === taskId
+      ? manualOuterOpen.open
+      : status !== ChatTaskStatus.FINISHED;
 
   if (!taskId || !task) return null;
 
@@ -2014,9 +2013,9 @@ export function TaskWorkLogAccordion({
       <button
         type="button"
         aria-expanded={outerOpen}
-        onClick={() => setOuterOpen((v) => !v)}
+        onClick={() => setManualOuterOpen({ taskId, open: !outerOpen })}
         className={cn(
-          'flex w-full min-w-0 items-center justify-start gap-1 px-0 py-2 text-left',
+          'group flex w-full min-w-0 items-center justify-start gap-1 px-0 py-2 text-left',
           WORK_LOG_SUMMARY_TRIGGER_BORDER_CLASS
         )}
       >
@@ -2056,7 +2055,7 @@ export function TaskWorkLogAccordion({
             size={16}
             strokeWidth={2}
             aria-hidden
-            className="shrink-0 text-ds-ink-muted-default"
+            className="shrink-0 text-ds-ink-muted-default opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           />
         )}
       </button>
