@@ -142,7 +142,10 @@ describe('project Runs API', () => {
   });
 
   it('cancels the exact encoded Run with the caller-owned request id', async () => {
-    fetchPostMock.mockResolvedValue(undefined);
+    fetchPostMock.mockResolvedValue({
+      run_id: 'run/with scope',
+      status: 'cancelled',
+    });
 
     await cancelProjectRun(
       'run/with scope',
@@ -155,7 +158,9 @@ describe('project Runs API', () => {
       {
         request_id: 'cancel:run-1:stable',
         reason: 'explicit_stop_from_event_native_chatbox',
-      }
+      },
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 });

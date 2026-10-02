@@ -16,6 +16,8 @@ import { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
+import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
+import { partitionLegacyMessageEvidence } from './EventTimeline/legacyReplyEvidence';
 import { type QueryGroup, UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
@@ -67,12 +69,12 @@ export const ProjectSection = React.forwardRef<
   const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
   const messages = React.useMemo(() => {
-    return task?.messages || [];
+    return partitionLegacyMessageEvidence(task?.messages || []);
   }, [task?.messages]);
 
   // Memoize grouping to prevent re-creating objects on every render
   const queryGroups = React.useMemo(() => {
-    return groupMessagesByQuery(messages);
+    return groupMessagesByQuery(messages.messages);
   }, [messages]);
   if (!activeTaskId || !task) {
     return null;
@@ -103,6 +105,7 @@ export const ProjectSection = React.forwardRef<
           />
         ))}
       </div>
+      <HistoryEvidence entries={messages.evidence} />
     </motion.div>
   );
 });
@@ -111,7 +114,7 @@ export const ProjectSection = React.forwardRef<
 ProjectSection.displayName = 'ProjectSection';
 
 // Helper function to group messages by query cycles
-export function groupMessagesByQuery(messages: any[]): QueryGroup[] {
+export function groupMessagesByQuery(messages: readonly any[]): QueryGroup[] {
   const groups: QueryGroup[] = [];
 
   let currentGroup: any = null;

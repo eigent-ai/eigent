@@ -461,5 +461,18 @@
   "space-model-unconfirmed": "Die erste Sitzungsanfrage ist noch nicht bestätigt. Verbinde dich erneut und versuche es noch einmal, oder wähle ein Sitzungsmodell.",
   "space-model-unavailable": "Dieses Modell ist für das aktuelle Konto nicht verfügbar. Prüfen Sie die Modelleinstellungen oder wählen Sie ein Sitzungsmodell.",
   "space-model-ambiguous": "Mehrere Anbieter passen zu diesem Modell. Prüfen Sie die Modelleinstellungen oder wählen Sie ein Sitzungsmodell.",
-  "space-model-changed": "Das Konto oder Sitzungsmodell hat sich beim Laden geändert. Senden Sie Ihre Nachricht erneut."
+  "space-model-changed": "Das Konto oder Sitzungsmodell hat sich beim Laden geändert. Senden Sie Ihre Nachricht erneut.",
+  "control-outcome-unknown": "Das Ergebnis ist noch nicht bestätigt. Prüfe vor dem Fortfahren den Status. Ein erneuter Versuch sendet dieselbe Anfrage.",
+  "control-check-status": "Status prüfen",
+  "control-checking-status": "Status wird geprüft…",
+  "control-retry-same-request": "Dieselbe Anfrage wiederholen",
+  "control-recovery-expired": "Diese Anfrage ist abgelaufen.",
+  "control-recovery-cancelled": "Diese Anfrage wurde abgebrochen.",
+  "control-recovery-task-status": "Task-Status: {{status}}",
+  "control-recovery-status-completed": "Abgeschlossen",
+  "control-recovery-status-cancelled": "Abgebrochen",
+  "control-recovery-status-failed": "Fehlgeschlagen",
+  "control-recovery-status-timed_out": "Zeitüberschreitung",
+  "history-evidence": "Frühere Antwortaufzeichnungen ({{count}})",
+  "history-evidence-description": "Ältere Antwortaufzeichnungen bleiben hier erhalten, wenn ihre Zuordnung zu einer Antwort fehlt oder ihr Inhalt von der aufgezeichneten Antwort abweicht."
 }
