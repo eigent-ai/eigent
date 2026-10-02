@@ -67,9 +67,10 @@ import {
 } from './chatStore';
 import { usePageTabStore } from './pageTabStore';
 import {
-  getProjectEventStore,
+  peekProjectEventStore,
   releaseProjectEventStore,
   resetProjectEventStore,
+  subscribeProjectEventStores,
 } from './projectEventStore';
 import {
   getVisibleProjectMetasForSpace,
@@ -3445,7 +3446,7 @@ const navLeadSubscriptions = new Map<
   string,
   {
     chatStore?: VanillaChatStore;
-    eventStore: ReturnType<typeof getProjectEventStore>;
+    eventStore: ReturnType<typeof peekProjectEventStore>;
     unsubscribe: () => void;
   }
 >();
@@ -3472,7 +3473,7 @@ function resolveProjectNavLead(
     projectId,
     [
       runProjectionStore.getProject(projectId),
-      getProjectEventStore(projectId).getSnapshot().view,
+      peekProjectEventStore(projectId)?.getSnapshot().view,
     ],
     task && !loading ? taskId : undefined
   );
@@ -3508,6 +3509,37 @@ const pushLiveNavLead = (projectId: string) => {
   state.setProjectNavLead(projectId, lead);
 };
 
+// Navigation only peeks at event stores, so cold or evicted Sessions never
+// allocate one; the registry subscription below rebinds as stores come and go.
+const syncNavLeadSubscription = (state: ProjectStore, projectId: string) => {
+  const project = state.projects[projectId];
+  const chatStore = project?.activeChatId
+    ? project.chatStores[project.activeChatId]
+    : Object.values(project?.chatStores ?? {})[0];
+  const eventStore = peekProjectEventStore(projectId);
+  const existing = navLeadSubscriptions.get(projectId);
+  if (
+    !existing ||
+    existing.chatStore !== chatStore ||
+    existing.eventStore !== eventStore
+  ) {
+    existing?.unsubscribe();
+    const push = () => pushLiveNavLead(projectId);
+    const unsubscribers = [
+      chatStore?.subscribe(push),
+      eventStore?.subscribe(push),
+      runProjectionStore.subscribeProject(projectId, push),
+    ];
+    navLeadSubscriptions.set(projectId, {
+      chatStore,
+      eventStore,
+      unsubscribe: () =>
+        unsubscribers.forEach((unsubscribe) => unsubscribe?.()),
+    });
+  }
+  pushLiveNavLead(projectId);
+};
+
 const reconcileNavLeadSubscriptions = (
   state: ProjectStore,
   previous?: ProjectStore
@@ -3533,31 +3565,7 @@ const reconcileNavLeadSubscriptions = (
     navLeadSubscriptions.delete(projectId);
   }
   for (const projectId of projectIds) {
-    const project = state.projects[projectId];
-    const chatStore = project?.activeChatId
-      ? project.chatStores[project.activeChatId]
-      : Object.values(project?.chatStores ?? {})[0];
-    const eventStore = getProjectEventStore(projectId);
-    const existing = navLeadSubscriptions.get(projectId);
-    if (
-      existing?.chatStore !== chatStore ||
-      existing?.eventStore !== eventStore
-    ) {
-      existing?.unsubscribe();
-      const push = () => pushLiveNavLead(projectId);
-      const unsubscribers = [
-        chatStore?.subscribe(push),
-        eventStore.subscribe(push),
-        runProjectionStore.subscribeProject(projectId, push),
-      ];
-      navLeadSubscriptions.set(projectId, {
-        chatStore,
-        eventStore,
-        unsubscribe: () =>
-          unsubscribers.forEach((unsubscribe) => unsubscribe?.()),
-      });
-    }
-    pushLiveNavLead(projectId);
+    syncNavLeadSubscription(state, projectId);
   }
 };
 
@@ -3569,6 +3577,10 @@ useSpaceStore.subscribe((state, previous) => {
   ) {
     reconcileNavLeadSubscriptions(projectStore.getState());
   }
+});
+subscribeProjectEventStores((projectId) => {
+  if (navLeadSubscriptions.has(projectId))
+    syncNavLeadSubscription(projectStore.getState(), projectId);
 });
 reconcileNavLeadSubscriptions(projectStore.getState());
 

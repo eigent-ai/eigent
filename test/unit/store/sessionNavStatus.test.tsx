@@ -37,6 +37,7 @@ import {
 } from '@/store/chatStore';
 import {
   getProjectEventStore,
+  peekProjectEventStore,
   resetProjectEventStoresForTests,
 } from '@/store/projectEventStore';
 import { useProjectStore } from '@/store/projectStore';
@@ -738,6 +739,56 @@ describe('Session navigation through production projections', () => {
       status: 'completed',
       runVersion: 0,
     });
+    expect(useProjectStore.getState().navLeadByProjectId[projectId].kind).toBe(
+      'warning'
+    );
+  });
+
+  it('never allocates event stores for cold or evicted Session rows', () => {
+    const { summary, events } = fixtures[3];
+    const coldId = summary.project_id;
+    const evictedId = 'evicted-session';
+    useSpaceStore.getState().upsertProjectMetas(
+      [coldId, evictedId].map((id) => ({
+        id,
+        spaceId: 'space-nav',
+        name: id,
+        status: 'active',
+        createdAt: 1,
+        updatedAt: 1,
+      }))
+    );
+    coldProject(evictedId);
+    getProjectEventStore(evictedId);
+    useProjectStore.getState()._evictProjectRuntime(evictedId);
+    expect(peekProjectEventStore(evictedId)).toBeNull();
+
+    const ingress = new RunEventIngress(coldId, summary.run_id);
+    for (const event of events) ingress.ingest(event, 'historical_rehydrate');
+    useSpaceStore.setState({ activeSpaceId: 'space-other' });
+    useSpaceStore.setState({ activeSpaceId: 'space-nav' });
+
+    expect(useProjectStore.getState().navLeadByProjectId[coldId].kind).toBe(
+      'warning'
+    );
+    expect(peekProjectEventStore(coldId)).toBeNull();
+    expect(peekProjectEventStore(evictedId)).toBeNull();
+  });
+
+  it('follows an event store created after the Session row was bound', () => {
+    const { summary, events } = fixtures[3];
+    const projectId = summary.project_id;
+    coldProject(projectId);
+    expect(peekProjectEventStore(projectId)).toBeNull();
+
+    // The Session runtime creates the store after the row was already bound.
+    const eventStore = getProjectEventStore(projectId);
+    for (const event of events) {
+      eventStore.enqueue(normalizeLocalRunEvent(event, projectId));
+    }
+    eventStore.flushAll();
+
+    expect(runProjectionStore.getRun(projectId, summary.run_id)).toBeFalsy();
     expect(useProjectStore.getState().navLeadByProjectId[projectId].kind).toBe(
       'warning'
     );
