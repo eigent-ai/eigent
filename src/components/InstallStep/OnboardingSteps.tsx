@@ -20,7 +20,6 @@ import {
   RuledLinesBackground,
 } from '@/components/Background';
 import { Button } from '@/components/ui/button';
-import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { LocaleEnum, resolveLocale, switchLanguage } from '@/i18n';
@@ -29,31 +28,19 @@ import { getOnboardingThemePresets } from '@/lib/themeTokens/catalog';
 import { cn } from '@/lib/utils';
 import {
   DEFAULT_WORK_PROFILE,
+  WORK_PROFILE_IDS,
   WORK_PROFILE_LABEL_KEYS,
   type WorkProfileId,
 } from '@/lib/workProfiles';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
-  AppWindow,
   ArrowLeftIcon,
   ArrowRightIcon,
-  Bug,
   Check,
-  CircleDollarSign,
-  ClipboardCheck,
-  Code,
-  Database,
-  Headphones,
-  type LucideIcon,
-  Megaphone,
   Monitor,
   Moon,
-  RefreshCw,
-  Server,
   Sun,
-  TrendingUp,
-  Users,
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -78,26 +65,6 @@ const LANGUAGE_OPTIONS = [
   { key: LocaleEnum.Spanish, nativeLabel: 'Español' },
   { key: LocaleEnum.Korean, nativeLabel: '한국어' },
   { key: LocaleEnum.Italian, nativeLabel: 'Italiano' },
-];
-
-// ── Work profiles (General is the default, so it has no card) ───────────────
-
-const WORK_PROFILE_OPTIONS: {
-  id: Exclude<WorkProfileId, typeof DEFAULT_WORK_PROFILE>;
-  Icon: LucideIcon;
-}[] = [
-  { id: 'software-engineer', Icon: Code },
-  { id: 'backend-engineering', Icon: Server },
-  { id: 'frontend-engineering', Icon: AppWindow },
-  { id: 'devops', Icon: RefreshCw },
-  { id: 'data-engineering', Icon: Database },
-  { id: 'product-management', Icon: ClipboardCheck },
-  { id: 'marketing', Icon: Megaphone },
-  { id: 'sales', Icon: TrendingUp },
-  { id: 'customer-support', Icon: Headphones },
-  { id: 'hr', Icon: Users },
-  { id: 'finance', Icon: CircleDollarSign },
-  { id: 'qa-testing', Icon: Bug },
 ];
 
 // ── Theme presets (seeds come from base.color.json only) ──────────────────────
@@ -191,21 +158,13 @@ function StepProfile({
   selected,
   onSelect,
 }: {
-  selected: WorkProfileId;
+  selected: WorkProfileId | null;
   onSelect: (id: WorkProfileId) => void;
 }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col items-center gap-2 text-center">
-        <DsText
-          as="span"
-          role="meta"
-          weight="semibold"
-          className="tracking-wide text-ds-ink-muted-default uppercase"
-        >
-          {t('layout.onboarding-setup-profile-eyebrow')}
-        </DsText>
         <DsText
           as="h2"
           role="page"
@@ -219,9 +178,9 @@ function StepProfile({
         </DsText>
       </div>
       {/* Columns follow the onboarding panel width, not the window. */}
-      <div className="@container">
-        <div className="grid grid-cols-2 gap-3 @lg:grid-cols-3 @2xl:grid-cols-4">
-          {WORK_PROFILE_OPTIONS.map(({ id, Icon }) => {
+      <div className="@container min-w-0">
+        <div className="grid grid-cols-1 gap-2 @sm:grid-cols-2 @lg:grid-cols-3">
+          {WORK_PROFILE_IDS.map((id) => {
             const active = selected === id;
             return (
               <button
@@ -230,24 +189,21 @@ function StepProfile({
                 aria-pressed={active}
                 onClick={() => onSelect(id)}
                 className={cn(
-                  'relative flex flex-col items-start gap-ds-stack-related rounded-xl border border-x border-y border-solid p-ds-card-inset text-left transition-colors duration-100',
+                  'flex min-w-0 items-center justify-start rounded-xl border border-x border-y border-solid px-6 py-3 text-left transition-colors duration-100',
                   DS_FOCUS_RING,
                   active
-                    ? 'border-ds-hairline-default-default bg-ds-neutral-default-default text-ds-ink-default-default'
+                    ? 'border-ds-accent-default-selected bg-ds-neutral-default-default text-ds-ink-default-default'
                     : 'border-transparent bg-ds-neutral-default-default text-ds-ink-muted-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover hover:text-ds-ink-muted-hover'
                 )}
               >
-                <DsIcon icon={Icon} recipe="detailed" />
-                <span className="text-ds-text-base font-semibold">
+                <span
+                  className={cn(
+                    'min-w-0 text-ds-text-base break-words',
+                    active ? 'font-semibold' : 'font-medium'
+                  )}
+                >
                   {t(WORK_PROFILE_LABEL_KEYS[id])}
                 </span>
-                {active && (
-                  <DsIcon
-                    icon={Check}
-                    recipe="main"
-                    className="absolute top-3 right-3"
-                  />
-                )}
               </button>
             );
           })}
@@ -466,6 +422,7 @@ function StepBackground({
 export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<Step>(1);
+  const [profileSelected, setProfileSelected] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const shouldReduceMotion = useReducedMotion();
 
@@ -532,6 +489,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
 
   const handleSkipProfile = () => {
     setWorkProfile(DEFAULT_WORK_PROFILE);
+    setProfileSelected(false);
     recordOnboardingStepCompleted({
       step_id: step,
       step_name: stepName(step),
@@ -540,8 +498,8 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
     goNext();
   };
 
-  // The profile step needs a role before Continue; Skip falls back to General.
-  const canContinue = step !== 2 || workProfile !== DEFAULT_WORK_PROFILE;
+  // Others is a valid explicit choice; Continue requires a card click.
+  const canContinue = step !== 2 || profileSelected;
 
   const handleComplete = () => {
     recordOnboardingStepCompleted({
@@ -602,7 +560,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
           ))}
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="scrollbar-always-visible min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           <AnimatePresence mode="wait" initial={false} custom={direction}>
             <motion.div
               key={step}
@@ -616,7 +574,13 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
                 <StepLanguage selected={language} onSelect={handleLanguage} />
               )}
               {step === 2 && (
-                <StepProfile selected={workProfile} onSelect={setWorkProfile} />
+                <StepProfile
+                  selected={profileSelected ? workProfile : null}
+                  onSelect={(id) => {
+                    setWorkProfile(id);
+                    setProfileSelected(true);
+                  }}
+                />
               )}
               {step === 3 && (
                 <StepTheme

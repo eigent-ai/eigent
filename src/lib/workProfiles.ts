@@ -13,50 +13,77 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 /**
- * Work profile chosen during onboarding or in Settings. It only tailors the
- * automation examples we show; it never limits what the user can build.
- * `general` is the default when the user skips the onboarding step.
+ * Work role saved to the user's profile during onboarding or in Settings.
+ * `others` is the default when the user skips the onboarding step.
  */
 export const WORK_PROFILE_IDS = [
-  'software-engineer',
-  'backend-engineering',
-  'frontend-engineering',
-  'devops',
-  'data-engineering',
   'product-management',
+  'engineering',
+  'human-resources',
+  'finance',
   'marketing',
   'sales',
-  'customer-support',
-  'hr',
-  'finance',
-  'qa-testing',
+  'operations',
+  'data-science',
+  'design',
+  'legal',
+  'scientist',
+  'student',
+  'founder',
+  'healthcare',
+  'writer',
+  'educator',
+  'consultant',
+  'researcher',
+  'software-engineer',
+  'others',
 ] as const;
 
-export const DEFAULT_WORK_PROFILE = 'general' as const;
+export const DEFAULT_WORK_PROFILE = 'others' as const;
 
-export type WorkProfileId =
-  typeof DEFAULT_WORK_PROFILE | (typeof WORK_PROFILE_IDS)[number];
+export type WorkProfileId = (typeof WORK_PROFILE_IDS)[number];
 
 export function isWorkProfileId(value: unknown): value is WorkProfileId {
-  return (
-    value === DEFAULT_WORK_PROFILE ||
-    (WORK_PROFILE_IDS as readonly unknown[]).includes(value)
-  );
+  return (WORK_PROFILE_IDS as readonly unknown[]).includes(value);
+}
+
+/** Resolve saved roles from the previous catalogue without retaining old IDs. */
+export function normalizeWorkProfile(value: unknown): WorkProfileId {
+  if (isWorkProfileId(value)) return value;
+
+  switch (value) {
+    case 'backend-engineering':
+    case 'frontend-engineering':
+    case 'devops':
+    case 'data-engineering':
+      return 'engineering';
+    case 'hr':
+      return 'human-resources';
+    default:
+      return DEFAULT_WORK_PROFILE;
+  }
 }
 
 // Literal keys so the i18n integrity check can verify each one exists.
 export const WORK_PROFILE_LABEL_KEYS: Record<WorkProfileId, string> = {
-  general: 'setting.work-profile-general',
-  'software-engineer': 'setting.work-profile-software-engineer',
-  'backend-engineering': 'setting.work-profile-backend-engineering',
-  'frontend-engineering': 'setting.work-profile-frontend-engineering',
-  devops: 'setting.work-profile-devops',
-  'data-engineering': 'setting.work-profile-data-engineering',
   'product-management': 'setting.work-profile-product-management',
+  engineering: 'setting.work-profile-engineering',
+  'human-resources': 'setting.work-profile-human-resources',
+  finance: 'setting.work-profile-finance',
   marketing: 'setting.work-profile-marketing',
   sales: 'setting.work-profile-sales',
-  'customer-support': 'setting.work-profile-customer-support',
-  hr: 'setting.work-profile-hr',
-  finance: 'setting.work-profile-finance',
-  'qa-testing': 'setting.work-profile-qa-testing',
+  operations: 'setting.work-profile-operations',
+  'data-science': 'setting.work-profile-data-science',
+  design: 'setting.work-profile-design',
+  legal: 'setting.work-profile-legal',
+  scientist: 'setting.work-profile-scientist',
+  student: 'setting.work-profile-student',
+  founder: 'setting.work-profile-founder',
+  healthcare: 'setting.work-profile-healthcare',
+  writer: 'setting.work-profile-writer',
+  educator: 'setting.work-profile-educator',
+  consultant: 'setting.work-profile-consultant',
+  researcher: 'setting.work-profile-researcher',
+  'software-engineer': 'setting.work-profile-software-engineer',
+  others: 'setting.work-profile-others',
 };

@@ -18,8 +18,8 @@ import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
 import {
-  DEFAULT_WORK_PROFILE,
   isWorkProfileId,
+  normalizeWorkProfile,
   WORK_PROFILE_IDS,
   WORK_PROFILE_LABEL_KEYS,
 } from '@/lib/workProfiles';
@@ -67,7 +67,8 @@ export default function SettingGeneral({
   const [_isLoading, _setIsLoading] = useState(false);
   const language = authStore.language;
   const _setLanguage = authStore.setLanguage;
-  const workProfile = authStore.workProfile;
+  const savedWorkProfile = authStore.workProfile;
+  const workProfile = normalizeWorkProfile(savedWorkProfile);
   const setWorkProfile = authStore.setWorkProfile;
   const _fullNameRef: RefObject<HTMLInputElement> = createRef();
   const _nickNameRef: RefObject<HTMLInputElement> = createRef();
@@ -84,6 +85,12 @@ export default function SettingGeneral({
   const proxyRestartHintId = useId();
   const hasProxyValueChanged = proxyUrl !== savedProxyUrl;
   const hasUnsavedProxyChanges = proxyUrl.trim() !== savedProxyUrl.trim();
+
+  useEffect(() => {
+    if (savedWorkProfile !== workProfile) {
+      setWorkProfile(workProfile);
+    }
+  }, [savedWorkProfile, setWorkProfile, workProfile]);
 
   const languageList = [
     {
@@ -332,9 +339,12 @@ export default function SettingGeneral({
                 >
                   <SelectValue placeholder={t('setting.select-work-profile')} />
                 </SelectTrigger>
-                <SelectContent className="border border-x border-y border-solid bg-ds-neutral-default-default">
+                <SelectContent
+                  fitTrigger
+                  className="border border-x border-y border-solid bg-ds-neutral-default-default"
+                >
                   <SelectGroup>
-                    {[DEFAULT_WORK_PROFILE, ...WORK_PROFILE_IDS].map((id) => (
+                    {WORK_PROFILE_IDS.map((id) => (
                       <SelectItem
                         key={id}
                         value={id}

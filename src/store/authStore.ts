@@ -25,7 +25,11 @@ import {
   getRecommendedContrast,
 } from '@/lib/themeTokens/catalog';
 import type { Mode, ThemeCatalog, ThemeSeed } from '@/lib/themeTokens/types';
-import { DEFAULT_WORK_PROFILE, type WorkProfileId } from '@/lib/workProfiles';
+import {
+  DEFAULT_WORK_PROFILE,
+  normalizeWorkProfile,
+  type WorkProfileId,
+} from '@/lib/workProfiles';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useSpaceStore } from './spaceStore';
@@ -86,7 +90,7 @@ interface AuthState {
   /** Pattern behind the main workspace area (Workforce / Session). */
   workspaceMainBackground: WorkspaceMainBackground;
 
-  /** Role used to tailor automation examples; `general` when skipped. */
+  /** Role saved to the user's profile; `others` when skipped. */
   workProfile: WorkProfileId;
 
   // shared token
@@ -432,9 +436,8 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      // Bump so migrate re-runs for existing sessions that still need the
-      // user-id repair; a matching version skips migrate and stays unrepaired.
-      version: 11,
+      // Re-run migration for saved roles from the previous catalogue.
+      version: 12,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
@@ -449,6 +452,7 @@ const authStore = create<AuthState>()(
               appearanceMode?: AppearanceMode;
               customThemeCatalog?: Partial<ThemeCatalog>;
               workspaceMainBackground?: string;
+              workProfile?: unknown;
               cloud_model_type?: unknown;
               codex_model_type?: unknown;
             }
@@ -519,6 +523,7 @@ const authStore = create<AuthState>()(
             appearanceMode: 'light',
             customThemeCatalog: normalizedCustomCatalog,
             workspaceMainBackground,
+            workProfile: normalizeWorkProfile(s.workProfile),
             cloud_model_type: sanitizedCloudModelType,
             codex_model_type: sanitizedCodexModelType,
             authEnvironmentKey: currentEnvironmentKey,
@@ -531,6 +536,7 @@ const authStore = create<AuthState>()(
           appearanceMode: normalizedAppearanceMode,
           customThemeCatalog: normalizedCustomCatalog,
           workspaceMainBackground,
+          workProfile: normalizeWorkProfile(s.workProfile),
           cloud_model_type: sanitizedCloudModelType,
           codex_model_type: sanitizedCodexModelType,
           authEnvironmentKey: currentEnvironmentKey,
