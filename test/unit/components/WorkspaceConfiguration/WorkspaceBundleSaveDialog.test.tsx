@@ -249,6 +249,8 @@ describe('WorkspaceBundleSaveDialog', () => {
   it('pairs selected sharing text with its fill and exposes selection through keyboard and a checkmark', async () => {
     const user = userEvent.setup();
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: { ...review, assets: [] },
     });
@@ -320,6 +322,8 @@ describe('WorkspaceBundleSaveDialog', () => {
           })
       );
       mocks.review.mockResolvedValue({
+        space_id: 'space-1',
+        reference_findings: [],
         draft_version: 1,
         review: { ...review, assets: [] },
       });
@@ -373,7 +377,14 @@ describe('WorkspaceBundleSaveDialog', () => {
     expect(
       screen.queryByRole('button', { name: /^public/i })
     ).not.toBeInTheDocument();
-    await act(async () => finishReview({ draft_version: 1, review }));
+    await act(async () =>
+      finishReview({
+        space_id: 'space-1',
+        reference_findings: [],
+        draft_version: 1,
+        review,
+      })
+    );
     expect(
       await screen.findByRole('button', { name: /^private/i })
     ).toBeEnabled();
