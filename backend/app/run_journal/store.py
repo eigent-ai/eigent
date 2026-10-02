@@ -10115,6 +10115,18 @@ class SQLiteRunJournal:
             ORDER BY created_at, request_id""",
             (repository_id, checkout_id),
         ).fetchall()
+        return self._promote_first_eligible_writer_in_transaction(
+            connection, queued, now=now
+        )
+
+    def _promote_first_eligible_writer_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        queued: list[sqlite3.Row],
+        *,
+        now: float,
+    ) -> WorkspaceWriterRequestRecord | None:
+        """Admit FIFO past dormant Runs; a blocked request fences the rest."""
         for request in queued:
             state = self._workspace_writer_promotion_state(connection, request)
             if state == "dormant":

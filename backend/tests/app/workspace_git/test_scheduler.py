@@ -21,6 +21,7 @@ import pytest
 from app.run_journal import RunEventDraft, SQLiteRunJournal, UnsafeResumeError
 from app.run_policy import ToolSafetyClass
 from app.workspace_git import WorkspaceWriterScheduler
+from app.workspace_runtime.store import WorkspaceStateStore
 
 
 @pytest.fixture
@@ -29,7 +30,11 @@ def journal(tmp_path):
         yield value
 
 
-def _binding(journal: SQLiteRunJournal, project_id: str):
+def _binding(
+    journal: SQLiteRunJournal,
+    project_id: str,
+    worktree_path: str = "/tmp/space-1",
+):
     if journal.get_git_repository("repo-1") is None:
         journal.put_git_repository(
             repository_id="repo-1",
@@ -48,7 +53,7 @@ def _binding(journal: SQLiteRunJournal, project_id: str):
         checkout_id="checkout-primary",
         checkout_mode="primary_checkout",
         target_ref="refs/heads/main",
-        worktree_path="/tmp/space-1",
+        worktree_path=worktree_path,
     )
 
 
@@ -288,7 +293,7 @@ def test_startup_terminalizes_zero_attempt_run_after_writer_was_reclaimed(
     )
 
 
-def _admit_pending(scheduler, run_id):
+def _admit_pending(scheduler, run_id, worktree_path="/tmp/space-1"):
     journal = scheduler.journal
     project_id = f"project-{run_id}"
     journal.ensure_run(run_id=run_id, project_id=project_id, status="pending")
@@ -296,7 +301,7 @@ def _admit_pending(scheduler, run_id):
         run_id=run_id,
         task_id=run_id,
         project_id=project_id,
-        binding=_binding(journal, project_id),
+        binding=_binding(journal, project_id, worktree_path),
     )
     attempt = journal.create_run_attempt(
         run_id,
@@ -372,6 +377,35 @@ async def test_restart_skips_unstarted_writer_and_explicit_resume_can_acquire(
         )
         journal.activate_run_attempt(resumed.attempt_id)
         assert journal.get_run_attempt(resumed.attempt_id).status == "running"
+
+
+def test_legacy_settlement_skips_dormant_writer(journal, tmp_path):
+    root = tmp_path / "space"
+    root.mkdir()
+    scheduler = WorkspaceWriterScheduler(journal)
+    owner, _ = _admit_pending(scheduler, "owner", str(root))
+    waiting, _ = _admit_pending(scheduler, "waiting", str(root))
+    state = WorkspaceStateStore(journal)
+    fence = state.register_target(root)
+    assert fence.owner_id == owner.request_id
+    journal.reconcile_startup()
+    later, _ = _admit_pending(scheduler, "later", str(root))
+
+    settled = state.settle_legacy_writer(
+        fence, "owner-complete", process_receipt={"outcome": "stopped"}
+    )
+
+    assert settled.owner_id == later.request_id
+    assert (
+        journal.get_workspace_writer_request(waiting.request_id).status
+        == "queued"
+    )
+    assert (
+        journal.get_workspace_writer_lease(
+            repository_id="repo-1", checkout_id="checkout-primary"
+        ).request_id
+        == later.request_id
+    )
 
 
 @pytest.mark.parametrize("cancel_first", [True, False])
