@@ -15,6 +15,7 @@
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
+import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
 import type { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -519,24 +520,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               onResolved={() => {
                 if (!activeTaskId) return;
                 const state = chatStore.getState();
-                state.markHumanInteractionResolved(
+                completeHumanInteraction(
+                  state,
                   activeTaskId,
                   message.interaction.interaction_id
                 );
-                const current = chatStore.getState().tasks[activeTaskId];
-                if (!current) return;
-                const [nextAsk, ...remainingAsks] = current.askList;
-                state.setActiveAskList(activeTaskId, remainingAsks);
-                state.setActiveAsk(activeTaskId, nextAsk?.agent_name || '');
-                state.setIsPending(activeTaskId, false);
-                state.setDurableRunStatus(
-                  activeTaskId,
-                  nextAsk ? 'waiting_for_user' : 'running'
-                );
-                state.setStatus(activeTaskId, ChatTaskStatus.RUNNING);
-                if (nextAsk) {
-                  state.addMessages(activeTaskId, nextAsk);
-                }
               }}
             />
           );

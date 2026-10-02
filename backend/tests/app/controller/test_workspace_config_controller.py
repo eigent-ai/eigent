@@ -1846,3 +1846,173 @@ def test_workspace_configuration_rejects_unverified_cloud_publish_receipt(
     assert (
         journal.get_latest_workspace_config_materialization("space-1") is None
     )
+
+
+def test_reference_review_preserves_draft_and_digest_contract(
+    workspace_config_api, monkeypatch
+):
+    client, journal = workspace_config_api
+    monkeypatch.setattr(
+        workspace_config_controller, "read_mcp_config", lambda: {}
+    )
+    initial = _get(client).json()
+    initial["document"]["spec"]["skills"] = [
+        {"ref": "registry://skills/missing@999"}
+    ]
+    saved = client.put(
+        "/api/v1/spaces/space-1/workspace-configuration",
+        json={
+            "expected_version": 0,
+            "base_revision_id": None,
+            "document": initial["document"],
+            "updated_by": "user-1",
+            "email": "user@example.com",
+        },
+        headers=_headers(),
+    )
+    assert saved.status_code == 200
+    draft = journal.get_workspace_config_draft("space-1")
+    before = journal._connection.total_changes
+    response = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/review",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["reference_findings"] == [
+        {
+            "location": "spec.skills[0].ref",
+            "reference": "registry://skills/missing@999",
+            "code": "unsupported",
+        }
+    ]
+    assert response.json()[
+        "review"
+    ] == workspace_config_controller._workspace_configuration_review(draft)
+    assert journal._connection.total_changes == before
+    assert journal.get_workspace_config_draft("space-1") == draft
+
+
+def test_reference_review_rejects_changed_draft(
+    workspace_config_api, monkeypatch
+):
+    client, journal = workspace_config_api
+    initial = _get(client).json()
+    journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=initial["document"],
+        updated_by="fixture",
+    )
+
+    def change_draft(*args, **kwargs):
+        journal.put_workspace_config_draft(
+            space_id="space-1",
+            expected_version=1,
+            document=initial["document"],
+            updated_by="other",
+        )
+        return []
+
+    monkeypatch.setattr(
+        workspace_config_controller.WorkspaceBundleAuthoringService,
+        "reference_findings",
+        change_draft,
+    )
+    response = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/review",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]["code"] == "workspace_configuration_changed"
+    )
+
+
+@pytest.mark.parametrize(
+    "kind,expected",
+    [
+        ("desktop_renderer", ("supplied-user", "supplied@example.com")),
+        ("brain_user", ("authenticated-user", "")),
+        ("environment_hands", (None, "")),
+    ],
+)
+@pytest.mark.asyncio
+async def test_reference_review_uses_authenticated_global_identity(
+    workspace_config_api, monkeypatch, kind, expected
+):
+    from types import SimpleNamespace
+
+    client, journal = workspace_config_api
+    initial = _get(client).json()
+    journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=initial["document"],
+        updated_by="fixture",
+    )
+    calls = []
+
+    def capture(manifest, *, user_id, email):
+        calls.append((user_id, email))
+        return []
+
+    monkeypatch.setattr(
+        workspace_config_controller.WorkspaceBundleAuthoringService,
+        "reference_findings",
+        capture,
+    )
+    request = SimpleNamespace(
+        state=SimpleNamespace(
+            local_control_principal=SimpleNamespace(
+                kind=kind, user_id="authenticated-user"
+            )
+        )
+    )
+    await workspace_config_controller.review_workspace_configuration(
+        "space-1",
+        request,
+        email="supplied@example.com",
+        user_id="supplied-user",
+    )
+    assert calls == [expected]
+
+
+@pytest.mark.asyncio
+async def test_reference_review_timeout_is_unavailable(
+    workspace_config_api, monkeypatch
+):
+    from types import SimpleNamespace
+
+    client, journal = workspace_config_api
+    initial = _get(client).json()
+    journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=initial["document"],
+        updated_by="fixture",
+    )
+
+    async def timeout(awaitable, **kwargs):
+        awaitable.close()
+        raise TimeoutError()
+
+    monkeypatch.setattr(
+        workspace_config_controller.asyncio, "wait_for", timeout
+    )
+    request = SimpleNamespace(
+        state=SimpleNamespace(
+            local_control_principal=SimpleNamespace(kind="desktop_renderer")
+        )
+    )
+    result = await workspace_config_controller.review_workspace_configuration(
+        "space-1", request, email="user@example.com", user_id="7"
+    )
+    assert result["reference_findings"] == [
+        {
+            "location": "spec",
+            "reference": "",
+            "code": "verification_unavailable",
+        }
+    ]

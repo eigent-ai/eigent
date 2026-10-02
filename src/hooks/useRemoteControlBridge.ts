@@ -851,7 +851,9 @@ async function executeRemoteCommand(
       };
     }
     case 'human_reply': {
-      await requestBrain(
+      // The remote command id is the stable decision identity, so a
+      // redelivered command binds to the interaction it already answered.
+      const result = await requestBrain(
         command,
         token,
         'POST',
@@ -859,8 +861,18 @@ async function executeRemoteCommand(
         {
           agent: command.payload.agent,
           reply: command.payload.reply || command.payload.content || '',
+          interaction_id: command.payload.interaction_id || null,
+          decision_request_id: `remote-human-reply:${command.id}`,
         }
       );
+      // Brain reports a rejected reply as HTTP 200 with `code: 1`.
+      if (result?.code === 1) {
+        const error: any = new Error(
+          result.text || 'Remote human reply was rejected'
+        );
+        error.code = result.error_code || 'BRIDGE_HUMAN_REPLY_REJECTED';
+        throw error;
+      }
       break;
     }
     case 'interaction_decision': {

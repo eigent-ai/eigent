@@ -14,6 +14,11 @@
 
 import { resolveSpaceModelBinding } from '@/lib/spaceModelBinding';
 import { discoverSpaceModels } from '@/service/spaceModelDiscovery';
+import {
+  blocksLocalBundlePublish,
+  preflightWorkspaceBundleReferences,
+} from '@/service/workspaceBundleReferencePreflight';
+import type { WorkspaceConfigurationDocument } from '@/service/workspaceConfigurationApi';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { get, auth } = vi.hoisted(() => ({
@@ -55,6 +60,57 @@ const legacy = {
 const missing = () => Object.assign(new Error('Not Found'), { status: 404 });
 const values = (result: Awaited<ReturnType<typeof discoverSpaceModels>>) =>
   result.items.map((item) => item.value);
+
+const legacyPage = (page: number, total = 201) => ({
+  page,
+  size: 100,
+  total,
+  pages: Math.ceil(total / 100),
+  items: Array.from(
+    { length: Math.min(100, Math.max(total - (page - 1) * 100, 0)) },
+    (_, index) => {
+      const id = (page - 1) * 100 + index + 1;
+      return {
+        ...legacy,
+        id,
+        encrypted_config: {
+          model_platform: 'openai',
+          model_type: `model-${id}`,
+        },
+      };
+    }
+  ),
+});
+
+const mockLegacyPages = (respond: (page: number) => unknown) => {
+  get.mockImplementation(async (url, params) => {
+    if (url === '/api/v1/cloud-models') return { models: [cloud] };
+    if (url === '/api/v1/provider-models') throw missing();
+    return respond(params.page);
+  });
+};
+
+const modelDocument = (modelRef: string): WorkspaceConfigurationDocument => ({
+  apiVersion: 'eigent.ai/v1alpha1',
+  kind: 'WorkspaceBundle',
+  metadata: { id: 'bundle', name: 'Bundle', revision: 1 },
+  spec: {
+    instructions: {},
+    context: [],
+    skills: [],
+    mcpServers: [],
+    connectors: [],
+    agents: [],
+    models: { default: { modelRef, thinkingEffort: 'medium' } },
+    permissions: { profile: 'request_approval', rules: [] },
+    git: {
+      enabled: true,
+      checkpointPolicy: 'user_and_run_terminal',
+      agentIsolation: 'worktree',
+      remotePolicy: 'prompt',
+    },
+  },
+});
 
 describe('global model catalog compatibility', () => {
   beforeEach(() => {
@@ -367,5 +423,238 @@ describe('global model catalog compatibility', () => {
       disabled: true,
       reason: 'model_unavailable',
     });
+  });
+  it('skips unprojectable model metadata without failing authoring preflight', async () => {
+    get.mockImplementation(async (url) =>
+      url === '/api/v1/cloud-models'
+        ? { models: [cloud, { id: 'broken' }] }
+        : [metadata, { category: 'future', available: false }]
+    );
+    const result = await discoverSpaceModels({ requireComplete: true });
+    expect(result.unavailableSources).toEqual([]);
+    expect(values(result)).toEqual([
+      'provider://default',
+      'provider://cloud/managed-model',
+      'provider://custom/openai/configured-model',
+    ]);
+  });
+
+  it.each([
+    [
+      'provider metadata',
+      (url: string) =>
+        url === '/api/v1/provider-models'
+          ? [
+              metadata,
+              { ...metadata, model_platform: 'deepseek', model_type: '' },
+            ]
+          : undefined,
+    ],
+    [
+      'legacy providers',
+      (url: string) => {
+        if (url === '/api/v1/provider-models') throw missing();
+        return url === '/api/v1/providers'
+          ? {
+              items: [
+                legacy,
+                { ...legacy, id: 7822, model_type: '', encrypted_config: {} },
+              ],
+              page: 1,
+              size: 100,
+              total: 2,
+              pages: 1,
+            }
+          : undefined;
+      },
+    ],
+  ])(
+    'keeps an existing reference publishable beside an unrelated row without model_type in %s',
+    async (_name, respond) => {
+      get.mockImplementation(async (url) =>
+        url === '/api/v1/cloud-models' ? { models: [cloud] } : respond(url)
+      );
+      expect(
+        await preflightWorkspaceBundleReferences(
+          modelDocument('provider://custom/openai/configured-model'),
+          []
+        )
+      ).toEqual([]);
+    }
+  );
+
+  it('cannot verify a Cloud model from a self-hosted deployment', async () => {
+    vi.stubEnv('VITE_USE_LOCAL_PROXY', 'true');
+    get.mockResolvedValue([metadata]);
+    expect(
+      (await discoverSpaceModels({ requireComplete: true })).unavailableSources
+    ).toEqual(['cloud_catalog']);
+  });
+  it.each([
+    { items: [legacy], pages: '2' },
+    { items: [], pages: 2 },
+    { items: [legacy, legacy], pages: 1 },
+  ])(
+    'rejects incomplete or drifting legacy pagination during preflight: %j',
+    async (page) => {
+      get.mockImplementation(async (url) => {
+        if (url === '/api/v1/cloud-models') return { models: [cloud] };
+        if (url === '/api/v1/provider-models') throw missing();
+        return page;
+      });
+      expect(
+        (await discoverSpaceModels({ requireComplete: true }))
+          .unavailableSources
+      ).toEqual(['provider_catalog']);
+    }
+  );
+
+  it('rejects duplicate Cloud identities and missing availability during preflight', async () => {
+    get.mockImplementation(async (url) =>
+      url === '/api/v1/cloud-models'
+        ? { models: [cloud, cloud] }
+        : [{ ...metadata, available: undefined }]
+    );
+    expect(
+      (await discoverSpaceModels({ requireComplete: true })).unavailableSources
+    ).toEqual(['cloud_catalog', 'provider_catalog']);
+  });
+  it('accepts an authoritative empty legacy catalog with zero pages', async () => {
+    get.mockImplementation(async (url) => {
+      if (url === '/api/v1/cloud-models') return { models: [] };
+      if (url === '/api/v1/provider-models') throw missing();
+      return { items: [], page: 1, size: 100, total: 0, pages: 0 };
+    });
+    expect(
+      (await discoverSpaceModels({ requireComplete: true })).unavailableSources
+    ).toEqual([]);
+  });
+  it('marks the provider catalog unavailable when page 2 shrinks from 201 to 200 records', async () => {
+    mockLegacyPages((page) => legacyPage(page, page === 1 ? 201 : 200));
+    const result = await discoverSpaceModels({ requireComplete: true });
+    expect(result.unavailableSources).toEqual(['provider_catalog']);
+  });
+
+  it.each(['model-1', 'model-201'])(
+    'blocks publishing %s when the legacy catalog shrinks between pages',
+    async (model) => {
+      mockLegacyPages((page) => legacyPage(page, page === 1 ? 201 : 200));
+      const reference = `provider://custom/openai/${model}`;
+      const findings = await preflightWorkspaceBundleReferences(
+        modelDocument(reference),
+        []
+      );
+      expect(findings).toEqual([
+        {
+          location: 'spec.models.default.modelRef',
+          reference,
+          code: 'verification_unavailable',
+        },
+      ]);
+      expect(findings.some(blocksLocalBundlePublish)).toBe(true);
+    }
+  );
+
+  it('accepts stable complete pagination including the final partial page', async () => {
+    mockLegacyPages((page) => legacyPage(page));
+    const result = await discoverSpaceModels({ requireComplete: true });
+    expect(result.unavailableSources).toEqual([]);
+    expect(
+      result.items.filter((item) => item.source === 'custom_catalog')
+    ).toHaveLength(201);
+    expect(values(result)).toContain('provider://custom/openai/model-201');
+    expect(
+      get.mock.calls
+        .filter(([url]) => url === '/api/v1/providers')
+        .map(([, params]) => params.page)
+    ).toEqual([1, 2, 3]);
+    expect(
+      await preflightWorkspaceBundleReferences(
+        modelDocument('provider://custom/openai/model-201'),
+        []
+      )
+    ).toEqual([]);
+  });
+
+  it.each(['pages', 'total', 'page', 'size'])(
+    'requires %s metadata on every page in strict mode',
+    async (field) => {
+      mockLegacyPages((page) => {
+        const response: Record<string, unknown> = legacyPage(page);
+        if (page === 2) delete response[field];
+        return response;
+      });
+      expect(
+        (await discoverSpaceModels({ requireComplete: true }))
+          .unavailableSources
+      ).toEqual(['provider_catalog']);
+    }
+  );
+
+  it.each([
+    ['growth', (page: number) => legacyPage(page, page === 1 ? 201 : 301)],
+    [
+      'total changed with same page count',
+      (page: number) => legacyPage(page, page === 1 ? 201 : 202),
+    ],
+    [
+      'wrong page sequence',
+      (page: number) => ({ ...legacyPage(page), page: 1 }),
+    ],
+    [
+      'changed page size',
+      (page: number) => ({ ...legacyPage(page), size: page === 1 ? 100 : 50 }),
+    ],
+    [
+      'contradictory total and pages',
+      (page: number) => ({ ...legacyPage(page), pages: 2 }),
+    ],
+    [
+      'duplicate ID across pages',
+      (page: number) => {
+        const response = legacyPage(page);
+        if (page === 2) response.items[0].id = 1;
+        return response;
+      },
+    ],
+    [
+      'short final page',
+      (page: number) => ({
+        ...legacyPage(page),
+        ...(page === 3 ? { items: [] } : {}),
+      }),
+    ],
+    [
+      'oversized final page',
+      (page: number) => ({
+        ...legacyPage(page),
+        ...(page === 3 ? { items: legacyPage(3, 202).items } : {}),
+      }),
+    ],
+  ])('rejects %s during strict legacy discovery', async (_name, respond) => {
+    mockLegacyPages(respond);
+    expect(
+      (await discoverSpaceModels({ requireComplete: true })).unavailableSources
+    ).toEqual(['provider_catalog']);
+  });
+
+  it('cannot claim completeness for a bare legacy array but keeps default discovery compatible', async () => {
+    mockLegacyPages(() => [legacy]);
+    expect(
+      (await discoverSpaceModels({ requireComplete: true })).unavailableSources
+    ).toEqual(['provider_catalog']);
+    expect((await discoverSpaceModels()).unavailableSources).toEqual([]);
+    expect(values(await discoverSpaceModels())).toContain(
+      'provider://custom/openai/configured-model'
+    );
+  });
+
+  it('preserves default discovery behavior for legacy pagination drift', async () => {
+    mockLegacyPages((page) => legacyPage(page, page === 1 ? 201 : 200));
+    const result = await discoverSpaceModels();
+    expect(result.unavailableSources).toEqual([]);
+    expect(
+      result.items.filter((item) => item.source === 'custom_catalog')
+    ).toHaveLength(200);
   });
 });
