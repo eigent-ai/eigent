@@ -759,14 +759,20 @@ function presentHumanInteractionReceipts(
 function presentLegacyTranscriptFallbacks(
   nodes: readonly ChatProjectionNode[]
 ): readonly ChatProjectionNode[] {
+  const runKey = (node: MessageNode) =>
+    JSON.stringify([node.projectId, node.runId]);
   const canonicalUserRuns = new Set(
     nodes
       .filter(
         (node): node is MessageNode =>
           node.kind === 'message' && node.eventType === 'user.message'
       )
-      .map((node) => node.runId)
+      .map(runKey)
   );
+  // Cloud playback normalizes confirmed frames to legacy.step.
+  const isLegacyConfirmed = (node: MessageNode) =>
+    node.eventType === 'legacy.confirmed' ||
+    (node.eventType === 'legacy.step' && node.legacyStep === 'confirmed');
   const canonicalAssistantRuns = new Set(
     nodes
       .filter(
@@ -780,8 +786,7 @@ function presentLegacyTranscriptFallbacks(
     (node) =>
       !(
         node.kind === 'message' &&
-        ((node.eventType === 'legacy.confirmed' &&
-          canonicalUserRuns.has(node.runId)) ||
+        ((isLegacyConfirmed(node) && canonicalUserRuns.has(runKey(node))) ||
           (node.eventType === 'legacy.end' &&
             canonicalAssistantRuns.has(node.runId)))
       )
