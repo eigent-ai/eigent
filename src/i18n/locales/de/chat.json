@@ -474,5 +474,22 @@
   "control-recovery-status-failed": "Fehlgeschlagen",
   "control-recovery-status-timed_out": "Zeitüberschreitung",
   "history-evidence": "Frühere Antwortaufzeichnungen ({{count}})",
-  "history-evidence-description": "Ältere Antwortaufzeichnungen bleiben hier erhalten, wenn ihre Zuordnung zu einer Antwort fehlt oder ihr Inhalt von der aufgezeichneten Antwort abweicht."
+  "history-evidence-description": "Ältere Antwortaufzeichnungen bleiben hier erhalten, wenn ihre Zuordnung zu einer Antwort fehlt oder ihr Inhalt von der aufgezeichneten Antwort abweicht.",
+  "task-failure-confirmed": "Es wurde keine abschließende Antwort aufgezeichnet.",
+  "task-failure-status": "Die Aufgabe ist fehlgeschlagen.",
+  "task-failure-unverified": "Die Ergebnisse der Aktionen konnten nicht überprüft werden.",
+  "task-failure-unknown": "Eine externe Aktion könnte stattgefunden haben; ihr Ergebnis ist unbekannt.",
+  "task-failure-effects": "Ein Fehlschlag belegt nicht, ob Dateien oder externe Dienste verändert wurden.",
+  "task-failure-view-actions": "Aufgezeichnete Aktionen anzeigen",
+  "task-failure-hide-actions": "Aufgezeichnete Aktionen ausblenden",
+  "task-failure-action": "Aufgezeichnete Aktion",
+  "task-failure-no-actions": "Es sind keine überprüften Aktionsdetails verfügbar.",
+  "task-failure-outcome-completed": "Abschluss aufgezeichnet",
+  "task-failure-outcome-failed": "Fehlschlag aufgezeichnet",
+  "task-failure-outcome-timed_out": "Zeitüberschreitung",
+  "task-failure-outcome-outcome_unknown": "Ergebnis unbekannt",
+  "task-failure-outcome-unverified": "Ergebnis nicht überprüft",
+  "task-failure-timed-out": "Die Zeit für die Aufgabe ist abgelaufen, bevor eine abschließende Antwort aufgezeichnet wurde.",
+  "task-failure-no-actions-recorded": "Es wurden keine Aktionen aufgezeichnet.",
+  "task-failure-more-actions": "{{count}} weitere Aktionen werden nicht angezeigt."
 }

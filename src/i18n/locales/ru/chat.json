@@ -482,5 +482,22 @@
   "control-recovery-status-failed": "Ошибка",
   "control-recovery-status-timed_out": "Время ожидания истекло",
   "history-evidence": "Записи прежних ответов ({{count}})",
-  "history-evidence-description": "Прежние ответы сохранены здесь, если их связь с ответом не указана или их содержимое отличается от записанного ответа."
+  "history-evidence-description": "Прежние ответы сохранены здесь, если их связь с ответом не указана или их содержимое отличается от записанного ответа.",
+  "task-failure-confirmed": "Окончательный ответ не был записан.",
+  "task-failure-status": "Задача завершилась с ошибкой.",
+  "task-failure-unverified": "Не удалось проверить результаты действий.",
+  "task-failure-unknown": "Внешнее действие могло произойти; его результат неизвестен.",
+  "task-failure-effects": "Ошибка не позволяет определить, были ли изменены файлы или внешние сервисы.",
+  "task-failure-view-actions": "Показать записанные действия",
+  "task-failure-hide-actions": "Скрыть записанные действия",
+  "task-failure-action": "Записанное действие",
+  "task-failure-no-actions": "Проверенные сведения о действиях недоступны.",
+  "task-failure-outcome-completed": "Завершение записано",
+  "task-failure-outcome-failed": "Ошибка записана",
+  "task-failure-outcome-timed_out": "Время ожидания истекло",
+  "task-failure-outcome-outcome_unknown": "Результат неизвестен",
+  "task-failure-outcome-unverified": "Результат не проверен",
+  "task-failure-timed-out": "Время выполнения задачи истекло до записи окончательного ответа.",
+  "task-failure-no-actions-recorded": "Действия не были записаны.",
+  "task-failure-more-actions": "Ещё не показано действий: {{count}}."
 }

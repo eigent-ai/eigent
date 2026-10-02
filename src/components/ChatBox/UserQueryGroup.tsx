@@ -16,7 +16,8 @@ import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
-import { VanillaChatStore } from '@/store/chatStore';
+import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
+import type { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -37,6 +38,7 @@ import {
 } from './MessageItem/HumanInteractionCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
+import { TaskFailureSummary } from './MessageItem/TaskFailureSummary';
 import {
   getTaskRunDisplayStatus,
   TaskWorkLogAccordion,
@@ -220,6 +222,29 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     );
 
   const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  const ownsFailureSummary =
+    queryGroup.ownsRunWorkLog === true &&
+    activeTask?.durableRunStatus === 'failed' &&
+    activeTask.status === ChatTaskStatus.FINISHED;
+  const [failureEvidence, setFailureEvidence] = useState<{
+    taskId: string;
+    owner: VanillaChatStore;
+    facts: TaskFailureFacts | undefined;
+  } | null>(null);
+  useEffect(() => {
+    setFailureEvidence(null);
+    if (!ownsFailureSummary || !activeTaskId) return;
+    return chatStore
+      .getState()
+      .observeTaskFailureFacts(activeTaskId, (facts) => {
+        setFailureEvidence({ taskId: activeTaskId, owner: chatStore, facts });
+      });
+  }, [ownsFailureSummary, activeTaskId, chatStore]);
+  const failureFacts =
+    failureEvidence?.taskId === activeTaskId &&
+    failureEvidence?.owner === chatStore
+      ? failureEvidence.facts
+      : undefined;
   const lastUserMessageId = activeTask?.messages
     .filter((m: any) => m.role === 'user')
     .pop()?.id;
@@ -292,6 +317,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   );
   const showMissingFinalResponse = Boolean(
     task?.status === ChatTaskStatus.FINISHED &&
+    activeTask?.durableRunStatus !== 'failed' &&
     runDisplayStatus &&
     !hasVisibleAgentOutput
   );
@@ -650,6 +676,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
         return null;
       })}
+
+      {ownsFailureSummary ? (
+        <TaskFailureSummary key={activeTaskId} facts={failureFacts} />
+      ) : null}
 
       {showMissingFinalResponse ? (
         <motion.div

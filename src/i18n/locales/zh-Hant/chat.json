@@ -470,5 +470,22 @@
   "control-recovery-status-failed": "失敗",
   "control-recovery-status-timed_out": "已逾時",
   "history-evidence": "未關聯的歷史回覆（{{count}}）",
-  "history-evidence-description": "缺少與回答的關聯或內容與已記錄回答不一致的舊回覆，會保留在此處。"
+  "history-evidence-description": "缺少與回答的關聯或內容與已記錄回答不一致的舊回覆，會保留在此處。",
+  "task-failure-confirmed": "未記錄最終回覆。",
+  "task-failure-status": "任務失敗。",
+  "task-failure-unverified": "無法核實操作結果。",
+  "task-failure-unknown": "外部操作可能已發生，其結果未知。",
+  "task-failure-effects": "失敗並不能證明檔案或外部服務是否發生了變化。",
+  "task-failure-view-actions": "查看已記錄的操作",
+  "task-failure-hide-actions": "收起已記錄的操作",
+  "task-failure-action": "已記錄的操作",
+  "task-failure-no-actions": "暫無經過核實的操作詳情。",
+  "task-failure-outcome-completed": "已記錄完成",
+  "task-failure-outcome-failed": "已記錄失敗",
+  "task-failure-outcome-timed_out": "已逾時",
+  "task-failure-outcome-outcome_unknown": "結果未知",
+  "task-failure-outcome-unverified": "結果未核實",
+  "task-failure-timed-out": "任務已逾時，未記錄最終回覆。",
+  "task-failure-no-actions-recorded": "未記錄任何操作。",
+  "task-failure-more-actions": "另有 {{count}} 個操作未顯示。"
 }

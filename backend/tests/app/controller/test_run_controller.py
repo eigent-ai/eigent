@@ -30,6 +30,7 @@ from app.controller.run_controller import (
 )
 from app.run_journal import (
     CommittedRunEvent,
+    InvalidRunTransitionError,
     RunAttemptRecord,
     RunEventDraft,
     RunRecord,
@@ -224,6 +225,24 @@ async def test_snapshot_and_replay_preserve_fixture_backup_audit_and_frontier(
         source.checkpoint_tool_call(
             status="outcome_unknown", outcome="outcome_unknown", now=5, **tool
         )
+        # RT-01 inspection must preserve each recorded outcome after reopen;
+        # a Task failure does not collapse successful/unknown tool receipts.
+        for index, outcome in enumerate(("completed", "failed", "timed_out")):
+            call = {
+                **tool,
+                "tool_call_id": f"read-{outcome}",
+                "tool_name": "fixture_read",
+                "safety_class": ToolSafetyClass.SAFE_READ,
+            }
+            source.checkpoint_tool_call(status="prepared", now=6, **call)
+            source.checkpoint_tool_call(status="dispatched", now=7, **call)
+            source.checkpoint_tool_call(
+                status=outcome,
+                result={"recorded": outcome},
+                display_output=f"Recorded {outcome}",
+                now=8 + index,
+                **call,
+            )
         source.append_event(
             "run-1",
             RunEventDraft(
@@ -274,6 +293,15 @@ async def test_snapshot_and_replay_preserve_fixture_backup_audit_and_frontier(
                         snapshot["tool_calls"][0]["status"]
                         == "outcome_unknown"
                     )
+                    assert {
+                        call["tool_call_id"]: call["status"]
+                        for call in snapshot["tool_calls"]
+                    } == {
+                        "unknown-write": "outcome_unknown",
+                        "read-completed": "completed",
+                        "read-failed": "failed",
+                        "read-timed_out": "timed_out",
+                    }
                     assert page["next_sequence"] == before_events[-1].sequence
                     assert any(
                         kind == "run_event"
@@ -281,6 +309,16 @@ async def test_snapshot_and_replay_preserve_fixture_backup_audit_and_frontier(
                         for _, kind, payload in frames
                     )
 
+            assert journal.get_run_final_result_event("run-1") is None
+            with pytest.raises(
+                InvalidRunTransitionError, match="terminal run"
+            ):
+                journal.create_run_attempt(
+                    "run-1",
+                    request_id="inspection-is-not-resume",
+                    reason="explicit_resume",
+                    activate=False,
+                )
             assert (
                 journal.get_project_execution_state("project-1")
                 == source_frontier

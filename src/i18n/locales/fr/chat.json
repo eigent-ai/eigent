@@ -478,5 +478,22 @@
   "control-recovery-status-failed": "Échec",
   "control-recovery-status-timed_out": "Délai dépassé",
   "history-evidence": "Enregistrements de réponses antérieures ({{count}})",
-  "history-evidence-description": "Les anciennes réponses sont conservées ici lorsque leur lien avec une réponse est absent ou que leur contenu diffère de la réponse enregistrée."
+  "history-evidence-description": "Les anciennes réponses sont conservées ici lorsque leur lien avec une réponse est absent ou que leur contenu diffère de la réponse enregistrée.",
+  "task-failure-confirmed": "Aucune réponse finale n’a été enregistrée.",
+  "task-failure-status": "La tâche a échoué.",
+  "task-failure-unverified": "Les résultats des actions n’ont pas pu être vérifiés.",
+  "task-failure-unknown": "Une action externe a peut-être eu lieu ; son résultat est inconnu.",
+  "task-failure-effects": "Un échec ne permet pas de déterminer si des fichiers ou des services externes ont été modifiés.",
+  "task-failure-view-actions": "Voir les actions enregistrées",
+  "task-failure-hide-actions": "Masquer les actions enregistrées",
+  "task-failure-action": "Action enregistrée",
+  "task-failure-no-actions": "Aucun détail vérifié sur les actions n’est disponible.",
+  "task-failure-outcome-completed": "Achèvement enregistré",
+  "task-failure-outcome-failed": "Échec enregistré",
+  "task-failure-outcome-timed_out": "Délai dépassé",
+  "task-failure-outcome-outcome_unknown": "Résultat inconnu",
+  "task-failure-outcome-unverified": "Résultat non vérifié",
+  "task-failure-timed-out": "Le délai de la tâche a expiré avant qu’une réponse finale soit enregistrée.",
+  "task-failure-no-actions-recorded": "Aucune action n’a été enregistrée.",
+  "task-failure-more-actions": "{{count}} autres actions ne sont pas affichées."
 }

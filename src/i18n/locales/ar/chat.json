@@ -490,5 +490,22 @@
   "control-recovery-status-failed": "فشلت",
   "control-recovery-status-timed_out": "انتهت المهلة",
   "history-evidence": "سجلات الردود السابقة ({{count}})",
-  "history-evidence-description": "تُحفظ سجلات الردود القديمة هنا عندما لا يكون ارتباطها بإجابة معروفًا أو عندما يختلف محتواها عن الإجابة المسجلة."
+  "history-evidence-description": "تُحفظ سجلات الردود القديمة هنا عندما لا يكون ارتباطها بإجابة معروفًا أو عندما يختلف محتواها عن الإجابة المسجلة.",
+  "task-failure-confirmed": "لم يُسجَّل رد نهائي.",
+  "task-failure-status": "فشلت المهمة.",
+  "task-failure-unverified": "تعذر التحقق من نتائج الإجراءات.",
+  "task-failure-unknown": "ربما حدث إجراء خارجي؛ نتيجته غير معروفة.",
+  "task-failure-effects": "لا يثبت الفشل ما إذا كانت الملفات أو الخدمات الخارجية قد تغيرت.",
+  "task-failure-view-actions": "عرض الإجراءات المسجلة",
+  "task-failure-hide-actions": "إخفاء الإجراءات المسجلة",
+  "task-failure-action": "إجراء مسجل",
+  "task-failure-no-actions": "لا تتوفر تفاصيل إجراءات تم التحقق منها.",
+  "task-failure-outcome-completed": "تم تسجيل الاكتمال",
+  "task-failure-outcome-failed": "تم تسجيل الفشل",
+  "task-failure-outcome-timed_out": "انتهت المهلة",
+  "task-failure-outcome-outcome_unknown": "النتيجة غير معروفة",
+  "task-failure-outcome-unverified": "النتيجة غير متحقق منها",
+  "task-failure-timed-out": "انتهت مهلة المهمة قبل تسجيل رد نهائي.",
+  "task-failure-no-actions-recorded": "لم تُسجَّل أي إجراءات.",
+  "task-failure-more-actions": "لم يتم عرض {{count}} إجراءات أخرى."
 }
