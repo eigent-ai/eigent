@@ -199,7 +199,7 @@ vi.mock('@/store/spaceStore', async (importOriginal) => {
   const useSpaceStore = Object.assign(
     (selector: (state: typeof mocks.spaceState) => unknown) =>
       selector(mocks.spaceState),
-    { getState: () => mocks.spaceState }
+    { getState: () => mocks.spaceState, subscribe: () => () => {} }
   );
   return {
     ...actual,
