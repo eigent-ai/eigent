@@ -16,14 +16,15 @@ import asyncio
 import logging
 import time
 import weakref
+from concurrent.futures import Future
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from camel.tasks import Task
-from pydantic import BaseModel
+from pydantic import BaseModel, PrivateAttr
 from typing_extensions import TypedDict
 
 from app.exception.exception import ProgramException
@@ -35,6 +36,9 @@ from app.model.chat import (
 )
 from app.model.enums import Status
 from app.run_context import RunContext
+
+if TYPE_CHECKING:
+    from app.run_runtime.admission import WarmRunAdmission
 
 logger = logging.getLogger("task_service")
 
@@ -92,6 +96,9 @@ class ActionImproveData(BaseModel):
     request_id: str | None = None
     run_id: str | None = None
     attempt_id: str | None = None
+    # Staging an envelope is not permission to execute it. This gate is local
+    # to the warm consumer and deliberately excluded from serialized actions.
+    _publication: Future[bool] | None = PrivateAttr(default=None)
 
 
 class ActionStartData(BaseModel):
@@ -360,6 +367,7 @@ class ActionSkipTaskData(BaseModel):
     action: Literal[Action.skip_task] = Action.skip_task
     project_id: str
     expected_task_id: str | None = None
+    _warm_admission: object | None = PrivateAttr(default=None)
 
 
 ActionData = (
@@ -451,6 +459,7 @@ class TaskLock:
     """Current task ID to be used in SSE responses"""
     run_context: RunContext | None
     """Current task-scoped runtime context for this Project."""
+    _warm_admission: "WarmRunAdmission | None"
     user_id: str | int | None
     """Canonical user id when provided by the control plane."""
     working_directory: str | None
@@ -521,6 +530,7 @@ class TaskLock:
         self.summary_generated = False
         self.current_task_id = None
         self.run_context = None
+        self._warm_admission = None
         self.user_id = None
         self.working_directory = None
         self.task_output_root = None
