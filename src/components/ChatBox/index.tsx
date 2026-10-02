@@ -49,6 +49,7 @@ import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { errorCopy } from '@/lib/usageErrors';
+import { buildUsageLimitBannerState } from '@/lib/usageLimitBanner';
 import {
   reconcileControlOperations,
   stopProjectTask,
@@ -135,8 +136,6 @@ const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
 /** Small gap between last message and BottomBox top. */
 const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
 
-const USAGE_WARNING_RATIO = 0.75;
-const FREE_STARTING_CREDITS = 500;
 const TERMINAL_QUEUED_RUN_STATUSES = new Set([
   'completed',
   'failed',
@@ -189,144 +188,10 @@ function selectLatestReadOnlyEventNativeRun(
   );
 }
 
-interface SubscriptionLimitInfo {
-  plan_key?: string | null;
-  is_trialing?: boolean | null;
-  monthly_credits?: number | null;
-  trial_daily_credits_limit?: number | null;
-  trial_daily_credits_used?: number | null;
-  trial_daily_credits_remaining?: number | null;
-  trial_total_credits_limit?: number | null;
-  trial_total_credits_used?: number | null;
-  trial_total_credits_remaining?: number | null;
-}
-
-interface UsageLimitBannerState {
-  id: string;
-  message: string;
-  actionLabel: string;
-  severity: 'warning' | 'danger';
-}
-
 function getCurrentTimestamp() {
   return Date.now();
 }
 
-const toFiniteNumber = (value: unknown): number | null =>
-  typeof value === 'number' && Number.isFinite(value) ? value : null;
-
-const usagePercent = (used: number, limit: number) =>
-  Math.min(100, Math.max(0, Math.round((used / limit) * 100)));
-
-const buildUsageLimitBannerState = (
-  subscription: SubscriptionLimitInfo | null,
-  currentCredits: number | null,
-  t: (key: string, options?: Record<string, unknown>) => string
-): UsageLimitBannerState | null => {
-  const actionLabel = t('chat.usage-limit-action');
-
-  if (subscription?.is_trialing) {
-    const trialCandidates = [
-      {
-        id: 'trial-daily',
-        warningKey: 'chat.usage-limit-trial-daily-warning',
-        exhaustedKey: 'chat.notice-trial-daily',
-        limit: toFiniteNumber(subscription.trial_daily_credits_limit),
-        used: toFiniteNumber(subscription.trial_daily_credits_used),
-        remaining: toFiniteNumber(subscription.trial_daily_credits_remaining),
-      },
-      {
-        id: 'trial-total',
-        warningKey: 'chat.usage-limit-trial-total-warning',
-        exhaustedKey: 'chat.notice-trial-total',
-        limit: toFiniteNumber(subscription.trial_total_credits_limit),
-        used: toFiniteNumber(subscription.trial_total_credits_used),
-        remaining: toFiniteNumber(subscription.trial_total_credits_remaining),
-      },
-    ]
-      .map((candidate) => {
-        if (!candidate.limit || candidate.limit <= 0 || candidate.used === null)
-          return null;
-
-        const remaining =
-          candidate.remaining ?? Math.max(candidate.limit - candidate.used, 0);
-        const ratio = candidate.used / candidate.limit;
-        const exhausted = remaining <= 0 || candidate.used >= candidate.limit;
-
-        if (!exhausted && ratio < USAGE_WARNING_RATIO) return null;
-
-        const percent = usagePercent(candidate.used, candidate.limit);
-        return {
-          id: `${candidate.id}:${exhausted ? 'exhausted' : 'warning'}`,
-          message: t(
-            exhausted ? candidate.exhaustedKey : candidate.warningKey,
-            {
-              percent,
-            }
-          ),
-          actionLabel,
-          severity: exhausted ? ('danger' as const) : ('warning' as const),
-          ratio,
-          exhausted,
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => {
-        if (a!.exhausted !== b!.exhausted) {
-          return a!.exhausted ? -1 : 1;
-        }
-        return b!.ratio - a!.ratio;
-      });
-
-    if (trialCandidates[0]) {
-      const {
-        ratio: _ratio,
-        exhausted: _exhausted,
-        ...banner
-      } = trialCandidates[0];
-      return banner;
-    }
-  }
-
-  if (currentCredits === null) return null;
-
-  if (currentCredits <= 0) {
-    const planKey = subscription?.plan_key?.toLowerCase() || 'free';
-    return {
-      id: `credits-exhausted:${planKey}`,
-      message: t(
-        planKey === 'free' ? 'chat.notice-free-credits' : 'chat.notice-credits'
-      ),
-      actionLabel,
-      severity: 'danger',
-    };
-  }
-
-  if (!subscription?.plan_key) return null;
-  const planKey = subscription.plan_key.toLowerCase();
-  const limit =
-    planKey === 'free'
-      ? FREE_STARTING_CREDITS
-      : toFiniteNumber(subscription?.monthly_credits);
-
-  if (!limit || limit <= 0) return null;
-
-  const remainingRatio = currentCredits / limit;
-  if (remainingRatio > 1 - USAGE_WARNING_RATIO) return null;
-
-  const percent = usagePercent(limit - currentCredits, limit);
-  return {
-    id: `${planKey === 'free' ? 'free' : 'monthly'}-credits:warning`,
-    message: t(
-      planKey === 'free'
-        ? 'chat.usage-limit-free-warning'
-        : 'chat.usage-limit-monthly-warning',
-      { percent }
-    ),
-    actionLabel,
-    severity: 'warning',
-  };
-};
 export default function ChatBox(): JSX.Element {
   const { projectStore } = useChatStoreAdapter();
   const projectId = projectStore.activeProjectId;
@@ -1134,10 +999,7 @@ function LegacyChatBox(): JSX.Element {
       // Check model configuration before starting task
       if (!hasModel) {
         if (isCloudUsageLimited) {
-          notifyError(
-            cloudUsageLimitMessage ||
-              t('chat.usage-limit-trial-daily-exhausted')
-          );
+          notifyError(cloudUsageLimitMessage || errorCopy('credits'));
           return;
         }
         notifyError(
@@ -1253,9 +1115,7 @@ function LegacyChatBox(): JSX.Element {
     );
     if ((isCloudUsageLimited && !replyingToHuman) || !canUseSessionModel) {
       if (isCloudUsageLimited) {
-        notifyError(
-          cloudUsageLimitMessage || t('chat.usage-limit-trial-daily-exhausted')
-        );
+        notifyError(cloudUsageLimitMessage || errorCopy('credits'));
         return;
       }
       notifyError(
@@ -1996,9 +1856,7 @@ function LegacyChatBox(): JSX.Element {
     // Unpinned recovery must establish the canonical model category first.
     // startTask applies the quota check to that recovered model before admission.
     if (isCloudUsageLimited && !canAttemptModelRecovery) {
-      notifyError(
-        cloudUsageLimitMessage || t('chat.usage-limit-trial-daily-exhausted')
-      );
+      notifyError(cloudUsageLimitMessage || errorCopy('credits'));
       return;
     }
     if (!canUseSessionModel && !canAttemptModelRecovery) {
