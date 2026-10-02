@@ -418,6 +418,30 @@ async def get_run(run_id: str):
     }
 
 
+def _interaction_receipt(journal, interaction):
+    """Return committed decision data, never echo a retry's proposed decision."""
+    receipt = asdict(interaction)
+    decisions = journal.list_human_interaction_decisions(
+        interaction.interaction_id
+    )
+    receipt["response"] = (
+        decisions[-1].decision
+        if interaction.status == "resolved" and decisions
+        else None
+    )
+    if interaction.interaction_type == "approval":
+        approval = next(
+            (
+                item
+                for item in journal.list_approvals(interaction.run_id)
+                if item.approval_id == interaction.interaction_id
+            ),
+            None,
+        )
+        receipt["action_digest"] = approval.action_digest if approval else None
+    return receipt
+
+
 @router.get("/runs/{run_id}/interactions")
 async def list_run_interactions(
     run_id: str,
@@ -442,7 +466,11 @@ async def list_run_interactions(
         )
         items.append(
             {
-                **asdict(interaction),
+                **(
+                    await asyncio.to_thread(
+                        _interaction_receipt, journal, interaction
+                    )
+                ),
                 "options": [asdict(option) for option in options],
             }
         )
@@ -527,9 +555,10 @@ async def decide_run_interaction(
                 for key, value in body.decision.items()
                 if key != "decision"
             }
-            await asyncio.to_thread(
+            _, decision_applied = await asyncio.to_thread(
                 journal.decide_approval,
                 interaction_id,
+                include_transition=True,
                 decision=approval_decision,
                 details=details,
                 expected_version=body.expected_version,
@@ -561,11 +590,11 @@ async def decide_run_interaction(
                 journal.get_human_interaction, interaction_id
             )
             assert result is not None
-            decision_applied = True
         else:
-            result = await asyncio.to_thread(
+            result, decision_applied = await asyncio.to_thread(
                 journal.resolve_human_interaction,
                 interaction_id,
+                include_transition=True,
                 decision_request_id=body.decision_request_id,
                 decision=body.decision,
                 expected_version=body.expected_version,
@@ -575,8 +604,10 @@ async def decide_run_interaction(
                 source=body.source,
                 continue_active_attempt=body.continue_active_attempt,
             )
-            decision_applied = True
-            if interaction.interaction_type == "merge_conflict":
+            if (
+                decision_applied
+                and interaction.interaction_type == "merge_conflict"
+            ):
                 from app.workspace_git import (
                     get_default_workforce_git_service,
                 )
@@ -620,7 +651,7 @@ async def decide_run_interaction(
                             "interaction_id": interaction_id,
                         },
                     )
-    return asdict(result)
+    return await asyncio.to_thread(_interaction_receipt, journal, result)
 
 
 @router.get("/runs/{run_id}/events")

@@ -177,6 +177,7 @@ export interface ChatInteractionNode extends ChatProjectionNodeBase {
   response?: string;
   /** Safe option identifiers from a decision; opaque option values are omitted. */
   responseOptionIds?: string[];
+  reason?: string;
   /** Presentation-only receipt links; source nodes remain unchanged. */
   requestEventId?: string;
   resolutionEventId?: string;

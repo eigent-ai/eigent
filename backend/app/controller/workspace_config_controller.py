@@ -794,6 +794,7 @@ async def put_workspace_configuration(
 @router.get("/spaces/{space_id}/workspace-configuration/review")
 async def review_workspace_configuration(
     space_id: str,
+    request: Request,
     email: Annotated[str, Query(min_length=1, max_length=512)],
     user_id: str | None = Query(default=None),
 ) -> dict[str, Any]:
@@ -804,10 +805,42 @@ async def review_workspace_configuration(
             raise RunNotFoundError(
                 "Save the Workspace Configuration before reviewing it"
             )
+        review = _workspace_configuration_review(draft)
+        principal = request.state.local_control_principal
+        # Use the same identity boundary as global resource runtime assembly.
+        resource_user_id, resource_email = None, ""
+        if principal.kind == "desktop_renderer":
+            resource_user_id, resource_email = user_id, email
+        elif principal.kind == "brain_user":
+            resource_user_id = principal.user_id
+        try:
+            findings = await asyncio.wait_for(
+                asyncio.to_thread(
+                    WorkspaceBundleAuthoringService.reference_findings,
+                    WorkspaceBundleManifest.model_validate(draft.document),
+                    user_id=resource_user_id,
+                    email=resource_email,
+                ),
+                timeout=10,
+            )
+        except (TimeoutError, OSError):
+            findings = [
+                {
+                    "location": "spec",
+                    "reference": "",
+                    "code": "verification_unavailable",
+                }
+            ]
+        if (
+            get_default_run_journal().get_workspace_config_draft(space_id)
+            != draft
+        ):
+            raise OptimisticConcurrencyError("workspace configuration changed")
         return {
             "space_id": space_id,
             "draft_version": draft.version,
-            "review": _workspace_configuration_review(draft),
+            "review": review,
+            "reference_findings": findings,
         }
     except Exception as exc:
         raise _configuration_error(exc) from exc

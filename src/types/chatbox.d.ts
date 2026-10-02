@@ -148,6 +148,8 @@ declare global {
     interaction?: import('@/service/humanInteractionApi').HumanInteractionPayload;
     /** Explicit ASK identity for a user response retained in legacy history. */
     interactionResponseTo?: string;
+    /** Receipt provenance for display; unlinked legacy evidence is retained. */
+    interactionResponseSource?: 'canonical' | 'legacy';
   }
 
   interface AgentMessage {
