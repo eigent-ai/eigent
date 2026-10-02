@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Set
 
+RUN_ACTIVE_STATES = frozenset({"pending", "running", "waiting_for_user"})
 RUN_TERMINAL_STATES = frozenset({"completed", "failed", "cancelled"})
 ATTEMPT_ACTIVE_STATES = frozenset({"pending", "running", "waiting_for_user"})
 ATTEMPT_TERMINAL_STATES = frozenset(

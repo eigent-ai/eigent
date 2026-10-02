@@ -160,14 +160,15 @@ export function fetchProjectRuns(
 /** Read only canonical Runs that still own live execution state. */
 export function fetchActiveProjectRuns(
   projectId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  limit = 1
 ): Promise<ProjectRunsResponse> {
   return fetchGet(
     '/runs',
     {
       project_id: projectId,
       status: ACTIVE_DURABLE_RUN_STATUSES,
-      limit: 1,
+      limit,
     },
     undefined,
     { signal }

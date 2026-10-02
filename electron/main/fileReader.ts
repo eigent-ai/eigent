@@ -35,6 +35,7 @@ import {
 import { normalizeLegacySandboxPath } from './utils/filePath';
 import { findDirectoriesByName } from './utils/log';
 import { resolveProjectStoragePath } from './utils/projectStoragePath';
+import { deleteOwnedTaskFiles } from './utils/taskFileCleanup';
 
 interface FileInfo {
   path: string;
@@ -1134,32 +1135,18 @@ export class FileReader {
   public deleteTaskFiles(
     email: string,
     taskId: string,
-    projectId?: string
-  ): {
-    success: boolean;
-    path: { dirPath: string; logPath: string };
-  } {
-    const { dirPath, logPath } = this.resolveTaskPaths(
+    projectId?: string,
+    userId?: string | number | null,
+    spaceId?: string
+  ) {
+    return deleteOwnedTaskFiles({
+      homeDir: app.getPath('home'),
       email,
       taskId,
-      projectId
-    );
-
-    try {
-      let success = false;
-      if (fs.existsSync(dirPath)) {
-        fs.rmSync(dirPath, { recursive: true, force: true });
-        success = true;
-      }
-      if (fs.existsSync(logPath)) {
-        fs.rmSync(logPath, { recursive: true, force: true });
-        success = true;
-      }
-      return { success, path: { dirPath, logPath } };
-    } catch (err) {
-      console.error('Delete task files failed:', dirPath, err);
-      return { success: false, path: { dirPath, logPath } };
-    }
+      projectId,
+      userId,
+      spaceId,
+    });
   }
 
   public getLogFolder(email: string): string {

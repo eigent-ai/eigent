@@ -271,6 +271,7 @@
   "yesterday": "Gestern",
   "days-ago": "Tage zuvor",
   "delete-project": "Sitzung löschen",
+  "delete-project-failed": "Die Sitzung konnte nicht vollständig gelöscht werden. Einige lokale Dateien wurden möglicherweise bereits entfernt. Versuche es erneut, um die Sitzung vollständig zu löschen.",
   "delete-project-confirmation": "Möchten Sie diese Sitzung und alle zugehörigen Aufgaben wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
   "delete-space-confirmation": "Möchten Sie diesen Space und alle zugehörigen Sitzungen wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
   "please-select-model": "Bitte wählen Sie ein Modell unter Agenten > Modelle aus, um fortzufahren.",
@@ -1540,5 +1541,10 @@
   "space-discovery-resource-disabled": "In den globalen Einstellungen deaktiviert",
   "space-discovery-resource-invalid": "Globale Konfiguration ungültig oder nicht verfügbar",
   "space-discovery-model-partial": "Einige Modellquellen konnten nicht geladen werden. Verfügbare Modelle werden angezeigt. Versuchen Sie es erneut.",
-  "space-discovery-connectors-disabled": "Der Connector-Katalog ist deaktiviert. Aktivieren Sie ihn in den globalen Einstellungen und versuchen Sie es erneut."
+  "space-discovery-connectors-disabled": "Der Connector-Katalog ist deaktiviert. Aktivieren Sie ihn in den globalen Einstellungen und versuchen Sie es erneut.",
+  "delete-project-stopping": "Wird gestoppt…",
+  "delete-project-stop-failed": "Diese Sitzung konnte nicht gestoppt werden, daher wurde nichts gelöscht. Versuche es erneut, um sie zu stoppen und das Löschen abzuschließen.",
+  "delete-project-workdir": "Auch das Arbeitsverzeichnis der Sitzung löschen",
+  "delete-project-workdir-hint": "Dateien im Arbeitsverzeichnis, einschließlich nicht veröffentlichter Änderungen, werden dauerhaft gelöscht.",
+  "delete-project-workdir-pending-hint": "Dieses Arbeitsverzeichnis enthält nicht veröffentlichte Änderungen. Sie werden dauerhaft gelöscht und können nicht wiederhergestellt werden."
 }
