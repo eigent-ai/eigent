@@ -1560,5 +1560,10 @@
   "space-discovery-resource-disabled": "Desactivado en los ajustes globales",
   "space-discovery-resource-invalid": "Configuración global no válida o no disponible",
   "space-discovery-model-partial": "No se pudieron cargar algunas fuentes de modelos. Se muestran los modelos disponibles. Vuelve a intentarlo.",
-  "space-discovery-connectors-disabled": "El catálogo de conectores está desactivado. Actívalo en los ajustes globales y vuelve a intentarlo."
+  "space-discovery-connectors-disabled": "El catálogo de conectores está desactivado. Actívalo en los ajustes globales y vuelve a intentarlo.",
+  "delete-project-stopping": "Deteniendo…",
+  "delete-project-stop-failed": "No se pudo detener esta sesión, así que no se eliminó nada. Vuelve a intentarlo para detenerla y terminar de eliminarla.",
+  "delete-project-workdir": "Eliminar también el directorio de trabajo de la sesión",
+  "delete-project-workdir-hint": "Los archivos del directorio de trabajo, incluidos los cambios no publicados, se eliminarán de forma permanente.",
+  "delete-project-workdir-pending-hint": "Este directorio de trabajo tiene cambios no publicados. Se eliminarán de forma permanente y no se podrán recuperar."
 }

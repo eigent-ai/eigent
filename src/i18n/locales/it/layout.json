@@ -1560,5 +1560,10 @@
   "space-discovery-resource-disabled": "Disattivato nelle impostazioni globali",
   "space-discovery-resource-invalid": "Configurazione globale non valida o non disponibile",
   "space-discovery-model-partial": "Impossibile caricare alcune fonti di modelli. Vengono mostrati i modelli disponibili. Riprova.",
-  "space-discovery-connectors-disabled": "Il catalogo dei connettori è disattivato. Attivalo nelle impostazioni globali e riprova."
+  "space-discovery-connectors-disabled": "Il catalogo dei connettori è disattivato. Attivalo nelle impostazioni globali e riprova.",
+  "delete-project-stopping": "Arresto in corso…",
+  "delete-project-stop-failed": "Impossibile arrestare questa sessione, quindi non è stato eliminato nulla. Riprova per arrestarla e completare l'eliminazione.",
+  "delete-project-workdir": "Elimina anche la directory di lavoro della sessione",
+  "delete-project-workdir-hint": "I file nella directory di lavoro, incluse le modifiche non pubblicate, verranno eliminati definitivamente.",
+  "delete-project-workdir-pending-hint": "Questa directory di lavoro contiene modifiche non pubblicate. Verranno eliminate definitivamente e non potranno essere recuperate."
 }

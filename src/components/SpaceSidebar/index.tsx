@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchDelete, fetchPut } from '@/api/http';
+import { fetchPut } from '@/api/http';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import {
@@ -22,6 +22,11 @@ import {
   SidebarSeparator,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
+import {
+  DeleteSessionDialog,
+  type DeleteSessionFailure,
+  type DeleteSessionPhase,
+} from '@/components/Session/DeleteSessionDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
@@ -37,6 +42,7 @@ import {
   deleteSessionTaskData,
 } from '@/lib/sessionFileCleanup';
 import { resolveSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getFilesTabBindingLabel,
@@ -128,8 +134,11 @@ export default function SpaceSidebar({
   const closeSettings = useSettingsStore((state) => state.closeSettings);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
-  const [deleteProjectLoading, setDeleteProjectLoading] = useState(false);
-  const [deleteProjectFailed, setDeleteProjectFailed] = useState(false);
+  const [deleteProjectPhase, setDeleteProjectPhase] =
+    useState<DeleteSessionPhase>('idle');
+  const [deleteProjectFailure, setDeleteProjectFailure] =
+    useState<DeleteSessionFailure>(null);
+  const [deleteProjectWorkdir, setDeleteProjectWorkdir] = useState(false);
   const deleteProjectIdentity = useRef<{
     email: string | null;
     userId: number | null;
@@ -506,7 +515,8 @@ export default function SpaceSidebar({
   const requestDeleteSession = useCallback((projectId: string) => {
     const auth = useAuthStore.getState();
     deleteProjectIdentity.current = { email: auth.email, userId: auth.user_id };
-    setDeleteProjectFailed(false);
+    setDeleteProjectFailure(null);
+    setDeleteProjectWorkdir(false);
     setDeleteProjectId(projectId);
   }, []);
 
@@ -517,9 +527,9 @@ export default function SpaceSidebar({
 
   const confirmDeleteSession = useCallback(async () => {
     const projectId = deleteProjectId;
-    if (!projectId || deleteProjectLoading) return;
+    if (!projectId || deleteProjectPhase !== 'idle') return;
 
-    setDeleteProjectLoading(true);
+    setDeleteProjectPhase('stopping');
     try {
       const identity = deleteProjectIdentity.current;
       if (!identity) throw new Error('Missing Session cleanup identity');
@@ -528,6 +538,8 @@ export default function SpaceSidebar({
       const spaceId = projectMeta?.spaceId ?? activeSpaceId ?? undefined;
       const wasActive = projectStore.activeProjectId === projectId;
 
+      await stopSessionAndWait(projectId);
+      setDeleteProjectPhase('deleting');
       const chatState = projectStore.peekActiveChatStore(projectId)?.getState();
       await deleteSessionTaskData({
         projectId,
@@ -537,14 +549,9 @@ export default function SpaceSidebar({
           task_id: taskId,
           project_id: projectId,
         })),
+        deleteWorkdir: deleteProjectWorkdir,
         ipcRenderer,
       });
-
-      try {
-        await fetchDelete(`/chat/${projectId}`);
-      } catch {
-        /* Backend may already have removed the chat */
-      }
 
       assertSessionCleanupIdentity(identity);
       if (spaceId) {
@@ -575,15 +582,23 @@ export default function SpaceSidebar({
       toast.success(t('layout.delete-project'));
     } catch (error) {
       console.error('[SpaceSidebar] Failed to delete project:', error);
-      setDeleteProjectFailed(true);
-      toast.error(t('layout.delete-project-failed'));
+      const failure = error instanceof SessionStopError ? 'stop' : 'cleanup';
+      setDeleteProjectFailure(failure);
+      toast.error(
+        t(
+          failure === 'stop'
+            ? 'layout.delete-project-stop-failed'
+            : 'layout.delete-project-failed'
+        )
+      );
     } finally {
-      setDeleteProjectLoading(false);
+      setDeleteProjectPhase('idle');
     }
   }, [
     activeSpaceId,
     deleteProjectId,
-    deleteProjectLoading,
+    deleteProjectPhase,
+    deleteProjectWorkdir,
     ipcRenderer,
     projectStore,
     requestWorkspaceChatFocus,
@@ -652,25 +667,14 @@ export default function SpaceSidebar({
         open={globalSearchOpen}
         onOpenChange={setGlobalSearchOpen}
       />
-      <AlertDialog
-        isOpen={deleteProjectId != null}
-        onClose={() => {
-          if (deleteProjectLoading) return;
-          setDeleteProjectId(null);
-        }}
+      <DeleteSessionDialog
+        projectId={deleteProjectId}
+        phase={deleteProjectPhase}
+        failure={deleteProjectFailure}
+        deleteWorkdir={deleteProjectWorkdir}
+        onDeleteWorkdirChange={setDeleteProjectWorkdir}
+        onClose={() => setDeleteProjectId(null)}
         onConfirm={() => void confirmDeleteSession()}
-        title={t('layout.delete-project')}
-        message={t(
-          deleteProjectFailed
-            ? 'layout.delete-project-failed'
-            : 'layout.delete-project-confirmation'
-        )}
-        confirmText={t(deleteProjectFailed ? 'layout.retry' : 'layout.delete')}
-        closeOnConfirm={false}
-        cancelText={t('layout.cancel')}
-        confirmVariant="secondary"
-        confirmTone="error"
-        confirmDisabled={deleteProjectLoading}
       />
 
       <AlertDialog

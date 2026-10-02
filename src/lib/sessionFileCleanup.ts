@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchDelete, proxyFetchGet } from '@/api/http';
+import { deleteWorkspaceProjectWorkdir } from '@/service/workspaceApi';
 import { getAuthStore } from '@/store/authStore';
 
 interface SessionHistoryTask {
@@ -40,11 +41,14 @@ export async function deleteSessionTaskData({
   email,
   userId,
   knownTasks = [],
+  deleteWorkdir = false,
   ipcRenderer,
 }: CleanupIdentity & {
   projectId: string;
   spaceId?: string;
   knownTasks?: SessionHistoryTask[];
+  /** Also delete the Session's copy/worktree workdir through Brain. */
+  deleteWorkdir?: boolean;
   ipcRenderer?: { invoke: (...args: unknown[]) => Promise<unknown> } | null;
 }) {
   const identity = { email, userId };
@@ -98,6 +102,18 @@ export async function deleteSessionTaskData({
       if (result?.success !== true)
         throw new Error('Session file cleanup failed');
     }
+  }
+  if (deleteWorkdir) {
+    if (!resolvedSpaceId || !email) {
+      throw new Error('Session workdir has no Space owner');
+    }
+    assertSessionCleanupIdentity(identity);
+    await deleteWorkspaceProjectWorkdir(
+      resolvedSpaceId,
+      projectId,
+      email,
+      userId
+    );
   }
   assertSessionCleanupIdentity(identity);
   const historyIds = new Set(

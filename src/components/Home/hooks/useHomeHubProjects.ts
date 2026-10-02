@@ -36,6 +36,10 @@ let groupedHistorySnapshot: {
   projects: ProjectGroupType[];
 } | null = null;
 
+export type SessionDeleteCallback = (options: {
+  deleteWorkdir: boolean;
+}) => Promise<void>;
+
 export function useHomeHubProjects() {
   const email = useAuthStore((s) => s.email);
   const host = useHost();
@@ -153,11 +157,13 @@ export function useHomeHubProjects() {
   const handleProjectDelete = useCallback(
     (
       projectId: string,
-      onConfirm?: (callback: () => Promise<void>) => void
+      onConfirm?: (callback: SessionDeleteCallback) => void
     ) => {
       const { email: authEmail, user_id: userId } = getAuthStore();
       const identity = { email: authEmail, userId };
-      const deleteCallback = async () => {
+      const deleteCallback: SessionDeleteCallback = async ({
+        deleteWorkdir,
+      }) => {
         const targetProject = projects.find(
           (project) => project.project_id === projectId
         );
@@ -178,6 +184,7 @@ export function useHomeHubProjects() {
               project_id: projectId,
             })),
           ],
+          deleteWorkdir,
           ipcRenderer,
         });
         assertSessionCleanupIdentity(identity);
@@ -194,7 +201,7 @@ export function useHomeHubProjects() {
       if (onConfirm) {
         onConfirm(deleteCallback);
       } else {
-        return deleteCallback();
+        return deleteCallback({ deleteWorkdir: false });
       }
     },
     [ipcRenderer, projectStore, projects]

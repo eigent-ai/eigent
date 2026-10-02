@@ -14,6 +14,7 @@
 
 import { proxyFetchDelete, proxyFetchGet } from '@/api/http';
 import { deleteSessionTaskData } from '@/lib/sessionFileCleanup';
+import { deleteWorkspaceProjectWorkdir } from '@/service/workspaceApi';
 import { app } from 'electron';
 import fs from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -27,6 +28,9 @@ vi.mock('@/api/http', () => ({
   proxyFetchDelete: vi.fn(),
 }));
 vi.mock('@/store/authStore', () => ({ getAuthStore: () => auth }));
+vi.mock('@/service/workspaceApi', () => ({
+  deleteWorkspaceProjectWorkdir: vi.fn(),
+}));
 vi.mock('electron', () => ({ app: { getPath: vi.fn() } }));
 
 const tasks = [
@@ -246,4 +250,41 @@ describe('Session deletion orchestration', () => {
       expect(invoke).toHaveBeenCalledTimes(when === 'cleanup' ? 1 : 0);
     }
   );
+
+  it('deletes the Session workdir after local files and before history only on request', async () => {
+    await run();
+    expect(deleteWorkspaceProjectWorkdir).not.toHaveBeenCalled();
+
+    await deleteSessionTaskData({
+      ...input,
+      deleteWorkdir: true,
+      ipcRenderer: { invoke },
+    });
+    expect(deleteWorkspaceProjectWorkdir).toHaveBeenCalledWith(
+      'space-a',
+      'session-a',
+      'alex@example.com',
+      42
+    );
+    const workdirOrder = vi.mocked(deleteWorkspaceProjectWorkdir).mock
+      .invocationCallOrder[0];
+    expect(invoke.mock.invocationCallOrder.at(-1)).toBeLessThan(workdirOrder);
+    expect(
+      vi.mocked(proxyFetchDelete).mock.invocationCallOrder.at(-1)
+    ).toBeGreaterThan(workdirOrder);
+  });
+
+  it('keeps history when the Session workdir cannot be deleted', async () => {
+    vi.mocked(deleteWorkspaceProjectWorkdir).mockRejectedValue(
+      Object.assign(new Error('workspace_workdir_unsafe'), { status: 409 })
+    );
+    await expect(
+      deleteSessionTaskData({
+        ...input,
+        deleteWorkdir: true,
+        ipcRenderer: { invoke },
+      })
+    ).rejects.toThrow('workspace_workdir_unsafe');
+    expect(proxyFetchDelete).not.toHaveBeenCalled();
+  });
 });

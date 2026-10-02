@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => {
     project_name: 'Example',
     tasks: [task],
   };
-  const meta = {
+  const meta: Record<string, string> = {
     id: 'session-a',
     spaceId: 'space-a',
     name: 'Example',
@@ -55,8 +55,13 @@ const mocks = vi.hoisted(() => {
     project,
     spaceState,
     runtime: { removeProject: vi.fn(), peekActiveChatStore: vi.fn() },
+    meta,
     invoke: vi.fn(),
     toastError: vi.fn(),
+    stop: vi.fn(),
+    SessionStopError: class SessionStopError extends Error {},
+    workdir: vi.fn(),
+    deleteWorkdir: vi.fn(),
   };
 });
 vi.mock('electron', () => ({ app: { getPath: vi.fn() } }));
@@ -114,6 +119,17 @@ vi.mock('@/components/Home/HomeSidebarNav', () => ({
   HomeSidebarNavGroup: () => null,
 }));
 vi.mock('@/lib/share', () => ({ share: vi.fn() }));
+vi.mock('@/lib/sessionStop', () => ({
+  stopSessionAndWait: mocks.stop,
+  SessionStopError: mocks.SessionStopError,
+}));
+vi.mock('@/service/workspaceApi', () => ({
+  fetchWorkspaceProjectWorkdir: mocks.workdir,
+  deleteWorkspaceProjectWorkdir: mocks.deleteWorkdir,
+}));
+vi.mock('@/service/spaceApi', () => ({
+  proxyFetchSpaceProjectOverlays: async () => ({ overlays: [] }),
+}));
 vi.mock('@/lib/taskRuntimeControl', () => ({ takeControlOfTask: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError } }));
 
@@ -149,6 +165,10 @@ beforeEach(() => {
   });
   vi.mocked(proxyFetchDelete).mockResolvedValue(undefined);
   mocks.invoke.mockResolvedValue({ success: true });
+  delete mocks.meta.workdirMode;
+  mocks.stop.mockResolvedValue(undefined);
+  mocks.workdir.mockResolvedValue({ exists: true });
+  mocks.deleteWorkdir.mockResolvedValue({ deleted: true });
 });
 
 describe('Home Session deletion', () => {
@@ -283,6 +303,7 @@ describe('Home Session deletion', () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledOnce());
     expect(confirm).toBeDisabled();
+    expect(confirm).toHaveTextContent('Deleting...');
     fireEvent.click(confirm);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(dialog).toBeInTheDocument();
@@ -305,5 +326,48 @@ describe('Home Session deletion', () => {
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     );
     expect(mocks.runtime.removeProject).not.toHaveBeenCalled();
+  });
+
+  it('stops the Session first and touches nothing when it cannot be stopped', async () => {
+    mocks.stop.mockRejectedValueOnce(new mocks.SessionStopError('timeout'));
+    const dialog = await openDialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await within(dialog).findByRole('button', { name: 'Retry' });
+    expect(mocks.stop).toHaveBeenCalledWith('session-a');
+    expect(dialog).toHaveAccessibleDescription(/couldn't be stopped/);
+    expect(proxyFetchGet).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(proxyFetchDelete).not.toHaveBeenCalled();
+    expect(mocks.runtime.removeProject).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retry' }));
+    await waitFor(() =>
+      expect(mocks.runtime.removeProject).toHaveBeenCalledWith('session-a')
+    );
+    expect(mocks.stop.mock.invocationCallOrder[1]).toBeLessThan(
+      mocks.invoke.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('deletes the copy workdir only when the option is checked', async () => {
+    mocks.meta.workdirMode = 'copy';
+    const dialog = await openDialog();
+    fireEvent.click(
+      await within(dialog).findByRole('checkbox', {
+        name: 'Also delete the session working directory',
+      })
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() =>
+      expect(mocks.runtime.removeProject).toHaveBeenCalledWith('session-a')
+    );
+    expect(mocks.deleteWorkdir).toHaveBeenCalledWith(
+      'space-a',
+      'session-a',
+      'alex@example.com',
+      42
+    );
   });
 });

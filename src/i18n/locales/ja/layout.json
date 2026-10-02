@@ -1516,5 +1516,10 @@
   "space-discovery-resource-disabled": "グローバル設定で無効",
   "space-discovery-resource-invalid": "グローバル設定が無効か利用できません",
   "space-discovery-model-partial": "一部のモデル一覧を読み込めませんでした。利用可能なモデルを表示しています。再試行してください。",
-  "space-discovery-connectors-disabled": "コネクター一覧は無効です。グローバル設定で有効にしてから再試行してください。"
+  "space-discovery-connectors-disabled": "コネクター一覧は無効です。グローバル設定で有効にしてから再試行してください。",
+  "delete-project-stopping": "停止中…",
+  "delete-project-stop-failed": "このセッションを停止できなかったため、何も削除されていません。再試行して停止し、削除を完了してください。",
+  "delete-project-workdir": "セッションの作業ディレクトリも削除する",
+  "delete-project-workdir-hint": "作業ディレクトリ内のファイル（未公開の変更を含む）は完全に削除されます。",
+  "delete-project-workdir-pending-hint": "この作業ディレクトリには未公開の変更があります。これらは完全に削除され、復元できません。"
 }

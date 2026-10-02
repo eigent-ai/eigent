@@ -27,7 +27,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const auth = { email: 'alex@example.com', user_id: 42 };
-  const meta = { id: 'session-a', spaceId: 'space-a', name: 'Example' };
+  const meta = {
+    id: 'session-a',
+    spaceId: 'space-a',
+    name: 'Example',
+    workdirMode: 'copy',
+  };
   const space = {
     activeSpaceId: 'space-a',
     spaces: {},
@@ -52,11 +57,17 @@ const mocks = vi.hoisted(() => {
   };
   return {
     auth,
+    meta,
     space,
     runtime,
     page,
     invoke: vi.fn(),
     archive: vi.fn(),
+    stop: vi.fn(),
+    SessionStopError: class SessionStopError extends Error {},
+    workdir: vi.fn(),
+    deleteWorkdir: vi.fn(),
+    overlays: vi.fn(),
     error: vi.fn(),
     success: vi.fn(),
   };
@@ -102,6 +113,15 @@ vi.mock('@/store/sessionExecutionStore', () => ({
 vi.mock('@/service/executionApi', () => ({ executionScope: vi.fn() }));
 vi.mock('@/service/spaceApi', () => ({
   proxyUpdateSpaceProject: mocks.archive,
+  proxyFetchSpaceProjectOverlays: mocks.overlays,
+}));
+vi.mock('@/service/workspaceApi', () => ({
+  fetchWorkspaceProjectWorkdir: mocks.workdir,
+  deleteWorkspaceProjectWorkdir: mocks.deleteWorkdir,
+}));
+vi.mock('@/lib/sessionStop', () => ({
+  stopSessionAndWait: mocks.stop,
+  SessionStopError: mocks.SessionStopError,
 }));
 vi.mock('@/lib/projectAchievement', () => ({
   isProjectAchieved: () => false,
@@ -168,7 +188,12 @@ async function openDialog() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.auth.user_id = 42;
+  mocks.meta.workdirMode = 'copy';
   mocks.invoke.mockResolvedValue({ success: true });
+  mocks.stop.mockResolvedValue(undefined);
+  mocks.workdir.mockResolvedValue({ exists: true });
+  mocks.deleteWorkdir.mockResolvedValue({ deleted: true });
+  mocks.overlays.mockResolvedValue({ overlays: [] });
   vi.mocked(proxyFetchGet).mockResolvedValue({
     project_id: 'session-a',
     space_id: 'space-a',
@@ -237,7 +262,7 @@ describe('Sidebar Session deletion', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledOnce());
     expect(
-      within(dialog).getByRole('button', { name: 'Delete' })
+      within(dialog).getByRole('button', { name: 'Deleting...' })
     ).toBeDisabled();
     expect(dialog).toBeInTheDocument();
     await act(async () => {
@@ -246,5 +271,127 @@ describe('Sidebar Session deletion', () => {
     await waitFor(() =>
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     );
+  });
+
+  it('stops the Session and waits before any cleanup starts', async () => {
+    let stopped!: () => void;
+    mocks.stop.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        stopped = resolve;
+      })
+    );
+    const dialog = await openDialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    const stopping = await within(dialog).findByRole('button', {
+      name: 'Stopping…',
+    });
+    expect(stopping).toBeDisabled();
+    expect(mocks.stop).toHaveBeenCalledWith('session-a');
+    expect(proxyFetchGet).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+
+    await act(async () => stopped());
+    await waitFor(() =>
+      expect(mocks.runtime.removeProject).toHaveBeenCalledWith('session-a')
+    );
+    expect(mocks.stop.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.invoke.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('touches nothing when the Session cannot be stopped and offers Retry', async () => {
+    mocks.stop.mockRejectedValueOnce(new mocks.SessionStopError('timeout'));
+    const dialog = await openDialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    const retry = await within(dialog).findByRole('button', { name: 'Retry' });
+    expect(dialog).toHaveAccessibleDescription(/couldn't be stopped/);
+    expect(proxyFetchGet).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.deleteWorkdir).not.toHaveBeenCalled();
+    expect(proxyFetchDelete).not.toHaveBeenCalled();
+    expect(mocks.archive).not.toHaveBeenCalled();
+    expect(mocks.runtime.removeProject).not.toHaveBeenCalled();
+
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(mocks.runtime.removeProject).toHaveBeenCalledWith('session-a')
+    );
+  });
+
+  it('keeps the Session workdir unless the option is checked', async () => {
+    const dialog = await openDialog();
+    const option = await within(dialog).findByRole('checkbox', {
+      name: 'Also delete the session working directory',
+    });
+    expect(option).not.toBeChecked();
+    expect(dialog).toHaveTextContent(/permanently deleted/);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(mocks.runtime.removeProject).toHaveBeenCalledWith('session-a')
+    );
+    expect(mocks.deleteWorkdir).not.toHaveBeenCalled();
+  });
+
+  it('deletes the workdir through Brain before history when checked', async () => {
+    const dialog = await openDialog();
+    fireEvent.click(
+      await within(dialog).findByRole('checkbox', {
+        name: 'Also delete the session working directory',
+      })
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() =>
+      expect(mocks.runtime.removeProject).toHaveBeenCalledWith('session-a')
+    );
+    expect(mocks.deleteWorkdir).toHaveBeenCalledWith(
+      'space-a',
+      'session-a',
+      'alex@example.com',
+      42
+    );
+    expect(mocks.deleteWorkdir.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(proxyFetchDelete).mock.invocationCallOrder[0]
+    );
+  });
+
+  it('keeps history and the Session when the workdir deletion fails', async () => {
+    mocks.deleteWorkdir.mockRejectedValueOnce(new Error('project_running'));
+    const dialog = await openDialog();
+    fireEvent.click(
+      await within(dialog).findByRole('checkbox', {
+        name: 'Also delete the session working directory',
+      })
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await within(dialog).findByRole('button', { name: 'Retry' });
+    expect(proxyFetchDelete).not.toHaveBeenCalled();
+    expect(mocks.runtime.removeProject).not.toHaveBeenCalled();
+  });
+
+  it('warns more strongly when the workdir has unpublished changes', async () => {
+    mocks.overlays.mockResolvedValue({ overlays: [{ path: 'draft.txt' }] });
+    const dialog = await openDialog();
+
+    expect(
+      await within(dialog).findByText(/has unpublished changes/)
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ['a direct-write Session', 'direct-write', { exists: true }],
+    ['a missing workdir', 'copy', { exists: false }],
+  ])('offers no workdir option for %s', async (_case, mode, workdir) => {
+    mocks.meta.workdirMode = mode;
+    mocks.workdir.mockResolvedValue(workdir);
+    const dialog = await openDialog();
+
+    await act(async () => {});
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+    if (mode === 'direct-write') expect(mocks.workdir).not.toHaveBeenCalled();
   });
 });

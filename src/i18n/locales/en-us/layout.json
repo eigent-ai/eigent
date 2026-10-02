@@ -1538,5 +1538,10 @@
   "space-discovery-resource-disabled": "Disabled in global settings",
   "space-discovery-resource-invalid": "Invalid or unavailable global configuration",
   "space-discovery-model-partial": "Some model sources could not be loaded. Available models are shown; retry to reload all sources.",
-  "space-discovery-connectors-disabled": "The connector catalog is disabled. Enable it in global settings, then retry."
+  "space-discovery-connectors-disabled": "The connector catalog is disabled. Enable it in global settings, then retry.",
+  "delete-project-stopping": "Stopping…",
+  "delete-project-stop-failed": "This session couldn't be stopped, so nothing was deleted. Retry to stop it and finish deleting.",
+  "delete-project-workdir": "Also delete the session working directory",
+  "delete-project-workdir-hint": "Files in the working directory, including changes you haven't published, will be permanently deleted.",
+  "delete-project-workdir-pending-hint": "This working directory has unpublished changes. They will be permanently deleted and can't be recovered."
 }

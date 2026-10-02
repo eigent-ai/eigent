@@ -1516,5 +1516,10 @@
   "space-discovery-resource-disabled": "已在全局设置中禁用",
   "space-discovery-resource-invalid": "全局配置无效或不可用",
   "space-discovery-model-partial": "部分模型来源加载失败。已显示可用模型，请重试加载全部来源。",
-  "space-discovery-connectors-disabled": "连接器目录已禁用。请在全局设置中启用后重试。"
+  "space-discovery-connectors-disabled": "连接器目录已禁用。请在全局设置中启用后重试。",
+  "delete-project-stopping": "正在停止…",
+  "delete-project-stop-failed": "无法停止该会话，因此未删除任何内容。请重试以停止会话并完成删除。",
+  "delete-project-workdir": "同时删除会话工作目录",
+  "delete-project-workdir-hint": "工作目录中的文件（包括尚未发布的修改）将被永久删除。",
+  "delete-project-workdir-pending-hint": "该工作目录中有尚未发布的修改。它们将被永久删除，且无法恢复。"
 }

@@ -1516,5 +1516,10 @@
   "space-discovery-resource-disabled": "전역 설정에서 비활성화됨",
   "space-discovery-resource-invalid": "전역 설정이 잘못되었거나 사용할 수 없음",
   "space-discovery-model-partial": "일부 모델 목록을 불러오지 못했습니다. 사용 가능한 모델이 표시됩니다. 다시 시도하세요.",
-  "space-discovery-connectors-disabled": "커넥터 목록이 비활성화되어 있습니다. 전역 설정에서 활성화한 후 다시 시도하세요."
+  "space-discovery-connectors-disabled": "커넥터 목록이 비활성화되어 있습니다. 전역 설정에서 활성화한 후 다시 시도하세요.",
+  "delete-project-stopping": "중지하는 중…",
+  "delete-project-stop-failed": "이 세션을 중지할 수 없어 아무것도 삭제되지 않았습니다. 다시 시도하여 세션을 중지하고 삭제를 완료하세요.",
+  "delete-project-workdir": "세션 작업 디렉터리도 삭제",
+  "delete-project-workdir-hint": "작업 디렉터리의 파일(아직 게시하지 않은 변경 사항 포함)이 영구적으로 삭제됩니다.",
+  "delete-project-workdir-pending-hint": "이 작업 디렉터리에 게시하지 않은 변경 사항이 있습니다. 영구적으로 삭제되며 복구할 수 없습니다."
 }
