@@ -125,6 +125,16 @@ class WarmRunAdmission:
             and self.receipt is not None
             and self.receipt.owned
         ):
+            self.logger.error(
+                "Warm admission rollback left ownership unreleased",
+                extra={
+                    "run_id": self.receipt.run_id,
+                    "attempt_id": self.receipt.attempt_id,
+                    "writer_request_id": getattr(
+                        self.receipt.writer, "request_id", None
+                    ),
+                },
+            )
             raise InvalidRunTransitionError(
                 "warm admission rollback did not release ownership"
             )
