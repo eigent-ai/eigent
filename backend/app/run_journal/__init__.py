@@ -97,9 +97,11 @@ from app.run_journal.store import (
     UnsafeResumeError,
     UnsupportedSchemaVersionError,
 )
+from app.run_journal.transitions import RUN_ACTIVE_STATES
 from app.workload import WorkloadProfileRecord
 
 __all__ = [
+    "RUN_ACTIVE_STATES",
     "SCHEMA_VERSION",
     "ApprovalRecord",
     "ApprovalRuleRecord",

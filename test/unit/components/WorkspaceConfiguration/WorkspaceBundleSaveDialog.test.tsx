@@ -12,7 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -236,6 +244,139 @@ describe('WorkspaceBundleSaveDialog', () => {
       status: 'published',
     });
     mocks.recordPublished.mockResolvedValue({});
+  });
+
+  it('pairs selected sharing text with its fill and exposes selection through keyboard and a checkmark', async () => {
+    const user = userEvent.setup();
+    mocks.review.mockResolvedValue({
+      draft_version: 1,
+      review: { ...review, assets: [] },
+    });
+    renderDialog();
+    const privateCard = await screen.findByRole('button', {
+      name: /^private/i,
+    });
+    const publicCard = screen.getByRole('button', { name: /^public/i });
+    const assertSelection = (
+      selected: HTMLElement,
+      unselected: HTMLElement
+    ) => {
+      expect(selected).toHaveAttribute('aria-pressed', 'true');
+      expect(selected).toHaveClass(
+        'bg-ds-accent-subtle-default',
+        'text-ds-accent-on-subtle'
+      );
+      expect(selected.lastElementChild).not.toHaveClass(
+        'text-ds-ink-muted-default'
+      );
+      expect(selected.querySelector('svg')).toHaveAttribute(
+        'aria-hidden',
+        'true'
+      );
+      expect(selected.querySelector('svg')).toHaveClass('size-ds-icon-md');
+      expect(unselected).toHaveAttribute('aria-pressed', 'false');
+      expect(unselected).not.toHaveClass(
+        'bg-ds-accent-subtle-default',
+        'text-ds-accent-on-subtle'
+      );
+      expect(unselected.lastElementChild).toHaveClass(
+        'text-ds-ink-muted-default'
+      );
+      expect(unselected.querySelector('svg')).toBeNull();
+      for (const card of [selected, unselected]) {
+        expect(card).toHaveClass(...DS_FOCUS_RING.split(' '));
+        expect(card).toHaveClass('scroll-m-ds-6');
+        expect(card).toHaveClass('focus-visible:outline-hidden');
+        expect(card.lastElementChild).toHaveClass('text-ds-text-meta');
+      }
+    };
+    assertSelection(privateCard, publicCard);
+    privateCard.focus();
+    await user.tab();
+    expect(publicCard).toHaveFocus();
+    await user.keyboard('{Enter}');
+    assertSelection(publicCard, privateCard);
+    const confirmation = screen.getByRole('switch', {
+      name: 'Confirm secret-free review',
+    });
+    await user.click(confirmation);
+    await user.click(publicCard);
+    expect(confirmation).toBeChecked();
+    await user.tab({ shift: true });
+    expect(privateCard).toHaveFocus();
+    await user.keyboard(' ');
+    assertSelection(privateCard, publicCard);
+    expect(confirmation).not.toBeChecked();
+  });
+
+  it.each(['private', 'public'])(
+    'keeps %s selected and both cards disabled during and after publishing',
+    async (selection) => {
+      let finishPublish!: (value: unknown) => void;
+      mocks.publishRevision.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishPublish = resolve;
+          })
+      );
+      mocks.review.mockResolvedValue({
+        draft_version: 1,
+        review: { ...review, assets: [] },
+      });
+      renderDialog();
+      const privateCard = await screen.findByRole('button', {
+        name: /^private/i,
+      });
+      const publicCard = screen.getByRole('button', { name: /^public/i });
+      const selected = selection === 'private' ? privateCard : publicCard;
+      const unselected = selection === 'private' ? publicCard : privateCard;
+      fireEvent.click(selected);
+      fireEvent.click(
+        screen.getByRole('switch', { name: 'Confirm secret-free review' })
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Publish version' }));
+      await waitFor(() => expect(mocks.publishRevision).toHaveBeenCalled());
+      for (const card of [privateCard, publicCard]) expect(card).toBeDisabled();
+      fireEvent.click(unselected);
+      expect(selected).toHaveAttribute('aria-pressed', 'true');
+      expect(selected).toHaveClass('text-ds-accent-on-subtle');
+      expect(unselected).toHaveAttribute('aria-pressed', 'false');
+      await act(async () =>
+        finishPublish({
+          id: 'wbr_11111111111111111111111111111111',
+          revision: 1,
+          manifest_digest: digest,
+          status: 'published',
+        })
+      );
+      await screen.findByText('Published');
+      for (const card of [privateCard, publicCard]) expect(card).toBeDisabled();
+      expect(selected).toHaveAttribute('aria-pressed', 'true');
+    }
+  );
+
+  it('does not expose sharing cards until the review has loaded', async () => {
+    let finishReview!: (value: unknown) => void;
+    mocks.review.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishReview = resolve;
+        })
+    );
+    renderDialog();
+    expect(
+      await screen.findByText('Preparing a secret-free review…')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^private/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^public/i })
+    ).not.toBeInTheDocument();
+    await act(async () => finishReview({ draft_version: 1, review }));
+    expect(
+      await screen.findByRole('button', { name: /^private/i })
+    ).toBeEnabled();
   });
 
   it('preflights every selected asset before the first Cloud mutation and refreshes only after closing success', async () => {

@@ -21,6 +21,7 @@ import { HostProvider } from '@/host';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { AnimatePresence, motion } from 'framer-motion';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/components/Folder/FilePreview', () => ({
@@ -37,7 +38,9 @@ vi.mock('@/components/Session/PreviewPanel/tabs/CanvasTab', () => ({
 
 // xterm needs real layout/canvas APIs; the terminal tab has its own suite.
 vi.mock('@/components/Session/PreviewPanel/tabs/terminal/TerminalTab', () => ({
-  TerminalTab: () => <div data-testid="terminal-tab" />,
+  TerminalTab: ({ viewportSettled }: { viewportSettled: boolean }) => (
+    <div data-testid="terminal-tab" data-settled={viewportSettled} />
+  ),
 }));
 
 // Monaco and the live project stores are covered by the ReviewTab suite.
@@ -78,6 +81,43 @@ describe('PreviewPanel', () => {
     });
     usePageTabStore.getState().setSessionPreviewProject('project-test');
     usePageTabStore.getState().toggleSessionPreview();
+  });
+
+  it('holds terminal fitting until the display panel has settled', () => {
+    usePageTabStore.getState().openPreviewTab('terminal');
+    const view = render(<PreviewPanel displaySettled={false} />);
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'false'
+    );
+    view.rerender(<PreviewPanel displaySettled />);
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'true'
+    );
+  });
+
+  it('stops terminal fitting while the display panel exits', () => {
+    usePageTabStore.getState().openPreviewTab('terminal');
+    const display = (open: boolean) => (
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div key="display" exit={{ opacity: 0 }}>
+            <PreviewPanel displaySettled />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    );
+    const view = render(display(true));
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'true'
+    );
+    view.rerender(display(false));
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'false'
+    );
   });
 
   it('opens on the chooser tab listing the available content kinds', () => {

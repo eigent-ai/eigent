@@ -30,6 +30,7 @@ import { XtermViewer } from './XtermViewer';
 
 export interface TerminalTabProps {
   tab: SessionTerminalTab;
+  viewportSettled?: boolean;
 }
 
 /**
@@ -37,11 +38,11 @@ export interface TerminalTabProps {
  * shell (a main-process PTY running the user's login shell). A tab opened
  * from the chooser's project section shows that agent stream read-only.
  */
-export function TerminalTab({ tab }: TerminalTabProps) {
+export function TerminalTab({ tab, viewportSettled = true }: TerminalTabProps) {
   if (tab.agentSourceId) {
     return <AgentStreamTerminal sourceId={tab.agentSourceId} />;
   }
-  return <LocalShellTerminal tab={tab} />;
+  return <LocalShellTerminal tab={tab} viewportSettled={viewportSettled} />;
 }
 
 /** One-line label for a stream: agent name, then the subtask it ran for. */
@@ -52,7 +53,7 @@ export function terminalSourceLabel(source: TerminalSource): string {
 }
 
 /** Interactive local shell, started in the project's working folder. */
-function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
+function LocalShellTerminal({ tab, viewportSettled }: TerminalTabProps) {
   const { t } = useTranslation();
   const host = useHost();
   const openBrowserPreview = usePageTabStore(
@@ -127,6 +128,7 @@ function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
     <ShellTerminal
       shellId={tab.shellId ?? `session-shell:fallback:${tab.id}`}
       cwd={cwd}
+      viewportSettled={viewportSettled}
       onOpenLink={openBrowserPreview}
     />
   );

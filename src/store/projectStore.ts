@@ -21,8 +21,14 @@ import {
   putCachedProject,
   type CachedTask,
 } from '@/lib/projectCache';
+import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
-import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import {
+  getSessionNavLeadFromRunStatus,
+  getSessionNavLeadPresentation,
+  selectSessionNavRun,
+  SESSION_NAV_IDLE_LEAD,
+} from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import {
   recoverSpaceSessionModel,
@@ -30,7 +36,10 @@ import {
 } from '@/lib/spaceModelBinding';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import { executionScope } from '@/service/executionApi';
-import { fetchProjectRuns } from '@/service/projectRunsApi';
+import {
+  fetchProjectRuns,
+  projectRunSummaries,
+} from '@/service/projectRunsApi';
 import type { ServerProject } from '@/service/spaceApi';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import {
@@ -58,10 +67,13 @@ import {
 } from './chatStore';
 import { usePageTabStore } from './pageTabStore';
 import {
+  peekProjectEventStore,
   releaseProjectEventStore,
   resetProjectEventStore,
+  subscribeProjectEventStores,
 } from './projectEventStore';
 import {
+  getVisibleProjectMetasForSpace,
   projectMetaFromServer,
   useSpaceStore,
   type SpaceProjectMeta,
@@ -749,7 +761,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     set((state) => ({
       navLeadByProjectId: {
         ...state.navLeadByProjectId,
-        [projectId]: lead,
+        [projectId]: resolveProjectNavLead(state, projectId, lead),
       },
     })),
 
@@ -769,7 +781,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             : Object.keys(project.chatStores ?? {}).length > 0)
         );
         if (!hasLiveStore) {
-          next[projectId] = lead;
+          next[projectId] = resolveProjectNavLead(state, projectId, lead);
         }
       }
       return { navLeadByProjectId: next };
@@ -1815,6 +1827,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     );
 
     const cacheUserId = getAuthStore().user_id;
+    const hydrationAccountKey = getAccountEnvironmentKey(getAuthStore());
     const restored = get().projects[loadProjectId];
     if (
       (restored?.metadata?.spaceModelDefaultPending ||
@@ -1873,6 +1886,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       >();
       let localCanonicalUpdatedAt: number | null = null;
       try {
+        const hydrationProject = get().projects[loadProjectId];
+        const hydrationChatId = hydrationProject.activeChatId;
+        if (!hydrationChatId) return loadProjectId;
+        const hydrationChatStore = hydrationProject.chatStores[hydrationChatId];
         const localRunController = new AbortController();
         const localRunDeadline = setTimeout(
           () => localRunController.abort(),
@@ -1881,8 +1898,21 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         const localRuns = await fetchProjectRuns(
           loadProjectId,
           100,
-          localRunController.signal
+          localRunController.signal,
+          hydrationAccountKey
         ).finally(() => clearTimeout(localRunDeadline));
+        if (
+          getAccountEnvironmentKey(getAuthStore()) !== hydrationAccountKey ||
+          get().projects[loadProjectId]?.chatStores[hydrationChatId] !==
+            hydrationChatStore
+        )
+          return loadProjectId;
+        // Hydration and sidebar GETs share version arbitration. Preserve the
+        // checkpoint before projecting its status into the unversioned Task.
+        runProjectionStore.upsertRunSummaries(
+          loadProjectId,
+          projectRunSummaries(loadProjectId, localRuns)
+        );
         for (const run of localRuns?.runs ?? []) {
           if (run?.run_id) {
             if (
@@ -3411,21 +3441,14 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
 export const useProjectStore = projectStore;
 
-/**
- * Centralized live nav-lead subscription registry.
- *
- * For every Project that has an active chat store, subscribe to that chat
- * store and push the derived `SessionNavLeadPresentation` into
- * `navLeadByProjectId`. This makes the sidebar row icons react to live task
- * status changes (running → finished, etc.) without requiring each consumer
- * to subscribe to chat-store internals.
- *
- * The registry is reconciled whenever `projectStore.projects` changes (chat
- * store swap, project add/remove). Stale subscriptions are torn down.
- */
+/** Navigation is a read-only consumer of both canonical projections and ChatTask. */
 const navLeadSubscriptions = new Map<
   string,
-  { chatStore: VanillaChatStore; unsubscribe: () => void }
+  {
+    chatStore?: VanillaChatStore;
+    eventStore: ReturnType<typeof peekProjectEventStore>;
+    unsubscribe: () => void;
+  }
 >();
 
 const navLeadsEqual = (
@@ -3433,46 +3456,132 @@ const navLeadsEqual = (
   b: SessionNavLeadPresentation
 ) => !!a && a.kind === b.kind && a.Icon === b.Icon && a.spin === b.spin;
 
-const pushLiveNavLead = (projectId: string, chatStore: VanillaChatStore) => {
-  const chatState = chatStore.getState();
-  const activeTask = chatState.activeTaskId
-    ? chatState.tasks[chatState.activeTaskId]
-    : undefined;
-  if (!activeTask) return;
-  const lead = getSessionNavLeadPresentation(activeTask);
-  const current = projectStore.getState().navLeadByProjectId[projectId];
+function resolveProjectNavLead(
+  state: ProjectStore,
+  projectId: string,
+  fallback: SessionNavLeadPresentation
+): SessionNavLeadPresentation {
+  const project = state.projects[projectId];
+  const chatStore = project?.activeChatId
+    ? project.chatStores[project.activeChatId]
+    : Object.values(project?.chatStores ?? {})[0];
+  const chatState = chatStore?.getState();
+  const taskId = chatState?.activeTaskId;
+  const task = taskId ? chatState?.tasks[taskId] : undefined;
+  const loading = state.historyLoadingProjectIds[projectId];
+  const run = selectSessionNavRun(
+    projectId,
+    [
+      runProjectionStore.getProject(projectId),
+      peekProjectEventStore(projectId)?.getSnapshot().view,
+    ],
+    task && !loading ? taskId : undefined
+  );
+  if (run) {
+    if (
+      task &&
+      taskId === run.runId &&
+      !loading &&
+      durableRunDisplayStatus(run.status)
+    ) {
+      return getSessionNavLeadPresentation({
+        ...task,
+        durableRunStatus: durableRunDisplayStatus(run.status),
+      });
+    }
+    const lead = getSessionNavLeadFromRunStatus(run.status);
+    if (lead) return lead;
+  }
+  if (task && !loading) return getSessionNavLeadPresentation(task);
+  return fallback;
+}
+
+const pushLiveNavLead = (projectId: string) => {
+  const state = projectStore.getState();
+  if (!navLeadSubscriptions.has(projectId)) return;
+  const current = state.navLeadByProjectId[projectId];
+  const lead = resolveProjectNavLead(
+    state,
+    projectId,
+    current ?? SESSION_NAV_IDLE_LEAD
+  );
   if (navLeadsEqual(current, lead)) return;
-  projectStore.getState().setProjectNavLead(projectId, lead);
+  state.setProjectNavLead(projectId, lead);
 };
 
-const reconcileNavLeadSubscriptions = (state: ProjectStore) => {
-  const seen = new Set<string>();
-  for (const [projectId, project] of Object.entries(state.projects)) {
-    const activeChatId = project.activeChatId;
-    const chatStore = activeChatId
-      ? project.chatStores[activeChatId]
-      : Object.values(project.chatStores ?? {})[0];
-    if (!chatStore) continue;
-    seen.add(projectId);
-
-    const existing = navLeadSubscriptions.get(projectId);
-    if (existing?.chatStore === chatStore) continue;
+// Navigation only peeks at event stores, so cold or evicted Sessions never
+// allocate one; the registry subscription below rebinds as stores come and go.
+const syncNavLeadSubscription = (state: ProjectStore, projectId: string) => {
+  const project = state.projects[projectId];
+  const chatStore = project?.activeChatId
+    ? project.chatStores[project.activeChatId]
+    : Object.values(project?.chatStores ?? {})[0];
+  const eventStore = peekProjectEventStore(projectId);
+  const existing = navLeadSubscriptions.get(projectId);
+  if (
+    !existing ||
+    existing.chatStore !== chatStore ||
+    existing.eventStore !== eventStore
+  ) {
     existing?.unsubscribe();
-
-    pushLiveNavLead(projectId, chatStore);
-    const unsubscribe = chatStore.subscribe(() =>
-      pushLiveNavLead(projectId, chatStore)
-    );
-    navLeadSubscriptions.set(projectId, { chatStore, unsubscribe });
+    const push = () => pushLiveNavLead(projectId);
+    const unsubscribers = [
+      chatStore?.subscribe(push),
+      eventStore?.subscribe(push),
+      runProjectionStore.subscribeProject(projectId, push),
+    ];
+    navLeadSubscriptions.set(projectId, {
+      chatStore,
+      eventStore,
+      unsubscribe: () =>
+        unsubscribers.forEach((unsubscribe) => unsubscribe?.()),
+    });
   }
+  pushLiveNavLead(projectId);
+};
+
+const reconcileNavLeadSubscriptions = (
+  state: ProjectStore,
+  previous?: ProjectStore
+) => {
+  if (
+    previous &&
+    state.projects === previous.projects &&
+    state.historyLoadingProjectIds === previous.historyLoadingProjectIds
+  )
+    return;
+  const spaces = useSpaceStore.getState();
+  // Persisted Session rows remain visible even when Cloud Project sync fails.
+  const projectIds = new Set([
+    ...Object.keys(state.projects),
+    ...getVisibleProjectMetasForSpace(
+      spaces.projectsBySpaceId,
+      spaces.activeSpaceId
+    ).map((meta) => meta.id),
+  ]);
   for (const [projectId, entry] of navLeadSubscriptions) {
-    if (seen.has(projectId)) continue;
+    if (projectIds.has(projectId)) continue;
     entry.unsubscribe();
     navLeadSubscriptions.delete(projectId);
+  }
+  for (const projectId of projectIds) {
+    syncNavLeadSubscription(state, projectId);
   }
 };
 
 projectStore.subscribe(reconcileNavLeadSubscriptions);
+useSpaceStore.subscribe((state, previous) => {
+  if (
+    state.projectsBySpaceId !== previous.projectsBySpaceId ||
+    state.activeSpaceId !== previous.activeSpaceId
+  ) {
+    reconcileNavLeadSubscriptions(projectStore.getState());
+  }
+});
+subscribeProjectEventStores((projectId) => {
+  if (navLeadSubscriptions.has(projectId))
+    syncNavLeadSubscription(projectStore.getState(), projectId);
+});
 reconcileNavLeadSubscriptions(projectStore.getState());
 
 if (typeof queueMicrotask === 'function') {

@@ -21,7 +21,9 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { Switch } from '@/components/ui/switch';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
@@ -1201,9 +1203,10 @@ export function WorkspaceBundleSaveDialog({
                     <button
                       key={option}
                       type="button"
-                      className={`rounded-xl border p-3 text-left ${
+                      aria-pressed={visibility === option}
+                      className={`scroll-m-ds-6 rounded-xl border p-3 text-left focus-visible:outline-hidden ${DS_FOCUS_RING} ${
                         visibility === option
-                          ? 'border-ds-accent-default-default bg-ds-accent-subtle-default'
+                          ? 'border-ds-accent-default-default bg-ds-accent-subtle-default text-ds-accent-on-subtle'
                           : 'border-ds-hairline-subtle-default'
                       }`}
                       disabled={publishing || Boolean(publishedHandle)}
@@ -1214,7 +1217,7 @@ export function WorkspaceBundleSaveDialog({
                         setPreparedUploadConfirmed(false);
                       }}
                     >
-                      <span className="text-ds-text-base font-bold capitalize">
+                      <span className="inline-flex items-center gap-ds-control-gap text-ds-text-base font-bold capitalize">
                         {option === 'private'
                           ? t(
                               'layout.workspace-bundle-save-visibility-private',
@@ -1224,8 +1227,15 @@ export function WorkspaceBundleSaveDialog({
                               'layout.workspace-bundle-save-visibility-public',
                               { defaultValue: 'public' }
                             )}
+                        {visibility === option ? <DsIcon icon={Check} /> : null}
                       </span>
-                      <span className="mt-1 block text-ds-text-meta text-ds-ink-muted-default">
+                      <span
+                        className={`mt-1 block text-ds-text-meta ${
+                          visibility === option
+                            ? ''
+                            : 'text-ds-ink-muted-default'
+                        }`}
+                      >
                         {option === 'private'
                           ? t(
                               'layout.workspace-bundle-save-private-description',
