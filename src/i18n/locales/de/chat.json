@@ -468,5 +468,5 @@
   "approval-expired-description": "Die Genehmigungsanfrage ist abgelaufen, bevor eine Entscheidung angenommen wurde. Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf eine neue Genehmigung angefordert. Frühere Genehmigungsanfragen können nicht wiederverwendet werden.",
   "approval-tool-ended-description": "Die Genehmigung wurde abgebrochen, weil das Werkzeug vor dem Start beendet wurde. Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf eine neue Genehmigung angefordert. Frühere Genehmigungsanfragen können nicht wiederverwendet werden.",
   "approval-recorded-reason": "Erfasster Grund: {{reason}}",
-  "approval-read-only-receipt": "Schreibgeschützter Beleg. Diese Genehmigung kann nicht erneut verwendet werden."
+  "approval-read-only-receipt": "Schreibgeschützter Eintrag"
 }

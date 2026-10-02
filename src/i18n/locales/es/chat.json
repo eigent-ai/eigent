@@ -472,5 +472,5 @@
   "approval-expired-description": "La solicitud de aprobación caducó antes de que se aceptara una decisión. Al reanudar se vuelve a evaluar el trabajo pendiente y se solicita una nueva aprobación cuando sea necesario. Las solicitudes de aprobación anteriores no se pueden reutilizar.",
   "approval-tool-ended-description": "La aprobación se canceló porque la herramienta terminó antes de iniciarse. Al reanudar se vuelve a evaluar el trabajo pendiente y se solicita una nueva aprobación cuando sea necesario. Las solicitudes de aprobación anteriores no se pueden reutilizar.",
   "approval-recorded-reason": "Motivo registrado: {{reason}}",
-  "approval-read-only-receipt": "Recibo de solo lectura. Esta aprobación no puede volver a utilizarse."
+  "approval-read-only-receipt": "Registro de solo lectura"
 }

@@ -472,5 +472,5 @@
   "approval-expired-description": "La demande d’approbation a expiré avant qu’une décision soit acceptée. La reprise réévalue le travail restant et demande une nouvelle approbation si nécessaire. Les anciennes demandes d’approbation ne peuvent pas être réutilisées.",
   "approval-tool-ended-description": "L’approbation a été annulée car l’outil s’est arrêté avant de démarrer. La reprise réévalue le travail restant et demande une nouvelle approbation si nécessaire. Les anciennes demandes d’approbation ne peuvent pas être réutilisées.",
   "approval-recorded-reason": "Motif enregistré : {{reason}}",
-  "approval-read-only-receipt": "Reçu en lecture seule. Cette approbation ne peut pas être réutilisée."
+  "approval-read-only-receipt": "Enregistrement en lecture seule"
 }

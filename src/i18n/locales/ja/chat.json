@@ -464,5 +464,5 @@
   "approval-expired-description": "判断が受け付けられる前に承認リクエストの有効期限が切れました。再開すると残りの作業を再評価し、必要に応じて新たな承認を求めます。以前の承認リクエストは再利用できません。",
   "approval-tool-ended-description": "ツールが実行開始前に終了したため、承認がキャンセルされました。再開すると残りの作業を再評価し、必要に応じて新たな承認を求めます。以前の承認リクエストは再利用できません。",
   "approval-recorded-reason": "記録された理由：{{reason}}",
-  "approval-read-only-receipt": "閲覧専用の記録です。この承認は再利用できません。"
+  "approval-read-only-receipt": "閲覧専用の記録"
 }

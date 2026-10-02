@@ -468,5 +468,5 @@
   "approval-expired-description": "The approval request expired before a decision was accepted. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
   "approval-tool-ended-description": "The approval was cancelled because the tool ended before it started. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
   "approval-recorded-reason": "Recorded reason: {{reason}}",
-  "approval-read-only-receipt": "Read-only receipt. This approval cannot be used again."
+  "approval-read-only-receipt": "Read-only record"
 }

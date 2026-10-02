@@ -461,8 +461,8 @@
   "approval-expired-title": "审批已到期",
   "approval-cancelled-title": "审批已取消",
   "approval-inactive-title": "审批已失效",
-  "approval-expired-description": "审批请求在决定被接受前已到期。继续时会重新评估剩余工作，并在需要时请求新的审批。旧审批请求不能复用。",
-  "approval-tool-ended-description": "工具在开始执行前已终止，因此审批已取消。继续时会重新评估剩余工作，并在需要时请求新的审批。旧审批请求不能复用。",
+  "approval-expired-description": "审批请求在决定被接受前已到期。恢复时会重新评估剩余工作，并在需要时请求新的审批。旧审批请求不能复用。",
+  "approval-tool-ended-description": "工具在开始执行前已终止，因此审批已取消。恢复时会重新评估剩余工作，并在需要时请求新的审批。旧审批请求不能复用。",
   "approval-recorded-reason": "记录的原因：{{reason}}",
-  "approval-read-only-receipt": "只读记录。此审批不能再次使用。"
+  "approval-read-only-receipt": "只读记录"
 }
