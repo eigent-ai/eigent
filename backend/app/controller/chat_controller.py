@@ -56,6 +56,7 @@ from app.run_journal import (
     FollowUpRequestRecord,
     IdempotencyConflictError,
     InvalidRunTransitionError,
+    OptimisticConcurrencyError,
     RunAttemptRecord,
     RunEventDraft,
     RunNotFoundError,
@@ -2686,16 +2687,26 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                     }
                 )
             )
-            _, decision_applied = await asyncio.to_thread(
-                journal.resolve_human_interaction,
-                interaction.interaction_id,
-                include_transition=True,
-                decision_request_id=request_id,
-                decision=reply_decision,
-                expected_version=interaction.version,
-                expected_run_id=run_context.run_id,
-                continue_active_attempt=True,
-            )
+            try:
+                _, decision_applied = await asyncio.to_thread(
+                    journal.resolve_human_interaction,
+                    interaction.interaction_id,
+                    include_transition=True,
+                    decision_request_id=request_id,
+                    decision=reply_decision,
+                    expected_version=interaction.version,
+                    expected_run_id=run_context.run_id,
+                    continue_active_attempt=True,
+                )
+            except (
+                IdempotencyConflictError,
+                InvalidRunTransitionError,
+                OptimisticConcurrencyError,
+            ) as exc:
+                raise UserException(
+                    code.error,
+                    "The requested human interaction is no longer pending.",
+                ) from exc
             if not decision_applied:
                 # An overlapping retry read the same pending interaction, but
                 # only the transaction owner may answer a live waiter or emit

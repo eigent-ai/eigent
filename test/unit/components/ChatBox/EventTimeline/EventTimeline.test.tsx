@@ -878,10 +878,10 @@ describe('EventTimeline', () => {
     );
     expect(screen.queryByLabelText('Your message')).not.toBeInTheDocument();
     fireEvent.click(
-      screen.getByRole('button', { name: 'History evidence (1)' })
+      screen.getByRole('button', { name: 'Earlier reply records (1)' })
     );
     expect(
-      screen.getByRole('region', { name: 'History evidence (1)' })
+      screen.getByRole('region', { name: 'Earlier reply records (1)' })
     ).toHaveTextContent('Use dataset B');
   });
 

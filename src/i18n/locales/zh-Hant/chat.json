@@ -469,6 +469,6 @@
   "control-recovery-status-cancelled": "已取消",
   "control-recovery-status-failed": "失敗",
   "control-recovery-status-timed_out": "已逾時",
-  "history-evidence": "歷史記錄憑據（{{count}}）",
-  "history-evidence-description": "舊回覆記錄會保留在此處，如果它們缺少與回應的關聯，或內容與已記錄的回應不同。"
+  "history-evidence": "未關聯的歷史回覆（{{count}}）",
+  "history-evidence-description": "缺少與回答的關聯或內容與已記錄回答不一致的舊回覆，會保留在此處。"
 }

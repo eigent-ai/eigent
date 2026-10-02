@@ -469,6 +469,6 @@
   "control-recovery-status-cancelled": "취소됨",
   "control-recovery-status-failed": "실패",
   "control-recovery-status-timed_out": "시간 초과",
-  "history-evidence": "이전 기록 ({{count}})",
+  "history-evidence": "이전 답변 기록 ({{count}})",
   "history-evidence-description": "응답과의 연결 정보가 없거나 기록된 응답과 내용이 다른 이전 답변 기록을 여기에 보관합니다."
 }

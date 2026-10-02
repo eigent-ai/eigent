@@ -100,16 +100,16 @@ describe('legacy Run query grouping', () => {
       );
       if (canonical) {
         fireEvent.click(
-          screen.getByRole('button', { name: 'History evidence (2)' })
+          screen.getByRole('button', { name: 'Earlier reply records (2)' })
         );
         expect(
           within(
-            screen.getByRole('region', { name: 'History evidence (2)' })
+            screen.getByRole('region', { name: 'Earlier reply records (2)' })
           ).getAllByText('report.csv')
         ).toHaveLength(2);
       } else {
         expect(
-          screen.queryByRole('button', { name: /History evidence/ })
+          screen.queryByRole('button', { name: /Earlier reply records/ })
         ).toBeNull();
       }
     }

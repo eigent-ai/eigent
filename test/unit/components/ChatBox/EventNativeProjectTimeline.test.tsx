@@ -258,16 +258,16 @@ describe('EventNativeProjectTimeline', () => {
       expect(container.querySelector('[data-message-role="user"]')).toBeNull();
       if (conflict) {
         fireEvent.click(
-          screen.getByRole('button', { name: 'History evidence (1)' })
+          screen.getByRole('button', { name: 'Earlier reply records (1)' })
         );
         expect(
           within(
-            screen.getByRole('region', { name: 'History evidence (1)' })
+            screen.getByRole('region', { name: 'Earlier reply records (1)' })
           ).getByText('other.csv')
         ).toBeVisible();
       } else {
         expect(
-          screen.queryByRole('button', { name: /History evidence/ })
+          screen.queryByRole('button', { name: /Earlier reply records/ })
         ).toBeNull();
       }
       expect(mocks.projection.nodes).toHaveLength(2);
@@ -327,10 +327,10 @@ describe('EventNativeProjectTimeline', () => {
       );
       expect(container.querySelector('[data-message-role="user"]')).toBeNull();
       fireEvent.click(
-        screen.getByRole('button', { name: 'History evidence (2)' })
+        screen.getByRole('button', { name: 'Earlier reply records (2)' })
       );
       const evidence = screen.getByRole('region', {
-        name: 'History evidence (2)',
+        name: 'Earlier reply records (2)',
       });
       expect(within(evidence).getAllByRole('listitem')).toHaveLength(2);
       expect(within(evidence).getAllByText('report.csv')).toHaveLength(2);

@@ -23,11 +23,7 @@ from app.controller import chat_controller, run_controller
 from app.exception.exception import UserException
 from app.model.chat import HumanReply
 from app.run_context import RunContext
-from app.run_journal import (
-    EventRecorder,
-    InvalidRunTransitionError,
-    SQLiteRunJournal,
-)
+from app.run_journal import EventRecorder, SQLiteRunJournal
 from app.run_journal.context_projection import (
     build_project_execution_context_projection,
 )
@@ -446,8 +442,10 @@ async def test_overlapping_gui_replies_deliver_only_transition_owner(
                     assert isinstance(errors[0], HTTPException)
                     assert errors[0].status_code == 409
                 else:
-                    assert isinstance(
-                        errors[0], (InvalidRunTransitionError, UserException)
+                    assert isinstance(errors[0], UserException)
+                    assert (
+                        errors[0].description
+                        == "The requested human interaction is no longer pending."
                     )
             decisions = journal.list_human_interaction_decisions(
                 "gui-question"

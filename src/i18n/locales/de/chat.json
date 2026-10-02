@@ -473,6 +473,6 @@
   "control-recovery-status-cancelled": "Abgebrochen",
   "control-recovery-status-failed": "Fehlgeschlagen",
   "control-recovery-status-timed_out": "Zeitüberschreitung",
-  "history-evidence": "Historische Belege ({{count}})",
+  "history-evidence": "Frühere Antwortaufzeichnungen ({{count}})",
   "history-evidence-description": "Ältere Antwortaufzeichnungen bleiben hier erhalten, wenn ihre Zuordnung zu einer Antwort fehlt oder ihr Inhalt von der aufgezeichneten Antwort abweicht."
 }

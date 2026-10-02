@@ -51,16 +51,16 @@ describe('unlinked legacy input evidence', () => {
       expect(within(main).queryByLabelText('Your message')).toBeNull();
       if (conflict) {
         fireEvent.click(
-          screen.getByRole('button', { name: 'History evidence (1)' })
+          screen.getByRole('button', { name: 'Earlier reply records (1)' })
         );
         expect(
           within(
-            screen.getByRole('region', { name: 'History evidence (1)' })
+            screen.getByRole('region', { name: 'Earlier reply records (1)' })
           ).getByText('other.csv')
         ).toBeVisible();
       } else {
         expect(
-          screen.queryByRole('button', { name: /History evidence/ })
+          screen.queryByRole('button', { name: /Earlier reply records/ })
         ).toBeNull();
       }
       expect(nodes).toEqual(original);
@@ -90,14 +90,14 @@ describe('unlinked legacy input evidence', () => {
     expect(within(main).getByText('report.csv')).toBeVisible();
     expect(within(main).queryByLabelText('Your message')).toBeNull();
     const trigger = screen.getByRole('button', {
-      name: 'History evidence (1)',
+      name: 'Earlier reply records (1)',
     });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     trigger.focus();
     await userEvent.keyboard('{Enter}');
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     const evidence = screen.getByRole('region', {
-      name: 'History evidence (1)',
+      name: 'Earlier reply records (1)',
     });
     expect(within(evidence).getAllByRole('listitem')).toHaveLength(1);
     expect(within(evidence).getByText('report.csv')).toBeVisible();
@@ -112,10 +112,10 @@ describe('unlinked legacy input evidence', () => {
     );
     render(<EventTimeline nodes={nodes} />);
     fireEvent.click(
-      screen.getByRole('button', { name: 'History evidence (3)' })
+      screen.getByRole('button', { name: 'Earlier reply records (3)' })
     );
     const evidence = screen.getByRole('region', {
-      name: 'History evidence (3)',
+      name: 'Earlier reply records (3)',
     });
     expect(
       within(evidence)
@@ -138,7 +138,7 @@ describe('unlinked legacy input evidence', () => {
     render(<EventTimeline nodes={nodes} />);
     expect(screen.getAllByLabelText('Your message')).toHaveLength(2);
     expect(
-      screen.queryByRole('button', { name: /History evidence/ })
+      screen.queryByRole('button', { name: /Earlier reply records/ })
     ).toBeNull();
   });
 
@@ -154,7 +154,7 @@ describe('unlinked legacy input evidence', () => {
     );
     expect(screen.queryByLabelText('Your message')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'History evidence (1)' })
+      screen.getByRole('button', { name: 'Earlier reply records (1)' })
     ).toBeVisible();
     rerender(<EventTimeline nodes={legacy} />);
     expect(screen.getByLabelText('Your message')).toBeVisible();
@@ -180,7 +180,7 @@ describe('unlinked legacy input evidence', () => {
     render(<EventTimeline nodes={nodes} />);
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(
-      screen.queryByRole('button', { name: /History evidence/ })
+      screen.queryByRole('button', { name: /Earlier reply records/ })
     ).toBeNull();
   });
 });
