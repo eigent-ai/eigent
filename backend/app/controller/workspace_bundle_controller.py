@@ -35,7 +35,10 @@ from app.run_journal import (
     configured_run_journal_path,
     get_default_run_journal,
 )
-from app.utils.workspace_resolver import get_workspace_resolver
+from app.utils.workspace_resolver import (
+    WorkspaceBinding,
+    get_workspace_resolver,
+)
 from app.workspace_bundle import (
     HttpWorkspaceBundleCloudTransport,
     WorkspaceBundleBindingsIncomplete,
@@ -176,19 +179,9 @@ def _cloud(authorization: str) -> HttpWorkspaceBundleCloudTransport:
 def _payload(
     proposal_id: str,
     *,
-    principal: LocalControlPrincipal | None = None,
     email: str = "",
     user_id: str | int | None = None,
 ) -> dict:
-    # Match Chat's runtime identity boundary. A remote user's body/query is not
-    # an authority for another account's global settings or legacy email.
-    if isinstance(principal, LocalControlPrincipal):
-        if principal.kind == "brain_user":
-            user_id, email = principal.user_id or None, ""
-        elif principal.kind != "desktop_renderer":
-            user_id, email = None, ""
-    else:
-        user_id, email = None, ""
     journal = get_default_run_journal()
     proposal = journal.get_workspace_bundle_install_proposal(proposal_id)
     if proposal is None:
@@ -498,21 +491,64 @@ def _payload(
     }
 
 
+def _request_identity(
+    request: Request,
+    body: BundleMaterializeBody | None = None,
+) -> tuple[str, str | int | None]:
+    # Match Chat's runtime identity boundary. A remote user's body/query is not
+    # an authority for another account's global settings or legacy email.
+    principal = getattr(request.state, "local_control_principal", None)
+    if not isinstance(principal, LocalControlPrincipal):
+        return "", None
+    if principal.kind == "brain_user":
+        return "", principal.user_id or None
+    if principal.kind != "desktop_renderer":
+        return "", None
+    if body is not None:
+        return body.email, body.user_id
+    return (
+        request.query_params.get("email", ""),
+        request.query_params.get("user_id"),
+    )
+
+
 def _request_payload(
     proposal_id: str,
     request: Request,
     body: BundleMaterializeBody | None = None,
 ) -> dict:
-    return _payload(
-        proposal_id,
-        principal=getattr(request.state, "local_control_principal", None),
-        email=body.email
-        if body is not None
-        else request.query_params.get("email", ""),
-        user_id=body.user_id
-        if body is not None
-        else request.query_params.get("user_id"),
+    email, user_id = _request_identity(request, body)
+    return _payload(proposal_id, email=email, user_id=user_id)
+
+
+def _space_binding(
+    proposal_id: str,
+    request: Request,
+    body: BundleMaterializeBody | None = None,
+) -> WorkspaceBinding:
+    # Proposals live only in this Brain's RunJournal. Access follows the
+    # caller's binding for the proposal's Space, so another account's
+    # proposal reads as missing.
+    proposal = get_default_run_journal().get_workspace_bundle_install_proposal(
+        proposal_id
     )
+    if proposal is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "bundle_install_proposal_not_found"},
+        )
+    email, user_id = _request_identity(request, body)
+    binding = get_workspace_resolver().store.get_binding(
+        email,
+        proposal.space_id,
+        user_id,
+    )
+    if binding is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "workspace_binding_not_found"},
+        )
+    return binding
 
 
 def _error(exc: Exception) -> HTTPException:
@@ -602,6 +638,7 @@ async def propose_bundle_install(
 async def get_bundle_install_proposal(
     proposal_id: str, request: Request
 ) -> dict:
+    _space_binding(proposal_id, request)
     return _request_payload(proposal_id, request)
 
 
@@ -621,6 +658,7 @@ async def get_space_bundle_installation(
         # the proposal-id endpoint, where the caller asked for a concrete
         # resource that does not exist.
         return {"proposal": None}
+    _space_binding(proposal.proposal_id, request)
     return _request_payload(proposal.proposal_id, request)
 
 
@@ -629,6 +667,7 @@ async def decide_bundle_install(
     proposal_id: str, body: BundleDecisionBody, request: Request
 ) -> dict:
     try:
+        _space_binding(proposal_id, request)
         _installer().decide(
             proposal_id,
             expected_version=body.expected_version,
@@ -647,6 +686,7 @@ async def bind_bundle_connector(
     proposal_id: str, body: BundleConnectorBindingBody, request: Request
 ) -> dict:
     try:
+        _space_binding(proposal_id, request)
         _installer().bind_connector(
             proposal_id,
             expected_version=body.expected_version,
@@ -667,6 +707,7 @@ async def bind_bundle_local_path(
     proposal_id: str, body: BundleLocalPathBindingBody, request: Request
 ) -> dict:
     try:
+        _space_binding(proposal_id, request)
         _installer().bind_local_path(
             proposal_id,
             expected_version=body.expected_version,
@@ -686,6 +727,7 @@ async def approve_bundle_script(
     proposal_id: str, body: BundleScriptApprovalBody, request: Request
 ) -> dict:
     try:
+        _space_binding(proposal_id, request)
         _installer().approve_script_action(
             proposal_id,
             expected_version=body.expected_version,
@@ -704,21 +746,7 @@ async def materialize_bundle(
     request: Request,
     authorization: Annotated[str, Header(alias="Authorization")],
 ) -> dict:
-    proposal = get_default_run_journal().get_workspace_bundle_install_proposal(
-        proposal_id
-    )
-    if proposal is None:
-        return _request_payload(proposal_id, request, body)
-    binding = get_workspace_resolver().store.get_binding(
-        body.email,
-        proposal.space_id,
-        body.user_id,
-    )
-    if binding is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "workspace_binding_not_found"},
-        )
+    binding = _space_binding(proposal_id, request, body)
     space_root = Path(binding.workspace_root).expanduser().resolve()
     if not space_root.is_dir():
         raise HTTPException(
@@ -750,6 +778,7 @@ async def bind_bundle_local_values(
     request: Request,
 ) -> dict:
     try:
+        _space_binding(proposal_id, request)
         journal = get_default_run_journal()
         previous_refs = {
             item.requirement_key: item.secret_ref
