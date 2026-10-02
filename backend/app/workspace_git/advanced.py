@@ -1348,19 +1348,22 @@ class AdvancedGitService:
             # Direct checkout finalization retains Task boundaries outside
             # refs/heads. Resolve their opaque Run digest using this
             # repository's journal, never a commit subject or shared OID.
-            task_prefix = (
-                "refs/eigent/tasks/"
-                + canonical_digest({"run_id": run.run_id})[:32]
-            )
-            for suffix in (
-                "completed",
-                "recovery-failed",
-                "recovery-cancelled",
-            ):
-                branch_owners[f"{task_prefix}/{suffix}"] = {
-                    "project_id": run.project_id,
-                    "run_id": run.run_id,
-                }
+            # A Task without changes finalizes at its base; its boundary
+            # stays technical instead of presenting as a saved version.
+            if run.promoted_commit not in (None, run.workspace_base_commit):
+                task_prefix = (
+                    "refs/eigent/tasks/"
+                    + canonical_digest({"run_id": run.run_id})[:32]
+                )
+                for suffix in (
+                    "completed",
+                    "recovery-failed",
+                    "recovery-cancelled",
+                ):
+                    branch_owners[f"{task_prefix}/{suffix}"] = {
+                        "project_id": run.project_id,
+                        "run_id": run.run_id,
+                    }
             if run.run_ref is not None:
                 branch_owners[run.run_ref] = {
                     "project_id": run.project_id,

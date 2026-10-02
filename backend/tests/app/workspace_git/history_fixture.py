@@ -186,6 +186,18 @@ def build_history_fixture(tmp_path: Path) -> dict:
             ]
             for ref in technical_refs:
                 git.update_eigent_ref(root, ref, oids["task-a"])
+            # A Task without changes finalizes at its base: no saved version.
+            _, unchanged = admit("unchanged-task", "session-c")
+            journal.complete_direct_git_run(
+                run_id="unchanged-task",
+                expected_base_commit=unchanged.workspace_base_commit,
+                terminal_commit=unchanged.workspace_base_commit,
+            )
+            unchanged_ref = task_ref("unchanged-task")
+            technical_refs.append(unchanged_ref)
+            git.update_eigent_ref(
+                root, unchanged_ref, unchanged.workspace_base_commit
+            )
             # A validly named ref to a non-commit is also technical-only.
             non_commit_ref = task_ref("task-b", "recovery-cancelled")
             technical_refs.append(non_commit_ref)
