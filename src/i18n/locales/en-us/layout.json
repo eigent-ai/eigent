@@ -1069,7 +1069,7 @@
   "workspace-bundle-local-secrets-sent": "Local secrets sent to this MCP",
   "workspace-bundle-local-value-for": "Local value for {{name}}",
   "workspace-bundle-local-value-unavailable": "The previous local value is unavailable. Re-enter it to repair this binding.",
-  "workspace-bundle-materialization-interrupted": "The previous materialization was interrupted. Refresh the durable proposal before retrying.",
+  "workspace-bundle-materialization-interrupted": "Installation may still be running. Refresh to check its saved state before taking another action.",
   "workspace-bundle-mcp-definition-unavailable": "This MCP definition is unavailable and cannot be approved or started.",
   "workspace-bundle-mcp-destination-kind": "MCP destination · {{kind}}",
   "workspace-bundle-mcp-executable-unpinned": "This MCP executable is not pinned to a reviewed Bundle asset and cannot be approved or started.",
@@ -1546,5 +1546,8 @@
   "delete-project-stop-failed": "This session couldn't be stopped, so nothing was deleted. Retry to stop it and finish deleting.",
   "delete-project-workdir": "Also delete the session working directory",
   "delete-project-workdir-hint": "Files in the working directory, including changes you haven't published, will be permanently deleted.",
-  "delete-project-workdir-pending-hint": "This working directory has unpublished changes. They will be permanently deleted and can't be recovered."
+  "delete-project-workdir-pending-hint": "This working directory has unpublished changes. They will be permanently deleted and can't be recovered.",
+  "workspace-bundle-cancel-import": "Cancel import",
+  "workspace-bundle-cancel-keeps-files": "Cancelling keeps the Space draft, local values and any installed files.",
+  "workspace-bundle-failure-retained": "Installation did not finish. The Space draft, local values and any installed files are retained."
 }

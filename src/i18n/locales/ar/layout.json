@@ -1023,7 +1023,7 @@
   "workspace-bundle-local-secrets-sent": "الأسرار المحلية المرسلة إلى MCP هذا",
   "workspace-bundle-local-value-for": "القيمة المحلية لـ {{name}}",
   "workspace-bundle-local-value-unavailable": "القيمة المحلية السابقة غير متاحة. أعِد إدخالها لإصلاح هذا الارتباط.",
-  "workspace-bundle-materialization-interrupted": "توقفت عملية التجسيد السابقة. حدّث المقترح الدائم قبل إعادة المحاولة.",
+  "workspace-bundle-materialization-interrupted": "قد يكون التثبيت لا يزال قيد التشغيل. حدّث للتحقق من حالته المحفوظة قبل اتخاذ إجراء آخر.",
   "workspace-bundle-mcp-definition-unavailable": "تعريف MCP هذا غير متاح ولا يمكن الموافقة عليه أو بدء تشغيله.",
   "workspace-bundle-mcp-destination-kind": "وجهة MCP · {{kind}}",
   "workspace-bundle-mcp-executable-unpinned": "ملف MCP التنفيذي هذا غير مثبّت على أصل Bundle خضع للمراجعة، ولا يمكن الموافقة عليه أو بدء تشغيله.",
@@ -1634,5 +1634,8 @@
   "delete-project-stop-failed": "تعذّر إيقاف هذه الجلسة، لذلك لم يُحذف أي شيء. أعد المحاولة لإيقافها وإكمال الحذف.",
   "delete-project-workdir": "حذف دليل عمل الجلسة أيضًا",
   "delete-project-workdir-hint": "سيتم حذف الملفات الموجودة في دليل العمل نهائيًا، بما في ذلك التغييرات غير المنشورة.",
-  "delete-project-workdir-pending-hint": "يحتوي دليل العمل هذا على تغييرات غير منشورة. سيتم حذفها نهائيًا ولا يمكن استعادتها."
+  "delete-project-workdir-pending-hint": "يحتوي دليل العمل هذا على تغييرات غير منشورة. سيتم حذفها نهائيًا ولا يمكن استعادتها.",
+  "workspace-bundle-cancel-import": "إلغاء الاستيراد",
+  "workspace-bundle-cancel-keeps-files": "يحتفظ الإلغاء بمسودة Space والقيم المحلية وأي ملفات مثبتة.",
+  "workspace-bundle-failure-retained": "لم يكتمل التثبيت. تم الاحتفاظ بمسودة Space والقيم المحلية وأي ملفات مثبتة."
 }

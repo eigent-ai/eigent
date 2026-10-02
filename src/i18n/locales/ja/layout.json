@@ -1064,7 +1064,7 @@
   "workspace-bundle-local-secrets-sent": "この MCP に送信するローカルシークレット",
   "workspace-bundle-local-value-for": "{{name}} のローカル値",
   "workspace-bundle-local-value-unavailable": "以前のローカル値を利用できません。再入力してバインディングを修復してください。",
-  "workspace-bundle-materialization-interrupted": "前回の生成処理は中断されました。再試行前に永続提案を更新してください。",
+  "workspace-bundle-materialization-interrupted": "インストールがまだ実行中の可能性があります。更新して保存済みの状態を確認してから、別の操作を行ってください。",
   "workspace-bundle-mcp-definition-unavailable": "この MCP 定義は利用できないため、承認も起動もできません。",
   "workspace-bundle-mcp-destination-kind": "MCP 宛先 · {{kind}}",
   "workspace-bundle-mcp-executable-unpinned": "この MCP 実行ファイルはレビュー済みのバンドルアセットに固定されていないため、承認も起動もできません。",
@@ -1524,5 +1524,8 @@
   "delete-project-stop-failed": "このセッションを停止できなかったため、何も削除されていません。再試行して停止し、削除を完了してください。",
   "delete-project-workdir": "セッションの作業ディレクトリも削除する",
   "delete-project-workdir-hint": "作業ディレクトリ内のファイル（未公開の変更を含む）は完全に削除されます。",
-  "delete-project-workdir-pending-hint": "この作業ディレクトリには未公開の変更があります。これらは完全に削除され、復元できません。"
+  "delete-project-workdir-pending-hint": "この作業ディレクトリには未公開の変更があります。これらは完全に削除され、復元できません。",
+  "workspace-bundle-cancel-import": "インポートをキャンセル",
+  "workspace-bundle-cancel-keeps-files": "キャンセルしても Space の下書き、ローカルの設定値、インストール済みファイルは保持されます。",
+  "workspace-bundle-failure-retained": "インストールは完了していません。Space の下書き、ローカルの設定値、インストール済みファイルは保持されています。"
 }

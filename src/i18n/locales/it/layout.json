@@ -1074,7 +1074,7 @@
   "workspace-bundle-local-secrets-sent": "Segni locali inviati a questo MCP",
   "workspace-bundle-local-value-for": "Valore locale per {{name}}",
   "workspace-bundle-local-value-unavailable": "Il valore precedente locale non è disponibile. Ripromuovi il legame riportandolo di nuovo.",
-  "workspace-bundle-materialization-interrupted": "Rinova la materializzazione precedente interrotta. Seleziona una proposta duratura riveduta per tentare nuovamente.",
+  "workspace-bundle-materialization-interrupted": "L’installazione potrebbe essere ancora in corso. Aggiorna per verificarne lo stato salvato prima di eseguire un’altra azione.",
   "workspace-bundle-mcp-definition-unavailable": "Questa definizione MCP non è disponibile e non può essere approvata o avviata.",
   "workspace-bundle-mcp-destination-kind": "Destinazione MCP · {{kind}}",
   "workspace-bundle-mcp-executable-unpinned": "Esecuzione MCP non attaccata a un'assetto Bundle reviewato e non può essere approvata o avviata.",
@@ -1568,5 +1568,8 @@
   "delete-project-stop-failed": "Impossibile arrestare questa sessione, quindi non è stato eliminato nulla. Riprova per arrestarla e completare l'eliminazione.",
   "delete-project-workdir": "Elimina anche la directory di lavoro della sessione",
   "delete-project-workdir-hint": "I file nella directory di lavoro, incluse le modifiche non pubblicate, verranno eliminati definitivamente.",
-  "delete-project-workdir-pending-hint": "Questa directory di lavoro contiene modifiche non pubblicate. Verranno eliminate definitivamente e non potranno essere recuperate."
+  "delete-project-workdir-pending-hint": "Questa directory di lavoro contiene modifiche non pubblicate. Verranno eliminate definitivamente e non potranno essere recuperate.",
+  "workspace-bundle-cancel-import": "Annulla importazione",
+  "workspace-bundle-cancel-keeps-files": "L’annullamento conserva la bozza dello Space, i valori locali e i file già installati.",
+  "workspace-bundle-failure-retained": "L’installazione non è terminata. La bozza dello Space, i valori locali e i file già installati vengono conservati."
 }
