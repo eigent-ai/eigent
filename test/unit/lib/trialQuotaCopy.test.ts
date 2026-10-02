@@ -193,16 +193,16 @@ describe('trial quota presentation', () => {
       )
     ).toMatchObject({
       severity: 'danger',
-      message: "You've reached today's Pro trial credit limit",
+      message: 'You’ve used today’s Pro trial credits.',
     });
   });
 
   it('names live exhaustion only from a confirmed current trial and leaves history generic', () => {
     expect(usageNoticeCopy('trial-daily', trial)).toBe(
-      "You've reached today's Pro trial credit limit"
+      'You’ve used today’s Pro trial credits.'
     );
     expect(usageNoticeCopy('trial-total', trial)).toBe(
-      "You've used all your Pro trial credits"
+      'You’ve used all your Pro trial credits.'
     );
     expect(
       usageNoticeCopy('trial-daily', { ...trial, is_trialing: false })

@@ -85,8 +85,8 @@ describe('live trial quota notices', () => {
       );
       const copy =
         reason === 'trial-daily'
-          ? "You've reached today's Pro trial credit limit"
-          : "You've used all your Pro trial credits";
+          ? 'You’ve used today’s Pro trial credits.'
+          : 'You’ve used all your Pro trial credits.';
       expect(screen.getByText(copy)).toBeVisible();
       expect(mocks.error).toHaveBeenCalledWith(
         copy,
@@ -113,7 +113,7 @@ describe('live trial quota notices', () => {
     ).toBeVisible();
     await act(() => refreshUsage());
     expect(
-      screen.getByText("You've reached today's Pro trial credit limit")
+      screen.getByText('You’ve used today’s Pro trial credits.')
     ).toBeVisible();
     expect(mocks.error).toHaveBeenCalledTimes(2);
     await act(() => refreshUsage());
@@ -122,7 +122,7 @@ describe('live trial quota notices', () => {
     await act(() => refreshUsage());
     expect(mocks.error).toHaveBeenCalledTimes(2);
     expect(
-      screen.getByText("You've reached today's Pro trial credit limit")
+      screen.getByText('You’ve used today’s Pro trial credits.')
     ).toBeVisible();
   });
 
