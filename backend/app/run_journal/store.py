@@ -16584,7 +16584,12 @@ class SQLiteRunJournal:
                                     started_at,
                                     ?
                                 ),
-                                outcome = COALESCE(outcome, ?)
+                                outcome = CASE
+                                    WHEN outcome IS NULL
+                                      OR outcome LIKE 'warm_admission_%'
+                                    THEN ?
+                                    ELSE outcome
+                                END
                             WHERE run_id = ?
                               AND status IN ('pending', 'running', 'waiting_for_user')
                             """,

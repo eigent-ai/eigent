@@ -1465,13 +1465,16 @@ async def _prepare_chat_run(
                 environment=_attempt_environment_binding(aborted_warm_attempt),
             )
             if environment is not None and environment.binding is not None:
-                attempt = await admission_to_thread(
-                    journal.bind_pending_attempt_environment,
-                    attempt.attempt_id,
-                    run_id=run_context.run_id,
-                    request_id=request_id,
-                    environment=environment.binding,
-                )
+                try:
+                    attempt = await admission_to_thread(
+                        journal.bind_pending_attempt_environment,
+                        attempt.attempt_id,
+                        run_id=run_context.run_id,
+                        request_id=request_id,
+                        environment=environment.binding,
+                    )
+                except IdempotencyConflictError as exc:
+                    raise _follow_up_environment_changed_error(exc) from exc
         else:
             attempt = await asyncio.to_thread(
                 journal.create_run_attempt,
@@ -2007,6 +2010,22 @@ def _model_capability_http_error(exc: WorkspaceConfigError) -> HTTPException:
                 else "invalid_model_capability"
             ),
             "message": str(exc),
+        },
+    )
+
+
+def _follow_up_environment_changed_error(
+    exc: IdempotencyConflictError,
+) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "follow_up_environment_changed",
+            "message": (
+                "The Workspace environment changed after this follow-up was "
+                "stopped. Its Attempt keeps the original environment; restore "
+                f"those settings to retry it. ({exc})"
+            ),
         },
     )
 

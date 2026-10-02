@@ -24,11 +24,13 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 
 from app.controller import chat_controller as controller
 from app.model.chat import Chat, Status, SupplementChat
 from app.run_context import RunContext
 from app.run_journal import (
+    IdempotencyConflictError,
     InvalidRunTransitionError,
     RunEventDraft,
     SQLiteRunJournal,
@@ -624,6 +626,57 @@ async def test_stop_retry_through_real_consumer(
 
 
 @pytest.mark.asyncio
+async def test_cold_retry_rejects_a_changed_environment(
+    live_warm, monkeypatch
+):
+    warm = live_warm
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            warm.workspace,
+            "admit_run",
+            Mock(side_effect=RuntimeError("injected admission failure")),
+        )
+        with pytest.raises(RuntimeError, match="injected admission failure"):
+            await follow_up(warm)
+    assert (await controller.stop("session")).status_code == 204
+    await asyncio.wait_for(warm.live_subscription.handle.wait(), 5)
+    monkeypatch.setattr(
+        controller.EnvironmentAdmissionService,
+        "persist_for_run",
+        Mock(return_value=SimpleNamespace(spec=Mock(), binding=Mock())),
+    )
+    monkeypatch.setattr(
+        warm.journal,
+        "bind_pending_attempt_environment",
+        Mock(
+            side_effect=IdempotencyConflictError(
+                "pending Attempt is already bound to a different environment"
+            )
+        ),
+    )
+
+    with pytest.raises(HTTPException) as rejected:
+        await controller.post(
+            warm.options.model_copy(
+                update={"task_id": "second", "question": "write second"}
+            ),
+            warm.request,
+        )
+
+    assert rejected.value.status_code == 409
+    assert rejected.value.detail["code"] == "follow_up_environment_changed"
+    attempt = warm.journal.list_run_attempts("second")[0]
+    assert attempt.status == "pending"
+    assert attempt.outcome == "warm_admission_aborted"
+    assert controller.get_task_lock_if_exists("session") is None
+    assert await warm.runtime.get_handle("second") is None
+    assert (
+        warm.journal.get_workspace_writer_request("workspace-writer:second")
+        is None
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("registered_target", [False, True])
 @pytest.mark.parametrize(
     "fault", ["before_git", "after_git", "queue", "staged_queue", "message"]
@@ -1052,6 +1105,35 @@ async def test_aborted_receipt_cannot_release_retry_writer(warm):
     )
     assert warm.journal.get_active_project_run("session").run_id == "second"
     await second.abort()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "aborted", [False, True], ids=["preparing", "aborted"]
+)
+async def test_restart_does_not_terminalize_admission_markers(warm, aborted):
+    write_and_finish(warm, "first.txt")
+    context = replace(
+        warm.lock.run_context,
+        run_id="second",
+        task_id="second",
+        attempt_id=None,
+    )
+    warm.journal.ensure_run(
+        run_id="second", project_id="session", status="pending"
+    )
+    admission = activation.WarmRunAdmission(
+        warm.journal, warm.lock, logger=logging.getLogger(__name__)
+    )
+    await admission.prepare(context, request_id="second", environment=None)
+    if aborted:
+        await admission.abort()
+
+    warm.journal.reconcile_startup()
+
+    attempt = warm.journal.list_run_attempts("second")[0]
+    assert attempt.status == "interrupted"
+    assert attempt.outcome == "runtime.interrupted"
 
 
 def admit_other(warm):
