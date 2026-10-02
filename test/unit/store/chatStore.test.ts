@@ -1988,7 +1988,7 @@ describe('ChatStore - Core Functionality', () => {
         });
 
         describe('browser preview ownership probes', () => {
-          it('rejects old-Run activation before it can poison the fresh handoff', async () => {
+          it('forward-compatible id guard: rejects explicitly old-Run activation before it can poison the fresh handoff', async () => {
             const started = await startObservedLiveTask({
               prompt: `Open ${url}`,
             });
@@ -2030,7 +2030,7 @@ describe('ChatStore - Core Functionality', () => {
             ).toMatchObject({ url: currentUrl });
           });
 
-          it('allows no-run-id legacy events for the fresh Run and rejects an explicitly old receipt', async () => {
+          it('forward-compatible id guard: allows no-run-id legacy events for the fresh Run and rejects an explicitly old receipt', async () => {
             const started = await startObservedLiveTask({
               prompt: `Open ${url}`,
             });
@@ -2123,7 +2123,7 @@ describe('ChatStore - Core Functionality', () => {
             { data: { project_id: 'project-2' } },
             { project_id: 'project-1', data: { project_id: 'project-2' } },
           ])(
-            'rejects foreign activation and completion identity %j',
+            'forward-compatible id guard: rejects foreign activation and completion identity %j',
             async (identity) => {
               const started = await startObservedLiveTask({
                 prompt: `Preview ${url}`,
@@ -2195,7 +2195,7 @@ describe('ChatStore - Core Functionality', () => {
             ).toBe(false);
           });
 
-          it('rejects activation from a superseded transport even when Run and project ids match', async () => {
+          it('rejects unkeyed activation from a superseded transport', async () => {
             const previous = await startObservedLiveTask();
             const oldStream = previous.streamContaining('/chat');
             const current = await startObservedLiveTask({
@@ -2205,8 +2205,7 @@ describe('ChatStore - Core Functionality', () => {
             await unkeyed(
               oldStream,
               AgentStep.ACTIVATE_TOOLKIT,
-              'http://localhost:8080/stale.html',
-              { run_id: 'live-run', project_id: 'project-1' }
+              'http://localhost:8080/stale.html'
             );
             expect(
               previous.store.getState().tasks['live-run'].webViewUrls
