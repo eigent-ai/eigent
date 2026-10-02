@@ -141,8 +141,6 @@ async function legacyProviderCandidates(
           available: getProviderValid(provider),
         })
       );
-      if (requireComplete && !projected.get(provider.id as number))
-        throw new Error('model_catalog_incomplete');
     }
     if (projected.size > 512) throw new Error('model_catalog_unavailable');
     if (
@@ -187,12 +185,11 @@ async function configuredCandidates(
     response.some((raw) => typeof record(raw).available !== 'boolean')
   )
     throw new Error('model_catalog_incomplete');
-  const candidates = response.map(configuredCandidate);
-  if (requireComplete && candidates.some((candidate) => candidate === null))
-    throw new Error('model_catalog_incomplete');
-  return candidates.filter(
-    (candidate): candidate is SpaceModelCandidate => candidate !== null
-  );
+  return response
+    .map(configuredCandidate)
+    .filter(
+      (candidate): candidate is SpaceModelCandidate => candidate !== null
+    );
 }
 
 async function cloudCandidates(
@@ -216,15 +213,9 @@ async function cloudCandidates(
     const modelId = exactText(model.id);
     const modelType = exactText(model.model_type);
     const platform = identifier(model.model_platform);
-    if (!modelId || !modelType || !platform || model.kind !== 'chat') {
-      if (requireComplete) throw new Error('model_catalog_incomplete');
-      return [];
-    }
+    if (!modelId || !modelType || !platform || model.kind !== 'chat') return [];
     const value = spaceModelReference({ category: 'cloud', modelId });
-    if (!parseSpaceModelReference(value)) {
-      if (requireComplete) throw new Error('model_catalog_incomplete');
-      return [];
-    }
+    if (!parseSpaceModelReference(value)) return [];
     return [
       {
         value,

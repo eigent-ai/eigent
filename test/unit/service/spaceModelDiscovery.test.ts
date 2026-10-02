@@ -424,19 +424,64 @@ describe('global model catalog compatibility', () => {
       reason: 'model_unavailable',
     });
   });
-  it('marks incomplete model metadata unavailable for authoring preflight', async () => {
+  it('skips unprojectable model metadata without failing authoring preflight', async () => {
     get.mockImplementation(async (url) =>
       url === '/api/v1/cloud-models'
         ? { models: [cloud, { id: 'broken' }] }
-        : [metadata, { category: 'future' }]
+        : [metadata, { category: 'future', available: false }]
     );
     const result = await discoverSpaceModels({ requireComplete: true });
-    expect(result.unavailableSources).toEqual([
-      'cloud_catalog',
-      'provider_catalog',
+    expect(result.unavailableSources).toEqual([]);
+    expect(values(result)).toEqual([
+      'provider://default',
+      'provider://cloud/managed-model',
+      'provider://custom/openai/configured-model',
     ]);
-    expect(values(result)).toEqual(['provider://default']);
   });
+
+  it.each([
+    [
+      'provider metadata',
+      (url: string) =>
+        url === '/api/v1/provider-models'
+          ? [
+              metadata,
+              { ...metadata, model_platform: 'deepseek', model_type: '' },
+            ]
+          : undefined,
+    ],
+    [
+      'legacy providers',
+      (url: string) => {
+        if (url === '/api/v1/provider-models') throw missing();
+        return url === '/api/v1/providers'
+          ? {
+              items: [
+                legacy,
+                { ...legacy, id: 7822, model_type: '', encrypted_config: {} },
+              ],
+              page: 1,
+              size: 100,
+              total: 2,
+              pages: 1,
+            }
+          : undefined;
+      },
+    ],
+  ])(
+    'keeps an existing reference publishable beside an unrelated row without model_type in %s',
+    async (_name, respond) => {
+      get.mockImplementation(async (url) =>
+        url === '/api/v1/cloud-models' ? { models: [cloud] } : respond(url)
+      );
+      expect(
+        await preflightWorkspaceBundleReferences(
+          modelDocument('provider://custom/openai/configured-model'),
+          []
+        )
+      ).toEqual([]);
+    }
+  );
 
   it('cannot verify a Cloud model from a self-hosted deployment', async () => {
     vi.stubEnv('VITE_USE_LOCAL_PROXY', 'true');

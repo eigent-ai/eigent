@@ -107,7 +107,7 @@ describe('device reference preflight', () => {
 
   it('does not treat ambiguous metadata as available', async () => {
     models.mockResolvedValue({
-      items: [available, available],
+      items: [{ ...available, disabled: true, reason: 'model_ambiguous' }],
       unavailableSources: [],
     });
     expect(

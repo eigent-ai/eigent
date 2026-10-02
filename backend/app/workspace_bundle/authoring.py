@@ -91,12 +91,11 @@ class WorkspaceBundleAuthoringService:
                         "global_skill_unavailable",
                         "global_mcp_unavailable",
                         "global_resource_disabled",
+                        "global_skill_invalid",
+                        "global_mcp_invalid",
                     }:
                         code = "global_setup_required"
-                    elif reason in {
-                        "global_mcp_invalid",
-                        "global_mcp_secret_slots_unsupported",
-                    }:
+                    elif reason == "global_mcp_secret_slots_unsupported":
                         code = "unsupported"
                     else:
                         code = "verification_unavailable"

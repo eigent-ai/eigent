@@ -85,18 +85,15 @@ export async function preflightWorkspaceBundleReferences(
           findings.push({ ...item, code: 'verification_unavailable' });
           continue;
         }
-        const candidates = catalog.items.filter(
-          (candidate) => candidate.value === item.reference
+        const candidate = catalog.items.find(
+          ({ value }) => value === item.reference
         );
-        if (
-          candidates.length > 1 ||
-          candidates[0]?.reason === 'model_ambiguous'
-        ) {
+        if (candidate?.reason === 'model_ambiguous') {
           findings.push({ ...item, code: 'verification_unavailable' });
         } else if (
-          !candidates.length ||
-          candidates[0].disabled ||
-          candidates[0].availability !== 'available'
+          !candidate ||
+          candidate.disabled ||
+          candidate.availability !== 'available'
         ) {
           findings.push({ ...item, code: 'model_setup_required' });
         }

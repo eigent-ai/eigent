@@ -357,6 +357,18 @@ def test_preflight_reads_current_global_configuration_each_time(
     assert [item["code"] for item in findings] == ["global_setup_required"] * 2
 
 
+def test_invalid_author_global_configuration_requires_setup(
+    authoring_registry,
+):
+    skill_path, mcp_path, skill, mcp = authoring_registry
+    skill_path.write_text("Instructions without frontmatter")
+    mcp_path.write_text(json.dumps({"mcpServers": {"test": {}}}))
+    findings = WorkspaceBundleAuthoringService.reference_findings(
+        _reference_manifest(skill=skill, mcp=mcp), user_id=7
+    )
+    assert [item["code"] for item in findings] == ["global_setup_required"] * 2
+
+
 @pytest.mark.parametrize(
     "reason",
     [
@@ -364,7 +376,6 @@ def test_preflight_reads_current_global_configuration_each_time(
         "global_configuration_unavailable",
         "global_configuration_too_large",
         "global_skill_identity_required",
-        "global_skill_invalid",  # Runtime also uses this for unreadable files.
     ],
 )
 def test_unverifiable_global_resources_are_not_reported_missing(
