@@ -30,6 +30,7 @@ import {
 } from '@/store/projectEventStore';
 import { SessionMode } from '@/types/constants';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import i18next from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const motionPreference = vi.hoisted(() => ({ reduced: false }));
@@ -620,12 +621,12 @@ describe('ChatBox timeline modes', () => {
     [
       'expired',
       'approval_expired',
-      'The approval request expired before a decision was accepted.',
+      i18next.t('chat.approval-expired-description'),
     ],
     [
       'cancelled',
       'tool_terminal_before_dispatch',
-      'The approval was cancelled because the tool ended before it started.',
+      i18next.t('chat.approval-tool-ended-description'),
     ],
   ] as const)(
     'shows the recorded %s approval reason in expanded Detailed history',

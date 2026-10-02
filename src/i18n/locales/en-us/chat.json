@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "History restored from cloud",
   "run-cloud-restored-description": "This task is saved as read-only history. The files and context it used aren't on this device, so it can't be resumed here. Send a follow-up message to start a new task.",
   "run-interrupted-title": "Task interrupted",
-  "run-interrupted-description": "Completed work is saved. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
+  "run-interrupted-description": "Eigent stopped before this task finished. Work that was already done is saved. Resuming picks up from there — it will not repeat actions it already completed, such as sending an email.",
   "run-resume": "Resume",
   "run-resuming": "Resuming…",
   "run-cancel": "Cancel task",
@@ -465,8 +465,8 @@
   "approval-expired-title": "Approval expired",
   "approval-cancelled-title": "Approval cancelled",
   "approval-inactive-title": "Approval no longer active",
-  "approval-expired-description": "The approval request expired before a decision was accepted.",
-  "approval-tool-ended-description": "The approval was cancelled because the tool ended before it started.",
+  "approval-expired-description": "The approval request expired before a decision was accepted. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
+  "approval-tool-ended-description": "The approval was cancelled because the tool ended before it started. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
   "approval-recorded-reason": "Recorded reason: {{reason}}",
   "approval-read-only-receipt": "Read-only receipt. This approval cannot be used again."
 }

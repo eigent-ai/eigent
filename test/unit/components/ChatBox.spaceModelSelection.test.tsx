@@ -29,6 +29,7 @@ import { useCloudModelStore } from '@/store/cloudModelStore';
 import { setConnectionConfig } from '@/store/connectionStore';
 import { openSettings } from '@/store/settingsStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
+import { AgentStep } from '@/types/constants';
 import {
   act,
   cleanup,
@@ -61,6 +62,7 @@ const mocks = vi.hoisted(() => ({
   realInterrupted: false,
   realTransport: false,
   durableRun: null as any,
+  host: null as any,
 }));
 vi.mock('@/api/http', () => ({
   fetchGet: (url: string, ...args: unknown[]) => {
@@ -189,7 +191,7 @@ vi.mock('@/components/ChatBox/EventNativeProjectTimeline', () => ({
   EventNativeProjectTimeline: () => null,
 }));
 vi.mock('@/components/ChatBox/BottomBox', () => ({
-  default: ({ inputProps, noModelOverlay }: any) => {
+  default: ({ inputProps, noModelOverlay, variant }: any) => {
     mocks.input = inputProps;
     if (!inputProps) return null;
     return (
@@ -208,16 +210,20 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
         >
           Follow up
         </button>
+        {variant?.kind === 'approval' ? (
+          <button onClick={() => variant.onApprove('once')}>Approve</button>
+        ) : null}
       </div>
     );
   },
 }));
 vi.mock('@/store/settingsStore', () => ({ openSettings: vi.fn() }));
 vi.mock('@/host', () => ({
-  useHost: () => ({
-    electronAPI: {},
-    ipcRenderer: { on: vi.fn(), off: vi.fn() },
-  }),
+  useHost: () =>
+    mocks.host ?? {
+      electronAPI: {},
+      ipcRenderer: { on: vi.fn(), off: vi.fn() },
+    },
 }));
 vi.mock('@/lib/events/appEvents', () => ({
   recordTaskSubmitted: vi.fn(),
@@ -260,6 +266,7 @@ describe('ChatBox after an accepted Space model selection', () => {
     mocks.realInterrupted = false;
     mocks.realTransport = false;
     mocks.durableRun = null;
+    mocks.host = null;
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -1769,5 +1776,92 @@ describe('ChatBox after an accepted Space model selection', () => {
     expect(mocks.sse).toHaveBeenCalledTimes(1);
     expect(chat.getState().activeTaskId).toBe(taskId);
     expect(notifyError).not.toHaveBeenCalled();
+  });
+  it('revalidates legacy approval controls on focus and Brain readiness', async () => {
+    const listeners = new Map<string, () => void>();
+    mocks.host = {
+      electronAPI: {},
+      ipcRenderer: {
+        on: vi.fn((channel: string, listener: () => void) =>
+          listeners.set(channel, listener)
+        ),
+        off: vi.fn(),
+      },
+    };
+    await acceptInitialSpaceRun();
+    const taskId = chat.getState().activeTaskId!;
+    chat.getState().setStatus(taskId, 'running');
+    chat.getState().setActiveAsk(taskId, 'synthetic-agent');
+    chat.getState().addMessages(taskId, {
+      id: 'approval-ask',
+      role: 'agent',
+      content: 'Allow write?',
+      step: AgentStep.ASK,
+      interaction: {
+        interaction_id: 'approval-1',
+        interaction_type: 'approval',
+        run_id: taskId,
+        version: 0,
+        question: 'Allow write?',
+      },
+    });
+    const localGet = mocks.localGet.getMockImplementation()!;
+    let pending: 'offline' | 'pending' | 'resolved' = 'offline';
+    const pendingReads = vi.fn();
+    mocks.localGet.mockImplementation(async (url, ...args) => {
+      if (!url.endsWith('/interactions?status=pending'))
+        return localGet(url, ...args);
+      pendingReads();
+      if (pending === 'offline') throw Error('Brain unavailable');
+      return {
+        interactions:
+          pending === 'pending'
+            ? [
+                {
+                  interaction_id: 'approval-1',
+                  status: 'requested',
+                  version: 0,
+                },
+              ]
+            : [],
+      };
+    });
+    const view = await renderChat();
+    await waitFor(() => expect(pendingReads).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+
+    // The first check failed; returning to the window retries it.
+    pending = 'pending';
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    );
+
+    // A submit-time check that finds the approval settled retires the control.
+    pending = 'resolved';
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    );
+    expect(mocks.post).not.toHaveBeenCalledWith(
+      expect.stringContaining('/decisions'),
+      expect.anything()
+    );
+
+    // Brain readiness bypasses the short pending-list cache.
+    pending = 'pending';
+    act(() => listeners.get('backend-ready')?.());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    );
+
+    view.unmount();
+    expect(mocks.host.ipcRenderer.off).toHaveBeenCalledWith(
+      'backend-ready',
+      listeners.get('backend-ready')
+    );
   });
 });

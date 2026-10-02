@@ -25,6 +25,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import i18next from 'i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -346,8 +347,7 @@ describe('HumanInteractionCard', () => {
           }}
         />
       );
-      const reason =
-        'The approval was cancelled because the tool ended before it started.';
+      const reason = i18next.t('chat.approval-tool-ended-description');
       expect(screen.getByText(reason)).toBeInTheDocument();
       await act(async () => {
         finish(receipt);
@@ -373,9 +373,7 @@ describe('HumanInteractionCard', () => {
     await act(async () => {});
     expect(screen.getByText('Approval cancelled')).toBeInTheDocument();
     expect(
-      screen.queryByText(
-        'The approval request expired before a decision was accepted.'
-      )
+      screen.queryByText(i18next.t('chat.approval-expired-description'))
     ).toBeNull();
     mocks.getHumanInteractionReceipt.mockResolvedValue({
       status: 'cancelled',
@@ -385,9 +383,7 @@ describe('HumanInteractionCard', () => {
       window.dispatchEvent(new Event('focus'));
     });
     expect(
-      screen.getByText(
-        'The approval was cancelled because the tool ended before it started.'
-      )
+      screen.getByText(i18next.t('chat.approval-tool-ended-description'))
     ).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
   });
@@ -496,8 +492,7 @@ describe('HumanInteractionCard', () => {
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
     });
-    const reason =
-      'The approval was cancelled because the tool ended before it started.';
+    const reason = i18next.t('chat.approval-tool-ended-description');
     expect(screen.getByText(reason)).toBeInTheDocument();
     for (const receipt of [
       { status: 'cancelled' },
@@ -692,9 +687,7 @@ describe('HumanInteractionCard', () => {
     );
     expect(await screen.findByText('Approval cancelled')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        'The approval was cancelled because the tool ended before it started.'
-      )
+      screen.getByText(i18next.t('chat.approval-tool-ended-description'))
     ).toBeInTheDocument();
     expect(screen.queryByText('Approval expired')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();

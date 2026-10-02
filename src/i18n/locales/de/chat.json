@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "Verlauf aus der Cloud wiederhergestellt",
   "run-cloud-restored-description": "Die Aufgabe wird gespeichert als Lesebereich. Die Dateien und der Kontext, die für sie verwendet wurden, sind auf diesem Gerät nicht mehr vorhanden. Sie können daher hier nicht fortgesetzt werden. Senden Sie eine Nachfolgemeldung, um eine neue Aufgabe zu starten.",
   "run-interrupted-title": "Aufgabe unterbrochen",
-  "run-interrupted-description": "Abgeschlossene Arbeit ist gespeichert. Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf eine neue Genehmigung angefordert. Frühere Genehmigungsanfragen können nicht wiederverwendet werden.",
+  "run-interrupted-description": "Eigent stoppte vor dieser Aufgabe ab. Die bereits erledigte Arbeit wird gespeichert. Der Fortsetzungspunkt wird aufgenommen — es werden keine wiederholten Aktionen wie die Absendung eines E-Mails durchgeführt.",
   "run-resume": "Fortsetzen",
   "run-resuming": "Wird fortgesetzt…",
   "run-cancel": "Abbrechen der Aufgabe",
@@ -465,8 +465,8 @@
   "approval-expired-title": "Genehmigung abgelaufen",
   "approval-cancelled-title": "Genehmigung abgebrochen",
   "approval-inactive-title": "Genehmigung nicht mehr aktiv",
-  "approval-expired-description": "Die Genehmigungsanfrage ist abgelaufen, bevor eine Entscheidung angenommen wurde.",
-  "approval-tool-ended-description": "Die Genehmigung wurde abgebrochen, weil das Werkzeug vor dem Start beendet wurde.",
+  "approval-expired-description": "Die Genehmigungsanfrage ist abgelaufen, bevor eine Entscheidung angenommen wurde. Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf eine neue Genehmigung angefordert. Frühere Genehmigungsanfragen können nicht wiederverwendet werden.",
+  "approval-tool-ended-description": "Die Genehmigung wurde abgebrochen, weil das Werkzeug vor dem Start beendet wurde. Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf eine neue Genehmigung angefordert. Frühere Genehmigungsanfragen können nicht wiederverwendet werden.",
   "approval-recorded-reason": "Erfasster Grund: {{reason}}",
   "approval-read-only-receipt": "Schreibgeschützter Beleg. Diese Genehmigung kann nicht erneut verwendet werden."
 }

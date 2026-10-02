@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "クラウドから履歴を復元しました",
   "run-cloud-restored-description": "この実行は読み取り専用の履歴として利用できます。この端末には元のローカルワークスペースと実行コンテキストがないため再開できません。フォローアップを送信すると新しい実行が開始されます。",
   "run-interrupted-title": "実行が中断されました",
-  "run-interrupted-description": "完了した作業は保存されています。再開すると残りの作業を再評価し、必要に応じて新たな承認を求めます。以前の承認リクエストは再利用できません。",
+  "run-interrupted-description": "この実行が完了する前に Eigent が終了しました。完了済みの作業は保存されています。再開すると新しい試行が作成され、完了済みの外部操作は自動的に繰り返されません。",
   "run-resume": "再開",
   "run-resuming": "再開中…",
   "run-cancel": "実行を終了",
@@ -461,8 +461,8 @@
   "approval-expired-title": "承認の有効期限切れ",
   "approval-cancelled-title": "承認がキャンセルされました",
   "approval-inactive-title": "この承認は無効です",
-  "approval-expired-description": "判断が受け付けられる前に承認リクエストの有効期限が切れました。",
-  "approval-tool-ended-description": "ツールが実行開始前に終了したため、承認がキャンセルされました。",
+  "approval-expired-description": "判断が受け付けられる前に承認リクエストの有効期限が切れました。再開すると残りの作業を再評価し、必要に応じて新たな承認を求めます。以前の承認リクエストは再利用できません。",
+  "approval-tool-ended-description": "ツールが実行開始前に終了したため、承認がキャンセルされました。再開すると残りの作業を再評価し、必要に応じて新たな承認を求めます。以前の承認リクエストは再利用できません。",
   "approval-recorded-reason": "記録された理由：{{reason}}",
   "approval-read-only-receipt": "閲覧専用の記録です。この承認は再利用できません。"
 }

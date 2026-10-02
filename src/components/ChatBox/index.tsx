@@ -735,15 +735,29 @@ function LegacyChatBox(): JSX.Element {
     )
       return;
     let cancelled = false;
-    void isHumanInteractionStillPending(activeInteraction)
-      .then((pending) => {
-        if (!cancelled && pending) setVerifiedLegacyApproval(activeInteraction);
-      })
-      .catch(() => {
-        /* Keep controls unavailable while the journal is offline. */
-      });
+    let checkNumber = 0;
+    const validatePending = () => {
+      const currentCheck = ++checkNumber;
+      void isHumanInteractionStillPending(activeInteraction)
+        .then((pending) => {
+          if (!cancelled && currentCheck === checkNumber)
+            setVerifiedLegacyApproval(pending ? activeInteraction : undefined);
+        })
+        .catch(() => {
+          /* Keep controls unavailable until a lifecycle recovery retries. */
+        });
+    };
+    const revalidatePending = () => {
+      invalidatePendingHumanInteractions(activeInteraction.run_id);
+      validatePending();
+    };
+    validatePending();
+    window.addEventListener('focus', revalidatePending);
+    host?.ipcRenderer?.on('backend-ready', revalidatePending);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', revalidatePending);
+      host?.ipcRenderer?.off('backend-ready', revalidatePending);
     };
   }, [
     activeInteraction,
@@ -753,6 +767,7 @@ function LegacyChatBox(): JSX.Element {
     activeAskTask?.durableRunStatus,
     projectedLegacyRun?.status,
     legacyInteractionExpired,
+    host?.ipcRenderer,
   ]);
   const isInteractiveHumanReply =
     (activeInteraction?.interaction_type !== 'approval' ||
@@ -798,6 +813,7 @@ function LegacyChatBox(): JSX.Element {
     try {
       invalidatePendingHumanInteractions(interaction.run_id);
       if (!(await isHumanInteractionStillPending(interaction))) {
+        setVerifiedLegacyApproval(undefined);
         await refreshInterruptedRun();
         return;
       }

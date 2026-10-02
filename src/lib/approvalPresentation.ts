@@ -16,33 +16,44 @@ import type { HumanInteractionPayload } from '@/service/humanInteractionApi';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
-/** Keep the journal reason verbatim unless it has an explicitly supported label. */
-export function approvalTerminalReason(
+function mappedApprovalReason(
   reason: string | null | undefined,
   t: Translate
 ): string {
-  if (!reason) return '';
   if (
     [
       'approval_expired',
       'tool_approval_expired',
       'approval.expired_rejected',
-    ].includes(reason)
+    ].includes(reason ?? '')
   ) {
     return t('chat.approval-expired-description');
   }
   if (reason === 'tool_terminal_before_dispatch') {
     return t('chat.approval-tool-ended-description');
   }
-  return t('chat.approval-recorded-reason', { reason });
+  return '';
 }
 
+/** Keep the journal reason verbatim unless it has an explicitly supported label. */
+export function approvalTerminalReason(
+  reason: string | null | undefined,
+  t: Translate
+): string {
+  if (!reason) return '';
+  return (
+    mappedApprovalReason(reason, t) ||
+    t('chat.approval-recorded-reason', { reason })
+  );
+}
+
+/** Banners name only mapped approval causes; raw reasons stay in Detailed mode. */
 export function interruptedRunDescription(
   reason: string | null | undefined,
   t: Translate
 ): string {
   return [
-    approvalTerminalReason(reason, t),
+    mappedApprovalReason(reason, t),
     t('chat.run-interrupted-description'),
   ]
     .filter(Boolean)

@@ -121,7 +121,7 @@
   "run-cloud-restored-title": "已从云端恢复历史",
   "run-cloud-restored-description": "此任务已保存为只读历史。此设备上没有任务使用过的文件和上下文，因此无法在此恢复。发送后续消息即可开始新任务。",
   "run-interrupted-title": "任务已中断",
-  "run-interrupted-description": "已完成的工作已保存。继续时会重新评估剩余工作，并在需要时请求新的审批。旧审批请求不能复用。",
+  "run-interrupted-description": "Eigent 在此任务完成前停止。已完成的工作已保存。恢复后将从中断处继续，不会重复发送邮件等已完成的操作。",
   "run-resume": "恢复任务",
   "run-resuming": "正在恢复…",
   "run-cancel": "结束任务",
@@ -461,8 +461,8 @@
   "approval-expired-title": "审批已到期",
   "approval-cancelled-title": "审批已取消",
   "approval-inactive-title": "审批已失效",
-  "approval-expired-description": "审批请求在决定被接受前已到期。",
-  "approval-tool-ended-description": "工具在开始执行前已终止，因此审批已取消。",
+  "approval-expired-description": "审批请求在决定被接受前已到期。继续时会重新评估剩余工作，并在需要时请求新的审批。旧审批请求不能复用。",
+  "approval-tool-ended-description": "工具在开始执行前已终止，因此审批已取消。继续时会重新评估剩余工作，并在需要时请求新的审批。旧审批请求不能复用。",
   "approval-recorded-reason": "记录的原因：{{reason}}",
-  "approval-read-only-receipt": "只读收据。此审批不能再次使用。"
+  "approval-read-only-receipt": "只读记录。此审批不能再次使用。"
 }
