@@ -512,9 +512,10 @@ function LegacyChatBox(): JSX.Element {
   const interruptedCancelOperation = controlOperations.find(
     (op) => op.kind === 'cancel' && op.runId === interruptedRun?.run_id
   );
-  const cancelRecoveryReason = interruptedCancelOperation
-    ? t('chat.control-outcome-unknown')
-    : undefined;
+  const cancelRecoveryReason =
+    interruptedCancelOperation?.phase === 'unknown'
+      ? t('chat.control-outcome-unknown')
+      : undefined;
   const durableRunAction = controlOperations.some(
     (op) =>
       op.kind === 'cancel' &&

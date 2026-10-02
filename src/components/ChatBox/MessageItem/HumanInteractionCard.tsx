@@ -21,6 +21,7 @@ import {
   type HumanInteractionPayload,
 } from '@/service/humanInteractionApi';
 import { useAuthStore } from '@/store/authStore';
+import { useProjectStore } from '@/store/projectStore';
 import { ShieldAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -137,6 +138,7 @@ export function HumanInteractionCard({
 }: HumanInteractionCardProps) {
   const { t } = useTranslation();
   const userId = useAuthStore((state) => state.user_id);
+  const projectId = useProjectStore((state) => state.activeProjectId);
   const owner = controlOwner();
   const viewKey = JSON.stringify([
     owner,
@@ -274,10 +276,24 @@ export function HumanInteractionCard({
         decisionRequestId: decisionRequestId.current,
         decision,
         actorId: userId,
+        projectId: projectId ?? undefined,
       });
       if (isCurrent()) deliver(receipt);
-    } catch {
-      if (isCurrent()) setSubmissionError(t('chat.control-outcome-unknown'));
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (interaction.interaction_type === 'approval') {
+        setSubmissionError(t('chat.control-outcome-unknown'));
+        return;
+      }
+      console.error('[HumanInteractionCard] decision failed', error);
+      const message =
+        (error as any)?.response?.data?.detail?.message ||
+        (error as any)?.response?.data?.detail ||
+        (error as Error)?.message ||
+        t('chat.control-decision-failed');
+      setSubmissionError(
+        typeof message === 'string' ? message : JSON.stringify(message)
+      );
     } finally {
       if (isCurrent()) setSubmitting(false);
       if (submissionGuard.current === viewKey) submissionGuard.current = null;

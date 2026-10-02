@@ -281,7 +281,8 @@ function execute(
         op.projectId &&
         ['resolved', 'expired', 'cancelled'].includes(receipt?.status)
       ) {
-        await reconcileHumanInteractionEvents(
+        // Replay only advances the legacy ask; it cannot veto the receipt.
+        const replayed = await reconcileHumanInteractionEvents(
           {
             projectId: op.projectId,
             runId: op.runId,
@@ -289,12 +290,18 @@ function execute(
             afterSequence: 0,
           },
           options
+        ).then(
+          () => true,
+          () => false
         );
         options.beforeRequest?.();
-        op.completionPending = !completeProjectHumanInteraction(
-          op.projectId,
-          op.runId,
-          op.interactionId!
+        op.completionPending = !(
+          replayed &&
+          completeProjectHumanInteraction(
+            op.projectId,
+            op.runId,
+            op.interactionId!
+          )
         );
       }
       return receipt;
@@ -424,7 +431,11 @@ export function submitControlOperation(op: ControlOperation, retry = false) {
       (other) => other.kind !== 'interaction' && other.runId === op.runId
     )
   ) {
-    op.retryAllowed = false;
+    // Never record an intent that was not sent as an uncertain outcome.
+    if (op.generation === 0) {
+      operations.delete(op.key);
+      publish();
+    } else op.retryAllowed = false;
     return Promise.reject(new ControlOutcomeUnknown());
   }
   if (flights.has(op.key)) return flights.get(op.key)!;

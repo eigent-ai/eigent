@@ -67,7 +67,15 @@ export function ControlRecovery({
   return (
     <div className="flex flex-col gap-ds-stack-related" role="status">
       <DsText role="meta" className="text-ds-ink-muted-default">
-        {resolved ? receipt : t('chat.control-outcome-unknown')}
+        {resolved
+          ? receipt
+          : operation.phase === 'acknowledged'
+            ? t(
+                operation.kind === 'cancel'
+                  ? 'chat.run-cancelling'
+                  : 'chat.control-stopping'
+              )
+            : t('chat.control-outcome-unknown')}
       </DsText>
       <div className="flex flex-wrap gap-ds-control-gap">
         <Button

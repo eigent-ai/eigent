@@ -51,6 +51,7 @@ vi.mock('@/components/Toast/trafficToast', () => ({
   showTrafficToast: mocked.showTrafficToast,
 }));
 
+import { ControlRecovery } from '@/components/ChatBox/ControlRecovery';
 import { HumanInteractionCard } from '@/components/ChatBox/MessageItem/HumanInteractionCard';
 import {
   TERMINAL_CONTROL_LIMIT,
@@ -69,6 +70,7 @@ import {
   setConnectionConfig,
 } from '@/store/connectionStore';
 import { getProjectEventStore } from '@/store/projectEventStore';
+import { useProjectStore } from '@/store/projectStore';
 import {
   act,
   cleanup,
@@ -607,6 +609,146 @@ describe('SL-BUG-27 recovery safety contracts', () => {
     await vi.advanceTimersByTimeAsync(15_000);
     await cancel;
   });
+  it('does not record an approval held back by an unconfirmed Stop', async () => {
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => new Promise(() => {}));
+    const stop = stopProjectTask('project-probe', interaction.run_id).catch(
+      () => {}
+    );
+    await vi.advanceTimersByTimeAsync(15_000);
+    await stop;
+    await expect(
+      decideHumanInteraction(interaction, {
+        decisionRequestId: 'held',
+        decision: { decision: 'approved', scope: 'once' },
+      })
+    ).rejects.toThrow();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(listControlOperations().map((op) => op.kind)).toEqual(['stop']);
+  });
+
+  it('keeps a canonical receipt when the status check cannot replay events', async () => {
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => new Promise(() => {}));
+    const pending = decideHumanInteraction(interaction, {
+      projectId: 'replay-project',
+      decisionRequestId: 'original',
+      decision: { decision: 'approved', scope: 'once' },
+    }).catch(() => {});
+    await vi.advanceTimersByTimeAsync(15_000);
+    await pending;
+    const op = listControlOperations()[0];
+    fetch.mockImplementation(async (url) =>
+      String(url).includes('/interactions')
+        ? new Response(
+            JSON.stringify({
+              run_id: interaction.run_id,
+              interactions: [canonical()],
+            }),
+            { headers: { 'content-type': 'application/json' } }
+          )
+        : new Response(null, { status: 500 })
+    );
+    await expect(checkControlOperation(op)).resolves.toMatchObject({
+      status: 'resolved',
+    });
+    expect(String(fetch.mock.calls.at(-1)?.[0])).toContain('/events');
+    expect(op.phase).toBe('resolved');
+    expect(op.completionPending).toBe(true);
+    expect(listControlOperations()).toContain(op);
+  });
+
+  it.each([
+    ['stop', 'Stopping…'],
+    ['cancel', 'Cancelling…'],
+  ])(
+    'shows an acknowledged %s as in progress, not unconfirmed',
+    async (kind, label) => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        kind === 'stop'
+          ? new Response(null, { status: 201 })
+          : new Response(
+              JSON.stringify({
+                run_id: 'run-probe',
+                project_id: 'project-probe',
+                status: 'cancelling',
+                version: 1,
+                origin: 'local',
+                updated_at: 1,
+              }),
+              { headers: { 'content-type': 'application/json' } }
+            )
+      );
+      await (kind === 'stop'
+        ? stopProjectTask('project-probe', 'run-probe')
+        : cancelProjectRun(
+            'run-probe',
+            'cancel-id',
+            'cancel',
+            undefined,
+            'project-probe'
+          ));
+      const op = listControlOperations()[0];
+      expect(op.phase).toBe('acknowledged');
+      render(<ControlRecovery operation={op} />);
+      expect(screen.getByRole('status')).toHaveTextContent(label);
+      expect(screen.queryByText(/outcome is not confirmed/)).toBeNull();
+    }
+  );
+
+  it('shows an unanswered Stop as unconfirmed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () => new Promise(() => {})
+    );
+    const stop = stopProjectTask('project-probe', 'run-probe').catch(() => {});
+    await vi.advanceTimersByTimeAsync(15_000);
+    await stop;
+    render(<ControlRecovery operation={listControlOperations()[0]} />);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'The outcome is not confirmed.'
+    );
+  });
+
+  it('lets canonical events settle a card decision in the active Project', async () => {
+    const activeProjectId = useProjectStore.getState().activeProjectId;
+    useProjectStore.setState({ activeProjectId: 'card-project' });
+    try {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        () => new Promise(() => {})
+      );
+      render(<HumanInteractionCard interaction={interaction} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      const op = listControlOperations()[0];
+      expect(op.projectId).toBe('card-project');
+      const snapshot = getProjectEventStore('card-project').getSnapshot();
+      act(() =>
+        reconcileControlOperations({
+          ...snapshot,
+          control: {
+            ...snapshot.control,
+            interactionById: {
+              [interaction.interaction_id]: {
+                interactionId: interaction.interaction_id,
+                runId: interaction.run_id,
+                status: 'resolved',
+                version: 1,
+                actionDigest: interaction.action_digest,
+              } as any,
+            },
+          },
+        })
+      );
+      expect(op.phase).toBe('resolved');
+    } finally {
+      useProjectStore.setState({ activeProjectId });
+    }
+  });
+
   it('compacts terminal envelopes while preserving unresolved intents and recent deduplication', async () => {
     const fetch = vi
       .spyOn(globalThis, 'fetch')
