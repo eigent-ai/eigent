@@ -2668,7 +2668,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         ? projectId
         : projectId || projectStore.activeProjectId;
       if (isLiveTask && !project_id) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.no-active-session', {
             defaultValue: 'No active session selected.',
           })
@@ -2694,7 +2694,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? projectStore.getProjectById(project_id)
           : null;
       if (isLiveTask && !project) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.selected-session-unavailable', {
             defaultValue: 'The selected session is not available.',
           })
@@ -3272,7 +3272,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
         if (!resolvedCloudModel) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.cloud-model-unavailable', {
               defaultValue:
                 'The cloud model is unavailable. Try again or choose another model in Agents > Models.',
@@ -3473,7 +3473,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : providersRes.items || [];
         } catch (error) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-load-failed', {
               defaultValue:
                 'Could not load the model provider configured for a worker.',
@@ -3495,7 +3495,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
         if (missingWorker) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-unavailable', {
               defaultValue:
                 'The model provider configured for worker "{{worker}}" is no longer available. Edit the worker and select another model.',

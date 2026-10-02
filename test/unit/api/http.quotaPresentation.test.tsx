@@ -109,8 +109,12 @@ it.each([402, 403, 429])(
         ).toBeGreaterThan(0)
       );
       expect(error.response.data).toEqual(payload);
+      // Only billing statuses are sanitized by status alone; 403 keeps the
+      // readable transport message and is formatted at presentation time.
       expect(error.usageReason).toBe(
-        classifyError({ status, response: { data: payload } })
+        status === 403
+          ? undefined
+          : classifyError({ status, response: { data: payload } })
       );
       expect(useUsageNoticeStore.getState().incidents).toEqual([]);
     }

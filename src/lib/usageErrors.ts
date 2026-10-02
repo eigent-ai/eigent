@@ -75,6 +75,9 @@ export const isUsageReason = (reason: ErrorReason): reason is UsageReason =>
     'model-access',
     'service',
   ].includes(reason);
+/** Status-level classifications that a more specific signal may refine. */
+export const isRefinableReason = (reason: ErrorReason) =>
+  ['task', 'request', 'model-unavailable', 'rate-limit'].includes(reason);
 
 function record(value: unknown): Record<string, unknown> {
   const result: Record<string, unknown> = Object.create(null);
@@ -328,12 +331,7 @@ export function errorPresentationReason(
           pending.push({ value: item[field], depth: depth + 1 });
       }
     }
-    if (
-      reason !== 'task' &&
-      reason !== 'request' &&
-      reason !== 'model-unavailable'
-    )
-      messageReason ??= reason;
+    if (!isRefinableReason(reason)) messageReason ??= reason;
     if (reason !== 'task') fallback = reason;
   }
   return messageReason ?? fallback;

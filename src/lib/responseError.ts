@@ -35,7 +35,7 @@ export function sanitizeResponseError(
     isUsageReason(reason) ||
     (ownErrorField(error, 'response') &&
       (((typeof status === 'number' || typeof status === 'string') &&
-        [402, 403, 429, 500, 502, 503, 504].includes(Number(status))) ||
+        [402, 429].includes(Number(status))) ||
         isRawErrorMessage(message)))
   ) {
     // Return a trusted Error, never a proxy or an object with setters. Keep
@@ -124,9 +124,9 @@ export async function createSSEAdmissionError(
     },
   });
   const sanitized = sanitizeResponseError(error, reason, true);
-  // Keep the existing successful-HTTP continuation clarification contract.
-  // Failed admissions must never forward arbitrary backend text to chat.
-  if (!response.ok || !error.code?.startsWith('continuation_'))
+  // Continuation clarifications are Brain-authored questions (design 19 §8),
+  // shown verbatim for both 409 admission and HTTP 200 transports.
+  if (!error.code?.startsWith('continuation_'))
     Object.assign(sanitized, { userMessage: sanitized.message });
   return sanitized;
 }

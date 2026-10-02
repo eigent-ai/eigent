@@ -310,6 +310,34 @@ it.each(admissions)(
   }
 );
 
+it('shows the Brain continuation question from a 409 admission verbatim', async () => {
+  const question =
+    'The previous run may have executed a tool. Reply exactly: I acknowledge the tool may have executed.';
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        detail: {
+          code: 'continuation_outcome_unknown',
+          message: question,
+          interaction_type: 'confirmation',
+        },
+      }),
+      { status: 409, headers: { 'content-type': 'application/json' } }
+    )
+  );
+  await start(false);
+  await waitFor(() =>
+    expect(
+      mocks.store
+        .getState()
+        .tasks['quota-run'].messages.map((message: any) => message.content)
+    ).toContain(
+      i18next.t('chat.control-input-required-message', { message: question })
+    )
+  );
+  expect(useUsageNoticeStore.getState().incidents).toEqual([]);
+});
+
 it('retains the existing budget incident and clears pending admission', async () => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response(

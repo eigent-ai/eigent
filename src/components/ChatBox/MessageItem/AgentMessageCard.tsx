@@ -20,6 +20,7 @@ import { fileInfoFromPath } from '@/lib/fileInfo';
 import {
   errorPresentationReason,
   isLegacyTaskError,
+  isRefinableReason,
   type ErrorReason,
 } from '@/lib/usageErrors';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -205,8 +206,7 @@ export function AgentMessageCard({
     // Keep request-time ownership (cloud vs custom) when it was known. Only
     // refine generic historical classifications from the retained message.
     const parsedReason =
-      errorReason &&
-      !['task', 'request', 'model-unavailable'].includes(errorReason)
+      errorReason && !isRefinableReason(errorReason)
         ? errorReason
         : errorPresentationReason(content);
     return (

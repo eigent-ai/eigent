@@ -24,6 +24,7 @@ import {
   errorCopy,
   errorPresentationReason,
   isRawErrorMessage,
+  isRefinableReason,
   isUsageReason,
   type ErrorContext,
 } from './usageErrors';
@@ -94,12 +95,7 @@ export function notifyError(
       )
   )
     return;
-  const presentationReason = [
-    'task',
-    'request',
-    'model-unavailable',
-    'rate-limit',
-  ].includes(reason)
+  const presentationReason = isRefinableReason(reason)
     ? errorPresentationReason(
         envelope ? message : { message, detail: options?.description },
         { modelType }

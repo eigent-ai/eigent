@@ -18,8 +18,11 @@
 const localMessages = new WeakMap<object, string>();
 
 /** Only for app-authored copy, never a message received from a transport. */
-export function createLocalError(message: string): Error {
-  const error = new Error(message);
+export function createLocalError(
+  message: string,
+  options?: ErrorOptions
+): Error {
+  const error = new Error(message, options);
   localMessages.set(error, message);
   return error;
 }
