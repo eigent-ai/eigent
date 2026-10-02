@@ -156,7 +156,8 @@
   "linux": {
     "icon": "build/icon.png",
     "target": ["AppImage"],
-    "category": "Development"
+    "category": "Development",
+    "mimeTypes": ["x-scheme-handler/eigent"]
   },
   "nsis": {
     "oneClick": false,

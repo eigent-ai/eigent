@@ -117,6 +117,10 @@ import {
   updateEnvBlock,
   writeEnvFile,
 } from './utils/envUtil';
+import {
+  registerLinuxProtocolHandler,
+  reRegisterLinuxProtocolHandler,
+} from './utils/linuxProtocol';
 import { createDiagnosticsZip, zipDirectories, zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
 import {
@@ -813,6 +817,11 @@ const setupProtocolHandlers = () => {
     }
   } else {
     app.setAsDefaultProtocolClient('eigent');
+
+    // Linux: register protocol handler with proper .desktop file (%u for URL handling)
+    if (process.platform === 'linux') {
+      registerLinuxProtocolHandler();
+    }
   }
 };
 
@@ -970,7 +979,16 @@ const setupSingleInstanceLock = () => {
   app.on('second-instance', (event, argv) => {
     log.info('second-instance', argv);
     const url = argv.find((arg) => arg.startsWith('eigent://'));
-    if (url) handleProtocolUrl(url);
+    if (url) {
+      handleProtocolUrl(url);
+    } else if (process.platform === 'linux') {
+      // Linux self-heal: second-instance fired without URL means the
+      // .desktop file may be missing %u. Re-register to fix it for next login attempt.
+      log.info(
+        '[LinuxProtocol] second-instance without URL, re-registering protocol handler'
+      );
+      reRegisterLinuxProtocolHandler();
+    }
     if (win) win.show();
   });
 
