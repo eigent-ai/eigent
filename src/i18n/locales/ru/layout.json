@@ -262,6 +262,7 @@
   "yesterday": "Вчера",
   "days-ago": "дней назад",
   "delete-project": "Удалить сессию",
+  "delete-project-failed": "Не удалось завершить удаление сессии. Некоторые локальные файлы могли быть уже удалены. Повторите попытку, чтобы завершить удаление.",
   "delete-project-confirmation": "Вы уверены, что хотите удалить эту сессию и все её задачи? Это действие нельзя отменить.",
   "delete-space-confirmation": "Удалить это пространство и все его сессии? Это действие нельзя отменить.",
   "please-select-model": "Пожалуйста, выберите модель в Агенты > Модели, чтобы продолжить.",
@@ -567,6 +568,9 @@
   "onboarding-setup-language-title": "Выберите язык",
   "onboarding-setup-language-subtitle": "Вы можете изменить это позже в настройках.",
   "onboarding-setup-language-system-default": "Системный язык",
+  "onboarding-setup-profile-title": "Выберите роль",
+  "onboarding-setup-profile-subtitle": "Эта роль сохраняется в вашем профиле. Позже её можно изменить в настройках.",
+  "onboarding-setup-profile-skip": "Пропустить",
   "onboarding-setup-appearance-title": "Выберите внешний вид",
   "onboarding-setup-appearance-system": "Система",
   "onboarding-setup-appearance-light": "Светлый",
@@ -1581,5 +1585,10 @@
   "space-discovery-resource-disabled": "Отключено в глобальных настройках",
   "space-discovery-resource-invalid": "Глобальная конфигурация недействительна или недоступна",
   "space-discovery-model-partial": "Не удалось загрузить некоторые источники моделей. Показаны доступные модели. Повторите попытку.",
-  "space-discovery-connectors-disabled": "Каталог коннекторов отключён. Включите его в глобальных настройках и повторите попытку."
+  "space-discovery-connectors-disabled": "Каталог коннекторов отключён. Включите его в глобальных настройках и повторите попытку.",
+  "delete-project-stopping": "Остановка…",
+  "delete-project-stop-failed": "Не удалось остановить эту сессию, поэтому ничего не удалено. Повторите попытку, чтобы остановить её и завершить удаление.",
+  "delete-project-workdir": "Также удалить рабочий каталог сессии",
+  "delete-project-workdir-hint": "Файлы в рабочем каталоге, включая неопубликованные изменения, будут удалены безвозвратно.",
+  "delete-project-workdir-pending-hint": "В этом рабочем каталоге есть неопубликованные изменения. Они будут удалены безвозвратно и не подлежат восстановлению."
 }

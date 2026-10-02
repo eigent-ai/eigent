@@ -23,6 +23,7 @@
  */
 
 import { getAnsweredAskInteractionIds } from '@/lib/humanInteractionMessages';
+import type { ProjectedRun, ProjectViewState } from '@/lib/projector';
 import {
   getBottomBoxStateForTask,
   getTaskListShelfTone,
@@ -142,7 +143,7 @@ function presentationForKind(
 export const SESSION_NAV_IDLE_LEAD: SessionNavLeadPresentation =
   presentationForKind('idle');
 
-/** Map authoritative server history status to the final sidebar icon (no replay). */
+/** Legacy `done` means closed, not successful. Wait for a canonical outcome. */
 export function getSessionNavLeadFromHistoryTask(
   task: Pick<HistoryTask, 'status' | 'summary'>
 ): SessionNavLeadPresentation {
@@ -150,12 +151,9 @@ export function getSessionNavLeadFromHistoryTask(
   if (summary.startsWith(STOPPED_BY_USER_SUMMARY_PREFIX)) {
     return SESSION_NAV_IDLE_LEAD;
   }
-  if (task.status === HISTORY_TASK_STATUS_DONE) {
-    return presentationForKind('finished');
-  }
   // ONGOING (1) means the backend never finalized the status (e.g. app closed
-  // mid-run). We cannot confirm the task is actually running without a full
-  // replay, so we resolve to idle rather than a perpetual animated spinner.
+  // mid-run). We cannot confirm the task is actually running without canonical
+  // evidence, so we resolve to idle rather than a perpetual animated spinner.
   // Genuinely-live tasks get their spinner from the chat-store subscription.
   return SESSION_NAV_IDLE_LEAD;
 }
@@ -174,10 +172,62 @@ export function getSessionNavLeadFromHistoryProject(
   if (project.total_ongoing_tasks > 0) {
     return SESSION_NAV_IDLE_LEAD;
   }
-  if (project.total_completed_tasks > 0) {
-    return presentationForKind('finished');
-  }
   return SESSION_NAV_IDLE_LEAD;
+}
+
+/** Canonical Run outcomes take precedence over compatibility completion flags. */
+export function getSessionNavLeadFromRunStatus(
+  status: string
+): SessionNavLeadPresentation | undefined {
+  switch (status) {
+    case 'completed':
+      return presentationForKind('finished');
+    case 'failed':
+      return presentationForKind('error');
+    case 'interrupted':
+      return presentationForKind('warning');
+    case 'cancelled':
+    case 'stopped':
+    case 'pending':
+      return SESSION_NAV_IDLE_LEAD;
+    case 'waiting_for_user':
+      return presentationForKind('hitl');
+    case 'running':
+    case 'cancelling':
+      return presentationForKind('running', true);
+    default:
+      return undefined;
+  }
+}
+
+/** Same-Run versions reconcile the two existing read models; never borrow a sibling Run. */
+export function selectSessionNavRun(
+  projectId: string,
+  views: (ProjectViewState | null | undefined)[],
+  taskId?: string | null
+): ProjectedRun | undefined {
+  const runs = new Map<string, ProjectedRun>();
+  for (const view of views) {
+    if (view?.projectId !== projectId) continue;
+    for (const run of Object.values(view.runs)) {
+      // Legacy END frames also project `completed`, but have no canonical
+      // lifecycle version. They cannot override an interrupted ChatTask.
+      if (run.runVersion === 0) continue;
+      if (taskId && run.runId !== taskId) continue;
+      const existing = runs.get(run.runId);
+      if (
+        !existing ||
+        run.runVersion > existing.runVersion ||
+        (run.runVersion === existing.runVersion &&
+          run.lastSequence > existing.lastSequence)
+      ) {
+        runs.set(run.runId, run);
+      }
+    }
+  }
+  return [...runs.values()].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt)
+  )[0];
 }
 
 /**
@@ -242,11 +292,24 @@ function isAwaitingHumanInput(task: TaskRow): boolean {
 }
 
 /**
- * Priority: error → warning → hitl → blocked → splitting → running → finished → idle.
+ * Canonical outcome first; legacy fallback: error → warning → hitl → blocked
+ * → splitting → running → finished → idle.
  */
 export function getSessionNavLeadPresentation(
   task: TaskRow
 ): SessionNavLeadPresentation {
+  const durableStatus = task.durableRunStatus;
+  if (
+    durableStatus &&
+    (['completed', 'failed', 'cancelled', 'interrupted', 'stopped'].includes(
+      durableStatus
+    ) ||
+      task.type === 'replay' ||
+      task.status === ChatTaskStatus.FINISHED)
+  ) {
+    const canonical = getSessionNavLeadFromRunStatus(durableStatus);
+    if (canonical) return canonical;
+  }
   const wf = workforceStatuses(task);
   const errorSignal =
     isTaskListRowHardFailure(task) || wf.some((s) => s === TaskStatus.FAILED);
@@ -276,7 +339,11 @@ export function getSessionNavLeadPresentation(
     task.status === ChatTaskStatus.PAUSE
   ) {
     kind = 'running';
-  } else if (task.status === ChatTaskStatus.FINISHED && task.type !== '') {
+  } else if (
+    task.status === ChatTaskStatus.FINISHED &&
+    task.type !== '' &&
+    task.type !== 'replay'
+  ) {
     kind = 'finished';
   } else {
     kind = 'idle';

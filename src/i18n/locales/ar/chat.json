@@ -477,5 +477,18 @@
   "space-model-unconfirmed": "لم يتأكد طلب الجلسة الأول بعد. أعد الاتصال وحاول مجددًا، أو اختر نموذجًا لهذه الجلسة.",
   "space-model-unavailable": "هذا النموذج غير متاح للحساب الحالي. راجع إعدادات النماذج أو اختر نموذجاً للجلسة.",
   "space-model-ambiguous": "توجد موفرات متعددة مطابقة. راجع إعدادات النماذج أو اختر نموذجاً للجلسة.",
-  "space-model-changed": "تغير الحساب أو نموذج الجلسة أثناء التحميل. أرسل رسالتك مرة أخرى."
+  "space-model-changed": "تغير الحساب أو نموذج الجلسة أثناء التحميل. أرسل رسالتك مرة أخرى.",
+  "control-outcome-unknown": "لم يتم تأكيد النتيجة. تحقق من الحالة قبل المتابعة. إعادة المحاولة ترسل الطلب نفسه.",
+  "control-check-status": "تحقق من الحالة",
+  "control-checking-status": "جارٍ التحقق من الحالة…",
+  "control-retry-same-request": "أعد محاولة الطلب نفسه",
+  "control-recovery-expired": "انتهت صلاحية هذا الطلب.",
+  "control-recovery-cancelled": "تم إلغاء هذا الطلب.",
+  "control-recovery-task-status": "حالة المهمة: {{status}}",
+  "control-recovery-status-completed": "مكتملة",
+  "control-recovery-status-cancelled": "ملغاة",
+  "control-recovery-status-failed": "فشلت",
+  "control-recovery-status-timed_out": "انتهت المهلة",
+  "history-evidence": "سجلات الردود السابقة ({{count}})",
+  "history-evidence-description": "تُحفظ سجلات الردود القديمة هنا عندما لا يكون ارتباطها بإجابة معروفًا أو عندما يختلف محتواها عن الإجابة المسجلة."
 }

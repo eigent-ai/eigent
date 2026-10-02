@@ -157,3 +157,32 @@ export const refreshWorkspaceProject = async (
       server_refresh_confirmed: payload.serverRefreshConfirmed,
     }
   );
+
+function projectWorkdirUrl(
+  spaceId: string,
+  projectId: string,
+  email: string,
+  userId?: string | number | null
+) {
+  return `/workspace/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/workdir?email=${encodeURIComponent(email)}${
+    userId === undefined || userId === null
+      ? ''
+      : `&user_id=${encodeURIComponent(String(userId))}`
+  }`;
+}
+
+export const fetchWorkspaceProjectWorkdir = async (
+  spaceId: string,
+  projectId: string,
+  email: string,
+  userId?: string | number | null
+): Promise<{ exists: boolean }> =>
+  fetchGet(projectWorkdirUrl(spaceId, projectId, email, userId));
+
+export const deleteWorkspaceProjectWorkdir = async (
+  spaceId: string,
+  projectId: string,
+  email: string,
+  userId?: string | number | null
+): Promise<{ deleted: boolean }> =>
+  fetchDelete(projectWorkdirUrl(spaceId, projectId, email, userId));
