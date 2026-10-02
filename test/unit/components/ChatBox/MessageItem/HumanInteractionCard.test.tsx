@@ -67,7 +67,15 @@ const interaction = approvalInteraction;
 describe('HumanInteractionCard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.decideHumanInteraction.mockResolvedValue({ status: 'resolved' });
+    mocks.decideHumanInteraction.mockImplementation((interaction, input) =>
+      Promise.resolve({
+        run_id: interaction.run_id,
+        interaction_id: interaction.interaction_id,
+        version: (interaction.version ?? 0) + 1,
+        status: 'resolved',
+        response: input.decision,
+      })
+    );
     mocks.isHumanInteractionStillPending.mockResolvedValue(false);
   });
 
@@ -198,7 +206,7 @@ describe('HumanInteractionCard', () => {
     );
   });
 
-  it('shows a durable API rejection inline and re-enables retry', async () => {
+  it('shows an unconfirmed approval outcome inline and re-enables retry', async () => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
@@ -210,9 +218,9 @@ describe('HumanInteractionCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Approval version changed'
+      'The outcome is not confirmed.'
     );
-    expect(mocks.toastError).toHaveBeenCalledWith('Approval version changed');
+    expect(mocks.toastError).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
@@ -220,6 +228,31 @@ describe('HumanInteractionCard', () => {
       expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(2);
     });
     consoleError.mockRestore();
+  });
+
+  it('shows the backend detail when a non-approval decision is rejected', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mocks.decideHumanInteraction.mockRejectedValueOnce({
+      response: { data: { detail: 'Interaction is no longer pending' } },
+    });
+    render(
+      <HumanInteractionCard
+        interaction={{
+          interaction_id: 'choice-rejected',
+          interaction_type: 'choice',
+          run_id: 'run-1',
+          question: 'Pick one',
+          options: [{ option_id: 'option-a', label: 'Option A', value: 'a' }],
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Option A' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Interaction is no longer pending'
+    );
+    expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
   });
 
   it('only renders persistent approval actions offered by the backend', () => {

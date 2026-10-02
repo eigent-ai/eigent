@@ -32,6 +32,7 @@ from app.memory import (
 from app.model.chat import Chat, sse_json
 from app.model.enums import Status
 from app.run_journal.context_projection import (
+    ResumeContextError,
     build_project_execution_context_projection,
     persist_context_projection_diagnostic,
 )
@@ -191,9 +192,12 @@ def _build_single_agent_context(
                 get_default_run_journal(),
                 project_id=project_id,
                 current_run_id=run_id,
+                current_attempt_id=getattr(run_context, "attempt_id", None),
             )
             canonical_execution = execution_projection.text
             execution_event_ids = execution_projection.source_event_ids
+        except ResumeContextError:
+            raise
         except Exception:
             logger.warning(
                 "Canonical execution context unavailable; using Memory fallback",
@@ -740,6 +744,12 @@ async def single_agent_solve(
                     total_tokens = 0
                 except Exception as e:
                     retryable = _is_retryable_turn_error(e)
+                    if retryable:
+                        reason = "model_transport_error"
+                    elif isinstance(e, ResumeContextError):
+                        reason = e.reason
+                    else:
+                        reason = None
                     logger.error(
                         "Single Agent turn failed",
                         extra={
@@ -760,9 +770,7 @@ async def single_agent_solve(
                         {
                             "message": str(e),
                             "retryable": retryable,
-                            "reason": (
-                                "model_transport_error" if retryable else None
-                            ),
+                            "reason": reason,
                         },
                     )
                     running_turn = None

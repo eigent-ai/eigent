@@ -123,13 +123,14 @@ export function resetBaseURL(): void {
   setConnectionConfig({ brainEndpoint: '' });
 }
 
-export async function getBaseURL() {
+export async function getBaseURL(beforeResolve?: () => void) {
   const cfg = getConnectionConfig();
   if (cfg.brainEndpoint) {
     return cfg.brainEndpoint.replace(/\/$/, '');
   }
   // Electron: get port from IPC
   const port = await createHost().ipcRenderer?.invoke('get-backend-port');
+  beforeResolve?.();
   if (port && port > 0) {
     const resolved = `http://localhost:${port}`;
     setConnectionConfig({ brainEndpoint: resolved });
@@ -146,6 +147,8 @@ export async function getBaseURL() {
 }
 
 export type FetchRequestOptions = {
+  /** Optional lifetime fence for bounded control receipts. */
+  assertCurrent?: () => void;
   signal?: AbortSignal;
   expectedAccountKey?: string;
   /** Revalidate mutable admission context after asynchronous header lookup. */
@@ -180,7 +183,7 @@ async function fetchRequest(
   customHeaders: Record<string, string> = {},
   requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
-  const baseURL = await getBaseURL();
+  const baseURL = await getBaseURL(requestOptions.assertCurrent);
   const fullUrl = `${baseURL}${url}`;
   assertRequestAccount(requestOptions);
   const headers = await buildBrainHeaders(url, customHeaders);
@@ -232,6 +235,7 @@ async function handleResponse(
   try {
     const res = await responsePromise;
     assertRequestAccount(requestOptions);
+    requestOptions.assertCurrent?.();
     persistSessionIdFromResponse(res);
     if (res.status === 204) {
       return { code: 0, text: '' };
@@ -261,6 +265,7 @@ async function handleResponse(
     }
     const resData = await res.json();
     assertRequestAccount(requestOptions);
+    requestOptions.assertCurrent?.();
     if (!resData) {
       return null;
     }
@@ -314,6 +319,7 @@ async function handleResponse(
     return resData;
   } catch (err: any) {
     assertRequestAccount(requestOptions);
+    requestOptions.assertCurrent?.();
     if (err?.name === 'AbortError') {
       throw err;
     }
