@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchDelete } from '@/api/http';
+import { fetchDelete, fetchPost } from '@/api/http';
 import {
   cancelSessionExecution,
   executionScope,
@@ -106,6 +106,8 @@ async function requestSessionStop(projectId: string, signal: AbortSignal) {
     )
   );
   // Run cancel awaits the execution; 404/409 mean the Run already ended.
+  // The idempotent request id is resent on every delete retry and the Run
+  // poll below is the gate, so this bypasses the control recovery registry.
   const { runs = [] } = await fetchActiveProjectRuns(projectId, signal, 100);
   await Promise.all(
     runs.flatMap((run) =>
@@ -114,7 +116,8 @@ async function requestSessionStop(projectId: string, signal: AbortSignal) {
             cancelProjectRun(
               run.run_id,
               `session-delete:${run.run_id}`,
-              'session_deleted'
+              'session_deleted',
+              (url, body) => fetchPost(url, body)
             ).catch(ignoreEnded),
           ]
         : []

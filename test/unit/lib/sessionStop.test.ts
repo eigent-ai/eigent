@@ -23,6 +23,7 @@ vi.mock('@/api/http', () => ({
 }));
 vi.mock('@/lib/authEnvironment', () => ({
   getAccountEnvironmentKey: () => 'account-42',
+  getAuthEnvironmentKey: () => 'auth-env-test',
 }));
 vi.mock('@/store/authStore', () => ({ getAuthStore: () => ({}) }));
 
