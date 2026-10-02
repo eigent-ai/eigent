@@ -63,6 +63,33 @@ describe('useInterruptedRunStatus', () => {
     fetchGetMock.mockResolvedValue({ runs: [] });
   });
 
+  it('carries the journal outcome into the recovery explanation after refresh', async () => {
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() =>
+      runProjectionStore.upsertRunSummaries('project_one', [
+        {
+          run_id: 'run-1',
+          project_id: 'project_one',
+          status: 'interrupted',
+          version: 3,
+          updated_at: 100,
+          latest_attempt: {
+            attempt_number: 1,
+            status: 'interrupted',
+            outcome: 'approval_expired',
+          },
+        },
+      ])
+    );
+    expect(result.current.run?.terminalReason).toBe('approval_expired');
+  });
+
   it.each([
     'owned',
     'other-account',

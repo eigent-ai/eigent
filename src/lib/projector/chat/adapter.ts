@@ -804,6 +804,7 @@ function interactionNode(
         nestedText(payload.prompt)
       ) || undefined,
     response: responseText(decision) || undefined,
+    reason: firstText(payload.reason, asRecord(decision).reason) || undefined,
     responseOptionIds: responseOptionIds(decision),
     agentName:
       firstText(

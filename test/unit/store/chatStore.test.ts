@@ -39,8 +39,10 @@ vi.mock('@/store/sessionExecutionStore', () => ({
   }),
 }));
 
+import { partitionLegacyMessageEvidence } from '@/components/ChatBox/EventTimeline/legacyReplyEvidence';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { v104GuiInputEvents } from '../../fixtures/v104GuiInput';
 
 // Mock dependencies - moved to top before other imports
 vi.mock('@/api/http', async () => {
@@ -1197,6 +1199,48 @@ describe('ChatStore - Core Functionality', () => {
       expect(proxyFetchGet).not.toHaveBeenCalled();
       expect(fetchPost).not.toHaveBeenCalled();
       expect(fetchEventSource).not.toHaveBeenCalled();
+    });
+
+    it('persists retired approval receipts through interruption, hydration and Resume', () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create('approval-run');
+      const request = {
+        id: 'old-ask',
+        role: 'agent' as const,
+        content: 'Approve write?',
+        step: AgentStep.ASK,
+        interaction: {
+          interaction_id: 'old-approval',
+          interaction_type: 'approval' as const,
+          run_id: taskId,
+          version: 0,
+          action_digest: 'old-digest',
+        },
+      };
+      result.current.getState().setMessages(taskId, [request]);
+      result.current
+        .getState()
+        .setActiveAskList(taskId, [{ ...request, id: 'queued-ask' }]);
+      result.current.getState().setDurableRunStatus(taskId, 'interrupted');
+      const saved = JSON.parse(
+        JSON.stringify(result.current.getState().tasks[taskId].messages)
+      );
+      expect(saved[0].interaction.receipt).toEqual({
+        runStatus: 'interrupted',
+      });
+      result.current.getState().setMessages(taskId, saved);
+      result.current.getState().setDurableRunStatus(taskId, 'running');
+      expect(
+        result.current.getState().tasks[taskId].messages[0].interaction
+      ).toMatchObject({
+        interaction_id: 'old-approval',
+        version: 0,
+        action_digest: 'old-digest',
+        receipt: { runStatus: 'interrupted' },
+      });
+      expect(
+        result.current.getState().tasks[taskId].askList[0].interaction?.receipt
+      ).toBeTruthy();
     });
 
     it('settles a live task from a canonical failure when legacy SSE ends without ERROR', () => {
@@ -6446,6 +6490,305 @@ describe('ChatStore - Core Functionality', () => {
         .handleConfirmTask('proj-replay', taskId, 'replay');
 
       expect(result.current.getState().tasks[taskId].taskTime).toBe(123_456);
+    });
+
+    it.each([
+      'cold',
+      'resolved',
+      'optimistic',
+      'competing',
+      'mirror',
+      'terminal',
+    ])(
+      'retains a submitted GUI reply exactly once during %s durable replay',
+      async (mode) => {
+        const reply = 'Use report.csv\nKeep the original columns.';
+        const store = createChatStoreInstance();
+        const taskId = store.getState().create();
+        const events = [
+          {
+            event_type: 'legacy.ask',
+            legacy_step: 'ask',
+            payload: {
+              agent: 'worker',
+              question: 'Which file?',
+              interaction_id: 'gui-question',
+              interaction_type: 'question',
+              run_id: taskId,
+            },
+          },
+          {
+            event_type: 'interaction.resolved',
+            payload: {
+              interaction_id: 'gui-question',
+              interaction_type: 'question',
+              decision_request_id: 'gui-submit',
+              decision: { reply },
+              continued_attempt: true,
+            },
+          },
+          ...(mode === 'mirror'
+            ? [
+                {
+                  event_type: 'legacy.human_reply',
+                  legacy_step: 'human_reply',
+                  payload: {
+                    agent: 'worker',
+                    reply,
+                    interaction_id: 'gui-question',
+                  },
+                },
+              ]
+            : []),
+        ];
+        vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+          for (const [index, event] of events.entries()) {
+            if (index === 1) {
+              if (mode === 'resolved') {
+                // The control completion bridge may close the ASK before
+                // its canonical event reaches the conversation stream.
+                store
+                  .getState()
+                  .markHumanInteractionResolved(taskId, 'gui-question');
+                store.getState().setActiveAsk(taskId, 'next-worker');
+                store.getState().setActiveAskList(taskId, [
+                  {
+                    id: 'queued-ask',
+                    role: 'agent',
+                    step: AgentStep.ASK,
+                    content: 'A later question',
+                    agent_name: 'later-worker',
+                  },
+                ]);
+              }
+              if (mode === 'terminal') {
+                store.getState().setStatus(taskId, ChatTaskStatus.FINISHED);
+              }
+              if (mode === 'optimistic' || mode === 'competing') {
+                store.getState().addMessages(taskId, {
+                  id: 'optimistic-reply',
+                  role: 'user',
+                  content:
+                    mode === 'competing' ? 'Unaccepted local answer' : reply,
+                  interactionResponseTo: 'gui-question',
+                });
+              }
+            }
+            const frame = {
+              event: 'run_event',
+              id: String(index + 1),
+              data: JSON.stringify({
+                ...event,
+                event_id: `gui-event-${index}`,
+                sequence: index + 1,
+                project_id: 'gui-session',
+                run_id: taskId,
+                created_at: 100 + index,
+              }),
+            };
+            await opts.onmessage?.(frame as any);
+            await opts.onmessage?.(frame as any);
+          }
+        });
+        await store
+          .getState()
+          .startTask(
+            taskId,
+            'replay',
+            undefined,
+            0,
+            undefined,
+            undefined,
+            undefined,
+            'gui-session',
+            undefined,
+            { replaySource: 'local_durable' }
+          );
+        const task = store.getState().tasks[taskId];
+        expect(
+          task.messages.filter((message) => message.role === 'user')
+        ).toEqual([
+          expect.objectContaining({
+            content: reply,
+            interactionResponseTo: 'gui-question',
+          }),
+        ]);
+        expect(task.resolvedInteractionIds).toEqual(['gui-question']);
+        if (mode === 'resolved') {
+          expect(task.activeAsk).toBe('next-worker');
+          expect(task.askList).toHaveLength(1);
+        } else if (mode === 'terminal') {
+          expect(task.status).toBe(ChatTaskStatus.FINISHED);
+        } else {
+          expect(task.activeAsk).toBe('');
+        }
+      }
+    );
+
+    it.each([true, false])(
+      'retains every v1.0.4 reply across store reconstruction (canonical: %s)',
+      async (canonical) => {
+        const events = v104GuiInputEvents([
+          'report.csv',
+          'report.csv',
+          'other.csv',
+        ]).filter(
+          (event) => canonical || event.event_type === 'legacy.human_reply'
+        );
+        vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+          for (const event of events) {
+            const frame = {
+              event: 'run_event',
+              id: String(event.sequence),
+              data: JSON.stringify(event),
+            };
+            await opts.onmessage?.(frame as any);
+            await opts.onmessage?.(frame as any);
+          }
+        });
+        for (let visit = 0; visit < 2; visit++) {
+          const store = createChatStoreInstance();
+          store.getState().create('run-1');
+          await store
+            .getState()
+            .startTask(
+              'run-1',
+              'replay',
+              undefined,
+              0,
+              undefined,
+              undefined,
+              undefined,
+              'project-1',
+              undefined,
+              { replaySource: 'local_durable' }
+            );
+          const retained = store.getState().tasks['run-1'].messages;
+          const presented = partitionLegacyMessageEvidence(retained);
+          expect(
+            retained.filter((message) => message.role === 'user')
+          ).toHaveLength(canonical ? 4 : 3);
+          expect(presented.evidence.map((message) => message.content)).toEqual(
+            canonical ? ['report.csv', 'report.csv', 'other.csv'] : []
+          );
+          expect(
+            presented.messages
+              .filter((message) => message.role === 'user')
+              .map((message) => message.content)
+          ).toEqual(
+            canonical
+              ? ['report.csv']
+              : ['report.csv', 'report.csv', 'other.csv']
+          );
+          closeSSEConnectionsForTasks(['run-1']);
+        }
+      }
+    );
+
+    it('rebuilds distinct equal replies after Session switching and store recreation', async () => {
+      const other = createChatStoreInstance();
+      other.getState().create('other-run');
+      other.getState().addMessages('other-run', {
+        id: 'other-draft',
+        role: 'user',
+        content: 'Other Session',
+      });
+      const before = other.getState().tasks['other-run'];
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (let index = 1; index <= 2; index++) {
+          await opts.onmessage?.({
+            event: 'run_event',
+            id: String(index),
+            data: JSON.stringify({
+              event_id: `decision-${index}`,
+              event_type: 'interaction.resolved',
+              project_id: 'gui-session',
+              run_id: 'resumed-run',
+              sequence: index,
+              payload: {
+                interaction_id: `question-${index}`,
+                interaction_type: 'question',
+                decision: { reply: 'Yes' },
+              },
+            }),
+          } as any);
+        }
+      });
+      for (let visit = 0; visit < 2; visit++) {
+        // Session selection and renderer restart reconstruct from Run events;
+        // neither an in-memory reply nor local composer state is required.
+        const store = createChatStoreInstance();
+        store.getState().create('resumed-run');
+        await store
+          .getState()
+          .startTask(
+            'resumed-run',
+            'replay',
+            undefined,
+            0,
+            undefined,
+            undefined,
+            undefined,
+            'gui-session',
+            undefined,
+            { replaySource: 'local_durable' }
+          );
+        expect(store.getState().tasks['resumed-run'].messages).toEqual([
+          expect.objectContaining({
+            content: 'Yes',
+            interactionResponseTo: 'question-1',
+          }),
+          expect.objectContaining({
+            content: 'Yes',
+            interactionResponseTo: 'question-2',
+          }),
+        ]);
+        closeSSEConnectionsForTasks(['resumed-run']);
+      }
+      expect(other.getState().tasks['other-run']).toEqual(before);
+    });
+
+    it('does not turn approval details or form values into a GUI text reply', async () => {
+      const store = createChatStoreInstance();
+      store.getState().create('approval-run');
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, payload] of [
+          { interaction_id: 'approval-1', decision: 'approved' },
+          {
+            interaction_id: 'form-1',
+            decision: { values: { password: 'private' } },
+          },
+        ].entries()) {
+          await opts.onmessage?.({
+            event: 'run_event',
+            id: String(index + 1),
+            data: JSON.stringify({
+              event_id: `non-text-${index}`,
+              event_type:
+                index === 0 ? 'approval.decided' : 'interaction.resolved',
+              project_id: 'gui-session',
+              run_id: 'approval-run',
+              sequence: index + 1,
+              payload,
+            }),
+          } as any);
+        }
+      });
+      await store
+        .getState()
+        .startTask(
+          'approval-run',
+          'replay',
+          undefined,
+          0,
+          undefined,
+          undefined,
+          undefined,
+          'gui-session',
+          undefined,
+          { replaySource: 'local_durable' }
+        );
+      expect(store.getState().tasks['approval-run'].messages).toEqual([]);
     });
 
     it('replays a recorded human reply without leaving an active wait', async () => {

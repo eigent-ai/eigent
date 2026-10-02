@@ -172,6 +172,8 @@ export type ProjectedRun = {
   updatedAt: string;
   origin?: 'local' | 'cloud_restore' | 'remote' | null;
   resumeBlockedReason?: string | null;
+  /** Actual journal outcome/reason, never inferred from elapsed time. */
+  terminalReason?: string | null;
   latestAttempt?: {
     attemptNumber: number;
     status: string;

@@ -13,21 +13,33 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
+import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
+import { useHost } from '@/host';
+import {
+  approvalTerminalReason,
+  isInteractionTerminal,
+} from '@/lib/approvalPresentation';
+import { controlOwner } from '@/service/controlRequest';
 import {
   decideHumanInteraction,
+  getHumanInteractionReceipt,
+  invalidatePendingHumanInteractions,
   isHumanInteractionStillPending,
   type HumanInteractionPayload,
 } from '@/service/humanInteractionApi';
 import { useAuthStore } from '@/store/authStore';
+import { useProjectStore } from '@/store/projectStore';
 import { ShieldAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import {
   approvalScopeLabels,
   type HumanControlTranslate,
 } from '../BottomBox/legacyHumanControl';
+import { ControlRecovery, useControlOperations } from '../ControlRecovery';
 
 interface HumanInteractionCardProps {
   interaction: HumanInteractionPayload;
@@ -40,41 +52,27 @@ interface HumanInteractionCardProps {
   timelineReceipt?: boolean;
 }
 
-export function isHumanInteractionReadOnly(input: {
-  interaction: HumanInteractionPayload;
-  activeTaskId?: string | null;
-  taskType?: string;
-  taskStatus?: string;
-  durableRunStatus?: string;
-}): boolean {
-  if (input.taskType === 'share') return true;
-  const isExplicitlyTerminal =
-    input.durableRunStatus === 'completed' ||
-    input.durableRunStatus === 'failed' ||
-    input.durableRunStatus === 'cancelled' ||
-    input.durableRunStatus === 'stopped';
-  const belongsToCurrentRun =
-    Boolean(input.interaction.run_id) &&
-    input.interaction.run_id === input.activeTaskId;
-
-  // A requested interaction is a durable, server-CAS-protected action. When
-  // reopening a Project, the legacy task shell can still say replay/finished
-  // for a short time after the Run has already returned to waiting_for_user.
-  // Do not let those stale presentation flags permanently disable the only
-  // recovery control. Explicit canonical terminal status still wins, and a
-  // stale decision is rejected safely by the Brain's version/status checks.
-  if (belongsToCurrentRun && !isExplicitlyTerminal) return false;
-  const isDurablyWaiting =
-    input.durableRunStatus === 'waiting_for_user' &&
-    Boolean(input.interaction.run_id) &&
-    input.interaction.run_id === input.activeTaskId;
-  if (isDurablyWaiting) return false;
-  return input.taskType === 'replay' || input.taskStatus === 'finished';
-}
+export { isHumanInteractionReadOnly } from '@/lib/approvalPresentation';
 
 const requestId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `interaction-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+function mergeJournalReceipt(
+  interaction: HumanInteractionPayload,
+  receipt: Pick<HumanInteractionPayload, 'status' | 'reason' | 'expires_at'>
+): HumanInteractionPayload {
+  if (!isInteractionTerminal(interaction))
+    return { ...interaction, ...receipt };
+  // Terminal status and its metadata travel together. Only a matching
+  // terminal receipt can fill missing metadata, never a stale pending read.
+  if (receipt.status !== interaction.status) return interaction;
+  return {
+    ...interaction,
+    reason: interaction.reason || receipt.reason,
+    expires_at: interaction.expires_at ?? receipt.expires_at,
+  };
+}
 
 function decisionDisplayText(
   interaction: HumanInteractionPayload,
@@ -135,11 +133,62 @@ export function HumanInteractionCard({
   timelineReceipt = false,
 }: HumanInteractionCardProps) {
   const { t } = useTranslation();
+  const host = useHost();
   const userId = useAuthStore((state) => state.user_id);
+  const projectId = useProjectStore((state) => state.activeProjectId);
+  const owner = controlOwner();
+  const viewKey = JSON.stringify([
+    owner,
+    interaction.run_id,
+    interaction.interaction_id,
+    interaction.version,
+    interaction.action_digest,
+  ]);
+  const view = useRef({ key: viewKey, generation: 0, mounted: true });
+  if (view.current.key !== viewKey)
+    view.current = {
+      key: viewKey,
+      generation: view.current.generation + 1,
+      mounted: true,
+    };
+  useEffect(() => {
+    view.current.mounted = true;
+    return () => {
+      view.current.mounted = false;
+      view.current.generation++;
+    };
+  }, []);
+  const operations = useControlOperations();
+  const operation = operations.find(
+    (op) =>
+      op.kind === 'interaction' &&
+      op.runId === interaction.run_id &&
+      op.interactionId === interaction.interaction_id
+  );
   const decisionRequestId = useRef(requestId());
+  const submissionGuard = useRef<string | null>(null);
+  const delivered = useRef<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resolved, setResolved] = useState(false);
-  const [durablyPending, setDurablyPending] = useState(false);
+  const [journalReceipt, setJournalReceipt] = useState<{
+    identity: string;
+    status?: string;
+    reason?: string;
+    expires_at?: number | string | null;
+  } | null>(null);
+  const receiptInteraction =
+    journalReceipt?.identity === viewKey
+      ? mergeJournalReceipt(interaction, journalReceipt)
+      : interaction;
+  const expiredLocally = useHumanInteractionExpiry(receiptInteraction);
+  const receiptOnly =
+    readOnly ||
+    Boolean(interaction.receipt) ||
+    isInteractionTerminal(receiptInteraction);
+  const [pendingCheck, setPendingCheck] = useState<{
+    identity: string;
+    pending: boolean;
+  } | null>(null);
   const [submittedResponse, setSubmittedResponse] = useState<string | null>(
     null
   );
@@ -149,76 +198,223 @@ export function HumanInteractionCard({
     decisionRequestId.current = requestId();
     setSubmitting(false);
     setResolved(false);
-    setDurablyPending(false);
+    setPendingCheck(null);
     setSubmittedResponse(null);
     setSubmissionError(null);
     setFormValues({});
-  }, [interaction.interaction_id]);
+  }, [viewKey]);
   useEffect(() => {
     let cancelled = false;
-    setDurablyPending(false);
-    if (!readOnly || !interaction.run_id) return;
-    void isHumanInteractionStillPending(interaction)
-      .then((isPending) => {
-        if (!cancelled) setDurablyPending(isPending);
-      })
-      .catch((error) => {
-        // Keep fail-closed on transport/auth failures; the ordinary inline
-        // decision path must not silently treat an unavailable Brain as safe.
-        console.warn(
-          '[HumanInteractionCard] pending interaction revalidation failed',
-          error
-        );
-      });
+    let checkNumber = 0;
+    setPendingCheck(null);
+    if (
+      interaction.interaction_type !== 'approval' ||
+      receiptOnly ||
+      timelineReceipt ||
+      expiredLocally ||
+      !interaction.run_id
+    )
+      return;
+    const validatePending = () => {
+      const currentCheck = ++checkNumber;
+      setPendingCheck(null);
+      void isHumanInteractionStillPending(interaction)
+        .then((isPending) => {
+          if (!cancelled && currentCheck === checkNumber)
+            setPendingCheck({ identity: viewKey, pending: isPending });
+        })
+        .catch((error) => {
+          // Keep fail-closed until a lifecycle recovery retries the check.
+          console.warn(
+            '[HumanInteractionCard] pending interaction revalidation failed',
+            error
+          );
+        });
+    };
+    const revalidatePending = () => {
+      invalidatePendingHumanInteractions(interaction.run_id);
+      validatePending();
+    };
+    validatePending();
+    window.addEventListener('focus', revalidatePending);
+    host?.ipcRenderer?.on('backend-ready', revalidatePending);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', revalidatePending);
+      host?.ipcRenderer?.off('backend-ready', revalidatePending);
     };
   }, [
-    interaction.action_digest,
-    interaction.interaction_id,
-    interaction.run_id,
-    interaction.version,
-    readOnly,
+    interaction,
+    viewKey,
+    receiptOnly,
+    timelineReceipt,
+    expiredLocally,
+    host?.ipcRenderer,
   ]);
-  const effectiveReadOnly = readOnly && !durablyPending;
+  const durablyPending =
+    pendingCheck?.identity === viewKey && pendingCheck.pending;
+  const pendingUnavailable =
+    pendingCheck?.identity === viewKey && pendingCheck.pending === false;
+  const effectiveReadOnly =
+    receiptOnly ||
+    expiredLocally ||
+    (interaction.interaction_type === 'approval' && !durablyPending);
+  // The pre-submit check is async; a card retired meanwhile must not submit.
+  const retired = useRef(false);
+  retired.current = receiptOnly || expiredLocally;
+  const receiptNeedsReason =
+    interaction.interaction_type === 'approval' &&
+    (receiptOnly || expiredLocally || pendingUnavailable) &&
+    !receiptInteraction.reason;
+  useEffect(() => {
+    if (!receiptNeedsReason) return;
+    let cancelled = false;
+    const readReceipt = () => {
+      void getHumanInteractionReceipt(interaction)
+        .then((receipt) => {
+          if (!cancelled && receipt)
+            setJournalReceipt((previous) => {
+              const currentReceipt =
+                previous?.identity === viewKey
+                  ? mergeJournalReceipt(interaction, previous)
+                  : interaction;
+              const merged = mergeJournalReceipt(currentReceipt, receipt);
+              return {
+                identity: viewKey,
+                status: merged.status,
+                reason: merged.reason,
+                expires_at: merged.expires_at,
+              };
+            });
+        })
+        .catch(() => {
+          /* Offline history retains its persisted read-only receipt. */
+        });
+    };
+    readReceipt();
+    window.addEventListener('focus', readReceipt);
+    host?.ipcRenderer?.on('backend-ready', readReceipt);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', readReceipt);
+      host?.ipcRenderer?.off('backend-ready', readReceipt);
+    };
+  }, [viewKey, receiptNeedsReason, interaction, host?.ipcRenderer]);
   const targets = useMemo(
     () => interaction.target_resources?.filter(Boolean) || [],
     [interaction.target_resources]
   );
 
+  const deliver = (receipt: Record<string, unknown>) => {
+    if (
+      receipt.interaction_id !== interaction.interaction_id ||
+      receipt.run_id !== interaction.run_id ||
+      !['resolved', 'expired', 'cancelled'].includes(String(receipt.status))
+    )
+      return;
+    if (delivered.current === viewKey) return;
+    const canonical = receipt.response;
+    if (
+      receipt.status === 'resolved' &&
+      (!canonical || typeof canonical !== 'object')
+    )
+      return;
+    const text =
+      receipt.status === 'expired'
+        ? t('chat.control-recovery-expired')
+        : receipt.status === 'cancelled'
+          ? t('chat.control-recovery-cancelled')
+          : decisionDisplayText(
+              interaction,
+              canonical as Record<string, unknown>,
+              t
+            );
+    delivered.current = viewKey;
+    setSubmittedResponse(text);
+    setResolved(true);
+    onResolved?.(text || undefined);
+  };
+  useEffect(() => {
+    if (
+      operation?.phase === 'resolved' &&
+      operation.receipt &&
+      operation.version === (interaction.version ?? 0) &&
+      operation.digest === interaction.action_digest
+    )
+      deliver(operation.receipt);
+  });
+
   const submit = async (decision: Record<string, unknown>) => {
-    if (effectiveReadOnly || resolved || submitting) return;
+    if (
+      effectiveReadOnly ||
+      resolved ||
+      submitting ||
+      operation ||
+      submissionGuard.current === viewKey
+    )
+      return;
+    submissionGuard.current = viewKey;
+    const generation = view.current.generation;
+    const isCurrent = () =>
+      view.current.mounted &&
+      view.current.key === viewKey &&
+      view.current.generation === generation &&
+      controlOwner() === owner;
     setSubmitting(true);
     setSubmissionError(null);
     try {
-      await decideHumanInteraction(interaction, {
+      if (interaction.interaction_type === 'approval') {
+        invalidatePendingHumanInteractions(interaction.run_id);
+        const isPending = await isHumanInteractionStillPending(interaction);
+        if (!isCurrent() || retired.current) return;
+        if (!isPending) {
+          setPendingCheck({ identity: viewKey, pending: false });
+          return;
+        }
+      }
+      const receipt = await decideHumanInteraction(interaction, {
         decisionRequestId: decisionRequestId.current,
         decision,
         actorId: userId,
+        projectId: projectId ?? undefined,
       });
-      const decisionText = decisionDisplayText(interaction, decision, t);
-      setSubmittedResponse(decisionText);
-      setResolved(true);
-      onResolved?.(decisionText || undefined);
+      if (isCurrent()) deliver(receipt);
     } catch (error) {
+      if (!isCurrent()) return;
+      if (interaction.interaction_type === 'approval') {
+        // A definite conflict retires the card; an unknown outcome stays open
+        // for ControlRecovery.
+        if (
+          (error as { response?: { status?: number } })?.response?.status ===
+            409 ||
+          (error as { status?: number })?.status === 409
+        )
+          setPendingCheck({ identity: viewKey, pending: false });
+        setSubmissionError(t('chat.control-outcome-unknown'));
+        return;
+      }
       console.error('[HumanInteractionCard] decision failed', error);
       const message =
         (error as any)?.response?.data?.detail?.message ||
         (error as any)?.response?.data?.detail ||
         (error as Error)?.message ||
         t('chat.control-decision-failed');
-      const readableMessage =
-        typeof message === 'string' ? message : JSON.stringify(message);
-      setSubmissionError(readableMessage);
-      toast.error(readableMessage);
+      setSubmissionError(
+        typeof message === 'string' ? message : JSON.stringify(message)
+      );
     } finally {
-      setSubmitting(false);
+      if (isCurrent()) setSubmitting(false);
+      if (submissionGuard.current === viewKey) submissionGuard.current = null;
     }
   };
 
   const displayedResponse = response?.trim() || submittedResponse;
   const disabled =
-    effectiveReadOnly || Boolean(displayedResponse) || resolved || submitting;
+    effectiveReadOnly ||
+    Boolean(displayedResponse) ||
+    resolved ||
+    submitting ||
+    Boolean(operation);
   const title = timelineReceipt
     ? t('chat.control-input-required')
     : interaction.title ||
@@ -235,20 +431,60 @@ export function HumanInteractionCard({
   // receipts remain mounted so their submitted decision can be displayed.
   if (resolved && !timelineReceipt) return null;
 
-  if (timelineReceipt && interaction.interaction_type === 'approval') {
+  // An unresolved control operation keeps the card body, which owns
+  // ControlRecovery, until its outcome is confirmed.
+  if (
+    interaction.interaction_type === 'approval' &&
+    (timelineReceipt ||
+      ((receiptOnly || expiredLocally || pendingUnavailable) &&
+        (!operation || operation.phase === 'resolved')))
+  ) {
+    const inactive = receiptOnly || expiredLocally || pendingUnavailable;
+    const label =
+      receiptInteraction.status === 'expired'
+        ? t('chat.approval-expired-title')
+        : receiptInteraction.status === 'cancelled'
+          ? t('chat.approval-cancelled-title')
+          : inactive
+            ? t('chat.approval-inactive-title')
+            : t('chat.control-input-required');
+    const reason = approvalTerminalReason(receiptInteraction.reason, t);
     return (
       <div
         data-human-input-receipt
         data-approval-timeline-receipt
-        className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-x border-y border-ds-border-warning-subtle-default bg-ds-bg-warning-subtle-default px-3 py-2"
+        className="flex w-full min-w-0 items-start gap-ds-stack-related rounded-ds-card border border-x border-y border-ds-hairline-default-default bg-ds-neutral-muted-default p-ds-card-inset"
       >
-        <ShieldAlert
-          aria-hidden
-          className="size-4 shrink-0 text-ds-icon-warning-default-default"
+        <DsIcon
+          icon={ShieldAlert}
+          recipe="main"
+          className="shrink-0 text-ds-ink-muted-default"
         />
-        <span className="text-ds-text-base font-medium text-ds-ink-default-default">
-          {t('chat.control-input-required')}
-        </span>
+        <div className="min-w-0 flex-1 space-y-ds-4 break-words">
+          <DsText
+            as="span"
+            role="base"
+            weight="medium"
+            className="block text-ds-ink-default-default"
+          >
+            {label}
+          </DsText>
+          {inactive && interaction.question ? (
+            <DsText role="base" className="text-ds-ink-muted-default">
+              {interaction.question}
+            </DsText>
+          ) : null}
+          {reason ? (
+            <DsText as="p" role="meta" className="text-ds-ink-muted-default">
+              {reason}
+            </DsText>
+          ) : null}
+          {inactive ? (
+            <DsText as="p" role="meta" className="text-ds-ink-muted-default">
+              {t('chat.approval-read-only-receipt')}
+            </DsText>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -475,7 +711,8 @@ export function HumanInteractionCard({
               {t('chat.control-decision-saving')}
             </span>
           ) : null}
-          {submissionError ? (
+          {operation && <ControlRecovery operation={operation} />}
+          {submissionError && !operation ? (
             <span
               role="alert"
               className="block text-xs font-normal text-ds-text-error-default-default"
