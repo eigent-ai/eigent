@@ -824,7 +824,7 @@ def test_persisted_deadline_is_the_only_timeout_that_terminates_run(tmp_path):
         )
         result = journal.reconcile_startup(now=11)
         assert result.deadline_run_ids == ("run-1",)
-        assert journal.get_run("run-1").status == "failed"
+        assert journal.get_run("run-1").status == "timed_out"
         assert (
             journal.list_events("run-1")[-1].event_type
             == "run.deadline_reached"

@@ -140,6 +140,7 @@ const DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);
@@ -147,6 +148,7 @@ const TERMINAL_DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);

@@ -140,6 +140,7 @@ const TERMINAL_QUEUED_RUN_STATUSES = new Set([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
 ]);
 const READ_ONLY_EVENT_NATIVE_RUN_STATUSES = new Set([

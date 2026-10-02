@@ -498,5 +498,14 @@
   "approval-expired-description": "审批请求在决定被接受前已到期。恢复时会重新评估剩余工作，并在需要时请求新的审批。旧审批请求不能复用。",
   "approval-tool-ended-description": "工具在开始执行前已终止，因此审批已取消。恢复时会重新评估剩余工作，并在需要时请求新的审批。旧审批请求不能复用。",
   "approval-recorded-reason": "记录的原因：{{reason}}",
-  "approval-read-only-receipt": "只读记录"
+  "approval-read-only-receipt": "只读记录",
+  "timed-out-after": "运行 <elapsed>{{time}}</elapsed> 后超时",
+  "run-terminal-reason-completed": "任务已完成。",
+  "run-terminal-reason-user_cancelled": "任务已被停止。",
+  "run-terminal-reason-deadline_exceeded": "任务已达到时间上限。",
+  "run-terminal-reason-approval_expired": "审批请求在得到答复前已到期。恢复时会重新评估剩余工作，并在需要时请求新的审批。",
+  "run-terminal-reason-brain_restart": "任务运行期间 Eigent 重新启动了。",
+  "run-terminal-reason-runtime_lost": "运行此任务的进程意外停止。",
+  "run-terminal-reason-error": "任务因错误而停止。",
+  "run-terminal-reason-budget_exhausted": "任务已用尽可用预算。"
 }

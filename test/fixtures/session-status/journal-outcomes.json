@@ -15,7 +15,9 @@
       "cancel_request_id": null,
       "cancel_requested_at": null,
       "origin": "local",
-      "resume_blocked_reason": null
+      "resume_blocked_reason": null,
+      "terminal_reason": "completed",
+      "terminal_detail": null
     },
     "events": [
       {
@@ -53,7 +55,10 @@
         "run_id": "run-completed",
         "sequence": 2,
         "event_type": "run.completed",
-        "payload": {},
+        "payload": {
+          "terminal_detail": null,
+          "terminal_reason": "completed"
+        },
         "legacy_step": null,
         "created_at": 1700000002.0,
         "run_version": 2,
@@ -78,7 +83,9 @@
       "cancel_request_id": null,
       "cancel_requested_at": null,
       "origin": "local",
-      "resume_blocked_reason": null
+      "resume_blocked_reason": null,
+      "terminal_reason": "error",
+      "terminal_detail": null
     },
     "events": [
       {
@@ -116,7 +123,10 @@
         "run_id": "run-failed",
         "sequence": 2,
         "event_type": "run.failed",
-        "payload": {},
+        "payload": {
+          "terminal_detail": null,
+          "terminal_reason": "error"
+        },
         "legacy_step": null,
         "created_at": 1700000002.0,
         "run_version": 2,
@@ -141,7 +151,9 @@
       "cancel_request_id": null,
       "cancel_requested_at": null,
       "origin": "local",
-      "resume_blocked_reason": null
+      "resume_blocked_reason": null,
+      "terminal_reason": "user_cancelled",
+      "terminal_detail": null
     },
     "events": [
       {
@@ -179,7 +191,10 @@
         "run_id": "run-cancelled",
         "sequence": 2,
         "event_type": "run.cancelled",
-        "payload": {},
+        "payload": {
+          "terminal_detail": null,
+          "terminal_reason": "user_cancelled"
+        },
         "legacy_step": null,
         "created_at": 1700000002.0,
         "run_version": 2,
@@ -204,7 +219,9 @@
       "cancel_request_id": null,
       "cancel_requested_at": null,
       "origin": "local",
-      "resume_blocked_reason": null
+      "resume_blocked_reason": null,
+      "terminal_reason": "brain_restart",
+      "terminal_detail": "brain_restart"
     },
     "events": [
       {
@@ -245,7 +262,9 @@
         "payload": {
           "policy_version": "v1",
           "previous_status": "running",
-          "reason": "brain_restart"
+          "reason": "brain_restart",
+          "terminal_detail": "brain_restart",
+          "terminal_reason": "brain_restart"
         },
         "legacy_step": null,
         "created_at": 1700000002.0,

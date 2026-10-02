@@ -44,10 +44,8 @@ const SNAPSHOT_RUN_STATUSES = new Set<ProjectedRun['status']>([
   'running',
   'waiting_for_user',
   'cancelling',
-  'completed',
-  'failed',
-  'cancelled',
   'interrupted',
+  ...TERMINAL_RUN_STATUSES,
 ]);
 
 function snapshotRunStatus(value: string): ProjectedRun['status'] {

@@ -649,7 +649,7 @@ def test_recovery_collapses_step_progress_to_latest_snapshot(journal):
     assert text.count("Checkpoint [step.") == 1
     assert "Checkpoint [step.completed]" in text
     assert "truncated" in text
-    tight = _recovery_projection(journal, attempt, char_budget=500).text
+    tight = _recovery_projection(journal, attempt, char_budget=600).text
     assert "Checkpoint [step." not in tight
     assert "1 earlier completed tool results or step updates omitted" in tight
 

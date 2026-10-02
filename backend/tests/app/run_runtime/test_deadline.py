@@ -61,7 +61,7 @@ async def test_coordinator_enforces_only_a_persisted_run_deadline(tmp_path):
             _, pending = await asyncio.wait({execution, watcher}, timeout=5)
             assert not pending
             assert execution.cancelled()
-            assert journal.get_run("run-1").status == "failed"
+            assert journal.get_run("run-1").status == "timed_out"
             assert (
                 journal.list_events("run-1")[-1].event_type
                 == "run.deadline_reached"
@@ -242,7 +242,7 @@ async def test_deadline_configured_after_admission_is_enforced(tmp_path):
             done, _ = await asyncio.wait({execution}, timeout=5)
             assert execution in done
             assert execution.cancelled()
-            assert journal.get_run("run-1").status == "failed"
+            assert journal.get_run("run-1").status == "timed_out"
             assert (
                 journal.list_events("run-1")[-1].event_type
                 == "run.deadline_reached"

@@ -342,16 +342,19 @@ describe('HumanInteractionCard', () => {
         interaction={{
           ...interaction,
           status: 'cancelled',
-          reason: 'tool_terminal_before_dispatch',
+          reason: 'run_terminal:cancelled',
+          terminal_reason: 'user_cancelled',
         }}
       />
     );
-    const reason = i18next.t('chat.approval-tool-ended-description');
+    const reason = i18next.t('chat.run-terminal-reason-user_cancelled');
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
     });
     expect(screen.getByText('Approval cancelled')).toBeInTheDocument();
     expect(screen.getByText(reason)).toBeInTheDocument();
+    // Raw journal identifiers stay out of Normal mode.
+    expect(screen.queryByText(/run_terminal/)).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
     expect(mocks.getHumanInteractionReceipt).not.toHaveBeenCalled();
     expect(mocks.isHumanInteractionStillPending).not.toHaveBeenCalled();
@@ -362,6 +365,7 @@ describe('HumanInteractionCard', () => {
     mocks.getHumanInteractionReceipt.mockResolvedValue({
       status: 'requested',
       reason: 'approval_expired',
+      terminal_reason: 'approval_expired',
     });
     render(
       <HumanInteractionCard
@@ -371,17 +375,18 @@ describe('HumanInteractionCard', () => {
     await act(async () => {});
     expect(screen.getByText('Approval cancelled')).toBeInTheDocument();
     expect(
-      screen.queryByText(i18next.t('chat.approval-expired-description'))
+      screen.queryByText(i18next.t('chat.run-terminal-reason-approval_expired'))
     ).toBeNull();
     mocks.getHumanInteractionReceipt.mockResolvedValue({
       status: 'cancelled',
       reason: 'tool_terminal_before_dispatch',
+      terminal_reason: 'runtime_lost',
     });
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
     });
     expect(
-      screen.getByText(i18next.t('chat.approval-tool-ended-description'))
+      screen.getByText(i18next.t('chat.run-terminal-reason-runtime_lost'))
     ).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
   });
@@ -487,15 +492,16 @@ describe('HumanInteractionCard', () => {
     mocks.getHumanInteractionReceipt.mockResolvedValue({
       status: 'cancelled',
       reason: 'tool_terminal_before_dispatch',
+      terminal_reason: 'runtime_lost',
     });
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
     });
-    const reason = i18next.t('chat.approval-tool-ended-description');
+    const reason = i18next.t('chat.run-terminal-reason-runtime_lost');
     expect(screen.getByText(reason)).toBeInTheDocument();
     for (const receipt of [
-      { status: 'cancelled' },
-      { status: 'requested', reason: 'approval_expired' },
+      { status: 'cancelled', terminal_reason: null },
+      { status: 'requested', terminal_reason: 'approval_expired' },
     ]) {
       mocks.getHumanInteractionReceipt.mockResolvedValue(receipt);
       await act(async () => {
@@ -670,7 +676,8 @@ describe('HumanInteractionCard', () => {
   it('rehydrates the actual cancellation reason from the journal without reviving controls', async () => {
     mocks.getHumanInteractionReceipt.mockResolvedValue({
       status: 'cancelled',
-      reason: 'tool_terminal_before_dispatch',
+      reason: 'brain_restart_before_dispatch',
+      terminal_reason: 'brain_restart',
     });
     render(
       <HumanInteractionCard
@@ -680,8 +687,9 @@ describe('HumanInteractionCard', () => {
     );
     expect(await screen.findByText('Approval cancelled')).toBeInTheDocument();
     expect(
-      screen.getByText(i18next.t('chat.approval-tool-ended-description'))
+      screen.getByText(i18next.t('chat.run-terminal-reason-brain_restart'))
     ).toBeInTheDocument();
+    expect(screen.queryByText(/brain_restart_before_dispatch/)).toBeNull();
     expect(screen.queryByText('Approval expired')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });

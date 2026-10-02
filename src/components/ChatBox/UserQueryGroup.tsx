@@ -17,7 +17,10 @@ import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
-import type { VanillaChatStore } from '@/store/chatStore';
+import {
+  UNSUCCESSFUL_RUN_STATUSES,
+  type VanillaChatStore,
+} from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -224,8 +227,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
   const ownsFailureSummary =
     queryGroup.ownsRunWorkLog === true &&
-    activeTask?.durableRunStatus === 'failed' &&
-    activeTask.status === ChatTaskStatus.FINISHED;
+    UNSUCCESSFUL_RUN_STATUSES.has(activeTask?.durableRunStatus!) &&
+    activeTask?.status === ChatTaskStatus.FINISHED;
   const [failureEvidence, setFailureEvidence] = useState<{
     taskId: string;
     owner: VanillaChatStore;
