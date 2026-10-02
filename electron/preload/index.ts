@@ -28,6 +28,10 @@ import {
   type NativeMenuLocale,
 } from '../../src/shared/nativeMenu';
 import {
+  WINDOW_CHROME_THEME_CHANNEL,
+  type WindowChromeTheme,
+} from '../../src/shared/windowChrome';
+import {
   isWindowCloseRequest,
   WINDOW_CLOSE_REQUEST_CHANNEL,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
@@ -106,6 +110,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   toggleMaximizeWindow: () => ipcRenderer.send('window-toggle-maximize'),
+  setWindowChromeTheme: (theme: WindowChromeTheme) =>
+    ipcRenderer.send(WINDOW_CHROME_THEME_CHANNEL, theme),
   isFullScreen: () => ipcRenderer.invoke('is-fullscreen'),
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
   selectAgentPluginSource: () =>

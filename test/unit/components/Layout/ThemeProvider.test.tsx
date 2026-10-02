@@ -15,6 +15,21 @@
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const hostMocks = vi.hoisted(() => ({
+  setWindowChromeTheme: vi.fn(),
+}));
+
+vi.mock('@/host/context', () => ({
+  useHost: () => ({
+    electronAPI: { setWindowChromeTheme: hostMocks.setWindowChromeTheme },
+    ipcRenderer: null,
+  }),
+}));
+
+vi.mock('@/components/Toast/storageToast', () => ({
+  showStorageToast: vi.fn(),
+}));
+
 import { useAuthStore } from '@/store/authStore';
 
 import { ThemeProvider } from '@/components/Layout/ThemeProvider';
@@ -34,6 +49,7 @@ describe('ThemeProvider', () => {
 
   beforeEach(() => {
     changeListener = null;
+    hostMocks.setWindowChromeTheme.mockClear();
 
     mediaQuery = {
       matches: true,
@@ -84,6 +100,7 @@ describe('ThemeProvider', () => {
     });
     expect(mediaQuery.addListener).toHaveBeenCalledTimes(1);
     expect(changeListener).toBeTruthy();
+    expect(hostMocks.setWindowChromeTheme).toHaveBeenCalledWith('dark');
 
     mediaQuery.matches = false;
     act(() => {
@@ -94,6 +111,7 @@ describe('ThemeProvider', () => {
       expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     });
     expect(useAuthStore.getState().appearance).toBe('light');
+    expect(hostMocks.setWindowChromeTheme).toHaveBeenLastCalledWith('light');
 
     unmount();
     expect(mediaQuery.removeListener).toHaveBeenCalledTimes(1);

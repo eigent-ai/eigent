@@ -195,6 +195,7 @@ import * as initModule from '../../../../electron/main/init';
 import * as installDepsModule from '../../../../electron/main/install-deps';
 import * as envUtil from '../../../../electron/main/utils/envUtil';
 import * as mcpConfig from '../../../../electron/main/utils/mcpConfig';
+import { getMainWindowChromeOptions } from '../../../../electron/main/windowChrome';
 
 // Cast the imports to mocked versions
 const mockedEnvUtil = vi.mocked(envUtil);
@@ -666,53 +667,36 @@ describe('Electron Main Index Functions', () => {
 
   describe('createWindow', () => {
     it('should create window with correct configuration on macOS', () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      const windowChromeOptions = getMainWindowChromeOptions('darwin', 'light');
 
-      const mockConfig = {
-        title: 'Eigent',
-        width: 1366,
-        height: 860,
-        minWidth: 1100,
-        minHeight: 700,
+      expect(windowChromeOptions).toMatchObject({
         frame: false,
         transparent: true,
         backgroundColor: '#f5f5f5',
         titleBarStyle: 'hidden',
-        trafficLightPosition: { x: 10, y: 10 },
+        trafficLightPosition: { x: 10, y: 12 },
         roundedCorners: true,
-      };
-
-      expect(mockConfig.titleBarStyle).toBe('hidden');
-      expect(mockConfig.trafficLightPosition).toEqual({ x: 10, y: 10 });
-
-      // Restore original platform
-      Object.defineProperty(process, 'platform', { value: originalPlatform });
+      });
+      expect(windowChromeOptions.titleBarOverlay).toBeUndefined();
     });
 
     it('should create window with correct configuration on Windows', () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, 'platform', { value: 'win32' });
+      const windowChromeOptions = getMainWindowChromeOptions('win32', 'light');
 
-      const mockConfig = {
-        title: 'Eigent',
-        width: 1366,
-        height: 860,
-        minWidth: 1100,
-        minHeight: 700,
+      expect(windowChromeOptions).toMatchObject({
         frame: true,
         transparent: false,
         backgroundColor: '#ffffff',
-        titleBarStyle: undefined,
-        trafficLightPosition: undefined,
+        titleBarStyle: 'hidden',
+        titleBarOverlay: {
+          color: '#00000000',
+          symbolColor: '#1e1e1e',
+          height: 40,
+        },
         roundedCorners: false,
-      };
-
-      expect(mockConfig.titleBarStyle).toBeUndefined();
-      expect(mockConfig.trafficLightPosition).toBeUndefined();
-
-      // Restore original platform
-      Object.defineProperty(process, 'platform', { value: originalPlatform });
+        autoHideMenuBar: true,
+      });
+      expect(windowChromeOptions.trafficLightPosition).toBeUndefined();
     });
   });
 

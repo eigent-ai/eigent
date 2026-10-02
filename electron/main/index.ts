@@ -54,6 +54,11 @@ import {
   type NativeMenuLocale,
 } from '../../src/shared/nativeMenu';
 import {
+  getWindowsTitleBarOverlay,
+  isWindowChromeTheme,
+  WINDOW_CHROME_THEME_CHANNEL,
+} from '../../src/shared/windowChrome';
+import {
   isWindowCloseResponse,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
 } from '../../src/shared/windowClose';
@@ -125,6 +130,7 @@ import {
   isBinaryExists,
 } from './utils/process';
 import { WebViewManager } from './webview';
+import { getMainWindowChromeOptions } from './windowChrome';
 import { loadWindowStartupState, persistWindowState } from './windowState';
 import {
   closeWorkspaceSecretBroker,
@@ -1966,6 +1972,13 @@ function registerIpcHandlers() {
       );
     }
   });
+  ipcMain.on(WINDOW_CHROME_THEME_CHANNEL, (event, theme: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (process.platform !== 'win32' || !win || !isWindowChromeTheme(theme)) {
+      return;
+    }
+    win.setTitleBarOverlay(getWindowsTitleBarOverlay(theme));
+  });
   ipcMain.on('window-minimize', () => win?.minimize());
   ipcMain.on('window-toggle-maximize', () => {
     if (win?.isMaximized()) {
@@ -3069,9 +3082,6 @@ async function createWindow() {
 }
 
 async function createWindowInternal() {
-  const isMac = process.platform === 'darwin';
-  const isWindows = process.platform === 'win32';
-
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
   await seedDefaultSkillsIfEmpty();
@@ -3104,41 +3114,23 @@ async function createWindowInternal() {
     )}`
   );
 
-  // Platform-specific window configuration
-  // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
+  // Platform-specific window configuration. Windows keeps its native frame and
+  // caption buttons, but overlays them into the app-owned 40px header.
+  // macOS/Linux remain frameless; macOS corner radius uses the native hook.
   appShellReadinessGate.markDocumentLoading();
   rendererAppCommands.markNotReady('window-created');
+  const windowChromeOptions = getMainWindowChromeOptions(
+    process.platform,
+    nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+  );
   win = new BrowserWindow({
     title: 'Eigent',
     ...startupWindowState.bounds,
     minWidth: startupWindowState.minimumSize.width,
     minHeight: startupWindowState.minimumSize.height,
-    // Use native frame on Windows for better native integration
-    frame: isWindows ? true : false,
+    ...windowChromeOptions,
     show: false, // Don't show until content is ready to avoid white screen
-    // Only use transparency on macOS and Linux (not supported well on Windows)
-    transparent: !isWindows,
-    // Solid on Windows; macOS solid without vibrancy; Linux unchanged semi-transparent tint
-    backgroundColor: isWindows
-      ? nativeTheme.shouldUseDarkColors
-        ? '#1e1e1e'
-        : '#ffffff'
-      : isMac
-        ? nativeTheme.shouldUseDarkColors
-          ? '#1e1e1e'
-          : '#f5f5f5'
-        : '#f5f5f580',
-    // macOS-specific title bar styling
-    titleBarStyle: isMac ? 'hidden' : undefined,
-    trafficLightPosition: isMac ? { x: 10, y: 12 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
-    // Rounded corners on macOS and Linux (as original)
-    roundedCorners: !isWindows,
-    // Keep the Windows/Linux menu discoverable through Alt without changing
-    // the existing clean shell chrome.
-    ...(!isMac && {
-      autoHideMenuBar: true,
-    }),
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts

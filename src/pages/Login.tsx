@@ -419,7 +419,7 @@ export default function Login() {
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="absolute top-0 right-0 left-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
+        className="window-chrome-safe-area absolute top-0 left-0 z-50 flex !h-10 items-center justify-between py-1 pl-2"
         id="login-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
