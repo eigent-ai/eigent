@@ -67,8 +67,7 @@ export default function SettingGeneral({
   const [_isLoading, _setIsLoading] = useState(false);
   const language = authStore.language;
   const _setLanguage = authStore.setLanguage;
-  const savedWorkProfile = authStore.workProfile;
-  const workProfile = normalizeWorkProfile(savedWorkProfile);
+  const workProfile = normalizeWorkProfile(authStore.workProfile);
   const setWorkProfile = authStore.setWorkProfile;
   const _fullNameRef: RefObject<HTMLInputElement> = createRef();
   const _nickNameRef: RefObject<HTMLInputElement> = createRef();
@@ -85,12 +84,6 @@ export default function SettingGeneral({
   const proxyRestartHintId = useId();
   const hasProxyValueChanged = proxyUrl !== savedProxyUrl;
   const hasUnsavedProxyChanges = proxyUrl.trim() !== savedProxyUrl.trim();
-
-  useEffect(() => {
-    if (savedWorkProfile !== workProfile) {
-      setWorkProfile(workProfile);
-    }
-  }, [savedWorkProfile, setWorkProfile, workProfile]);
 
   const languageList = [
     {

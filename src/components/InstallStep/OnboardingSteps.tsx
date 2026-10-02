@@ -20,6 +20,7 @@ import {
   RuledLinesBackground,
 } from '@/components/Background';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { LocaleEnum, resolveLocale, switchLanguage } from '@/i18n';
@@ -143,7 +144,7 @@ function StepLanguage({
               )}
             >
               <span>{displayLabel}</span>
-              {active && <Check size={14} strokeWidth={2.5} />}
+              {active && <DsIcon icon={Check} />}
             </button>
           );
         })}
@@ -189,21 +190,17 @@ function StepProfile({
                 aria-pressed={active}
                 onClick={() => onSelect(id)}
                 className={cn(
-                  'flex min-w-0 items-center justify-start rounded-xl border border-x border-y border-solid px-6 py-3 text-left transition-colors duration-100',
+                  'flex min-w-0 items-center justify-between gap-2 rounded-xl border border-x border-y border-solid px-6 py-3 text-left text-ds-text-base font-medium transition-colors duration-100',
                   DS_FOCUS_RING,
                   active
-                    ? 'border-ds-accent-default-selected bg-ds-neutral-default-default text-ds-ink-default-default'
+                    ? 'border-ds-hairline-default-default bg-ds-neutral-default-default text-ds-ink-default-default'
                     : 'border-transparent bg-ds-neutral-default-default text-ds-ink-muted-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover hover:text-ds-ink-muted-hover'
                 )}
               >
-                <span
-                  className={cn(
-                    'min-w-0 text-ds-text-base break-words',
-                    active ? 'font-semibold' : 'font-medium'
-                  )}
-                >
+                <span className="min-w-0 break-words">
                   {t(WORK_PROFILE_LABEL_KEYS[id])}
                 </span>
+                {active && <DsIcon icon={Check} />}
               </button>
             );
           })}

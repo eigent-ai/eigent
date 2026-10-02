@@ -53,7 +53,9 @@ describe('OnboardingSteps profile step', () => {
     expect(role.querySelector('svg')).toBeNull();
     await user.click(role);
 
+    // Selected cards match the Language step: hairline border plus a check.
     expect(role).toHaveAttribute('aria-pressed', 'true');
+    expect(role.querySelector('svg')).not.toBeNull();
     expect(useAuthStore.getState().workProfile).toBe('scientist');
     expect(continueButton).toBeEnabled();
 

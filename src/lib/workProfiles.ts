@@ -34,8 +34,6 @@ export const WORK_PROFILE_IDS = [
   'writer',
   'educator',
   'consultant',
-  'researcher',
-  'software-engineer',
   'others',
 ] as const;
 
@@ -56,7 +54,10 @@ export function normalizeWorkProfile(value: unknown): WorkProfileId {
     case 'frontend-engineering':
     case 'devops':
     case 'data-engineering':
+    case 'software-engineer':
       return 'engineering';
+    case 'researcher':
+      return 'scientist';
     case 'hr':
       return 'human-resources';
     default:
@@ -83,7 +84,5 @@ export const WORK_PROFILE_LABEL_KEYS: Record<WorkProfileId, string> = {
   writer: 'setting.work-profile-writer',
   educator: 'setting.work-profile-educator',
   consultant: 'setting.work-profile-consultant',
-  researcher: 'setting.work-profile-researcher',
-  'software-engineer': 'setting.work-profile-software-engineer',
   others: 'setting.work-profile-others',
 };
