@@ -13,7 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
-import { interruptedRunDescription } from '@/lib/approvalPresentation';
+import {
+  approvalTerminalReason,
+  interruptedRunDescription,
+} from '@/lib/approvalPresentation';
 import { normalizeLocalRunEvent } from '@/lib/projector';
 import { adaptChatProjectionEvent } from '@/lib/projector/chat';
 import { toTimelineCall } from '@/lib/projector/chat/presentation/timelineCalls';
@@ -85,18 +88,28 @@ describe('durable approval terminal reasons', () => {
     });
   });
 
-  it('explains Resume without treating an unknown cancellation reason as expiry', () => {
-    const copy = interruptedRunDescription(
+  it('names only mapped approval causes in the interrupted banner', () => {
+    const t = i18next.t.bind(i18next);
+    for (const reason of [
       'worker_cancelled',
-      i18next.t.bind(i18next)
+      'runtime.interrupted',
+      'brain_restart',
+      null,
+    ]) {
+      expect(interruptedRunDescription(reason, t)).toBe(
+        t('chat.run-interrupted-description')
+      );
+    }
+    expect(approvalTerminalReason('worker_cancelled', t)).toBe(
+      'Recorded reason: worker_cancelled'
     );
-    expect(copy).toContain('Recorded reason: worker_cancelled');
-    expect(copy).toContain('re-evaluates');
-    expect(copy).toContain('requests new approval when needed');
-    expect(copy).not.toContain('expired');
+    const expired = interruptedRunDescription('approval_expired', t);
+    expect(expired).toContain('re-evaluates');
+    expect(expired).toContain('requests new approval when needed');
+    expect(expired).toContain(t('chat.run-interrupted-description'));
   });
 
-  it('preserves the restart compensation outcome from the Run summary', () => {
+  it('preserves an approval expiry reconciled at startup from the Run summary', () => {
     const run = mergeRunSummary(undefined, {
       run_id: 'run-1',
       project_id: 'project-1',
@@ -107,6 +120,7 @@ describe('durable approval terminal reasons', () => {
         attempt_number: 1,
         status: 'interrupted',
         outcome: 'approval_expired',
+        timeout_reason: null,
       },
     });
     expect(run?.terminalReason).toBe('approval_expired');

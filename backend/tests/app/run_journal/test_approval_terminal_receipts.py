@@ -25,8 +25,13 @@ from app.run_journal import (
 from app.run_policy import TimeoutOutcome, TimeoutScope
 
 
-def waiting(journal):
-    journal.ensure_run(run_id="run-1", project_id="project-1", now=1)
+def waiting(journal, *, deadline_at=None):
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        deadline_at=deadline_at,
+        now=1,
+    )
     attempt = journal.create_run_attempt(
         "run-1",
         request_id="initial",
@@ -74,6 +79,10 @@ def test_expiry_receipt_survives_restart_and_resume_rejects_old_authority(
     with SQLiteRunJournal(path) as journal:
         journal.reconcile_startup(now=6)
         assert journal.get_run("run-1").status == "interrupted"
+        if offline:
+            assert journal.list_run_attempts("run-1")[-1].outcome == (
+                "approval_expired"
+            )
         old = journal.list_approvals("run-1")[0]
         assert old.decision["reason"] == "approval_expired"
         assert (
@@ -150,6 +159,26 @@ def test_expiry_receipt_survives_restart_and_resume_rejects_old_authority(
         assert (
             journal.get_human_interaction("old-approval").status == "expired"
         )
+
+
+def test_offline_expiry_after_the_run_deadline_keeps_the_deadline_outcome(
+    tmp_path,
+):
+    path = tmp_path / "journal.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        waiting(journal, deadline_at=4)
+    with SQLiteRunJournal(path) as journal:
+        result = journal.reconcile_startup(now=6)
+        assert result.deadline_run_ids == ("run-1",)
+        assert journal.get_run("run-1").status == "failed"
+        assert journal.list_run_attempts("run-1")[-1].outcome == (
+            "run.deadline_reached"
+        )
+        assert not [
+            e
+            for e in journal.list_events("run-1")
+            if e.event_type == "approval.expired_rejected"
+        ]
 
 
 @pytest.mark.parametrize("expiry_first", [False, True])

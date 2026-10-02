@@ -16219,6 +16219,200 @@ class SQLiteRunJournal:
                 source="startup_reconciliation",
                 include_dispatched=True,
             )
+            # An expiry that elapsed while the Brain was down is the Run's
+            # terminal cause, so record it before the generic restart
+            # interruption below claims the Attempt.  A pending cancel or an
+            # elapsed Run deadline still takes precedence there.
+            expired_approvals = connection.execute(
+                """
+                SELECT approvals.*, runs.status AS run_status
+                FROM approvals
+                JOIN runs ON runs.run_id = approvals.run_id
+                WHERE approvals.status = 'pending'
+                  AND approvals.expiry_action = 'reject'
+                  AND approvals.expires_at IS NOT NULL
+                  AND approvals.expires_at <= ?
+                  AND runs.cancel_request_id IS NULL
+                  AND (runs.deadline_at IS NULL OR runs.deadline_at > ?)
+                ORDER BY approvals.expires_at, approvals.approval_id
+                """,
+                (timestamp, timestamp),
+            ).fetchall()
+            for approval in expired_approvals:
+                if approval["run_status"] in {
+                    "completed",
+                    "failed",
+                    "cancelled",
+                }:
+                    continue
+                try:
+                    with self._savepoint(connection, "startup_approval"):
+                        decision_json = json.dumps(
+                            {
+                                "decision": "rejected",
+                                "reason": "approval_expired",
+                            },
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        )
+                        connection.execute(
+                            """
+                            UPDATE approvals
+                            SET status = 'rejected', decision_json = ?,
+                                resolved_at = ?, version = version + 1
+                            WHERE approval_id = ? AND status = 'pending'
+                            """,
+                            (
+                                decision_json,
+                                timestamp,
+                                approval["approval_id"],
+                            ),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE human_interactions
+                            SET status = 'expired', resolved_at = ?,
+                                updated_at = ?, version = version + 1
+                            WHERE interaction_id = ?
+                              AND status IN ('requested', 'presented')
+                            """,
+                            (
+                                timestamp,
+                                timestamp,
+                                approval["approval_id"],
+                            ),
+                        )
+                        connection.execute(
+                            """
+                            INSERT OR IGNORE INTO human_interaction_decisions(
+                                decision_id, interaction_id,
+                                decision_request_id, decision_json,
+                                actor_type, actor_id, source, action_digest,
+                                created_at
+                            ) VALUES (?, ?, ?, ?, 'system', NULL, 'expiry', ?, ?)
+                            """,
+                            (
+                                str(uuid.uuid4()),
+                                approval["approval_id"],
+                                f"expiry:{approval['approval_id']}",
+                                decision_json,
+                                approval["action_digest"],
+                                timestamp,
+                            ),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE run_attempts
+                            SET status = 'interrupted',
+                                ended_at = COALESCE(ended_at, ?),
+                                outcome = 'approval_expired'
+                            WHERE attempt_id = ?
+                              AND status = 'waiting_for_user'
+                            """,
+                            (timestamp, approval["attempt_id"]),
+                        )
+                        self._append_event_in_transaction(
+                            connection,
+                            approval["run_id"],
+                            RunEventDraft(
+                                event_id=(
+                                    f"approval:{approval['approval_id']}:expired"
+                                ),
+                                event_type="approval.expired_rejected",
+                                payload={
+                                    "approval_id": approval["approval_id"],
+                                    "expiry_action": "reject",
+                                    "reason": "approval_expired",
+                                },
+                                created_at=timestamp,
+                            ),
+                            run_status="interrupted",
+                            clear_active_attempt=True,
+                        )
+                except Exception:
+                    logger.exception(
+                        "Startup reconciliation skipped one Approval",
+                        extra={"approval_id": approval["approval_id"]},
+                    )
+            expired_interactions = connection.execute(
+                """
+                SELECT human_interactions.*, runs.status AS run_status
+                FROM human_interactions
+                JOIN runs ON runs.run_id = human_interactions.run_id
+                WHERE human_interactions.interaction_type != 'approval'
+                  AND human_interactions.status IN ('requested', 'presented')
+                  AND human_interactions.expires_at IS NOT NULL
+                  AND human_interactions.expires_at <= ?
+                  AND runs.cancel_request_id IS NULL
+                  AND (runs.deadline_at IS NULL OR runs.deadline_at > ?)
+                ORDER BY human_interactions.expires_at,
+                         human_interactions.interaction_id
+                """,
+                (timestamp, timestamp),
+            ).fetchall()
+            for interaction in expired_interactions:
+                if interaction["run_status"] in {
+                    "completed",
+                    "failed",
+                    "cancelled",
+                }:
+                    continue
+                try:
+                    with self._savepoint(connection, "startup_interaction"):
+                        connection.execute(
+                            """
+                            UPDATE human_interactions
+                            SET status = 'expired', resolved_at = ?,
+                                updated_at = ?, version = version + 1
+                            WHERE interaction_id = ?
+                              AND status IN ('requested', 'presented')
+                            """,
+                            (
+                                timestamp,
+                                timestamp,
+                                interaction["interaction_id"],
+                            ),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE run_attempts
+                            SET status = 'interrupted',
+                                ended_at = COALESCE(ended_at, ?),
+                                outcome = 'human_interaction_expired'
+                            WHERE attempt_id = ?
+                              AND status = 'waiting_for_user'
+                            """,
+                            (timestamp, interaction["attempt_id"]),
+                        )
+                        self._append_event_in_transaction(
+                            connection,
+                            interaction["run_id"],
+                            RunEventDraft(
+                                event_id=(
+                                    "interaction:"
+                                    f"{interaction['interaction_id']}:expired"
+                                ),
+                                event_type="interaction.expired",
+                                payload={
+                                    "interaction_id": interaction[
+                                        "interaction_id"
+                                    ],
+                                    "interaction_type": interaction[
+                                        "interaction_type"
+                                    ],
+                                },
+                                created_at=timestamp,
+                            ),
+                            run_status="interrupted",
+                            clear_active_attempt=True,
+                        )
+                except Exception:
+                    logger.exception(
+                        "Startup reconciliation skipped one HumanInteraction",
+                        extra={
+                            "interaction_id": interaction["interaction_id"]
+                        },
+                    )
             runs = connection.execute(
                 """
                 SELECT * FROM runs
@@ -16408,192 +16602,6 @@ class SQLiteRunJournal:
                     continue
                 if not replayable:
                     unknown_tools.append(tool["tool_call_id"])
-            expired_approvals = connection.execute(
-                """
-                SELECT approvals.*, runs.status AS run_status
-                FROM approvals
-                JOIN runs ON runs.run_id = approvals.run_id
-                WHERE approvals.status = 'pending'
-                  AND approvals.expiry_action = 'reject'
-                  AND approvals.expires_at IS NOT NULL
-                  AND approvals.expires_at <= ?
-                ORDER BY approvals.expires_at, approvals.approval_id
-                """,
-                (timestamp,),
-            ).fetchall()
-            for approval in expired_approvals:
-                if approval["run_status"] in {
-                    "completed",
-                    "failed",
-                    "cancelled",
-                }:
-                    continue
-                try:
-                    with self._savepoint(connection, "startup_approval"):
-                        decision_json = json.dumps(
-                            {
-                                "decision": "rejected",
-                                "reason": "approval_expired",
-                            },
-                            separators=(",", ":"),
-                            sort_keys=True,
-                        )
-                        connection.execute(
-                            """
-                            UPDATE approvals
-                            SET status = 'rejected', decision_json = ?,
-                                resolved_at = ?, version = version + 1
-                            WHERE approval_id = ? AND status = 'pending'
-                            """,
-                            (
-                                decision_json,
-                                timestamp,
-                                approval["approval_id"],
-                            ),
-                        )
-                        connection.execute(
-                            """
-                            UPDATE human_interactions
-                            SET status = 'expired', resolved_at = ?,
-                                updated_at = ?, version = version + 1
-                            WHERE interaction_id = ?
-                              AND status IN ('requested', 'presented')
-                            """,
-                            (
-                                timestamp,
-                                timestamp,
-                                approval["approval_id"],
-                            ),
-                        )
-                        connection.execute(
-                            """
-                            INSERT OR IGNORE INTO human_interaction_decisions(
-                                decision_id, interaction_id,
-                                decision_request_id, decision_json,
-                                actor_type, actor_id, source, action_digest,
-                                created_at
-                            ) VALUES (?, ?, ?, ?, 'system', NULL, 'expiry', ?, ?)
-                            """,
-                            (
-                                str(uuid.uuid4()),
-                                approval["approval_id"],
-                                f"expiry:{approval['approval_id']}",
-                                decision_json,
-                                approval["action_digest"],
-                                timestamp,
-                            ),
-                        )
-                        connection.execute(
-                            """
-                            UPDATE run_attempts
-                            SET status = 'interrupted',
-                                ended_at = COALESCE(ended_at, ?),
-                                outcome = 'approval_expired'
-                            WHERE attempt_id = ?
-                              AND status = 'waiting_for_user'
-                            """,
-                            (timestamp, approval["attempt_id"]),
-                        )
-                        self._append_event_in_transaction(
-                            connection,
-                            approval["run_id"],
-                            RunEventDraft(
-                                event_id=(
-                                    f"approval:{approval['approval_id']}:expired"
-                                ),
-                                event_type="approval.expired_rejected",
-                                payload={
-                                    "approval_id": approval["approval_id"],
-                                    "expiry_action": "reject",
-                                    "reason": "approval_expired",
-                                },
-                                created_at=timestamp,
-                            ),
-                            run_status="interrupted",
-                            clear_active_attempt=True,
-                        )
-                except Exception:
-                    logger.exception(
-                        "Startup reconciliation skipped one Approval",
-                        extra={"approval_id": approval["approval_id"]},
-                    )
-            expired_interactions = connection.execute(
-                """
-                SELECT human_interactions.*, runs.status AS run_status
-                FROM human_interactions
-                JOIN runs ON runs.run_id = human_interactions.run_id
-                WHERE human_interactions.interaction_type != 'approval'
-                  AND human_interactions.status IN ('requested', 'presented')
-                  AND human_interactions.expires_at IS NOT NULL
-                  AND human_interactions.expires_at <= ?
-                ORDER BY human_interactions.expires_at,
-                         human_interactions.interaction_id
-                """,
-                (timestamp,),
-            ).fetchall()
-            for interaction in expired_interactions:
-                if interaction["run_status"] in {
-                    "completed",
-                    "failed",
-                    "cancelled",
-                }:
-                    continue
-                try:
-                    with self._savepoint(connection, "startup_interaction"):
-                        connection.execute(
-                            """
-                            UPDATE human_interactions
-                            SET status = 'expired', resolved_at = ?,
-                                updated_at = ?, version = version + 1
-                            WHERE interaction_id = ?
-                              AND status IN ('requested', 'presented')
-                            """,
-                            (
-                                timestamp,
-                                timestamp,
-                                interaction["interaction_id"],
-                            ),
-                        )
-                        connection.execute(
-                            """
-                            UPDATE run_attempts
-                            SET status = 'interrupted',
-                                ended_at = COALESCE(ended_at, ?),
-                                outcome = 'human_interaction_expired'
-                            WHERE attempt_id = ?
-                              AND status = 'waiting_for_user'
-                            """,
-                            (timestamp, interaction["attempt_id"]),
-                        )
-                        self._append_event_in_transaction(
-                            connection,
-                            interaction["run_id"],
-                            RunEventDraft(
-                                event_id=(
-                                    "interaction:"
-                                    f"{interaction['interaction_id']}:expired"
-                                ),
-                                event_type="interaction.expired",
-                                payload={
-                                    "interaction_id": interaction[
-                                        "interaction_id"
-                                    ],
-                                    "interaction_type": interaction[
-                                        "interaction_type"
-                                    ],
-                                },
-                                created_at=timestamp,
-                            ),
-                            run_status="interrupted",
-                            clear_active_attempt=True,
-                        )
-                except Exception:
-                    logger.exception(
-                        "Startup reconciliation skipped one HumanInteraction",
-                        extra={
-                            "interaction_id": interaction["interaction_id"]
-                        },
-                    )
             approvals = connection.execute(
                 "SELECT approval_id FROM approvals WHERE status = 'pending' ORDER BY created_at"
             ).fetchall()
