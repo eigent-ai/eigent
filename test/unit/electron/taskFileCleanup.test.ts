@@ -201,13 +201,40 @@ describe('Session task file cleanup using real directories', () => {
     }
   );
 
-  it('fails closed for missing or namespace-colliding identities', () => {
-    const otherUser = file(output('user_99'));
+  it('fails closed without any storage identity', () => {
+    file(output());
     expect(reader.deleteTaskFiles('', task, project).success).toBe(false);
+  });
+
+  it.each(['user_99@example.com', 'workspace@corp.com', 'runtime@corp.com'])(
+    'skips the colliding legacy prefix of %s and still cleans the user-id root',
+    (namespacedEmail) => {
+      const target = file(output());
+      const otherUser = file(output('user_99'));
+      const shared = file(output('workspace'));
+      expect(
+        reader.deleteTaskFiles(namespacedEmail, task, project, 42).success
+      ).toBe(true);
+      expect(fs.existsSync(target)).toBe(false);
+      expect(fs.existsSync(otherUser)).toBe(true);
+      expect(fs.existsSync(shared)).toBe(true);
+    }
+  );
+
+  it("treats a user_* email prefix as Brain's owner key without a userId", () => {
+    const target = file(output('user_7'));
     expect(
-      reader.deleteTaskFiles('user_99@example.com', task, project, 42).success
+      reader.deleteTaskFiles('user_7@example.com', task, project).success
+    ).toBe(true);
+    expect(fs.existsSync(target)).toBe(false);
+  });
+
+  it('never uses a reserved namespace as an email-only identity', () => {
+    const shared = file(output('workspace'));
+    expect(
+      reader.deleteTaskFiles('workspace@corp.com', task, project).success
     ).toBe(false);
-    expect(fs.existsSync(otherUser)).toBe(true);
+    expect(fs.existsSync(shared)).toBe(true);
   });
 
   it('supports user-id-only identity without falling back to a shared root', () => {

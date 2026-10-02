@@ -136,19 +136,14 @@ export function deleteOwnedTaskFiles({
     }
     if (typeof email !== 'string') throw new Error('Missing storage identity');
     const legacyIdentity = sanitizeStorageIdentity(email);
-    if (legacyIdentity) {
-      // Legacy email prefixes must not alias another account's canonical root
-      // or the app's shared storage namespaces.
-      if (
-        /^user_/i.test(legacyIdentity) ||
-        /^(workspace|workspaces|spaces|runtime)$/i.test(legacyIdentity)
-      ) {
-        if (!identities.includes(legacyIdentity)) {
-          throw new Error('Ambiguous legacy storage identity');
-        }
-      } else {
-        identities.push(legacyIdentity);
-      }
+    // Skip a legacy email prefix that could alias another account's canonical
+    // root or a shared storage namespace. Without a userId, a user_* prefix is
+    // Brain's own owner key and stays a valid candidate.
+    const ambiguousLegacyIdentity =
+      /^(workspace|workspaces|spaces|runtime)$/i.test(legacyIdentity) ||
+      (/^user_/i.test(legacyIdentity) && identities.length > 0);
+    if (legacyIdentity && !ambiguousLegacyIdentity) {
+      identities.push(legacyIdentity);
     }
     if (!identities.length) throw new Error('Missing storage identity');
 
