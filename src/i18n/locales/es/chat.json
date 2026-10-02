@@ -495,5 +495,12 @@
   "task-failure-outcome-unverified": "Resultado sin verificar",
   "task-failure-timed-out": "La tarea agotó el tiempo de espera antes de que se registrara una respuesta final.",
   "task-failure-no-actions-recorded": "No se registró ninguna acción.",
-  "task-failure-more-actions": "{{count}} acciones más no se muestran."
+  "task-failure-more-actions": "{{count}} acciones más no se muestran.",
+  "approval-expired-title": "Aprobación caducada",
+  "approval-cancelled-title": "Aprobación cancelada",
+  "approval-inactive-title": "Aprobación inactiva",
+  "approval-expired-description": "La solicitud de aprobación caducó antes de que se aceptara una decisión. Al reanudar se vuelve a evaluar el trabajo pendiente y se solicita una nueva aprobación cuando sea necesario. Las solicitudes de aprobación anteriores no se pueden reutilizar.",
+  "approval-tool-ended-description": "La aprobación se canceló porque la herramienta terminó antes de iniciarse. Al reanudar se vuelve a evaluar el trabajo pendiente y se solicita una nueva aprobación cuando sea necesario. Las solicitudes de aprobación anteriores no se pueden reutilizar.",
+  "approval-recorded-reason": "Motivo registrado: {{reason}}",
+  "approval-read-only-receipt": "Registro de solo lectura"
 }

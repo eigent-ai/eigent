@@ -495,5 +495,12 @@
   "task-failure-outcome-unverified": "Esito non verificato",
   "task-failure-timed-out": "Il tempo del compito è scaduto prima che venisse registrata una risposta finale.",
   "task-failure-no-actions-recorded": "Non è stata registrata alcuna azione.",
-  "task-failure-more-actions": "Altre {{count}} azioni non sono mostrate."
+  "task-failure-more-actions": "Altre {{count}} azioni non sono mostrate.",
+  "approval-expired-title": "Approvazione scaduta",
+  "approval-cancelled-title": "Approvazione annullata",
+  "approval-inactive-title": "Approvazione non più attiva",
+  "approval-expired-description": "La richiesta di approvazione è scaduta prima che venisse accettata una decisione. La ripresa rivaluta il lavoro rimanente e richiede una nuova approvazione quando necessario. Le richieste di approvazione precedenti non possono essere riutilizzate.",
+  "approval-tool-ended-description": "L’approvazione è stata annullata perché lo strumento è terminato prima di avviarsi. La ripresa rivaluta il lavoro rimanente e richiede una nuova approvazione quando necessario. Le richieste di approvazione precedenti non possono essere riutilizzate.",
+  "approval-recorded-reason": "Motivo registrato: {{reason}}",
+  "approval-read-only-receipt": "Registro di sola lettura"
 }

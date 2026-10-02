@@ -507,5 +507,12 @@
   "task-failure-outcome-unverified": "النتيجة غير متحقق منها",
   "task-failure-timed-out": "انتهت مهلة المهمة قبل تسجيل رد نهائي.",
   "task-failure-no-actions-recorded": "لم تُسجَّل أي إجراءات.",
-  "task-failure-more-actions": "لم يتم عرض {{count}} إجراءات أخرى."
+  "task-failure-more-actions": "لم يتم عرض {{count}} إجراءات أخرى.",
+  "approval-expired-title": "انتهت صلاحية الموافقة",
+  "approval-cancelled-title": "أُلغيت الموافقة",
+  "approval-inactive-title": "الموافقة لم تعد نشطة",
+  "approval-expired-description": "انتهت صلاحية طلب الموافقة قبل قبول القرار. عند الاستئناف، يُعاد تقييم العمل المتبقي وتُطلب موافقة جديدة عند الحاجة. لا يمكن إعادة استخدام طلبات الموافقة السابقة.",
+  "approval-tool-ended-description": "أُلغيت الموافقة لأن الأداة انتهت قبل بدء التنفيذ. عند الاستئناف، يُعاد تقييم العمل المتبقي وتُطلب موافقة جديدة عند الحاجة. لا يمكن إعادة استخدام طلبات الموافقة السابقة.",
+  "approval-recorded-reason": "السبب المسجّل: {{reason}}",
+  "approval-read-only-receipt": "سجل للقراءة فقط"
 }

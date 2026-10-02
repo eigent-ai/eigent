@@ -26,6 +26,7 @@ vi.mock('@/api/http', () => ({
 
 import {
   decideHumanInteraction,
+  getHumanInteractionReceipt,
   humanInteractionDecisionPath,
   invalidatePendingHumanInteractions,
   isHumanInteractionStillPending,
@@ -37,6 +38,88 @@ describe('local HumanInteraction API', () => {
     fetchPostMock.mockReset();
     fetchGetMock.mockReset();
     invalidatePendingHumanInteractions();
+  });
+
+  it('reads only the matching durable receipt and never classifies cancellation as expiry', async () => {
+    const interaction: HumanInteractionPayload = {
+      interaction_id: 'old',
+      run_id: 'run-1',
+      interaction_type: 'approval',
+    };
+    fetchGetMock.mockResolvedValue({
+      run_id: 'run-1',
+      interactions: [
+        { interaction_id: 'old', status: 'cancelled' },
+        { interaction_id: 'new', status: 'expired' },
+      ],
+      approvals: [
+        {
+          approval_id: 'old',
+          decision: { reason: 'tool_terminal_before_dispatch' },
+        },
+        { approval_id: 'new', decision: { reason: 'approval_expired' } },
+      ],
+    });
+    await expect(getHumanInteractionReceipt(interaction)).resolves.toEqual({
+      status: 'cancelled',
+      reason: 'tool_terminal_before_dispatch',
+    });
+    fetchGetMock.mockResolvedValue({
+      run_id: 'other',
+      interactions: [{ interaction_id: 'old', status: 'expired' }],
+    });
+    await expect(getHumanInteractionReceipt(interaction)).resolves.toBeNull();
+  });
+
+  it('shares concurrent receipt reads without caching later recovery state', async () => {
+    const interaction: HumanInteractionPayload = {
+      interaction_id: 'old',
+      run_id: 'run-1',
+      interaction_type: 'approval',
+    };
+    fetchGetMock.mockResolvedValue({
+      run_id: 'run-1',
+      interactions: [{ interaction_id: 'old', status: 'cancelled' }],
+    });
+    await Promise.all([
+      getHumanInteractionReceipt(interaction),
+      getHumanInteractionReceipt(interaction),
+    ]);
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    await getHumanInteractionReceipt(interaction);
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('cannot revalidate a retired approval or a passed journal deadline', async () => {
+    const interaction: HumanInteractionPayload = {
+      interaction_id: 'old',
+      run_id: 'run-1',
+      interaction_type: 'approval',
+      version: 0,
+    };
+    fetchGetMock.mockResolvedValue({
+      interactions: [
+        {
+          interaction_id: 'old',
+          status: 'requested',
+          version: 0,
+          expires_at: 1,
+        },
+      ],
+    });
+    await expect(isHumanInteractionStillPending(interaction)).resolves.toBe(
+      false
+    );
+    await expect(
+      isHumanInteractionStillPending({
+        ...interaction,
+        receipt: { runStatus: 'interrupted' },
+      })
+    ).resolves.toBe(false);
+    await expect(
+      isHumanInteractionStillPending({ ...interaction, status: 'cancelled' })
+    ).resolves.toBe(false);
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
   });
 
   it('uses the unprefixed FastAPI Run decision route', async () => {

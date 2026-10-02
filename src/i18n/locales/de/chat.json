@@ -491,5 +491,12 @@
   "task-failure-outcome-unverified": "Ergebnis nicht überprüft",
   "task-failure-timed-out": "Die Zeit für die Aufgabe ist abgelaufen, bevor eine abschließende Antwort aufgezeichnet wurde.",
   "task-failure-no-actions-recorded": "Es wurden keine Aktionen aufgezeichnet.",
-  "task-failure-more-actions": "{{count}} weitere Aktionen werden nicht angezeigt."
+  "task-failure-more-actions": "{{count}} weitere Aktionen werden nicht angezeigt.",
+  "approval-expired-title": "Genehmigung abgelaufen",
+  "approval-cancelled-title": "Genehmigung abgebrochen",
+  "approval-inactive-title": "Genehmigung nicht mehr aktiv",
+  "approval-expired-description": "Die Genehmigungsanfrage ist abgelaufen, bevor eine Entscheidung angenommen wurde. Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf eine neue Genehmigung angefordert. Frühere Genehmigungsanfragen können nicht wiederverwendet werden.",
+  "approval-tool-ended-description": "Die Genehmigung wurde abgebrochen, weil das Werkzeug vor dem Start beendet wurde. Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf eine neue Genehmigung angefordert. Frühere Genehmigungsanfragen können nicht wiederverwendet werden.",
+  "approval-recorded-reason": "Erfasster Grund: {{reason}}",
+  "approval-read-only-receipt": "Schreibgeschützter Eintrag"
 }

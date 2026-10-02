@@ -491,5 +491,12 @@
   "task-failure-outcome-unverified": "Outcome unverified",
   "task-failure-timed-out": "Task timed out before a final reply was recorded.",
   "task-failure-no-actions-recorded": "No actions were recorded.",
-  "task-failure-more-actions": "{{count}} more actions not shown."
+  "task-failure-more-actions": "{{count}} more actions not shown.",
+  "approval-expired-title": "Approval expired",
+  "approval-cancelled-title": "Approval cancelled",
+  "approval-inactive-title": "Approval no longer active",
+  "approval-expired-description": "The approval request expired before a decision was accepted. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
+  "approval-tool-ended-description": "The approval was cancelled because the tool ended before it started. Resume re-evaluates the remaining work and requests new approval when needed. Previous approval requests cannot be reused.",
+  "approval-recorded-reason": "Recorded reason: {{reason}}",
+  "approval-read-only-receipt": "Read-only record"
 }

@@ -487,5 +487,12 @@
   "task-failure-outcome-unverified": "結果未核實",
   "task-failure-timed-out": "任務已逾時，未記錄最終回覆。",
   "task-failure-no-actions-recorded": "未記錄任何操作。",
-  "task-failure-more-actions": "另有 {{count}} 個操作未顯示。"
+  "task-failure-more-actions": "另有 {{count}} 個操作未顯示。",
+  "approval-expired-title": "審批已到期",
+  "approval-cancelled-title": "審批已取消",
+  "approval-inactive-title": "審批已失效",
+  "approval-expired-description": "審批請求在決定被接受前已到期。還原時會重新評估剩餘工作，並在需要時請求新的審批。舊審批請求不能重複使用。",
+  "approval-tool-ended-description": "工具在開始執行前已終止，因此審批已取消。還原時會重新評估剩餘工作，並在需要時請求新的審批。舊審批請求不能重複使用。",
+  "approval-recorded-reason": "記錄的原因：{{reason}}",
+  "approval-read-only-receipt": "唯讀記錄"
 }

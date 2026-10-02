@@ -349,9 +349,13 @@ export function reduceProjectedRun(
   const status =
     previousRun &&
     ((TERMINAL_RUN_STATUSES.has(previousRun.status) &&
-      ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
-        candidateStatus
-      )) ||
+      [
+        'pending',
+        'running',
+        'waiting_for_user',
+        'cancelling',
+        'interrupted',
+      ].includes(candidateStatus)) ||
       (event.source === 'canonical'
         ? event.runVersion < previousRun.runVersion
         : previousRun.runVersion > 0))
@@ -364,6 +368,24 @@ export function reduceProjectedRun(
           candidateStatus === 'running'
         ? previousRun.status
         : candidateStatus;
+  let terminalReason = previousRun?.terminalReason ?? null;
+  const acceptsLifecycle =
+    lifecycleStatus &&
+    event.source === 'canonical' &&
+    event.runVersion >= (previousRun?.runVersion ?? 0) &&
+    !(
+      previousRun &&
+      TERMINAL_RUN_STATUSES.has(previousRun.status) &&
+      status !== candidateStatus
+    );
+  if (acceptsLifecycle) {
+    if (['interrupted', 'failed', 'cancelled', 'completed'].includes(status)) {
+      if (typeof event.payload.reason === 'string' && event.payload.reason)
+        terminalReason = event.payload.reason;
+      else if (event.eventType === 'approval.expired_rejected')
+        terminalReason = 'approval_expired';
+    } else terminalReason = null;
+  }
   return {
     ...previousRun,
     // An active snapshot's elapsed total is measured at its checkpoint. Once
@@ -382,6 +404,7 @@ export function reduceProjectedRun(
       : {}),
     runId: event.runId,
     status,
+    terminalReason,
     // Legacy ChatStep IDs are global database IDs, not Run-local sequences.
     // They must never move the canonical Run gap-detection watermark.
     lastSequence:

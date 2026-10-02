@@ -28,6 +28,8 @@ const mocked = vi.hoisted(() => ({
   reportError: vi.fn(() => 'task'),
   showStorageToast: vi.fn(),
   showTrafficToast: vi.fn(),
+  isHumanInteractionStillPending: vi.fn(),
+  getHumanInteractionReceipt: vi.fn(),
 }));
 
 vi.mock('@/host/createHost', () => ({
@@ -49,6 +51,12 @@ vi.mock('@/components/Toast/storageToast', () => ({
 
 vi.mock('@/components/Toast/trafficToast', () => ({
   showTrafficToast: mocked.showTrafficToast,
+}));
+
+vi.mock('@/service/humanInteractionApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/service/humanInteractionApi')>()),
+  isHumanInteractionStillPending: mocked.isHumanInteractionStillPending,
+  getHumanInteractionReceipt: mocked.getHumanInteractionReceipt,
 }));
 
 import { ControlRecovery } from '@/components/ChatBox/ControlRecovery';
@@ -102,6 +110,14 @@ const canonical = (decision = 'approved', status = 'resolved') => ({
   action_digest: interaction.action_digest,
   response: status === 'resolved' ? { decision, scope: 'once' } : null,
 });
+// Approval cards stay read-only until Brain confirms the interaction is pending.
+const renderCard = async (ui: Parameters<typeof render>[0]) => {
+  const view = render(ui);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  return view;
+};
 const canonicalResponse = (decision?: string, status?: string) =>
   new Response(JSON.stringify(canonical(decision, status)), {
     headers: { 'content-type': 'application/json' },
@@ -111,6 +127,8 @@ describe('SL-BUG-27 recovery safety contracts', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mocked.auth = { token: null, user_id: 1 };
+    mocked.isHumanInteractionStillPending.mockReset().mockResolvedValue(true);
+    mocked.getHumanInteractionReceipt.mockReset().mockResolvedValue(null);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
     resetConnectionConfig();
@@ -140,7 +158,7 @@ describe('SL-BUG-27 recovery safety contracts', () => {
       )
     );
     const onResolved = vi.fn();
-    render(
+    await renderCard(
       <HumanInteractionCard interaction={interaction} onResolved={onResolved} />
     );
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
@@ -159,7 +177,7 @@ describe('SL-BUG-27 recovery safety contracts', () => {
         })
     );
     const onResolved = vi.fn();
-    const mounted = render(
+    const mounted = await renderCard(
       <HumanInteractionCard interaction={interaction} onResolved={onResolved} />
     );
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
@@ -200,7 +218,7 @@ describe('SL-BUG-27 recovery safety contracts', () => {
         return Promise.resolve(res);
       });
       const onResolved = vi.fn();
-      const first = render(
+      const first = await renderCard(
         <HumanInteractionCard
           interaction={interaction}
           onResolved={onResolved}
@@ -215,7 +233,7 @@ describe('SL-BUG-27 recovery safety contracts', () => {
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
       first.unmount();
-      render(
+      await renderCard(
         <HumanInteractionCard
           interaction={interaction}
           onResolved={onResolved}
@@ -321,7 +339,7 @@ describe('SL-BUG-27 recovery safety contracts', () => {
       .spyOn(globalThis, 'fetch')
       .mockImplementation(() => new Promise(() => {}));
     const onResolved = vi.fn();
-    render(
+    await renderCard(
       <HumanInteractionCard interaction={interaction} onResolved={onResolved} />
     );
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
@@ -362,7 +380,7 @@ describe('SL-BUG-27 recovery safety contracts', () => {
           })
       );
       const onResolved = vi.fn();
-      const view = render(
+      const view = await renderCard(
         <HumanInteractionCard
           interaction={interaction}
           onResolved={onResolved}
@@ -429,7 +447,7 @@ describe('SL-BUG-27 recovery safety contracts', () => {
         canonicalResponse(undefined, status)
       );
       const onResolved = vi.fn();
-      render(
+      await renderCard(
         <HumanInteractionCard
           interaction={interaction}
           onResolved={onResolved}
@@ -454,7 +472,7 @@ describe('SL-BUG-27 recovery safety contracts', () => {
         .spyOn(globalThis, 'fetch')
         .mockImplementation(() => new Promise(() => {}));
       const onResolved = vi.fn();
-      render(
+      await renderCard(
         <HumanInteractionCard
           interaction={interaction}
           onResolved={onResolved}
@@ -718,7 +736,7 @@ describe('SL-BUG-27 recovery safety contracts', () => {
       vi.spyOn(globalThis, 'fetch').mockImplementation(
         () => new Promise(() => {})
       );
-      render(<HumanInteractionCard interaction={interaction} />);
+      await renderCard(<HumanInteractionCard interaction={interaction} />);
       fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
       await act(async () => {
         await vi.advanceTimersByTimeAsync(15_000);
@@ -747,6 +765,49 @@ describe('SL-BUG-27 recovery safety contracts', () => {
     } finally {
       useProjectStore.setState({ activeProjectId });
     }
+  });
+
+  it('keeps ControlRecovery visible when focus finds an unconfirmed approval no longer pending', async () => {
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => new Promise(() => {}));
+    await renderCard(<HumanInteractionCard interaction={interaction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(listControlOperations()[0].phase).toBe('unknown');
+
+    mocked.isHumanInteractionStillPending.mockResolvedValue(false);
+    mocked.getHumanInteractionReceipt.mockResolvedValue({
+      status: 'resolved',
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(mocked.isHumanInteractionStillPending).toHaveBeenCalledTimes(3);
+    expect(mocked.getHumanInteractionReceipt).toHaveBeenCalled();
+    expect(screen.queryByText('Approval no longer active')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Check status' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Approve once' })).toBeDisabled();
+
+    fetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          run_id: interaction.run_id,
+          interactions: [canonical('rejected')],
+        }),
+        { headers: { 'content-type': 'application/json' } }
+      )
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(listControlOperations()[0].phase).toBe('resolved');
+    expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
   });
 
   it('compacts terminal envelopes while preserving unresolved intents and recent deduplication', async () => {

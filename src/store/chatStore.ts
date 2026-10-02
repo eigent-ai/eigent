@@ -7878,6 +7878,26 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       taskId: string,
       durableRunStatus: DurableRunDisplayStatus | undefined
     ) {
+      // Retired requests stay attached to history even when Resume starts a
+      // new Attempt in this same Run. This receipt never asserts a decision.
+      const retireApproval = (message: Message): Message => {
+        if (
+          !durableRunStatus ||
+          !['interrupted', 'completed', 'failed', 'cancelled'].includes(
+            durableRunStatus
+          ) ||
+          message.interaction?.interaction_type !== 'approval' ||
+          message.interaction.receipt
+        )
+          return message;
+        return {
+          ...message,
+          interaction: {
+            ...message.interaction,
+            receipt: { runStatus: durableRunStatus },
+          },
+        };
+      };
       set((state) => {
         const task = state.tasks[taskId];
         if (!task) return state;
@@ -7888,6 +7908,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             [taskId]: {
               ...task,
               durableRunStatus,
+              messages: task.messages.map(retireApproval),
+              askList: task.askList.map(retireApproval),
             },
           },
         };

@@ -22,6 +22,7 @@ import {
 } from '@/api/http';
 import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
@@ -29,6 +30,10 @@ import { useSessionExecution } from '@/hooks/useSessionExecution';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
+import {
+  interruptedRunDescription,
+  isHumanInteractionReadOnly,
+} from '@/lib/approvalPresentation';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
 import {
@@ -57,7 +62,11 @@ import {
   prioritizeFollowUpRequest,
   terminalContinuationAdmissionRejection,
 } from '@/service/followUpQueueApi';
-import { decideHumanInteraction } from '@/service/humanInteractionApi';
+import {
+  decideHumanInteraction,
+  invalidatePendingHumanInteractions,
+  isHumanInteractionStillPending,
+} from '@/service/humanInteractionApi';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import { reconcileHumanInteractionEvents } from '@/service/humanInteractionEventReconciliation';
 import { cancelProjectRun } from '@/service/projectRunsApi';
@@ -748,7 +757,76 @@ function LegacyChatBox(): JSX.Element {
       legacyControlView.current.generation++;
     };
   }, []);
+  const legacyInteractionExpired = useHumanInteractionExpiry(activeInteraction);
+  const [verifiedLegacyApproval, setVerifiedLegacyApproval] =
+    useState<string>();
+  useEffect(() => {
+    setVerifiedLegacyApproval(undefined);
+    if (
+      !activeInteraction ||
+      activeInteraction.interaction_type !== 'approval' ||
+      legacyInteractionExpired ||
+      isHumanInteractionReadOnly({
+        interaction: activeInteraction,
+        activeTaskId,
+        taskType: activeAskTask?.type,
+        taskStatus: activeAskTask?.status,
+        durableRunStatus:
+          projectedLegacyRun?.status ?? activeAskTask?.durableRunStatus,
+      })
+    )
+      return;
+    let cancelled = false;
+    let checkNumber = 0;
+    const validatePending = () => {
+      const currentCheck = ++checkNumber;
+      void isHumanInteractionStillPending(activeInteraction)
+        .then((pending) => {
+          if (!cancelled && currentCheck === checkNumber)
+            setVerifiedLegacyApproval(
+              pending ? legacyControlViewKey : undefined
+            );
+        })
+        .catch(() => {
+          /* Keep controls unavailable until a lifecycle recovery retries. */
+        });
+    };
+    const revalidatePending = () => {
+      invalidatePendingHumanInteractions(activeInteraction.run_id);
+      validatePending();
+    };
+    validatePending();
+    window.addEventListener('focus', revalidatePending);
+    host?.ipcRenderer?.on('backend-ready', revalidatePending);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', revalidatePending);
+      host?.ipcRenderer?.off('backend-ready', revalidatePending);
+    };
+  }, [
+    legacyControlViewKey,
+    activeInteraction,
+    activeTaskId,
+    activeAskTask?.type,
+    activeAskTask?.status,
+    activeAskTask?.durableRunStatus,
+    projectedLegacyRun?.status,
+    legacyInteractionExpired,
+    host?.ipcRenderer,
+  ]);
   const isInteractiveHumanReply =
+    (activeInteraction?.interaction_type !== 'approval' ||
+      verifiedLegacyApproval === legacyControlViewKey) &&
+    !legacyInteractionExpired &&
+    (!activeInteraction ||
+      !isHumanInteractionReadOnly({
+        interaction: activeInteraction,
+        activeTaskId,
+        taskType: activeAskTask?.type,
+        taskStatus: activeAskTask?.status,
+        durableRunStatus:
+          projectedLegacyRun?.status ?? activeAskTask?.durableRunStatus,
+      })) &&
     !!activeAskTask &&
     activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
@@ -770,7 +848,8 @@ function LegacyChatBox(): JSX.Element {
       !interaction ||
       interaction.interaction_type !== 'approval' ||
       !taskId ||
-      legacyApprovalSubmitting
+      legacyApprovalSubmitting ||
+      !isInteractiveHumanReply
     ) {
       return;
     }
@@ -787,6 +866,34 @@ function LegacyChatBox(): JSX.Element {
         .activeTaskId === taskId;
     setLegacyApprovalSubmitting(true);
     try {
+      invalidatePendingHumanInteractions(interaction.run_id);
+      const isPending = await isHumanInteractionStillPending(interaction);
+      if (!isCurrent()) return;
+      if (!isPending) {
+        setVerifiedLegacyApproval(undefined);
+        await refreshInterruptedRun();
+        return;
+      }
+      const currentTask = projectStore.getActiveChatStore()?.getState().tasks[
+        taskId
+      ];
+      if (
+        !currentTask ||
+        isHumanInteractionReadOnly({
+          interaction:
+            currentTask.messages.findLast(
+              (message) =>
+                message.interaction?.interaction_id ===
+                interaction.interaction_id
+            )?.interaction || interaction,
+          activeTaskId: projectStore.getActiveChatStore()?.getState()
+            .activeTaskId,
+          taskType: currentTask.type,
+          taskStatus: currentTask.status,
+          durableRunStatus: currentTask.durableRunStatus,
+        })
+      )
+        return;
       await decideHumanInteraction(interaction, {
         decisionRequestId: generateUniqueId(),
         decision: { decision, scope },
@@ -2668,7 +2775,8 @@ function LegacyChatBox(): JSX.Element {
         ),
         description: isCloudRestoredRun
           ? undefined
-          : (cancelRecoveryReason ?? t('chat.run-interrupted-description')),
+          : (cancelRecoveryReason ??
+            interruptedRunDescription(interruptedRun.terminalReason, t)),
       },
       runId: interruptedRun.run_id,
       state: isCloudRestoredRun
@@ -2846,11 +2954,14 @@ function LegacyChatBox(): JSX.Element {
                       ? 'chat.run-cloud-restored-title'
                       : 'chat.run-interrupted-title'
                   )}
-                  description={t(
+                  description={
                     isCloudRestoredRun
-                      ? 'chat.run-cloud-restored-description'
-                      : 'chat.run-interrupted-description'
-                  )}
+                      ? t('chat.run-cloud-restored-description')
+                      : interruptedRunDescription(
+                          interruptedRun.terminalReason,
+                          t
+                        )
+                  }
                   disabledReason={cancelRecoveryReason}
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
@@ -2944,11 +3055,14 @@ function LegacyChatBox(): JSX.Element {
                       ? 'chat.run-cloud-restored-title'
                       : 'chat.run-interrupted-title'
                   )}
-                  description={t(
+                  description={
                     isCloudRestoredRun
-                      ? 'chat.run-cloud-restored-description'
-                      : 'chat.run-interrupted-description'
-                  )}
+                      ? t('chat.run-cloud-restored-description')
+                      : interruptedRunDescription(
+                          interruptedRun.terminalReason,
+                          t
+                        )
+                  }
                   attemptNumber={interruptedRun.latest_attempt?.attempt_number}
                   disabledReason={cancelRecoveryReason}
                   action={durableRunAction}
