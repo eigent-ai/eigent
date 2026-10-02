@@ -413,7 +413,7 @@ export default function Workspace({
           managedSelected
             ? t('chat.parallel-request-failed')
             : err instanceof Error
-              ? err.message
+              ? err
               : t('layout.failed-to-start-task')
         );
       }

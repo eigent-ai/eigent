@@ -16,7 +16,7 @@ import { showStorageToast } from '@/components/Toast/storageToast';
 import { createHost } from '@/host/createHost';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { reportError } from '@/lib/notifyError';
-import { errorCopy, isUsageReason } from '@/lib/usageErrors';
+import { sanitizeResponseError } from '@/lib/responseError';
 import { getAuthStore } from '@/store/authStore';
 import {
   getConnectionConfig,
@@ -312,7 +312,11 @@ async function handleResponse(
         typeof msg === 'string' ? msg : JSON.stringify(msg)
       );
       err.status = res.status;
-      err.response = { data: resData, status: res.status };
+      err.response = {
+        data: resData,
+        status: res.status,
+        headers: res.headers,
+      };
       throw err;
     }
 
@@ -329,11 +333,7 @@ async function handleResponse(
       { modelType: requestData?.api_url === 'cloud' ? 'cloud' : undefined },
       requestAccount
     );
-    if (isUsageReason(reason)) {
-      // Keep the response for diagnostics/classification, but sanitize catch-handler copy.
-      err.message = errorCopy(reason);
-      err.usageReason = reason;
-    }
+    err = sanitizeResponseError(err, reason);
 
     console.error('[fetch error]:', err);
 

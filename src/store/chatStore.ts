@@ -43,6 +43,7 @@ import {
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
 import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
+import { createLocalError } from '@/lib/localError';
 import {
   resolveSourceEventId,
   resolveSourceMessageId,
@@ -54,6 +55,7 @@ import {
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
+import { createSSEAdmissionError } from '@/lib/responseError';
 import {
   runDomainEventHub,
   runEventIngressRegistry,
@@ -2735,7 +2737,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         ? projectId
         : projectId || projectStore.activeProjectId;
       if (isLiveTask && !project_id) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.no-active-session', {
             defaultValue: 'No active session selected.',
           })
@@ -2761,7 +2763,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? projectStore.getProjectById(project_id)
           : null;
       if (isLiveTask && !project) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.selected-session-unavailable', {
             defaultValue: 'The selected session is not available.',
           })
@@ -3305,7 +3307,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         if (!provider) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.no-model-provider', {
               defaultValue:
                 'No model provider is configured. Go to Agents > Models and configure at least one default model provider.',
@@ -3339,7 +3341,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
         if (!resolvedCloudModel) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.cloud-model-unavailable', {
               defaultValue:
                 'The cloud model is unavailable. Try again or choose another model in Agents > Models.',
@@ -3540,7 +3542,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : providersRes.items || [];
         } catch (error) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-load-failed', {
               defaultValue:
                 'Could not load the model provider configured for a worker.',
@@ -3562,7 +3564,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
         if (missingWorker) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-unavailable', {
               defaultValue:
                 'The model provider configured for worker "{{worker}}" is no longer available. Edit the worker and select another model.',
@@ -7142,38 +7144,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // A definitive admission rejection is distinct from lost delivery.
               clearOwnedModelAdmission(newTaskId, modelAdmissionRevision);
             }
-            let detail = `HTTP ${respond.status}`;
-            let errorCode: string | undefined;
-            let userMessage: string | undefined;
-            try {
-              const body = await respond.clone().json();
-              const bodyDetail = body?.detail ?? body?.message ?? body?.text;
-              if (typeof body?.error_code === 'string') {
-                errorCode = body.error_code;
-              }
-              if (typeof bodyDetail === 'string') {
-                detail = bodyDetail;
-                userMessage = bodyDetail;
-              } else if (bodyDetail) {
-                detail = JSON.stringify(bodyDetail);
-                if (typeof bodyDetail?.code === 'string') {
-                  errorCode = bodyDetail.code;
-                }
-                if (typeof bodyDetail?.message === 'string') {
-                  userMessage = bodyDetail.message;
-                }
-              }
-            } catch {
-              // Preserve the HTTP fallback for non-JSON error responses.
-            }
-            const error: any = new Error(
-              contentType.startsWith('text/event-stream')
-                ? `Run stream returned ${detail}`
-                : `Run admission did not return an event stream: ${detail}`
-            );
-            error.status = respond.status;
-            error.code = errorCode;
-            error.userMessage = userMessage;
+            const error = await createSSEAdmissionError(respond, {
+              modelType: effectiveModelType,
+              modelId: resolvedCloudModelId,
+            });
             rejectResumeStreamOpen?.(error);
             throw error;
           }
@@ -7231,13 +7205,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           // Allow automatic retry for connection errors only when task is not finished
+          // Sanitized admission copy must not change the transport's existing
+          // retry decision; its original message is retained as the cause.
+          const transportMessage =
+            err?.response && typeof err?.cause === 'string'
+              ? err.cause
+              : err?.message;
           const isConnectionError =
             err instanceof TypeError ||
-            err?.message?.includes('Failed to fetch') ||
-            err?.message?.includes('ECONNREFUSED') ||
-            err?.message?.includes('NetworkError') ||
-            err?.message?.includes('ERR_NETWORK_CHANGED') ||
-            err?.message?.includes('ERR_INTERNET_DISCONNECTED');
+            transportMessage?.includes('Failed to fetch') ||
+            transportMessage?.includes('ECONNREFUSED') ||
+            transportMessage?.includes('NetworkError') ||
+            transportMessage?.includes('ERR_NETWORK_CHANGED') ||
+            transportMessage?.includes('ERR_INTERNET_DISCONNECTED');
           if (isConnectionError) {
             console.warn(
               '[fetchEventSource] Connection error detected, will retry automatically...'
