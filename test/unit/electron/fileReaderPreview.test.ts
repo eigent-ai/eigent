@@ -58,31 +58,79 @@ async function temporaryFile(name: string, content: string): Promise<string> {
 }
 
 describe('FileReader bounded preview', () => {
-  it.each(['before-open', 'after-read-append', 'after-read-truncate'])(
-    'uses opened-file facts when text changes %s',
-    async (timing) => {
-      const content = 'weird ext\n';
-      const filePath = await temporaryFile('unsupported.xyz', content);
+  const line = 'weird ext\n';
+  const overBudget = line.repeat(
+    Math.ceil((FILE_PREVIEW_LIMITS.textBytes + 1) / line.length)
+  );
+  it.each([
+    {
+      name: 'small text appended before open',
+      initial: line,
+      timing: 'before-open',
+      change: (filePath: string) => appendFile(filePath, line),
+      size: 20,
+      content: line.repeat(2),
+      completeness: 'complete',
+      totalBytes: 20,
+    },
+    {
+      name: 'small text appended after read',
+      initial: line,
+      timing: 'after-read',
+      change: (filePath: string) => appendFile(filePath, line),
+      size: 20,
+      content: line,
+      completeness: 'unknown',
+      totalBytes: null,
+    },
+    {
+      name: 'small text truncated after read',
+      initial: line,
+      timing: 'after-read',
+      change: (filePath: string) => truncate(filePath, 0),
+      size: 0,
+      content: line,
+      completeness: 'unknown',
+      totalBytes: null,
+    },
+    {
+      name: 'over-budget text appended after read',
+      initial: overBudget,
+      timing: 'after-read',
+      change: (filePath: string) => appendFile(filePath, line),
+      size: overBudget.length + line.length,
+      content: overBudget.slice(0, FILE_PREVIEW_LIMITS.textBytes),
+      completeness: 'truncated',
+      totalBytes: overBudget.length + line.length,
+    },
+  ] as const)(
+    'uses opened-file facts for $name',
+    async ({
+      initial,
+      timing,
+      change,
+      size,
+      content,
+      completeness,
+      totalBytes,
+    }) => {
+      const filePath = await temporaryFile('unsupported.xyz', initial);
       const reader = new FileReader(null as never);
       const open = fs.promises.open.bind(fs.promises);
       const openSpy = vi
         .spyOn(fs.promises, 'open')
         .mockImplementationOnce(async (...args) => {
           if (timing === 'before-open') {
-            // Deterministically append after the path stat, before opening.
-            await appendFile(filePath, content);
+            // Change the file after the path stat, before opening.
+            await change(filePath);
           }
           const handle = await open(...args);
-          if (timing !== 'before-open') {
+          if (timing === 'after-read') {
             const read = handle.read.bind(handle);
             vi.spyOn(handle, 'read').mockImplementationOnce(
               async (...readArgs) => {
                 const result = await read(...readArgs);
-                if (timing === 'after-read-append') {
-                  await appendFile(filePath, content);
-                } else {
-                  await truncate(filePath, 0);
-                }
+                await change(filePath);
                 return result;
               }
             );
@@ -108,18 +156,14 @@ describe('FileReader bounded preview', () => {
           }
         );
         expect(openSpy).toHaveBeenCalledOnce();
-        expect((await fs.promises.stat(filePath)).size).toBe(
-          timing === 'after-read-truncate' ? 0 : 20
-        );
+        expect((await fs.promises.stat(filePath)).size).toBe(size);
         expect(result.preview).toEqual({
           kind: 'text',
-          completeness: timing === 'before-open' ? 'complete' : 'unknown',
-          bytesRead: timing === 'before-open' ? 20 : 10,
-          totalBytes: timing === 'before-open' ? 20 : null,
+          completeness,
+          bytesRead: content.length,
+          totalBytes,
         });
-        expect(result.content).toBe(
-          timing === 'before-open' ? content.repeat(2) : content
-        );
+        expect(result.content).toBe(content);
       } finally {
         openSpy.mockRestore();
       }

@@ -534,13 +534,19 @@ export class FileReader {
       const result = await handle.read(buffer, 0, bytesRead, 0);
       const currentStats = await handle.stat();
       // Counts from a changing file cannot prove completeness, even if a
-      // writer happened to leave it at the same size after our read.
-      const totalBytes =
+      // writer happened to leave it at the same size after our read. The
+      // check is best effort: coarse filesystem timestamps can hide a
+      // same-size rewrite.
+      const unchanged =
         openedStats.size === currentStats.size &&
         openedStats.mtimeMs === currentStats.mtimeMs &&
-        openedStats.ctimeMs === currentStats.ctimeMs
-          ? currentStats.size
-          : null;
+        openedStats.ctimeMs === currentStats.ctimeMs;
+      // Bytes beyond the read existed both before and after it, so the
+      // preview is provably an excerpt even while a writer keeps appending.
+      const provablyTruncated =
+        Math.min(openedStats.size, currentStats.size) > result.bytesRead;
+      const totalBytes =
+        unchanged || provablyTruncated ? currentStats.size : null;
       const content = decodePreviewText(
         buffer.subarray(0, result.bytesRead),
         totalBytes === null || result.bytesRead < totalBytes
