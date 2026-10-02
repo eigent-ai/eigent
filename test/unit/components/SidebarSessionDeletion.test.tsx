@@ -79,17 +79,21 @@ vi.mock('@/api/http', () => ({
   proxyFetchDelete: vi.fn(),
 }));
 vi.mock('@/host', () => ({
-  useHost: () => ({ ipcRenderer: { invoke: mocks.invoke } }),
+  useHost: () => ({
+    ipcRenderer: { invoke: mocks.invoke, on: () => {}, off: () => {} },
+  }),
 }));
 vi.mock('@/store/authStore', () => ({
   getAuthStore: () => mocks.auth,
   useAuthStore: Object.assign((selector: any) => selector(mocks.auth), {
     getState: () => mocks.auth,
+    subscribe: () => () => {},
   }),
 }));
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: Object.assign((selector: any) => selector(mocks.space), {
     getState: () => mocks.space,
+    subscribe: () => () => {},
   }),
   getVisibleProjectMetasForSpace: () => [mocks.space.getProjectMeta()],
 }));
