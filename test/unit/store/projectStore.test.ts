@@ -30,13 +30,17 @@ vi.mock('@/store/sessionExecutionStore', () => ({
 }));
 
 import { partitionLegacyMessageEvidence } from '@/components/ChatBox/EventTimeline/legacyReplyEvidence';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { PROJECT_CACHE_SCHEMA_VERSION } from '@/lib/projectCache';
+import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
+import { refreshSessionNavStatuses } from '@/service/sessionNavStatus';
 import type {
   ProjectPayload,
   ProjectUpdatePayload,
   ServerProject,
 } from '@/service/spaceApi';
+import { getAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
@@ -153,6 +157,7 @@ describe('projectStore runtime shape', () => {
     vi.clearAllMocks();
     closeIdleSSEConnectionsForTasksMock.mockReset();
     resetProjectEventStoresForTests();
+    runProjectionStore.clear();
     deleteCachedProjectMock.mockResolvedValue(undefined);
     getCachedProjectMock.mockResolvedValue(null);
     putCachedProjectMock.mockResolvedValue(undefined);
@@ -2485,7 +2490,10 @@ describe('projectStore runtime shape', () => {
           limit: 100,
         },
         undefined,
-        { signal: expect.any(AbortSignal) }
+        {
+          signal: expect.any(AbortSignal),
+          expectedAccountKey: getAccountEnvironmentKey(getAuthStore()),
+        }
       );
       expect(getCachedProjectMock).toHaveBeenCalledWith({
         userId: 10,
@@ -2868,6 +2876,70 @@ describe('projectStore runtime shape', () => {
     await loadPromise;
   });
 
+  it('keeps the newer hydration checkpoint when an earlier sidebar read returns late', async () => {
+    const projectId = 'hydration-race';
+    const runId = 'hydration-run';
+    const sidebarRead = deferred<unknown>();
+    const canonical = {
+      project_id: projectId,
+      run_id: runId,
+      status: 'interrupted',
+      version: 3,
+      updated_at: 300,
+    };
+    fetchGetMock.mockImplementation((_url, params) =>
+      params.limit === 1
+        ? sidebarRead.promise
+        : Promise.resolve({ project_id: projectId, runs: [canonical] })
+    );
+    const refresh = refreshSessionNavStatuses(
+      [projectId],
+      getAccountEnvironmentKey(getAuthStore()),
+      () => true
+    );
+    replayMock.mockImplementationOnce(async (taskId: string) => {
+      const project = useProjectStore.getState().projects[projectId];
+      const chat = project.chatStores[project.activeChatId];
+      chat.getState().create(taskId, 'replay');
+      chat.getState().setStatus(taskId, 'finished');
+    });
+    await useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        [runId],
+        'prompt',
+        projectId,
+        'history-race',
+        'History',
+        'space_test',
+        { [runId]: 'prompt' },
+        200
+      );
+    const project = useProjectStore.getState().projects[projectId];
+    const chat = project.chatStores[project.activeChatId];
+    expect(chat.getState().tasks[runId].durableRunStatus).toBe('interrupted');
+    expect(useProjectStore.getState().navLeadByProjectId[projectId].kind).toBe(
+      'warning'
+    );
+    sidebarRead.resolve({
+      project_id: projectId,
+      runs: [{ ...canonical, status: 'running', version: 2, updated_at: 200 }],
+    });
+    await refresh;
+    expect(chat.getState().tasks[runId].durableRunStatus).toBe('interrupted');
+    expect(useProjectStore.getState().navLeadByProjectId[projectId].kind).toBe(
+      'warning'
+    );
+    expect(runProjectionStore.getRun(projectId, runId)?.runVersion).toBe(3);
+    // A genuine Resume with a newer version still advances the navigation.
+    runProjectionStore.upsertRunSummaries(projectId, [
+      { ...canonical, status: 'running', version: 4 },
+    ]);
+    expect(useProjectStore.getState().navLeadByProjectId[projectId].kind).toBe(
+      'running'
+    );
+  });
+
   it('projects cloud-restored duration and interrupted status without attempt rows', async () => {
     fetchGetMock.mockResolvedValue({
       runs: [
@@ -2907,6 +2979,9 @@ describe('projectStore runtime shape', () => {
         .task_cloud_interrupted;
     expect(task.elapsed).toBeCloseTo(29_922, 0);
     expect(task.durableRunStatus).toBe('interrupted');
+    expect(
+      useProjectStore.getState().navLeadByProjectId.project_cloud.kind
+    ).toBe('warning');
   });
 
   it('hydrates a canonical local snapshot when its SQLite anchor matches', async () => {

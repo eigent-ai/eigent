@@ -30,6 +30,7 @@ import {
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
+import { useSessionNavStatuses } from '@/hooks/useSessionNavStatuses';
 import { useHost } from '@/host';
 import {
   isProjectAchieved,
@@ -172,6 +173,10 @@ export default function SpaceSidebar({
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
   const host = useHost();
+  useSessionNavStatuses(
+    projectMetasForActiveSpace.map((project) => project.id),
+    activeSpaceId
+  );
   const ipcRenderer = host?.ipcRenderer;
 
   useEffect(() => {

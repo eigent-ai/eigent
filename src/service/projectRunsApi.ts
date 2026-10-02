@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost } from '@/api/http';
+import type { DurableRunSummaryInput } from '@/lib/projector/runSummary';
 import {
   createControlOperation,
   submitControlOperation,
@@ -31,6 +32,21 @@ export type ProjectRunsResponse = {
   has_more?: unknown;
   cloud_restore_pending?: unknown;
 };
+
+/** Only owner-checked rows may enter the canonical projection. */
+export function projectRunSummaries(
+  projectId: string,
+  response: ProjectRunsResponse
+): DurableRunSummaryInput[] {
+  if (response.project_id !== projectId) return [];
+  return (response.runs ?? []).filter(
+    (run) =>
+      run.project_id === projectId &&
+      typeof run.run_id === 'string' &&
+      typeof run.status === 'string' &&
+      (typeof run.updated_at === 'number' || typeof run.updated_at === 'string')
+  ) as DurableRunSummaryInput[];
+}
 
 type RunControlRequest = (
   url: string,
