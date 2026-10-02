@@ -1527,5 +1527,15 @@
   "delete-project-workdir-pending-hint": "이 작업 디렉터리에 게시하지 않은 변경 사항이 있습니다. 영구적으로 삭제되며 복구할 수 없습니다.",
   "workspace-bundle-cancel-import": "가져오기 취소",
   "workspace-bundle-cancel-keeps-files": "취소해도 Space 초안, 로컬 설정값 및 설치된 파일은 유지됩니다.",
-  "workspace-bundle-failure-retained": "설치가 완료되지 않았습니다. Space 초안, 로컬 설정값 및 설치된 파일은 유지됩니다."
+  "workspace-bundle-failure-retained": "설치가 완료되지 않았습니다. Space 초안, 로컬 설정값 및 설치된 파일은 유지됩니다.",
+  "bundle-reference-title": "이 기기의 참조 확인",
+  "bundle-reference-scope": "초안에는 확인되지 않은 참조를 저장할 수 있습니다. 이 검사는 수신자의 접근 권한이나 설정을 확인하지 않으며 Cloud 게시 검사를 대체하지 않습니다.",
+  "bundle-reference-malformed": "참조 형식이 잘못되었습니다. 구성에서 수정하세요.",
+  "bundle-reference-unsupported": "이 Desktop 버전은 이 참조 또는 정의를 지원하지 않습니다. 지원되는 리소스를 선택하거나 정의를 수정하세요.",
+  "bundle-reference-global_setup_required": "이 전역 리소스가 이 기기에 설정되어 있지 않거나 비활성화되어 있습니다. 전역 설정을 확인하세요. 수신자는 별도로 설정해야 합니다.",
+  "bundle-reference-model_setup_required": "현재 계정 카탈로그에서 이 모델을 사용할 수 없습니다. 모델 설정을 확인하거나 다른 모델을 선택하세요. 수신자에게도 접근 권한이 필요합니다.",
+  "bundle-reference-bundle_asset_required": "이 Bundle 자산이 이번 저장에 포함되지 않았습니다. 아래에서 참조된 파일을 선택하세요.",
+  "bundle-reference-verification_unavailable": "이 참조를 확인할 수 없습니다. 연결과 리소스 설정을 확인하고 게시 전에 다시 검사하세요.",
+  "bundle-reference-changed": "참조 또는 구성이 변경되었거나 확인할 수 없습니다. 현재 결과를 검토하고 다시 확인하세요.",
+  "bundle-reference-recheck": "참조 다시 확인"
 }

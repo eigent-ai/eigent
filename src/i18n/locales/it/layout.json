@@ -1571,5 +1571,15 @@
   "delete-project-workdir-pending-hint": "Questa directory di lavoro contiene modifiche non pubblicate. Verranno eliminate definitivamente e non potranno essere recuperate.",
   "workspace-bundle-cancel-import": "Annulla importazione",
   "workspace-bundle-cancel-keeps-files": "L’annullamento conserva la bozza dello Space, i valori locali e i file già installati.",
-  "workspace-bundle-failure-retained": "L’installazione non è terminata. La bozza dello Space, i valori locali e i file già installati vengono conservati."
+  "workspace-bundle-failure-retained": "L’installazione non è terminata. La bozza dello Space, i valori locali e i file già installati vengono conservati.",
+  "bundle-reference-title": "Verifica dei riferimenti su questo dispositivo",
+  "bundle-reference-scope": "Le bozze possono mantenere riferimenti non risolti. Questi controlli non verificano l’accesso o la configurazione dei destinatari e non sostituiscono i controlli di pubblicazione Cloud.",
+  "bundle-reference-malformed": "Il formato di questo riferimento non è valido. Correggilo nella configurazione.",
+  "bundle-reference-unsupported": "Questa versione di Desktop non supporta questo riferimento o definizione. Scegli una risorsa supportata o correggi la definizione.",
+  "bundle-reference-global_setup_required": "Questa risorsa globale non è configurata o abilitata su questo dispositivo. Controlla le impostazioni globali. I destinatari devono configurarla autonomamente.",
+  "bundle-reference-model_setup_required": "Questo modello non è disponibile nel catalogo dell’account attuale. Controlla le impostazioni del modello o scegline un altro; i destinatari necessitano del proprio accesso.",
+  "bundle-reference-bundle_asset_required": "Questo file del Bundle non è incluso nel salvataggio. Seleziona il file indicato qui sotto.",
+  "bundle-reference-verification_unavailable": "Impossibile verificare questo riferimento. Controlla la connessione e le impostazioni delle risorse, poi riprova prima di pubblicare.",
+  "bundle-reference-changed": "I riferimenti o la configurazione sono cambiati, oppure la verifica non è disponibile. Esamina i risultati attuali e conferma di nuovo.",
+  "bundle-reference-recheck": "Verifica di nuovo i riferimenti"
 }

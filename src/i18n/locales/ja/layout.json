@@ -1527,5 +1527,15 @@
   "delete-project-workdir-pending-hint": "この作業ディレクトリには未公開の変更があります。これらは完全に削除され、復元できません。",
   "workspace-bundle-cancel-import": "インポートをキャンセル",
   "workspace-bundle-cancel-keeps-files": "キャンセルしても Space の下書き、ローカルの設定値、インストール済みファイルは保持されます。",
-  "workspace-bundle-failure-retained": "インストールは完了していません。Space の下書き、ローカルの設定値、インストール済みファイルは保持されています。"
+  "workspace-bundle-failure-retained": "インストールは完了していません。Space の下書き、ローカルの設定値、インストール済みファイルは保持されています。",
+  "bundle-reference-title": "このデバイスでの参照チェック",
+  "bundle-reference-scope": "下書きには未解決の参照を保存できます。このチェックは受信者のアクセス権や設定を検証せず、Cloud の公開チェックを代替しません。",
+  "bundle-reference-malformed": "参照の形式が正しくありません。設定で修正してください。",
+  "bundle-reference-unsupported": "この Desktop バージョンは、この参照または定義に対応していません。対応するリソースを選ぶか、定義を修正してください。",
+  "bundle-reference-global_setup_required": "このグローバルリソースは、このデバイスで未設定または無効です。グローバル設定を確認してください。受信者側でも設定が必要です。",
+  "bundle-reference-model_setup_required": "現在のアカウントのカタログで、このモデルは利用できません。モデル設定を確認するか別のモデルを選択してください。受信者には各自のアクセス権が必要です。",
+  "bundle-reference-bundle_asset_required": "今回の保存に、この Bundle アセットは含まれていません。以下で参照先のファイルを選択してください。",
+  "bundle-reference-verification_unavailable": "この参照を検証できませんでした。接続とリソースの設定を確認し、公開前に再チェックしてください。",
+  "bundle-reference-changed": "参照や設定が変更されたか、検証できません。現在の結果を確認し、もう一度承認してください。",
+  "bundle-reference-recheck": "参照を再チェック"
 }

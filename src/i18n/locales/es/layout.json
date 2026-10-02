@@ -1571,5 +1571,15 @@
   "delete-project-workdir-pending-hint": "Este directorio de trabajo tiene cambios no publicados. Se eliminarán de forma permanente y no se podrán recuperar.",
   "workspace-bundle-cancel-import": "Cancelar importación",
   "workspace-bundle-cancel-keeps-files": "Al cancelar se conservan el borrador del Space, los valores locales y los archivos ya instalados.",
-  "workspace-bundle-failure-retained": "La instalación no terminó. Se conservan el borrador del Space, los valores locales y los archivos ya instalados."
+  "workspace-bundle-failure-retained": "La instalación no terminó. Se conservan el borrador del Space, los valores locales y los archivos ya instalados.",
+  "bundle-reference-title": "Comprobación de referencias en este dispositivo",
+  "bundle-reference-scope": "Los borradores pueden conservar referencias sin resolver. Estas comprobaciones no verifican el acceso ni la configuración del destinatario y no sustituyen las comprobaciones de publicación de Cloud.",
+  "bundle-reference-malformed": "Esta referencia tiene un formato incorrecto. Corríjala en la configuración.",
+  "bundle-reference-unsupported": "Esta versión de Desktop no admite esta referencia o definición. Elija un recurso compatible o corrija su definición.",
+  "bundle-reference-global_setup_required": "Este recurso global no está configurado o habilitado en este dispositivo. Revise la configuración global. Los destinatarios necesitan su propia configuración.",
+  "bundle-reference-model_setup_required": "Este modelo no está disponible en el catálogo de la cuenta actual. Revise los ajustes del modelo o elija otro; los destinatarios necesitan su propio acceso.",
+  "bundle-reference-bundle_asset_required": "Este archivo del Bundle no está incluido en este guardado. Seleccione el archivo referenciado a continuación.",
+  "bundle-reference-verification_unavailable": "No se pudo verificar esta referencia. Revise la conexión y los ajustes de recursos y vuelva a comprobar antes de publicar.",
+  "bundle-reference-changed": "Las referencias o la configuración han cambiado, o la verificación no está disponible. Revise los resultados actuales y confirme de nuevo.",
+  "bundle-reference-recheck": "Volver a comprobar las referencias"
 }

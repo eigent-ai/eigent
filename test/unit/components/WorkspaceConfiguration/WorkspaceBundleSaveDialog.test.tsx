@@ -172,7 +172,12 @@ describe('WorkspaceBundleSaveDialog', () => {
       configurable: true,
       value: { writeText: mocks.copyText },
     });
-    mocks.review.mockResolvedValue({ draft_version: 1, review });
+    mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
+      draft_version: 1,
+      review,
+    });
     mocks.findBundle.mockResolvedValue(null);
     mocks.preflight.mockImplementation(
       async (_spaceId, _identity, logicalPath, file: File) => ({
@@ -244,6 +249,8 @@ describe('WorkspaceBundleSaveDialog', () => {
   it('pairs selected sharing text with its fill and exposes selection through keyboard and a checkmark', async () => {
     const user = userEvent.setup();
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: { ...review, assets: [] },
     });
@@ -315,6 +322,8 @@ describe('WorkspaceBundleSaveDialog', () => {
           })
       );
       mocks.review.mockResolvedValue({
+        space_id: 'space-1',
+        reference_findings: [],
         draft_version: 1,
         review: { ...review, assets: [] },
       });
@@ -368,7 +377,14 @@ describe('WorkspaceBundleSaveDialog', () => {
     expect(
       screen.queryByRole('button', { name: /^public/i })
     ).not.toBeInTheDocument();
-    await act(async () => finishReview({ draft_version: 1, review }));
+    await act(async () =>
+      finishReview({
+        space_id: 'space-1',
+        reference_findings: [],
+        draft_version: 1,
+        review,
+      })
+    );
     expect(
       await screen.findByRole('button', { name: /^private/i })
     ).toBeEnabled();
@@ -411,6 +427,8 @@ describe('WorkspaceBundleSaveDialog', () => {
 
   it('offers only private and public publishing without team authority', async () => {
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: { ...review, assets: [] },
     });
@@ -448,6 +466,8 @@ describe('WorkspaceBundleSaveDialog', () => {
 
   it('shows and copies the exact immutable install handle after publishing', async () => {
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: { ...review, assets: [] },
     });
@@ -514,6 +534,8 @@ describe('WorkspaceBundleSaveDialog', () => {
       },
     ];
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: {
         ...review,
@@ -614,6 +636,8 @@ describe('WorkspaceBundleSaveDialog', () => {
       executable: false,
     };
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: {
         ...review,
@@ -692,6 +716,8 @@ describe('WorkspaceBundleSaveDialog', () => {
       executable: false,
     };
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: {
         ...review,
@@ -746,6 +772,8 @@ describe('WorkspaceBundleSaveDialog', () => {
       executable: false,
     };
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: {
         ...review,
@@ -827,6 +855,8 @@ describe('WorkspaceBundleSaveDialog', () => {
 
   it('resets explicit review when visibility changes', async () => {
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: { ...review, assets: [] },
     });
@@ -867,6 +897,8 @@ describe('WorkspaceBundleSaveDialog', () => {
       executable: false,
     };
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: editedDraft.version,
       review: {
         ...review,
@@ -969,6 +1001,8 @@ describe('WorkspaceBundleSaveDialog', () => {
     const onApplyRequirements = vi.fn();
     const onApplyMcpSecretSlots = vi.fn();
     mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      reference_findings: [],
       draft_version: 1,
       review: {
         ...review,
@@ -999,5 +1033,158 @@ describe('WorkspaceBundleSaveDialog', () => {
       ]);
     });
     expect(mocks.ensureBundle).not.toHaveBeenCalled();
+  });
+  it.each(['light', 'dark'])(
+    'shows actionable blocked references in %s theme',
+    async (theme) => {
+      document.documentElement.classList.toggle('dark', theme === 'dark');
+      mocks.review.mockResolvedValue({
+        space_id: 'space-1',
+        draft_version: 1,
+        review,
+        reference_findings: [
+          {
+            location: 'spec.skills[0].ref',
+            reference: 'registry://skills/missing@999',
+            code: 'unsupported',
+          },
+        ],
+      });
+      renderDialog();
+      expect(
+        await screen.findByText(/not supported by this Desktop version/)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('spec.skills[0].ref · registry://skills/missing@999')
+      ).toBeInTheDocument();
+      selectAsset(new File(['instructions'], 'coordinator.md'));
+      fireEvent.click(
+        screen.getByRole('switch', { name: 'Confirm secret-free review' })
+      );
+      expect(
+        screen.getByRole('button', { name: 'Publish version' })
+      ).toBeDisabled();
+      expect(mocks.ensureBundle).not.toHaveBeenCalled();
+      expect(
+        screen.getByText(/do not verify recipient access/)
+      ).toBeInTheDocument();
+      document.documentElement.classList.remove('dark');
+    }
+  );
+
+  it('keeps current-device setup separate from local publishing eligibility', async () => {
+    mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      draft_version: 1,
+      review,
+      reference_findings: [
+        {
+          location: 'spec.skills[0].ref',
+          reference: 'registry://global/skills/' + 'a'.repeat(64),
+          code: 'global_setup_required',
+        },
+      ],
+    });
+    renderDialog();
+    expect(
+      await screen.findByText(/not configured or enabled on this device/)
+    ).toBeInTheDocument();
+    selectAsset(new File(['instructions'], 'coordinator.md'));
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Confirm secret-free review' })
+    );
+    expect(
+      screen.getByRole('button', { name: 'Publish version' })
+    ).toBeEnabled();
+  });
+
+  it('rechecks before Cloud mutation and requires renewed review when resources change', async () => {
+    renderDialog();
+    await screen.findByText('Reference checks on this device');
+    selectAsset(new File(['instructions'], 'coordinator.md'));
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Confirm secret-free review' })
+    );
+    mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      draft_version: 1,
+      review,
+      reference_findings: [
+        {
+          location: 'spec.skills[0].ref',
+          reference: 'registry://global/skills/' + 'a'.repeat(64),
+          code: 'verification_unavailable',
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Publish version' }));
+    await screen.findByText(/References or the configuration changed/);
+    expect(mocks.ensureBundle).not.toHaveBeenCalled();
+    expect(mocks.publishRevision).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', { name: 'Publish version' })
+    ).toBeDisabled();
+    mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      draft_version: 1,
+      review,
+      reference_findings: [],
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check references again' })
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/This reference could not be verified/)
+      ).not.toBeInTheDocument()
+    );
+    expect(
+      screen.getByRole('switch', { name: 'Confirm secret-free review' })
+    ).not.toBeChecked();
+  });
+
+  it('discards an old review response after the draft changes', async () => {
+    let resolveOld!: (value: unknown) => void;
+    mocks.review.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      })
+    );
+    const identity = { email: 'user@example.com', userId: 42 };
+    const element = (target: WorkspaceConfigurationDraft) => (
+      <WorkspaceBundleSaveDialog
+        open
+        onOpenChange={vi.fn()}
+        spaceId="space-1"
+        identity={identity}
+        draft={target}
+        onApplyRequirements={vi.fn()}
+        onApplyMcpSecretSlots={vi.fn()}
+        onPublished={vi.fn()}
+      />
+    );
+    const view = render(element(draft));
+    const next = { ...draft, version: 2, document_digest: cloudDigest };
+    mocks.review.mockResolvedValue({
+      space_id: 'space-1',
+      draft_version: 2,
+      review: { ...review, manifest_digest: cloudDigest },
+      reference_findings: [],
+    });
+    view.rerender(element(next));
+    await screen.findByText('Reference checks on this device');
+    resolveOld({
+      space_id: 'space-1',
+      draft_version: 1,
+      review,
+      reference_findings: [
+        { location: 'spec', reference: 'stale-reference', code: 'unsupported' },
+      ],
+    });
+    await waitFor(() => expect(mocks.findBundle).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/stale-reference/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/local configuration changed/)
+    ).not.toBeInTheDocument();
   });
 });

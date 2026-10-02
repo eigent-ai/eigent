@@ -1549,5 +1549,15 @@
   "delete-project-workdir-pending-hint": "Dieses Arbeitsverzeichnis enthält nicht veröffentlichte Änderungen. Sie werden dauerhaft gelöscht und können nicht wiederhergestellt werden.",
   "workspace-bundle-cancel-import": "Import abbrechen",
   "workspace-bundle-cancel-keeps-files": "Beim Abbrechen bleiben der Space-Entwurf, lokale Werte und bereits installierte Dateien erhalten.",
-  "workspace-bundle-failure-retained": "Die Installation wurde nicht abgeschlossen. Der Space-Entwurf, lokale Werte und bereits installierte Dateien bleiben erhalten."
+  "workspace-bundle-failure-retained": "Die Installation wurde nicht abgeschlossen. Der Space-Entwurf, lokale Werte und bereits installierte Dateien bleiben erhalten.",
+  "bundle-reference-title": "Referenzen auf diesem Gerät prüfen",
+  "bundle-reference-scope": "Entwürfe können unaufgelöste Referenzen behalten. Diese Prüfungen bestätigen weder Zugriff noch Einrichtung bei Empfängern und ersetzen keine Cloud-Veröffentlichungsprüfungen.",
+  "bundle-reference-malformed": "Diese Referenz ist fehlerhaft. Korrigieren Sie sie in der Konfiguration.",
+  "bundle-reference-unsupported": "Diese Desktop-Version unterstützt diese Referenz oder Definition nicht. Wählen Sie eine unterstützte Ressource oder korrigieren Sie die Definition.",
+  "bundle-reference-global_setup_required": "Diese globale Ressource ist auf diesem Gerät nicht eingerichtet oder aktiviert. Prüfen Sie die globalen Einstellungen. Empfänger benötigen eine eigene Einrichtung.",
+  "bundle-reference-model_setup_required": "Dieses Modell ist im Katalog des aktuellen Kontos nicht verfügbar. Prüfen Sie die Modelleinstellungen oder wählen Sie ein anderes Modell. Empfänger benötigen eigenen Zugriff.",
+  "bundle-reference-bundle_asset_required": "Diese Bundle-Datei ist in diesem Speichervorgang nicht enthalten. Wählen Sie die referenzierte Datei unten aus.",
+  "bundle-reference-verification_unavailable": "Diese Referenz konnte nicht geprüft werden. Prüfen Sie Verbindung und Ressourceneinstellungen und versuchen Sie es vor der Veröffentlichung erneut.",
+  "bundle-reference-changed": "Referenzen oder Konfiguration haben sich geändert oder die Prüfung ist nicht verfügbar. Prüfen Sie die aktuellen Ergebnisse und bestätigen Sie erneut.",
+  "bundle-reference-recheck": "Referenzen erneut prüfen"
 }

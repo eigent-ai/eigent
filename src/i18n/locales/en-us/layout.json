@@ -1549,5 +1549,15 @@
   "delete-project-workdir-pending-hint": "This working directory has unpublished changes. They will be permanently deleted and can't be recovered.",
   "workspace-bundle-cancel-import": "Cancel import",
   "workspace-bundle-cancel-keeps-files": "Cancelling keeps the Space draft, local values and any installed files.",
-  "workspace-bundle-failure-retained": "Installation did not finish. The Space draft, local values and any installed files are retained."
+  "workspace-bundle-failure-retained": "Installation did not finish. The Space draft, local values and any installed files are retained.",
+  "bundle-reference-title": "Reference checks on this device",
+  "bundle-reference-scope": "Drafts can keep unresolved references. These checks do not verify recipient access or setup, or replace Cloud publishing checks.",
+  "bundle-reference-malformed": "This reference is malformed. Correct it in the configuration.",
+  "bundle-reference-unsupported": "This reference or definition is not supported by this Desktop version. Choose a supported resource or correct its definition.",
+  "bundle-reference-global_setup_required": "This global resource is not configured or enabled on this device. Check global settings. Recipients need their own setup.",
+  "bundle-reference-model_setup_required": "This model is not available in the current account catalog. Check model settings or choose another model; recipients need their own access.",
+  "bundle-reference-bundle_asset_required": "This Bundle asset is not included in this save. Select the referenced file below.",
+  "bundle-reference-verification_unavailable": "This reference could not be verified. Check your connection and resource settings, then check again before publishing.",
+  "bundle-reference-changed": "References or the configuration changed, or verification is unavailable. Review the current findings and confirm again.",
+  "bundle-reference-recheck": "Check references again"
 }

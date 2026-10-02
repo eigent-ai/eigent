@@ -1571,5 +1571,15 @@
   "delete-project-workdir-pending-hint": "Ce répertoire de travail contient des modifications non publiées. Elles seront définitivement supprimées et ne pourront pas être récupérées.",
   "workspace-bundle-cancel-import": "Annuler l’importation",
   "workspace-bundle-cancel-keeps-files": "L’annulation conserve le brouillon du Space, les valeurs locales et les fichiers déjà installés.",
-  "workspace-bundle-failure-retained": "L’installation n’est pas terminée. Le brouillon du Space, les valeurs locales et les fichiers déjà installés sont conservés."
+  "workspace-bundle-failure-retained": "L’installation n’est pas terminée. Le brouillon du Space, les valeurs locales et les fichiers déjà installés sont conservés.",
+  "bundle-reference-title": "Vérification des références sur cet appareil",
+  "bundle-reference-scope": "Les brouillons peuvent conserver des références non résolues. Ces vérifications ne valident pas l’accès ni la configuration des destinataires et ne remplacent pas celles de publication Cloud.",
+  "bundle-reference-malformed": "Cette référence est mal formée. Corrigez-la dans la configuration.",
+  "bundle-reference-unsupported": "Cette version de Desktop ne prend pas en charge cette référence ou définition. Choisissez une ressource compatible ou corrigez sa définition.",
+  "bundle-reference-global_setup_required": "Cette ressource globale n’est pas configurée ou activée sur cet appareil. Vérifiez les paramètres globaux. Les destinataires doivent la configurer eux-mêmes.",
+  "bundle-reference-model_setup_required": "Ce modèle n’est pas disponible dans le catalogue du compte actuel. Vérifiez les paramètres des modèles ou choisissez-en un autre ; les destinataires ont besoin de leur propre accès.",
+  "bundle-reference-bundle_asset_required": "Cet élément du Bundle n’est pas inclus dans cet enregistrement. Sélectionnez le fichier référencé ci-dessous.",
+  "bundle-reference-verification_unavailable": "Cette référence n’a pas pu être vérifiée. Vérifiez la connexion et les paramètres des ressources, puis réessayez avant de publier.",
+  "bundle-reference-changed": "Les références ou la configuration ont changé, ou la vérification est indisponible. Examinez les résultats actuels et confirmez à nouveau.",
+  "bundle-reference-recheck": "Vérifier à nouveau les références"
 }

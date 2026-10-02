@@ -1637,5 +1637,15 @@
   "delete-project-workdir-pending-hint": "يحتوي دليل العمل هذا على تغييرات غير منشورة. سيتم حذفها نهائيًا ولا يمكن استعادتها.",
   "workspace-bundle-cancel-import": "إلغاء الاستيراد",
   "workspace-bundle-cancel-keeps-files": "يحتفظ الإلغاء بمسودة Space والقيم المحلية وأي ملفات مثبتة.",
-  "workspace-bundle-failure-retained": "لم يكتمل التثبيت. تم الاحتفاظ بمسودة Space والقيم المحلية وأي ملفات مثبتة."
+  "workspace-bundle-failure-retained": "لم يكتمل التثبيت. تم الاحتفاظ بمسودة Space والقيم المحلية وأي ملفات مثبتة.",
+  "bundle-reference-title": "فحص المراجع على هذا الجهاز",
+  "bundle-reference-scope": "يمكن للمسودات الاحتفاظ بمراجع غير محلولة. لا تتحقق هذه الفحوص من وصول المستلمين أو إعداداتهم، ولا تحل محل فحوص النشر في Cloud.",
+  "bundle-reference-malformed": "تنسيق هذا المرجع غير صحيح. صححه في الإعدادات.",
+  "bundle-reference-unsupported": "إصدار Desktop هذا لا يدعم هذا المرجع أو التعريف. اختر موردًا مدعومًا أو صحح تعريفه.",
+  "bundle-reference-global_setup_required": "هذا المورد العام غير مُعدّ أو غير مفعّل على هذا الجهاز. راجع الإعدادات العامة. يحتاج المستلمون إلى إعداد مواردهم بأنفسهم.",
+  "bundle-reference-model_setup_required": "هذا النموذج غير متاح في كتالوج الحساب الحالي. راجع إعدادات النماذج أو اختر نموذجًا آخر؛ يحتاج المستلمون إلى صلاحية وصول خاصة بهم.",
+  "bundle-reference-bundle_asset_required": "ملف Bundle هذا غير مشمول في عملية الحفظ الحالية. اختر الملف المشار إليه أدناه.",
+  "bundle-reference-verification_unavailable": "تعذر التحقق من هذا المرجع. راجع الاتصال وإعدادات الموارد، ثم أعد الفحص قبل النشر.",
+  "bundle-reference-changed": "تغيرت المراجع أو الإعدادات، أو تعذر التحقق. راجع النتائج الحالية وأكّد مجددًا.",
+  "bundle-reference-recheck": "فحص المراجع مجددًا"
 }

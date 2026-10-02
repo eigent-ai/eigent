@@ -1527,5 +1527,15 @@
   "delete-project-workdir-pending-hint": "此工作目錄中有尚未發布的修改。它們將被永久刪除，且無法復原。",
   "workspace-bundle-cancel-import": "取消匯入",
   "workspace-bundle-cancel-keeps-files": "取消後會保留 Space 草稿、本機設定值和已安裝的檔案。",
-  "workspace-bundle-failure-retained": "安裝尚未完成。Space 草稿、本機設定值和已安裝的檔案已保留。"
+  "workspace-bundle-failure-retained": "安裝尚未完成。Space 草稿、本機設定值和已安裝的檔案已保留。",
+  "bundle-reference-title": "此裝置上的引用檢查",
+  "bundle-reference-scope": "草稿可以保留未解析的引用。這些檢查不驗證接收者的存取權限或設定，也不取代 Cloud 發佈檢查。",
+  "bundle-reference-malformed": "引用格式錯誤。請在設定中修正。",
+  "bundle-reference-unsupported": "此 Desktop 版本不支援該引用或定義。請選擇受支援的資源或修正定義。",
+  "bundle-reference-global_setup_required": "此全域資源尚未在本裝置設定或啟用。請檢查全域設定。接收者需要自行設定。",
+  "bundle-reference-model_setup_required": "目前帳號的目錄中沒有可用的此模型。請檢查模型設定或選擇其他模型；接收者需要自己的存取權限。",
+  "bundle-reference-bundle_asset_required": "本次儲存尚未包含此 Bundle 資源。請在下方選擇引用的檔案。",
+  "bundle-reference-verification_unavailable": "無法驗證此引用。請檢查連線和資源設定，然後在發佈前重新檢查。",
+  "bundle-reference-changed": "引用或設定已變更，或無法完成驗證。請查看目前檢查結果並重新確認。",
+  "bundle-reference-recheck": "重新檢查引用"
 }
