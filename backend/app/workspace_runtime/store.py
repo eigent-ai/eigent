@@ -464,16 +464,15 @@ class WorkspaceStateStore:
     ) -> None:
         self._require_transaction(connection)
         queued = connection.execute(
-            """SELECT r.request_id FROM workspace_writer_requests r
+            """SELECT r.* FROM workspace_writer_requests r
             JOIN workspace_legacy_targets t USING(repository_id,checkout_id)
             WHERE t.target_id=? AND r.status='queued'
-            ORDER BY r.created_at,r.request_id LIMIT 1""",
+            ORDER BY r.created_at,r.request_id""",
             (target_id,),
-        ).fetchone()
-        if queued is not None:
-            self.journal._acquire_workspace_writer_in_transaction(
-                connection, request_id=queued[0], now=time.time()
-            )
+        ).fetchall()
+        self.journal._promote_first_eligible_writer_in_transaction(
+            connection, queued, now=time.time()
+        )
 
     def revision_at(self, target_id: str, cursor: int) -> str:
         with self.journal._lock:

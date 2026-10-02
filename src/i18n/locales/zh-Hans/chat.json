@@ -457,5 +457,18 @@
   "space-model-unconfirmed": "首次会话请求尚未确认。请重新连接后重试，或手动选择会话模型。",
   "space-model-unavailable": "当前账号无法使用此模型。请检查模型设置，或为会话选择模型。",
   "space-model-ambiguous": "多个提供商与此模型匹配。请检查模型设置，或为会话选择模型。",
-  "space-model-changed": "加载期间账号或会话模型发生变化，请重新发送消息。"
+  "space-model-changed": "加载期间账号或会话模型发生变化，请重新发送消息。",
+  "control-outcome-unknown": "操作结果尚未确认。请先检查状态。重试将发送相同请求。",
+  "control-check-status": "检查状态",
+  "control-checking-status": "正在检查状态…",
+  "control-retry-same-request": "重试相同请求",
+  "control-recovery-expired": "此请求已过期。",
+  "control-recovery-cancelled": "此请求已取消。",
+  "control-recovery-task-status": "任务状态：{{status}}",
+  "control-recovery-status-completed": "已完成",
+  "control-recovery-status-cancelled": "已取消",
+  "control-recovery-status-failed": "失败",
+  "control-recovery-status-timed_out": "已超时",
+  "history-evidence": "未关联的历史回复（{{count}}）",
+  "history-evidence-description": "缺少与回答的关联或内容与已记录回答不一致的旧回复，会保留在此处。"
 }
