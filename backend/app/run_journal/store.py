@@ -14680,7 +14680,9 @@ class SQLiteRunJournal:
         source: str = "desktop",
         continue_active_attempt: bool = False,
         now: float | None = None,
-    ) -> HumanInteractionRecord:
+        include_transition: bool = False,
+    ) -> HumanInteractionRecord | tuple[HumanInteractionRecord, bool]:
+        """Optionally report whether this call committed the decision transition."""
         if not decision_request_id:
             raise ValueError("decision_request_id is required")
         if actor_type not in {"user", "auto_reviewer", "system"}:
@@ -14727,7 +14729,8 @@ class SQLiteRunJournal:
                     raise IdempotencyConflictError(
                         f"decision_request_id {decision_request_id!r} was reused"
                     )
-                return self._human_interaction_from_row(interaction)
+                result = self._human_interaction_from_row(interaction)
+                return (result, False) if include_transition else result
             if interaction["status"] not in {"requested", "presented"}:
                 raise InvalidRunTransitionError(
                     f"interaction {interaction_id!r} is already "
@@ -14875,7 +14878,8 @@ class SQLiteRunJournal:
                 (interaction_id,),
             ).fetchone()
             assert row is not None
-            return self._human_interaction_from_row(row)
+            result = self._human_interaction_from_row(row)
+            return (result, True) if include_transition else result
 
     def get_human_interaction(
         self, interaction_id: str
@@ -15601,7 +15605,9 @@ class SQLiteRunJournal:
         rule_resource_pattern: str | None = None,
         rule_expires_at: float | None = None,
         now: float | None = None,
-    ) -> ApprovalRecord:
+        include_transition: bool = False,
+    ) -> ApprovalRecord | tuple[ApprovalRecord, bool]:
+        """Optionally report whether this call committed the decision transition."""
         if decision not in {"approved", "rejected"}:
             raise ValueError("approval decision must be approved or rejected")
         if actor_type not in {"user", "auto_reviewer", "system"}:
@@ -15674,13 +15680,15 @@ class SQLiteRunJournal:
                     raise IdempotencyConflictError(
                         f"decision_request_id {resolved_request_id!r} was reused"
                     )
-                return self._approval_from_row(approval)
+                result = self._approval_from_row(approval)
+                return (result, False) if include_transition else result
             if approval["status"] != "pending":
                 if (
                     approval["status"] == decision
                     and approval["decision_json"] == decision_json
                 ):
-                    return self._approval_from_row(approval)
+                    result = self._approval_from_row(approval)
+                    return (result, False) if include_transition else result
                 raise InvalidRunTransitionError(
                     f"approval {approval_id!r} is already resolved"
                 )
@@ -15891,7 +15899,7 @@ class SQLiteRunJournal:
         if decision == "approved" and decision_scope in {"run", "space"}:
             assert rule_id is not None
             self._trusted_approval_rules.add(rule_id)
-        return resolved
+        return (resolved, True) if include_transition else resolved
 
     def list_approvals(
         self, run_id: str, *, pending_only: bool = False
