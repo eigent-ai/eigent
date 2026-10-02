@@ -29,13 +29,18 @@ vi.mock('@/store/sessionExecutionStore', () => ({
   }),
 }));
 
+import { partitionLegacyMessageEvidence } from '@/components/ChatBox/EventTimeline/legacyReplyEvidence';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { PROJECT_CACHE_SCHEMA_VERSION } from '@/lib/projectCache';
+import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
+import { refreshSessionNavStatuses } from '@/service/sessionNavStatus';
 import type {
   ProjectPayload,
   ProjectUpdatePayload,
   ServerProject,
 } from '@/service/spaceApi';
+import { getAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
@@ -49,6 +54,7 @@ import {
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { v104GuiInputEvents } from '../../fixtures/v104GuiInput';
 
 const {
   closeIdleSSEConnectionsForTasksMock,
@@ -143,14 +149,15 @@ function deferred<T>() {
 }
 
 describe('projectStore runtime shape', () => {
-  it('uses the cache schema that rebuilds stale legacy failure durations', () => {
-    expect(PROJECT_CACHE_SCHEMA_VERSION).toBe(10);
+  it('uses the cache schema that reconstructs input receipt provenance', () => {
+    expect(PROJECT_CACHE_SCHEMA_VERSION).toBe(11);
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
     closeIdleSSEConnectionsForTasksMock.mockReset();
     resetProjectEventStoresForTests();
+    runProjectionStore.clear();
     deleteCachedProjectMock.mockResolvedValue(undefined);
     getCachedProjectMock.mockResolvedValue(null);
     putCachedProjectMock.mockResolvedValue(undefined);
@@ -2483,7 +2490,10 @@ describe('projectStore runtime shape', () => {
           limit: 100,
         },
         undefined,
-        { signal: expect.any(AbortSignal) }
+        {
+          signal: expect.any(AbortSignal),
+          expectedAccountKey: getAccountEnvironmentKey(getAuthStore()),
+        }
       );
       expect(getCachedProjectMock).toHaveBeenCalledWith({
         userId: 10,
@@ -2582,6 +2592,158 @@ describe('projectStore runtime shape', () => {
 
     releaseReplay?.();
     await loadPromise;
+  });
+
+  it('replays a schema-10 input-history cache despite matching server and local freshness', async () => {
+    const { useAuthStore } = await import('@/store/authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    const oldCache = {
+      schemaVersion: 10,
+      cachedAt: 400,
+      serverUpdatedAt: 200,
+      localCanonicalUpdatedAt: 300,
+      taskIds: ['cached-input-run'],
+      tasks: {
+        'cached-input-run': {
+          taskState: {
+            status: 'finished',
+            durableRunStatus: 'completed',
+            messages: [
+              { id: 'cached-reply', role: 'user', content: 'report.csv' },
+              { id: 'cached-mirror', role: 'user', content: 'report.csv' },
+              {
+                id: 'cached-final',
+                role: 'agent',
+                content: 'Old cached final',
+              },
+            ],
+            taskInfo: [],
+            taskRunning: [],
+            taskAssigning: [],
+          },
+        },
+      },
+    };
+    const request = <T>(result: T): IDBRequest<T> => {
+      const value = { result } as IDBRequest<T>;
+      queueMicrotask(() => value.onsuccess?.call(value, new Event('success')));
+      return value;
+    };
+    const discard = vi.fn(() => request(undefined));
+    vi.stubGlobal('indexedDB', {
+      open: () =>
+        request({
+          transaction: () => ({
+            objectStore: () => ({
+              get: () => request(oldCache),
+              delete: discard,
+            }),
+          }),
+        }),
+    });
+    try {
+      const realCache =
+        await vi.importActual<typeof import('@/lib/projectCache')>(
+          '@/lib/projectCache'
+        );
+      getCachedProjectMock.mockImplementationOnce(realCache.getCachedProject);
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          { run_id: 'cached-input-run', status: 'completed', updated_at: 300 },
+        ],
+      });
+      sseTransportMock.mockImplementationOnce(async (options) => {
+        for (const event of v104GuiInputEvents()) {
+          await options.onmessage({
+            event: 'run_event',
+            id: String(event.sequence),
+            data: JSON.stringify({
+              ...event,
+              run_id: 'cached-input-run',
+              project_id: 'cached-input-project',
+            }),
+          });
+        }
+      });
+      // Keep the suite's replay spy, but exercise the real SSE projection
+      // in the store that loadProjectFromHistory created for this Session.
+      replayMock.mockImplementationOnce(
+        async (taskId, _question, time, projectId, source) => {
+          const project = useProjectStore.getState().projects[projectId];
+          const store = project.chatStores[project.activeChatId];
+          store.getState().create(taskId, 'replay');
+          await store
+            .getState()
+            .startTask(
+              taskId,
+              'replay',
+              undefined,
+              time,
+              undefined,
+              undefined,
+              undefined,
+              projectId,
+              undefined,
+              { replaySource: source }
+            );
+        }
+      );
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['cached-input-run'],
+          'Create a report',
+          'cached-input-project',
+          'cached-input-history',
+          'Input history',
+          'space_test',
+          { 'cached-input-run': 'Create a report' },
+          200
+        );
+      expect(discard).toHaveBeenCalledWith('10|cached-input-project');
+      expect(replayMock).toHaveBeenCalledWith(
+        'cached-input-run',
+        'Create a report',
+        0,
+        'cached-input-project',
+        'local_durable',
+        { detachAfterCatchUp: false }
+      );
+      const project =
+        useProjectStore.getState().projects['cached-input-project'];
+      const messages = Object.values(
+        project.chatStores[project.activeChatId].getState().tasks
+      ).flatMap((task) => task.messages);
+      expect(
+        messages.some(
+          (message) =>
+            message.id === 'cached-reply' || message.id === 'cached-mirror'
+        )
+      ).toBe(false);
+      const presented = partitionLegacyMessageEvidence(messages);
+      expect(
+        presented.messages.filter((message) => message.role === 'user')
+      ).toEqual([
+        expect.objectContaining({
+          content: 'report.csv',
+          interactionResponseSource: 'canonical',
+          interactionResponseTo: 'gui-question',
+        }),
+      ]);
+      expect(presented.evidence).toEqual([
+        expect.objectContaining({
+          content: 'report.csv',
+          interactionResponseSource: 'legacy',
+        }),
+      ]);
+    } finally {
+      const { closeSSEConnectionsForTasks } = await import('@/store/chatStore');
+      closeSSEConnectionsForTasks(['cached-input-run']);
+      sseTransportMock.mockReset();
+      vi.unstubAllGlobals();
+      useAuthStore.setState({ user_id: previousUserId });
+    }
   });
 
   it('reanchors a cached running clock without counting the offline gap', async () => {
@@ -2714,6 +2876,70 @@ describe('projectStore runtime shape', () => {
     await loadPromise;
   });
 
+  it('keeps the newer hydration checkpoint when an earlier sidebar read returns late', async () => {
+    const projectId = 'hydration-race';
+    const runId = 'hydration-run';
+    const sidebarRead = deferred<unknown>();
+    const canonical = {
+      project_id: projectId,
+      run_id: runId,
+      status: 'interrupted',
+      version: 3,
+      updated_at: 300,
+    };
+    fetchGetMock.mockImplementation((_url, params) =>
+      params.limit === 1
+        ? sidebarRead.promise
+        : Promise.resolve({ project_id: projectId, runs: [canonical] })
+    );
+    const refresh = refreshSessionNavStatuses(
+      [projectId],
+      getAccountEnvironmentKey(getAuthStore()),
+      () => true
+    );
+    replayMock.mockImplementationOnce(async (taskId: string) => {
+      const project = useProjectStore.getState().projects[projectId];
+      const chat = project.chatStores[project.activeChatId];
+      chat.getState().create(taskId, 'replay');
+      chat.getState().setStatus(taskId, 'finished');
+    });
+    await useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        [runId],
+        'prompt',
+        projectId,
+        'history-race',
+        'History',
+        'space_test',
+        { [runId]: 'prompt' },
+        200
+      );
+    const project = useProjectStore.getState().projects[projectId];
+    const chat = project.chatStores[project.activeChatId];
+    expect(chat.getState().tasks[runId].durableRunStatus).toBe('interrupted');
+    expect(useProjectStore.getState().navLeadByProjectId[projectId].kind).toBe(
+      'warning'
+    );
+    sidebarRead.resolve({
+      project_id: projectId,
+      runs: [{ ...canonical, status: 'running', version: 2, updated_at: 200 }],
+    });
+    await refresh;
+    expect(chat.getState().tasks[runId].durableRunStatus).toBe('interrupted');
+    expect(useProjectStore.getState().navLeadByProjectId[projectId].kind).toBe(
+      'warning'
+    );
+    expect(runProjectionStore.getRun(projectId, runId)?.runVersion).toBe(3);
+    // A genuine Resume with a newer version still advances the navigation.
+    runProjectionStore.upsertRunSummaries(projectId, [
+      { ...canonical, status: 'running', version: 4 },
+    ]);
+    expect(useProjectStore.getState().navLeadByProjectId[projectId].kind).toBe(
+      'running'
+    );
+  });
+
   it('projects cloud-restored duration and interrupted status without attempt rows', async () => {
     fetchGetMock.mockResolvedValue({
       runs: [
@@ -2753,6 +2979,9 @@ describe('projectStore runtime shape', () => {
         .task_cloud_interrupted;
     expect(task.elapsed).toBeCloseTo(29_922, 0);
     expect(task.durableRunStatus).toBe('interrupted');
+    expect(
+      useProjectStore.getState().navLeadByProjectId.project_cloud.kind
+    ).toBe('warning');
   });
 
   it('hydrates a canonical local snapshot when its SQLite anchor matches', async () => {

@@ -247,21 +247,83 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
 
-  it.each([386, 1000])(
+  it.each([1000, 1024 * 1024 + 1])(
     'keeps the complete-file warning visibly beside the preview for a %s byte file',
     (totalBytes) => {
       renderViewer(
         textFile({
-          preview: { kind: 'truncated-text', bytesRead: 386, totalBytes },
+          preview: {
+            kind: 'text',
+            completeness: 'truncated',
+            bytesRead: 386,
+            totalBytes,
+          },
         })
       );
       const notice = screen.getByText(
-        `Previewing 386 B of ${totalBytes} B. The complete file was not loaded.`
+        /Previewing 386 B of .+\. The complete file was not loaded\./
       );
       expect(notice.closest('header')).toBeNull();
       expect(notice).toHaveAttribute('aria-live', 'polite');
     }
   );
+
+  it.each([0, 10])(
+    'does not warn for complete %i B unknown-extension text',
+    (bytes) => {
+      renderViewer(
+        textFile({
+          name: 'unsupported.xyz',
+          type: 'xyz',
+          content: bytes ? 'weird ext\n' : '',
+          preview: {
+            kind: 'text',
+            completeness: 'complete',
+            bytesRead: bytes,
+            totalBytes: bytes,
+          },
+        })
+      );
+      expect(screen.queryByText(/Previewing/)).toBeNull();
+      expect(screen.getByTestId('source-code-viewer')).toBeInTheDocument();
+    }
+  );
+
+  it('shows a neutral byte summary when completeness is unknown', () => {
+    renderViewer(
+      textFile({
+        preview: {
+          kind: 'text',
+          completeness: 'unknown',
+          bytesRead: 10,
+          totalBytes: null,
+        },
+      })
+    );
+    expect(screen.getByText('Previewing 10 B')).toHaveAttribute(
+      'aria-live',
+      'polite'
+    );
+    expect(screen.queryByText(/complete file was not loaded/)).toBeNull();
+  });
+
+  it('warns when distinct byte counts round to the same formatted size', () => {
+    renderViewer(
+      textFile({
+        preview: {
+          kind: 'text',
+          completeness: 'truncated',
+          bytesRead: 1048576,
+          totalBytes: 1048577,
+        },
+      })
+    );
+    expect(
+      screen.getByText(
+        'Previewing 1.00 MiB of 1.00 MiB. The complete file was not loaded.'
+      )
+    ).toBeInTheDocument();
+  });
 
   it('renders ordinary text through the shared source viewer', () => {
     renderViewer(textFile());

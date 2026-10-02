@@ -30,6 +30,7 @@ interface InterruptedRunBannerProps {
   onCancel: () => void;
   compact?: boolean;
   readOnly?: boolean;
+  disabledReason?: string;
 }
 
 export function InterruptedRunBanner({
@@ -45,6 +46,7 @@ export function InterruptedRunBanner({
   onCancel,
   compact = false,
   readOnly = false,
+  disabledReason,
 }: InterruptedRunBannerProps) {
   return (
     <div
@@ -67,7 +69,7 @@ export function InterruptedRunBanner({
             )}
           </div>
           <span className="mt-1 block text-ds-text-meta font-normal opacity-80">
-            {description}
+            {disabledReason ?? description}
           </span>
           {!readOnly && (
             <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
@@ -77,7 +79,8 @@ export function InterruptedRunBanner({
                 tone="warning"
                 size="sm"
                 onClick={onCancel}
-                disabled={action !== null}
+                disabled={action !== null || Boolean(disabledReason)}
+                title={disabledReason}
               >
                 <X className="size-ds-icon-md" aria-hidden="true" />
                 <span>
@@ -90,7 +93,8 @@ export function InterruptedRunBanner({
                 tone="warning"
                 size="sm"
                 onClick={onResume}
-                disabled={action !== null}
+                disabled={action !== null || Boolean(disabledReason)}
+                title={disabledReason}
               >
                 <RotateCcw className="size-ds-icon-md" aria-hidden="true" />
                 <span>

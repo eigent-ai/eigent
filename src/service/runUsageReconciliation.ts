@@ -48,6 +48,8 @@ type UsageReconciliationInput = {
   throughSequence?: number;
   signal?: AbortSignal;
   expectedAccountKey?: string;
+  /** Opt-in read model, separate from existing usage/success recovery. */
+  includeFailureFacts?: boolean;
 };
 
 export type TerminalDisplayEvent = {
@@ -59,11 +61,56 @@ export type TerminalDisplayEvent = {
 type TerminalRunResult = {
   tokens: number;
   displayEvents: TerminalDisplayEvent[];
+  failureFacts?: TaskFailureFacts;
   assistantFinal?: {
     eventId: string;
     payload: Record<string, unknown>;
   };
 };
+
+export type TaskFailureAction = {
+  id: string;
+  title?: string;
+  outcome:
+    'completed' | 'failed' | 'timed_out' | 'outcome_unknown' | 'unverified';
+  input?: string;
+  output?: string;
+  detail?: string;
+};
+
+/** Read-only presentation evidence; never an assistant result or replay input. */
+export type TaskFailureFacts = {
+  terminal: 'failed' | 'timed_out';
+  finalResponse: 'absent' | 'present' | 'unverified';
+  actionsVerified: boolean;
+  actions: TaskFailureAction[];
+};
+
+export const unverifiedTaskFailureFacts = (): TaskFailureFacts => ({
+  terminal: 'failed',
+  finalResponse: 'unverified',
+  actionsVerified: false,
+  actions: [],
+});
+
+const FAILURE_TOOL_OUTCOMES: Record<string, TaskFailureAction['outcome']> = {
+  'tool.prepared': 'unverified',
+  'tool.dispatched': 'unverified',
+  'tool.started': 'unverified',
+  'tool.completed': 'completed',
+  'tool.failed': 'failed',
+  'tool.timed_out': 'timed_out',
+  'tool.outcome_unknown': 'outcome_unknown',
+};
+
+// Only explicit, backend-redacted display fields may cross into this UI.
+// Raw request/result/message fields are deliberately not fallbacks.
+function failureDisplayText(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value !== 'string' || value.length > 4_000)
+    throw new Error('Invalid or oversized failure display text');
+  return value.trim() || undefined;
+}
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -101,6 +148,7 @@ export async function readTerminalRunResult({
   throughSequence,
   signal,
   expectedAccountKey,
+  includeFailureFacts = false,
 }: UsageReconciliationInput): Promise<TerminalRunResult> {
   if (
     !projectId ||
@@ -154,6 +202,15 @@ export async function readTerminalRunResult({
   const invocations = new Map<string, number>();
   const agentTurns = new Map<string, { requests: number; summary: number }>();
   let assistantFinal: TerminalRunResult['assistantFinal'];
+  const readFailure =
+    includeFailureFacts &&
+    terminalEventTypes.some((type) =>
+      ['run.failed', 'run.deadline_reached'].includes(type)
+    );
+  let hasFinalResponse = false;
+  const failureActions = new Map<string, TaskFailureAction>();
+  const legacyToolIds = new Set<string>();
+  let unverifiedLegacyActions = false;
   const displayEvents: TerminalDisplayEvent[] = [];
   let displayBytes = 0;
   const retainDisplay = (value: unknown) => {
@@ -201,6 +258,11 @@ export async function readTerminalRunResult({
       ) {
         throw new Error('Run usage replay returned an invalid page scope');
       }
+      if (
+        readFailure &&
+        (page.truncated === true || page.events_truncated === true)
+      )
+        throw new Error('Failure evidence was truncated');
       const events = page.events.map(object);
       let expected = cursor;
       for (const event of events) {
@@ -232,6 +294,98 @@ export async function readTerminalRunResult({
 
       for (const event of events) {
         const payload = object(event.payload);
+        if (readFailure) {
+          retainDisplay(event);
+          if (
+            event.event_type === 'assistant.final' ||
+            event.event_type === 'legacy.end' ||
+            event.legacy_step === 'end'
+          ) {
+            hasFinalResponse = true;
+          }
+          const outcome = Object.hasOwn(
+            FAILURE_TOOL_OUTCOMES,
+            String(event.event_type)
+          )
+            ? FAILURE_TOOL_OUTCOMES[String(event.event_type)]
+            : undefined;
+          if (outcome) {
+            const id = payload.tool_call_id;
+            if (typeof id !== 'string' || !id.trim() || id.length > 512)
+              throw new Error('Failure tool evidence is missing identity');
+            if (payload.run_id !== undefined && payload.run_id !== runId)
+              throw new Error('Failure tool evidence has the wrong Run');
+            if (
+              payload.project_id !== undefined &&
+              payload.project_id !== projectId
+            )
+              throw new Error('Failure tool evidence has the wrong Session');
+            if (
+              payload.status !== undefined &&
+              payload.status !== String(event.event_type).slice(5)
+            )
+              throw new Error(
+                'Failure tool evidence has a conflicting outcome'
+              );
+            const previous = failureActions.get(id);
+            if (
+              previous &&
+              ((previous.outcome !== 'unverified' &&
+                outcome === 'unverified') ||
+                (['completed', 'failed'].includes(previous.outcome) &&
+                  previous.outcome !== outcome))
+            )
+              throw new Error('Failure tool evidence regressed');
+            failureActions.set(id, {
+              ...previous,
+              id,
+              outcome,
+              title:
+                failureDisplayText(payload.display_title) ||
+                previous?.title ||
+                failureDisplayText(payload.tool_name),
+              input:
+                failureDisplayText(payload.display_input) || previous?.input,
+              // Outcome-specific text belongs to the receipt's outcome;
+              // sparse terminal receipts must not inherit earlier progress.
+              output:
+                failureDisplayText(payload.display_output) ||
+                (previous?.outcome === outcome ? previous.output : undefined),
+              detail:
+                failureDisplayText(payload.display_summary) ||
+                (previous?.outcome === outcome ? previous.detail : undefined),
+            });
+            if (
+              payload.display_output_truncated === true ||
+              payload.display_input_truncated === true
+            )
+              throw new Error(
+                'Failure tool evidence exceeded its display bound'
+              );
+          } else if (
+            [
+              'activate_toolkit',
+              'deactivate_toolkit',
+              'terminal',
+              'write_file',
+            ].includes(String(event.legacy_step)) ||
+            /^legacy\.(activate_toolkit|deactivate_toolkit|terminal|write_file)$/.test(
+              String(event.event_type)
+            )
+          ) {
+            if (
+              typeof payload.tool_call_id === 'string' &&
+              payload.tool_call_id
+            )
+              legacyToolIds.add(payload.tool_call_id);
+            else unverifiedLegacyActions = true;
+          }
+          if (
+            TERMINAL_EVENTS.has(String(event.event_type)) &&
+            !terminalEventTypes.includes(String(event.event_type))
+          )
+            throw new Error('Failure evidence has a conflicting terminal');
+        }
         if (
           event.event_type === 'assistant.final' &&
           terminalEventTypes.includes('run.completed')
@@ -337,6 +491,31 @@ export async function readTerminalRunResult({
         ) {
           return {
             tokens: total(),
+            ...(readFailure &&
+            ['run.failed', 'run.deadline_reached'].includes(
+              String(event.event_type)
+            )
+              ? {
+                  failureFacts: {
+                    terminal:
+                      event.event_type === 'run.deadline_reached'
+                        ? ('timed_out' as const)
+                        : ('failed' as const),
+                    finalResponse: hasFinalResponse
+                      ? ('present' as const)
+                      : ('absent' as const),
+                    actionsVerified:
+                      !unverifiedLegacyActions &&
+                      [...legacyToolIds].every((id) =>
+                        failureActions.has(id)
+                      ) &&
+                      [...failureActions.values()].every(
+                        (action) => action.outcome !== 'unverified'
+                      ),
+                    actions: [...failureActions.values()],
+                  },
+                }
+              : {}),
             displayEvents:
               event.event_type === 'run.completed' ? displayEvents : [],
             ...(event.event_type === 'run.completed' && assistantFinal

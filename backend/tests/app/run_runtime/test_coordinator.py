@@ -234,6 +234,42 @@ async def test_cancel_waits_for_project_admission_to_register_consumer(
 
 
 @pytest.mark.asyncio
+async def test_warm_stop_waits_for_admission_before_durable_cancel(
+    tmp_path, monkeypatch
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        coordinator = RunCoordinator(journal)
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        monkeypatch.setattr(
+            coordinator, "_settle_unsuccessful_run", AsyncMock()
+        )
+        monkeypatch.setattr(
+            coordinator, "_finalize_artifacts_before_terminal", AsyncMock()
+        )
+        monkeypatch.setattr(
+            "app.workspace_git.get_default_workspace_git_lifecycle",
+            lambda: SimpleNamespace(finalize_run=lambda _: None),
+        )
+        async with coordinator.admission_scope(
+            "run-1", project_id="project-1"
+        ):
+            stops = [
+                asyncio.create_task(
+                    coordinator.complete_cancelled_turn(
+                        "run-1", request_id="user-stop:run-1"
+                    )
+                )
+                for _ in range(2)
+            ]
+            done, _ = await asyncio.wait(stops, timeout=0.1)
+            assert not done
+            assert journal.get_run("run-1").cancel_request_id is None
+        results = await asyncio.wait_for(asyncio.gather(*stops), 5)
+        assert all(run.status == "cancelled" for run in results)
+        assert not coordinator._admission_gates
+
+
+@pytest.mark.asyncio
 async def test_terminal_marker_has_reserved_capacity():
     coordinator = RunCoordinator()
 

@@ -960,6 +960,7 @@ export {
   presentTaskActivityLifecycles,
   presentTypedMessageLifecycles,
   resolveChatTimelinePresentation,
+  safeInteractionResponse,
 };
 export type {
   ChatTimelineDetailLevel,

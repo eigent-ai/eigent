@@ -801,3 +801,111 @@ async def test_local_value_put_returns_only_the_exact_ref_replaced_by_cas(
     assert response["cleanup_secret_refs"] == [old_ref]
     assert new_ref not in response["cleanup_secret_refs"]
     journal.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state",
+    [
+        "proposed",
+        "approved",
+        "needs_attention",
+        "materializing",
+        "materialized",
+    ],
+)
+async def test_recovery_decision_api_uses_durable_state_and_actor(
+    tmp_path, monkeypatch, state
+):
+    from fastapi import HTTPException
+
+    from app.workspace_bundle import WorkspaceBundleInstaller
+
+    journal = SQLiteRunJournal(tmp_path / "recovery.sqlite3")
+    monkeypatch.setattr(
+        workspace_bundle_controller, "get_default_run_journal", lambda: journal
+    )
+    service = WorkspaceBundleInstaller(journal, None, None)
+    monkeypatch.setattr(
+        workspace_bundle_controller, "_installer", lambda: service
+    )
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="failed-import",
+        request_id="failed-request",
+        space_id="draft-space",
+        bundle_id="bundle-1",
+        revision_id="bundle-1@1",
+        config_placement="sidecar",
+        manifest={"spec": {}},
+        assets=[],
+        install_plan={
+            "connector_slots": [],
+            "local_path_slots": [],
+            "script_actions": [],
+        },
+    )
+    for target in {
+        "proposed": [],
+        "approved": ["approved"],
+        "needs_attention": ["approved", "materializing", "needs_attention"],
+        "materializing": ["approved", "materializing"],
+        "materialized": ["approved", "materializing", "materialized"],
+    }[state]:
+        proposal = journal.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state=target,
+            decided_by="user-1",
+            error_code="bundle_materialization_failed"
+            if target == "needs_attention"
+            else None,
+        )
+    request = Request({"type": "http", "query_string": b"", "headers": []})
+    body = workspace_bundle_controller.BundleDecisionBody(
+        expected_version=proposal.version, approved=False, actor_id="user-1"
+    )
+    try:
+        restored = (
+            await workspace_bundle_controller.get_bundle_install_proposal(
+                proposal.proposal_id, request
+            )
+        )
+        assert restored["proposal"]["state"] == state
+        if state in {"materializing", "materialized"}:
+            with pytest.raises(HTTPException) as conflict:
+                await workspace_bundle_controller.decide_bundle_install(
+                    proposal.proposal_id, body, request
+                )
+            assert conflict.value.status_code == 409
+            assert (
+                journal.get_workspace_bundle_install_proposal(
+                    proposal.proposal_id
+                )
+                == proposal
+            )
+            return
+        result = await workspace_bundle_controller.decide_bundle_install(
+            proposal.proposal_id, body, request
+        )
+        replay = await workspace_bundle_controller.decide_bundle_install(
+            proposal.proposal_id, body, request
+        )
+        assert result == replay
+        assert result["proposal"]["state"] == "rejected"
+        assert result["proposal"]["error_code"] == proposal.error_code
+        with pytest.raises(HTTPException) as actor_conflict:
+            await workspace_bundle_controller.decide_bundle_install(
+                proposal.proposal_id,
+                body.model_copy(update={"actor_id": "user-2"}),
+                request,
+            )
+        assert actor_conflict.value.status_code == 409
+        with SQLiteRunJournal(tmp_path / "recovery.sqlite3") as reopened:
+            assert (
+                reopened.get_workspace_bundle_install_proposal(
+                    proposal.proposal_id
+                ).state
+                == "rejected"
+            )
+    finally:
+        journal.close()
