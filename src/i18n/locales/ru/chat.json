@@ -469,5 +469,18 @@
   "space-model-unconfirmed": "Первый запрос сессии ещё не подтверждён. Подключитесь снова и повторите попытку или выберите модель для сессии.",
   "space-model-unavailable": "Модель недоступна для текущего аккаунта. Проверьте настройки моделей или выберите модель сессии.",
   "space-model-ambiguous": "Найдено несколько подходящих провайдеров. Проверьте настройки моделей или выберите модель сессии.",
-  "space-model-changed": "Аккаунт или модель сессии изменились во время загрузки. Отправьте сообщение ещё раз."
+  "space-model-changed": "Аккаунт или модель сессии изменились во время загрузки. Отправьте сообщение ещё раз.",
+  "control-outcome-unknown": "Результат не подтверждён. Проверьте статус перед продолжением. Повторная попытка отправляет тот же запрос.",
+  "control-check-status": "Проверить статус",
+  "control-checking-status": "Проверка статуса…",
+  "control-retry-same-request": "Повторить тот же запрос",
+  "control-recovery-expired": "Срок действия запроса истёк.",
+  "control-recovery-cancelled": "Этот запрос отменён.",
+  "control-recovery-task-status": "Статус задачи: {{status}}",
+  "control-recovery-status-completed": "Завершена",
+  "control-recovery-status-cancelled": "Отменена",
+  "control-recovery-status-failed": "Ошибка",
+  "control-recovery-status-timed_out": "Время ожидания истекло",
+  "history-evidence": "Записи прежних ответов ({{count}})",
+  "history-evidence-description": "Прежние ответы сохранены здесь, если их связь с ответом не указана или их содержимое отличается от записанного ответа."
 }
