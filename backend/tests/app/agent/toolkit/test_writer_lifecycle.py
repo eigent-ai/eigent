@@ -61,7 +61,7 @@ def owned_workspace(tmp_path, monkeypatch):
     )
     content.bootstrap(space_id="space-1", space_root=space, allow_init=True)
     journal.ensure_run(run_id="run-1", project_id="project-1")
-    journal.create_run_attempt(
+    attempt = journal.create_run_attempt(
         "run-1",
         request_id="initial",
         reason="initial_execution",
@@ -88,6 +88,7 @@ def owned_workspace(tmp_path, monkeypatch):
         workdir_mode="direct-write",
         browser_port=0,
         session_mode="single-agent",
+        attempt_id=attempt.attempt_id,
     )
     monkeypatch.setattr(
         TerminalToolkit, "_setup_cloned_environment", lambda self: None
