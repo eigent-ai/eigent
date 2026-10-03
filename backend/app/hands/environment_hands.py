@@ -46,19 +46,8 @@ class EnvironmentHands(IHands):
     def can_access_filesystem(self, path: str) -> bool:
         if self._caps.filesystem_scope == "full":
             try:
-                resolved = Path(path).expanduser().resolve()
-                home = Path.home()
-                workspace = self.workspace_root.resolve()
-                try:
-                    resolved.relative_to(home)
-                    return True
-                except ValueError:
-                    pass
-                try:
-                    resolved.relative_to(workspace)
-                    return True
-                except ValueError:
-                    return False
+                Path(path).expanduser().resolve()
+                return True
             except (OSError, RuntimeError):
                 return False
         if self._caps.filesystem_scope == "workspace_only":
