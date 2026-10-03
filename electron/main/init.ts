@@ -12,15 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { exec, spawn } from 'child_process';
 import { BrowserWindow, app } from 'electron';
 import log from 'electron-log';
-import fs from 'fs';
-import * as http from 'http';
-import * as net from 'net';
-import os from 'os';
-import path from 'path';
-import { promisify } from 'util';
+import { exec, spawn } from 'node:child_process';
+import fs from 'node:fs';
+import * as http from 'node:http';
+import * as net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
 import { PromiseReturnType } from './install-deps';
 import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
 import {

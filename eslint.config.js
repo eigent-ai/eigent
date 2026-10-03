@@ -176,6 +176,47 @@ export default [
       'no-restricted-properties': 'off',
     },
   },
+  // Guardrail: Node builtins in Electron main code must use the `node:` prefix.
+  //
+  // A bare `import path from 'path'` resolves to the npm `path` package, and
+  // under the jsdom test environment its internal `require('util')` is served a
+  // browser stub, so every `path.join` throws "util.isString is not a
+  // function". It works in production and fails only in tests, which is how
+  // tests/app/component coverage for credential files sat broken unnoticed.
+  {
+    files: ['electron/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'assert',
+                'child_process',
+                'crypto',
+                'dns',
+                'fs',
+                'http',
+                'https',
+                'net',
+                'os',
+                'path',
+                'readline',
+                'stream',
+                'tls',
+                'url',
+                'util',
+                'zlib',
+              ],
+              message:
+                "Import Node builtins with the 'node:' prefix, e.g. import path from 'node:path'. A bare specifier resolves to the browser shim under the jsdom test environment and fails at runtime there.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // Prettier config (must be last to override conflicting rules)
   prettier,
 ];
