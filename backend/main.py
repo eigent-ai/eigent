@@ -336,11 +336,6 @@ async def cleanup_resources():
     except Exception as e:
         app_logger.warning(f"RunJournal shutdown failed: {e}")
 
-    # Remove PID file
-    pid_file = dir / "run.pid"
-    if pid_file.exists():
-        pid_file.unlink()
-
     # Shutdown OpenTelemetry tracer (releases BatchSpanProcessor worker threads)
     try:
         from app.utils.telemetry.workforce_metrics import (
@@ -377,6 +372,21 @@ async def cleanup_resources():
         app_logger.warning(f"Browser WebSocket pool shutdown failed: {e}")
 
     set_main_event_loop(None)
+
+    # Remove the PID file last, and never let it abort the shutdown.
+    #
+    # This used to run before the telemetry, thread-pool and WebSocket cleanup
+    # below, unguarded. `atexit` also removes this file, so a concurrent
+    # removal raised FileNotFoundError here and skipped every step after it —
+    # including the TerminalToolkit pool whose non-daemon threads keep the
+    # process alive, which is the lingering-process symptom this closes.
+    try:
+        pid_file = dir / "run.pid"
+        if pid_file.exists():
+            pid_file.unlink()
+    except OSError as e:
+        app_logger.warning(f"Could not remove PID file: {e}")
+
     app_logger.info("All resources cleaned up successfully")
 
 
