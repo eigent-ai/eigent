@@ -53,7 +53,7 @@ Follow-up browser verification confirmed the persisted next-year date and neutra
 
 Browser verification used production components in Storybook: shared six examples, selected details, title dropdown, pause toggle, compact list actions, run disclosure, whole-row hover, light/dark themes and a large queue in a narrow window. Loading, fetch error, empty history, stored output and verification-required disabled actions were covered by component tests. Keyboard menu dismissal was exercised in the browser.
 
-Not performed: live Electron/backend manual-run execution, a full keyboard/accessibility audit, 200% zoom, and a dedicated reduced-motion browser run. The Run now request uses the existing owner-checked execution endpoint and subscription flow; service tests verify its manual execution payload. HTTP acceptance is reported as queued, not completed. Screenshots and test results were agent-verified; human acceptance remains pending.
+Not performed: live Electron/backend manual-run execution, a full keyboard/accessibility audit, 200% zoom, and a dedicated reduced-motion browser run. The Run now request uses the existing owner-checked execution endpoint and subscription flow; service tests verify its manual execution payload. HTTP acceptance is reported as queued, not completed. Browser states and test results were agent-verified; human acceptance remains pending.
 
 ## Design contract
 
@@ -62,19 +62,3 @@ Reused `ContentHeader`, `Button`, `DropdownMenu`, `Switch`, `Tag`, `DsText`, `Ds
 Cards use `neutral.default.default`; the canvas uses `neutral.subtle.default`; hover and selected boundaries use semantic hairline roles. Active status uses the success tone. Controls use supported ghost/primary/outline axes and header size `sm`; both detail-card icons use `detailed`. The product-requested 44px header differs from the canonical 40/48px recipes and is registered as the `automation-panel-headers` exception. Generated token files were not edited.
 
 No other open automation/schedule PR was found in the checked list of 50 open PRs. The current branch already contains the fetched main commit. Scope remains the automation surface and existing execution API integration.
-
-## Screenshots
-
-The screenshots use sample Storybook data.
-
-![Shared six examples in light mode](examples-light.jpg)
-
-![Recipe details and compact queue in light mode](details-light.jpg)
-
-![Run history and warning in dark mode](details-dark.jpg)
-
-![Twenty-item queue in a narrow window](large-queue-narrow.jpg)
-
-![One-time date retains the next year](one-time-next-year.jpg)
-
-![Finished one-time schedule remains editable](one-time-finished.jpg)
