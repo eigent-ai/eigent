@@ -20,7 +20,11 @@ from pathlib import Path
 
 import pytest
 
-from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.run_journal import (
+    InvalidRunTransitionError,
+    RunEventDraft,
+    SQLiteRunJournal,
+)
 from app.run_journal.transitions import RunTerminalReason
 from app.run_policy import TimeoutOutcome, TimeoutScope
 
@@ -140,7 +144,7 @@ def test_cancel_deadline_liveness_and_restart_paths_record_their_cause(
         assert stop(journal, attempt) == (
             "cancelled",
             "user_cancelled",
-            "explicit_cancel",
+            "user_request",
             "user_cancelled",
         )
 
@@ -240,7 +244,9 @@ def test_reasons_are_written_once_and_resume_starts_a_new_stop(tmp_path):
     ("heartbeat_at", "status", "reason"),
     [
         (12, "timed_out", "deadline_exceeded"),
-        (8, "interrupted", "brain_restart"),
+        # A Run past its deadline cannot resume, so it times out while the
+        # earlier restart stays its cause.
+        (8, "timed_out", "brain_restart"),
     ],
 )
 def test_startup_takes_the_earlier_of_deadline_and_restart(
@@ -297,7 +303,75 @@ def test_pending_cancel_beats_an_expiry_found_at_startup(tmp_path):
         )
 
 
-def test_v41_backfills_reasons_from_the_stopping_events(tmp_path):
+@pytest.mark.parametrize(
+    "scope", [TimeoutScope.RUN_DEADLINE, TimeoutScope.APPROVAL_EXPIRY]
+)
+def test_a_pending_cancel_beats_an_online_deadline_or_expiry(tmp_path, scope):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt = waiting(journal, expires_at=5, deadline_at=5)
+        journal.request_cancel(
+            "run-1", request_id="cancel-1", reason="user_request", now=4
+        )
+        outcome = TimeoutOutcome(
+            scope=scope,
+            policy_version="v1",
+            reason="expired",
+            started_at=2,
+            ended_at=5,
+            run_id="run-1",
+            approval_id=(
+                "approval-1" if scope is TimeoutScope.APPROVAL_EXPIRY else None
+            ),
+        )
+        with pytest.raises(InvalidRunTransitionError, match="cancel intent"):
+            journal.record_timeout_outcome(outcome)
+
+        journal.complete_cancel("run-1", request_id="cancel-1", now=6)
+        assert stop(journal, attempt) == (
+            "cancelled",
+            "user_cancelled",
+            "user_request",
+            "user_cancelled",
+        )
+
+
+def test_a_malformed_payload_leaves_the_backfilled_cause_unknown(tmp_path):
+    path = tmp_path / "journal.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        started(journal)
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id="run-1-failed",
+                event_type="run.failed",
+                payload={"reason": "execution_backend_failure"},
+            ),
+        )
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE run_events SET payload_json = '[]' "
+            "WHERE event_id = 'run-1-failed'"
+        )
+        for table in ("runs", "run_attempts"):
+            for column in ("terminal_reason", "terminal_detail"):
+                connection.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+        connection.execute(
+            "DELETE FROM run_journal_migrations WHERE version = 42"
+        )
+        connection.execute("PRAGMA user_version = 41")
+
+    with SQLiteRunJournal(path) as upgraded:
+        assert upgraded.schema_version == 42
+        run = upgraded.get_run("run-1")
+        assert (run.status, run.terminal_reason, run.terminal_detail) == (
+            "failed",
+            None,
+            None,
+        )
+
+
+def test_v42_backfills_reasons_from_the_stopping_events(tmp_path):
     path = tmp_path / "journal.sqlite3"
     with SQLiteRunJournal(path) as journal:
         deadline = started(journal, "deadline", deadline_at=5)
@@ -321,7 +395,7 @@ def test_v41_backfills_reasons_from_the_stopping_events(tmp_path):
         running = started(journal, "running")
 
     with sqlite3.connect(path) as connection:
-        # The v40 shape: a reached deadline failed the Run and no cause or
+        # The v41 shape: a reached deadline failed the Run and no cause or
         # terminal fields existed yet.
         connection.execute(
             "UPDATE runs SET status = 'failed' WHERE status = 'timed_out'"
@@ -330,12 +404,12 @@ def test_v41_backfills_reasons_from_the_stopping_events(tmp_path):
             for column in ("terminal_reason", "terminal_detail"):
                 connection.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
         connection.execute(
-            "DELETE FROM run_journal_migrations WHERE version = 41"
+            "DELETE FROM run_journal_migrations WHERE version = 42"
         )
-        connection.execute("PRAGMA user_version = 40")
+        connection.execute("PRAGMA user_version = 41")
 
     with SQLiteRunJournal(path) as upgraded:
-        assert upgraded.schema_version == 41
+        assert upgraded.schema_version == 42
         assert {
             run_id: stop(upgraded, attempt, run_id)
             for run_id, attempt in [
@@ -354,7 +428,7 @@ def test_v41_backfills_reasons_from_the_stopping_events(tmp_path):
             "cancelled": (
                 "cancelled",
                 "user_cancelled",
-                "explicit_cancel",
+                "user_request",
                 "user_cancelled",
             ),
             "restarted": (

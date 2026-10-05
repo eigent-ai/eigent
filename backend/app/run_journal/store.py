@@ -111,6 +111,7 @@ from app.run_journal.transitions import (
     ATTEMPT_ACTIVE_STATES,
     ATTEMPT_TRANSITIONS,
     COMMAND_TRANSITIONS,
+    RUN_STOP_EVENT_TYPES,
     RUN_STOPPED_STATES,
     RUN_TERMINAL_STATES,
     RUN_TRANSITIONS,
@@ -150,7 +151,7 @@ from app.workspace_runtime.schema import (
     MIGRATION_V40,
 )
 
-SCHEMA_VERSION = 41
+SCHEMA_VERSION = 42
 
 # Pending-only markers; never a terminal execution outcome.
 _WARM_ADMISSION_PREFIX = "warm_admission_preparing:"
@@ -2344,14 +2345,14 @@ COMMIT;
 """
 
 # Requires the run_terminal_cause() SQL function registered by _migrate.
-_MIGRATION_V41 = """
+_MIGRATION_V42 = """
 PRAGMA foreign_keys = OFF;
 BEGIN IMMEDIATE;
 
 -- A reached Run deadline is its own terminal state, and every stopped Run
 -- records why it stopped.  Rebuild the parent table under its canonical name
 -- so child-table foreign keys keep targeting it.
-CREATE TABLE runs_v41 (
+CREATE TABLE runs_v42 (
     run_id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK (
@@ -2378,7 +2379,7 @@ CREATE TABLE runs_v41 (
     terminal_detail TEXT
 );
 
-INSERT INTO runs_v41(
+INSERT INTO runs_v42(
     run_id, project_id, status, version, active_attempt_id, deadline_at,
     timeout_policy_version, created_at, updated_at, parent_run_id,
     timeout_policy_json, cancel_request_id, cancel_requested_at, origin,
@@ -2391,7 +2392,7 @@ SELECT run_id, project_id, status, version, active_attempt_id, deadline_at,
 FROM runs;
 
 DROP TABLE runs;
-ALTER TABLE runs_v41 RENAME TO runs;
+ALTER TABLE runs_v42 RENAME TO runs;
 CREATE INDEX runs_project_updated_idx
 ON runs(project_id, updated_at DESC);
 
@@ -2449,7 +2450,7 @@ UPDATE runs SET status = 'timed_out'
 WHERE status = 'failed' AND terminal_reason = 'deadline_exceeded';
 
 -- A workspace finalization records the committed Run outcome verbatim.
-CREATE TABLE run_workspace_finalizations_v41 (
+CREATE TABLE run_workspace_finalizations_v42 (
     run_id TEXT PRIMARY KEY REFERENCES runs(run_id),
     owner_attempt_id TEXT NOT NULL REFERENCES run_attempts(attempt_id),
     generation INTEGER NOT NULL,
@@ -2465,7 +2466,7 @@ CREATE TABLE run_workspace_finalizations_v41 (
     FOREIGN KEY(run_id,generation)
         REFERENCES run_workspace_bindings(run_id,generation)
 );
-INSERT INTO run_workspace_finalizations_v41
+INSERT INTO run_workspace_finalizations_v42
 SELECT run_id, owner_attempt_id, generation, state, writer_settlement_json,
        checkpoint_revision, manifest_digest,
        CASE
@@ -2477,7 +2478,7 @@ SELECT run_id, owner_attempt_id, generation, state, writer_settlement_json,
        receipt_json
 FROM run_workspace_finalizations;
 DROP TABLE run_workspace_finalizations;
-ALTER TABLE run_workspace_finalizations_v41
+ALTER TABLE run_workspace_finalizations_v42
 RENAME TO run_workspace_finalizations;
 
 -- The Run's cause belongs to the Attempt that ended with it.
@@ -2501,16 +2502,22 @@ WHERE terminal_reason IS NULL
 DROP TABLE run_terminal_backfill;
 
 INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
-VALUES (41, CAST(strftime('%s', 'now') AS REAL));
+VALUES (42, CAST(strftime('%s', 'now') AS REAL));
 
-PRAGMA user_version = 41;
+PRAGMA user_version = 42;
 COMMIT;
 PRAGMA foreign_keys = ON;
 """
 
 
 def _sql_run_terminal_cause(event_type: str, payload_json: str) -> str | None:
-    cause = run_terminal_cause(event_type, json.loads(payload_json))
+    # A malformed historical payload leaves the cause unknown rather than
+    # failing the migration.
+    try:
+        payload = json.loads(payload_json)
+    except (TypeError, ValueError):
+        return None
+    cause = run_terminal_cause(event_type, payload)
     if cause is None:
         return None
     return json.dumps({"reason": cause[0].value, "detail": cause[1]})
@@ -14216,9 +14223,17 @@ class SQLiteRunJournal:
                         created_at=timestamp,
                     ),
                 )
+            requested = connection.execute(
+                "SELECT payload_json FROM run_events WHERE event_id = ?",
+                (f"cancel:{request_id}:requested",),
+            ).fetchone()
             payload: dict[str, Any] = {
                 "request_id": request_id,
-                "reason": "explicit_cancel",
+                "reason": (
+                    requested is not None
+                    and json.loads(requested["payload_json"]).get("reason")
+                )
+                or "explicit_cancel",
             }
             manifest = connection.execute(
                 """
@@ -16433,6 +16448,15 @@ class SQLiteRunJournal:
                 raise RunNotFoundError(
                     f"run_id {outcome.run_id!r} does not exist"
                 )
+            if (
+                outcome.scope
+                in {TimeoutScope.RUN_DEADLINE, TimeoutScope.APPROVAL_EXPIRY}
+                and run["cancel_request_id"] is not None
+            ):
+                # A persisted cancel intent wins; cancel completion stops it.
+                raise InvalidRunTransitionError(
+                    f"run {outcome.run_id!r} already has a cancel intent"
+                )
             event_type = {
                 TimeoutScope.RUNTIME_LIVENESS: "runtime.interrupted",
                 TimeoutScope.ACTIVITY: "activity.timed_out",
@@ -17084,8 +17108,10 @@ class SQLiteRunJournal:
                             and pending_interaction is not None
                         )
                         # A restart stops a Run only where no durable wait
-                        # survives it, and only from the last moment the
-                        # Brain was known alive.  An earlier deadline wins.
+                        # survives it.  The Attempt's last recorded moment
+                        # (its end, a consumer heartbeat, else its start)
+                        # dates the restart; an earlier deadline names the
+                        # cause instead.
                         stopped_at = max(
                             (
                                 float(
@@ -17106,14 +17132,17 @@ class SQLiteRunJournal:
                         elif (
                             deadline_at is not None
                             and float(deadline_at) <= timestamp
-                            and (
-                                still_waiting
-                                or float(deadline_at) <= stopped_at
-                            )
                         ):
+                            # A Run past its deadline cannot resume, even
+                            # when a restart stopped it first.
                             target_status = "timed_out"
                             event_type = "run.deadline_reached"
-                            reason = "persisted_run_deadline_reached"
+                            reason = (
+                                "persisted_run_deadline_reached"
+                                if still_waiting
+                                or float(deadline_at) <= stopped_at
+                                else "brain_restart"
+                            )
                             run_deadline = True
                         elif still_waiting and not active_attempts:
                             continue
@@ -19102,19 +19131,14 @@ class SQLiteRunJournal:
     def _terminal_status_for_event(draft: RunEventDraft) -> str | None:
         # assistant.final keeps legacy_step='end' for old projectors, but the
         # Coordinator remains the sole owner of the Run terminal transition.
-        if draft.event_type == "assistant.final":
-            return None
-        if draft.event_type == "run.completed":
-            return "completed"
-        if draft.event_type == "run.failed":
-            return "failed"
-        if draft.event_type == "run.deadline_reached":
-            return "timed_out"
-        if draft.event_type == "run.cancelled":
-            return "cancelled"
-        if draft.event_type in {"run.interrupted", "runtime.interrupted"}:
-            return "interrupted"
-        return None
+        return next(
+            (
+                status
+                for status, event_types in RUN_STOP_EVENT_TYPES.items()
+                if draft.event_type in event_types
+            ),
+            None,
+        )
 
     @staticmethod
     def _bounded_frontier_text(value: Any, *, limit: int = 1000) -> str:
@@ -20560,7 +20584,7 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(MIGRATION_V39)
         if version < 40:
             self._connection.executescript(MIGRATION_V40)
-        if version < 41:
+        if version < 42:
             run_columns = {
                 row["name"]
                 for row in self._connection.execute(
@@ -20573,7 +20597,7 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
                     "PRAGMA table_info(run_attempts)"
                 ).fetchall()
             }
-            migration = _MIGRATION_V41
+            migration = _MIGRATION_V42
             if "terminal_reason" in run_columns:
                 migration = migration.replace(
                     "resume_blocked_reason\n",

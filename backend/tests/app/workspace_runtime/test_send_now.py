@@ -33,7 +33,7 @@ from app.workspace_runtime.finalizer import WorkspaceFinalizer
 from app.workspace_runtime.service import ExecutionService
 from tests.app.workspace_runtime.test_admission import envelope
 from tests.app.workspace_runtime.test_service import Op, World, eventually
-from tests.app.workspace_runtime.test_store import PRE_V41_TERMINAL_COLUMNS
+from tests.app.workspace_runtime.test_store import PRE_V42_TERMINAL_COLUMNS
 
 
 @pytest_asyncio.fixture
@@ -535,8 +535,8 @@ def test_v38_upgrade_preserves_v37_rows_and_delivery_receipt_across_reopen(
         patch("app.run_journal.store.MIGRATION_V39", ""),
         patch("app.run_journal.store.MIGRATION_V40", ""),
         patch(
-            "app.run_journal.store._MIGRATION_V41",
-            PRE_V41_TERMINAL_COLUMNS,
+            "app.run_journal.store._MIGRATION_V42",
+            PRE_V42_TERMINAL_COLUMNS,
         ),
     ):
         with SQLiteRunJournal(path) as old:

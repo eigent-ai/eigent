@@ -10,8 +10,17 @@ RUN_ACTIVE_STATES = frozenset({"pending", "running", "waiting_for_user"})
 RUN_TERMINAL_STATES = frozenset(
     {"completed", "failed", "cancelled", "timed_out"}
 )
+RUN_UNSUCCESSFUL_STATES = frozenset({"failed", "timed_out"})
 # Interrupted Runs may resume, but they stopped for a recorded cause.
 RUN_STOPPED_STATES = RUN_TERMINAL_STATES | {"interrupted"}
+# The events that move a Run into each stopped status.
+RUN_STOP_EVENT_TYPES: Mapping[str, Set[str]] = {
+    "completed": frozenset({"run.completed"}),
+    "failed": frozenset({"run.failed"}),
+    "cancelled": frozenset({"run.cancelled"}),
+    "timed_out": frozenset({"run.deadline_reached"}),
+    "interrupted": frozenset({"run.interrupted", "runtime.interrupted"}),
+}
 ATTEMPT_ACTIVE_STATES = frozenset({"pending", "running", "waiting_for_user"})
 ATTEMPT_TERMINAL_STATES = frozenset(
     {"completed", "failed", "cancelled", "interrupted", "timed_out"}
@@ -180,13 +189,16 @@ def run_terminal_cause(
     """
 
     reason = _TERMINAL_REASON_BY_EVENT.get(event_type)
-    if reason is None:
+    if reason is None or not isinstance(payload, Mapping):
         return None
     code = payload.get("reason")
     code = code.strip() if isinstance(code, str) and code.strip() else None
-    if reason is RunTerminalReason.RUNTIME_LOST and (code or "").startswith(
-        "brain_restart"
-    ):
+    # A restart that stopped the Run first stays its cause, even when the
+    # deadline has passed by the time the Brain is back.
+    if reason in {
+        RunTerminalReason.RUNTIME_LOST,
+        RunTerminalReason.DEADLINE_EXCEEDED,
+    } and (code or "").startswith("brain_restart"):
         reason = RunTerminalReason.BRAIN_RESTART
     elif (
         reason is RunTerminalReason.ERROR

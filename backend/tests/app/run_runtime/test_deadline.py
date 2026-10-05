@@ -20,6 +20,7 @@ import time
 import pytest
 
 from app.run_journal import SQLiteRunJournal
+from app.run_journal.context_projection import ResumeContextError
 from app.run_policy import RunTimeoutPolicy
 from app.run_runtime import RunCoordinator, RunInterruptedError
 from app.run_runtime.coordinator import RuntimeHandle
@@ -159,6 +160,75 @@ async def test_execution_backend_failure_is_a_durable_terminal_event(tmp_path):
             await subscription.__anext__()
         assert journal.get_run("run-1").status == "failed"
         assert journal.list_events("run-1")[-1].event_type == "run.failed"
+        await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_resume_context_budget_failure_names_its_reason(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        coordinator = RunCoordinator(journal)
+
+        async def source():
+            yield "started"
+            raise ResumeContextError(
+                "Mandatory Resume checkpoint exceeds the context budget",
+                reason="context_budget_exhausted",
+            )
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="run-1",
+            stream_factory=source,
+        )
+        assert await subscription.__anext__() == "started"
+        with pytest.raises(Exception, match="context budget"):
+            await subscription.__anext__()
+        run = journal.get_run("run-1")
+        assert (run.status, run.terminal_reason) == (
+            "failed",
+            "budget_exhausted",
+        )
+        assert journal.list_events("run-1")[-1].payload["reason"] == (
+            "context_budget_exhausted"
+        )
+        await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_watcher_leaves_a_reached_deadline_to_a_pending_cancel(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-1",
+            project_id="project-1",
+            deadline_at=time.time() - 1,
+        )
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        journal.request_cancel(
+            "run-1", request_id="cancel-1", reason="user_request"
+        )
+        coordinator = RunCoordinator(journal)
+
+        await asyncio.wait_for(
+            coordinator._watch_deadline(RuntimeHandle(run_id="run-1")),
+            timeout=1,
+        )
+
+        assert journal.get_run("run-1").status == "running"
+        journal.complete_cancel("run-1", request_id="cancel-1")
+        assert journal.get_run("run-1").terminal_reason == "user_cancelled"
         await coordinator.close()
 
 

@@ -1086,11 +1086,17 @@ class RunCoordinator:
                 },
             )
         except Exception as exc:
+            from app.run_journal.context_projection import ResumeContextError
+
             await self._commit_execution_terminal(
                 handle,
                 event_type="run.failed",
                 payload={
-                    "reason": "execution_backend_failure",
+                    "reason": (
+                        exc.reason
+                        if isinstance(exc, ResumeContextError)
+                        else "execution_backend_failure"
+                    ),
                     "error_type": type(exc).__name__,
                     "message": str(exc)[:4000],
                 },
@@ -1286,6 +1292,9 @@ class RunCoordinator:
                         return
                     if time.time() < current.deadline_at:
                         continue
+                if current.cancel_request_id is not None:
+                    # A persisted cancel intent wins; cancel ends the Run.
+                    return
                 attempt = (
                     await asyncio.to_thread(
                         self._journal.get_run_attempt,

@@ -64,7 +64,10 @@ from app.run_journal import (
     configured_run_journal_path,
     get_default_run_journal,
 )
-from app.run_journal.transitions import RUN_TERMINAL_STATES
+from app.run_journal.transitions import (
+    RUN_TERMINAL_STATES,
+    RUN_UNSUCCESSFUL_STATES,
+)
 from app.run_runtime import RunCoordinator, get_default_run_coordinator
 from app.run_runtime.admission import (
     WarmRunAdmission,
@@ -757,7 +760,7 @@ async def _resolve_continuation_admission(
     next_action = frontier.get("next_action")
     remaining = frontier.get("remaining")
     retry_failed_run = False
-    if latest is not None and latest.status in {"failed", "timed_out"}:
+    if latest is not None and latest.status in RUN_UNSUCCESSFUL_STATES:
         blocked_by = frontier.get("blocked_by")
         if (
             latest_has_unknown_tool_outcome
