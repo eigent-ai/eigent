@@ -507,9 +507,10 @@
   "run-terminal-reason-completed": "The task finished.",
   "run-terminal-reason-user_cancelled": "The task was stopped.",
   "run-terminal-reason-deadline_exceeded": "The task reached its time limit.",
-  "run-terminal-reason-approval_expired": "An approval request expired before it was answered. Resume re-evaluates the remaining work and requests new approval when needed.",
+  "run-terminal-reason-approval_expired": "A request waiting for your response expired before it was answered. Resume re-evaluates the remaining work and asks again when needed.",
   "run-terminal-reason-brain_restart": "Eigent restarted while this task was running.",
   "run-terminal-reason-runtime_lost": "The process running this task stopped unexpectedly.",
   "run-terminal-reason-error": "The task stopped because of an error.",
-  "run-terminal-reason-budget_exhausted": "The task used up its available budget."
+  "run-terminal-reason-budget_exhausted": "The task used up its available budget.",
+  "tool-status-timed_out": "Timed out"
 }

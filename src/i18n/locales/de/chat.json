@@ -507,9 +507,10 @@
   "run-terminal-reason-completed": "Die Aufgabe wurde abgeschlossen.",
   "run-terminal-reason-user_cancelled": "Die Aufgabe wurde gestoppt.",
   "run-terminal-reason-deadline_exceeded": "Die Aufgabe hat ihr Zeitlimit erreicht.",
-  "run-terminal-reason-approval_expired": "Eine Genehmigungsanfrage ist abgelaufen, bevor sie beantwortet wurde. Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf eine neue Genehmigung angefordert.",
+  "run-terminal-reason-approval_expired": "Eine Anfrage, die auf Ihre Antwort wartete, ist abgelaufen, bevor sie beantwortet wurde. Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf erneut nachgefragt.",
   "run-terminal-reason-brain_restart": "Eigent wurde neu gestartet, während diese Aufgabe lief.",
   "run-terminal-reason-runtime_lost": "Der Prozess, der diese Aufgabe ausgeführt hat, wurde unerwartet beendet.",
   "run-terminal-reason-error": "Die Aufgabe wurde wegen eines Fehlers beendet.",
-  "run-terminal-reason-budget_exhausted": "Die Aufgabe hat ihr verfügbares Budget aufgebraucht."
+  "run-terminal-reason-budget_exhausted": "Die Aufgabe hat ihr verfügbares Budget aufgebraucht.",
+  "tool-status-timed_out": "Zeitüberschreitung"
 }

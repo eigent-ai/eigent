@@ -511,9 +511,10 @@
   "run-terminal-reason-completed": "La tâche est terminée.",
   "run-terminal-reason-user_cancelled": "La tâche a été arrêtée.",
   "run-terminal-reason-deadline_exceeded": "La tâche a atteint sa limite de temps.",
-  "run-terminal-reason-approval_expired": "Une demande d’approbation a expiré avant d’avoir reçu une réponse. La reprise réévalue le travail restant et demande une nouvelle approbation si nécessaire.",
+  "run-terminal-reason-approval_expired": "Une demande en attente de votre réponse a expiré avant d’avoir reçu une réponse. La reprise réévalue le travail restant et vous sollicite à nouveau si nécessaire.",
   "run-terminal-reason-brain_restart": "Eigent a redémarré pendant l’exécution de cette tâche.",
   "run-terminal-reason-runtime_lost": "Le processus qui exécutait cette tâche s’est arrêté de manière inattendue.",
   "run-terminal-reason-error": "La tâche s’est arrêtée à cause d’une erreur.",
-  "run-terminal-reason-budget_exhausted": "La tâche a épuisé le budget disponible."
+  "run-terminal-reason-budget_exhausted": "La tâche a épuisé le budget disponible.",
+  "tool-status-timed_out": "Délai dépassé"
 }

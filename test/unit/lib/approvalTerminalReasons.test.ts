@@ -137,7 +137,7 @@ describe('durable approval terminal reasons', () => {
       );
     }
     expect(interruptedRunDescription('approval_expired', t)).toContain(
-      'requests new approval when needed'
+      'asks again when needed'
     );
     expect(approvalRecordedReason('worker_cancelled', t)).toBe(
       'Recorded reason: worker_cancelled'

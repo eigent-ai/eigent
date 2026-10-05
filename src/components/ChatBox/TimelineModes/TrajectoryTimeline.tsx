@@ -97,7 +97,10 @@ interface DetailedStatusTone {
   labelClassName: string;
 }
 
-function detailedStatusTone(status: string): DetailedStatusTone {
+function detailedStatusTone(
+  status: string,
+  runOutcome: boolean
+): DetailedStatusTone {
   if (
     status === 'completed' ||
     status === 'complete' ||
@@ -114,10 +117,12 @@ function detailedStatusTone(status: string): DetailedStatusTone {
       labelClassName: 'text-ds-text-status-running-default-default',
     };
   }
+  // A Run that timed out has ended; a timed-out tool call may still retry.
   if (
     status === 'failed' ||
     status === 'error' ||
-    status === 'outcome_unknown'
+    status === 'outcome_unknown' ||
+    (runOutcome && status === 'timed_out')
   ) {
     return {
       iconClassName: '!text-ds-text-status-error-default-default',
@@ -154,12 +159,14 @@ function detailedStatusTone(status: string): DetailedStatusTone {
 function DetailedStatusInline({
   status,
   paused = false,
+  runOutcome = false,
 }: {
   status: string;
   paused?: boolean;
+  runOutcome?: boolean;
 }) {
   const Icon = statusIcon(status);
-  const tone = detailedStatusTone(status);
+  const tone = detailedStatusTone(status, runOutcome);
   // A paused Run has stopped making progress, so its spinner stops too.
   const animated = !paused && (status === 'running' || status === 'cancelling');
 
@@ -387,7 +394,13 @@ function nodeStatus(row: NodeTraceRow, paused: boolean): ReactNode {
     node.kind === 'activity' ||
     node.kind === 'run_status'
   ) {
-    return <DetailedStatusInline paused={paused} status={node.status} />;
+    return (
+      <DetailedStatusInline
+        paused={paused}
+        runOutcome={node.kind === 'run_status'}
+        status={node.status}
+      />
+    );
   }
   if (node.kind === 'artifact') {
     return (

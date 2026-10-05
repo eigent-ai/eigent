@@ -690,6 +690,13 @@ describe('ChatBox timeline modes', () => {
       />
     );
     const view = within(container);
+    const status = container.querySelector(
+      '[data-detailed-status="timed_out"]'
+    ) as HTMLElement;
+    expect(status).toHaveClass('text-ds-text-status-error-default-default');
+    expect(status.querySelector('svg')).toHaveClass(
+      '!text-ds-text-status-error-default-default'
+    );
     fireEvent.click(view.getByRole('button'));
     expect(
       view.getByText(i18next.t('chat.run-terminal-reason-deadline_exceeded'))

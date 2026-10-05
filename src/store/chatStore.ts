@@ -2367,6 +2367,15 @@ export async function readTaskFailureFacts(
     );
   };
   if (!isCurrent()) return null;
+  // Stop events written before the Brain recorded causes carry none; the Run
+  // summary holds the backfilled cause.
+  const withRunTerminalReason = (facts: TaskFailureFacts) => ({
+    ...facts,
+    terminalReason:
+      facts.terminalReason ??
+      runProjectionStore.getRun(projectId, taskId)?.terminalReason ??
+      null,
+  });
   const invalidate = () => {
     if (!isCurrent()) controller.abort();
   };
@@ -2387,10 +2396,14 @@ export async function readTaskFailureFacts(
       includeFailureFacts: true,
     });
     return isCurrent()
-      ? (result.failureFacts ?? unverifiedTaskFailureFacts())
+      ? withRunTerminalReason(
+          result.failureFacts ?? unverifiedTaskFailureFacts()
+        )
       : null;
   } catch {
-    return isCurrent() ? unverifiedTaskFailureFacts() : null;
+    return isCurrent()
+      ? withRunTerminalReason(unverifiedTaskFailureFacts())
+      : null;
   } finally {
     signal.removeEventListener('abort', abort);
     unsubscribe.forEach((dispose) => dispose());
@@ -4561,7 +4574,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (
             currentTask.status === ChatTaskStatus.FINISHED &&
-            currentTask.durableRunStatus === 'failed' &&
+            UNSUCCESSFUL_RUN_STATUSES.has(currentTask.durableRunStatus!) &&
             agentMessages.step === AgentStep.ERROR
           ) {
             // A status GET can settle the Run before error details arrive.
@@ -6340,7 +6353,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const failedTask = tasks[currentTaskId];
               const wasAlreadySettledByCanonical =
                 failedTask?.status === ChatTaskStatus.FINISHED &&
-                failedTask?.durableRunStatus === 'failed';
+                UNSUCCESSFUL_RUN_STATUSES.has(failedTask.durableRunStatus!);
               const errorContent = i18next.t('chat.error-message', {
                 defaultValue: '❌ **Error**: {{message}}',
                 message: errorMessage,

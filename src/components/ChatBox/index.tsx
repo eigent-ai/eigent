@@ -40,6 +40,7 @@ import {
   isProjectAchieved,
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
+import { TERMINAL_RUN_STATUSES } from '@/lib/projector/runSummary';
 import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import {
   beginResumeRequest,
@@ -2794,9 +2795,7 @@ function LegacyChatBox(): JSX.Element {
             );
           }
           const run = sharedProjectEventSnapshot.view.runs[op.runId];
-          return (
-            !run || !['completed', 'cancelled', 'failed'].includes(run.status)
-          );
+          return !run || !TERMINAL_RUN_STATUSES.has(run.status);
         })
         .map((op) => (
           <ControlRecovery key={op.key} operation={op} />

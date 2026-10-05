@@ -503,9 +503,10 @@
   "run-terminal-reason-completed": "任务已完成。",
   "run-terminal-reason-user_cancelled": "任务已被停止。",
   "run-terminal-reason-deadline_exceeded": "任务已达到时间上限。",
-  "run-terminal-reason-approval_expired": "审批请求在得到答复前已到期。恢复时会重新评估剩余工作，并在需要时请求新的审批。",
+  "run-terminal-reason-approval_expired": "等待你回复的请求在答复前已到期。恢复时会重新评估剩余工作，并在需要时再次询问。",
   "run-terminal-reason-brain_restart": "任务运行期间 Eigent 重新启动了。",
   "run-terminal-reason-runtime_lost": "运行此任务的进程意外停止。",
   "run-terminal-reason-error": "任务因错误而停止。",
-  "run-terminal-reason-budget_exhausted": "任务已用尽可用预算。"
+  "run-terminal-reason-budget_exhausted": "任务已用尽可用预算。",
+  "tool-status-timed_out": "已超时"
 }

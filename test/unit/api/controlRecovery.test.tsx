@@ -571,6 +571,36 @@ describe('SL-BUG-27 recovery safety contracts', () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
+  it('settles an unconfirmed Stop once the Run has timed out', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () => new Promise(() => {})
+    );
+    const cancel = cancelProjectRun(
+      'run-probe',
+      'cancel-id',
+      'explicit_cancel_from_desktop_ui',
+      undefined,
+      'project-probe'
+    ).catch(() => {});
+    await vi.advanceTimersByTimeAsync(15_000);
+    await cancel;
+    const op = listControlOperations()[0];
+    expect(op.phase).not.toBe('resolved');
+    const snapshot = getProjectEventStore('project-probe').getSnapshot();
+    reconcileControlOperations({
+      ...snapshot,
+      view: {
+        ...snapshot.view,
+        runs: {
+          ...snapshot.view.runs,
+          'run-probe': { runId: 'run-probe', status: 'timed_out' } as any,
+        },
+      },
+    });
+    expect(op.phase).toBe('resolved');
+    expect(op.receipt?.status).toBe('timed_out');
+  });
+
   it('fences legacy Stop to the captured task and treats 201 as queued', async () => {
     const fetch = vi
       .spyOn(globalThis, 'fetch')

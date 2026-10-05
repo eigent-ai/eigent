@@ -523,9 +523,10 @@
   "run-terminal-reason-completed": "اكتملت المهمة.",
   "run-terminal-reason-user_cancelled": "تم إيقاف المهمة.",
   "run-terminal-reason-deadline_exceeded": "بلغت المهمة حدها الزمني.",
-  "run-terminal-reason-approval_expired": "انتهت صلاحية طلب الموافقة قبل الرد عليه. عند الاستئناف، يُعاد تقييم العمل المتبقي وتُطلب موافقة جديدة عند الحاجة.",
+  "run-terminal-reason-approval_expired": "انتهت صلاحية طلب كان بانتظار ردك قبل الرد عليه. عند الاستئناف، يُعاد تقييم العمل المتبقي ويُطلب منك الرد مجددًا عند الحاجة.",
   "run-terminal-reason-brain_restart": "أُعيد تشغيل Eigent أثناء تنفيذ هذه المهمة.",
   "run-terminal-reason-runtime_lost": "توقفت العملية التي كانت تنفذ هذه المهمة بشكل غير متوقع.",
   "run-terminal-reason-error": "توقفت المهمة بسبب خطأ.",
-  "run-terminal-reason-budget_exhausted": "استنفدت المهمة الميزانية المتاحة."
+  "run-terminal-reason-budget_exhausted": "استنفدت المهمة الميزانية المتاحة.",
+  "tool-status-timed_out": "انتهت المهلة"
 }

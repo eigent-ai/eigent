@@ -511,9 +511,10 @@
   "run-terminal-reason-completed": "La tarea terminó.",
   "run-terminal-reason-user_cancelled": "La tarea se detuvo.",
   "run-terminal-reason-deadline_exceeded": "La tarea alcanzó su límite de tiempo.",
-  "run-terminal-reason-approval_expired": "Una solicitud de aprobación caducó antes de recibir respuesta. Al reanudar se vuelve a evaluar el trabajo pendiente y se solicita una nueva aprobación cuando sea necesario.",
+  "run-terminal-reason-approval_expired": "Una solicitud que esperaba tu respuesta caducó antes de ser respondida. Al reanudar se vuelve a evaluar el trabajo pendiente y se vuelve a preguntar cuando sea necesario.",
   "run-terminal-reason-brain_restart": "Eigent se reinició mientras esta tarea estaba en ejecución.",
   "run-terminal-reason-runtime_lost": "El proceso que ejecutaba esta tarea se detuvo inesperadamente.",
   "run-terminal-reason-error": "La tarea se detuvo por un error.",
-  "run-terminal-reason-budget_exhausted": "La tarea agotó su presupuesto disponible."
+  "run-terminal-reason-budget_exhausted": "La tarea agotó su presupuesto disponible.",
+  "tool-status-timed_out": "Tiempo de espera agotado"
 }
