@@ -747,9 +747,11 @@ async def test_space_installation_lookup_returns_successful_empty_state(
         "get_default_run_journal",
         lambda: journal,
     )
+    store = _space_store(tmp_path, monkeypatch)
+    _bind_space(store, tmp_path, "space-without-bundle", **OWNER)
 
     payload = await workspace_bundle_controller.get_space_bundle_installation(
-        "space-without-bundle", Request({"type": "http", "query_string": b""})
+        "space-without-bundle", _request(**OWNER)
     )
 
     assert payload == {"proposal": None}
@@ -1152,11 +1154,69 @@ async def test_bundle_install_proposal_is_scoped_to_space_binding(
             "local_path",
             "script_approval",
         }
-        with pytest.raises(HTTPException) as missing:
-            await controller.get_bundle_install_proposal(
+        approved = journal.get_workspace_bundle_install_proposal(
+            proposal.proposal_id
+        )
+        for call in [
+            controller.get_bundle_install_proposal(
                 proposal.proposal_id, other
+            ),
+            controller.decide_bundle_install(
+                proposal.proposal_id,
+                controller.BundleDecisionBody(
+                    expected_version=approved.version,
+                    approved=False,
+                    actor_id="other",
+                ),
+                other,
+            ),
+            controller.get_bundle_install_proposal(
+                proposal.proposal_id, _request()
+            ),
+        ]:
+            with pytest.raises(HTTPException) as missing:
+                await call
+            assert missing.value.status_code == 404
+        assert (
+            journal.get_workspace_bundle_install_proposal(proposal.proposal_id)
+            == approved
+        )
+        assert approved.state == "approved"
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+async def test_bundle_install_propose_requires_caller_space_binding(
+    tmp_path, monkeypatch
+):
+    journal, proposal = _owned_proposal(tmp_path, monkeypatch)
+    store = _space_store(tmp_path, monkeypatch)
+    _bind_space(store, tmp_path, "owner-space", **OWNER)
+    _bind_space(store, tmp_path, "other-space", **OTHER)
+    controller = workspace_bundle_controller
+    try:
+        with pytest.raises(HTTPException) as missing:
+            await controller.propose_bundle_install(
+                controller.BundleProposalBody(
+                    proposal_id=proposal.proposal_id,
+                    request_id=proposal.request_id,
+                    space_id="owner-space",
+                    publisher_namespace="publisher",
+                    slug="bundle",
+                    version=1,
+                ),
+                _request(**OTHER),
+                "Bearer other",
             )
         assert missing.value.status_code == 404
+        assert missing.value.detail == {"code": "workspace_binding_not_found"}
+        assert (
+            journal.get_latest_workspace_bundle_install_proposal(
+                space_id="owner-space"
+            )
+            == proposal
+        )
     finally:
         journal.close()
 

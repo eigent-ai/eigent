@@ -521,26 +521,18 @@ def _request_payload(
     return _payload(proposal_id, email=email, user_id=user_id)
 
 
-def _space_binding(
-    proposal_id: str,
+def _caller_space_binding(
+    space_id: str,
     request: Request,
     body: BundleMaterializeBody | None = None,
 ) -> WorkspaceBinding:
     # Proposals live only in this Brain's RunJournal. Access follows the
-    # caller's binding for the proposal's Space, so another account's
-    # proposal reads as missing.
-    proposal = get_default_run_journal().get_workspace_bundle_install_proposal(
-        proposal_id
-    )
-    if proposal is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "bundle_install_proposal_not_found"},
-        )
+    # caller's binding for the Space, so another account's proposal reads as
+    # missing.
     email, user_id = _request_identity(request, body)
     binding = get_workspace_resolver().store.get_binding(
         email,
-        proposal.space_id,
+        space_id,
         user_id,
     )
     if binding is None:
@@ -549,6 +541,22 @@ def _space_binding(
             detail={"code": "workspace_binding_not_found"},
         )
     return binding
+
+
+def _space_binding(
+    proposal_id: str,
+    request: Request,
+    body: BundleMaterializeBody | None = None,
+) -> WorkspaceBinding:
+    proposal = get_default_run_journal().get_workspace_bundle_install_proposal(
+        proposal_id
+    )
+    if proposal is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "bundle_install_proposal_not_found"},
+        )
+    return _caller_space_binding(proposal.space_id, request, body)
 
 
 def _error(exc: Exception) -> HTTPException:
@@ -616,6 +624,7 @@ async def propose_bundle_install(
 ) -> dict:
     cloud = None
     try:
+        _caller_space_binding(body.space_id, request)
         cloud = _cloud(authorization)
         await _installer(cloud).propose(
             proposal_id=body.proposal_id,
@@ -646,6 +655,7 @@ async def get_bundle_install_proposal(
 async def get_space_bundle_installation(
     space_id: str, request: Request
 ) -> dict:
+    _caller_space_binding(space_id, request)
     proposal = (
         get_default_run_journal().get_latest_workspace_bundle_install_proposal(
             space_id=space_id
@@ -658,7 +668,6 @@ async def get_space_bundle_installation(
         # the proposal-id endpoint, where the caller asked for a concrete
         # resource that does not exist.
         return {"proposal": None}
-    _space_binding(proposal.proposal_id, request)
     return _request_payload(proposal.proposal_id, request)
 
 
