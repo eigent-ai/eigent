@@ -364,5 +364,235 @@
   "task-queued": "In coda: {{name}}",
   "task-queued-description": "L'attività è stata aggiunta alla coda della sessione",
   "select-method": "Seleziona metodo",
-  "status-cancelled": "Annullato"
+  "status-cancelled": "Annullato",
+  "try-an-example": "Prova un esempio",
+  "example-card-label": "Configura {{title}}: {{description}} {{schedule}}",
+  "your-automations": "Le tue automazioni",
+  "queue-empty-body": "Prova un esempio per configurare la prima.",
+  "new-badge": "Nuova",
+  "back-to-examples": "Esempi",
+  "next-run": "Prossima esecuzione",
+  "next-run-at": "Prossima: {{time}}",
+  "paused": "In pausa",
+  "paused-schedule": "In pausa · {{schedule}}",
+  "runs-did-not-complete": "{{count}} esecuzioni di fila non completate",
+  "auto-disabled-short": "Disattivata dopo esecuzioni non completate",
+  "consecutive-warning": "{{count}} esecuzioni consecutive su {{max}} non sono state completate. Dopo {{max}}, questa automazione si disattiva automaticamente. Le esecuzioni programmate partono solo mentre Eigent è aperto su questo computer.",
+  "auto-disabled-notice": "Questa automazione si è disattivata automaticamente dopo {{max}} esecuzioni di fila non completate. Riattivala quando Eigent potrà restare aperto all'orario programmato.",
+  "execution-status-missed": "Mancata",
+  "execution-missed-reason": "Esecuzione mancata. Eigent non era aperto alle {{time}}, quindi questa esecuzione non è partita.",
+  "first-run-on": "Prima esecuzione: {{time}}",
+  "turn-on-to-schedule": "Attiva questa automazione per programmare la prima esecuzione",
+  "first-run-notice": "Prima esecuzione: {{time}} (ora locale). Eigent deve essere aperto in quel momento.",
+  "next-run-notice": "Prossima esecuzione: {{time}} (ora locale). Eigent deve essere aperto in quel momento.",
+  "pick-future-time": "Scegli una data e un'ora nel futuro.",
+  "schedule-label-daily": "Ogni giorno alle {{time}}",
+  "schedule-label-weekly": "Ogni {{days}} alle {{time}}",
+  "schedule-label-monthly": "Ogni mese il giorno {{day}} alle {{time}}",
+  "schedule-label-once": "Una volta il {{date}} alle {{time}}",
+  "turn-on-named": "Attiva {{name}}",
+  "turn-off-named": "Disattiva {{name}}",
+  "more-actions-named": "Altre azioni per {{name}}",
+  "profile-nudge-title": "Esempi su misura per te",
+  "profile-nudge-body": "Raccontaci di cosa ti occupi.",
+  "profile-nudge-action": "Configura il profilo",
+  "profile-nudge-picker-title": "Di cosa ti occupi?",
+  "profile-nudge-picker-body": "Gli esempi si aggiornano subito.",
+  "profile-saved": "Salvato nel tuo profilo · esempi per {{role}}",
+  "roles": {
+    "software-engineer": "Ingegneria del software",
+    "backend-engineering": "Ingegneria backend",
+    "frontend-engineering": "Ingegneria frontend",
+    "devops": "DevOps",
+    "data-engineering": "Ingegneria dei dati",
+    "product-management": "Product management",
+    "marketing": "Marketing",
+    "sales": "Vendite",
+    "customer-support": "Assistenza clienti",
+    "hr": "Risorse umane",
+    "finance": "Finanza",
+    "qa-testing": "QA e test"
+  },
+  "examples": {
+    "map-unfamiliar-module": {
+      "title": "Mappa un modulo sconosciuto",
+      "description": "Scopri come si collega un file.",
+      "prompt": "Mappa il modulo che indico: elenca chi lo chiama, le dipendenze e i punti di ingresso."
+    },
+    "trace-request-end-to-end": {
+      "title": "Traccia una richiesta da capo a fondo",
+      "description": "Trova dove rallenta una richiesta.",
+      "prompt": "Traccia il percorso principale della richiesta in ogni servizio che attraversa e riassumi i passaggi più lenti."
+    },
+    "weekly-flaky-test-report": {
+      "title": "Report settimanale dei test instabili",
+      "description": "Test che sono cambiati questa settimana.",
+      "prompt": "Esamina le esecuzioni CI di questa settimana ed elenca i test che sono passati da successo a errore e viceversa."
+    },
+    "api-contract-diff": {
+      "title": "Confronto dei contratti API",
+      "description": "Segnala ogni giorno modifiche incompatibili.",
+      "prompt": "Confronta gli schemi API delle pull request unite oggi e segnala le modifiche incompatibili."
+    },
+    "slow-query-digest": {
+      "title": "Riepilogo delle query lente",
+      "description": "Query diventate più lente.",
+      "prompt": "Elenca le query del database la cui latenza è aumentata questa settimana, con un esempio per ciascuna."
+    },
+    "dependency-vulnerability-scan": {
+      "title": "Analisi delle vulnerabilità delle dipendenze",
+      "description": "Pacchetti obsoleti o segnalati.",
+      "prompt": "Analizza le dipendenze dei servizi ed elenca i pacchetti obsoleti o vulnerabili."
+    },
+    "component-usage-audit": {
+      "title": "Verifica dell'uso dei componenti",
+      "description": "Ogni punto in cui appare un componente.",
+      "prompt": "Trova ogni utilizzo del componente che indico e raggruppali per pagina."
+    },
+    "bundle-size-watch": {
+      "title": "Controllo della dimensione del bundle",
+      "description": "Merge che hanno ingrandito il bundle.",
+      "prompt": "Confronta la dimensione del bundle di oggi con il budget e indica i merge che l'hanno aumentata."
+    },
+    "broken-link-sweep": {
+      "title": "Ricerca di link non funzionanti",
+      "description": "Link interrotti e risorse mancanti.",
+      "prompt": "Analizza il sito della documentazione ed elenca i link non funzionanti e le immagini mancanti."
+    },
+    "daily-bug-triage": {
+      "title": "Triage giornaliero dei bug",
+      "description": "Nuovi bug, ordinati ogni mattina.",
+      "prompt": "Raccogli le segnalazioni di bug delle ultime 24 ore e ordinale per gravità."
+    },
+    "weekly-incident-summary": {
+      "title": "Riepilogo settimanale degli incidenti",
+      "description": "Incidenti e correzioni della settimana.",
+      "prompt": "Riassumi gli incidenti di questa settimana, il loro impatto e le correzioni rilasciate."
+    },
+    "infra-cost-digest": {
+      "title": "Riepilogo dei costi di infrastruttura",
+      "description": "Cosa è cambiato nella spesa cloud.",
+      "prompt": "Riassumi le variazioni della spesa cloud di questa settimana per servizio."
+    },
+    "pipeline-failure-digest": {
+      "title": "Riepilogo dei job falliti",
+      "description": "Errori notturni e relative cause.",
+      "prompt": "Elenca i job della pipeline falliti durante la notte con l'errore e il responsabile."
+    },
+    "schema-drift-check": {
+      "title": "Controllo delle modifiche di schema",
+      "description": "Tabelle con schema cambiato inaspettatamente.",
+      "prompt": "Confronta gli schemi delle tabelle del data warehouse con quelli di ieri e segnala le modifiche inattese."
+    },
+    "sample-dataset-generator": {
+      "title": "Generatore di dataset di esempio",
+      "description": "Dati di test realistici da uno schema.",
+      "prompt": "Genera un dataset di test di 500 righe conforme allo schema degli ordini."
+    },
+    "weekly-feature-usage-recap": {
+      "title": "Riepilogo settimanale dell'uso di una funzione",
+      "description": "Come viene usata una nuova funzione.",
+      "prompt": "Riassumi l'uso della scorsa settimana della funzione che indico, con le tendenze."
+    },
+    "customer-feedback-digest": {
+      "title": "Riepilogo del feedback dei clienti",
+      "description": "Feedback settimanale raggruppato per tema.",
+      "prompt": "Raggruppa il feedback dei clienti di questa settimana per tema, con citazioni di esempio."
+    },
+    "competitor-release-watch": {
+      "title": "Monitoraggio dei rilasci dei concorrenti",
+      "description": "Cosa hanno rilasciato i concorrenti.",
+      "prompt": "Controlla i changelog dei concorrenti e riassumi cosa hanno rilasciato questa settimana."
+    },
+    "campaign-performance-recap": {
+      "title": "Riepilogo delle prestazioni delle campagne",
+      "description": "Metriche delle campagne in parole semplici.",
+      "prompt": "Riassumi le metriche delle campagne della scorsa settimana ed evidenzia cosa è cambiato."
+    },
+    "content-calendar-draft": {
+      "title": "Bozza del calendario editoriale",
+      "description": "Post per la prossima settimana.",
+      "prompt": "Scrivi cinque post social per la prossima settimana partendo dalle novità di prodotto di questa settimana."
+    },
+    "brand-mention-sweep": {
+      "title": "Ricerca delle menzioni del brand",
+      "description": "Dove è stato citato il brand.",
+      "prompt": "Raccogli le menzioni del brand di oggi e segnala quelle che richiedono una risposta."
+    },
+    "pipeline-health-digest": {
+      "title": "Riepilogo dello stato della pipeline",
+      "description": "Trattative avanzate o ferme.",
+      "prompt": "Elenca le trattative che hanno cambiato fase o si sono fermate questa settimana, con i prossimi passi."
+    },
+    "meeting-prep-brief": {
+      "title": "Scheda di preparazione alle riunioni",
+      "description": "Una scheda per ogni chiamata.",
+      "prompt": "Per ogni chiamata commerciale nel calendario di oggi, scrivi una breve scheda sul potenziale cliente."
+    },
+    "lead-follow-up-reminder": {
+      "title": "Promemoria di follow-up dei lead",
+      "description": "Lead senza contatti da cinque giorni.",
+      "prompt": "Elenca i lead senza contatti negli ultimi cinque giorni, dal più vecchio."
+    },
+    "inbox-triage": {
+      "title": "Triage della posta in arrivo",
+      "description": "Nuovi ticket ordinati per urgenza.",
+      "prompt": "Ordina per urgenza i ticket ricevuti da ieri ed etichetta i primi cinque."
+    },
+    "draft-urgent-replies": {
+      "title": "Bozze per i ticket urgenti",
+      "description": "Bozze da far rivedere al team.",
+      "prompt": "Scrivi bozze di risposta per i ticket contrassegnati come urgenti, da far rivedere a un collega."
+    },
+    "weekly-satisfaction-recap": {
+      "title": "Riepilogo settimanale della soddisfazione",
+      "description": "Tendenze CSAT e reclami frequenti.",
+      "prompt": "Riassumi i punteggi CSAT di questa settimana e i reclami più frequenti."
+    },
+    "new-hire-paperwork-check": {
+      "title": "Controllo dei documenti dei nuovi assunti",
+      "description": "Documenti di onboarding mancanti.",
+      "prompt": "Controlla le cartelle di onboarding dei nuovi assunti ed elenca i documenti mancanti."
+    },
+    "policy-document-review": {
+      "title": "Revisione dei documenti di policy",
+      "description": "Formulazioni obsolete segnalate.",
+      "prompt": "Rivedi i documenti di policy e segnala le formulazioni obsolete o contraddittorie."
+    },
+    "hiring-pipeline-digest": {
+      "title": "Riepilogo del processo di selezione",
+      "description": "Avanzamento dei candidati questa settimana.",
+      "prompt": "Riassumi come si sono mossi i candidati tra le fasi di selezione questa settimana."
+    },
+    "expense-report-review": {
+      "title": "Revisione delle note spese",
+      "description": "Note spese che violano la policy.",
+      "prompt": "Esamina le nuove note spese e segnala quelle che non rispettano la policy."
+    },
+    "monthly-close-checklist": {
+      "title": "Checklist di chiusura mensile",
+      "description": "Attività di chiusura ancora aperte.",
+      "prompt": "Controlla la checklist di chiusura di fine mese ed elenca le voci non completate."
+    },
+    "vendor-invoice-triage": {
+      "title": "Triage delle fatture fornitori",
+      "description": "Fatture ordinate per scadenza.",
+      "prompt": "Ordina le nuove fatture dei fornitori per scadenza e segnala gli importi oltre il budget."
+    },
+    "flaky-test-tracker": {
+      "title": "Monitoraggio dei test instabili",
+      "description": "Test che cambiano tra un'esecuzione e l'altra.",
+      "prompt": "Trova i test che sono passati da successo a errore nelle ultime 20 esecuzioni CI."
+    },
+    "regression-risk-summary": {
+      "title": "Riepilogo dei rischi di regressione",
+      "description": "Aree a rischio dopo i merge.",
+      "prompt": "Esamina i merge di oggi ed elenca le aree a rischio di regressione."
+    },
+    "test-coverage-digest": {
+      "title": "Riepilogo della copertura dei test",
+      "description": "Variazioni di copertura della settimana.",
+      "prompt": "Riassumi le variazioni della copertura dei test di questa settimana per pacchetto."
+    }
+  }
 }

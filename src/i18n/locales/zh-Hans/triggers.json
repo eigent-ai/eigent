@@ -364,5 +364,235 @@
   "task-queued": "已排队：{{name}}",
   "task-queued-description": "任务已添加到会话队列",
   "select-method": "选择方法",
-  "status-cancelled": "已取消"
+  "status-cancelled": "已取消",
+  "try-an-example": "试试示例",
+  "example-card-label": "设置{{title}}：{{description}} {{schedule}}",
+  "your-automations": "您的自动化",
+  "queue-empty-body": "试试示例，设置您的第一个自动化。",
+  "new-badge": "新建",
+  "back-to-examples": "示例",
+  "next-run": "下次运行",
+  "next-run-at": "下次：{{time}}",
+  "paused": "已暂停",
+  "paused-schedule": "已暂停 · {{schedule}}",
+  "runs-did-not-complete": "连续 {{count}} 次运行未完成",
+  "auto-disabled-short": "因运行未完成已关闭",
+  "consecutive-warning": "已连续 {{count}} 次运行未完成（上限 {{max}} 次）。达到 {{max}} 次后，此自动化会自动关闭。只有当 Eigent 在这台电脑上打开时，计划的运行才会开始。",
+  "auto-disabled-notice": "由于连续 {{max}} 次运行未完成，此自动化已自动关闭。等您能在计划时间保持 Eigent 打开时，再重新开启。",
+  "execution-status-missed": "已错过",
+  "execution-missed-reason": "错过执行。{{time}} 时 Eigent 未打开，因此本次运行没有开始。",
+  "first-run-on": "首次运行：{{time}}",
+  "turn-on-to-schedule": "开启此自动化后将安排首次运行",
+  "first-run-notice": "首次运行：{{time}}（您的本地时间）。届时 Eigent 需要保持打开。",
+  "next-run-notice": "下次运行：{{time}}（您的本地时间）。届时 Eigent 需要保持打开。",
+  "pick-future-time": "请选择未来的日期和时间。",
+  "schedule-label-daily": "每天 {{time}}",
+  "schedule-label-weekly": "每{{days}} {{time}}",
+  "schedule-label-monthly": "每月 {{day}} 日 {{time}}",
+  "schedule-label-once": "{{date}} {{time}} 运行一次",
+  "turn-on-named": "开启{{name}}",
+  "turn-off-named": "关闭{{name}}",
+  "more-actions-named": "{{name}}的更多操作",
+  "profile-nudge-title": "为您定制的示例",
+  "profile-nudge-body": "告诉我们您做什么工作。",
+  "profile-nudge-action": "设置个人资料",
+  "profile-nudge-picker-title": "您从事什么工作？",
+  "profile-nudge-picker-body": "示例会立即更新。",
+  "profile-saved": "已保存到个人资料 · 正在显示{{role}}的示例",
+  "roles": {
+    "software-engineer": "软件工程师",
+    "backend-engineering": "后端开发",
+    "frontend-engineering": "前端开发",
+    "devops": "DevOps",
+    "data-engineering": "数据工程",
+    "product-management": "产品管理",
+    "marketing": "市场营销",
+    "sales": "销售",
+    "customer-support": "客户支持",
+    "hr": "人力资源",
+    "finance": "财务",
+    "qa-testing": "QA 与测试"
+  },
+  "examples": {
+    "map-unfamiliar-module": {
+      "title": "梳理陌生模块",
+      "description": "看清一个文件如何关联。",
+      "prompt": "梳理我指定的模块：列出调用方、依赖项和入口点。"
+    },
+    "trace-request-end-to-end": {
+      "title": "端到端追踪请求",
+      "description": "找到请求变慢的环节。",
+      "prompt": "追踪主要请求路径经过的每个服务，并总结最慢的环节。"
+    },
+    "weekly-flaky-test-report": {
+      "title": "不稳定测试周报",
+      "description": "本周结果反复的测试。",
+      "prompt": "查看本周的 CI 运行，列出在通过和失败之间反复的测试。"
+    },
+    "api-contract-diff": {
+      "title": "API 契约比对",
+      "description": "每天标记不兼容的变更。",
+      "prompt": "比对今天合并的拉取请求中的 API 结构，标记不兼容的变更。"
+    },
+    "slow-query-digest": {
+      "title": "慢查询摘要",
+      "description": "变慢的查询。",
+      "prompt": "列出本周延迟上升的数据库查询，并各附一个示例。"
+    },
+    "dependency-vulnerability-scan": {
+      "title": "依赖漏洞扫描",
+      "description": "过时或被标记的包。",
+      "prompt": "扫描各服务的依赖，列出过时或存在漏洞的包。"
+    },
+    "component-usage-audit": {
+      "title": "组件使用排查",
+      "description": "组件出现的每个位置。",
+      "prompt": "找出我指定组件的所有使用位置，并按页面分组。"
+    },
+    "bundle-size-watch": {
+      "title": "打包体积监控",
+      "description": "让包体积变大的合并。",
+      "prompt": "将今天的打包体积与预算比较，并指出使其变大的合并。"
+    },
+    "broken-link-sweep": {
+      "title": "失效链接排查",
+      "description": "失效链接和缺失资源。",
+      "prompt": "遍历文档网站，列出失效链接和缺失的图片。"
+    },
+    "daily-bug-triage": {
+      "title": "每日缺陷分诊",
+      "description": "每天早上为新缺陷排序。",
+      "prompt": "收集过去 24 小时的缺陷报告，并按严重程度排序。"
+    },
+    "weekly-incident-summary": {
+      "title": "每周事故总结",
+      "description": "本周的事故与修复。",
+      "prompt": "总结本周的事故、影响范围以及已发布的修复。"
+    },
+    "infra-cost-digest": {
+      "title": "基础设施成本摘要",
+      "description": "云费用发生了哪些变化。",
+      "prompt": "按服务总结本周云费用的变化。"
+    },
+    "pipeline-failure-digest": {
+      "title": "流水线失败摘要",
+      "description": "夜间任务失败及原因。",
+      "prompt": "列出夜间失败的流水线任务，附上错误信息和负责人。"
+    },
+    "schema-drift-check": {
+      "title": "表结构漂移检查",
+      "description": "结构意外变化的表。",
+      "prompt": "将数据仓库的表结构与昨天比较，标记意外的变更。"
+    },
+    "sample-dataset-generator": {
+      "title": "示例数据集生成",
+      "description": "按结构生成逼真的测试数据。",
+      "prompt": "生成一份符合订单表结构的 500 行测试数据集。"
+    },
+    "weekly-feature-usage-recap": {
+      "title": "功能使用周报",
+      "description": "新功能的使用情况。",
+      "prompt": "总结我指定功能上周的使用情况和趋势。"
+    },
+    "customer-feedback-digest": {
+      "title": "客户反馈摘要",
+      "description": "本周反馈按主题归类。",
+      "prompt": "将本周的客户反馈按主题归类，并附上示例原话。"
+    },
+    "competitor-release-watch": {
+      "title": "竞品发布追踪",
+      "description": "竞品本周发布了什么。",
+      "prompt": "查看竞品的更新日志，总结它们本周发布的内容。"
+    },
+    "campaign-performance-recap": {
+      "title": "营销活动效果回顾",
+      "description": "用通俗语言解读活动指标。",
+      "prompt": "总结上周的营销活动指标，并指出有哪些变化。"
+    },
+    "content-calendar-draft": {
+      "title": "内容日历草稿",
+      "description": "起草下周的帖子。",
+      "prompt": "根据本周的产品亮点，起草下周的 5 条社交媒体帖子。"
+    },
+    "brand-mention-sweep": {
+      "title": "品牌提及汇总",
+      "description": "品牌在哪里被提及。",
+      "prompt": "收集今天的品牌提及，并标记需要回复的内容。"
+    },
+    "pipeline-health-digest": {
+      "title": "销售管道健康摘要",
+      "description": "推进或停滞的商机。",
+      "prompt": "列出本周推进到下一阶段或陷入停滞的商机，并附上下一步行动。"
+    },
+    "meeting-prep-brief": {
+      "title": "会议准备简报",
+      "description": "每通电话一份简报。",
+      "prompt": "为今天日程中的每通销售电话写一份简短的潜在客户简报。"
+    },
+    "lead-follow-up-reminder": {
+      "title": "线索跟进提醒",
+      "description": "五天未联系的线索。",
+      "prompt": "列出过去五天未联系的线索，按时间从早到晚排列。"
+    },
+    "inbox-triage": {
+      "title": "收件箱分拣",
+      "description": "按紧急程度排序的新工单。",
+      "prompt": "将昨天以来收到的工单按紧急程度排序，并标记前五个。"
+    },
+    "draft-urgent-replies": {
+      "title": "起草紧急工单回复",
+      "description": "供同事审阅的回复草稿。",
+      "prompt": "为标记为紧急的工单起草回复，供同事审阅。"
+    },
+    "weekly-satisfaction-recap": {
+      "title": "满意度周报",
+      "description": "CSAT 趋势和常见投诉。",
+      "prompt": "总结本周的 CSAT 分数和最常见的投诉。"
+    },
+    "new-hire-paperwork-check": {
+      "title": "新员工材料检查",
+      "description": "标记缺失的入职文件。",
+      "prompt": "检查新员工的入职文件夹，列出缺失的文件。"
+    },
+    "policy-document-review": {
+      "title": "制度文件审查",
+      "description": "标记过时的制度表述。",
+      "prompt": "审查制度文件，标记过时或相互矛盾的表述。"
+    },
+    "hiring-pipeline-digest": {
+      "title": "招聘进展摘要",
+      "description": "本周候选人的进展。",
+      "prompt": "总结本周候选人在各招聘阶段之间的进展。"
+    },
+    "expense-report-review": {
+      "title": "报销单审核",
+      "description": "违反制度的报销单。",
+      "prompt": "审核新的报销单，标记违反制度的单据。"
+    },
+    "monthly-close-checklist": {
+      "title": "月末结账清单",
+      "description": "仍未完成的结账事项。",
+      "prompt": "检查月末结账清单，列出未完成的事项。"
+    },
+    "vendor-invoice-triage": {
+      "title": "供应商发票分拣",
+      "description": "按到期日排序的发票。",
+      "prompt": "将新的供应商发票按到期日排序，并标记超出预算的金额。"
+    },
+    "flaky-test-tracker": {
+      "title": "不稳定测试追踪",
+      "description": "在多次运行间结果变化的测试。",
+      "prompt": "找出最近 20 次 CI 运行中在通过和失败之间反复的测试。"
+    },
+    "regression-risk-summary": {
+      "title": "回归风险摘要",
+      "description": "合并带来风险的区域。",
+      "prompt": "查看今天的合并，列出存在回归风险的区域。"
+    },
+    "test-coverage-digest": {
+      "title": "测试覆盖率摘要",
+      "description": "本周覆盖率的变化。",
+      "prompt": "按包总结本周测试覆盖率的变化。"
+    }
+  }
 }

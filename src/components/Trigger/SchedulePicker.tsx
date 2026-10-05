@@ -18,6 +18,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import {
   InputSelect,
@@ -25,11 +27,12 @@ import {
 } from '@/components/ui/input-select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { localTimeToUTC, utcTimeToLocal } from '@/lib/utils';
+import { cn, localTimeToUTC, utcTimeToLocal } from '@/lib/utils';
 import { format, parse } from 'date-fns';
-import { Clock } from 'lucide-react';
+import { Clock, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { formatRunTime } from './automationSchedule';
 
 type FrequencyType = 'one-time' | 'daily' | 'weekly' | 'monthly';
 
@@ -46,6 +49,15 @@ type SchedulePickerProps = {
   onValidationChange?: (isValid: boolean) => void;
   showErrors?: boolean;
   initialConfig?: ScheduleConfig; // For editing existing triggers
+  /** Editing an existing automation: the preview reads "Next run". */
+  isEditing?: boolean;
+};
+
+/** New schedules start at the next full hour so the first run is never already past. */
+const nextFullHour = (): Date => {
+  const date = new Date();
+  date.setHours(date.getHours() + 1, 0, 0, 0);
+  return date;
 };
 
 // Generate hour options (0-23)
@@ -77,20 +89,20 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   onValidationChange,
   showErrors = false,
   initialConfig,
+  isEditing = false,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [frequency, setFrequency] = useState<FrequencyType>('daily');
-  // Initialize with current local time instead of 00:00 UTC
-  const now = new Date();
+  const [defaultStart] = useState(nextFullHour);
   const [hour, setHour] = useState<string>(
-    now.getHours().toString().padStart(2, '0')
+    defaultStart.getHours().toString().padStart(2, '0')
   );
-  const [minute, setMinute] = useState<string>(
-    now.getMinutes().toString().padStart(2, '0')
-  );
+  const [minute, setMinute] = useState<string>('00');
   const [weekdays, setWeekdays] = useState<string[]>(['1']); // Array of weekday strings: ["0", "1", ...]
   const [dayOfMonth, setDayOfMonth] = useState<string>('1'); // 1-31
-  const [oneTimeDate, setOneTimeDate] = useState<Date | undefined>(new Date());
+  const [oneTimeDate, setOneTimeDate] = useState<Date | undefined>(
+    () => new Date(defaultStart)
+  );
   const [expiredAt, setExpiredAt] = useState<Date | undefined>(undefined);
   const [maxFailureCount, setMaxFailureCount] = useState<number | undefined>(5);
   const [_cronError, setCronError] = useState<string | null>(null);
@@ -310,11 +322,10 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
           setCronError(null);
         } else if (day === '*' && month === '*' && weekdayPart === '*') {
           setFrequency('daily');
-          // If it's the default "0 0 * * *" cron (midnight UTC), use current local time instead
+          // The default "0 0 * * *" cron (midnight UTC) means "not chosen yet"
           if (value === '0 0 * * *') {
-            const currentLocal = new Date();
-            setMinute(currentLocal.getMinutes().toString().padStart(2, '0'));
-            setHour(currentLocal.getHours().toString().padStart(2, '0'));
+            setMinute('00');
+            setHour(nextFullHour().getHours().toString().padStart(2, '0'));
           } else {
             setMinute(localMinuteStr);
             setHour(localHourStr);
@@ -322,10 +333,9 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
           setCronError(null);
         } else {
           setFrequency('daily');
-          // For unrecognized patterns, use current local time
-          const currentLocal = new Date();
-          setMinute(currentLocal.getMinutes().toString().padStart(2, '0'));
-          setHour(currentLocal.getHours().toString().padStart(2, '0'));
+          // For unrecognized patterns, start at the next full hour
+          setMinute('00');
+          setHour(nextFullHour().getHours().toString().padStart(2, '0'));
           setCronError(null);
         }
         previousCronRef.current = value;
@@ -402,34 +412,6 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frequency, hour, minute, weekdays, dayOfMonth, oneTimeDate]); // onChange is intentionally excluded - it's an unstable reference
-
-  // Validation logic
-  useEffect(() => {
-    let isValid = true;
-    switch (frequency) {
-      case 'one-time':
-        isValid = !!oneTimeDate && !!hour && !!minute;
-        break;
-      case 'daily':
-        isValid = !!hour && !!minute;
-        break;
-      case 'weekly':
-        isValid = !!hour && !!minute && weekdays.length > 0;
-        break;
-      case 'monthly':
-        isValid = !!dayOfMonth && !!hour && !!minute;
-        break;
-    }
-    onValidationChange?.(isValid);
-  }, [
-    frequency,
-    hour,
-    minute,
-    weekdays,
-    dayOfMonth,
-    oneTimeDate,
-    onValidationChange,
-  ]);
 
   // Emit config with YYYY-MM-DD format to match backend
   useEffect(() => {
@@ -701,6 +683,37 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
 
     return times;
   }, [frequency, hour, minute, weekdays, dayOfMonth, oneTimeDate]);
+
+  const firstRun = nextScheduledTimes.at(0) ?? null;
+
+  // A schedule is valid only once its fields are filled and it has an upcoming run
+  useEffect(() => {
+    let fieldsFilled = true;
+    switch (frequency) {
+      case 'one-time':
+        fieldsFilled = !!oneTimeDate && !!hour && !!minute;
+        break;
+      case 'daily':
+        fieldsFilled = !!hour && !!minute;
+        break;
+      case 'weekly':
+        fieldsFilled = !!hour && !!minute && weekdays.length > 0;
+        break;
+      case 'monthly':
+        fieldsFilled = !!dayOfMonth && !!hour && !!minute;
+        break;
+    }
+    onValidationChange?.(fieldsFilled && firstRun !== null);
+  }, [
+    frequency,
+    hour,
+    minute,
+    weekdays,
+    dayOfMonth,
+    oneTimeDate,
+    firstRun,
+    onValidationChange,
+  ]);
 
   // Format date for display
   const formatScheduledTime = (date: Date): string => {
@@ -1019,6 +1032,38 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
           />
         </TabsContent>
       </Tabs>
+
+      <div
+        role="status"
+        className={cn(
+          'flex items-start gap-ds-8 rounded-ds-field p-ds-12',
+          firstRun
+            ? 'bg-ds-bg-information-subtle-default'
+            : 'bg-ds-bg-error-subtle-default'
+        )}
+      >
+        <DsIcon
+          icon={firstRun ? Clock : TriangleAlert}
+          recipe="main"
+          aria-hidden
+          className={cn(
+            'mt-ds-2',
+            firstRun
+              ? 'text-ds-icon-information-default-default'
+              : 'text-ds-icon-error-default-default'
+          )}
+        />
+        <DsText as="p" role="base">
+          {firstRun
+            ? t(
+                isEditing
+                  ? 'triggers.next-run-notice'
+                  : 'triggers.first-run-notice',
+                { time: formatRunTime(firstRun, i18n.language) }
+              )
+            : t('triggers.pick-future-time')}
+        </DsText>
+      </div>
 
       {/* Max Failure Count - for auto-disable after consecutive failures */}
       <Input

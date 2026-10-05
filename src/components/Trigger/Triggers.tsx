@@ -12,8 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ExecutionLogs } from '@/components/Trigger/ExecutionLogs';
-import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
+import { AutomationDashboard } from '@/components/Trigger/AutomationDashboard';
+import { AutomationExamples } from '@/components/Trigger/AutomationExamples';
+import { ProfileNudge } from '@/components/Trigger/ProfileNudge';
+import {
+  TriggerDialog,
+  type TriggerDraft,
+} from '@/components/Trigger/TriggerDialog';
 import { TriggerListItem } from '@/components/Trigger/TriggerListItem';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +28,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsText } from '@/components/ui/ds-text';
 import { useTriggerCacheInvalidation } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import {
@@ -35,122 +41,142 @@ import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { Trigger, TriggerStatus } from '@/types';
-import { motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import type {
+  AutomationExample,
+  AutomationRoleId,
+} from './automationExampleData';
+import { scheduleToCron } from './automationSchedule';
 
-export const EXECUTION_LOGS_OPEN_STORAGE_KEY = 'triggers.executionLogs.open';
+const NEW_ROW_HIGHLIGHT_MS = 6000;
+const SAVED_ROLE_NOTE_MS = 4000;
 
-export type TriggerSortKey = 'createdAt' | 'lastExecutionTime' | 'tokens';
-
-export function sortTriggersList(
-  triggers: Trigger[],
-  sortBy: TriggerSortKey
-): Trigger[] {
-  return [...triggers].sort((a, b) => {
-    switch (sortBy) {
-      case 'createdAt':
-        return (
-          new Date(b.created_at || 0).getTime() -
-          new Date(a.created_at || 0).getTime()
-        );
-      case 'lastExecutionTime':
-        return (
-          new Date(b.last_executed_at || 0).getTime() -
-          new Date(a.last_executed_at || 0).getTime()
-        );
-      default:
-        return 0;
-    }
-  });
-}
+const byNewestFirst = (a: Trigger, b: Trigger) =>
+  new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
 
 export type OverviewProps = {
-  sortBy: TriggerSortKey;
   selectedTriggerId: number | null;
   onSelectedTriggerIdChange: (id: number | null) => void;
-  isExecutionLogsOpen: boolean;
-  onExecutionLogsOpenChange: (open: boolean) => void;
+  isDialogOpen: boolean;
+  onDialogOpenChange: (open: boolean) => void;
 };
 
 export default function Overview({
-  sortBy,
   selectedTriggerId,
   onSelectedTriggerIdChange,
-  isExecutionLogsOpen,
-  onExecutionLogsOpenChange,
+  isDialogOpen,
+  onDialogOpenChange,
 }: OverviewProps) {
   const { t } = useTranslation();
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null);
+  const [draft, setDraft] = useState<TriggerDraft | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingTrigger, setDeletingTrigger] = useState<Trigger | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [justAddedId, setJustAddedId] = useState<number | null>(null);
+  const [savedRoleLabel, setSavedRoleLabel] = useState<string | null>(null);
+  const timers = useRef<number[]>([]);
   const { setHasTriggers } = usePageTabStore();
-
-  // Use trigger store
-  const {
-    triggers,
-    deleteTrigger,
-    duplicateTrigger,
-    updateTrigger,
-    setTriggers,
-  } = useTriggerStore();
-
-  // Get projectStore for the active project's task
+  const { triggers, deleteTrigger, updateTrigger, setTriggers } =
+    useTriggerStore();
   const { projectStore } = useChatStoreAdapter();
-
   const { addLog } = useActivityLogStore();
-
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
 
-  // Fetch triggers from API on mount
   useEffect(() => {
     const fetchTriggers = async () => {
       try {
         const response = await proxyFetchProjectTriggers(
           projectStore.activeProjectId
         );
-
         setTriggers(response.items || []);
       } catch (error) {
         console.error('Failed to fetch triggers:', error);
         toast.error(t('triggers.failed-to-load'));
       }
     };
-
     fetchTriggers();
   }, [projectStore, projectStore.activeProjectId, setTriggers, t]);
 
-  // Update hasTriggers based on the trigger list
   useEffect(() => {
     setHasTriggers(triggers.length > 0);
   }, [triggers, setHasTriggers]);
 
-  const sortedTriggers = sortTriggersList(triggers, sortBy);
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach((id) => window.clearTimeout(id));
+  }, []);
+
+  const later = (fn: () => void, ms: number) => {
+    timers.current.push(window.setTimeout(fn, ms));
+  };
+
+  const sortedTriggers = useMemo(
+    () => [...triggers].sort(byNewestFirst),
+    [triggers]
+  );
+  const selectedTrigger =
+    triggers.find((trigger) => trigger.id === selectedTriggerId) ?? null;
+
+  const openDialog = (next: { trigger?: Trigger; draft?: TriggerDraft }) => {
+    setEditingTrigger(next.trigger ?? null);
+    setDraft(next.draft ?? null);
+    onDialogOpenChange(true);
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    onDialogOpenChange(open);
+    if (!open) {
+      setEditingTrigger(null);
+      setDraft(null);
+    }
+  };
+
+  const handleSelectExample = (example: AutomationExample) => {
+    openDialog({
+      draft: {
+        name: t(`triggers.examples.${example.id}.title`),
+        taskPrompt: t(`triggers.examples.${example.id}.prompt`),
+        cronExpression: scheduleToCron(example.schedule),
+      },
+    });
+  };
+
+  const handleTriggerCreated = (trigger: Trigger) => {
+    setJustAddedId(trigger.id);
+    later(
+      () => setJustAddedId((id) => (id === trigger.id ? null : id)),
+      NEW_ROW_HIGHLIGHT_MS
+    );
+  };
+
+  const handleRoleSaved = (role: AutomationRoleId) => {
+    const label = t(`triggers.roles.${role}`);
+    setSavedRoleLabel(label);
+    later(
+      () =>
+        setSavedRoleLabel((current) => (current === label ? null : current)),
+      SAVED_ROLE_NOTE_MS
+    );
+  };
 
   const handleToggleActive = async (trigger: Trigger) => {
-    const newStatus =
-      trigger.status === TriggerStatus.Active
-        ? TriggerStatus.Inactive
-        : TriggerStatus.Active;
-    const isActivating = newStatus === TriggerStatus.Active;
-
+    const isActivating = trigger.status !== TriggerStatus.Active;
     try {
       if (isActivating) {
         await proxyActivateTrigger(trigger.id);
       } else {
         await proxyDeactivateTrigger(trigger.id);
       }
-
-      updateTrigger(trigger.id, { status: newStatus });
+      updateTrigger(trigger.id, {
+        status: isActivating ? TriggerStatus.Active : TriggerStatus.Inactive,
+      });
       toast.success(
         isActivating ? t('triggers.activated') : t('triggers.deactivated')
       );
-
-      // Add activity log
       addLog({
         type: isActivating
           ? ActivityType.TriggerActivated
@@ -170,40 +196,22 @@ export default function Overview({
       });
     } catch (error: any) {
       console.error('Failed to update trigger status:', error);
-
-      // Check if the error is due to activation limits
       const errorMessage =
         error?.response?.data?.detail || error?.message || '';
-      if (
+      const hitLimit =
         isActivating &&
         typeof errorMessage === 'string' &&
         (errorMessage.includes('Maximum number of active triggers') ||
           errorMessage.includes(
             'Maximum number of concurrent active triggers'
           ) ||
-          errorMessage.includes('active trigger limit'))
-      ) {
-        toast.error(t('triggers.activation-limit-reached'));
-      } else {
-        toast.error(t('triggers.failed-to-toggle'));
-      }
-      return;
+          errorMessage.includes('active trigger limit'));
+      toast.error(
+        hitLimit
+          ? t('triggers.activation-limit-reached')
+          : t('triggers.failed-to-toggle')
+      );
     }
-  };
-
-  const setSelectedTriggerIdWrapper = (triggerId: number) => {
-    //Double Click to Edit
-    if (triggerId === selectedTriggerId) {
-      handleEdit(triggers.find((tr) => tr.id === triggerId)!);
-      return;
-    }
-    onSelectedTriggerIdChange(triggerId);
-    onExecutionLogsOpenChange(true);
-  };
-
-  const handleEdit = (trigger: Trigger) => {
-    setEditingTrigger(trigger);
-    setEditDialogOpen(true);
   };
 
   const handleDelete = (trigger: Trigger) => {
@@ -213,18 +221,13 @@ export default function Overview({
 
   const handleConfirmDelete = async () => {
     if (!deletingTrigger) return;
-
     setIsDeleting(true);
     try {
       await proxyDeleteTrigger(deletingTrigger.id);
       deleteTrigger(deletingTrigger.id);
-
       if (selectedTriggerId === deletingTrigger.id) {
         onSelectedTriggerIdChange(null);
-        onExecutionLogsOpenChange(false);
       }
-
-      // Add activity log
       addLog({
         type: ActivityType.TriggerDeleted,
         message: t('triggers.activity-deleted', {
@@ -235,12 +238,9 @@ export default function Overview({
         triggerId: deletingTrigger.id,
         triggerName: deletingTrigger.name,
       });
-
       toast.success(t('triggers.deleted'));
       setIsDeleteDialogOpen(false);
       setDeletingTrigger(null);
-
-      // Invalidate user trigger count cache after deletion
       invalidateUserTriggerCount();
     } catch (error) {
       console.error('Failed to delete trigger:', error);
@@ -250,138 +250,100 @@ export default function Overview({
     }
   };
 
-  const handleDuplicate = (triggerId: number) => {
-    const duplicated = duplicateTrigger(triggerId);
-    if (duplicated) {
-      // Add activity log
-      addLog({
-        type: ActivityType.TriggerCreated,
-        message: t('triggers.activity-duplicated', {
-          name: duplicated.name,
-          defaultValue: 'Automation "{{name}}" created (duplicated)',
-        }),
-        projectId: projectStore.activeProjectId || undefined,
-        triggerId: duplicated.id,
-        triggerName: duplicated.name,
-      });
-
-      toast.success(
-        t('triggers.duplicated-successfully', { name: duplicated.name })
-      );
-    }
-  };
-
-  const handleDialogClose = (open: boolean) => {
-    setEditDialogOpen(open);
-    if (!open) {
-      setEditingTrigger(null);
-    }
-  };
-
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex h-full flex-row pl-2">
-        {/* Left side: automation list */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          {/* List View Section */}
-          <div className="scrollbar-always-visible mx-auto flex h-full w-full max-w-[800px] flex-col overflow-auto pt-2">
-            <div className="flex flex-col gap-2">
-              {sortedTriggers.length === 0 ? (
-                <div
-                  onClick={() => {
-                    setEditingTrigger(null);
-                    setEditDialogOpen(true);
-                  }}
-                  className="group flex cursor-pointer items-center justify-center gap-3 rounded-xl bg-ds-neutral-default-default p-3 transition-opacity duration-200 hover:opacity-60"
-                >
-                  {/* Add icon */}
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-subtle-default">
-                    <Plus className="h-5 w-5 text-ds-ink-default-default" />
-                  </div>
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col lg:flex-row">
+      <h1 className="sr-only">{t('layout.scheduled-tab')}</h1>
 
-                  {/* Create automation text */}
-                  <div className="w-full flex-1">
-                    <div className="truncate text-sm font-semibold text-ds-ink-muted-default transition-colors group-hover:text-ds-accent-default-hover">
-                      {t('triggers.create-hint')}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                sortedTriggers.map((trigger) => (
+      <section
+        aria-label={
+          selectedTrigger
+            ? t('triggers.execution-logs')
+            : t('triggers.try-an-example')
+        }
+        className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto px-ds-24 xl:px-ds-page-gutter"
+      >
+        {selectedTrigger ? (
+          <div className="mx-auto w-full max-w-3xl">
+            <AutomationDashboard
+              key={selectedTrigger.id}
+              trigger={selectedTrigger}
+              onBack={() => onSelectedTriggerIdChange(null)}
+              onEdit={(trigger) => openDialog({ trigger })}
+            />
+          </div>
+        ) : (
+          <AutomationExamples
+            onSelectExample={handleSelectExample}
+            savedRoleLabel={savedRoleLabel}
+          />
+        )}
+      </section>
+
+      <aside
+        aria-labelledby="your-automations-title"
+        className="flex min-h-0 w-full shrink-0 flex-col border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default lg:w-80 lg:border-t-0 lg:border-r-0 lg:border-b-0 lg:border-l"
+      >
+        <div className="flex items-center justify-between gap-ds-8 px-ds-16 pt-ds-16 pb-ds-8">
+          <DsText
+            as="h2"
+            id="your-automations-title"
+            role="base"
+            weight="semibold"
+          >
+            {t('triggers.your-automations')}
+            <span className="ml-ds-6 font-medium text-ds-ink-subtle-default">
+              {sortedTriggers.length}
+            </span>
+          </DsText>
+          <Button variant="primary" size="sm" onClick={() => openDialog({})}>
+            <Plus aria-hidden />
+            {t('triggers.create')}
+          </Button>
+        </div>
+
+        <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto px-ds-8 pb-ds-16">
+          {sortedTriggers.length === 0 ? (
+            <div className="m-ds-8 flex flex-col gap-ds-4 rounded-ds-card border border-x border-y border-dashed border-ds-hairline-default-default px-ds-16 py-ds-24 text-center">
+              <DsText as="p" role="base" weight="semibold">
+                {t('triggers.no-triggers')}
+              </DsText>
+              <DsText as="p" role="base" className="text-ds-ink-muted-default">
+                {t('triggers.queue-empty-body')}
+              </DsText>
+            </div>
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-ds-2 p-0">
+              {sortedTriggers.map((trigger) => (
+                <li key={trigger.id}>
                   <TriggerListItem
-                    key={trigger.id}
                     trigger={trigger}
                     isSelected={selectedTriggerId === trigger.id}
-                    onSelect={setSelectedTriggerIdWrapper}
-                    onEdit={handleEdit}
-                    onDuplicate={handleDuplicate}
+                    isNew={justAddedId === trigger.id}
+                    onSelect={onSelectedTriggerIdChange}
+                    onEdit={(item) => openDialog({ trigger: item })}
                     onDelete={handleDelete}
                     onToggleActive={handleToggleActive}
                   />
-                ))
-              )}
-            </div>
-          </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
+      </aside>
 
-        {/* Execution Logs - Slides in/out from the right */}
-        <motion.div
-          initial={false}
-          animate={
-            selectedTriggerId && isExecutionLogsOpen
-              ? {
-                  width: '40%',
-                  minWidth: 240,
-                  maxWidth: 560,
-                  marginLeft: 8,
-                  opacity: 1,
-                  x: 0,
-                }
-              : {
-                  width: 0,
-                  minWidth: 0,
-                  maxWidth: 0,
-                  marginLeft: 0,
-                  opacity: 0,
-                  x: 20,
-                }
-          }
-          transition={{
-            type: 'spring',
-            stiffness: 340,
-            damping: 34,
-            mass: 0.9,
-          }}
-          className={`mb-2 flex h-full flex-col overflow-hidden border border-y-0 border-r-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default ${
-            selectedTriggerId && isExecutionLogsOpen
-              ? ''
-              : 'pointer-events-none'
-          }`}
-        >
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="relative flex flex-row items-center justify-start px-3 py-3">
-              <span className="text-ds-text-base font-bold text-ds-ink-default-default">
-                {t('triggers.execution-logs')}
-              </span>
-            </div>
-            <div className="min-h-0 flex-1">
-              {selectedTriggerId && isExecutionLogsOpen && (
-                <ExecutionLogs triggerId={selectedTriggerId} />
-              )}
-            </div>
-          </div>
-        </motion.div>
-      </div>
+      <ProfileNudge onRoleSaved={handleRoleSaved} />
 
-      {/* Edit Trigger Dialog */}
       <TriggerDialog
-        key={editingTrigger?.id || 'new'}
+        key={editingTrigger?.id ?? draft?.name ?? 'new'}
         selectedTrigger={editingTrigger}
-        isOpen={editDialogOpen}
-        onOpenChange={handleDialogClose}
+        draft={draft}
+        isOpen={isDialogOpen}
+        onOpenChange={handleDialogOpenChange}
+        onTriggerCreated={(trigger) => {
+          if (!editingTrigger) handleTriggerCreated(trigger);
+        }}
       />
 
-      {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent
           size="md"

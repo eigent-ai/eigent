@@ -19,28 +19,31 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { iconForTriggerType } from '@/lib/triggerIcon';
+import { cn } from '@/lib/utils';
 import { Trigger, TriggerStatus, TriggerType } from '@/types';
-import {
-  AlarmClockIcon,
-  AlertTriangle,
-  Clock,
-  Edit,
-  MessageSquare,
-  MoreHorizontal,
-  Trash2,
-  WebhookIcon,
-} from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import {
+  formatRunTime,
+  formatScheduleLabel,
+  getNextRun,
+  parseCron,
+} from './automationSchedule';
+
+const WARN_AFTER_FAILURES = 2;
 
 type TriggerListItemProps = {
   trigger: Trigger;
   isSelected: boolean;
+  isNew?: boolean;
   onSelect: (id: number) => void;
   onEdit: (trigger: Trigger) => void;
-  onDuplicate: (id: number) => void;
   onDelete: (trigger: Trigger) => void;
   onToggleActive: (trigger: Trigger) => void;
 };
@@ -48,139 +51,169 @@ type TriggerListItemProps = {
 export const TriggerListItem: React.FC<TriggerListItemProps> = ({
   trigger,
   isSelected,
+  isNew = false,
   onSelect,
   onEdit,
   onDelete,
   onToggleActive,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isActive = trigger.status === TriggerStatus.Active;
   const needsAuth =
     trigger.status === TriggerStatus.PendingAuth &&
     trigger.config?.authentication_required;
-
-  const getTriggerTypeIcon = () => {
-    switch (trigger.trigger_type) {
-      case TriggerType.Schedule:
-        return <AlarmClockIcon className="h-3.5 w-3.5" />;
-      case TriggerType.Webhook:
-        return <WebhookIcon className="h-3.5 w-3.5" />;
-      case TriggerType.Slack:
-        return <MessageSquare className="h-3.5 w-3.5" />;
-      default:
-        return <Clock className="h-3.5 w-3.5" />;
-    }
-  };
-
-  const getTriggerTypeLabel = () => {
-    switch (trigger.trigger_type) {
-      case TriggerType.Schedule:
-        return t('triggers.schedule-trigger');
-      case TriggerType.Webhook:
-        return t('triggers.webhook-trigger');
-      case TriggerType.Slack:
-        return t('triggers.slack-trigger');
-      default:
-        return trigger.trigger_type;
-    }
-  };
-
   const TriggerIcon = iconForTriggerType(trigger.trigger_type);
+  const failures = trigger.consecutive_failures ?? 0;
+
+  const statusLine = (() => {
+    if (needsAuth) {
+      return { text: t('triggers.verification-required'), warn: true };
+    }
+    if (isActive && failures >= WARN_AFTER_FAILURES) {
+      return {
+        text: t('triggers.runs-did-not-complete', { count: failures }),
+        warn: true,
+      };
+    }
+    if (!isActive && trigger.auto_disabled_at) {
+      return { text: t('triggers.auto-disabled-short'), warn: true };
+    }
+    if (trigger.trigger_type !== TriggerType.Schedule) {
+      return { text: t('triggers.app-trigger'), warn: false };
+    }
+    const schedule = parseCron(trigger.custom_cron_expression);
+    const scheduleLabel = schedule
+      ? formatScheduleLabel(schedule, t, i18n.language)
+      : t('triggers.schedule-trigger');
+    if (!isActive) {
+      return {
+        text: t('triggers.paused-schedule', { schedule: scheduleLabel }),
+        warn: false,
+      };
+    }
+    const nextRun = getNextRun(trigger);
+    return {
+      text: nextRun
+        ? t('triggers.next-run-at', {
+            time: formatRunTime(nextRun, i18n.language),
+          })
+        : scheduleLabel,
+      warn: false,
+    };
+  })();
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
       onClick={() => onSelect(trigger.id)}
-      className={`group flex cursor-pointer items-center gap-3 rounded-xl border border-solid border-transparent !bg-ds-neutral-default-default p-3 transition-[background-color,border-color] duration-200 ${
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect(trigger.id);
+        }
+      }}
+      className={cn(
+        'group flex min-h-ds-control-xl cursor-pointer items-center gap-ds-10 rounded-ds-field border border-x border-y border-solid px-ds-8 py-ds-10 transition-[background-color,border-color] duration-150 motion-reduce:transition-none',
         isSelected
-          ? '!border-ds-hairline-strong-default !bg-ds-neutral-strong-default'
-          : needsAuth
-            ? 'hover:!bg-ds-neutral-strong-default'
-            : 'hover:!bg-ds-neutral-strong-default'
-      }`}
+          ? 'border-ds-hairline-strong-default bg-ds-neutral-strong-default'
+          : 'border-transparent hover:bg-ds-neutral-default-default',
+        isNew && !isSelected && 'bg-ds-bg-information-subtle-default',
+        DS_FOCUS_RING
+      )}
     >
-      {/* 1. Icon for the event that starts this automation */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10">
-        <TriggerIcon className="h-5 w-5 text-ds-ink-default-default" />
-      </div>
+      <span className="flex size-ds-control-md shrink-0 items-center justify-center rounded-ds-compact-control bg-ds-neutral-default-default text-ds-ink-muted-default">
+        <DsIcon icon={TriggerIcon} recipe="main" aria-hidden />
+      </span>
 
-      {/* 2. Automation name + task prompt */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <div className="truncate text-sm font-semibold text-ds-ink-default-default transition-colors group-hover:text-ds-accent-default-hover">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 items-center gap-ds-6">
+          <DsText as="span" role="base" weight="semibold" className="truncate">
             {trigger.name}
-          </div>
-          {needsAuth && (
-            <TooltipSimple content={t('triggers.verification-required')}>
-              <div className="flex items-center justify-center rounded-full bg-yellow-100 p-1">
-                <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" />
-              </div>
-            </TooltipSimple>
+          </DsText>
+          {isNew && (
+            <DsText
+              as="span"
+              role="meta"
+              weight="semibold"
+              className="shrink-0 text-ds-text-information-strong-default"
+            >
+              {t('triggers.new-badge')}
+            </DsText>
           )}
         </div>
-        <div className="mt-0.5 truncate text-xs text-ds-ink-muted-default">
-          {trigger.task_prompt ||
-            trigger.description ||
-            t('triggers.no-task-prompt')}
-        </div>
+        <DsText
+          as="span"
+          role="meta"
+          weight={statusLine.warn ? 'semibold' : undefined}
+          className={cn(
+            'truncate',
+            statusLine.warn
+              ? 'text-ds-text-warning-strong-default'
+              : 'text-ds-ink-muted-default'
+          )}
+          title={statusLine.text}
+        >
+          {statusLine.text}
+        </DsText>
       </div>
 
-      {/* 3. Trigger Type */}
-      <div className="flex min-w-[80px] items-center gap-1.5 text-xs text-ds-ink-muted-default">
-        {getTriggerTypeIcon()}
-        <span>{getTriggerTypeLabel()}</span>
-      </div>
-
-      {/* 5. Activation Switch */}
       <TooltipSimple
         content={t('triggers.verification-required')}
-        enabled={needsAuth}
+        enabled={!!needsAuth}
       >
-        <div>
+        <div onClick={(event) => event.stopPropagation()}>
           <Switch
-            checked={isActive || needsAuth}
+            size="sm"
+            checked={isActive || !!needsAuth}
             onCheckedChange={() => onToggleActive(trigger)}
-            onClick={(e) => e.stopPropagation()}
-            disabled={needsAuth}
+            disabled={!!needsAuth}
+            aria-label={t(
+              isActive ? 'triggers.turn-off-named' : 'triggers.turn-on-named',
+              { name: trigger.name }
+            )}
           />
         </div>
       </TooltipSimple>
 
-      {/* 6. More Icon Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             size="xs"
             buttonContent="icon-only"
-            onClick={(e) => e.stopPropagation()}
+            aria-label={t('triggers.more-actions-named', {
+              name: trigger.name,
+            })}
+            onClick={(event) => event.stopPropagation()}
           >
-            <MoreHorizontal className="h-4 w-4" />
+            <MoreHorizontal aria-hidden />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuContent
+          align="end"
+          onClick={(event) => event.stopPropagation()}
+        >
           <DropdownMenuItem
-            className="gap-2"
-            onSelect={(e) => {
-              e.preventDefault();
+            className="gap-ds-8"
+            onSelect={(event) => {
+              event.preventDefault();
               onEdit(trigger);
             }}
           >
-            <Edit className="h-4 w-4" />
+            <Pencil aria-hidden />
             {t('triggers.edit')}
           </DropdownMenuItem>
-          {/* TODO: Support Duplicate Action */}
-          {/* <DropdownMenuItem className="gap-2" onSelect={(e) => { e.preventDefault(); onDuplicate(trigger.id); }}>
-                        <Copy className="h-4 w-4" />
-                        {t("triggers.duplicate")}
-                    </DropdownMenuItem> */}
           <DropdownMenuItem
-            className="gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default"
-            onSelect={(e) => {
-              e.preventDefault();
+            className="gap-ds-8 text-ds-text-error-default-default focus:text-ds-text-error-strong-default"
+            onSelect={(event) => {
+              event.preventDefault();
               onDelete(trigger);
             }}
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 aria-hidden />
             {t('triggers.delete')}
           </DropdownMenuItem>
         </DropdownMenuContent>

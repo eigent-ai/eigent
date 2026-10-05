@@ -364,5 +364,235 @@
   "task-queued": "Queued: {{name}}",
   "task-queued-description": "Task has been added to the session queue",
   "select-method": "Select method",
-  "status-cancelled": "Cancelled"
+  "status-cancelled": "Cancelled",
+  "try-an-example": "Try an example",
+  "example-card-label": "Set up {{title}}: {{description}} {{schedule}}",
+  "your-automations": "Your automations",
+  "queue-empty-body": "Try an example to set up your first one.",
+  "new-badge": "New",
+  "back-to-examples": "Examples",
+  "next-run": "Next run",
+  "next-run-at": "Next: {{time}}",
+  "paused": "Paused",
+  "paused-schedule": "Paused · {{schedule}}",
+  "runs-did-not-complete": "{{count}} runs in a row did not complete",
+  "auto-disabled-short": "Turned off after runs did not complete",
+  "consecutive-warning": "{{count}} of {{max}} consecutive runs did not complete. After {{max}}, this automation turns off automatically. Scheduled runs only start while Eigent is open on this computer.",
+  "auto-disabled-notice": "This automation turned off automatically after {{max}} runs in a row did not complete. Turn it back on when Eigent can stay open at the scheduled time.",
+  "execution-status-missed": "Missed",
+  "execution-missed-reason": "Execution was missed. Eigent was not open at {{time}}, so this run did not start.",
+  "first-run-on": "First run: {{time}}",
+  "turn-on-to-schedule": "Turn this automation on to schedule its first run",
+  "first-run-notice": "First run: {{time}} (your local time). Eigent needs to be open then.",
+  "next-run-notice": "Next run: {{time}} (your local time). Eigent needs to be open then.",
+  "pick-future-time": "Pick a date and time in the future.",
+  "schedule-label-daily": "Daily at {{time}}",
+  "schedule-label-weekly": "Every {{days}} at {{time}}",
+  "schedule-label-monthly": "Monthly on day {{day}} at {{time}}",
+  "schedule-label-once": "Once on {{date}} at {{time}}",
+  "turn-on-named": "Turn on {{name}}",
+  "turn-off-named": "Turn off {{name}}",
+  "more-actions-named": "More actions for {{name}}",
+  "profile-nudge-title": "Examples tailored for you",
+  "profile-nudge-body": "Tell us what you do.",
+  "profile-nudge-action": "Set up profile",
+  "profile-nudge-picker-title": "What do you work on?",
+  "profile-nudge-picker-body": "Examples update right away.",
+  "profile-saved": "Saved to your profile · showing examples for {{role}}",
+  "roles": {
+    "software-engineer": "Software Engineer",
+    "backend-engineering": "Backend Engineering",
+    "frontend-engineering": "Frontend Engineering",
+    "devops": "DevOps",
+    "data-engineering": "Data Engineering",
+    "product-management": "Product Management",
+    "marketing": "Marketing",
+    "sales": "Sales",
+    "customer-support": "Customer Support",
+    "hr": "HR",
+    "finance": "Finance",
+    "qa-testing": "QA & Testing"
+  },
+  "examples": {
+    "map-unfamiliar-module": {
+      "title": "Map an unfamiliar module",
+      "description": "See how a file connects.",
+      "prompt": "Map the module I name: list its callers, dependencies and entry points."
+    },
+    "trace-request-end-to-end": {
+      "title": "Trace a request end to end",
+      "description": "Find where a request slows.",
+      "prompt": "Trace the main request path through every service it touches and summarize the slowest hops."
+    },
+    "weekly-flaky-test-report": {
+      "title": "Weekly flaky test report",
+      "description": "Tests that flipped this week.",
+      "prompt": "Review this week of CI runs and list tests that flipped between pass and fail."
+    },
+    "api-contract-diff": {
+      "title": "API contract diff",
+      "description": "Flag breaking API changes daily.",
+      "prompt": "Compare API schemas in today's merged pull requests and flag breaking changes."
+    },
+    "slow-query-digest": {
+      "title": "Slow query digest",
+      "description": "Queries that got slower.",
+      "prompt": "List the database queries whose latency grew this week, with an example of each."
+    },
+    "dependency-vulnerability-scan": {
+      "title": "Dependency vulnerability scan",
+      "description": "Outdated or flagged packages.",
+      "prompt": "Scan service dependencies and list outdated or vulnerable packages."
+    },
+    "component-usage-audit": {
+      "title": "Component usage audit",
+      "description": "Every place a component appears.",
+      "prompt": "Find every usage of the component I name and group them by page."
+    },
+    "bundle-size-watch": {
+      "title": "Bundle size watch",
+      "description": "Merges that grew the bundle.",
+      "prompt": "Compare today's bundle size with the budget and name the merges that grew it."
+    },
+    "broken-link-sweep": {
+      "title": "Broken link sweep",
+      "description": "Dead links and missing assets.",
+      "prompt": "Crawl the docs site and list broken links and missing images."
+    },
+    "daily-bug-triage": {
+      "title": "Daily bug triage",
+      "description": "New bugs, ranked each morning.",
+      "prompt": "Collect bug reports from the last 24 hours and rank them by severity."
+    },
+    "weekly-incident-summary": {
+      "title": "Weekly incident summary",
+      "description": "Incidents and fixes this week.",
+      "prompt": "Summarize this week's incidents, their impact and the fixes shipped."
+    },
+    "infra-cost-digest": {
+      "title": "Infra cost digest",
+      "description": "What changed in cloud spend.",
+      "prompt": "Summarize this week's cloud spend changes by service."
+    },
+    "pipeline-failure-digest": {
+      "title": "Pipeline failure digest",
+      "description": "Overnight job failures and causes.",
+      "prompt": "List pipeline jobs that failed overnight with the error and owner."
+    },
+    "schema-drift-check": {
+      "title": "Schema drift check",
+      "description": "Tables whose schema changed unexpectedly.",
+      "prompt": "Compare warehouse table schemas with yesterday and flag unexpected changes."
+    },
+    "sample-dataset-generator": {
+      "title": "Sample dataset generator",
+      "description": "Realistic test data from schema.",
+      "prompt": "Generate a 500-row test dataset that matches the orders schema."
+    },
+    "weekly-feature-usage-recap": {
+      "title": "Weekly feature usage recap",
+      "description": "How a new feature is used.",
+      "prompt": "Summarize last week's usage of the feature I name, with trends."
+    },
+    "customer-feedback-digest": {
+      "title": "Customer feedback digest",
+      "description": "Weekly feedback, grouped by theme.",
+      "prompt": "Group this week's customer feedback into themes with example quotes."
+    },
+    "competitor-release-watch": {
+      "title": "Competitor release watch",
+      "description": "What competitors shipped this week.",
+      "prompt": "Check competitor changelogs and summarize what shipped this week."
+    },
+    "campaign-performance-recap": {
+      "title": "Campaign performance recap",
+      "description": "Campaign metrics in plain language.",
+      "prompt": "Summarize last week's campaign metrics and call out what changed."
+    },
+    "content-calendar-draft": {
+      "title": "Content calendar draft",
+      "description": "Draft posts for next week.",
+      "prompt": "Draft five social posts for next week from this week's product highlights."
+    },
+    "brand-mention-sweep": {
+      "title": "Brand mention sweep",
+      "description": "Where the brand was mentioned.",
+      "prompt": "Collect today's brand mentions and flag any that need a reply."
+    },
+    "pipeline-health-digest": {
+      "title": "Pipeline health digest",
+      "description": "Deals that moved or stalled.",
+      "prompt": "List deals that moved stage or stalled this week, with next steps."
+    },
+    "meeting-prep-brief": {
+      "title": "Meeting prep brief",
+      "description": "A brief for every call.",
+      "prompt": "For each sales call on today's calendar, write a short prospect brief."
+    },
+    "lead-follow-up-reminder": {
+      "title": "Lead follow-up reminder",
+      "description": "Leads quiet for five days.",
+      "prompt": "List leads with no contact in the last five days, oldest first."
+    },
+    "inbox-triage": {
+      "title": "Inbox triage",
+      "description": "New tickets sorted by urgency.",
+      "prompt": "Sort tickets received since yesterday by urgency and tag the top five."
+    },
+    "draft-urgent-replies": {
+      "title": "Draft replies for urgent tickets",
+      "description": "Draft replies for teammate review.",
+      "prompt": "Draft replies for tickets tagged urgent, for a teammate to review."
+    },
+    "weekly-satisfaction-recap": {
+      "title": "Weekly satisfaction recap",
+      "description": "CSAT trends and common complaints.",
+      "prompt": "Summarize this week's CSAT scores and the most common complaints."
+    },
+    "new-hire-paperwork-check": {
+      "title": "New-hire paperwork check",
+      "description": "Missing onboarding documents, flagged.",
+      "prompt": "Check onboarding folders for new hires and list missing documents."
+    },
+    "policy-document-review": {
+      "title": "Policy document review",
+      "description": "Outdated policy wording, flagged.",
+      "prompt": "Review policy documents and flag outdated or conflicting wording."
+    },
+    "hiring-pipeline-digest": {
+      "title": "Hiring pipeline digest",
+      "description": "Candidate movement this week.",
+      "prompt": "Summarize candidate movement between hiring stages this week."
+    },
+    "expense-report-review": {
+      "title": "Expense report review",
+      "description": "Reports that break policy.",
+      "prompt": "Review new expense reports and flag ones that break policy."
+    },
+    "monthly-close-checklist": {
+      "title": "Monthly close checklist",
+      "description": "Close tasks still open.",
+      "prompt": "Check the month-end close checklist and list incomplete items."
+    },
+    "vendor-invoice-triage": {
+      "title": "Vendor invoice triage",
+      "description": "Invoices sorted by due date.",
+      "prompt": "Sort new vendor invoices by due date and flag amounts over budget."
+    },
+    "flaky-test-tracker": {
+      "title": "Flaky test tracker",
+      "description": "Tests that flip between runs.",
+      "prompt": "Find tests that flipped between pass and fail in the last 20 CI runs."
+    },
+    "regression-risk-summary": {
+      "title": "Regression risk summary",
+      "description": "Areas at risk from merges.",
+      "prompt": "Review today's merges and list areas at risk of regression."
+    },
+    "test-coverage-digest": {
+      "title": "Test coverage digest",
+      "description": "Coverage changes this week.",
+      "prompt": "Summarize test coverage changes by package this week."
+    }
+  }
 }
