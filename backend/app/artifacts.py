@@ -625,7 +625,7 @@ def task_modification_windows(
         end = run.updated_at if run.status not in RUN_ACTIVE_STATES else None
         windows.append((run.created_at - 1.0, end))
 
-    return tuple(windows), run.status in {"completed", "failed", "cancelled"}
+    return tuple(windows), run.status in RUN_TERMINAL_STATES
 
 
 def _artifact_projection(
