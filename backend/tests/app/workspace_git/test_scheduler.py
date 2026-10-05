@@ -19,10 +19,10 @@ import asyncio
 import pytest
 
 from app.run_journal import (
-    OutboxLeaseLostError,
     RunEventDraft,
     SQLiteRunJournal,
     UnsafeResumeError,
+    WorkspaceWriterLeaseLostError,
 )
 from app.run_policy import TimeoutOutcome, TimeoutScope, ToolSafetyClass
 from app.workspace_git import WorkspaceWriterScheduler
@@ -334,6 +334,7 @@ async def test_restart_skips_unstarted_writer_and_explicit_resume_can_acquire(
             scheduler = WorkspaceWriterScheduler(journal)
             journal.reconcile_startup()
             scheduler.reconcile_orphaned_admissions()
+            scheduler.reclaim_lost_writers()
             assert journal.get_run_attempt(
                 waiting_attempt.attempt_id
             ).status == ("interrupted")
@@ -582,8 +583,10 @@ async def test_restart_reclaims_unstarted_holder_idempotently(tmp_path):
         with SQLiteRunJournal(path) as journal:
             scheduler = WorkspaceWriterScheduler(journal)
             journal.reconcile_startup()
+            reconciliation = scheduler.reconcile_orphaned_admissions()
+            assert reconciliation.preserved_request_ids == ()
             reclaimed.append(
-                scheduler.reconcile_orphaned_admissions().reclaimed_request_ids
+                scheduler.reclaim_lost_writers().reclaimed_request_ids
             )
     assert reclaimed == [(owner.request_id,), ()]
 
@@ -613,7 +616,10 @@ async def test_restart_reclaims_unstarted_holder_idempotently(tmp_path):
             scheduler.wait_until_acquired(run_id="owner", task_id="owner"),
             timeout=1,
         )
-        assert acquired.status == "acquired"
+        assert (acquired.status, acquired.reason) == (
+            "acquired",
+            "holder_lost_requeued",
+        )
         assert _lease(journal).holder_attempt_id == resumed.attempt_id
         assert [
             event.event_type
@@ -625,8 +631,64 @@ async def test_restart_reclaims_unstarted_holder_idempotently(tmp_path):
             "workspace.writer.acquired",
         ]
 
+        # Only a lost holder queues again; a normal release stays final.
+        scheduler.finish_task(run_id="owner", task_id="owner")
+        journal.record_timeout_outcome(
+            TimeoutOutcome(
+                scope=TimeoutScope.RUNTIME_LIVENESS,
+                policy_version="v1",
+                reason="consumer_lost",
+                started_at=1,
+                ended_at=2,
+                run_id="owner",
+                attempt_id=resumed.attempt_id,
+            )
+        )
+        journal.create_run_attempt(
+            "owner", request_id="resume-again", reason="explicit_resume"
+        )
+        assert (
+            journal.get_workspace_writer_request(owner.request_id).status
+            == "released"
+        )
 
-@pytest.mark.parametrize("evidence", ["outcome_unknown", "git_mutation"])
+
+def test_restart_does_not_block_fifo_on_requeued_reclaimed_run(journal):
+    scheduler = WorkspaceWriterScheduler(journal)
+    a, a_attempt = _admit_pending(scheduler, "a")
+    journal.activate_run_attempt(a_attempt.attempt_id)
+    journal.reconcile_startup()
+    scheduler.reconcile_orphaned_admissions()
+    assert scheduler.reclaim_lost_writers().reclaimed_request_ids == (
+        a.request_id,
+    )
+    b, b_attempt = _admit_pending(scheduler, "b")
+    assert b.status == "acquired"
+    journal.activate_run_attempt(b_attempt.attempt_id)
+    journal.create_run_attempt(
+        "a", request_id="resume", reason="explicit_resume"
+    )
+    assert journal.get_workspace_writer_request(a.request_id).status == (
+        "queued"
+    )
+
+    journal.reconcile_startup()
+    scheduler.reconcile_orphaned_admissions()
+    assert scheduler.reclaim_lost_writers().reclaimed_request_ids == (
+        b.request_id,
+    )
+    c, _ = _admit_pending(scheduler, "c")
+
+    # A was proven clean when reclaimed and never held the lease again.
+    assert c.status == "acquired"
+    assert journal.get_workspace_writer_request(a.request_id).status == (
+        "queued"
+    )
+
+
+@pytest.mark.parametrize(
+    "evidence", ["outcome_unknown", "git_mutation", "direct_write"]
+)
 def test_restart_keeps_lease_with_unsettled_write(journal, evidence):
     scheduler = WorkspaceWriterScheduler(journal)
     owner, attempt = _admit_pending(scheduler, "owner")
@@ -657,6 +719,7 @@ def test_restart_keeps_lease_with_unsettled_write(journal, evidence):
             worktree_ref="refs/heads/main",
             base_commit="a" * 40,
         )
+    if evidence == "git_mutation":
         journal.ensure_git_mutation_intent(
             intent_id="intent",
             change_set_id="changes",
@@ -669,8 +732,9 @@ def test_restart_keeps_lease_with_unsettled_write(journal, evidence):
             writer_lease=_lease(journal),
         )
     journal.reconcile_startup()
+    scheduler.reconcile_orphaned_admissions()
 
-    result = scheduler.reconcile_orphaned_admissions()
+    result = scheduler.reclaim_lost_writers()
 
     assert result.reclaimed_request_ids == ()
     assert journal.get_workspace_writer_request(owner.request_id).status == (
@@ -678,6 +742,51 @@ def test_restart_keeps_lease_with_unsettled_write(journal, evidence):
     )
     later, _ = _admit_pending(scheduler, "later")
     assert later.blocker_task_id == "owner"
+
+
+@pytest.mark.asyncio
+async def test_waiter_learns_holder_requires_attention(journal):
+    scheduler = WorkspaceWriterScheduler(journal, poll_interval_seconds=0.01)
+    _admit_pending(scheduler, "owner")
+    journal.admit_git_run_workspace(
+        run_id="owner",
+        project_id="project-owner",
+        repository_id="repo-1",
+        user_head="a" * 40,
+        user_ref="refs/heads/main",
+    )
+    journal.ensure_git_change_set(
+        change_set_id="changes",
+        run_id="owner",
+        repository_id="repo-1",
+        worktree_ref="refs/heads/main",
+        base_commit="a" * 40,
+    )
+    journal.reconcile_startup()
+    scheduler.reconcile_orphaned_admissions()
+    scheduler.reclaim_lost_writers()
+    _admit_pending(scheduler, "later")
+
+    waiter = asyncio.create_task(
+        scheduler.wait_until_acquired(run_id="later", task_id="later")
+    )
+    await asyncio.sleep(0.05)
+
+    assert not waiter.done()
+    queued = [
+        event.payload
+        for event in journal.list_events("later")
+        if event.event_type == "workspace.writer.queued"
+    ]
+    assert [payload["reason"] for payload in queued] == [
+        "task.mutating_default",
+        "holder_requires_attention",
+    ]
+    assert queued[-1]["blocker_task_id"] == "owner"
+    assert queued[-1]["semantic"]["correlation"]["blocker_run_id"] == "owner"
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
 
 
 @pytest.mark.asyncio
@@ -726,6 +835,12 @@ async def test_waiter_reclaims_holder_interrupted_without_dispatched_write(
 def test_stale_holder_write_is_rejected_by_fence(journal):
     scheduler = WorkspaceWriterScheduler(journal)
     _admit_pending(scheduler, "owner")
+    stale = _lease(journal)
+    journal.reconcile_startup()
+    scheduler.reconcile_orphaned_admissions()
+    scheduler.reclaim_lost_writers()
+    _admit_pending(scheduler, "later")
+    assert _lease(journal).request_id == "workspace-writer:later"
     journal.admit_git_run_workspace(
         run_id="owner",
         project_id="project-owner",
@@ -740,13 +855,11 @@ def test_stale_holder_write_is_rejected_by_fence(journal):
         worktree_ref="refs/heads/main",
         base_commit="a" * 40,
     )
-    stale = _lease(journal)
-    journal.reconcile_startup()
-    scheduler.reconcile_orphaned_admissions()
-    _admit_pending(scheduler, "later")
-    assert _lease(journal).request_id == "workspace-writer:later"
 
-    with pytest.raises(OutboxLeaseLostError):
+    with pytest.raises(
+        WorkspaceWriterLeaseLostError,
+        match="Task does not own the bound checkout writer lease",
+    ):
         journal.ensure_git_mutation_intent(
             intent_id="stale-intent",
             change_set_id="changes",
@@ -759,7 +872,7 @@ def test_stale_holder_write_is_rejected_by_fence(journal):
             exclusive_worktree=True,
             writer_lease=stale,
         )
-    with pytest.raises(OutboxLeaseLostError):
+    with pytest.raises(WorkspaceWriterLeaseLostError):
         journal.begin_git_operation(
             operation_id="stale-op",
             repository_id="repo-1",
@@ -799,7 +912,7 @@ def test_resume_hands_lease_to_new_attempt_and_fences_old_one(journal):
         resumed.attempt_id,
         stale.version + 1,
     )
-    with pytest.raises(OutboxLeaseLostError):
+    with pytest.raises(WorkspaceWriterLeaseLostError):
         journal.begin_git_operation(
             operation_id="stale-op",
             repository_id="repo-1",
@@ -823,9 +936,10 @@ def test_resume_hands_lease_to_new_attempt_and_fences_old_one(journal):
 @pytest.mark.parametrize("attached", [False, True])
 def test_resume_attach_grace(journal, attached):
     scheduler = WorkspaceWriterScheduler(journal)
-    _, first = _admit_pending(scheduler, "owner")
+    owner, _ = _admit_pending(scheduler, "owner")
     journal.reconcile_startup(now=10)
     scheduler.reconcile_orphaned_admissions()
+    scheduler.reclaim_lost_writers()
     resumed = journal.create_run_attempt(
         "owner", request_id="resume", reason="explicit_resume", now=20
     )
@@ -854,6 +968,14 @@ def test_resume_attach_grace(journal, attached):
         return
     assert expired.finished.reason == "holder_lost"
     assert expired.next_acquired.request_id == later.request_id
-    assert journal.get_run_attempt(resumed.attempt_id).status == "interrupted"
-    assert journal.get_run("owner").status == "interrupted"
-    assert journal.list_events("owner")[-1].event_type == "runtime.interrupted"
+    # The unattached Resume has no side effects: it waits again at the tail.
+    assert journal.get_run_attempt(resumed.attempt_id).status == "pending"
+    assert journal.get_run("owner").status == "pending"
+    requeued = journal.get_workspace_writer_request(owner.request_id)
+    assert (requeued.status, requeued.reason, requeued.blocker_task_id) == (
+        "queued",
+        "holder_lost_requeued",
+        "later",
+    )
+    scheduler.finish_task(run_id="later", task_id="later")
+    assert _lease(journal).holder_attempt_id == resumed.attempt_id

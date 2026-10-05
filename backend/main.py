@@ -157,12 +157,17 @@ async def startup_event():
     )
     from app.workspace_git.startup import reconcile_workspace_git_startup
 
+    writer_scheduler = get_default_workspace_writer_scheduler()
     writer_reconciliation = await asyncio.to_thread(
-        get_default_workspace_writer_scheduler().reconcile_orphaned_admissions
+        writer_scheduler.reconcile_orphaned_admissions
     )
     workspace_git_reconciliation = await asyncio.to_thread(
         reconcile_workspace_git_startup,
         journal,
+    )
+    # Git reconciliation settles interrupted writes before holders are judged.
+    writer_reclamation = await asyncio.to_thread(
+        writer_scheduler.reclaim_lost_writers
     )
     from app.lightweight_memory import migrate_legacy_memory_v1_on_startup
     from app.workspace_config.legacy_migration import (
@@ -207,17 +212,19 @@ async def startup_event():
                 writer_reconciliation.interrupted_request_ids
             ),
             "reclaimed_workspace_writers": len(
-                writer_reconciliation.reclaimed_request_ids
+                writer_reclamation.reclaimed_request_ids
             ),
             "promoted_workspace_writers": len(
                 writer_reconciliation.promoted_request_ids
-            ),
+            )
+            + len(writer_reclamation.promoted_request_ids),
             "preserved_workspace_writers": len(
                 writer_reconciliation.preserved_request_ids
             ),
             "workspace_writer_reconciliation_failures": len(
                 writer_reconciliation.failed_request_ids
-            ),
+            )
+            + len(writer_reclamation.failed_request_ids),
             "workspace_git_reconciliation_skipped": (
                 workspace_git_reconciliation.skipped
             ),

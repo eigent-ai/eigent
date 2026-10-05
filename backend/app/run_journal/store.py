@@ -155,6 +155,7 @@ _WARM_ADMISSION_ABORTED = "warm_admission_aborted"
 # A Resume Attempt reserves its Run's writer before /chat attaches a consumer.
 _WORKSPACE_WRITER_ATTACH_GRACE_SECONDS = 60.0
 _WORKSPACE_WRITER_HOLDER_LOST = "holder_lost"
+_WORKSPACE_WRITER_HOLDER_LOST_REQUEUED = "holder_lost_requeued"
 logger = logging.getLogger("run_journal")
 # Per redacted request or response. Oversized documents retain a bounded JSON
 # prefix plus the byte count and digest of the full redacted projection.
@@ -2384,6 +2385,10 @@ class UnsupportedSchemaVersionError(RunJournalError):
 
 
 class OutboxLeaseLostError(RunJournalError):
+    pass
+
+
+class WorkspaceWriterLeaseLostError(RunJournalError):
     pass
 
 
@@ -10064,6 +10069,28 @@ class SQLiteRunJournal:
             next_acquired=next_acquired,
         )
 
+    def workspace_writer_holder_state(
+        self,
+        *,
+        repository_id: str,
+        checkout_id: str,
+        now: float | None = None,
+    ) -> Literal["held", "lost", "requires_attention"] | None:
+        """Read-only holder check that keeps waiting Tasks off the write lock."""
+        with self._lock:
+            lease = self._connection.execute(
+                """SELECT * FROM workspace_writer_leases
+                WHERE repository_id=? AND checkout_id=?""",
+                (repository_id, checkout_id),
+            ).fetchone()
+            if lease is None:
+                return None
+            return self._workspace_writer_holder_state(
+                self._connection,
+                lease,
+                now=now if now is not None else time.time(),
+            )
+
     def reclaim_lost_workspace_writer(
         self,
         *,
@@ -10075,71 +10102,64 @@ class SQLiteRunJournal:
 
         Only a holder without unsettled writes is released; anything whose
         side effects are unknown keeps the lease until the user acts on that
-        Run. The read-only check keeps waiting Tasks off the write lock.
+        Run. A Resume that never attached has no side effects, so it simply
+        queues again behind the Tasks it was holding up.
         """
         timestamp = now if now is not None else time.time()
-        query = """SELECT * FROM workspace_writer_leases
-            WHERE repository_id=? AND checkout_id=?"""
-        with self._lock:
-            lease = self._connection.execute(
-                query, (repository_id, checkout_id)
-            ).fetchone()
-            if lease is None or not self._workspace_writer_reclaimable(
-                self._connection, lease, now=timestamp
-            ):
-                return None
         with self._write_transaction() as connection:
             lease = connection.execute(
-                query, (repository_id, checkout_id)
+                """SELECT * FROM workspace_writer_leases
+                WHERE repository_id=? AND checkout_id=?""",
+                (repository_id, checkout_id),
             ).fetchone()
-            if lease is None or not self._workspace_writer_reclaimable(
-                connection, lease, now=timestamp
+            if (
+                lease is None
+                or self._workspace_writer_holder_state(
+                    connection, lease, now=timestamp
+                )
+                != "lost"
             ):
                 return None
-            holder = connection.execute(
-                "SELECT * FROM run_attempts WHERE attempt_id=? AND status='pending'",
-                (lease["holder_attempt_id"],),
-            ).fetchone()
-            if holder is not None:
-                self._record_timeout_outcome_in_transaction(
-                    connection,
-                    TimeoutOutcome(
-                        scope=TimeoutScope.RUNTIME_LIVENESS,
-                        policy_version=holder["policy_version"],
-                        reason="consumer_attach_grace_expired",
-                        started_at=float(holder["started_at"]),
-                        ended_at=timestamp,
-                        run_id=holder["run_id"],
-                        attempt_id=holder["attempt_id"],
-                    ),
-                )
             request = connection.execute(
                 "SELECT * FROM workspace_writer_requests WHERE request_id=?",
                 (lease["request_id"],),
             ).fetchone()
-            return self._finish_workspace_writer_in_transaction(
+            result = self._finish_workspace_writer_in_transaction(
                 connection,
                 request,
                 final_status="released",
                 now=timestamp,
                 reason=_WORKSPACE_WRITER_HOLDER_LOST,
             )
+            holder = connection.execute(
+                "SELECT * FROM run_attempts WHERE attempt_id=? AND status='pending'",
+                (lease["holder_attempt_id"],),
+            ).fetchone()
+            if holder is not None:
+                self._hand_workspace_writer_to_attempt_in_transaction(
+                    connection,
+                    run_id=holder["run_id"],
+                    attempt_id=holder["attempt_id"],
+                    now=timestamp,
+                )
+            return result
 
-    def _workspace_writer_reclaimable(
+    def _workspace_writer_holder_state(
         self,
         connection: sqlite3.Connection,
         lease: sqlite3.Row,
         *,
         now: float,
-    ) -> bool:
+    ) -> Literal["held", "lost", "requires_attention"]:
         """A holder lives as long as its Attempt; restart closes them all.
 
         An explicit Resume stays pending until /chat activates it, so it keeps
-        the lease only for the attach grace after it could first write.
+        the lease only for the attach grace after it could first write. A Run
+        that wrote files keeps it as well: its Git boundary spans the Task.
         """
         run_id = self._workspace_writer_run_id(lease["request_id"])
         if run_id is None or lease["holder_attempt_id"] is None:
-            return False  # Non-Run writer, or admission before its Attempt.
+            return "held"  # Non-Run writer, or admission before its Attempt.
         holder = connection.execute(
             "SELECT * FROM run_attempts WHERE attempt_id=?",
             (lease["holder_attempt_id"],),
@@ -10154,14 +10174,16 @@ class SQLiteRunJournal:
                 > _WORKSPACE_WRITER_ATTACH_GRACE_SECONDS
             )
         ):
-            return False
+            return "held"
         from app.workspace_runtime.store import WorkspaceStateStore
 
-        return not (
+        if (
             connection.execute(
                 """SELECT 1 FROM tool_calls WHERE run_id=?
-                AND status IN ('dispatched', 'outcome_unknown') LIMIT 1""",
-                (run_id,),
+                AND status IN ('dispatched', 'outcome_unknown')
+                UNION ALL SELECT 1 FROM git_change_sets WHERE run_id=?
+                LIMIT 1""",
+                (run_id, run_id),
             ).fetchone()
             or self._unresolved_workspace_mutation_in_transaction(
                 connection, run_id
@@ -10169,7 +10191,9 @@ class SQLiteRunJournal:
             or WorkspaceStateStore.legacy_requires_settlement(
                 connection, lease["request_id"]
             )
-        )
+        ):
+            return "requires_attention"
+        return "lost"
 
     @staticmethod
     def _require_workspace_writer_lease_in_transaction(
@@ -10191,9 +10215,8 @@ class SQLiteRunJournal:
             ).fetchone()
             is None
         ):
-            raise OutboxLeaseLostError(
-                "workspace writer lease was reclaimed or handed to another "
-                "Attempt"
+            raise WorkspaceWriterLeaseLostError(
+                "Task does not own the bound checkout writer lease"
             )
 
     def _hand_workspace_writer_to_attempt_in_transaction(
@@ -10225,10 +10248,10 @@ class SQLiteRunJournal:
         ):
             connection.execute(
                 """UPDATE workspace_writer_requests
-                SET status='queued', created_at=?, acquired_at=NULL,
+                SET status='queued', reason=?, created_at=?, acquired_at=NULL,
                     finished_at=NULL, updated_at=?
                 WHERE request_id=?""",
-                (now, now, request_id),
+                (_WORKSPACE_WRITER_HOLDER_LOST_REQUEUED, now, now, request_id),
             )
 
     def try_acquire_workspace_writer(
@@ -10312,6 +10335,13 @@ class SQLiteRunJournal:
             )
         ):
             return "eligible"
+        if (
+            request["reason"] == _WORKSPACE_WRITER_HOLDER_LOST_REQUEUED
+            and request["acquired_at"] is None
+        ):
+            # Reclaim proved this Run clean, and it cannot write until it
+            # holds the lease again.
+            return "dormant"
         # Queue status alone is insufficient for old/inconsistent records.
         # Missing creation evidence, activation, or any execution evidence
         # keeps the queue fenced; in particular, unknown writes are not replayed
@@ -16470,202 +16500,197 @@ class SQLiteRunJournal:
                 f"{outcome.scope.value} is not owned by RunJournal"
             )
         with self._write_transaction() as connection:
-            return self._record_timeout_outcome_in_transaction(
-                connection, outcome
-            )
-
-    def _record_timeout_outcome_in_transaction(
-        self, connection: sqlite3.Connection, outcome: TimeoutOutcome
-    ) -> CommittedRunEvent:
-        run = connection.execute(
-            "SELECT * FROM runs WHERE run_id = ?", (outcome.run_id,)
-        ).fetchone()
-        if run is None:
-            raise RunNotFoundError(f"run_id {outcome.run_id!r} does not exist")
-        event_type = {
-            TimeoutScope.RUNTIME_LIVENESS: "runtime.interrupted",
-            TimeoutScope.ACTIVITY: "activity.timed_out",
-            TimeoutScope.TOOL: "tool.timed_out",
-            TimeoutScope.RUN_DEADLINE: "run.deadline_reached",
-            TimeoutScope.APPROVAL_EXPIRY: "approval.expired",
-        }[outcome.scope]
-        run_status: str | None = None
-        clear_attempt = False
-        if outcome.scope is TimeoutScope.RUNTIME_LIVENESS:
-            run_status = "interrupted"
-            clear_attempt = True
-        elif outcome.scope is TimeoutScope.RUN_DEADLINE:
-            if run["deadline_at"] is None or outcome.ended_at < float(
-                run["deadline_at"]
-            ):
-                raise InvalidRunTransitionError(
-                    "run deadline outcome does not match a reached persisted deadline"
-                )
-            run_status = "failed"
-            clear_attempt = True
-        elif outcome.scope is TimeoutScope.TOOL:
-            tool = connection.execute(
-                "SELECT * FROM tool_calls WHERE tool_call_id = ?",
-                (outcome.tool_call_id,),
+            run = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (outcome.run_id,)
             ).fetchone()
-            if tool is None:
+            if run is None:
                 raise RunNotFoundError(
-                    f"tool_call_id {outcome.tool_call_id!r} does not exist"
+                    f"run_id {outcome.run_id!r} does not exist"
                 )
-            if tool["run_id"] != outcome.run_id:
-                raise InvalidRunTransitionError(
-                    f"tool call {outcome.tool_call_id!r} belongs to run "
-                    f"{tool['run_id']!r}, not {outcome.run_id!r}"
-                )
-            if tool["status"] in {"completed", "failed"}:
-                raise InvalidRunTransitionError(
-                    f"tool call {outcome.tool_call_id!r} is already {tool['status']}"
-                )
-            if tool["status"] not in {
-                "dispatched",
-                "timed_out",
-                "outcome_unknown",
-            }:
-                raise InvalidRunTransitionError(
-                    f"tool call {outcome.tool_call_id!r} cannot time out from "
-                    f"{tool['status']!r}"
-                )
-            replayable = not self._tool_call_requires_fail_closed(tool)
-            tool_status = "timed_out" if replayable else "outcome_unknown"
-            event_type = (
-                "tool.timed_out" if replayable else "tool.outcome_unknown"
-            )
-            connection.execute(
-                """
-                UPDATE tool_calls
-                SET status = ?, outcome = ?, timeout_reason = ?, updated_at = ?
-                WHERE tool_call_id = ?
-                """,
-                (
-                    tool_status,
-                    "retry_allowed" if replayable else "outcome_unknown",
-                    outcome.reason,
-                    outcome.ended_at,
-                    outcome.tool_call_id,
-                ),
-            )
-        elif outcome.scope is TimeoutScope.APPROVAL_EXPIRY:
-            approval = connection.execute(
-                "SELECT * FROM approvals WHERE approval_id = ?",
-                (outcome.approval_id,),
-            ).fetchone()
-            if approval is None:
-                raise RunNotFoundError(
-                    f"approval_id {outcome.approval_id!r} does not exist"
-                )
-            approval_run_id = approval["run_id"]
-            if approval_run_id != outcome.run_id:
-                raise InvalidRunTransitionError(
-                    f"approval {outcome.approval_id!r} belongs to run "
-                    f"{approval_run_id!r}, not {outcome.run_id!r}"
-                )
-            if approval["status"] != "pending":
-                raise InvalidRunTransitionError(
-                    f"approval {outcome.approval_id!r} is already resolved"
-                )
-            if approval["expiry_action"] == "reject":
-                event_type = "approval.expired_rejected"
-                decision_json = json.dumps(
-                    {
-                        "decision": "rejected",
-                        "reason": "approval_expired",
-                    },
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-                connection.execute(
-                    """
-                    UPDATE approvals
-                    SET status = 'rejected', decision_json = ?,
-                        resolved_at = ?, version = version + 1
-                    WHERE approval_id = ? AND status = 'pending'
-                    """,
-                    (
-                        decision_json,
-                        outcome.ended_at,
-                        outcome.approval_id,
-                    ),
-                )
-                connection.execute(
-                    """
-                    UPDATE human_interactions
-                    SET status = 'expired', resolved_at = ?, updated_at = ?,
-                        version = version + 1
-                    WHERE interaction_id = ?
-                      AND status IN ('requested', 'presented')
-                    """,
-                    (
-                        outcome.ended_at,
-                        outcome.ended_at,
-                        outcome.approval_id,
-                    ),
-                )
-                connection.execute(
-                    """
-                    INSERT OR IGNORE INTO human_interaction_decisions(
-                        decision_id, interaction_id, decision_request_id,
-                        decision_json, actor_type, actor_id, source,
-                        action_digest, created_at
-                    ) VALUES (?, ?, ?, ?, 'system', NULL, 'expiry', ?, ?)
-                    """,
-                    (
-                        str(uuid.uuid4()),
-                        outcome.approval_id,
-                        f"expiry:{outcome.approval_id}",
-                        decision_json,
-                        approval["action_digest"],
-                        outcome.ended_at,
-                    ),
-                )
+            event_type = {
+                TimeoutScope.RUNTIME_LIVENESS: "runtime.interrupted",
+                TimeoutScope.ACTIVITY: "activity.timed_out",
+                TimeoutScope.TOOL: "tool.timed_out",
+                TimeoutScope.RUN_DEADLINE: "run.deadline_reached",
+                TimeoutScope.APPROVAL_EXPIRY: "approval.expired",
+            }[outcome.scope]
+            run_status: str | None = None
+            clear_attempt = False
+            if outcome.scope is TimeoutScope.RUNTIME_LIVENESS:
                 run_status = "interrupted"
                 clear_attempt = True
-            else:
-                event_type = "approval.expiry_observed"
-        if clear_attempt:
-            connection.execute(
-                """
-                UPDATE run_attempts
-                SET status = ?, ended_at = COALESCE(ended_at, ?),
-                    timeout_reason = ?, outcome = ?
-                WHERE run_id = ? AND status IN ('pending', 'running', 'waiting_for_user')
-                """,
-                (
-                    "timed_out"
-                    if outcome.scope is TimeoutScope.RUN_DEADLINE
-                    else "interrupted",
-                    outcome.ended_at,
-                    outcome.reason,
-                    event_type,
-                    outcome.run_id,
+            elif outcome.scope is TimeoutScope.RUN_DEADLINE:
+                if run["deadline_at"] is None or outcome.ended_at < float(
+                    run["deadline_at"]
+                ):
+                    raise InvalidRunTransitionError(
+                        "run deadline outcome does not match a reached persisted deadline"
+                    )
+                run_status = "failed"
+                clear_attempt = True
+            elif outcome.scope is TimeoutScope.TOOL:
+                tool = connection.execute(
+                    "SELECT * FROM tool_calls WHERE tool_call_id = ?",
+                    (outcome.tool_call_id,),
+                ).fetchone()
+                if tool is None:
+                    raise RunNotFoundError(
+                        f"tool_call_id {outcome.tool_call_id!r} does not exist"
+                    )
+                if tool["run_id"] != outcome.run_id:
+                    raise InvalidRunTransitionError(
+                        f"tool call {outcome.tool_call_id!r} belongs to run "
+                        f"{tool['run_id']!r}, not {outcome.run_id!r}"
+                    )
+                if tool["status"] in {"completed", "failed"}:
+                    raise InvalidRunTransitionError(
+                        f"tool call {outcome.tool_call_id!r} is already {tool['status']}"
+                    )
+                if tool["status"] not in {
+                    "dispatched",
+                    "timed_out",
+                    "outcome_unknown",
+                }:
+                    raise InvalidRunTransitionError(
+                        f"tool call {outcome.tool_call_id!r} cannot time out from "
+                        f"{tool['status']!r}"
+                    )
+                replayable = not self._tool_call_requires_fail_closed(tool)
+                tool_status = "timed_out" if replayable else "outcome_unknown"
+                event_type = (
+                    "tool.timed_out" if replayable else "tool.outcome_unknown"
+                )
+                connection.execute(
+                    """
+                    UPDATE tool_calls
+                    SET status = ?, outcome = ?, timeout_reason = ?, updated_at = ?
+                    WHERE tool_call_id = ?
+                    """,
+                    (
+                        tool_status,
+                        "retry_allowed" if replayable else "outcome_unknown",
+                        outcome.reason,
+                        outcome.ended_at,
+                        outcome.tool_call_id,
+                    ),
+                )
+            elif outcome.scope is TimeoutScope.APPROVAL_EXPIRY:
+                approval = connection.execute(
+                    "SELECT * FROM approvals WHERE approval_id = ?",
+                    (outcome.approval_id,),
+                ).fetchone()
+                if approval is None:
+                    raise RunNotFoundError(
+                        f"approval_id {outcome.approval_id!r} does not exist"
+                    )
+                approval_run_id = approval["run_id"]
+                if approval_run_id != outcome.run_id:
+                    raise InvalidRunTransitionError(
+                        f"approval {outcome.approval_id!r} belongs to run "
+                        f"{approval_run_id!r}, not {outcome.run_id!r}"
+                    )
+                if approval["status"] != "pending":
+                    raise InvalidRunTransitionError(
+                        f"approval {outcome.approval_id!r} is already resolved"
+                    )
+                if approval["expiry_action"] == "reject":
+                    event_type = "approval.expired_rejected"
+                    decision_json = json.dumps(
+                        {
+                            "decision": "rejected",
+                            "reason": "approval_expired",
+                        },
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    )
+                    connection.execute(
+                        """
+                        UPDATE approvals
+                        SET status = 'rejected', decision_json = ?,
+                            resolved_at = ?, version = version + 1
+                        WHERE approval_id = ? AND status = 'pending'
+                        """,
+                        (
+                            decision_json,
+                            outcome.ended_at,
+                            outcome.approval_id,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        UPDATE human_interactions
+                        SET status = 'expired', resolved_at = ?, updated_at = ?,
+                            version = version + 1
+                        WHERE interaction_id = ?
+                          AND status IN ('requested', 'presented')
+                        """,
+                        (
+                            outcome.ended_at,
+                            outcome.ended_at,
+                            outcome.approval_id,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT OR IGNORE INTO human_interaction_decisions(
+                            decision_id, interaction_id, decision_request_id,
+                            decision_json, actor_type, actor_id, source,
+                            action_digest, created_at
+                        ) VALUES (?, ?, ?, ?, 'system', NULL, 'expiry', ?, ?)
+                        """,
+                        (
+                            str(uuid.uuid4()),
+                            outcome.approval_id,
+                            f"expiry:{outcome.approval_id}",
+                            decision_json,
+                            approval["action_digest"],
+                            outcome.ended_at,
+                        ),
+                    )
+                    run_status = "interrupted"
+                    clear_attempt = True
+                else:
+                    event_type = "approval.expiry_observed"
+            if clear_attempt:
+                connection.execute(
+                    """
+                    UPDATE run_attempts
+                    SET status = ?, ended_at = COALESCE(ended_at, ?),
+                        timeout_reason = ?, outcome = ?
+                    WHERE run_id = ? AND status IN ('pending', 'running', 'waiting_for_user')
+                    """,
+                    (
+                        "timed_out"
+                        if outcome.scope is TimeoutScope.RUN_DEADLINE
+                        else "interrupted",
+                        outcome.ended_at,
+                        outcome.reason,
+                        event_type,
+                        outcome.run_id,
+                    ),
+                )
+            identity = {
+                TimeoutScope.RUNTIME_LIVENESS: outcome.attempt_id,
+                TimeoutScope.ACTIVITY: outcome.activity_id,
+                TimeoutScope.TOOL: outcome.tool_call_id,
+                TimeoutScope.RUN_DEADLINE: outcome.run_id,
+                TimeoutScope.APPROVAL_EXPIRY: outcome.approval_id,
+            }[outcome.scope]
+            return self._append_event_in_transaction(
+                connection,
+                outcome.run_id,
+                RunEventDraft(
+                    event_id=(
+                        f"timeout:{outcome.scope.value}:{outcome.run_id}:"
+                        f"{identity or outcome.ended_at}:{outcome.policy_version}"
+                    ),
+                    event_type=event_type,
+                    payload=outcome.to_payload(),
+                    created_at=outcome.ended_at,
                 ),
+                run_status=run_status,
+                clear_active_attempt=clear_attempt,
             )
-        identity = {
-            TimeoutScope.RUNTIME_LIVENESS: outcome.attempt_id,
-            TimeoutScope.ACTIVITY: outcome.activity_id,
-            TimeoutScope.TOOL: outcome.tool_call_id,
-            TimeoutScope.RUN_DEADLINE: outcome.run_id,
-            TimeoutScope.APPROVAL_EXPIRY: outcome.approval_id,
-        }[outcome.scope]
-        return self._append_event_in_transaction(
-            connection,
-            outcome.run_id,
-            RunEventDraft(
-                event_id=(
-                    f"timeout:{outcome.scope.value}:{outcome.run_id}:"
-                    f"{identity or outcome.ended_at}:{outcome.policy_version}"
-                ),
-                event_type=event_type,
-                payload=outcome.to_payload(),
-                created_at=outcome.ended_at,
-            ),
-            run_status=run_status,
-            clear_active_attempt=clear_attempt,
-        )
 
     def reconcile_startup(
         self, *, now: float | None = None
