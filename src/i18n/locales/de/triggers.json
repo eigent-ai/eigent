@@ -388,6 +388,7 @@
   "first-run-notice": "Erste Ausführung: {{time}} (deine Ortszeit). Eigent muss dann geöffnet sein.",
   "next-run-notice": "Nächste Ausführung: {{time}} (deine Ortszeit). Eigent muss dann geöffnet sein.",
   "pick-future-time": "Wähle ein Datum und eine Uhrzeit in der Zukunft.",
+  "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "schedule-label-daily": "Täglich um {{time}}",
   "schedule-label-weekly": "Jeden {{days}} um {{time}}",
   "schedule-label-monthly": "Monatlich am {{day}}. um {{time}}",

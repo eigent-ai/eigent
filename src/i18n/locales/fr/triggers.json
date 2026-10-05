@@ -388,6 +388,7 @@
   "first-run-notice": "Première exécution : {{time}} (votre heure locale). Eigent doit être ouvert à ce moment-là.",
   "next-run-notice": "Prochaine exécution : {{time}} (votre heure locale). Eigent doit être ouvert à ce moment-là.",
   "pick-future-time": "Choisissez une date et une heure dans le futur.",
+  "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "schedule-label-daily": "Tous les jours à {{time}}",
   "schedule-label-weekly": "Chaque {{days}} à {{time}}",
   "schedule-label-monthly": "Tous les mois le {{day}} à {{time}}",

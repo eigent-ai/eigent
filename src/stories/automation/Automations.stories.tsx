@@ -322,3 +322,31 @@ export const ManyAutomations: Story = {
     initialSelectedId: 10,
   },
 };
+
+export const OneTimeNextYear: StoryObj<typeof SchedulePicker> = {
+  name: '6 · Edit a one-time schedule in the next year',
+  render: () => (
+    <div className="w-[520px] rounded-ds-dialog bg-ds-neutral-subtle-default p-ds-24">
+      <SchedulePicker
+        value="0 9 5 1 *"
+        isEditing
+        initialConfig={{ date: `${new Date().getUTCFullYear() + 1}-01-05` }}
+        onChange={fn()}
+      />
+    </div>
+  ),
+};
+
+export const OneTimeFinished: StoryObj<typeof SchedulePicker> = {
+  name: '7 · Edit a finished one-time schedule',
+  render: () => (
+    <div className="w-[520px] rounded-ds-dialog bg-ds-neutral-subtle-default p-ds-24">
+      <SchedulePicker
+        value="0 9 5 1 *"
+        isEditing
+        initialConfig={{ date: `${new Date().getUTCFullYear() - 1}-01-05` }}
+        onChange={fn()}
+      />
+    </div>
+  ),
+};

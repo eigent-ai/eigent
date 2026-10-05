@@ -4,7 +4,7 @@ Reviewed on 5 October 2026 against `origin/main` (`5877598509f64e4c2d33771a1c60b
 
 ## Review result
 
-Ready for human review with the runtime limitations below. No remaining actionable findings were identified in the reviewed scope. The review covered the committed PR and subsequent design changes, including manual execution request wiring, scheduling, async history refresh, actions, layout and localized copy.
+Ready with non-blocking concerns: the runtime limitations below still apply. No remaining actionable findings were identified in the reviewed scope. The review covered the committed PR and subsequent design changes, including manual execution request wiring, scheduling, async history refresh, actions, layout and localized copy.
 
 Fixed during review:
 
@@ -15,17 +15,41 @@ Fixed during review:
 
 The midnight initialization behavior existed before this PR; the new draft-prefill flow made preserving its selected time part of this change's contract. The other fixes address the redesigned surface.
 
+## Follow-up review of the ten reported findings
+
+Checked the supplied review against PR head `c03a7870c6eb37946903e52ed6af8c904968379e` before applying these fixes. The distinction below preserves the requested product behavior.
+
+| Reported finding                               | Assessment and change                                                                                                                                                                                                                                |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Month/year boundary UTC day shifts             | Confirmed. Shared helpers now compare complete calendar dates, so offsets remain -1/0/1. Weekly round-trips retain the selected weekday. Monthly local day 1 uses croniter's `L` when it falls on the previous UTC month's last day.                 |
+| January one-time dates lose their year         | Confirmed. The picker, list and details read the year from persisted UTC `config.date`, with scheduler-date fallback for older records. Tests include local New Year crossing into the previous UTC year.                                            |
+| Finished one-time automations cannot be edited | Confirmed. Editing may retain an unchanged past schedule; creating or moving a run to a past time remains invalid. This does not queue a replacement run.                                                                                            |
+| Every refresh hides run history                | Confirmed spinner flicker. Expanded state was already retained, but its row disappeared while loading. Background requests now keep history visible, including when refresh fails. Initial loading and initial-fetch errors retain their own states. |
+| Past scheduler timestamp displayed as next run | Confirmed. Only future timestamps are accepted; recurring fallback follows the actual UTC cron. Finished one-time runs do not accept an annual-cron placeholder as another run.                                                                      |
+| Run now works while paused                     | Intentional. Manual execution is independent of recurring scheduling; it does not resume the automation. The owner-checked endpoint and existing subscription flow remain in use.                                                                    |
+| Duplicate action removed                       | Intentional four-action menu requested by the user. Removed the unused local store method, which only appended the same record. Existing translation keys remain for compatibility.                                                                  |
+| Name/status also appear below the breadcrumb   | Intentional navigation context and main title/status, matching the accepted design. No change.                                                                                                                                                       |
+| Two copies of schedule conversion              | Consolidated. SchedulePicker now uses the shared parser, serializer and next-run calculation; unused older parsing/preview code was removed.                                                                                                         |
+| Repeated time formatter                        | Consolidated to the shared schedule-time formatter.                                                                                                                                                                                                  |
+
+Additional boundary correction: one UTC cron cannot faithfully encode some late-month local day/time combinations in short months (a forward UTC shift on days 28–31, or a backward shift on days 29–31). The picker now rejects these combinations with a notice instead of silently changing/skipping dates. Day 1's backward shift is representable with `L`. The installed backend `croniter` was exercised directly to confirm last-day behavior over September, October and November, and over February in leap and non-leap years.
+
+Recurring schedules still use the existing fixed UTC cron contract. They do not preserve a constant local wall time across daylight-saving changes. The picker preview and detail fallback now follow that UTC schedule. No backend scheduling model or serialized API key was changed.
+
 ## Validation
 
 Passed:
 
-- 89 focused tests across `AutomationDashboard`, `SchedulePicker`, `automationSchedule`, `triggerApi` and automation terminology.
+- 111 focused tests in UTC across `AutomationDashboard`, `SchedulePicker`, `automationSchedule`, shared timezone helpers, `triggerApi` and automation terminology.
+- The 50 schedule/history regression tests also pass with `TZ=Australia/Sydney` and `TZ=America/Los_Angeles`.
 - `npm run type-check`
 - `npm run check:i18n`
 - `npm run check:design-tokens`
 - ESLint on changed TypeScript files with `--max-warnings 0`.
 - Prettier on changed source and locale files.
 - `git diff --check`
+
+Follow-up browser verification confirmed the persisted next-year date and neutral finished-run notice in the production picker. New date controls use the existing Input primitive with an explicit accessible name. Background loading/error/expanded-row behavior is covered by deferred-response component tests.
 
 Browser verification used production components in Storybook: shared six examples, selected details, title dropdown, pause toggle, compact list actions, run disclosure, whole-row hover, light/dark themes and a large queue in a narrow window. Loading, fetch error, empty history, stored output and verification-required disabled actions were covered by component tests. Keyboard menu dismissal was exercised in the browser.
 
@@ -50,3 +74,7 @@ The screenshots use sample Storybook data.
 ![Run history and warning in dark mode](details-dark.jpg)
 
 ![Twenty-item queue in a narrow window](large-queue-narrow.jpg)
+
+![One-time date retains the next year](one-time-next-year.jpg)
+
+![Finished one-time schedule remains editable](one-time-finished.jpg)

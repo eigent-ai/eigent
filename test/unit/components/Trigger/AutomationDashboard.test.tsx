@@ -98,6 +98,44 @@ function Details({
 }
 
 describe('automation details and compact list', () => {
+  it('keeps expanded history visible while a background refresh is pending or fails', async () => {
+    let rejectRefresh!: (reason: Error) => void;
+    vi.mocked(proxyFetchTriggerExecutions)
+      .mockResolvedValueOnce([
+        {
+          ...execution,
+          status: ExecutionStatus.Completed,
+          output_data: { summary: 'Saved priorities' },
+        },
+      ])
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectRefresh = reject;
+          })
+      );
+    render(<AutomationDashboard trigger={trigger} />);
+    const row = await screen.findByRole('button', { name: /Completed/ });
+    fireEvent.click(row);
+    act(() =>
+      useActivityLogStore.getState().addLog({
+        type: ActivityType.TriggerExecuted,
+        message: 'Started',
+        triggerId: trigger.id,
+      })
+    );
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(/Saved priorities/)).toBeInTheDocument();
+    expect(
+      screen.queryByText('Loading execution data...')
+    ).not.toBeInTheDocument();
+    await act(async () => rejectRefresh(new Error('Offline')));
+    expect(
+      screen.getByText('Failed to load execution data')
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Saved priorities/)).toBeInTheDocument();
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+  });
   it('ignores an older response after a completion refresh, including an updated log with the same ID', async () => {
     let resolveInitial!: (value: TriggerExecution[]) => void;
     vi.mocked(proxyFetchTriggerExecutions)

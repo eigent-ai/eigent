@@ -388,6 +388,7 @@
   "first-run-notice": "首次執行：{{time}}（您的當地時間）。屆時 Eigent 需要保持開啟。",
   "next-run-notice": "下次執行：{{time}}（您的當地時間）。屆時 Eigent 需要保持開啟。",
   "pick-future-time": "請選擇未來的日期和時間。",
+  "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "schedule-label-daily": "每天 {{time}}",
   "schedule-label-weekly": "每{{days}} {{time}}",
   "schedule-label-monthly": "每月 {{day}} 日 {{time}}",

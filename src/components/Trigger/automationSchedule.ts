@@ -44,9 +44,14 @@ const pad = (n: number) => n.toString().padStart(2, '0');
 
 /** Converts a local-time schedule into the UTC cron the trigger API stores. */
 export function scheduleToCron(
-  schedule: RecurringSchedule,
+  schedule: LocalSchedule,
   reference: Date = new Date()
 ): string {
+  if (schedule.frequency === 'once') {
+    const date = new Date(schedule.date);
+    date.setHours(schedule.hour, schedule.minute, 0, 0);
+    return `${date.getUTCMinutes()} ${date.getUTCHours()} ${date.getUTCDate()} ${date.getUTCMonth() + 1} *`;
+  }
   const { utcHour, utcMinute, dayOffset } = localTimeToUTC(
     schedule.hour,
     schedule.minute,
@@ -59,10 +64,20 @@ export function scheduleToCron(
     return `${utcMinute} ${utcHour} * * ${days.join(',')}`;
   }
   if (schedule.frequency === 'monthly') {
-    const day = Math.min(
-      31,
-      Math.max(1, (schedule.dayOfMonth ?? 1) + dayOffset)
-    );
+    const shiftedDay = (schedule.dayOfMonth ?? 1) + dayOffset;
+    // The day before local day 1 is the UTC month's last day, not day 1 or 30.
+    const day = shiftedDay === 0 ? 'L' : shiftedDay;
+    const localDay = schedule.dayOfMonth ?? 1;
+    // Short months make these shifts add or lose runs; a single UTC cron
+    // cannot express both the local day and the source month's length.
+    if (
+      (dayOffset > 0 && localDay >= 28) ||
+      (dayOffset < 0 && localDay >= 29)
+    ) {
+      throw new RangeError(
+        'This monthly time cannot repeat on the selected day'
+      );
+    }
     return `${utcMinute} ${utcHour} ${day} * *`;
   }
   return `${utcMinute} ${utcHour} * * *`;
@@ -81,7 +96,8 @@ export function isOneTimeCron(cron?: string): boolean {
 /** Parses the UTC cron shapes SchedulePicker produces back into local time. */
 export function parseCron(
   cron?: string,
-  reference: Date = new Date()
+  reference: Date = new Date(),
+  oneTimeDate?: string
 ): LocalSchedule | null {
   const parts = cron?.trim().split(/\s+/) ?? [];
   if (parts.length !== 5) return null;
@@ -91,9 +107,13 @@ export function parseCron(
   const utcHour = Number(hourPart);
 
   if (isOneTimeCron(cron)) {
+    // config.date is the persisted UTC date; cron cannot retain its year.
+    const persistedYear = oneTimeDate?.match(
+      /^(\d{4})-\d{2}-\d{2}(?:$|T)/
+    )?.[1];
     const date = new Date(
       Date.UTC(
-        reference.getFullYear(),
+        persistedYear ? Number(persistedYear) : reference.getUTCFullYear(),
         Number(monthPart) - 1,
         Number(dayPart),
         utcHour,
@@ -127,11 +147,29 @@ export function parseCron(
       ? { frequency: 'weekly', ...base, weekdays }
       : null;
   }
-  if (/^\d+$/.test(dayPart) && monthPart === '*' && weekdayPart === '*') {
-    const dayOfMonth = Math.min(31, Math.max(1, Number(dayPart) + dayOffset));
+  if (
+    (/^\d+$/.test(dayPart) || dayPart === 'L') &&
+    monthPart === '*' &&
+    weekdayPart === '*'
+  ) {
+    if (dayPart === 'L' && dayOffset !== 1) return null;
+    const shiftedDay = Number(dayPart) + dayOffset;
+    const dayOfMonth = dayPart === 'L' ? 1 : shiftedDay === 0 ? 31 : shiftedDay;
     return { frequency: 'monthly', ...base, dayOfMonth };
   }
   return null;
+}
+
+/** Use the stored UTC year for one-time schedules everywhere they are presented. */
+export function parseTriggerSchedule(
+  trigger: Pick<Trigger, 'custom_cron_expression' | 'config' | 'next_run_at'>,
+  reference: Date = new Date()
+): LocalSchedule | null {
+  return parseCron(
+    trigger.custom_cron_expression,
+    reference,
+    trigger.config?.date || trigger.next_run_at
+  );
 }
 
 export function formatScheduleLabel(
@@ -139,7 +177,7 @@ export function formatScheduleLabel(
   t: Translate,
   locale?: string
 ): string {
-  const time = `${pad(schedule.hour)}:${pad(schedule.minute)}`;
+  const time = formatScheduleTime(schedule);
   switch (schedule.frequency) {
     case 'daily':
       return t('triggers.schedule-label-daily', { time });
@@ -173,7 +211,9 @@ export function nextOccurrence(
   from: Date = new Date()
 ): Date | null {
   if (schedule.frequency === 'once') {
-    return schedule.date > from ? schedule.date : null;
+    const date = new Date(schedule.date);
+    date.setHours(schedule.hour, schedule.minute, 0, 0);
+    return date > from ? date : null;
   }
   for (let offset = 0; offset < 400; offset++) {
     const candidate = new Date(
@@ -201,17 +241,51 @@ export function nextOccurrence(
   return null;
 }
 
-/** Prefers the scheduler's own `next_run_at`; falls back to reading the cron. */
+/** Prefer a future scheduler time; calculate fallbacks in UTC, as the server does. */
 export function getNextRun(
-  trigger: Pick<Trigger, 'next_run_at' | 'custom_cron_expression'>,
+  trigger: Pick<Trigger, 'next_run_at' | 'custom_cron_expression' | 'config'>,
   from: Date = new Date()
 ): Date | null {
+  const schedule = parseTriggerSchedule(trigger, from);
+  if (schedule?.frequency === 'once') return nextOccurrence(schedule, from);
   if (trigger.next_run_at) {
     const date = new Date(trigger.next_run_at);
-    if (!Number.isNaN(date.getTime())) return date;
+    if (!Number.isNaN(date.getTime()) && date > from) return date;
   }
-  const schedule = parseCron(trigger.custom_cron_expression, from);
-  return schedule ? nextOccurrence(schedule, from) : null;
+  if (!schedule) return null;
+  const [minute, hour, day, , weekdays] = trigger
+    .custom_cron_expression!.trim()
+    .split(/\s+/);
+  for (let offset = 0; offset < 400; offset++) {
+    const candidate = new Date(
+      Date.UTC(
+        from.getUTCFullYear(),
+        from.getUTCMonth(),
+        from.getUTCDate() + offset,
+        Number(hour),
+        Number(minute)
+      )
+    );
+    if (candidate <= from) continue;
+    if (schedule.frequency === 'daily') return candidate;
+    if (
+      schedule.frequency === 'weekly' &&
+      weekdays
+        .split(',')
+        .map(Number)
+        .some((value) => value % 7 === candidate.getUTCDay())
+    )
+      return candidate;
+    const lastDay = new Date(
+      Date.UTC(candidate.getUTCFullYear(), candidate.getUTCMonth() + 1, 0)
+    ).getUTCDate();
+    if (
+      schedule.frequency === 'monthly' &&
+      candidate.getUTCDate() === (day === 'L' ? lastDay : Number(day))
+    )
+      return candidate;
+  }
+  return null;
 }
 
 /** Short local date and time, e.g. "Mon, Oct 5, 09:00". */
@@ -232,5 +306,14 @@ export function formatRunTime(value: Date | string, locale?: string): string {
 export function formatTimeOfDay(value: Date | string): string {
   const date = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return '';
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return formatScheduleTime({
+    hour: date.getHours(),
+    minute: date.getMinutes(),
+  });
+}
+
+export function formatScheduleTime(
+  schedule: Pick<LocalSchedule, 'hour' | 'minute'>
+): string {
+  return `${pad(schedule.hour)}:${pad(schedule.minute)}`;
 }

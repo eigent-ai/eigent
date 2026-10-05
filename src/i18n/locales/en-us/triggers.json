@@ -388,6 +388,7 @@
   "first-run-notice": "First run: {{time}} (your local time). Eigent needs to be open then.",
   "next-run-notice": "Next run: {{time}} (your local time). Eigent needs to be open then.",
   "pick-future-time": "Pick a date and time in the future.",
+  "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "schedule-label-daily": "Daily at {{time}}",
   "schedule-label-weekly": "Every {{days}} at {{time}}",
   "schedule-label-monthly": "Monthly on day {{day}} at {{time}}",

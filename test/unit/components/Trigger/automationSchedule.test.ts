@@ -19,6 +19,7 @@ import {
   isOneTimeCron,
   nextOccurrence,
   parseCron,
+  parseTriggerSchedule,
   scheduleToCron,
   type RecurringSchedule,
 } from '@/components/Trigger/automationSchedule';
@@ -173,5 +174,182 @@ describe('automation examples', () => {
         6
       );
     }
+  });
+});
+
+describe('schedule date regressions', () => {
+  it('round-trips Monday at the first day of a month without an undefined weekday', () => {
+    const reference = new Date(2026, 9, 1, 12);
+    const schedule = {
+      frequency: 'weekly',
+      hour: 9,
+      minute: 0,
+      weekdays: [1],
+    } as const;
+    const parsed = parseCron(
+      scheduleToCron({ ...schedule, weekdays: [1] }, reference),
+      reference
+    );
+    expect(parsed).toMatchObject(schedule);
+    expect(formatScheduleLabel(parsed!, (key) => key)).not.toContain(
+      'undefined'
+    );
+  });
+
+  it('round-trips monthly day 1 across a UTC month boundary', () => {
+    const reference = new Date(2026, 9, 1, 12);
+    const schedule: RecurringSchedule = {
+      frequency: 'monthly',
+      hour: 9,
+      minute: 0,
+      dayOfMonth: 1,
+    };
+    const cron = scheduleToCron(schedule, reference);
+    expect(parseCron(cron, reference)).toMatchObject(schedule);
+    const localDate = new Date(2026, 9, 1, 9);
+    if (localDate.getUTCDate() !== 1) expect(cron.split(' ')[2]).toBe('L');
+  });
+
+  it('refuses to silently clamp a monthly day 31 that shifts into the next UTC month', () => {
+    const reference = new Date(2026, 11, 31, 12);
+    const schedule: RecurringSchedule = {
+      frequency: 'monthly',
+      hour: 23,
+      minute: 30,
+      dayOfMonth: 31,
+    };
+    const date = new Date(2026, 11, 31, 23, 30);
+    if (date.getUTCDate() === 1)
+      expect(() => scheduleToCron(schedule, reference)).toThrow(RangeError);
+    else
+      expect(
+        parseCron(scheduleToCron(schedule, reference), reference)
+      ).toMatchObject(schedule);
+  });
+
+  it('rejects late-month shifts that would add or skip runs in short months', () => {
+    const reference = new Date(2026, 0, 15, 12);
+    for (const dayOfMonth of [28, 29, 30, 31]) {
+      for (const hour of [0, 23]) {
+        const schedule: RecurringSchedule = {
+          frequency: 'monthly',
+          hour,
+          minute: 0,
+          dayOfMonth,
+        };
+        const date = new Date(2026, 0, dayOfMonth, hour);
+        const shift =
+          (Date.UTC(
+            date.getUTCFullYear(),
+            date.getUTCMonth(),
+            date.getUTCDate()
+          ) -
+            Date.UTC(2026, 0, dayOfMonth)) /
+          86400000;
+        const unsupported =
+          (shift > 0 && dayOfMonth >= 28) || (shift < 0 && dayOfMonth >= 29);
+        if (unsupported)
+          expect(() => scheduleToCron(schedule, reference)).toThrow(RangeError);
+        else
+          expect(
+            parseCron(scheduleToCron(schedule, reference), reference)
+          ).toMatchObject(schedule);
+      }
+    }
+  });
+
+  it('round-trips a one-time local New Year using its actual UTC year', () => {
+    const date = new Date(2027, 0, 1, 0, 15);
+    const schedule = { frequency: 'once' as const, hour: 0, minute: 15, date };
+    const cron = scheduleToCron(schedule);
+    const trigger = {
+      custom_cron_expression: cron,
+      config: { date: date.toISOString().slice(0, 10) },
+    };
+    expect(parseTriggerSchedule(trigger, new Date(2026, 11, 1))).toMatchObject(
+      schedule
+    );
+    expect(getNextRun(trigger, new Date(2026, 11, 1))).toEqual(date);
+  });
+
+  it('finds the next last-day UTC run after a stale monthly timestamp', () => {
+    const reference = new Date('2026-10-01T12:00:00Z');
+    const localDate = new Date('2026-10-31T23:00:00Z');
+    // L is the representation of local day 1 only when it crosses UTC midnight.
+    if (localDate.getDate() === 1) {
+      expect(
+        getNextRun(
+          {
+            custom_cron_expression: '0 23 L * *',
+            next_run_at: '2026-09-30T23:00:00Z',
+          },
+          reference
+        )
+      ).toEqual(new Date('2026-10-31T23:00:00Z'));
+    }
+  });
+
+  it('retains the persisted year for a January one-time run configured in December', () => {
+    const trigger = {
+      custom_cron_expression: '0 9 5 1 *',
+      config: { date: '2027-01-05' },
+    };
+    const reference = new Date('2026-12-15T12:00:00Z');
+    expect(parseTriggerSchedule(trigger, reference)).toMatchObject({
+      frequency: 'once',
+      date: new Date('2027-01-05T09:00:00Z'),
+    });
+    expect(getNextRun(trigger, reference)).toEqual(
+      new Date('2027-01-05T09:00:00Z')
+    );
+  });
+
+  it('does not resurrect an expired one-time date from a future server placeholder', () => {
+    expect(
+      getNextRun(
+        {
+          custom_cron_expression: '0 9 5 1 *',
+          config: { date: '2025-01-05' },
+          next_run_at: '2027-01-05T09:00:00Z',
+        },
+        REFERENCE
+      )
+    ).toBeNull();
+  });
+
+  it('ignores a past scheduler next_run_at and calculates the next UTC slot', () => {
+    const reference = new Date('2026-10-03T11:00:00Z');
+    expect(
+      getNextRun(
+        {
+          custom_cron_expression: '0 22 * * *',
+          next_run_at: '2026-10-02T22:00:00Z',
+        },
+        reference
+      )
+    ).toEqual(new Date('2026-10-03T22:00:00Z'));
+  });
+
+  it('skips months without day 31 when previewing recurring schedules', () => {
+    expect(
+      nextOccurrence(
+        { frequency: 'monthly', hour: 9, minute: 0, dayOfMonth: 31 },
+        new Date(2026, 0, 31, 12)
+      )
+    ).toEqual(new Date(2026, 2, 31, 9));
+  });
+
+  it('uses the edited one-time hour rather than the date object original time', () => {
+    expect(
+      nextOccurrence(
+        {
+          frequency: 'once',
+          hour: 18,
+          minute: 30,
+          date: new Date(2026, 6, 15, 9),
+        },
+        REFERENCE
+      )
+    ).toEqual(new Date(2026, 6, 15, 18, 30));
   });
 });

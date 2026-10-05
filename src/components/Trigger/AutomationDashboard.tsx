@@ -43,13 +43,14 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   formatRunTime,
   formatScheduleLabel,
+  formatScheduleTime,
   getNextRun,
-  parseCron,
+  parseTriggerSchedule,
 } from './automationSchedule';
 
 function DetailCardHeading({
@@ -152,6 +153,7 @@ export function AutomationDashboard({ trigger }: AutomationDashboardProps) {
   const [executions, setExecutions] = useState<TriggerExecution[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const loadedTriggerId = useRef<number | null>(null);
   const activityLogs = useActivityLogStore((state) => state.logs);
 
   // Terminal delivery can update an older log in place while a newer run exists.
@@ -171,12 +173,13 @@ export function AutomationDashboard({ trigger }: AutomationDashboardProps) {
 
   useEffect(() => {
     let current = true;
-    setLoading(true);
+    if (loadedTriggerId.current !== trigger.id) setLoading(true);
     const loadExecutions = async () => {
       try {
         const response = await proxyFetchTriggerExecutions(trigger.id, 1, 50);
         if (!current) return;
         setExecutions(toExecutionList(response));
+        loadedTriggerId.current = trigger.id;
         setLoadError(false);
       } catch (error) {
         if (!current) return;
@@ -241,7 +244,7 @@ export function AutomationDashboardView({
 
   const isScheduled = trigger.trigger_type === TriggerType.Schedule;
   const nextRun = isActive && isScheduled ? getNextRun(trigger) : null;
-  const schedule = parseCron(trigger.custom_cron_expression);
+  const schedule = parseTriggerSchedule(trigger);
   const scheduleLabel = schedule
     ? formatScheduleLabel(schedule, t, i18n.language)
     : trigger.custom_cron_expression || t('triggers.schedule-trigger');
@@ -319,7 +322,7 @@ export function AutomationDashboardView({
           >
             {isScheduled
               ? schedule
-                ? `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`
+                ? formatScheduleTime(schedule)
                 : t('triggers.frequency-custom')
               : t(
                   trigger.trigger_type === TriggerType.Webhook
@@ -418,6 +421,16 @@ export function AutomationDashboardView({
           {t('triggers.execution-history')}
         </DsText>
 
+        {loadError && runs.length > 0 && (
+          <DsText
+            as="p"
+            role="meta"
+            aria-live="polite"
+            className="text-ds-ink-muted-default"
+          >
+            {t('triggers.failed-to-load-executions')}
+          </DsText>
+        )}
         {loading ? (
           <div className="flex items-center justify-center gap-ds-8 px-ds-16 py-ds-40 text-ds-ink-muted-default">
             <DsIcon
@@ -430,7 +443,7 @@ export function AutomationDashboardView({
               {t('triggers.loading-executions')}
             </DsText>
           </div>
-        ) : loadError ? (
+        ) : loadError && runs.length === 0 ? (
           <DsText
             as="p"
             role="base"

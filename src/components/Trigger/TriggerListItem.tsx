@@ -29,7 +29,7 @@ import {
   formatRunTime,
   formatScheduleLabel,
   getNextRun,
-  parseCron,
+  parseTriggerSchedule,
 } from './automationSchedule';
 
 const WARN_AFTER_FAILURES = 2;
@@ -80,7 +80,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
     if (trigger.trigger_type !== TriggerType.Schedule) {
       return { text: t('triggers.app-trigger'), warn: false };
     }
-    const schedule = parseCron(trigger.custom_cron_expression);
+    const schedule = parseTriggerSchedule(trigger);
     const scheduleLabel = schedule
       ? formatScheduleLabel(schedule, t, i18n.language)
       : t('triggers.schedule-trigger');
