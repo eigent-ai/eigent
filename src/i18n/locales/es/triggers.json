@@ -366,6 +366,8 @@
   "select-method": "Seleccionar método",
   "status-cancelled": "Cancelada",
   "try-an-example": "Prueba un ejemplo",
+  "examples-heading": "Automatiza tus tareas",
+  "examples-subtitle": "Deja que Eigent se encargue de las tareas rutinarias mientras te concentras en lo importante.",
   "example-card-label": "Configurar {{title}}: {{description}} {{schedule}}",
   "your-automations": "Tus automatizaciones",
   "queue-empty-body": "Prueba un ejemplo para configurar la primera.",
@@ -594,5 +596,20 @@
       "description": "Cambios de cobertura esta semana.",
       "prompt": "Resume los cambios en la cobertura de pruebas de esta semana por paquete."
     }
-  }
+  },
+  "detail-when": "Cuándo se ejecuta",
+  "detail-what": "Qué hace",
+  "detail-edit-instructions": "Editar instrucciones",
+  "detail-availability": "Eigent debe estar abierto a la hora programada.",
+  "detail-pause": "Pausar automatización",
+  "detail-resume": "Reanudar automatización",
+  "detail-local-time": "Hora local",
+  "detail-paused": "En pausa hasta que la reanudes",
+  "detail-on-event": "Se ejecuta al recibir un evento",
+  "detail-not-started": "No iniciada",
+  "action-run-now": "Ejecutar ahora",
+  "action-pause": "Pausar",
+  "action-resume": "Reanudar",
+  "action-run-queued": "Ejecución solicitada",
+  "action-run-failed": "No se pudo iniciar esta ejecución. Inténtalo de nuevo."
 }

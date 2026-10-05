@@ -12,11 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  AUTOMATION_EXAMPLES,
-  AUTOMATION_ROLE_IDS,
-  getExamplesForRole,
-} from '@/components/Trigger/automationExampleData';
+import { AUTOMATION_EXAMPLES } from '@/components/Trigger/automationExampleData';
 import {
   formatScheduleLabel,
   getNextRun,
@@ -144,34 +140,23 @@ describe('formatScheduleLabel', () => {
 
 describe('automation examples', () => {
   const copy = enTriggers as unknown as {
-    roles: Record<string, string>;
     examples: Record<
       string,
       { title: string; description: string; prompt: string }
     >;
   };
 
-  it('shows six default examples from six different roles', () => {
-    const examples = getExamplesForRole(null);
-    expect(examples).toHaveLength(6);
-    expect(new Set(examples.map((ex) => ex.roleId)).size).toBe(6);
-    expect(examples[0].id).toBe('meeting-prep-brief');
+  it('provides one shared set of six distinct examples in a fixed order', () => {
+    expect(AUTOMATION_EXAMPLES.map((example) => example.id)).toEqual([
+      'meeting-prep-brief',
+      'campaign-performance-recap',
+      'hiring-pipeline-digest',
+      'expense-report-review',
+      'inbox-triage',
+      'weekly-feature-usage-recap',
+    ]);
   });
-
-  it.each(AUTOMATION_ROLE_IDS)(
-    'shows six distinct examples for %s, its own three first',
-    (role) => {
-      const examples = getExamplesForRole(role);
-      expect(examples).toHaveLength(6);
-      expect(new Set(examples.map((ex) => ex.id)).size).toBe(6);
-      expect(examples.slice(0, 3).every((ex) => ex.roleId === role)).toBe(true);
-    }
-  );
-
-  it('has English copy for every role and example', () => {
-    for (const role of AUTOMATION_ROLE_IDS) {
-      expect(copy.roles[role]).toBeTruthy();
-    }
+  it('has English copy for every shared example', () => {
     for (const example of AUTOMATION_EXAMPLES) {
       const entry = copy.examples[example.id];
       expect(entry?.title, example.id).toBeTruthy();

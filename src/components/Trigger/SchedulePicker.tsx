@@ -51,6 +51,8 @@ type SchedulePickerProps = {
   initialConfig?: ScheduleConfig; // For editing existing triggers
   /** Editing an existing automation: the preview reads "Next run". */
   isEditing?: boolean;
+  /** Only a blank create form treats the default cron as unchosen. */
+  useDefaultTime?: boolean;
 };
 
 /** New schedules start at the next full hour so the first run is never already past. */
@@ -90,6 +92,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   showErrors = false,
   initialConfig,
   isEditing = false,
+  useDefaultTime = false,
 }) => {
   const { t, i18n } = useTranslation();
   const [frequency, setFrequency] = useState<FrequencyType>('daily');
@@ -322,8 +325,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
           setCronError(null);
         } else if (day === '*' && month === '*' && weekdayPart === '*') {
           setFrequency('daily');
-          // The default "0 0 * * *" cron (midnight UTC) means "not chosen yet"
-          if (value === '0 0 * * *') {
+          if (useDefaultTime && value === '0 0 * * *') {
             setMinute('00');
             setHour(nextFullHour().getHours().toString().padStart(2, '0'));
           } else {
@@ -341,7 +343,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         previousCronRef.current = value;
       }
     }
-  }, [value, normalizeCronField]);
+  }, [value, normalizeCronField, useDefaultTime]);
 
   // Generate cron expression and convert local time to UTC
   useEffect(() => {

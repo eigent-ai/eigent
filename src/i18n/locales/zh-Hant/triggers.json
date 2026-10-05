@@ -366,6 +366,8 @@
   "select-method": "選擇方法",
   "status-cancelled": "已取消",
   "try-an-example": "試試範例",
+  "examples-heading": "自動處理您的任務",
+  "examples-subtitle": "讓 Eigent 處理日常任務，讓您專注於重要的事。",
   "example-card-label": "設定{{title}}：{{description}} {{schedule}}",
   "your-automations": "您的自動化",
   "queue-empty-body": "試試範例，設定您的第一個自動化。",
@@ -594,5 +596,20 @@
       "description": "本週涵蓋率的變化。",
       "prompt": "依套件總結本週測試涵蓋率的變化。"
     }
-  }
+  },
+  "detail-when": "何時執行",
+  "detail-what": "執行內容",
+  "detail-edit-instructions": "編輯指令",
+  "detail-availability": "Eigent 需要在排程時間保持開啟。",
+  "detail-pause": "暫停自動化",
+  "detail-resume": "恢復自動化",
+  "detail-local-time": "本地時間",
+  "detail-paused": "恢復後才會執行",
+  "detail-on-event": "收到事件時執行",
+  "detail-not-started": "未啟動",
+  "action-run-now": "立即執行",
+  "action-pause": "暫停",
+  "action-resume": "恢復",
+  "action-run-queued": "已請求執行",
+  "action-run-failed": "無法啟動此次執行。請重試。"
 }

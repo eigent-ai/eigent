@@ -16,50 +16,35 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { cn } from '@/lib/utils';
-import { useAutomationProfileStore } from '@/store/automationProfileStore';
-import { Check, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
-  getExamplesForRole,
+  AUTOMATION_EXAMPLES,
   type AutomationExample,
 } from './automationExampleData';
 import { formatScheduleLabel } from './automationSchedule';
 
 type AutomationExamplesProps = {
   onSelectExample: (example: AutomationExample) => void;
-  /** Role label to confirm right after the user saves a role. */
-  savedRoleLabel?: string | null;
 };
 
 export function AutomationExamples({
   onSelectExample,
-  savedRoleLabel,
 }: AutomationExamplesProps) {
   const { t, i18n } = useTranslation();
-  const role = useAutomationProfileStore((state) => state.role);
-  const examples = getExamplesForRole(role);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-ds-16 py-ds-24">
-      <div className="flex flex-col items-center gap-ds-6 text-center">
-        <DsText as="h2" role="body-large" weight="semibold">
-          {t('triggers.try-an-example')}
+    <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center gap-ds-24 py-ds-24">
+      <div className="flex flex-col items-center gap-ds-8 text-center">
+        <DsText as="h1" role="page" weight="semibold">
+          {t('triggers.examples-heading')}
         </DsText>
-        {savedRoleLabel && (
-          <DsText
-            as="p"
-            role="meta"
-            weight="semibold"
-            aria-live="polite"
-            className="flex items-center gap-ds-4 text-ds-text-success-strong-default"
-          >
-            <DsIcon icon={Check} recipe="main-compact" aria-hidden />
-            {t('triggers.profile-saved', { role: savedRoleLabel })}
-          </DsText>
-        )}
+        <DsText as="p" role="body-large" className="text-ds-ink-muted-default">
+          {t('triggers.examples-subtitle')}
+        </DsText>
       </div>
-      <ul className="grid list-none grid-cols-1 gap-ds-12 p-0 sm:grid-cols-2">
-        {examples.map((example) => {
+      <ul className="grid list-none grid-cols-1 gap-ds-24 p-0 sm:grid-cols-2">
+        {AUTOMATION_EXAMPLES.map((example) => {
           const title = t(`triggers.examples.${example.id}.title`);
           const description = t(`triggers.examples.${example.id}.description`);
           const schedule = formatScheduleLabel(
@@ -78,7 +63,7 @@ export function AutomationExamples({
                   schedule,
                 })}
                 className={cn(
-                  'flex h-full w-full min-w-0 cursor-pointer flex-col gap-ds-4 rounded-ds-card border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default p-ds-16 text-left transition-[border-color,box-shadow] duration-150 hover:border-ds-hairline-strong-default hover:shadow-ds-elevation-card motion-reduce:transition-none',
+                  'flex h-full w-full min-w-0 cursor-pointer flex-col gap-ds-4 rounded-ds-card border border-x border-y border-solid border-transparent bg-ds-neutral-default-default p-ds-16 text-left transition-[border-color] duration-150 hover:border-ds-hairline-strong-default motion-reduce:transition-none',
                   DS_FOCUS_RING
                 )}
               >

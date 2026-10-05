@@ -366,6 +366,8 @@
   "select-method": "Wählen Sie eine Methode",
   "status-cancelled": "Aufgabe gestellt",
   "try-an-example": "Beispiel ausprobieren",
+  "examples-heading": "Automatisiere deine Aufgaben",
+  "examples-subtitle": "Lass Eigent Routineaufgaben erledigen, während du dich auf das Wesentliche konzentrierst.",
   "example-card-label": "{{title}} einrichten: {{description}} {{schedule}}",
   "your-automations": "Deine Automatisierungen",
   "queue-empty-body": "Probiere ein Beispiel aus, um deine erste einzurichten.",
@@ -594,5 +596,20 @@
       "description": "Änderungen der Abdeckung diese Woche.",
       "prompt": "Fasse die Änderungen der Testabdeckung dieser Woche nach Paket zusammen."
     }
-  }
+  },
+  "detail-when": "Wann sie läuft",
+  "detail-what": "Was sie macht",
+  "detail-edit-instructions": "Anweisungen bearbeiten",
+  "detail-availability": "Eigent muss zur geplanten Zeit geöffnet sein.",
+  "detail-pause": "Automatisierung pausieren",
+  "detail-resume": "Automatisierung fortsetzen",
+  "detail-local-time": "Ortszeit",
+  "detail-paused": "Pausiert, bis du sie fortsetzt",
+  "detail-on-event": "Läuft beim Empfang eines Ereignisses",
+  "detail-not-started": "Nicht gestartet",
+  "action-run-now": "Jetzt ausführen",
+  "action-pause": "Pausieren",
+  "action-resume": "Fortsetzen",
+  "action-run-queued": "Ausführung angefordert",
+  "action-run-failed": "Die Ausführung konnte nicht gestartet werden. Versuche es erneut."
 }

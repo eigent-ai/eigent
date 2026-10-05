@@ -538,6 +538,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             <TabsContent value="schedule" className="px-6 py-4">
               <SchedulePicker
                 isEditing={!!selectedTrigger}
+                useDefaultTime={!selectedTrigger && !draft}
                 value={formData.custom_cron_expression || DEFAULT_CRON}
                 onChange={(cron) =>
                   setFormData({ ...formData, custom_cron_expression: cron })

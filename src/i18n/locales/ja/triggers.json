@@ -366,6 +366,8 @@
   "select-method": "方法を選択",
   "status-cancelled": "キャンセル済み",
   "try-an-example": "例を試す",
+  "examples-heading": "タスクを自動化",
+  "examples-subtitle": "日々の作業は Eigent に任せて、大切なことに集中しましょう。",
   "example-card-label": "{{title}}を設定：{{description}} {{schedule}}",
   "your-automations": "あなたのオートメーション",
   "queue-empty-body": "例を試して、最初のオートメーションを設定しましょう。",
@@ -594,5 +596,20 @@
       "description": "今週のカバレッジの変化。",
       "prompt": "今週のテストカバレッジの変化をパッケージごとにまとめてください。"
     }
-  }
+  },
+  "detail-when": "実行タイミング",
+  "detail-what": "実行内容",
+  "detail-edit-instructions": "指示を編集",
+  "detail-availability": "予定時刻には Eigent を開いておく必要があります。",
+  "detail-pause": "オートメーションを一時停止",
+  "detail-resume": "オートメーションを再開",
+  "detail-local-time": "現地時間",
+  "detail-paused": "再開するまで一時停止",
+  "detail-on-event": "イベントを受信すると実行",
+  "detail-not-started": "未開始",
+  "action-run-now": "今すぐ実行",
+  "action-pause": "一時停止",
+  "action-resume": "再開",
+  "action-run-queued": "実行をリクエストしました",
+  "action-run-failed": "実行を開始できませんでした。もう一度お試しください。"
 }

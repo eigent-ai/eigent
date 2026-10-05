@@ -366,6 +366,8 @@
   "select-method": "选择方法",
   "status-cancelled": "已取消",
   "try-an-example": "试试示例",
+  "examples-heading": "自动处理您的任务",
+  "examples-subtitle": "让 Eigent 处理日常任务，让您专注于重要的事。",
   "example-card-label": "设置{{title}}：{{description}} {{schedule}}",
   "your-automations": "您的自动化",
   "queue-empty-body": "试试示例，设置您的第一个自动化。",
@@ -594,5 +596,20 @@
       "description": "本周覆盖率的变化。",
       "prompt": "按包总结本周测试覆盖率的变化。"
     }
-  }
+  },
+  "detail-when": "何时运行",
+  "detail-what": "执行内容",
+  "detail-edit-instructions": "编辑指令",
+  "detail-availability": "Eigent 需要在计划时间保持打开。",
+  "detail-pause": "暂停自动化",
+  "detail-resume": "恢复自动化",
+  "detail-local-time": "本地时间",
+  "detail-paused": "恢复后才会运行",
+  "detail-on-event": "收到事件时运行",
+  "detail-not-started": "未启动",
+  "action-run-now": "立即运行",
+  "action-pause": "暂停",
+  "action-resume": "恢复",
+  "action-run-queued": "已请求运行",
+  "action-run-failed": "无法启动此次运行。请重试。"
 }

@@ -112,7 +112,7 @@
   "delete": "Delete",
   "period": "Period",
   "created-at": "Created At",
-  "execution-history": "Execution History",
+  "execution-history": "Run history",
   "run-time": "Run Time",
   "success": "Success",
   "output-tasks": "Output Tasks",
@@ -366,6 +366,8 @@
   "select-method": "Select method",
   "status-cancelled": "Cancelled",
   "try-an-example": "Try an example",
+  "examples-heading": "Automate your tasks",
+  "examples-subtitle": "Let Eigent handle routine tasks while you focus on what matters.",
   "example-card-label": "Set up {{title}}: {{description}} {{schedule}}",
   "your-automations": "Your automations",
   "queue-empty-body": "Try an example to set up your first one.",
@@ -594,5 +596,20 @@
       "description": "Coverage changes this week.",
       "prompt": "Summarize test coverage changes by package this week."
     }
-  }
+  },
+  "detail-when": "When it runs",
+  "detail-what": "What it does",
+  "detail-edit-instructions": "Edit instructions",
+  "detail-availability": "Eigent must be open at the scheduled time.",
+  "detail-pause": "Pause automation",
+  "detail-resume": "Resume automation",
+  "detail-local-time": "Local time",
+  "detail-paused": "Paused until you resume",
+  "detail-on-event": "Runs when an event is received",
+  "detail-not-started": "Not started",
+  "action-run-now": "Run now",
+  "action-pause": "Pause",
+  "action-resume": "Resume",
+  "action-run-queued": "Run requested",
+  "action-run-failed": "Could not start this run. Try again."
 }

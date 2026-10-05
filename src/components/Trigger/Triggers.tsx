@@ -12,9 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { AutomationDashboard } from '@/components/Trigger/AutomationDashboard';
 import { AutomationExamples } from '@/components/Trigger/AutomationExamples';
-import { ProfileNudge } from '@/components/Trigger/ProfileNudge';
+import { AutomationMainPanel } from '@/components/Trigger/AutomationMainPanel';
 import {
   TriggerDialog,
   type TriggerDraft,
@@ -31,11 +32,13 @@ import {
 import { DsText } from '@/components/ui/ds-text';
 import { useTriggerCacheInvalidation } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { cn } from '@/lib/utils';
 import {
   proxyActivateTrigger,
   proxyDeactivateTrigger,
   proxyDeleteTrigger,
   proxyFetchProjectTriggers,
+  proxyRunTriggerNow,
 } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -45,14 +48,10 @@ import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import type {
-  AutomationExample,
-  AutomationRoleId,
-} from './automationExampleData';
+import type { AutomationExample } from './automationExampleData';
 import { scheduleToCron } from './automationSchedule';
 
 const NEW_ROW_HIGHLIGHT_MS = 6000;
-const SAVED_ROLE_NOTE_MS = 4000;
 
 const byNewestFirst = (a: Trigger, b: Trigger) =>
   new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
@@ -77,8 +76,19 @@ export default function Overview({
   const [deletingTrigger, setDeletingTrigger] = useState<Trigger | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [justAddedId, setJustAddedId] = useState<number | null>(null);
-  const [savedRoleLabel, setSavedRoleLabel] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
+  const busyIds = useRef(new Set<number>());
+  const [pendingIds, setPendingIds] = useState<number[]>([]);
+  const beginAction = (id: number) => {
+    if (busyIds.current.has(id)) return false;
+    busyIds.current.add(id);
+    setPendingIds([...busyIds.current]);
+    return true;
+  };
+  const finishAction = (id: number) => {
+    busyIds.current.delete(id);
+    setPendingIds([...busyIds.current]);
+  };
   const { setHasTriggers } = usePageTabStore();
   const { triggers, deleteTrigger, updateTrigger, setTriggers } =
     useTriggerStore();
@@ -153,17 +163,21 @@ export default function Overview({
     );
   };
 
-  const handleRoleSaved = (role: AutomationRoleId) => {
-    const label = t(`triggers.roles.${role}`);
-    setSavedRoleLabel(label);
-    later(
-      () =>
-        setSavedRoleLabel((current) => (current === label ? null : current)),
-      SAVED_ROLE_NOTE_MS
-    );
+  const handleRunNow = async (trigger: Trigger) => {
+    if (!beginAction(trigger.id)) return;
+    try {
+      await proxyRunTriggerNow(trigger.id);
+      toast.success(t('triggers.action-run-queued'));
+    } catch (error) {
+      console.error('Failed to request automation run:', error);
+      toast.error(t('triggers.action-run-failed'));
+    } finally {
+      finishAction(trigger.id);
+    }
   };
 
   const handleToggleActive = async (trigger: Trigger) => {
+    if (!beginAction(trigger.id)) return;
     const isActivating = trigger.status !== TriggerStatus.Active;
     try {
       if (isActivating) {
@@ -211,6 +225,8 @@ export default function Overview({
           ? t('triggers.activation-limit-reached')
           : t('triggers.failed-to-toggle')
       );
+    } finally {
+      finishAction(trigger.id);
     }
   };
 
@@ -252,38 +268,37 @@ export default function Overview({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col lg:flex-row">
-      <h1 className="sr-only">{t('layout.scheduled-tab')}</h1>
-
-      <section
-        aria-label={
-          selectedTrigger
-            ? t('triggers.execution-logs')
-            : t('triggers.try-an-example')
+      <AutomationMainPanel
+        trigger={selectedTrigger}
+        onBack={() => onSelectedTriggerIdChange(null)}
+        onEdit={(trigger) => openDialog({ trigger })}
+        onDelete={handleDelete}
+        onToggleActive={handleToggleActive}
+        isBusy={
+          selectedTrigger ? pendingIds.includes(selectedTrigger.id) : false
         }
-        className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto px-ds-24 xl:px-ds-page-gutter"
       >
         {selectedTrigger ? (
-          <div className="mx-auto w-full max-w-3xl">
+          <div className="mx-auto w-full max-w-5xl">
             <AutomationDashboard
               key={selectedTrigger.id}
               trigger={selectedTrigger}
-              onBack={() => onSelectedTriggerIdChange(null)}
-              onEdit={(trigger) => openDialog({ trigger })}
             />
           </div>
         ) : (
-          <AutomationExamples
-            onSelectExample={handleSelectExample}
-            savedRoleLabel={savedRoleLabel}
-          />
+          <AutomationExamples onSelectExample={handleSelectExample} />
         )}
-      </section>
+      </AutomationMainPanel>
 
       <aside
         aria-labelledby="your-automations-title"
-        className="flex min-h-0 w-full shrink-0 flex-col border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default lg:w-80 lg:border-t-0 lg:border-r-0 lg:border-b-0 lg:border-l"
+        className={cn(
+          'flex max-h-[40%] min-h-0 shrink-0 flex-col border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default lg:max-h-none lg:border-t-0 lg:border-r-0 lg:border-b-0 lg:border-l',
+          RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS
+        )}
       >
-        <div className="flex items-center justify-between gap-ds-8 px-ds-16 pt-ds-16 pb-ds-8">
+        {/* Product-requested height; see automation-panel-headers exception. */}
+        <div className="flex h-[44px] shrink-0 items-center justify-between gap-ds-8 px-ds-16">
           <DsText
             as="h2"
             id="your-automations-title"
@@ -301,7 +316,7 @@ export default function Overview({
           </Button>
         </div>
 
-        <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto px-ds-8 pb-ds-16">
+        <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto pr-0 pb-ds-16 pl-ds-8">
           {sortedTriggers.length === 0 ? (
             <div className="m-ds-8 flex flex-col gap-ds-4 rounded-ds-card border border-x border-y border-dashed border-ds-hairline-default-default px-ds-16 py-ds-24 text-center">
               <DsText as="p" role="base" weight="semibold">
@@ -319,6 +334,8 @@ export default function Overview({
                     trigger={trigger}
                     isSelected={selectedTriggerId === trigger.id}
                     isNew={justAddedId === trigger.id}
+                    isBusy={pendingIds.includes(trigger.id)}
+                    onRunNow={handleRunNow}
                     onSelect={onSelectedTriggerIdChange}
                     onEdit={(item) => openDialog({ trigger: item })}
                     onDelete={handleDelete}
@@ -330,8 +347,6 @@ export default function Overview({
           )}
         </div>
       </aside>
-
-      <ProfileNudge onRoleSaved={handleRoleSaved} />
 
       <TriggerDialog
         key={editingTrigger?.id ?? draft?.name ?? 'new'}

@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { AutomationDashboardView } from '@/components/Trigger/AutomationDashboard';
-import type { AutomationRoleId } from '@/components/Trigger/automationExampleData';
 import { AutomationExamples } from '@/components/Trigger/AutomationExamples';
+import { AutomationMainPanel } from '@/components/Trigger/AutomationMainPanel';
 import { scheduleToCron } from '@/components/Trigger/automationSchedule';
-import { ProfileNudge } from '@/components/Trigger/ProfileNudge';
 import { SchedulePicker } from '@/components/Trigger/SchedulePicker';
 import { TriggerListItem } from '@/components/Trigger/TriggerListItem';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ import {
   applyThemeContractV2,
   createDefaultThemeContractV2,
 } from '@/lib/themeTokens';
-import { useAutomationProfileStore } from '@/store/automationProfileStore';
+import { cn } from '@/lib/utils';
 import {
   ExecutionStatus,
   ExecutionType,
@@ -59,7 +59,9 @@ const daysAgo = (days: number, hour: number, minute = 0) => {
 
 const baseTrigger = {
   user_id: 'sample',
-  description: '',
+  description: 'A short report to help plan the next steps.',
+  task_prompt:
+    'Review recent changes and open tasks. Summarize what needs attention and suggest the next three priorities.',
   trigger_type: TriggerType.Schedule,
   is_single_execution: false,
   config: { max_failure_count: 5 },
@@ -143,10 +145,6 @@ const STANDUP_RUNS: TriggerExecution[] = [
   }),
 ];
 
-function withRole(role: AutomationRoleId | null) {
-  useAutomationProfileStore.setState({ role, nudgeDismissed: false });
-}
-
 function AutomationsPage({
   triggers,
   initialSelectedId = null,
@@ -157,32 +155,57 @@ function AutomationsPage({
   const [selectedId, setSelectedId] = useState<number | null>(
     initialSelectedId
   );
-  const selected = triggers.find((trigger) => trigger.id === selectedId);
+  const [items, setItems] = useState(triggers);
+  const toggle = (item: Trigger) =>
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              status:
+                entry.status === TriggerStatus.Active
+                  ? TriggerStatus.Inactive
+                  : TriggerStatus.Active,
+            }
+          : entry
+      )
+    );
+  const selected = items.find((trigger) => trigger.id === selectedId);
   const runsFor = (id: number) =>
     id === 2 ? WEEKLY_RUNS : id === 1 ? STANDUP_RUNS : [];
 
   return (
-    <div className="flex h-[720px] w-[1180px] max-w-full overflow-hidden rounded-ds-panel border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default">
-      <section className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto px-ds-24 xl:px-ds-page-gutter">
+    <div className="flex h-[720px] w-[1440px] max-w-[calc(100vw-64px)] flex-col overflow-hidden rounded-ds-panel border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default lg:flex-row">
+      <AutomationMainPanel
+        trigger={selected ?? null}
+        onBack={() => setSelectedId(null)}
+        onEdit={fn()}
+        onDelete={fn()}
+        onToggleActive={toggle}
+      >
         {selected ? (
-          <div className="mx-auto w-full max-w-3xl">
+          <div className="mx-auto w-full max-w-5xl">
             <AutomationDashboardView
+              key={selected.id}
               trigger={selected}
               executions={runsFor(selected.id)}
-              onBack={() => setSelectedId(null)}
-              onEdit={fn()}
             />
           </div>
         ) : (
           <AutomationExamples onSelectExample={fn()} />
         )}
-      </section>
-      <aside className="flex w-80 shrink-0 flex-col border-y-0 border-r-0 border-l border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default">
-        <div className="flex items-center justify-between gap-ds-8 px-ds-16 pt-ds-16 pb-ds-8">
+      </AutomationMainPanel>
+      <aside
+        className={cn(
+          'flex max-h-[40%] min-h-0 shrink-0 flex-col border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default lg:max-h-none lg:border-t-0 lg:border-r-0 lg:border-b-0 lg:border-l',
+          RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS
+        )}
+      >
+        <div className="flex h-[44px] shrink-0 items-center justify-between gap-ds-8 px-ds-16">
           <DsText as="h2" role="base" weight="semibold">
             Your automations
             <span className="ml-ds-6 font-medium text-ds-ink-subtle-default">
-              {triggers.length}
+              {items.length}
             </span>
           </DsText>
           <Button variant="primary" size="sm">
@@ -190,8 +213,8 @@ function AutomationsPage({
             Create
           </Button>
         </div>
-        <ul className="m-0 flex list-none flex-col gap-ds-2 px-ds-8 pb-ds-16">
-          {triggers.length === 0 ? (
+        <ul className="scrollbar-always-visible m-0 flex min-h-0 flex-1 list-none flex-col gap-ds-2 overflow-y-auto pr-0 pb-ds-16 pl-ds-8">
+          {items.length === 0 ? (
             <li className="m-ds-8 flex flex-col gap-ds-4 rounded-ds-card border border-x border-y border-dashed border-ds-hairline-default-default px-ds-16 py-ds-24 text-center">
               <DsText as="p" role="base" weight="semibold">
                 No automations yet
@@ -201,22 +224,22 @@ function AutomationsPage({
               </DsText>
             </li>
           ) : (
-            triggers.map((trigger) => (
+            items.map((trigger) => (
               <li key={trigger.id}>
                 <TriggerListItem
                   trigger={trigger}
                   isSelected={trigger.id === selectedId}
                   onSelect={setSelectedId}
+                  onRunNow={fn()}
                   onEdit={fn()}
                   onDelete={fn()}
-                  onToggleActive={fn()}
+                  onToggleActive={toggle}
                 />
               </li>
             ))
           )}
         </ul>
       </aside>
-      <ProfileNudge onRoleSaved={fn()} />
     </div>
   );
 }
@@ -230,34 +253,24 @@ const meta: Meta<typeof AutomationsPage> = {
 export default meta;
 type Story = StoryObj<typeof AutomationsPage>;
 
-export const ProfileSetNoAutomations: Story = {
-  name: '1a · Profile set, no automations',
+export const NoAutomations: Story = {
+  name: '1 · No automations',
   args: { triggers: [] },
-  beforeEach: () => withRole('software-engineer'),
-};
-
-export const NoProfileNoAutomations: Story = {
-  name: '1b · No profile, no automations',
-  args: { triggers: [] },
-  beforeEach: () => withRole(null),
 };
 
 export const WithAutomations: Story = {
   name: '2 · Examples with automations',
   args: { triggers: SAMPLE_TRIGGERS },
-  beforeEach: () => withRole('software-engineer'),
 };
 
 export const Dashboard: Story = {
   name: '3 · Dashboard and queue',
   args: { triggers: SAMPLE_TRIGGERS, initialSelectedId: 2 },
-  beforeEach: () => withRole('software-engineer'),
 };
 
 export const DashboardWithFailures: Story = {
   name: '3b · Dashboard with runs that did not complete',
   args: { triggers: SAMPLE_TRIGGERS, initialSelectedId: 1 },
-  beforeEach: () => withRole('software-engineer'),
 };
 
 export const SchedulePickerFirstRun: StoryObj<typeof SchedulePicker> = {
@@ -281,7 +294,6 @@ export const DashboardDark: Story = {
   name: '3d · Dashboard in dark mode',
   args: { triggers: SAMPLE_TRIGGERS, initialSelectedId: 1 },
   beforeEach: () => {
-    withRole('software-engineer');
     applyTheme('dark');
     return () => applyTheme('light');
   },
@@ -297,5 +309,16 @@ export const DashboardDark: Story = {
 export const DashboardNoRuns: Story = {
   name: '3c · Dashboard with no runs yet',
   args: { triggers: SAMPLE_TRIGGERS, initialSelectedId: 3 },
-  beforeEach: () => withRole('software-engineer'),
+};
+
+export const ManyAutomations: Story = {
+  name: '5 · Large queue in a narrow window',
+  args: {
+    triggers: Array.from({ length: 20 }, (_, index) => ({
+      ...SAMPLE_TRIGGERS[0],
+      id: index + 10,
+      name: `Scheduled report ${index + 1}`,
+    })),
+    initialSelectedId: 10,
+  },
 };

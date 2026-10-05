@@ -19,15 +19,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
-import { Switch } from '@/components/ui/switch';
-import { TooltipSimple } from '@/components/ui/tooltip';
-import { iconForTriggerType } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { Trigger, TriggerStatus, TriggerType } from '@/types';
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Pause, Pencil, Play, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   formatRunTime,
@@ -42,6 +38,8 @@ type TriggerListItemProps = {
   trigger: Trigger;
   isSelected: boolean;
   isNew?: boolean;
+  isBusy?: boolean;
+  onRunNow: (trigger: Trigger) => void | Promise<void>;
   onSelect: (id: number) => void;
   onEdit: (trigger: Trigger) => void;
   onDelete: (trigger: Trigger) => void;
@@ -52,6 +50,8 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
   trigger,
   isSelected,
   isNew = false,
+  isBusy = false,
+  onRunNow,
   onSelect,
   onEdit,
   onDelete,
@@ -62,7 +62,6 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
   const needsAuth =
     trigger.status === TriggerStatus.PendingAuth &&
     trigger.config?.authentication_required;
-  const TriggerIcon = iconForTriggerType(trigger.trigger_type);
   const failures = trigger.consecutive_failures ?? 0;
 
   const statusLine = (() => {
@@ -104,33 +103,31 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={isSelected}
-      onClick={() => onSelect(trigger.id)}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return;
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onSelect(trigger.id);
-        }
-      }}
       className={cn(
-        'group flex min-h-ds-control-xl cursor-pointer items-center gap-ds-10 rounded-ds-field border border-x border-y border-solid px-ds-8 py-ds-10 transition-[background-color,border-color] duration-150 motion-reduce:transition-none',
+        'group flex items-center gap-ds-8 rounded-ds-card border border-x border-y border-solid p-ds-12 transition-[border-color] duration-150 motion-reduce:transition-none',
         isSelected
-          ? 'border-ds-hairline-strong-default bg-ds-neutral-strong-default'
-          : 'border-transparent hover:bg-ds-neutral-default-default',
-        isNew && !isSelected && 'bg-ds-bg-information-subtle-default',
-        DS_FOCUS_RING
+          ? 'border-ds-hairline-strong-default bg-ds-neutral-default-default'
+          : 'border-transparent hover:border-ds-hairline-default-hover',
+        isNew && !isSelected && 'bg-ds-bg-information-subtle-default'
       )}
     >
-      <span className="flex size-ds-control-md shrink-0 items-center justify-center rounded-ds-compact-control bg-ds-neutral-default-default text-ds-ink-muted-default">
-        <DsIcon icon={TriggerIcon} recipe="main" aria-hidden />
-      </span>
-
-      <div className="flex min-w-0 flex-1 flex-col">
+      <button
+        type="button"
+        aria-pressed={isSelected}
+        onClick={() => onSelect(trigger.id)}
+        className={cn(
+          'flex min-w-0 flex-1 flex-col gap-ds-4 rounded-ds-field text-left',
+          DS_FOCUS_RING
+        )}
+      >
         <div className="flex min-w-0 items-center gap-ds-6">
-          <DsText as="span" role="base" weight="semibold" className="truncate">
+          <DsText
+            as="span"
+            role="base"
+            weight="semibold"
+            className="block truncate"
+            title={trigger.name}
+          >
             {trigger.name}
           </DsText>
           {isNew && (
@@ -158,25 +155,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
         >
           {statusLine.text}
         </DsText>
-      </div>
-
-      <TooltipSimple
-        content={t('triggers.verification-required')}
-        enabled={!!needsAuth}
-      >
-        <div onClick={(event) => event.stopPropagation()}>
-          <Switch
-            size="sm"
-            checked={isActive || !!needsAuth}
-            onCheckedChange={() => onToggleActive(trigger)}
-            disabled={!!needsAuth}
-            aria-label={t(
-              isActive ? 'triggers.turn-off-named' : 'triggers.turn-on-named',
-              { name: trigger.name }
-            )}
-          />
-        </div>
-      </TooltipSimple>
+      </button>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -197,21 +176,31 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
           onClick={(event) => event.stopPropagation()}
         >
           <DropdownMenuItem
+            disabled={isBusy || !!needsAuth}
+            onSelect={() => void onRunNow(trigger)}
+          >
+            <Play aria-hidden />
+            {t('triggers.action-run-now')}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={isBusy || !!needsAuth}
+            onSelect={() => onToggleActive(trigger)}
+          >
+            {isActive ? <Pause aria-hidden /> : <Play aria-hidden />}
+            {t(isActive ? 'triggers.action-pause' : 'triggers.action-resume')}
+          </DropdownMenuItem>
+          <DropdownMenuItem
             className="gap-ds-8"
-            onSelect={(event) => {
-              event.preventDefault();
-              onEdit(trigger);
-            }}
+            disabled={isBusy}
+            onSelect={() => onEdit(trigger)}
           >
             <Pencil aria-hidden />
             {t('triggers.edit')}
           </DropdownMenuItem>
           <DropdownMenuItem
             className="gap-ds-8 text-ds-text-error-default-default focus:text-ds-text-error-strong-default"
-            onSelect={(event) => {
-              event.preventDefault();
-              onDelete(trigger);
-            }}
+            disabled={isBusy}
+            onSelect={() => onDelete(trigger)}
           >
             <Trash2 aria-hidden />
             {t('triggers.delete')}

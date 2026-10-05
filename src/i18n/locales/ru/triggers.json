@@ -366,6 +366,8 @@
   "select-method": "Выберите метод",
   "status-cancelled": "Отменено",
   "try-an-example": "Попробуйте пример",
+  "examples-heading": "Автоматизируйте свои задачи",
+  "examples-subtitle": "Поручите рутинные задачи Eigent и сосредоточьтесь на важном.",
   "example-card-label": "Настроить «{{title}}»: {{description}} {{schedule}}",
   "your-automations": "Ваши автоматизации",
   "queue-empty-body": "Попробуйте пример, чтобы настроить первую автоматизацию.",
@@ -594,5 +596,20 @@
       "description": "Изменения покрытия за неделю.",
       "prompt": "Кратко опиши изменения покрытия тестами за эту неделю по пакетам."
     }
-  }
+  },
+  "detail-when": "Когда запускается",
+  "detail-what": "Что делает",
+  "detail-edit-instructions": "Изменить инструкции",
+  "detail-availability": "Eigent должен быть открыт в запланированное время.",
+  "detail-pause": "Приостановить автоматизацию",
+  "detail-resume": "Возобновить автоматизацию",
+  "detail-local-time": "Местное время",
+  "detail-paused": "Приостановлена до возобновления",
+  "detail-on-event": "Запускается при получении события",
+  "detail-not-started": "Не запущено",
+  "action-run-now": "Запустить сейчас",
+  "action-pause": "Приостановить",
+  "action-resume": "Возобновить",
+  "action-run-queued": "Запуск запрошен",
+  "action-run-failed": "Не удалось начать выполнение. Попробуйте ещё раз."
 }

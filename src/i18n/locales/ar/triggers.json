@@ -366,6 +366,8 @@
   "select-method": "حدّد الطريقة",
   "status-cancelled": "ملغى",
   "try-an-example": "جرّب مثالًا",
+  "examples-heading": "أتمت مهامك",
+  "examples-subtitle": "دع Eigent يتولى المهام الروتينية بينما تركز على ما يهمك.",
   "example-card-label": "إعداد {{title}}: {{description}} {{schedule}}",
   "your-automations": "أتمتاتك",
   "queue-empty-body": "جرّب مثالًا لإعداد أول أتمتة لك.",
@@ -594,5 +596,20 @@
       "description": "تغيّرات التغطية هذا الأسبوع.",
       "prompt": "لخّص تغيّرات تغطية الاختبارات لهذا الأسبوع حسب الحزمة."
     }
-  }
+  },
+  "detail-when": "موعد التشغيل",
+  "detail-what": "ما الذي تنفذه",
+  "detail-edit-instructions": "تعديل التعليمات",
+  "detail-availability": "يجب أن يكون Eigent مفتوحًا في الوقت المحدد.",
+  "detail-pause": "إيقاف الأتمتة مؤقتًا",
+  "detail-resume": "استئناف الأتمتة",
+  "detail-local-time": "التوقيت المحلي",
+  "detail-paused": "متوقفة مؤقتًا حتى الاستئناف",
+  "detail-on-event": "تعمل عند استلام حدث",
+  "detail-not-started": "لم تبدأ",
+  "action-run-now": "تشغيل الآن",
+  "action-pause": "إيقاف مؤقت",
+  "action-resume": "استئناف",
+  "action-run-queued": "تم طلب التشغيل",
+  "action-run-failed": "تعذر بدء هذا التشغيل. حاول مجددًا."
 }

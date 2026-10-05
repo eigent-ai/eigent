@@ -366,6 +366,8 @@
     }
   },
   "try-an-example": "예시 사용해 보기",
+  "examples-heading": "작업을 자동화하세요",
+  "examples-subtitle": "반복적인 작업은 Eigent에 맡기고 중요한 일에 집중하세요.",
   "example-card-label": "{{title}} 설정: {{description}} {{schedule}}",
   "your-automations": "내 자동화",
   "queue-empty-body": "예시를 사용해 첫 자동화를 설정해 보세요.",
@@ -594,5 +596,20 @@
       "description": "이번 주 커버리지 변화.",
       "prompt": "이번 주 테스트 커버리지 변화를 패키지별로 요약해 주세요."
     }
-  }
+  },
+  "detail-when": "실행 시점",
+  "detail-what": "실행 내용",
+  "detail-edit-instructions": "지침 편집",
+  "detail-availability": "예약된 시간에 Eigent가 열려 있어야 합니다.",
+  "detail-pause": "자동화 일시 중지",
+  "detail-resume": "자동화 재개",
+  "detail-local-time": "현지 시간",
+  "detail-paused": "재개할 때까지 일시 중지됨",
+  "detail-on-event": "이벤트를 수신하면 실행",
+  "detail-not-started": "시작되지 않음",
+  "action-run-now": "지금 실행",
+  "action-pause": "일시 중지",
+  "action-resume": "재개",
+  "action-run-queued": "실행을 요청했습니다",
+  "action-run-failed": "실행을 시작할 수 없습니다. 다시 시도해 주세요."
 }

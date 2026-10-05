@@ -12,9 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
+import { Separator } from '@/components/ui/separator';
 import { Tag } from '@/components/ui/tag';
 import { errorCopy, errorPresentationReason } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
@@ -29,26 +30,51 @@ import {
 } from '@/types';
 import {
   Ban,
-  ChevronLeft,
+  CalendarClock,
+  ChevronDown,
+  ChevronRight,
   CircleCheck,
   CirclePause,
   CircleX,
   Clock,
+  FileText,
   Loader2,
-  Pencil,
   Terminal,
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   formatRunTime,
   formatScheduleLabel,
-  formatTimeOfDay,
   getNextRun,
   parseCron,
 } from './automationSchedule';
+
+function DetailCardHeading({
+  id,
+  icon,
+  children,
+}: {
+  id: string;
+  icon: LucideIcon;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-ds-12">
+      <DsIcon
+        icon={icon}
+        recipe="detailed"
+        aria-hidden
+        className="text-ds-ink-muted-default"
+      />
+      <DsText as="h2" id={id} role="base" weight="semibold">
+        {children}
+      </DsText>
+    </div>
+  );
+}
 
 const DEFAULT_MAX_FAILURES = 5;
 const WARN_AFTER_FAILURES = 2;
@@ -96,7 +122,7 @@ const RUN_STYLES: Record<ExecutionStatus, RunStyle> = {
 const RUN_LABEL_KEYS: Record<ExecutionStatus, string> = {
   [ExecutionStatus.Completed]: 'triggers.completed',
   [ExecutionStatus.Failed]: 'triggers.failed',
-  [ExecutionStatus.Missed]: 'triggers.execution-status-missed',
+  [ExecutionStatus.Missed]: 'triggers.detail-not-started',
   [ExecutionStatus.Running]: 'triggers.running',
   [ExecutionStatus.Pending]: 'triggers.pending',
   [ExecutionStatus.Cancelled]: 'triggers.status-cancelled',
@@ -120,51 +146,51 @@ const toExecutionList = (response: unknown): TriggerExecution[] => {
 
 type AutomationDashboardProps = {
   trigger: Trigger;
-  onBack: () => void;
-  onEdit: (trigger: Trigger) => void;
 };
 
-export function AutomationDashboard({
-  trigger,
-  onBack,
-  onEdit,
-}: AutomationDashboardProps) {
+export function AutomationDashboard({ trigger }: AutomationDashboardProps) {
   const [executions, setExecutions] = useState<TriggerExecution[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const activityLogs = useActivityLogStore((state) => state.logs);
 
-  const loadExecutions = useCallback(async () => {
-    try {
-      const response = await proxyFetchTriggerExecutions(trigger.id, 1, 50);
-      setExecutions(toExecutionList(response));
-      setLoadError(false);
-    } catch (error) {
-      console.error('Failed to fetch execution data:', error);
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [trigger.id]);
+  // Terminal delivery can update an older log in place while a newer run exists.
+  const executionActivityVersion = activityLogs
+    .filter(
+      (log) =>
+        log.triggerId === trigger.id &&
+        [
+          ActivityType.TriggerExecuted,
+          ActivityType.ExecutionSuccess,
+          ActivityType.ExecutionFailed,
+          ActivityType.ExecutionCancelled,
+        ].includes(log.type)
+    )
+    .map((log) => `${log.id}:${log.type}`)
+    .join('|');
 
   useEffect(() => {
+    let current = true;
     setLoading(true);
+    const loadExecutions = async () => {
+      try {
+        const response = await proxyFetchTriggerExecutions(trigger.id, 1, 50);
+        if (!current) return;
+        setExecutions(toExecutionList(response));
+        setLoadError(false);
+      } catch (error) {
+        if (!current) return;
+        console.error('Failed to fetch execution data:', error);
+        setLoadError(true);
+      } finally {
+        if (current) setLoading(false);
+      }
+    };
     void loadExecutions();
-  }, [loadExecutions]);
-
-  useEffect(() => {
-    const latest = activityLogs.find((log) => log.triggerId === trigger.id);
-    if (
-      latest &&
-      [
-        ActivityType.TriggerExecuted,
-        ActivityType.ExecutionSuccess,
-        ActivityType.ExecutionFailed,
-      ].includes(latest.type)
-    ) {
-      void loadExecutions();
-    }
-  }, [activityLogs, loadExecutions, trigger.id]);
+    return () => {
+      current = false;
+    };
+  }, [executionActivityVersion, trigger.id]);
 
   return (
     <AutomationDashboardView
@@ -172,8 +198,6 @@ export function AutomationDashboard({
       executions={executions}
       loading={loading}
       loadError={loadError}
-      onBack={onBack}
-      onEdit={onEdit}
     />
   );
 }
@@ -189,10 +213,12 @@ export function AutomationDashboardView({
   executions,
   loading = false,
   loadError = false,
-  onBack,
-  onEdit,
 }: AutomationDashboardViewProps) {
   const { t, i18n } = useTranslation();
+  const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
+  const needsAuth =
+    trigger.status === TriggerStatus.PendingAuth &&
+    trigger.config?.authentication_required;
 
   const runs = useMemo(
     () =>
@@ -213,53 +239,17 @@ export function AutomationDashboardView({
     trigger.consecutive_failures ??
     (leadingUnfinished === -1 ? runs.length : leadingUnfinished);
 
-  const finishedRuns = runs.filter((run) =>
-    [ExecutionStatus.Completed, ...UNFINISHED_RUN_STATUSES].includes(run.status)
-  );
-  const successRate =
-    finishedRuns.length > 0
-      ? Math.round(
-          (finishedRuns.filter(
-            (run) => run.status === ExecutionStatus.Completed
-          ).length /
-            finishedRuns.length) *
-            100
-        )
-      : null;
-
-  const nextRun = isActive ? getNextRun(trigger) : null;
+  const isScheduled = trigger.trigger_type === TriggerType.Schedule;
+  const nextRun = isActive && isScheduled ? getNextRun(trigger) : null;
   const schedule = parseCron(trigger.custom_cron_expression);
-  const subtitle =
-    trigger.trigger_type === TriggerType.Schedule
-      ? [
-          t('triggers.schedule-trigger'),
-          schedule && formatScheduleLabel(schedule, t, i18n.language),
-        ]
-          .filter(Boolean)
-          .join(' · ')
-      : t('triggers.app-trigger');
-
-  const stats = [
-    {
-      key: 'total',
-      value: String(trigger.execution_count ?? runs.length),
-      label: t('triggers.total-runs'),
-    },
-    {
-      key: 'rate',
-      value: successRate === null ? '-' : `${successRate}%`,
-      label: t('triggers.success-rate'),
-    },
-    {
-      key: 'next',
-      value: !isActive
-        ? t('triggers.paused')
-        : nextRun
-          ? formatRunTime(nextRun, i18n.language)
-          : '-',
-      label: t('triggers.next-run'),
-    },
-  ];
+  const scheduleLabel = schedule
+    ? formatScheduleLabel(schedule, t, i18n.language)
+    : trigger.custom_cron_expression || t('triggers.schedule-trigger');
+  const instructions =
+    trigger.task_prompt ||
+    (trigger.custom_task
+      ? JSON.stringify(trigger.custom_task, null, 2)
+      : t('triggers.no-task-prompt'));
 
   const runMessage = (run: TriggerExecution): string | undefined => {
     switch (run.status) {
@@ -268,12 +258,7 @@ export function AutomationDashboardView({
           ? errorCopy(errorPresentationReason(run.error_message))
           : t('triggers.execution-failed-message');
       case ExecutionStatus.Missed:
-        return (
-          run.skip_reason?.message ||
-          t('triggers.execution-missed-reason', {
-            time: formatTimeOfDay(runTime(run)),
-          })
-        );
+        return run.skip_reason?.message || t('triggers.execution-missed');
       case ExecutionStatus.Cancelled:
         return t('triggers.execution-cancelled');
       default:
@@ -282,71 +267,107 @@ export function AutomationDashboardView({
   };
 
   return (
-    <div className="flex w-full flex-col gap-ds-16 py-ds-16">
-      <div className="flex items-center gap-ds-8">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          <ChevronLeft aria-hidden />
-          {t('triggers.back-to-examples')}
-        </Button>
-        <DsText as="span" role="base" weight="semibold" className="flex-1">
-          {t('triggers.execution-logs')}
-        </DsText>
-        <Button variant="outline" size="sm" onClick={() => onEdit(trigger)}>
-          <Pencil aria-hidden />
-          {t('triggers.edit')}
-        </Button>
-      </div>
-
-      <div className="flex flex-col gap-ds-4">
-        <div className="flex flex-wrap items-center gap-ds-8">
-          <DsText as="h2" role="title" weight="semibold" className="min-w-0">
+    <div className="flex w-full flex-col gap-ds-24 py-ds-24">
+      <div className="flex flex-col gap-ds-8">
+        <div className="flex flex-wrap items-center gap-ds-12">
+          <DsText
+            as="h1"
+            role="page"
+            weight="semibold"
+            className="min-w-0 break-words"
+          >
             {trigger.name}
           </DsText>
-          <Tag size="xs" tone={isActive ? 'success' : 'neutral'}>
-            {isActive
-              ? t('triggers.status.active')
-              : t('triggers.status.inactive')}
+          <Tag
+            size="xs"
+            tone={isActive ? 'success' : 'neutral'}
+            emphasis="default"
+          >
+            {needsAuth
+              ? t('triggers.verification-required')
+              : isActive
+                ? t('triggers.status.active')
+                : t('triggers.paused')}
           </Tag>
         </div>
-        <DsText as="p" role="base" className="text-ds-ink-muted-default">
-          {subtitle}
-        </DsText>
-      </div>
-
-      <dl className="m-0 grid grid-cols-3 rounded-ds-card border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default">
-        {stats.map((stat, index) => (
-          <div
-            key={stat.key}
-            className={cn(
-              'flex min-w-0 flex-col-reverse gap-ds-2 px-ds-16 py-ds-12',
-              index > 0 &&
-                'border-x-0 border-y-0 border-l border-solid border-ds-hairline-subtle-default'
-            )}
+        {trigger.description && (
+          <DsText
+            as="p"
+            role="base"
+            className="break-words text-ds-ink-muted-default"
           >
-            <dt>
-              <DsText
-                as="span"
-                role="meta"
-                className="text-ds-ink-muted-default"
-              >
-                {stat.label}
+            {trigger.description}
+          </DsText>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-ds-12 xl:grid-cols-[1fr_2fr]">
+        <section
+          aria-labelledby="automation-schedule-title"
+          className="flex min-w-0 flex-col items-start gap-ds-12 rounded-ds-card bg-ds-neutral-default-default p-ds-card-inset"
+        >
+          <DetailCardHeading
+            id="automation-schedule-title"
+            icon={CalendarClock}
+          >
+            {t('triggers.detail-when')}
+          </DetailCardHeading>
+          <DsText
+            as="p"
+            role="section"
+            weight="semibold"
+            className="break-words tabular-nums"
+          >
+            {isScheduled
+              ? schedule
+                ? `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`
+                : t('triggers.frequency-custom')
+              : t(
+                  trigger.trigger_type === TriggerType.Webhook
+                    ? 'triggers.webhook-trigger'
+                    : 'triggers.slack-trigger'
+                )}
+          </DsText>
+          <div className="flex w-full flex-wrap items-baseline gap-x-ds-8 gap-y-ds-4 text-ds-ink-muted-default">
+            <DsText as="p" role="base" className="min-w-0 break-words">
+              {isScheduled ? scheduleLabel : t('triggers.detail-on-event')}
+            </DsText>
+            {isScheduled && schedule && (
+              <DsText as="span" role="meta" className="whitespace-nowrap">
+                {t('triggers.detail-local-time')}
               </DsText>
-            </dt>
-            <dd className="m-0 min-w-0">
-              <DsText
-                as="span"
-                role="body-large"
-                weight="semibold"
-                className="block truncate tabular-nums"
-                title={stat.value}
-              >
-                {stat.value}
-              </DsText>
-            </dd>
+            )}
           </div>
-        ))}
-      </dl>
-
+          {(isScheduled || needsAuth || !isActive) && <Separator />}
+          <DsText as="p" role="meta" className="text-ds-ink-muted-default">
+            {needsAuth
+              ? t('triggers.verification-required')
+              : !isActive
+                ? t('triggers.detail-paused')
+                : nextRun
+                  ? t('triggers.next-run-at', {
+                      time: formatRunTime(nextRun, i18n.language),
+                    })
+                  : isScheduled
+                    ? t('triggers.no-upcoming-executions')
+                    : null}
+          </DsText>
+        </section>
+        <section
+          aria-labelledby="automation-instructions-title"
+          className="flex min-w-0 flex-col gap-ds-12 rounded-ds-card bg-ds-neutral-default-default p-ds-card-inset"
+        >
+          <DetailCardHeading id="automation-instructions-title" icon={FileText}>
+            {t('triggers.detail-what')}
+          </DetailCardHeading>
+          <DsText
+            as="p"
+            role="body-large"
+            className="[overflow-wrap:anywhere] break-words whitespace-pre-wrap"
+          >
+            {instructions}
+          </DsText>
+        </section>
+      </div>
       {isActive && consecutiveUnfinished >= WARN_AFTER_FAILURES && (
         <div
           role="status"
@@ -386,14 +407,13 @@ export function AutomationDashboardView({
 
       <section
         aria-labelledby="automation-history-title"
-        className="overflow-hidden rounded-ds-card border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default"
+        className="flex flex-col gap-ds-8"
       >
         <DsText
-          as="h3"
+          as="h2"
           id="automation-history-title"
-          role="base"
+          role="body-large"
           weight="semibold"
-          className="border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-ds-16 py-ds-12"
         >
           {t('triggers.execution-history')}
         </DsText>
@@ -429,7 +449,13 @@ export function AutomationDashboardView({
                 ? t('triggers.first-run-on', {
                     time: formatRunTime(nextRun, i18n.language),
                   })
-                : t('triggers.turn-on-to-schedule')}
+                : t(
+                    !isActive
+                      ? 'triggers.detail-paused'
+                      : isScheduled
+                        ? 'triggers.no-upcoming-executions'
+                        : 'triggers.detail-on-event'
+                  )}
             </DsText>
           </div>
         ) : (
@@ -445,58 +471,105 @@ export function AutomationDashboardView({
                 <li
                   key={run.id}
                   className={cn(
-                    'flex items-start gap-ds-12 px-ds-16 py-ds-12',
+                    'py-ds-2 hover:bg-ds-neutral-default-hover',
                     index > 0 &&
                       'border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default'
                   )}
                 >
-                  <span
+                  <button
+                    type="button"
+                    aria-expanded={expandedRunId === run.id}
+                    aria-controls={`automation-run-${run.id}`}
+                    onClick={() =>
+                      setExpandedRunId(expandedRunId === run.id ? null : run.id)
+                    }
                     className={cn(
-                      'flex size-ds-control-xs shrink-0 items-center justify-center rounded-ds-full',
-                      style.surfaceClass
+                      'flex w-full items-center gap-ds-12 rounded-ds-field p-ds-12 text-left',
+                      DS_FOCUS_RING
                     )}
                   >
-                    <DsIcon
-                      icon={style.icon}
-                      recipe="main-compact"
-                      aria-hidden
-                      className={style.iconClass}
-                    />
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-ds-2">
-                    <div className="flex flex-wrap items-baseline gap-x-ds-8">
-                      <DsText as="span" role="base" weight="semibold">
-                        {t(
-                          RUN_LABEL_KEYS[run.status] ??
-                            'triggers.unknown-status'
-                        )}
-                      </DsText>
+                    <span
+                      className={cn(
+                        'flex size-ds-control-xs shrink-0 items-center justify-center rounded-ds-full',
+                        style.surfaceClass
+                      )}
+                    >
+                      <DsIcon
+                        icon={style.icon}
+                        recipe="main-compact"
+                        aria-hidden
+                        className={style.iconClass}
+                      />
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col gap-ds-2">
+                      <div className="flex flex-wrap items-baseline gap-x-ds-8">
+                        <DsText as="span" role="base" weight="semibold">
+                          {t(
+                            RUN_LABEL_KEYS[run.status] ??
+                              'triggers.unknown-status'
+                          )}
+                        </DsText>
+                        <DsText
+                          as="span"
+                          role="meta"
+                          className="text-ds-ink-muted-default tabular-nums"
+                        >
+                          {formatRunTime(runTime(run), i18n.language)}
+                        </DsText>
+                      </div>
+                    </div>
+                    {duration && (
                       <DsText
                         as="span"
                         role="meta"
-                        className="text-ds-ink-muted-default tabular-nums"
+                        className="shrink-0 text-ds-ink-muted-default tabular-nums"
                       >
-                        {formatRunTime(runTime(run), i18n.language)}
+                        {duration}
                       </DsText>
-                    </div>
-                    {message && (
+                    )}
+                    <DsIcon
+                      icon={
+                        expandedRunId === run.id ? ChevronDown : ChevronRight
+                      }
+                      recipe="main"
+                      aria-hidden
+                      className="text-ds-ink-muted-default"
+                    />
+                  </button>
+                  {expandedRunId === run.id && (
+                    <div
+                      id={`automation-run-${run.id}`}
+                      className="flex flex-col gap-ds-8 px-ds-12 pb-ds-16"
+                    >
                       <DsText
                         as="p"
                         role="base"
-                        className="text-ds-ink-muted-default"
+                        className="break-words whitespace-pre-wrap text-ds-ink-muted-default"
                       >
-                        {message}
+                        {message ||
+                          t(
+                            RUN_LABEL_KEYS[run.status] ??
+                              'triggers.unknown-status'
+                          )}
                       </DsText>
-                    )}
-                  </div>
-                  {duration && (
-                    <DsText
-                      as="span"
-                      role="meta"
-                      className="shrink-0 text-ds-ink-muted-default tabular-nums"
-                    >
-                      {duration}
-                    </DsText>
+                      {run.output_data && (
+                        <DsText
+                          as="pre"
+                          channel="code"
+                          role="small"
+                          className="m-0 [overflow-wrap:anywhere] whitespace-pre-wrap"
+                        >
+                          {JSON.stringify(run.output_data, null, 2)}
+                        </DsText>
+                      )}
+                      <DsText
+                        as="p"
+                        role="meta"
+                        className="[overflow-wrap:anywhere] text-ds-ink-muted-default"
+                      >
+                        {t('triggers.execution-id')}: {run.execution_id}
+                      </DsText>
+                    </div>
                   )}
                 </li>
               );
