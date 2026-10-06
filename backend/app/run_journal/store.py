@@ -14224,17 +14224,11 @@ class SQLiteRunJournal:
                         created_at=timestamp,
                     ),
                 )
-            requested = connection.execute(
-                "SELECT payload_json FROM run_events WHERE event_id = ?",
-                (f"cancel:{request_id}:requested",),
-            ).fetchone()
             payload: dict[str, Any] = {
                 "request_id": request_id,
-                "reason": (
-                    requested is not None
-                    and json.loads(requested["payload_json"]).get("reason")
-                )
-                or "explicit_cancel",
+                "reason": self._cancel_reason_in_transaction(
+                    connection, request_id=request_id
+                ),
             }
             manifest = connection.execute(
                 """
@@ -14270,6 +14264,23 @@ class SQLiteRunJournal:
             ).fetchone()
             assert row is not None
             return self._run_from_row(row)
+
+    @staticmethod
+    def _cancel_reason_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        request_id: str,
+    ) -> str:
+        """The reason its requester recorded with a cancel intent."""
+
+        requested = connection.execute(
+            "SELECT payload_json FROM run_events WHERE event_id = ?",
+            (f"cancel:{request_id}:requested",),
+        ).fetchone()
+        return (
+            requested is not None
+            and json.loads(requested["payload_json"]).get("reason")
+        ) or "explicit_cancel"
 
     def checkpoint_tool_call(
         self,
@@ -17150,7 +17161,10 @@ class SQLiteRunJournal:
                         if run["cancel_request_id"] is not None:
                             target_status = "cancelled"
                             event_type = "run.cancelled"
-                            reason = "explicit_cancel"
+                            reason = self._cancel_reason_in_transaction(
+                                connection,
+                                request_id=run["cancel_request_id"],
+                            )
                             run_cancelled = True
                         elif (
                             deadline_at is not None

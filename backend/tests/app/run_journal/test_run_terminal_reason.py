@@ -170,6 +170,20 @@ def test_cancel_deadline_liveness_and_restart_paths_record_their_cause(
             "user_cancelled",
         )
 
+    # A cancel still pending at startup keeps its requester's reason too.
+    with SQLiteRunJournal(tmp_path / "startup-cancel.sqlite3") as journal:
+        attempt = started(journal)
+        journal.request_cancel(
+            "run-1", request_id="cancel-1", reason="user_request", now=3
+        )
+        journal.reconcile_startup(now=4)
+        assert stop(journal, attempt) == (
+            "cancelled",
+            "user_cancelled",
+            "user_request",
+            "user_cancelled",
+        )
+
     with SQLiteRunJournal(tmp_path / "deadline.sqlite3") as journal:
         attempt = started(journal, deadline_at=5)
         journal.record_timeout_outcome(
