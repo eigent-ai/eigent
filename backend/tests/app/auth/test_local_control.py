@@ -19,6 +19,7 @@ from app.controller import (
     message_controller,
     model_controller,
     remote_command_controller,
+    remote_sub_agent_controller,
     run_controller,
     skill_controller,
     task_controller,
@@ -318,6 +319,7 @@ def test_every_legacy_brain_route_declares_the_capability_guard():
         mcp_controller,
         message_controller,
         model_controller,
+        remote_sub_agent_controller,
         skill_controller,
         task_controller,
         tool_controller,
@@ -363,6 +365,23 @@ def test_registered_legacy_routes_reject_pages_without_the_capability(
             "mcpServers": {}
         }
     assert client.post("/messages", json={"content": "hi"}).status_code == 401
+
+    sub_agent = {
+        "api_key": "key",
+        "base_url": "https://example.invalid",
+        "agent_name": "agent",
+    }
+    with patch(
+        "app.controller.remote_sub_agent_controller."
+        "validate_remote_sub_agent_provider"
+    ) as validate:
+        assert (
+            client.post(
+                "/remote-sub-agent/validate", json=sub_agent
+            ).status_code
+            == 401
+        )
+        validate.assert_not_called()
 
 
 def test_registered_legacy_routes_stay_open_for_web_mode(monkeypatch):
