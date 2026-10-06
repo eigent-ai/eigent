@@ -10631,6 +10631,12 @@ class SQLiteRunJournal:
                     f"project {project_id!r} bootstrap ended at {local_cursor}, "
                     f"server watermark is {current_cursor}"
                 )
+            # Synced events are canonical: a Run's latest stop event sets its
+            # status and cause, and the Cloud aggregate status only stands in
+            # for a Run without one.
+            stop_event_types = json.dumps(
+                sorted(set().union(*RUN_STOP_EVENT_TYPES.values()))
+            )
             for replica in runs:
                 row = connection.execute(
                     "SELECT * FROM runs WHERE run_id = ?", (replica.run_id,)
@@ -10664,18 +10670,49 @@ class SQLiteRunJournal:
                         f"run_id {replica.run_id!r} belongs to another project"
                     )
                 if row["origin"] == "cloud_restore":
+                    stop = connection.execute(
+                        """
+                        SELECT event_type, payload_json FROM run_events
+                        WHERE run_id = ?
+                          AND event_type IN (SELECT value FROM json_each(?))
+                        ORDER BY sequence DESC LIMIT 1
+                        """,
+                        (replica.run_id, stop_event_types),
+                    ).fetchone()
+                    if stop is None:
+                        status = self._cloud_restored_status(replica.status)
+                        cause = None
+                    else:
+                        stop_event = RunEventDraft(
+                            event_type=stop["event_type"],
+                            payload=json.loads(stop["payload_json"]),
+                        )
+                        status = self._terminal_status_for_event(stop_event)
+                        cause = run_terminal_cause(
+                            stop_event.event_type, stop_event.payload
+                        )
                     connection.execute(
                         """
                         UPDATE runs
                         SET status = ?, version = MAX(version, ?),
                             updated_at = MAX(updated_at, ?),
-                            resume_blocked_reason = 'cloud_restore_workspace_missing'
+                            resume_blocked_reason = 'cloud_restore_workspace_missing',
+                            terminal_reason = CASE
+                                WHEN ? THEN ? ELSE terminal_reason
+                            END,
+                            terminal_detail = CASE
+                                WHEN ? THEN ? ELSE terminal_detail
+                            END
                         WHERE run_id = ?
                         """,
                         (
-                            self._cloud_restored_status(replica.status),
+                            status,
                             max(0, replica.expected_next_run_sequence - 1),
                             replica.updated_at,
+                            cause is not None,
+                            cause[0].value if cause else None,
+                            cause is not None,
+                            cause[1] if cause else None,
                             replica.run_id,
                         ),
                     )
