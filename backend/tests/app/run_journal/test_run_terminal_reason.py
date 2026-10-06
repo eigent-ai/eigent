@@ -60,6 +60,20 @@ def waiting(journal, *, expires_at, deadline_at=None):
     return attempt
 
 
+def asking(journal, *, expires_at, deadline_at=None):
+    attempt = started(journal, deadline_at=deadline_at)
+    journal.create_human_interaction(
+        interaction_id="question-1",
+        run_id="run-1",
+        attempt_id=attempt.attempt_id,
+        interaction_type="question",
+        request={"question": "Which file?"},
+        expires_at=expires_at,
+        now=3,
+    )
+    return attempt
+
+
 def stop(journal, attempt, run_id="run-1"):
     run = journal.get_run(run_id)
     return (
@@ -112,6 +126,14 @@ def timeout(scope, *, reason, ended_at, attempt_id=None):
             "interrupted",
             "runtime_lost",
             "model_transport_error: reset",
+        ),
+        # A cancel is its own cause whatever reason its requester gave.
+        (
+            "run.cancelled",
+            {"reason": "brain_restart"},
+            "cancelled",
+            "user_cancelled",
+            "brain_restart",
         ),
     ],
 )
@@ -269,7 +291,10 @@ def test_startup_takes_the_earlier_of_deadline_and_restart(
 @pytest.mark.parametrize(
     ("deadline_at", "status", "reason"),
     [
-        (5.5, "interrupted", "approval_expired"),
+        (7, "interrupted", "approval_expired"),
+        # A Run past its deadline cannot resume, so it times out while the
+        # earlier expiry stays its cause.
+        (5.5, "timed_out", "approval_expired"),
         (4, "timed_out", "deadline_exceeded"),
         (5, "timed_out", "deadline_exceeded"),
     ],
@@ -288,6 +313,41 @@ def test_startup_takes_the_earlier_of_deadline_and_approval_expiry(
             reason,
             reason,
         )
+
+
+@pytest.mark.parametrize(
+    ("request_input", "detail"),
+    [
+        (waiting, "approval_expired"),
+        (asking, "human_interaction_expired"),
+    ],
+)
+def test_an_expiry_before_a_passed_deadline_times_out_without_resume(
+    tmp_path, request_input, detail
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt = request_input(journal, expires_at=5, deadline_at=5.5)
+        journal.reconcile_startup(now=6)
+
+        assert stop(journal, attempt) == (
+            "timed_out",
+            "approval_expired",
+            detail,
+            "approval_expired",
+        )
+        stopped = [
+            event
+            for event in journal.list_events("run-1")
+            if event.payload.get("terminal_reason")
+        ]
+        assert [event.event_type for event in stopped] == [
+            "run.deadline_reached"
+        ]
+        assert not journal.list_human_interactions("run-1", pending_only=True)
+        with pytest.raises(InvalidRunTransitionError):
+            journal.create_run_attempt(
+                "run-1", request_id="resume", reason="explicit_resume", now=7
+            )
 
 
 def test_pending_cancel_beats_an_expiry_found_at_startup(tmp_path):

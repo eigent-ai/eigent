@@ -178,6 +178,14 @@ _TERMINAL_REASON_BY_EVENT: Mapping[str, RunTerminalReason] = {
     "approval.cancelled": RunTerminalReason.RUNTIME_LOST,
 }
 
+# A stop recorded after an earlier cause names that cause in its reason, such
+# as a restart, or an expiry found once the Run deadline had passed as well.
+_EARLIER_CAUSE_BY_REASON: Mapping[str, RunTerminalReason] = {
+    "brain_restart": RunTerminalReason.BRAIN_RESTART,
+    "approval_expired": RunTerminalReason.APPROVAL_EXPIRED,
+    "human_interaction_expired": RunTerminalReason.APPROVAL_EXPIRED,
+}
+
 
 def run_terminal_cause(
     event_type: str, payload: Mapping[str, Any]
@@ -193,14 +201,17 @@ def run_terminal_cause(
         return None
     code = payload.get("reason")
     code = code.strip() if isinstance(code, str) and code.strip() else None
-    # A restart that stopped the Run first stays its cause, even when the
-    # deadline has passed by the time the Brain is back.
-    if reason in {
-        RunTerminalReason.RUNTIME_LOST,
-        RunTerminalReason.DEADLINE_EXCEEDED,
-    } and (code or "").startswith("brain_restart"):
-        reason = RunTerminalReason.BRAIN_RESTART
-    elif (
+    # A cancel is always its own cause; its reason is the requester's.
+    if code and reason is not RunTerminalReason.USER_CANCELLED:
+        reason = next(
+            (
+                earlier
+                for prefix, earlier in _EARLIER_CAUSE_BY_REASON.items()
+                if code.startswith(prefix)
+            ),
+            reason,
+        )
+    if (
         reason is RunTerminalReason.ERROR
         and code == "context_budget_exhausted"
     ):

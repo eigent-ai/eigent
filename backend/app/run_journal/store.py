@@ -111,6 +111,7 @@ from app.run_journal.transitions import (
     ATTEMPT_ACTIVE_STATES,
     ATTEMPT_TRANSITIONS,
     COMMAND_TRANSITIONS,
+    RUN_ACTIVE_STATES,
     RUN_STOP_EVENT_TYPES,
     RUN_STOPPED_STATES,
     RUN_TERMINAL_STATES,
@@ -16881,10 +16882,13 @@ class SQLiteRunJournal:
             # terminal cause, so record it before the generic restart
             # interruption below claims the Attempt.  The earliest cause wins:
             # a pending cancel, or a Run deadline reached first, is handled
-            # there instead.
+            # there instead.  So is an active Run already past its deadline,
+            # which cannot resume: the deadline path names the expiry instead.
+            expired_first: dict[str, str] = {}
             expired_approvals = connection.execute(
                 """
-                SELECT approvals.*, runs.status AS run_status
+                SELECT approvals.*, runs.status AS run_status,
+                       runs.deadline_at AS run_deadline_at
                 FROM approvals
                 JOIN runs ON runs.run_id = approvals.run_id
                 WHERE approvals.status = 'pending'
@@ -16902,6 +16906,15 @@ class SQLiteRunJournal:
             ).fetchall()
             for approval in expired_approvals:
                 if approval["run_status"] in RUN_TERMINAL_STATES:
+                    continue
+                if (
+                    approval["run_status"] in RUN_ACTIVE_STATES
+                    and approval["run_deadline_at"] is not None
+                    and float(approval["run_deadline_at"]) <= timestamp
+                ):
+                    expired_first.setdefault(
+                        approval["run_id"], "approval_expired"
+                    )
                     continue
                 try:
                     with self._savepoint(connection, "startup_approval"):
@@ -16994,7 +17007,8 @@ class SQLiteRunJournal:
                     )
             expired_interactions = connection.execute(
                 """
-                SELECT human_interactions.*, runs.status AS run_status
+                SELECT human_interactions.*, runs.status AS run_status,
+                       runs.deadline_at AS run_deadline_at
                 FROM human_interactions
                 JOIN runs ON runs.run_id = human_interactions.run_id
                 WHERE human_interactions.interaction_type != 'approval'
@@ -17013,6 +17027,15 @@ class SQLiteRunJournal:
             ).fetchall()
             for interaction in expired_interactions:
                 if interaction["run_status"] in RUN_TERMINAL_STATES:
+                    continue
+                if (
+                    interaction["run_status"] in RUN_ACTIVE_STATES
+                    and interaction["run_deadline_at"] is not None
+                    and float(interaction["run_deadline_at"]) <= timestamp
+                ):
+                    expired_first.setdefault(
+                        interaction["run_id"], "human_interaction_expired"
+                    )
                     continue
                 try:
                     with self._savepoint(connection, "startup_interaction"):
@@ -17134,10 +17157,10 @@ class SQLiteRunJournal:
                             and float(deadline_at) <= timestamp
                         ):
                             # A Run past its deadline cannot resume, even
-                            # when a restart stopped it first.
+                            # when an expiry or a restart stopped it first.
                             target_status = "timed_out"
                             event_type = "run.deadline_reached"
-                            reason = (
+                            reason = expired_first.get(run["run_id"]) or (
                                 "persisted_run_deadline_reached"
                                 if still_waiting
                                 or float(deadline_at) <= stopped_at
