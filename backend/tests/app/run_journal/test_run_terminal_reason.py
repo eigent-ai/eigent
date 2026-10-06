@@ -29,10 +29,12 @@ from app.run_journal.transitions import RunTerminalReason
 from app.run_policy import TimeoutOutcome, TimeoutScope, ToolSafetyClass
 
 
-def started(journal, run_id="run-1", *, deadline_at=None):
+def started(
+    journal, run_id="run-1", *, deadline_at=None, project_id="project-1"
+):
     journal.ensure_run(
         run_id=run_id,
-        project_id="project-1",
+        project_id=project_id,
         deadline_at=deadline_at,
         now=1,
     )
@@ -508,6 +510,9 @@ def test_v42_backfills_reasons_from_the_stopping_events(tmp_path):
         )
         journal.complete_cancel("cancelled", request_id="cancel-1", now=4)
         restarted = started(journal, "restarted")
+        startup_deadline = started(
+            journal, "startup-deadline", deadline_at=5, project_id="project-2"
+        )
         journal.reconcile_startup(now=6)
         running = started(journal, "running")
 
@@ -516,6 +521,10 @@ def test_v42_backfills_reasons_from_the_stopping_events(tmp_path):
         # terminal fields existed yet.
         connection.execute(
             "UPDATE runs SET status = 'failed' WHERE status = 'timed_out'"
+        )
+        connection.execute(
+            "UPDATE run_events SET payload_json = json_remove("
+            "payload_json, '$.terminal_reason', '$.terminal_detail')"
         )
         for table in ("runs", "run_attempts"):
             for column in ("terminal_reason", "terminal_detail"):
@@ -533,6 +542,7 @@ def test_v42_backfills_reasons_from_the_stopping_events(tmp_path):
                 ("deadline", deadline),
                 ("cancelled", cancelled),
                 ("restarted", restarted),
+                ("startup-deadline", startup_deadline),
                 ("running", running),
             ]
         } == {
@@ -550,6 +560,14 @@ def test_v42_backfills_reasons_from_the_stopping_events(tmp_path):
             ),
             "restarted": (
                 "interrupted",
+                "brain_restart",
+                "brain_restart",
+                "brain_restart",
+            ),
+            # Startup on main recorded this deadline with reason
+            # brain_restart; its stopping event still makes it timed out.
+            "startup-deadline": (
+                "timed_out",
                 "brain_restart",
                 "brain_restart",
                 "brain_restart",

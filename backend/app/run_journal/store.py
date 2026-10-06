@@ -2404,8 +2404,11 @@ ALTER TABLE run_attempts ADD COLUMN terminal_detail TEXT;
 -- one status-defining event; an interrupted Run uses its latest interruption
 -- since the last Attempt started.  Anything else stays NULL (unknown).
 CREATE TEMP TABLE run_terminal_backfill AS
-SELECT runs.run_id, (
-    SELECT run_terminal_cause(events.event_type, events.payload_json)
+SELECT runs.run_id, stop.event_type,
+       run_terminal_cause(stop.event_type, stop.payload_json) AS cause
+FROM runs
+JOIN run_events AS stop ON stop.event_id = (
+    SELECT events.event_id
     FROM run_events AS events
     WHERE events.run_id = runs.run_id
       AND (
@@ -2430,8 +2433,7 @@ SELECT runs.run_id, (
       )
     ORDER BY events.sequence DESC
     LIMIT 1
-) AS cause
-FROM runs
+)
 WHERE runs.status IN ('interrupted', 'completed', 'failed', 'cancelled');
 
 UPDATE runs
@@ -2447,8 +2449,12 @@ WHERE terminal_reason IS NULL AND run_id IN (
     SELECT run_id FROM run_terminal_backfill WHERE cause IS NOT NULL
 );
 
+-- The stopping event decides the status; the cause may name an earlier one.
 UPDATE runs SET status = 'timed_out'
-WHERE status = 'failed' AND terminal_reason = 'deadline_exceeded';
+WHERE status = 'failed' AND run_id IN (
+    SELECT run_id FROM run_terminal_backfill
+    WHERE event_type = 'run.deadline_reached'
+);
 
 -- A workspace finalization records the committed Run outcome verbatim.
 CREATE TABLE run_workspace_finalizations_v42 (
