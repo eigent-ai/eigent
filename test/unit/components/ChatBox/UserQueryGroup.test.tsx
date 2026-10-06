@@ -357,8 +357,19 @@ describe('Task failure summary ownership', () => {
       'deadline_exceeded',
       'Task timed out before a final reply was recorded.',
     ],
+    // The status says the Task timed out; an earlier cause only says why.
+    [
+      'timed_out',
+      'approval_expired',
+      'Task timed out before a final reply was recorded.',
+    ],
+    [
+      'timed_out',
+      'brain_restart',
+      'Task timed out before a final reply was recorded.',
+    ],
   ])(
-    'states that no actions were recorded for a %s Run without tools',
+    'states that no actions were recorded for a %s Run (%s) without tools',
     async (durableRunStatus, terminalReason, title) => {
       const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
         onFacts({

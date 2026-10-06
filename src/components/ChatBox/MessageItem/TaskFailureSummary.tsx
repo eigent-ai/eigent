@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
+import type { DurableRunDisplayStatus } from '@/store/chatStore';
 import { ChevronDown, ChevronUp, CircleAlert } from 'lucide-react';
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -24,7 +25,14 @@ import { ToolInputOutputDetails } from './ToolInputOutputDetails';
 const MAX_RENDERED_ACTIONS = 100;
 
 /** A Task receipt, never an assistant message or an execution control. */
-export function TaskFailureSummary({ facts }: { facts?: TaskFailureFacts }) {
+export function TaskFailureSummary({
+  facts,
+  status,
+}: {
+  facts?: TaskFailureFacts;
+  /** What happened to the Run; its terminal reason only says why. */
+  status?: DurableRunDisplayStatus;
+}) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
@@ -40,7 +48,7 @@ export function TaskFailureSummary({ facts }: { facts?: TaskFailureFacts }) {
         <DsIcon icon={CircleAlert} recipe="main" />
         <DsText as="p" role="base" weight="medium">
           {t(
-            facts.terminalReason === 'deadline_exceeded'
+            status === 'timed_out'
               ? 'chat.task-failure-timed-out'
               : facts.finalResponse === 'absent'
                 ? 'chat.task-failure-confirmed'

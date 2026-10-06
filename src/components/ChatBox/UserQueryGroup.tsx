@@ -681,7 +681,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       })}
 
       {ownsFailureSummary ? (
-        <TaskFailureSummary key={activeTaskId} facts={failureFacts} />
+        <TaskFailureSummary
+          key={activeTaskId}
+          facts={failureFacts}
+          status={activeTask?.durableRunStatus}
+        />
       ) : null}
 
       {showMissingFinalResponse ? (
