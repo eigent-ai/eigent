@@ -704,6 +704,34 @@ describe('ChatBox timeline modes', () => {
     expect(view.getByText(detail)).toHaveClass('text-ds-ink-muted-default');
   });
 
+  it('names an earlier expiry of a timed-out Run without a Resume hint', () => {
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="trajectory"
+        runs={composeTimelineRuns([
+          {
+            ...base,
+            kind: 'run_status',
+            id: 'run-timed-out',
+            eventId: 'run-timed-out',
+            eventType: 'run.deadline_reached',
+            runSequence: 1,
+            createdAt: '2026-08-19T00:00:00Z',
+            status: 'timed_out',
+            terminalReason: 'approval_expired',
+            terminalDetail: 'approval_expired',
+          },
+        ])}
+      />
+    );
+    const view = within(container);
+    fireEvent.click(view.getByRole('button'));
+    expect(
+      view.getByText(i18next.t('chat.run-terminal-reason-approval_expired'))
+    ).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/resume/i);
+  });
+
   it('uses lightly tinted backgrounds with strong text for agent tags', () => {
     const agentNode: ChatProjectionNode = {
       ...base,

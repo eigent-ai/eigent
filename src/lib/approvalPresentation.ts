@@ -35,6 +35,8 @@ export function interruptedRunDescription(
 ): string {
   return [
     runTerminalReasonText(reason, t),
+    // Only a Run that can resume asks an expired request again.
+    reason === 'approval_expired' ? t('chat.run-resume-reevaluates-hint') : '',
     t('chat.run-interrupted-description'),
   ]
     .filter(Boolean)

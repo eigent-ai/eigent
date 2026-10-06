@@ -503,10 +503,11 @@
   "run-terminal-reason-completed": "작업이 완료되었습니다.",
   "run-terminal-reason-user_cancelled": "작업이 중지되었습니다.",
   "run-terminal-reason-deadline_exceeded": "작업이 시간 제한에 도달했습니다.",
-  "run-terminal-reason-approval_expired": "응답을 기다리던 요청이 응답을 받기 전에 만료되었습니다. 재개하면 남은 작업을 다시 평가하고 필요한 경우 다시 요청합니다.",
+  "run-terminal-reason-approval_expired": "응답을 기다리던 요청이 응답을 받기 전에 만료되었습니다.",
   "run-terminal-reason-brain_restart": "작업이 실행되는 동안 Eigent가 다시 시작되었습니다.",
   "run-terminal-reason-runtime_lost": "이 작업을 실행하던 프로세스가 예기치 않게 중지되었습니다.",
   "run-terminal-reason-error": "오류로 인해 작업이 중지되었습니다.",
   "run-terminal-reason-budget_exhausted": "작업이 사용 가능한 예산을 모두 소진했습니다.",
-  "tool-status-timed_out": "시간 초과"
+  "tool-status-timed_out": "시간 초과",
+  "run-resume-reevaluates-hint": "재개하면 남은 작업을 다시 평가하고 필요한 경우 다시 요청합니다."
 }

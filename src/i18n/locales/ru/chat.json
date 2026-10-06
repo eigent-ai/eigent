@@ -515,10 +515,11 @@
   "run-terminal-reason-completed": "Задача завершена.",
   "run-terminal-reason-user_cancelled": "Задача была остановлена.",
   "run-terminal-reason-deadline_exceeded": "Задача достигла лимита времени.",
-  "run-terminal-reason-approval_expired": "Срок запроса, ожидавшего вашего ответа, истёк до получения ответа. При возобновлении оставшаяся работа оценивается заново; при необходимости запрос повторяется.",
+  "run-terminal-reason-approval_expired": "Срок запроса, ожидавшего вашего ответа, истёк до получения ответа.",
   "run-terminal-reason-brain_restart": "Eigent перезапустился во время выполнения этой задачи.",
   "run-terminal-reason-runtime_lost": "Процесс, выполнявший эту задачу, неожиданно остановился.",
   "run-terminal-reason-error": "Задача остановлена из-за ошибки.",
   "run-terminal-reason-budget_exhausted": "Задача израсходовала доступный бюджет.",
-  "tool-status-timed_out": "Время ожидания истекло"
+  "tool-status-timed_out": "Время ожидания истекло",
+  "run-resume-reevaluates-hint": "При возобновлении оставшаяся работа оценивается заново; при необходимости запрос повторяется."
 }

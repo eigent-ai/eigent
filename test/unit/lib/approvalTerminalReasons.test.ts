@@ -132,15 +132,25 @@ describe('durable approval terminal reasons', () => {
     const generic = t('chat.run-interrupted-description');
     expect(interruptedRunDescription(null, t)).toBe(generic);
     for (const reason of RUN_TERMINAL_REASONS) {
+      if (reason === 'approval_expired') continue;
       expect(interruptedRunDescription(reason, t)).toBe(
         `${runTerminalReasonText(reason, t)} ${generic}`
       );
     }
-    expect(interruptedRunDescription('approval_expired', t)).toContain(
-      'asks again when needed'
-    );
     expect(approvalRecordedReason('worker_cancelled', t)).toBe(
       'Recorded reason: worker_cancelled'
+    );
+  });
+
+  it('offers the Resume hint for an expired request only while the Run can resume', () => {
+    const cause = runTerminalReasonText('approval_expired', t);
+    const hint = t('chat.run-resume-reevaluates-hint');
+    expect(hint).toContain('asks again when needed');
+    // The cause alone is what a timed-out Run shows wherever its reason appears.
+    expect(cause).not.toMatch(/resume/i);
+    // The interrupted banner, which offers Resume, adds the hint after it.
+    expect(interruptedRunDescription('approval_expired', t)).toBe(
+      `${cause} ${hint} ${t('chat.run-interrupted-description')}`
     );
   });
 

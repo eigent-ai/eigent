@@ -511,10 +511,11 @@
   "run-terminal-reason-completed": "L’attività è stata completata.",
   "run-terminal-reason-user_cancelled": "L’attività è stata interrotta.",
   "run-terminal-reason-deadline_exceeded": "L’attività ha raggiunto il limite di tempo.",
-  "run-terminal-reason-approval_expired": "Una richiesta in attesa della tua risposta è scaduta prima di riceverla. La ripresa rivaluta il lavoro rimanente e chiede di nuovo quando necessario.",
+  "run-terminal-reason-approval_expired": "Una richiesta in attesa della tua risposta è scaduta prima di riceverla.",
   "run-terminal-reason-brain_restart": "Eigent si è riavviato mentre questa attività era in esecuzione.",
   "run-terminal-reason-runtime_lost": "Il processo che eseguiva questa attività si è arrestato in modo imprevisto.",
   "run-terminal-reason-error": "L’attività si è interrotta a causa di un errore.",
   "run-terminal-reason-budget_exhausted": "L’attività ha esaurito il budget disponibile.",
-  "tool-status-timed_out": "Tempo scaduto"
+  "tool-status-timed_out": "Tempo scaduto",
+  "run-resume-reevaluates-hint": "La ripresa rivaluta il lavoro rimanente e chiede di nuovo quando necessario."
 }
