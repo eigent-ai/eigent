@@ -56,7 +56,7 @@ const t = i18next.t.bind(i18next);
 describe('durable approval terminal reasons', () => {
   it.each([
     ['approval.expired_rejected', 'tool_approval_expired', 'approval_expired'],
-    ['approval.cancelled', 'tool_terminal_before_dispatch', 'runtime_lost'],
+    ['approval.cancelled', 'tool_terminal_before_dispatch', 'error'],
   ])(
     'projects the recorded cause of %s and keeps its raw reason out of Normal copy',
     (type, reason, terminalReason) => {

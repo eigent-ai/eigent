@@ -619,7 +619,7 @@ describe('ChatBox timeline modes', () => {
 
   it.each([
     ['expired', 'approval_expired', 'approval_expired'],
-    ['cancelled', 'tool_terminal_before_dispatch', 'runtime_lost'],
+    ['cancelled', 'tool_terminal_before_dispatch', 'error'],
   ] as const)(
     'shows the closed cause and the recorded %s approval reason in expanded Detailed history',
     (status, reason, terminalReason) => {

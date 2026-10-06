@@ -175,7 +175,7 @@ _TERMINAL_REASON_BY_EVENT: Mapping[str, RunTerminalReason] = {
     "run.failed": RunTerminalReason.ERROR,
     "run.interrupted": RunTerminalReason.RUNTIME_LOST,
     "runtime.interrupted": RunTerminalReason.RUNTIME_LOST,
-    "approval.cancelled": RunTerminalReason.RUNTIME_LOST,
+    "approval.cancelled": RunTerminalReason.ERROR,
 }
 
 # A stop recorded after an earlier cause names that cause in its reason, such

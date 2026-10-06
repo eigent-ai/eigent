@@ -60,7 +60,7 @@ describe('local HumanInteraction API', () => {
         { approval_id: 'new', decision: { reason: 'approval_expired' } },
       ],
       attempts: [
-        { attempt_id: 'a-1', terminal_reason: 'runtime_lost' },
+        { attempt_id: 'a-1', terminal_reason: 'error' },
         { attempt_id: 'a-2', terminal_reason: 'approval_expired' },
       ],
     });
@@ -68,7 +68,7 @@ describe('local HumanInteraction API', () => {
     await expect(getHumanInteractionReceipt(interaction)).resolves.toEqual({
       status: 'cancelled',
       reason: 'tool_terminal_before_dispatch',
-      terminal_reason: 'runtime_lost',
+      terminal_reason: 'error',
     });
     fetchGetMock.mockResolvedValue({
       run_id: 'other',

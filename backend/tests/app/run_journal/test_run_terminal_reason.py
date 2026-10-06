@@ -26,7 +26,7 @@ from app.run_journal import (
     SQLiteRunJournal,
 )
 from app.run_journal.transitions import RunTerminalReason
-from app.run_policy import TimeoutOutcome, TimeoutScope
+from app.run_policy import TimeoutOutcome, TimeoutScope, ToolSafetyClass
 
 
 def started(journal, run_id="run-1", *, deadline_at=None):
@@ -374,6 +374,49 @@ def test_pending_cancel_beats_an_expiry_found_at_startup(tmp_path):
         assert stop(journal, attempt)[:2] == ("cancelled", "user_cancelled")
         assert journal.get_run_attempt(attempt.attempt_id).terminal_reason == (
             "user_cancelled"
+        )
+
+
+@pytest.mark.parametrize(
+    ("restart", "reason", "detail"),
+    [
+        (False, "error", "tool_terminal_before_dispatch"),
+        (True, "brain_restart", "brain_restart_before_dispatch"),
+    ],
+)
+def test_an_approval_closed_before_its_tool_dispatched_names_why(
+    tmp_path, restart, reason, detail
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt = started(journal)
+        tool = dict(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="send_message_to_user",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"message": "hello"},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=3, **tool)
+        journal.create_approval(
+            approval_id="approval:tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow message?"},
+            now=4,
+        )
+        if restart:
+            journal.reconcile_startup(now=5)
+        else:
+            journal.checkpoint_tool_call(
+                status="failed", outcome="failed", now=5, **tool
+            )
+
+        assert stop(journal, attempt) == (
+            "interrupted",
+            reason,
+            detail,
+            reason,
         )
 
 

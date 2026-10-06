@@ -380,13 +380,13 @@ describe('HumanInteractionCard', () => {
     mocks.getHumanInteractionReceipt.mockResolvedValue({
       status: 'cancelled',
       reason: 'tool_terminal_before_dispatch',
-      terminal_reason: 'runtime_lost',
+      terminal_reason: 'error',
     });
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
     });
     expect(
-      screen.getByText(i18next.t('chat.run-terminal-reason-runtime_lost'))
+      screen.getByText(i18next.t('chat.run-terminal-reason-error'))
     ).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
   });
@@ -492,12 +492,12 @@ describe('HumanInteractionCard', () => {
     mocks.getHumanInteractionReceipt.mockResolvedValue({
       status: 'cancelled',
       reason: 'tool_terminal_before_dispatch',
-      terminal_reason: 'runtime_lost',
+      terminal_reason: 'error',
     });
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
     });
-    const reason = i18next.t('chat.run-terminal-reason-runtime_lost');
+    const reason = i18next.t('chat.run-terminal-reason-error');
     expect(screen.getByText(reason)).toBeInTheDocument();
     for (const receipt of [
       { status: 'cancelled', terminal_reason: null },
