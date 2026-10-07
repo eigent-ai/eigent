@@ -14,7 +14,6 @@
 
 import {
   fetchDelete,
-  fetchGet,
   fetchPost,
   proxyFetchDelete,
   proxyFetchGet,
@@ -36,6 +35,7 @@ import {
 } from '@/lib/approvalPresentation';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
+import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
 import { notifyError } from '@/lib/notifyError';
 import {
   isProjectAchieved,
@@ -1363,12 +1363,14 @@ function LegacyChatBox(): JSX.Element {
         const queuedFiles = queuedAttaches || [];
         const draftStore = projectStore.getActiveChatStore();
         await waitForPendingStaleRuntimeEviction(targetProjectId);
-        const backendStatus = startsAfterInterruption
-          ? { consumer_alive: false }
-          : await fetchGet(
-              `/chat/${encodeURIComponent(targetProjectId)}/status`
+        const admissionMode = startsAfterInterruption
+          ? 'cold'
+          : await prepareFollowUpAdmission(
+              targetProjectId,
+              projectStore.getProjectById(targetProjectId)
             );
-        if (backendStatus?.consumer_alive) {
+        if (admissionMode !== 'cold') {
+          // A busy consumer still takes the follow-up on its queue, as before.
           chatStore.setNextTaskId(queuedRequestId);
           chatStore.setNextExecutionId(_taskId, undefined);
           await fetchPost(`/chat/${targetProjectId}`, {
@@ -1385,10 +1387,11 @@ function LegacyChatBox(): JSX.Element {
           // the legacy projection and RunDomainEventHub owns the event-native
           // projection. Writing here as well renders the queued prompt twice.
         } else {
-          // Brain restart removes the warm compatibility consumer.  A queued
-          // instruction is still a normal new Run, so start it through the
-          // cold admission path with its durable request id instead of
-          // retrying /chat/{project} forever.
+          // Brain restart removes the warm compatibility consumer, and the
+          // admission decision retires one whose stream this window no longer
+          // holds. A queued instruction is still a normal new Run, so start it
+          // through the cold admission path with its durable request id
+          // instead of retrying /chat/{project} forever.
           const admission = chatStore.startTask(
             queuedRequestId,
             undefined,
@@ -1677,14 +1680,17 @@ function LegacyChatBox(): JSX.Element {
                 sourceStore.getState().setAttaches(_taskId, []);
             };
             await waitForPendingStaleRuntimeEviction(targetProjectId);
-            const backendStatus = await fetchGet(
-              `/chat/${encodeURIComponent(targetProjectId)}/status`
+            const admissionMode = await prepareFollowUpAdmission(
+              targetProjectId,
+              projectStore.getProjectById(targetProjectId)
             );
 
-            if (!backendStatus?.consumer_alive) {
+            if (admissionMode === 'cold') {
               // A stale-runtime transition may have retired the completed warm
-              // consumer while this Project was being reactivated. Admit the
-              // follow-up as a cold Run instead of posting to a dead queue.
+              // consumer while this Project was being reactivated, or this
+              // window lost its stream and the admission decision retired it.
+              // Admit the follow-up as a cold Run instead of posting to a
+              // queue that nobody observes.
               ensureActiveProjectMode();
               const admission = chatStore.startTask(
                 nextTaskId,
@@ -1712,7 +1718,8 @@ function LegacyChatBox(): JSX.Element {
               messageAccepted = true;
               clearOwnedComposer();
             } else {
-              // A normal warm follow-up is a new durable Run. Seed it before
+              // A normal warm follow-up is a new durable Run (a busy consumer
+              // still takes it on its queue, as before). Seed it before
               // admission so its pending work is visible immediately.
               chatStore.setNextTaskId(nextTaskId);
               chatStore.setNextExecutionId(_taskId as string, executionId);

@@ -133,6 +133,7 @@ export function FilePreview({
     file?.relativePath,
     file?.artifactId,
     file?.isRemote,
+    file?.localPathAvailable,
     file?.assetRef?.chatFileId,
     loadFileContent,
   ]);
