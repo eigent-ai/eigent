@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('worker model configuration identity', () => {
   it('keeps credentials with the exact saved record when names repeat', () => {
-    const first = workerModelOption(
+    const records = [
       {
         id: 11,
         provider_name: 'openai',
@@ -25,9 +25,6 @@ describe('worker model configuration identity', () => {
         api_key: 'first',
         endpoint_url: '',
       },
-      'OpenAI'
-    );
-    const second = workerModelOption(
       {
         id: 12,
         provider_name: 'openai',
@@ -35,12 +32,28 @@ describe('worker model configuration identity', () => {
         api_key: 'second',
         endpoint_url: '',
       },
-      'OpenAI'
+    ];
+    const [first, second] = records.map((record) =>
+      workerModelOption(record, 'OpenAI', records)
     );
     expect(first.value).toBe('provider:11');
     expect(second.value).toBe('provider:12');
-    expect(first.label).not.toBe(second.label);
+    expect(first.label).toBe('OpenAI (gpt-5) · …irst');
+    expect(second.label).toBe('OpenAI (gpt-5) · …cond');
     expect(first.api_key).toBe('first');
     expect(second.api_key).toBe('second');
+  });
+
+  it('labels a unique configuration without a hint', () => {
+    const record = {
+      id: 11,
+      provider_name: 'openai',
+      model_type: 'gpt-5',
+      api_key: 'first',
+      endpoint_url: '',
+    };
+    expect(workerModelOption(record, 'OpenAI', [record]).label).toBe(
+      'OpenAI (gpt-5)'
+    );
   });
 });

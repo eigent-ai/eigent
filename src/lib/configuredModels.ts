@@ -88,6 +88,51 @@ export function selectableConfiguredModels({
   ];
 }
 
+const UNSET_KEYS = new Set(['', 'not-required']);
+
+function endpointHost(endpoint: string) {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return endpoint.trim();
+  }
+}
+
+function keySuffix(apiKey: string) {
+  const key = apiKey.trim();
+  return UNSET_KEYS.has(key) ? '' : key.slice(-4);
+}
+
+/**
+ * Tells a record apart from saved records with the same provider and model:
+ * its endpoint host, else its key suffix, else its ID. Empty when unique.
+ */
+export function configurationHint(
+  record: ConfiguredProvider,
+  records: ConfiguredProvider[]
+): string {
+  const twins = records.filter(
+    (other) =>
+      other.id !== record.id &&
+      other.provider_name === record.provider_name &&
+      other.model_type === record.model_type
+  );
+  if (!twins.length) return '';
+  const host = endpointHost(record.endpoint_url ?? '');
+  if (
+    host &&
+    twins.every((other) => endpointHost(other.endpoint_url ?? '') !== host)
+  )
+    return host;
+  const suffix = keySuffix(record.api_key ?? '');
+  if (
+    suffix &&
+    twins.every((other) => keySuffix(other.api_key ?? '') !== suffix)
+  )
+    return `…${suffix}`;
+  return `#${record.id}`;
+}
+
 export const MODEL_CONFIGURATIONS_CHANGED =
   'eigent:model-configurations-changed';
 export function notifyModelConfigurationsChanged() {

@@ -43,6 +43,7 @@ import {
   isCloudModelAvailable,
 } from '@/lib/cloudModelAvailability';
 import {
+  configurationHint,
   modelProviders,
   notifyModelConfigurationsChanged,
   providerCategory,
@@ -240,8 +241,14 @@ function ModelsContent() {
   const selectedDefaultOption = defaultModelOptions.find(
     (option) => option.id === selectedDefaultValue
   );
+  const optionHint = (option: (typeof defaultModelOptions)[number]) =>
+    'record' in option
+      ? configurationHint(option.record, inventory.records)
+      : '';
   const selectedDefaultLabel = selectedDefaultOption
-    ? selectedDefaultOption.name
+    ? [selectedDefaultOption.name, optionHint(selectedDefaultOption)]
+        .filter(Boolean)
+        .join(' · ')
     : t('setting.select-default-model');
   const defaultModelGroups = [
     ...new Set(defaultModelOptions.map((option) => option.group)),
@@ -592,30 +599,38 @@ function ModelsContent() {
                                 </DropdownMenuLabel>
                                 {defaultModelOptions
                                   .filter((option) => option.group === group)
-                                  .map((option) => (
-                                    <DropdownMenuItem
-                                      key={option.id}
-                                      role="menuitemradio"
-                                      aria-checked={
-                                        selectedDefaultValue === option.id
-                                      }
-                                      className="h-8 cursor-pointer"
-                                      disabled={busy}
-                                      onSelect={() =>
-                                        void chooseDefault(option.id)
-                                      }
-                                    >
-                                      <span className="min-w-0 flex-1 truncate">
-                                        {option.name}
-                                      </span>
-                                      {selectedDefaultValue === option.id && (
-                                        <DsIcon
-                                          icon={Check}
-                                          className="text-ds-accent-default-default"
-                                        />
-                                      )}
-                                    </DropdownMenuItem>
-                                  ))}
+                                  .map((option) => {
+                                    const hint = optionHint(option);
+                                    return (
+                                      <DropdownMenuItem
+                                        key={option.id}
+                                        role="menuitemradio"
+                                        aria-checked={
+                                          selectedDefaultValue === option.id
+                                        }
+                                        className="h-8 cursor-pointer"
+                                        disabled={busy}
+                                        onSelect={() =>
+                                          void chooseDefault(option.id)
+                                        }
+                                      >
+                                        <span className="min-w-0 flex-1 truncate">
+                                          {option.name}
+                                          {hint && (
+                                            <span className="text-ds-ink-muted-default">
+                                              {` · ${hint}`}
+                                            </span>
+                                          )}
+                                        </span>
+                                        {selectedDefaultValue === option.id && (
+                                          <DsIcon
+                                            icon={Check}
+                                            className="text-ds-accent-default-default"
+                                          />
+                                        )}
+                                      </DropdownMenuItem>
+                                    );
+                                  })}
                               </DropdownMenuGroup>
                             </div>
                           );
@@ -932,6 +947,10 @@ function ModelsContent() {
                       ) : (
                         records.map((record) => {
                           const configured = getProviderValid(record);
+                          const hint = configurationHint(
+                            record,
+                            inventory.records
+                          );
                           return (
                             <div key={record.id} className={modelRowClass}>
                               <DsText
@@ -939,6 +958,11 @@ function ModelsContent() {
                                 className={modelNameClass(configured)}
                               >
                                 {record.model_type}
+                                {hint && (
+                                  <span className="font-normal text-ds-ink-muted-default">
+                                    {` · ${hint}`}
+                                  </span>
+                                )}
                               </DsText>
                               {isDefault(record) && badge}
                               {modelStatus(configured)}

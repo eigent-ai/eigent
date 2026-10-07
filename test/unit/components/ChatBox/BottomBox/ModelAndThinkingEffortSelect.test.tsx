@@ -349,6 +349,34 @@ describe('Configured model input menu', () => {
       expect(marker).not.toHaveClass('bg-ds-ink-inverse');
     });
   });
+  it('tells repeated configurations of one model apart', async () => {
+    mocks.get.mockResolvedValue({
+      items: [
+        ...records,
+        {
+          id: 5,
+          provider_name: 'openai',
+          model_type: 'personal-model',
+          api_key: 'test-c',
+          is_valid: 2,
+        },
+      ],
+    });
+    render(<ModelAndThinkingEffortSelect thinkingEffort={undefined} />);
+    const user = await openRoot();
+    await user.hover(screen.getByRole('menuitem', { name: 'GPT' }));
+    expect(
+      await screen.findByRole('menuitemradio', {
+        name: 'personal-model · …st-b',
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitemradio', { name: 'personal-model · …st-c' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitemradio', { name: 'work-model' })
+    ).toBeInTheDocument();
+  });
   it('checks only the pinned record when the provider has several configurations', async () => {
     mocks.selection = {
       modelType: 'custom',

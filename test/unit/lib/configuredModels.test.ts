@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  configurationHint,
   fetchConfiguredProviders,
   selectableConfiguredModels,
   setConfiguredProviderDefault,
@@ -105,6 +106,28 @@ describe('Configured model identity', () => {
       'provider:11',
       'provider:12',
     ]);
+  });
+
+  it('names what sets repeated configurations apart', () => {
+    const record = (id: number, endpoint_url: string, api_key: string) => ({
+      id,
+      provider_name: 'openai',
+      model_type: 'gpt-5',
+      api_key,
+      endpoint_url,
+    });
+    const work = record(11, 'https://work.example.test/v1', 'sk-work-1111');
+    const personal = record(12, 'https://api.example.test/v1', 'sk-home-2222');
+    const backup = record(13, 'https://api.example.test/v1', 'sk-back-3333');
+    const keyless = record(14, 'https://api.example.test/v1', 'not-required');
+    const other = { ...work, id: 15, model_type: 'gpt-4.1' };
+    const records = [work, personal, backup, other];
+
+    expect(configurationHint(other, records)).toBe('');
+    expect(configurationHint(work, records)).toBe('work.example.test');
+    expect(configurationHint(personal, records)).toBe('…2222');
+    expect(configurationHint(backup, records)).toBe('…3333');
+    expect(configurationHint(keyless, [personal, keyless])).toBe('#14');
   });
   it('excludes paid Eigent choices until the account plan is known', () => {
     const choices = selectableConfiguredModels({

@@ -29,6 +29,7 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
 import {
+  configurationHint,
   providerCategory,
   providerDefinition,
   selectableConfiguredModels,
@@ -71,6 +72,7 @@ type Selection = {
 type Option = {
   id: string;
   name: string;
+  detail: string;
   group: string;
   selection: Selection;
 };
@@ -303,14 +305,22 @@ export function ModelAndThinkingEffortSelect({
       : selection.modelType === 'codex_subscription'
         ? 'codex'
         : `provider:${selection.provider_id}`;
+  const selectedRecord = inventory.records.find(
+    (record) => record.id === selection.provider_id
+  );
   const selectedName =
     selection.modelType === 'cloud'
       ? getCloudName(selection.cloud_model_type ?? '')
       : selection.modelType === 'codex_subscription'
         ? selection.codex_model_type
-        : (inventory.records.find(
-            (record) => record.id === selection.provider_id
-          )?.model_type ?? selection.model_type);
+        : selectedRecord
+          ? [
+              selectedRecord.model_type,
+              configurationHint(selectedRecord, inventory.records),
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : selection.model_type;
   const effortLabel = t(
     thinkingEffort === undefined
       ? 'setting.default'
@@ -327,6 +337,10 @@ export function ModelAndThinkingEffortSelect({
   }).map((option) => ({
     id: option.id,
     name: option.name,
+    detail:
+      'record' in option
+        ? configurationHint(option.record, inventory.records)
+        : '',
     group: option.group,
     selection:
       'cloudModel' in option
@@ -524,6 +538,11 @@ export function ModelAndThinkingEffortSelect({
                               className="min-w-0 flex-1 truncate"
                             >
                               {option.name}
+                              {option.detail && (
+                                <span className="text-ds-ink-muted-default">
+                                  {` · ${option.detail}`}
+                                </span>
+                              )}
                             </DsText>
                             {selectedId === option.id && (
                               <DsIcon

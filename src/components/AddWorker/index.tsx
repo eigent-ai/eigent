@@ -162,13 +162,16 @@ export function AddWorker({
 
     const nextCustomOptions = records
       .filter((provider) => customProviderIds.has(provider.provider_name))
-      .map((provider) => workerModelOption(provider, provider.provider_name));
+      .map((provider) =>
+        workerModelOption(provider, provider.provider_name, records)
+      );
     const nextLocalOptions = records
       .filter((provider) => localProviderIds.has(provider.provider_name))
       .map((provider) =>
         workerModelOption(
           provider,
-          getLocalPlatformName(provider.provider_name)
+          getLocalPlatformName(provider.provider_name),
+          records
         )
       );
 

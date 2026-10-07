@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { ConfiguredProvider } from '@/lib/configuredModels';
+import {
+  configurationHint,
+  type ConfiguredProvider,
+} from '@/lib/configuredModels';
 import {
   type AgentModelConfigSource,
   buildAgentModelConfigFromProvider,
@@ -27,13 +30,15 @@ export interface WorkerModelOption extends AgentModelConfigSource {
 /** The saved record ID keeps same-name configurations and credentials distinct. */
 export function workerModelOption(
   provider: ConfiguredProvider,
-  platformLabel: string
+  platformLabel: string,
+  records: ConfiguredProvider[]
 ): WorkerModelOption {
   const config = buildAgentModelConfigFromProvider(provider);
   const modelType = config.model_type || '';
+  const hint = configurationHint(provider, records);
   return {
     value: `provider:${provider.id}`,
-    label: `${platformLabel}${modelType ? ` (${modelType})` : ''} · #${provider.id}`,
+    label: `${platformLabel}${modelType ? ` (${modelType})` : ''}${hint ? ` · ${hint}` : ''}`,
     model_platform: config.model_platform,
     model_type: modelType,
     provider_id: provider.id,
