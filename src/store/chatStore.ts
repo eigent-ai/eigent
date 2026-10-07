@@ -1588,6 +1588,20 @@ function markSSEConnectionIdleForTask(
   }
 }
 
+/**
+ * A Run that finishes while its Session is in the background has nothing more
+ * to render on its idle stream. Release it now instead of at the next Session
+ * switch, so finished background Runs do not hold the renderer's connections.
+ */
+function reclaimIdleStreamInBackground(projectId: string): void {
+  const projectState = useProjectStore.getState();
+  if (projectState.activeProjectId === projectId) return;
+  // Partial Project store doubles may omit this action.
+  projectState.reclaimIdleStreams?.(projectState.activeProjectId ?? null, [
+    projectId,
+  ]);
+}
+
 function cleanupTaskSSEResources(
   taskId: string,
   { abort = true }: { abort?: boolean } = {}
@@ -3936,6 +3950,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // ownership, in which case the guarded idle transition is a
             // no-op but this terminal observer is still finished.
             binding.dispose();
+            reclaimIdleStreamInBackground(project_id);
           } else {
             binding.dispose();
             cleanupSSEConnection(sseConnection);
@@ -6707,6 +6722,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // await below. A following NEW_TASK_STATE can then reactivate and
             // transfer ownership without a resumed END handler undoing it.
             markSSEConnectionIdleForTask(sseConnection, currentTaskId);
+            if (!type && project_id) reclaimIdleStreamInBackground(project_id);
 
             // Finish the local UI projection before any cloud upload or
             // history request. Camel-log and generated-file uploads can take
