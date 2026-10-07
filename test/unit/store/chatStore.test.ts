@@ -161,6 +161,7 @@ import {
   waitForBackendReady,
 } from '@/api/http';
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
+import { RUN_STREAM_REOPENED_EVENT } from '@/lib/events/durableRunEvents';
 import { selectRenderableChatNodes } from '@/lib/projector/chat';
 import {
   composeTimelineRuns,
@@ -4126,6 +4127,26 @@ describe('ChatStore - Core Functionality', () => {
         );
         expect(signal.aborted).toBe(true);
         expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
+      it('announces a reopened legacy stream so waiting requests re-check Brain', async () => {
+        const reopened = vi.fn();
+        const listener = (event: Event) =>
+          reopened((event as CustomEvent).detail);
+        window.addEventListener(RUN_STREAM_REOPENED_EVENT, listener);
+        try {
+          const { streamContaining } = await startObservedLiveTask();
+          expect(reopened).not.toHaveBeenCalled();
+          await streamContaining('/chat').onopen?.(
+            new Response('', {
+              status: 200,
+              headers: { 'content-type': 'text/event-stream' },
+            })
+          );
+          expect(reopened).toHaveBeenCalledWith({ runId: 'live-run' });
+        } finally {
+          window.removeEventListener(RUN_STREAM_REOPENED_EVENT, listener);
+        }
       });
 
       it.each(['event', 'snapshot'] as const)(

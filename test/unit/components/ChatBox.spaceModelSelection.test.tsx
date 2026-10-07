@@ -25,6 +25,7 @@ import {
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
 import { listControlOperations } from '@/service/controlOperations';
+import { CONTROL_REQUEST_TIMEOUT_MS } from '@/service/controlRequest';
 import { closeSSEConnectionsForTasks, useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import {
@@ -1875,10 +1876,13 @@ describe('ChatBox after an accepted Space model selection', () => {
     });
     const view = await renderChat();
     await waitFor(() => expect(pendingReads).toHaveBeenCalled());
-    await act(async () => undefined);
-    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    // An unanswered check is not a settled approval: it stays visible but
+    // cannot be decided until Brain confirms it.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
+    );
 
-    // The first check failed; returning to the window retries it.
+    // Returning to the window retries the failed check at once.
     pending = 'pending';
     act(() => {
       window.dispatchEvent(new Event('focus'));
@@ -1910,6 +1914,72 @@ describe('ChatBox after an accepted Space model selection', () => {
       'backend-ready',
       listeners.get('backend-ready')
     );
+  });
+
+  it('retries an unanswered approval check until Brain confirms it without a focus event', async () => {
+    mocks.host = {
+      electronAPI: {},
+      ipcRenderer: { on: vi.fn(), off: vi.fn() },
+    };
+    await acceptInitialSpaceRun();
+    const taskId = chat.getState().activeTaskId!;
+    chat.getState().setStatus(taskId, 'running');
+    chat.getState().setActiveAsk(taskId, 'synthetic-agent');
+    chat.getState().addMessages(taskId, {
+      id: 'approval-ask',
+      role: 'agent',
+      content: 'Allow write?',
+      step: AgentStep.ASK,
+      interaction: {
+        interaction_id: 'approval-1',
+        interaction_type: 'approval',
+        run_id: taskId,
+        version: 0,
+        question: 'Allow write?',
+      },
+    });
+    const localGet = mocks.localGet.getMockImplementation()!;
+    const pendingReads = vi.fn();
+    mocks.localGet.mockImplementation((url, ...args) => {
+      if (!url.endsWith('/interactions?status=pending'))
+        return localGet(url, ...args);
+      pendingReads();
+      // With every connection to Brain busy, the first read never completes.
+      return pendingReads.mock.calls.length === 1
+        ? new Promise(() => {})
+        : Promise.resolve({
+            interactions: [
+              { interaction_id: 'approval-1', status: 'requested', version: 0 },
+            ],
+          });
+    });
+    vi.useFakeTimers();
+    render(
+      <MemoryRouter>
+        <ChatBox />
+      </MemoryRouter>
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(pendingReads).toHaveBeenCalledTimes(1);
+    expect(mocks.variant?.kind).not.toBe('approval');
+
+    // The bounded read gives up without an answer: the outcome is unknown,
+    // not "no longer pending", so the card is shown but cannot be decided.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CONTROL_REQUEST_TIMEOUT_MS);
+    });
+    expect(mocks.variant).toMatchObject({ kind: 'approval', disabled: true });
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(pendingReads).toHaveBeenCalledTimes(2);
+    expect(mocks.variant?.kind).toBe('approval');
+    expect(mocks.variant.disabled).toBeFalsy();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
   });
 
   it('decides whether an approval is live from the canonical Run, not stale task status', async () => {

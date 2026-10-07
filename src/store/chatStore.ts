@@ -43,7 +43,10 @@ import {
   recordTaskStopped,
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
-import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
+import {
+  notifyDurableRunStatusChanged,
+  notifyRunStreamReopened,
+} from '@/lib/events/durableRunEvents';
 import { createLocalError } from '@/lib/localError';
 import {
   resolveSourceEventId,
@@ -7194,7 +7197,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             throw error;
           }
           const firstOpen = !resumeStreamOpened;
-          if (resumeStreamOpened) reconcileStreamRun();
+          if (resumeStreamOpened) {
+            reconcileStreamRun();
+            // Let waiting cards re-check Brain now instead of at their backoff.
+            notifyRunStreamReopened(lockedTaskId);
+          }
           if (commitSpaceModelPin) {
             try {
               commitSpaceModelPin();

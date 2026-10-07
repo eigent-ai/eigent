@@ -35,6 +35,7 @@ import {
   isHumanInteractionReadOnly,
 } from '@/lib/approvalPresentation';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
 import { notifyError } from '@/lib/notifyError';
 import {
   isProjectAchieved,
@@ -71,6 +72,7 @@ import {
 } from '@/service/humanInteractionApi';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import { reconcileHumanInteractionEvents } from '@/service/humanInteractionEventReconciliation';
+import { watchHumanInteractionPending } from '@/service/humanInteractionPendingCheck';
 import { cancelProjectRun } from '@/service/projectRunsApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
@@ -646,10 +648,15 @@ function LegacyChatBox(): JSX.Element {
         activeAskTask?.durableRunStatus
       ),
     });
-  const [verifiedLegacyApproval, setVerifiedLegacyApproval] =
-    useState<string>();
+  // Brain confirms that an approval is still pending before it is offered.
+  // `null` means Brain has not answered (the read failed or timed out): the
+  // card stays visible but disabled while the check is retried.
+  const [legacyApprovalCheck, setLegacyApprovalCheck] = useState<{
+    key: string;
+    pending: boolean | null;
+  }>();
   useEffect(() => {
-    setVerifiedLegacyApproval(undefined);
+    setLegacyApprovalCheck(undefined);
     if (
       !activeInteraction ||
       activeInteraction.interaction_type !== 'approval' ||
@@ -657,32 +664,22 @@ function LegacyChatBox(): JSX.Element {
       activeInteractionReadOnly
     )
       return;
-    let cancelled = false;
-    let checkNumber = 0;
-    const validatePending = () => {
-      const currentCheck = ++checkNumber;
-      void isHumanInteractionStillPending(activeInteraction)
-        .then((pending) => {
-          if (!cancelled && currentCheck === checkNumber)
-            setVerifiedLegacyApproval(
-              pending ? legacyControlViewKey : undefined
-            );
-        })
-        .catch(() => {
-          /* Keep controls unavailable until a lifecycle recovery retries. */
-        });
-    };
-    const revalidatePending = () => {
-      invalidatePendingHumanInteractions(activeInteraction.run_id);
-      validatePending();
-    };
-    validatePending();
-    window.addEventListener('focus', revalidatePending);
-    host?.ipcRenderer?.on('backend-ready', revalidatePending);
+    const pendingWatch = watchHumanInteractionPending(
+      activeInteraction,
+      (pending) =>
+        setLegacyApprovalCheck({ key: legacyControlViewKey, pending })
+    );
+    const stopStreamWatch = onRunStreamReopened(
+      activeInteraction.run_id,
+      pendingWatch.recheck
+    );
+    window.addEventListener('focus', pendingWatch.recheck);
+    host?.ipcRenderer?.on('backend-ready', pendingWatch.recheck);
     return () => {
-      cancelled = true;
-      window.removeEventListener('focus', revalidatePending);
-      host?.ipcRenderer?.off('backend-ready', revalidatePending);
+      pendingWatch.dispose();
+      stopStreamWatch();
+      window.removeEventListener('focus', pendingWatch.recheck);
+      host?.ipcRenderer?.off('backend-ready', pendingWatch.recheck);
     };
   }, [
     legacyControlViewKey,
@@ -691,15 +688,22 @@ function LegacyChatBox(): JSX.Element {
     legacyInteractionExpired,
     host?.ipcRenderer,
   ]);
-  const isInteractiveHumanReply =
-    (activeInteraction?.interaction_type !== 'approval' ||
-      verifiedLegacyApproval === legacyControlViewKey) &&
+  const legacyApprovalPending =
+    legacyApprovalCheck?.key === legacyControlViewKey
+      ? legacyApprovalCheck.pending
+      : undefined;
+  const isLegacyApproval = activeInteraction?.interaction_type === 'approval';
+  const canAnswerActiveAsk =
     !legacyInteractionExpired &&
     !activeInteractionReadOnly &&
     !!activeAskTask &&
     activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
     activeAskTask.status !== ChatTaskStatus.FINISHED;
+  const isInteractiveHumanReply =
+    canAnswerActiveAsk && (!isLegacyApproval || legacyApprovalPending === true);
+  const isLegacyApprovalUnconfirmed =
+    canAnswerActiveAsk && isLegacyApproval && legacyApprovalPending === null;
   const [legacyApprovalSubmitting, setLegacyApprovalSubmitting] =
     useState(false);
 
@@ -739,7 +743,7 @@ function LegacyChatBox(): JSX.Element {
       const isPending = await isHumanInteractionStillPending(interaction);
       if (!isCurrent()) return;
       if (!isPending) {
-        setVerifiedLegacyApproval(undefined);
+        setLegacyApprovalCheck({ key: legacyControlViewKey, pending: false });
         await refreshInterruptedRun();
         return;
       }
@@ -2698,7 +2702,9 @@ function LegacyChatBox(): JSX.Element {
   }
 
   const legacyApprovalVariant =
-    activeAsk && isInteractiveHumanReply && activeAskMessage
+    activeAsk &&
+    (isInteractiveHumanReply || isLegacyApprovalUnconfirmed) &&
+    activeAskMessage
       ? createLegacyApprovalVariant({
           interaction: activeInteraction,
           fallbackQuestion: activeAskMessage.content.trim(),
@@ -2711,12 +2717,13 @@ function LegacyChatBox(): JSX.Element {
       : null;
   if (
     legacyApprovalVariant &&
-    controlOperations.some(
-      (op) =>
-        op.kind === 'interaction' &&
-        op.runId === activeInteraction?.run_id &&
-        op.interactionId === activeInteraction?.interaction_id
-    )
+    (isLegacyApprovalUnconfirmed ||
+      controlOperations.some(
+        (op) =>
+          op.kind === 'interaction' &&
+          op.runId === activeInteraction?.run_id &&
+          op.interactionId === activeInteraction?.interaction_id
+      ))
   ) {
     legacyApprovalVariant.disabled = true;
   }
