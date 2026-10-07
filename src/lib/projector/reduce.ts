@@ -19,6 +19,7 @@ import type {
   ProjectedArtifact,
   ProjectedLegacyStep,
   ProjectedRun,
+  ProjectedWriterWait,
   ProjectorMode,
   ProjectViewState,
 } from './types';
@@ -325,6 +326,22 @@ export function completeProjectViewResync(
   };
 }
 
+/** Read why a `workspace.writer.queued` Run cannot start writing yet. */
+export function projectWriterWait(
+  payload: Record<string, unknown>
+): ProjectedWriterWait {
+  const semantic = payload.semantic as Record<string, unknown> | undefined;
+  const correlation = semantic?.correlation as
+    Record<string, unknown> | undefined;
+  const blockerProjectId = correlation?.blocker_project_id;
+  return {
+    holderNeedsAttention: payload.reason === 'holder_requires_attention',
+    ...(typeof blockerProjectId === 'string' && blockerProjectId
+      ? { blockerProjectId }
+      : {}),
+  };
+}
+
 /** Update Run facts only; callers own event acceptance and history cursors. */
 export function reduceProjectedRun(
   previousRun: ProjectedRun | undefined,
@@ -436,6 +453,15 @@ export function reduceProjectedRun(
         : event.createdAt,
     origin: previousRun?.origin ?? event.origin ?? null,
     resumeBlockedReason: previousRun?.resumeBlockedReason ?? null,
+    // The latest writer fact wins: queued names the wait, any other ends it.
+    ...(event.eventType.startsWith('workspace.writer.')
+      ? {
+          writerWait:
+            event.eventType === 'workspace.writer.queued'
+              ? projectWriterWait(event.payload)
+              : null,
+        }
+      : {}),
   };
 }
 

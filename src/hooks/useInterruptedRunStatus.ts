@@ -15,7 +15,10 @@
 import { useHost } from '@/host';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
-import type { ProjectedRun } from '@/lib/projector';
+import type {
+  ProjectedRun,
+  ProjectedUnsafeResumeBlocker,
+} from '@/lib/projector';
 import {
   runEventIngressRegistry,
   runProjectionStore,
@@ -51,6 +54,8 @@ export interface DurableRunSummary {
     status: string;
     resume_request_id?: string;
   } | null;
+  /** Tool calls with unknown outcomes; Resume is refused while any remain. */
+  unsafeResumeBlockers?: ProjectedUnsafeResumeBlocker[];
 }
 
 type RunsByProject = Record<string, DurableRunSummary | null>;
@@ -99,6 +104,7 @@ function projectedRunToDurableSummary(
     origin: run.origin ?? undefined,
     resume_blocked_reason: run.resumeBlockedReason,
     terminalReason: run.terminalReason,
+    unsafeResumeBlockers: run.unsafeResumeBlockers,
     latest_attempt: run.latestAttempt
       ? {
           attempt_number: run.latestAttempt.attemptNumber,

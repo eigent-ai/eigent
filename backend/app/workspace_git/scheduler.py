@@ -259,7 +259,7 @@ class WorkspaceWriterScheduler:
         run_id: str,
         request: WorkspaceWriterRequestRecord,
     ) -> None:
-        """Tell a waiter its holder keeps the lease until the user acts."""
+        """Tell a waiter which holder keeps the lease until the user acts."""
 
         lease = self.journal.get_workspace_writer_lease(
             repository_id=request.repository_id,
@@ -267,12 +267,20 @@ class WorkspaceWriterScheduler:
         )
         if lease is None or lease.task_id != request.blocker_task_id:
             return
+        holder = self.journal.get_workspace_writer_request(lease.request_id)
+        attention = self.journal.workspace_writer_attention_reason(
+            lease.request_id
+        )
+        if holder is None or attention is None:
+            return
         self._record_state(
             run_id,
             request,
             event_type="workspace.writer.queued",
             reason="holder_requires_attention",
             blocker_run_id=self.run_id_from_request_id(lease.request_id),
+            blocker_project_id=holder.project_id,
+            blocker_reason=attention,
         )
 
     def reconcile_orphaned_admissions(
@@ -448,6 +456,8 @@ class WorkspaceWriterScheduler:
         event_type: str,
         reason: str | None = None,
         blocker_run_id: str | None = None,
+        blocker_project_id: str | None = None,
+        blocker_reason: str | None = None,
     ) -> None:
         waited = (
             request.acquired_at is not None
@@ -471,7 +481,11 @@ class WorkspaceWriterScheduler:
             else ""
         )
         # A waiter can learn why its blocker stays without moving in FIFO.
-        refinement = f":{reason}:{blocker_run_id}" if reason else ""
+        # The blocker reason is part of the id: a holder can need attention
+        # for another reason later, and an id never carries another payload.
+        refinement = (
+            f":{reason}:{blocker_run_id}:{blocker_reason}" if reason else ""
+        )
         self.journal.append_event(
             run_id,
             RunEventDraft(
@@ -505,6 +519,8 @@ class WorkspaceWriterScheduler:
                             "project_id": request.project_id,
                             "checkout_id": request.checkout_id,
                             "blocker_run_id": blocker_run_id,
+                            "blocker_project_id": blocker_project_id,
+                            "blocker_reason": blocker_reason,
                         },
                     ),
                     "request_id": request.request_id,

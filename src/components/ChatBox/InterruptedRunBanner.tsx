@@ -31,6 +31,8 @@ interface InterruptedRunBannerProps {
   compact?: boolean;
   readOnly?: boolean;
   disabledReason?: string;
+  /** Why Resume alone is unavailable; Cancel stays available. */
+  resumeDisabledReason?: string;
 }
 
 export function InterruptedRunBanner({
@@ -47,7 +49,9 @@ export function InterruptedRunBanner({
   compact = false,
   readOnly = false,
   disabledReason,
+  resumeDisabledReason,
 }: InterruptedRunBannerProps) {
+  const resumeUnavailableReason = disabledReason ?? resumeDisabledReason;
   return (
     <div
       role="status"
@@ -93,8 +97,8 @@ export function InterruptedRunBanner({
                 tone="warning"
                 size="sm"
                 onClick={onResume}
-                disabled={action !== null || Boolean(disabledReason)}
-                title={disabledReason}
+                disabled={action !== null || Boolean(resumeUnavailableReason)}
+                title={resumeUnavailableReason}
               >
                 <RotateCcw className="size-ds-icon-md" aria-hidden="true" />
                 <span>

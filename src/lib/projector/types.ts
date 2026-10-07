@@ -157,6 +157,21 @@ export type ProjectedLegacyStep = {
   crossLaneEventIds?: string[];
 };
 
+/** A Tool call whose unknown outcome makes an explicit Resume unsafe. */
+export type ProjectedUnsafeResumeBlocker = {
+  toolCallId: string;
+  toolName: string | null;
+  displayTitle: string | null;
+};
+
+/** A Run queued behind the single writer of its Space. */
+export type ProjectedWriterWait = {
+  /** The writer stopped mid-change and keeps the Space until the user acts. */
+  holderNeedsAttention: boolean;
+  /** Session that owns that writer, when the Brain recorded it. */
+  blockerProjectId?: string;
+};
+
 export type ProjectedRun = {
   runId: string;
   status:
@@ -187,6 +202,10 @@ export type ProjectedRun = {
   totalAttemptElapsedMs?: number | null;
   /** Renderer receipt time for a canonical elapsed checkpoint; never persisted. */
   totalAttemptElapsedAt?: string | null;
+  /** Derived by the Brain; Resume is refused while any remain. */
+  unsafeResumeBlockers?: ProjectedUnsafeResumeBlocker[];
+  /** Present while the Run waits for its Space writer. */
+  writerWait?: ProjectedWriterWait | null;
 };
 
 export type ProjectedArtifact = {
