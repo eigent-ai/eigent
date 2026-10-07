@@ -2586,6 +2586,17 @@ class InvalidRunTransitionError(RunJournalError):
     pass
 
 
+class ProjectExecutionLeaseConflictError(InvalidRunTransitionError):
+    """Another Run already holds the Project's execution lease."""
+
+    def __init__(self, *, project_id: str, owner_run_id: str) -> None:
+        self.project_id = project_id
+        self.owner_run_id = owner_run_id
+        super().__init__(
+            f"project {project_id!r} already executes Run {owner_run_id!r}"
+        )
+
+
 class UnsafeResumeError(RunJournalError):
     def __init__(self, tool_call_ids: list[str]) -> None:
         self.tool_call_ids = tuple(tool_call_ids)
@@ -10281,6 +10292,18 @@ class SQLiteRunJournal:
                 now=now if now is not None else time.time(),
             )
 
+    def workspace_writer_attention_reason(
+        self, request_id: str
+    ) -> Literal["unknown_tool_outcome", "unsettled_write"] | None:
+        """Read why a writer's Run keeps its lease until the user acts."""
+        run_id = self._workspace_writer_run_id(request_id)
+        if run_id is None:
+            return None
+        with self._lock:
+            return self._workspace_writer_attention_reason(
+                self._connection, run_id=run_id, request_id=request_id
+            )
+
     def reclaim_lost_workspace_writer(
         self,
         *,
@@ -10365,25 +10388,42 @@ class SQLiteRunJournal:
             )
         ):
             return "held"
+        if self._workspace_writer_attention_reason(
+            connection, run_id=run_id, request_id=lease["request_id"]
+        ):
+            return "requires_attention"
+        return "lost"
+
+    def _workspace_writer_attention_reason(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        request_id: str,
+    ) -> Literal["unknown_tool_outcome", "unsettled_write"] | None:
+        """Name the unsettled effect that keeps a stopped holder's lease."""
         from app.workspace_runtime.store import WorkspaceStateStore
 
+        if connection.execute(
+            """SELECT 1 FROM tool_calls WHERE run_id=?
+            AND status IN ('dispatched', 'outcome_unknown') LIMIT 1""",
+            (run_id,),
+        ).fetchone():
+            return "unknown_tool_outcome"
         if (
             connection.execute(
-                """SELECT 1 FROM tool_calls WHERE run_id=?
-                AND status IN ('dispatched', 'outcome_unknown')
-                UNION ALL SELECT 1 FROM git_change_sets WHERE run_id=?
-                LIMIT 1""",
-                (run_id, run_id),
+                "SELECT 1 FROM git_change_sets WHERE run_id=? LIMIT 1",
+                (run_id,),
             ).fetchone()
             or self._unresolved_workspace_mutation_in_transaction(
                 connection, run_id
             )
             or WorkspaceStateStore.legacy_requires_settlement(
-                connection, lease["request_id"]
+                connection, request_id
             )
         ):
-            return "requires_attention"
-        return "lost"
+            return "unsettled_write"
+        return None
 
     @staticmethod
     def _require_workspace_writer_lease_in_transaction(
@@ -13697,9 +13737,9 @@ class SQLiteRunJournal:
         ).fetchone()
         if project_lease is not None:
             if project_lease["run_id"] != run_id:
-                raise InvalidRunTransitionError(
-                    f"project {run['project_id']!r} already executes Run "
-                    f"{project_lease['run_id']!r}"
+                raise ProjectExecutionLeaseConflictError(
+                    project_id=run["project_id"],
+                    owner_run_id=project_lease["run_id"],
                 )
             # A same-Run lease without an active Attempt is stale. This
             # can only be left by a pre-v21 crash or manual DB repair;
@@ -13711,7 +13751,7 @@ class SQLiteRunJournal:
             )
         blockers = self._unsafe_resume_blockers(connection, run_id)
         if blockers:
-            raise UnsafeResumeError(blockers)
+            raise UnsafeResumeError([row["tool_call_id"] for row in blockers])
         unresolved_tools = connection.execute(
             """
             SELECT calls.tool_call_id, calls.run_id
@@ -13861,9 +13901,8 @@ class SQLiteRunJournal:
                 (run["project_id"],),
             ).fetchone()
             owner_id = owner["run_id"] if owner is not None else "unknown"
-            raise InvalidRunTransitionError(
-                f"project {run['project_id']!r} already executes Run "
-                f"{owner_id!r}"
+            raise ProjectExecutionLeaseConflictError(
+                project_id=run["project_id"], owner_run_id=owner_id
             ) from exc
         environment_payload = (
             {
@@ -15094,16 +15133,25 @@ class SQLiteRunJournal:
         run_id: str,
         timestamp: float,
         reason: str,
+        agent_requested_only: bool = False,
     ) -> int:
-        """Close HumanInteractions that cannot outlive a terminal Run."""
+        """Close HumanInteractions that cannot outlive a terminal Run.
+
+        ``agent_requested_only`` limits this to requests an Agent awaits in
+        the Brain process; system requests such as merge conflicts stay open.
+        """
 
         interactions = connection.execute(
             """
             SELECT * FROM human_interactions
             WHERE run_id = ? AND status IN ('requested', 'presented')
+              AND (
+                ? = 0 OR requested_by = 'agent'
+                OR requested_by LIKE 'agent:%'
+              )
             ORDER BY created_at, interaction_id
             """,
-            (run_id,),
+            (run_id, agent_requested_only),
         ).fetchall()
         cancelled = 0
         for interaction in interactions:
@@ -15285,6 +15333,16 @@ class SQLiteRunJournal:
                 (run_id,),
             ).fetchall()
             return [self._tool_call_from_row(row) for row in rows]
+
+    def list_unsafe_resume_blockers(self, run_id: str) -> list[ToolCallRecord]:
+        """Tool calls whose unknown outcome makes an explicit Resume unsafe."""
+        with self._lock:
+            return [
+                self._tool_call_from_row(row)
+                for row in self._unsafe_resume_blockers(
+                    self._connection, run_id
+                )
+            ]
 
     def create_human_interaction(
         self,
@@ -17431,6 +17489,17 @@ class SQLiteRunJournal:
                             """,
                             (run["run_id"],),
                         ).fetchall()
+                        # An Agent awaits its question inside the process, so
+                        # a restart abandons it like an approval: the Run is
+                        # interrupted and Resume asks again. System requests,
+                        # such as merge conflicts, keep the Run waiting.
+                        self._cancel_open_human_interactions_in_transaction(
+                            connection,
+                            run_id=run["run_id"],
+                            timestamp=timestamp,
+                            reason="brain_restart",
+                            agent_requested_only=True,
+                        )
                         pending_interaction = connection.execute(
                             """
                             SELECT 1
@@ -21259,11 +21328,10 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
     @staticmethod
     def _unsafe_resume_blockers(
         connection: sqlite3.Connection, run_id: str
-    ) -> list[str]:
+    ) -> list[sqlite3.Row]:
         rows = connection.execute(
             """
-            SELECT tool_call_id, safety_class, idempotency_key
-            FROM tool_calls
+            SELECT * FROM tool_calls
             WHERE run_id = ?
               AND status IN ('dispatched', 'timed_out', 'outcome_unknown')
             ORDER BY created_at
@@ -21271,7 +21339,7 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             (run_id,),
         ).fetchall()
         return [
-            row["tool_call_id"]
+            row
             for row in rows
             if SQLiteRunJournal._tool_call_requires_fail_closed(row)
         ]

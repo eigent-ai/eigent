@@ -17,6 +17,8 @@ import {
   isHumanInteractionReadOnly,
 } from '@/components/ChatBox/MessageItem/HumanInteractionCard';
 import { HostProvider } from '@/host';
+import { notifyRunStreamReopened } from '@/lib/events/durableRunEvents';
+import { ControlOutcomeUnknown } from '@/service/controlRequest';
 import { type HumanInteractionPayload } from '@/service/humanInteractionApi';
 import {
   act,
@@ -461,6 +463,73 @@ describe('HumanInteractionCard', () => {
       expect(listeners.has('backend-ready')).toBe(false);
     }
   );
+
+  it('retries an unanswered pending check with backoff until Brain confirms it', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.isHumanInteractionStillPending
+        .mockRejectedValueOnce(new ControlOutcomeUnknown())
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValue(true);
+      render(<HumanInteractionCard interaction={interaction} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      // Unknown is not "no longer pending": the card stays, disabled.
+      expect(
+        screen.getByRole('button', { name: 'Approve once' })
+      ).toBeDisabled();
+      expect(screen.queryByText('Approval no longer active')).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(999);
+      });
+      expect(mocks.isHumanInteractionStillPending).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(mocks.isHumanInteractionStillPending).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByRole('button', { name: 'Approve once' })
+      ).toBeDisabled();
+
+      // The second retry waits twice as long; no focus event is involved.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_999);
+      });
+      expect(mocks.isHumanInteractionStillPending).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(mocks.isHumanInteractionStillPending).toHaveBeenCalledTimes(3);
+      expect(
+        screen.getByRole('button', { name: 'Approve once' })
+      ).toBeEnabled();
+      expect(mocks.decideHumanInteraction).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('re-checks an unanswered approval when its Run stream reopens', async () => {
+    mocks.isHumanInteractionStillPending.mockRejectedValueOnce(
+      new ControlOutcomeUnknown()
+    );
+    render(<HumanInteractionCard interaction={interaction} />);
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: 'Approve once' })).toBeDisabled();
+
+    await act(async () => {
+      notifyRunStreamReopened('another-run');
+    });
+    expect(mocks.isHumanInteractionStillPending).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      notifyRunStreamReopened('run-1');
+    });
+    expect(mocks.isHumanInteractionStillPending).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled();
+  });
 
   it('ignores an older pending success after recovery confirms the approval is unavailable', async () => {
     let finish!: (pending: boolean) => void;

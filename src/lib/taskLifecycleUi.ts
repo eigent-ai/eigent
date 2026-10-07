@@ -118,7 +118,9 @@ export function getTaskListShelfTone(
 export function isTaskListRowHardFailure(task: TaskLifecycleFields): boolean {
   return getTaskMessages(task).some((m) => {
     if (m.role !== 'agent') return false;
-    if (m.step === AgentStep.FAILED) return true;
+    // An error receipt keeps its step in every locale; the English prefix
+    // below covers receipts recorded without one.
+    if (m.step === AgentStep.FAILED || m.step === AgentStep.ERROR) return true;
     // Message.content is a string by contract, but older caches and legacy SSE
     // ingress could contain a structured HumanInteraction payload here. Keep
     // derived navigation state total while those messages age out naturally.

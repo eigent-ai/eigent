@@ -29,12 +29,14 @@ from app.controller.run_controller import (
     cancel_run,
     decide_run_interaction,
     fork_run,
+    get_run,
     list_project_runs,
     list_run_interactions,
     resume_run,
     signal_run,
 )
 from app.run_journal import SQLiteRunJournal
+from app.run_policy import ToolSafetyClass
 from app.run_runtime import RunCoordinator
 from app.service.task import TaskLock
 from app.workspace_config.admission import (
@@ -405,6 +407,76 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
     assert result["runs"][0]["total_attempt_elapsed_ms"] == 0
     notify_sync.assert_called_once_with()
     bootstrap_history.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_summary_names_unsafe_resume_blockers(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1", now=1)
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        shell = dict(
+            tool_call_id="shell-call",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="shell_exec",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"command": "npm install"},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **shell)
+        journal.checkpoint_tool_call(status="dispatched", now=3, **shell)
+        # The app quits mid-command; restart cannot confirm its outcome.
+        journal.reconcile_startup(now=4)
+        journal.ensure_run(run_id="run-2", project_id="project-1", now=5)
+        coordinator = RunCoordinator(journal)
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.controller.run_controller.get_default_run_coordinator",
+                return_value=coordinator,
+            ),
+            patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+            patch(
+                "app.run_sync.runtime."
+                "is_default_cloud_history_bootstrap_pending",
+                return_value=False,
+            ),
+        ):
+            listed = await list_project_runs(
+                project_id="project-1", status=None, limit=20
+            )
+            snapshot = await get_run("run-1")
+            with pytest.raises(HTTPException) as refused:
+                await resume_run("run-1", ResumeRunBody(request_id="resume-1"))
+        await coordinator.close()
+
+    blockers = [
+        {
+            "tool_call_id": "shell-call",
+            "tool_name": "shell_exec",
+            "display_title": "Ran command",
+        }
+    ]
+    runs = {run["run_id"]: run for run in listed["runs"]}
+    assert runs["run-1"]["status"] == "interrupted"
+    assert runs["run-1"]["unsafe_resume_blockers"] == blockers
+    assert runs["run-2"]["unsafe_resume_blockers"] == []
+    assert snapshot["unsafe_resume_blockers"] == blockers
+    # Blocked Resume is not read-only history: Cancel remains available.
+    assert snapshot["resume_blocked_reason"] is None
+    assert refused.value.status_code == 409
+    assert refused.value.detail == {
+        "code": "unsafe_resume_blocked",
+        "tool_call_ids": ["shell-call"],
+    }
 
 
 @pytest.mark.asyncio

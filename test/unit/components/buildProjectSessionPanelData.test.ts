@@ -27,6 +27,7 @@ import {
   type ChatPlanNode,
   type ChatProjectionNode,
 } from '@/lib/projector/chat';
+import { resolveArtifactAssetFile } from '@/service/artifactAssetApi';
 import { describe, expect, it } from 'vitest';
 
 function baseNode(
@@ -622,6 +623,68 @@ describe('buildProjectSessionPanelData', () => {
         path: 'https://files.example.test/outputs/report.md',
         artifactChange: 'changed',
       },
+    });
+  });
+
+  it('previews a file on disk even when its projected artifact was never marked local', async () => {
+    const [item] = buildProjectSessionPanelData(
+      [
+        makeRun('run-current', true, [
+          {
+            ...baseNode('run-current', 'artifact', 1),
+            kind: 'artifact',
+            operation: 'created',
+            artifactId: 'artifact-notes',
+            relativePath: 'notes.txt',
+            path: 'notes.txt',
+            name: 'notes.txt',
+          },
+        ]),
+      ],
+      []
+    ).files;
+    // Manifest projections leave local availability false for local Runs.
+    const projected = {
+      ...item,
+      file: { ...item.file, localPathAvailable: false },
+    };
+
+    const [local] = mergeProjectFiles(
+      [projected],
+      [
+        {
+          name: 'notes.txt',
+          type: 'txt',
+          path: '/workspace/notes.txt',
+          relativePath: 'notes.txt',
+        },
+      ]
+    );
+    expect(local.file).toMatchObject({
+      path: '/workspace/notes.txt',
+      localPathAvailable: true,
+      isRemote: false,
+    });
+    await expect(resolveArtifactAssetFile(local.file)).resolves.toBe(
+      local.file
+    );
+
+    const [remote] = mergeProjectFiles(
+      [projected],
+      [
+        {
+          name: 'notes.txt',
+          type: 'txt',
+          path: 'https://files.example.test/notes.txt',
+          relativePath: 'notes.txt',
+          isRemote: true,
+        },
+      ]
+    );
+    expect(remote.file).toMatchObject({
+      path: 'https://files.example.test/notes.txt',
+      isRemote: true,
+      localPathAvailable: false,
     });
   });
 
