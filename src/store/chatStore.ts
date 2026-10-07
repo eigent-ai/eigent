@@ -140,15 +140,37 @@ const PROJECT_CONTEXT_MAX_RUNS = 8;
 // end step.
 const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
 
+/** Resume admission refuses to replay a write whose outcome is unknown. */
+function isUnsafeResumeBlocked(error: unknown): boolean {
+  const failure = error as {
+    status?: unknown;
+    response?: { data?: { detail?: { code?: unknown } } };
+  } | null;
+  return (
+    failure?.status === 409 &&
+    failure.response?.data?.detail?.code === 'unsafe_resume_blocked'
+  );
+}
+
 export async function admitDurableRunResume(
   runId: string,
   requestId: string,
   post: typeof fetchPost = fetchPost
 ): Promise<number> {
-  const response = await post(`/runs/${encodeURIComponent(runId)}/resume`, {
-    request_id: requestId,
-    reason: 'explicit_resume',
-  });
+  let response;
+  try {
+    response = await post(`/runs/${encodeURIComponent(runId)}/resume`, {
+      request_id: requestId,
+      reason: 'explicit_resume',
+    });
+  } catch (error) {
+    // Retrying cannot help; explain the refusal instead of a generic failure.
+    throw isUnsafeResumeBlocked(error)
+      ? createLocalError(i18next.t('chat.run-resume-unsafe-blocked'), {
+          cause: error,
+        })
+      : error;
+  }
   const attemptNumber = response?.attempt?.attempt_number;
   if (!Number.isSafeInteger(attemptNumber) || attemptNumber < 1) {
     throw new Error(

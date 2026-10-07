@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
+import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { DsText } from '@/components/ui/ds-text';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
@@ -497,6 +498,7 @@ function NodeTraceDetails({
   if (node.kind === 'notice') {
     const reason = taskErrorReason(node);
     if (reason) return <TaskErrorNotice reason={reason} />;
+    if (node.writerWait) return <SpaceWaitNotice wait={node.writerWait} />;
     return (
       <div className="flex min-w-0 flex-col gap-0.5">
         {node.title ? (

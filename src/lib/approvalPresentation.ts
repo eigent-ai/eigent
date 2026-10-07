@@ -31,13 +31,17 @@ export function approvalRecordedReason(
 /** Banners name only the closed cause; its detail stays in Detailed mode. */
 export function interruptedRunDescription(
   reason: RunTerminalReason | null | undefined,
-  t: Translate
+  t: Translate,
+  /** Replaces the promise that Resume picks up when it cannot. */
+  resumeUnavailableReason?: string
 ): string {
   return [
     runTerminalReasonText(reason, t),
     // Only a Run that can resume asks an expired request again.
-    reason === 'approval_expired' ? t('chat.run-resume-reevaluates-hint') : '',
-    t('chat.run-interrupted-description'),
+    reason === 'approval_expired' && !resumeUnavailableReason
+      ? t('chat.run-resume-reevaluates-hint')
+      : '',
+    resumeUnavailableReason ?? t('chat.run-interrupted-description'),
   ]
     .filter(Boolean)
     .join(' ');

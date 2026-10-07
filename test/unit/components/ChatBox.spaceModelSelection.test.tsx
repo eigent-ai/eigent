@@ -14,6 +14,7 @@
 
 import ChatBox from '@/components/ChatBox';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { localErrorMessage } from '@/lib/localError';
 import { notifyError } from '@/lib/notifyError';
 import {
   runDomainEventHub,
@@ -43,6 +44,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import i18next from 'i18next';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -1053,6 +1055,62 @@ describe('ChatBox after an accepted Space model selection', () => {
       hasModelConfigured: false,
     });
     expect(notifyError).not.toHaveBeenCalled();
+  });
+  it('offers Cancel but not Resume after a write with an unknown outcome', async () => {
+    await acceptInitialRunWithoutAck();
+    mocks.interrupted.unsafeResumeBlockers = [
+      {
+        toolCallId: 'shell-call',
+        toolName: 'shell_exec',
+        displayTitle: 'Ran command',
+      },
+    ];
+    await renderChat();
+
+    expect(
+      screen.getByText(i18next.t('chat.run-resume-unsafe-blocked'))
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Resuming picks up from there/)).toBeNull();
+    expect(screen.getByRole('button', { name: /^Resume$/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: i18next.t('chat.run-cancel') })
+    ).toBeEnabled();
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+  it('explains a Resume refused for a write with an unknown outcome', async () => {
+    const acceptedRequest = await acceptInitialRunWithoutAck();
+    mocks.post.mockImplementation(async (url: string) => {
+      if (!url.endsWith('/resume')) return {};
+      throw Object.assign(new Error('unsafe_resume_blocked'), {
+        status: 409,
+        response: {
+          status: 409,
+          data: {
+            detail: {
+              code: 'unsafe_resume_blocked',
+              tool_call_ids: ['shell-call'],
+            },
+          },
+        },
+      });
+    });
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() =>
+      expect(mocks.refreshInterrupted).toHaveBeenCalledOnce()
+    );
+
+    expect(mocks.post).toHaveBeenCalledWith(
+      `/runs/${acceptedRequest.run_id}/resume`,
+      expect.objectContaining({ reason: 'explicit_resume' }),
+      undefined,
+      expect.anything()
+    );
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(notifyError).toHaveBeenCalledOnce();
+    expect(localErrorMessage(vi.mocked(notifyError).mock.calls[0][0])).toBe(
+      i18next.t('chat.run-resume-unsafe-blocked')
+    );
   });
   it('allows cold receipt recovery when server sync omitted the pending marker', async () => {
     const acceptedRequest = await acceptInitialRunWithoutAck();

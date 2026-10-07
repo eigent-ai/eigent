@@ -392,6 +392,10 @@ function LegacyChatBox(): JSX.Element {
     interruptedCancelOperation?.phase === 'unknown'
       ? t('chat.control-outcome-unknown')
       : undefined;
+  // Resume never replays a write whose outcome is unknown; Cancel still works.
+  const unsafeResumeReason = interruptedRun?.unsafeResumeBlockers?.length
+    ? t('chat.run-resume-unsafe-blocked')
+    : undefined;
   const durableRunAction = controlOperations.some(
     (op) =>
       op.kind === 'cancel' &&
@@ -2658,7 +2662,11 @@ function LegacyChatBox(): JSX.Element {
         description: isCloudRestoredRun
           ? undefined
           : (cancelRecoveryReason ??
-            interruptedRunDescription(interruptedRun.terminalReason, t)),
+            interruptedRunDescription(
+              interruptedRun.terminalReason,
+              t,
+              unsafeResumeReason
+            )),
       },
       runId: interruptedRun.run_id,
       state: isCloudRestoredRun
@@ -2670,7 +2678,10 @@ function LegacyChatBox(): JSX.Element {
       cancelLabel: t('chat.run-cancel'),
       cancellingLabel: t('chat.run-cancelling'),
       readOnlyLabel: t('chat.run-cloud-restored-description'),
-      onResume: isCloudRestoredRun ? undefined : handleEventNativeResumeRun,
+      onResume:
+        isCloudRestoredRun || unsafeResumeReason
+          ? undefined
+          : handleEventNativeResumeRun,
       onCancel: isCloudRestoredRun ? undefined : handleEventNativeCancelRun,
     };
   } else if (eventNativeTimelineEnabled && eventNativeReadOnlyRun) {
@@ -2839,10 +2850,12 @@ function LegacyChatBox(): JSX.Element {
                       ? t('chat.run-cloud-restored-description')
                       : interruptedRunDescription(
                           interruptedRun.terminalReason,
-                          t
+                          t,
+                          unsafeResumeReason
                         )
                   }
                   disabledReason={cancelRecoveryReason}
+                  resumeDisabledReason={unsafeResumeReason}
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
                   resumingLabel={t('chat.run-resuming')}
@@ -2940,11 +2953,13 @@ function LegacyChatBox(): JSX.Element {
                       ? t('chat.run-cloud-restored-description')
                       : interruptedRunDescription(
                           interruptedRun.terminalReason,
-                          t
+                          t,
+                          unsafeResumeReason
                         )
                   }
                   attemptNumber={interruptedRun.latest_attempt?.attempt_number}
                   disabledReason={cancelRecoveryReason}
+                  resumeDisabledReason={unsafeResumeReason}
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
                   resumingLabel={t('chat.run-resuming')}

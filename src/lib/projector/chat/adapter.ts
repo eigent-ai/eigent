@@ -15,6 +15,7 @@
 import { resolveSourceMessageId } from '@/lib/messageIdentity';
 import { runTerminalReason } from '@/lib/runTerminalReason';
 import i18next from 'i18next';
+import { projectWriterWait } from '../reduce';
 import type {
   CanonicalProjectEvent,
   CanonicalSemanticActorType,
@@ -1546,6 +1547,25 @@ function workspaceWriterNotice(
 ): ChatNoticeNode | null {
   const payload = asRecord(data);
   if (base.eventType === 'workspace.writer.queued') {
+    const writerWait = projectWriterWait(payload);
+    if (writerWait.holderNeedsAttention) {
+      return {
+        ...noticeNode(
+          base,
+          {
+            title: i18next.t('chat.workspace-waiting-title', {
+              defaultValue: 'Waiting for Space',
+            }),
+            content: i18next.t('chat.workspace-holder-attention-description', {
+              defaultValue:
+                'Another task in this Space stopped while it was changing files and needs your attention. This task will start after that task is resolved.',
+            }),
+          },
+          'warning'
+        ),
+        writerWait,
+      };
+    }
     const position = Number(payload.queue_position);
     const positionText =
       Number.isInteger(position) && position > 0
