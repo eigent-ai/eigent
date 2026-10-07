@@ -57,6 +57,7 @@ from app.run_journal import (
     IdempotencyConflictError,
     InvalidRunTransitionError,
     OptimisticConcurrencyError,
+    ProjectExecutionLeaseConflictError,
     RunAttemptRecord,
     RunEventDraft,
     RunNotFoundError,
@@ -1918,6 +1919,19 @@ async def start_chat_stream(data: Chat, request: Request):
                 request_id=request_id,
             )
         try:
+            if isinstance(journal, SQLiteRunJournal):
+                # Attempt admission refuses a Run while another one holds the
+                # Project execution lease, but only after preparation has
+                # persisted it. Refuse first, so the rejection leaves no
+                # pending Run behind.
+                owner = await asyncio.to_thread(
+                    journal.get_active_project_run, data.project_id
+                )
+                if owner is not None and owner.run_id != run_id:
+                    raise ProjectExecutionLeaseConflictError(
+                        project_id=data.project_id,
+                        owner_run_id=owner.run_id,
+                    )
             prepared = await _prepare_chat_run(
                 data,
                 request,
@@ -1964,6 +1978,18 @@ async def post(data: Chat, request: Request):
         ) from exc
     except (ModelCapabilityConfigError, UnsupportedThinkingEffortError) as exc:
         raise _model_capability_http_error(exc) from exc
+    except ProjectExecutionLeaseConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_run_active",
+                "message": (
+                    "Another Run in this Session must finish or be stopped "
+                    "before a new one starts."
+                ),
+                "run_id": exc.owner_run_id,
+            },
+        ) from exc
     return StreamingResponse(
         stream,
         media_type="text/event-stream",

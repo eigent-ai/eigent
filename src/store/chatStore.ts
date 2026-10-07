@@ -4326,6 +4326,69 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       ]);
       let legacyEndRunId: string | null = null;
 
+      // Admission failed before the event stream existed. Unlike an execution
+      // error, no later END frame can clear the optimistic pending state, so
+      // close it here and surface the typed Brain reason instead of leaving
+      // the composer stuck on "Preparing".
+      const failAdmission = (err: any) => {
+        if (
+          err?.code === 'project_consumer_active' &&
+          createdTriggerBinding &&
+          !startOptions.resumeRequestId &&
+          triggerExecutionId &&
+          project_id
+        ) {
+          forgetRejectedTriggerRun(triggerExecutionId, project_id, newTaskId);
+        }
+        finishStartupFailure();
+        const failureState = targetChatStore.getState();
+        const failureTask = failureState.tasks[newTaskId];
+        const userMessage =
+          typeof err?.userMessage === 'string' && err.userMessage.trim()
+            ? err.userMessage.trim()
+            : typeof err?.message === 'string' && err.message.trim()
+              ? err.message.trim()
+              : i18next.t('chat.task-admission-failed', {
+                  defaultValue:
+                    'The task could not be started. Please try again.',
+                });
+        const isContinuationClarification =
+          typeof err?.code === 'string' && err.code.startsWith('continuation_');
+        const content = isContinuationClarification
+          ? i18next.t('chat.control-input-required-message', {
+              defaultValue: 'Input required: {{message}}',
+              message: userMessage,
+            })
+          : i18next.t('chat.error-message', {
+              defaultValue: '❌ **Error**: {{message}}',
+              message: userMessage,
+            });
+        const alreadyRendered = failureTask?.messages.some(
+          (message) => message.role === 'agent' && message.content === content
+        );
+        if (failureTask && !alreadyRendered) {
+          failureState.addMessages(newTaskId, {
+            id: generateUniqueId(),
+            role: 'agent',
+            content,
+            ...(!isContinuationClarification
+              ? {
+                  step: AgentStep.ERROR,
+                  errorReason: reportError(
+                    err,
+                    {
+                      modelType: effectiveModelType,
+                      modelId: resolvedCloudModelId,
+                      executionId,
+                    },
+                    requestAccount
+                  ),
+                }
+              : {}),
+          });
+        }
+      };
+
       const guardDelivery =
         adoptingSpaceDefault || startOptions.resumeRequestId;
       if (!guardDelivery) admissionRequested = true;
@@ -7193,6 +7256,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               modelType: effectiveModelType,
               modelId: resolvedCloudModelId,
             });
+            // An awaited admission settles on this rejection and aborts the
+            // transport, which then never reaches onerror. Settle the new task
+            // here so it keeps its error receipt. A Resume keeps its
+            // interrupted task, whose controls ChatBox restores.
+            if (startOptions.awaitAdmission && !startOptions.resumeRequestId)
+              failAdmission(error);
             rejectResumeStreamOpen?.(error);
             throw error;
           }
@@ -7274,75 +7343,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
-          if (!resumeStreamOpened) rejectResumeStreamOpen?.(err);
-
           if (!resumeStreamOpened) {
-            if (
-              err?.code === 'project_consumer_active' &&
-              createdTriggerBinding &&
-              !startOptions.resumeRequestId &&
-              triggerExecutionId &&
-              project_id
-            ) {
-              forgetRejectedTriggerRun(
-                triggerExecutionId,
-                project_id,
-                newTaskId
-              );
-            }
-            // Admission failed before the event stream existed. Unlike an
-            // execution error, no later END frame can clear the optimistic
-            // pending state, so close it here and surface the typed Brain
-            // reason instead of leaving the composer stuck on "Preparing".
-            finishStartupFailure();
-            const failureState = targetChatStore.getState();
-            const failureTask = failureState.tasks[newTaskId];
-            const userMessage =
-              typeof err?.userMessage === 'string' && err.userMessage.trim()
-                ? err.userMessage.trim()
-                : typeof err?.message === 'string' && err.message.trim()
-                  ? err.message.trim()
-                  : i18next.t('chat.task-admission-failed', {
-                      defaultValue:
-                        'The task could not be started. Please try again.',
-                    });
-            const isContinuationClarification =
-              typeof err?.code === 'string' &&
-              err.code.startsWith('continuation_');
-            const content = isContinuationClarification
-              ? i18next.t('chat.control-input-required-message', {
-                  defaultValue: 'Input required: {{message}}',
-                  message: userMessage,
-                })
-              : i18next.t('chat.error-message', {
-                  defaultValue: '❌ **Error**: {{message}}',
-                  message: userMessage,
-                });
-            const alreadyRendered = failureTask?.messages.some(
-              (message) =>
-                message.role === 'agent' && message.content === content
-            );
-            if (failureTask && !alreadyRendered) {
-              failureState.addMessages(newTaskId, {
-                id: generateUniqueId(),
-                role: 'agent',
-                content,
-                ...(!isContinuationClarification
-                  ? {
-                      step: AgentStep.ERROR,
-                      errorReason: reportError(
-                        err,
-                        {
-                          modelType: effectiveModelType,
-                          modelId: resolvedCloudModelId,
-                          executionId,
-                        },
-                        requestAccount
-                      ),
-                    }
-                  : {}),
-              });
-            }
+            rejectResumeStreamOpen?.(err);
+            failAdmission(err);
           }
 
           // A transport error does not establish a cancelled execution outcome.

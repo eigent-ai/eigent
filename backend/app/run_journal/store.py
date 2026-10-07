@@ -2586,6 +2586,17 @@ class InvalidRunTransitionError(RunJournalError):
     pass
 
 
+class ProjectExecutionLeaseConflictError(InvalidRunTransitionError):
+    """Another Run already holds the Project's execution lease."""
+
+    def __init__(self, *, project_id: str, owner_run_id: str) -> None:
+        self.project_id = project_id
+        self.owner_run_id = owner_run_id
+        super().__init__(
+            f"project {project_id!r} already executes Run {owner_run_id!r}"
+        )
+
+
 class UnsafeResumeError(RunJournalError):
     def __init__(self, tool_call_ids: list[str]) -> None:
         self.tool_call_ids = tuple(tool_call_ids)
@@ -13697,9 +13708,9 @@ class SQLiteRunJournal:
         ).fetchone()
         if project_lease is not None:
             if project_lease["run_id"] != run_id:
-                raise InvalidRunTransitionError(
-                    f"project {run['project_id']!r} already executes Run "
-                    f"{project_lease['run_id']!r}"
+                raise ProjectExecutionLeaseConflictError(
+                    project_id=run["project_id"],
+                    owner_run_id=project_lease["run_id"],
                 )
             # A same-Run lease without an active Attempt is stale. This
             # can only be left by a pre-v21 crash or manual DB repair;
@@ -13861,9 +13872,8 @@ class SQLiteRunJournal:
                 (run["project_id"],),
             ).fetchone()
             owner_id = owner["run_id"] if owner is not None else "unknown"
-            raise InvalidRunTransitionError(
-                f"project {run['project_id']!r} already executes Run "
-                f"{owner_id!r}"
+            raise ProjectExecutionLeaseConflictError(
+                project_id=run["project_id"], owner_run_id=owner_id
             ) from exc
         environment_payload = (
             {
@@ -15094,16 +15104,25 @@ class SQLiteRunJournal:
         run_id: str,
         timestamp: float,
         reason: str,
+        agent_requested_only: bool = False,
     ) -> int:
-        """Close HumanInteractions that cannot outlive a terminal Run."""
+        """Close HumanInteractions that cannot outlive a terminal Run.
+
+        ``agent_requested_only`` limits this to requests an Agent awaits in
+        the Brain process; system requests such as merge conflicts stay open.
+        """
 
         interactions = connection.execute(
             """
             SELECT * FROM human_interactions
             WHERE run_id = ? AND status IN ('requested', 'presented')
+              AND (
+                ? = 0 OR requested_by = 'agent'
+                OR requested_by LIKE 'agent:%'
+              )
             ORDER BY created_at, interaction_id
             """,
-            (run_id,),
+            (run_id, agent_requested_only),
         ).fetchall()
         cancelled = 0
         for interaction in interactions:
@@ -17431,6 +17450,17 @@ class SQLiteRunJournal:
                             """,
                             (run["run_id"],),
                         ).fetchall()
+                        # An Agent awaits its question inside the process, so
+                        # a restart abandons it like an approval: the Run is
+                        # interrupted and Resume asks again. System requests,
+                        # such as merge conflicts, keep the Run waiting.
+                        self._cancel_open_human_interactions_in_transaction(
+                            connection,
+                            run_id=run["run_id"],
+                            timestamp=timestamp,
+                            reason="brain_restart",
+                            agent_requested_only=True,
+                        )
                         pending_interaction = connection.execute(
                             """
                             SELECT 1

@@ -956,6 +956,100 @@ class TestChatController:
 
         git_coordinator.admit_run.assert_not_called()
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "lease_taken", ["before_admission", "during_preparation"]
+    )
+    async def test_project_lease_conflict_is_a_typed_409_without_orphan_run(
+        self,
+        sample_chat_data,
+        mock_request,
+        mock_task_lock,
+        tmp_path,
+        lease_taken,
+    ):
+        chat_data = Chat(
+            **sample_chat_data,
+            run_id="run-rejected",
+            session_mode="single-agent",
+        )
+        resolver = MagicMock()
+        resolver.freeze_task_directories.return_value = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "output",
+            base_snapshot_id=None,
+            snapshot=MagicMock(),
+            binding_source="test",
+            workdir_mode=None,
+        )
+        resolver.space_root.return_value = tmp_path
+
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            journal.ensure_run(
+                run_id="run-blocker", project_id=chat_data.project_id
+            )
+
+            def take_project_lease(*_args):
+                if not journal.list_run_attempts("run-blocker"):
+                    journal.create_run_attempt(
+                        "run-blocker",
+                        request_id="initial:run-blocker",
+                        reason="initial_execution",
+                        activate=True,
+                    )
+
+            if lease_taken == "before_admission":
+                take_project_lease()
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_default_run_coordinator",
+                    return_value=RunCoordinator(),
+                ),
+                patch(
+                    "app.controller.chat_controller.get_or_create_task_lock",
+                    return_value=mock_task_lock,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_workspace_resolver",
+                    return_value=resolver,
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "get_default_workspace_git_coordinator",
+                    return_value=MagicMock(),
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "_prepare_browser_for_request_with_timeout",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "app.controller.chat_controller._assemble_runtime_environment",
+                    side_effect=take_project_lease,
+                ),
+                patch(
+                    "app.controller.chat_controller._camel_log_dir",
+                    return_value=tmp_path / "camel-log",
+                ),
+                patch("app.controller.chat_controller.set_current_task_id"),
+                patch("app.controller.chat_controller.load_dotenv"),
+                patch("app.controller.chat_controller.step_solve") as solve,
+            ):
+                with pytest.raises(HTTPException) as error:
+                    await post(chat_data, mock_request)
+
+            assert error.value.status_code == 409
+            assert error.value.detail["code"] == "project_run_active"
+            assert error.value.detail["run_id"] == "run-blocker"
+            solve.assert_not_called()
+            assert journal.list_run_attempts("run-rejected") == []
+            if lease_taken == "before_admission":
+                assert journal.get_run("run-rejected") is None
+
     def test_bundle_runtime_rejects_legacy_workforce_session_mode(self):
         with pytest.raises(EnvironmentSetupRequiredError) as error:
             _require_supported_bundle_session_mode("workforce", object())
