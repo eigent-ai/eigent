@@ -511,10 +511,9 @@ describe('Models collections and configuration dialogs', () => {
     const providerSelectionDialog = screen.getByRole('dialog', {
       name: 'Add provider',
     });
-    expect(providerSelectionDialog).toHaveClass(
-      'data-[state=closed]:animate-out',
-      'data-[state=closed]:fade-out-0',
-      'data-[state=closed]:duration-100'
+    // A CSS exit animation would override the centered transform while closing.
+    expect(providerSelectionDialog).not.toHaveClass(
+      'data-[state=closed]:animate-out'
     );
     await user.type(
       screen.getByRole('textbox', { name: 'Search providers' }),
