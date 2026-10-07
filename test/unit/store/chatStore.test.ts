@@ -4518,6 +4518,33 @@ describe('ChatStore - Core Functionality', () => {
         expect(getIdleSSETransportTaskId(['idle-run'])).toBeNull();
       });
 
+      it('stops holding a finished Run stream once that stream errors', async () => {
+        const { store, streamContaining } = await startObservedLiveTask({
+          initialRunId: 'idle-run',
+        });
+        const legacyStream = streamContaining('/chat');
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.END,
+            data: { content: 'Done' },
+          }),
+        });
+        expect(store.getState().tasks['idle-run'].status).toBe(
+          ChatTaskStatus.FINISHED
+        );
+        expect(getIdleSSETransportTaskId(['idle-run'])).toBe('idle-run');
+
+        // Sleep or a network change: a finished Run never reconnects (#1212),
+        // so follow-up admission must not treat this stream as still held.
+        expect(() =>
+          legacyStream.onerror?.(new TypeError('Failed to fetch'))
+        ).toThrow();
+
+        expect(getIdleSSETransportTaskId(['idle-run'])).toBeNull();
+        expect(hasSSETransportForTasks(['idle-run'])).toBe(false);
+        expect((legacyStream.signal as AbortSignal).aborted).toBe(true);
+      });
+
       describe('successful canonical legacy tails', () => {
         const seedWorkforce = (
           store: ReturnType<typeof createChatStoreInstance>,
