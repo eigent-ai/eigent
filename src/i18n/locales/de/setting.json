@@ -13,6 +13,7 @@
     "choose-model": "Aus Modellliste auswählen",
     "enter-model": "Modellnamen manuell eingeben",
     "effort-hint": "Der Denkaufwand wird im Eingabefeld eingestellt, nicht in der Modellkonfiguration.",
+    "remove-effort-parameter": "Entfernen Sie „{{key}}“ aus den Modellparametern.",
     "default-guard": "Wähle zuerst ein anderes Standardmodell, bevor du dieses Modell ausblendest, entfernst oder trennst.",
     "actions": "Aktionen für {{model}}",
     "view-all-models": "Alle Modelle anzeigen",

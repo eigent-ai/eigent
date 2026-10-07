@@ -13,6 +13,7 @@
     "choose-model": "Choose from model list",
     "enter-model": "Enter model name manually",
     "effort-hint": "Thinking effort is controlled in the input box, not in model configuration.",
+    "remove-effort-parameter": "Remove \"{{key}}\" from model parameters.",
     "default-guard": "Choose another default before hiding, removing, or disconnecting this model.",
     "actions": "Actions for {{model}}",
     "view-all-models": "View all models",

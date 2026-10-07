@@ -13,6 +13,7 @@
     "choose-model": "Choisir dans la liste",
     "enter-model": "Saisir le nom du modèle",
     "effort-hint": "L’effort de réflexion se règle dans la zone de saisie, pas dans la configuration du modèle.",
+    "remove-effort-parameter": "Supprimez « {{key}} » des paramètres du modèle.",
     "default-guard": "Choisissez un autre modèle par défaut avant de masquer, supprimer ou déconnecter ce modèle.",
     "actions": "Actions pour {{model}}",
     "view-all-models": "Voir tous les modèles",

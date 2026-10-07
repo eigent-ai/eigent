@@ -13,6 +13,7 @@
     "choose-model": "モデル一覧から選択",
     "enter-model": "モデル名を手動で入力",
     "effort-hint": "思考の強度はモデル設定ではなく、入力欄で調整します。",
+    "remove-effort-parameter": "モデルパラメータから「{{key}}」を削除してください。",
     "default-guard": "このモデルを非表示、削除、切断する前に、別の既定モデルを選択してください。",
     "actions": "{{model}} の操作",
     "view-all-models": "すべてのモデルを表示",

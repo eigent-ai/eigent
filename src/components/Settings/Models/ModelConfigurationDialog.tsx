@@ -66,6 +66,18 @@ type ContentProps = Props & {
   onBusyChange?: (busy: boolean) => void;
 };
 
+// Thinking effort belongs to the input box, not a saved configuration.
+const EFFORT_PARAMETERS = ['reasoning_effort', 'thinking_effort'] as const;
+
+function effortParameter(parameters: string) {
+  try {
+    const config = parseModelConfigJson(parameters);
+    return EFFORT_PARAMETERS.find((key) => key in config) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function ModelConfigurationContent({
   provider,
   record,
@@ -102,6 +114,8 @@ export function ModelConfigurationContent({
   const [discovering, setDiscovering] = useState(false);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const [manual, setManual] = useState(false);
+  const parametersRef = useRef<HTMLTextAreaElement>(null);
+  const blockedEffort = effortParameter(parameters);
   const request = useRef({ generation: 0 });
   const active = useRef(true);
   useEffect(() => {
@@ -188,12 +202,13 @@ export function ModelConfigurationContent({
       setError(t('setting.api-host-can-not-be-empty'));
       return;
     }
+    if (blockedEffort) {
+      parametersRef.current?.focus();
+      return;
+    }
     setBusy(true);
     try {
       const config = parseModelConfigJson(parameters);
-      // Thinking effort belongs to the input box, not a saved configuration.
-      if ('reasoning_effort' in config || 'thinking_effort' in config)
-        throw new Error(t('setting.model-list.effort-hint'));
       const url =
         provider.id === 'ollama' && canAutoFixOllamaEndpoint(endpoint)
           ? appendV1ToEndpoint(endpoint)
@@ -502,13 +517,35 @@ export function ModelConfigurationContent({
                 </DsText>
               </label>
               <Textarea
+                ref={parametersRef}
                 id="model-parameters"
                 variant="outlined"
+                state={blockedEffort ? 'error' : 'default'}
+                aria-invalid={Boolean(blockedEffort)}
+                aria-describedby={
+                  blockedEffort
+                    ? 'model-parameters-error model-parameters-hint'
+                    : 'model-parameters-hint'
+                }
                 value={parameters}
                 placeholder={t('setting.model-parameters-placeholder')}
                 onChange={(event) => setParameters(event.target.value)}
               />
-              <DsText role="meta" className="text-ds-ink-muted-default">
+              {blockedEffort && (
+                <DsText
+                  id="model-parameters-error"
+                  className="text-ds-text-error-default-default"
+                >
+                  {t('setting.model-list.remove-effort-parameter', {
+                    key: blockedEffort,
+                  })}
+                </DsText>
+              )}
+              <DsText
+                id="model-parameters-hint"
+                role="meta"
+                className="text-ds-ink-muted-default"
+              >
                 {t('setting.model-list.effort-hint')}
               </DsText>
             </div>

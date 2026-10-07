@@ -13,6 +13,7 @@
     "choose-model": "Scegli dall’elenco dei modelli",
     "enter-model": "Inserisci il nome manualmente",
     "effort-hint": "Lo sforzo di ragionamento si regola nella casella di input, non nella configurazione del modello.",
+    "remove-effort-parameter": "Rimuovi \"{{key}}\" dai parametri del modello.",
     "default-guard": "Scegli un altro modello predefinito prima di nascondere, rimuovere o disconnettere questo modello.",
     "actions": "Azioni per {{model}}",
     "view-all-models": "Visualizza tutti i modelli",

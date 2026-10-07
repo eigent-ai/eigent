@@ -498,11 +498,17 @@ describe('Models collections and configuration dialogs', () => {
     fireEvent.change(parameters, {
       target: { value: '{"reasoning_effort":"high"}' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Thinking effort')
+    expect(parameters).toHaveAttribute('aria-invalid', 'true');
+    expect(parameters).toHaveAccessibleDescription(
+      /Remove "reasoning_effort" from model parameters\..*Thinking effort is controlled in the input box/
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    expect(parameters).toHaveFocus();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(mocks.validate).not.toHaveBeenCalled();
     expect(mocks.put).not.toHaveBeenCalled();
+    fireEvent.change(parameters, { target: { value: '{"temperature":0.2}' } });
+    expect(parameters).toHaveAttribute('aria-invalid', 'false');
   });
   it('shows provider search in a dialog and opens the selected configuration dialog', async () => {
     const user = userEvent.setup();

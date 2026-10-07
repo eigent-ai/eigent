@@ -13,6 +13,7 @@
     "choose-model": "从模型列表选择",
     "enter-model": "手动输入模型名称",
     "effort-hint": "思考强度仅在输入框中控制，不在模型配置中设置。",
+    "remove-effort-parameter": "请从模型参数中删除“{{key}}”。",
     "default-guard": "隐藏、移除或断开此模型前，请先选择其他默认模型。",
     "actions": "{{model}} 的操作",
     "view-all-models": "查看所有模型",
