@@ -3,21 +3,31 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
 from app.auth.brain_auth import with_brain_auth_provider
 from app.auth.interface import IAuthProvider
 from app.auth.local_control import (
     LOCAL_CONTROL_CAPABILITY_HEADER,
+    require_local_control_if_configured,
     require_local_control_principal,
 )
 from app.controller import (
     chat_controller,
+    mcp_controller,
+    message_controller,
+    model_controller,
     remote_command_controller,
+    remote_sub_agent_controller,
     run_controller,
+    skill_controller,
+    task_controller,
+    tool_controller,
     workspace_bundle_controller,
+    workspace_controller,
 )
+from app.router import register_routers
 from app.run_journal import IdempotencyConflictError, RunNotFoundError
 
 
@@ -39,6 +49,12 @@ def _app() -> FastAPI:
     @app.get("/control")
     async def control(request: Request):
         return await require_local_control_principal(request)
+
+    @app.get(
+        "/legacy", dependencies=[Depends(require_local_control_if_configured)]
+    )
+    async def legacy():
+        return {"ok": True}
 
     return app
 
@@ -258,6 +274,129 @@ def test_every_bundle_install_route_requires_local_control_capability():
     assert "server_url" not in (
         workspace_bundle_controller.BundleMaterializeBody.model_fields
     )
+
+
+def test_legacy_routes_require_the_capability_once_configured(monkeypatch):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    client = TestClient(_app(), client=("127.0.0.1", 50000))
+    remote = TestClient(_app(), client=("203.0.113.8", 50000))
+    headers = {LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"}
+
+    assert client.get("/legacy").status_code == 401
+    assert (
+        client.get(
+            "/legacy", headers={LOCAL_CONTROL_CAPABILITY_HEADER: "wrong"}
+        ).status_code
+        == 401
+    )
+    assert client.get("/legacy", headers=headers).json() == {"ok": True}
+    assert remote.get("/legacy", headers=headers).status_code == 403
+
+
+def test_legacy_routes_fail_closed_when_electron_has_no_capability(
+    monkeypatch,
+):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.delenv("EIGENT_LOCAL_CONTROL_CAPABILITY", raising=False)
+
+    assert TestClient(_app()).get("/legacy").status_code == 503
+
+
+def test_legacy_routes_keep_brain_auth_without_a_capability(monkeypatch):
+    """Web dev and standalone Brain run without Electron or a capability."""
+
+    monkeypatch.delenv("EIGENT_RUNTIME", raising=False)
+    monkeypatch.delenv("EIGENT_LOCAL_CONTROL_CAPABILITY", raising=False)
+    client = TestClient(_app())
+
+    assert client.get("/legacy").json() == {"ok": True}
+    assert client.get("/control").status_code == 503
+
+
+def test_every_legacy_brain_route_declares_the_capability_guard():
+    for controller in (
+        mcp_controller,
+        message_controller,
+        model_controller,
+        remote_sub_agent_controller,
+        skill_controller,
+        task_controller,
+        tool_controller,
+        workspace_controller,
+    ):
+        assert controller.router.routes
+        for route in controller.router.routes:
+            assert any(
+                dependency.call is require_local_control_if_configured
+                for dependency in route.dependant.dependencies
+            ), f"{sorted(route.methods)} {route.path} is missing control auth"
+
+
+def test_registered_legacy_routes_reject_pages_without_the_capability(
+    monkeypatch,
+):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    app = FastAPI()
+    register_routers(app)
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    remote = TestClient(app, client=("203.0.113.8", 50000))
+    headers = {LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"}
+    mcp_server = {"command": "touch", "args": ["/tmp/eigent-probe"]}
+
+    with (
+        patch("app.controller.mcp_controller.add_mcp") as add_mcp,
+        patch(
+            "app.controller.mcp_controller.read_mcp_config",
+            return_value={"mcpServers": {}},
+        ),
+    ):
+        assert (
+            client.post(
+                "/mcp/install", json={"name": "probe", "mcp": mcp_server}
+            ).status_code
+            == 401
+        )
+        add_mcp.assert_not_called()
+        assert client.get("/mcp/list").status_code == 401
+        assert remote.get("/mcp/list", headers=headers).status_code == 403
+        assert client.get("/mcp/list", headers=headers).json() == {
+            "mcpServers": {}
+        }
+    assert client.post("/messages", json={"content": "hi"}).status_code == 401
+
+    sub_agent = {
+        "api_key": "key",
+        "base_url": "https://example.invalid",
+        "agent_name": "agent",
+    }
+    with patch(
+        "app.controller.remote_sub_agent_controller."
+        "validate_remote_sub_agent_provider"
+    ) as validate:
+        assert (
+            client.post(
+                "/remote-sub-agent/validate", json=sub_agent
+            ).status_code
+            == 401
+        )
+        validate.assert_not_called()
+
+
+def test_registered_legacy_routes_stay_open_for_web_mode(monkeypatch):
+    monkeypatch.delenv("EIGENT_RUNTIME", raising=False)
+    monkeypatch.delenv("EIGENT_LOCAL_CONTROL_CAPABILITY", raising=False)
+    app = FastAPI()
+    register_routers(app)
+    client = TestClient(app)
+
+    with patch(
+        "app.controller.mcp_controller.read_mcp_config",
+        return_value={"mcpServers": {}},
+    ):
+        assert client.get("/mcp/list").json() == {"mcpServers": {}}
+    assert client.get("/runs/missing").status_code == 503
 
 
 def test_command_result_maps_missing_command_to_not_found(monkeypatch):
