@@ -18,6 +18,10 @@ import {
   isInteractionTerminal,
 } from '@/lib/approvalPresentation';
 import {
+  type RunTerminalReason,
+  runTerminalReason,
+} from '@/lib/runTerminalReason';
+import {
   createControlOperation,
   submitControlOperation,
 } from './controlOperations';
@@ -44,6 +48,8 @@ export interface HumanInteractionPayload {
   run_id?: string;
   status?: string;
   reason?: string;
+  /** Closed cause of the Attempt this interaction ended with; null if none. */
+  terminal_reason?: RunTerminalReason | null;
   expires_at?: number | string | null;
   /** Persisted display receipt only; never submitted as decision authority. */
   receipt?: { runStatus: string };
@@ -78,6 +84,11 @@ export interface HumanInteractionPayload {
     required?: boolean;
   }>;
 }
+
+export type HumanInteractionReceipt = Pick<
+  HumanInteractionPayload,
+  'status' | 'reason' | 'expires_at' | 'terminal_reason'
+>;
 
 export const humanInteractionDecisionPath = (
   runId: string,
@@ -253,10 +264,7 @@ const receiptReads = new Map<string, ReturnType<typeof fetchGet>>();
 /** Historical cards read the existing journal snapshot; a read never grants authority. */
 export async function getHumanInteractionReceipt(
   interaction: HumanInteractionPayload
-): Promise<Pick<
-  HumanInteractionPayload,
-  'status' | 'reason' | 'expires_at'
-> | null> {
+): Promise<HumanInteractionReceipt | null> {
   if (!interaction.run_id) return null;
   const runId = interaction.run_id;
   const key = JSON.stringify([controlOwner(), runId]);
@@ -286,6 +294,10 @@ export async function getHumanInteractionReceipt(
       (interaction.approval_id || interaction.interaction_id)
   );
   if (!record) return null;
+  const attempt = snapshot.attempts?.find(
+    (candidate: { attempt_id: string }) =>
+      candidate.attempt_id === record.attempt_id
+  );
   return {
     status: record.status,
     expires_at: record.expires_at,
@@ -293,5 +305,6 @@ export async function getHumanInteractionReceipt(
       typeof approval?.decision?.reason === 'string'
         ? approval.decision.reason
         : undefined,
+    terminal_reason: runTerminalReason(attempt?.terminal_reason),
   };
 }

@@ -323,8 +323,9 @@ export function EventNativeProjectTimeline({
         : legacyTask?.durableRunStatus === 'cancelled' ||
             legacyTask?.durableRunStatus === 'stopped'
           ? 'cancelled'
-          : legacyTask?.durableRunStatus === 'interrupted'
-            ? 'interrupted'
+          : legacyTask?.durableRunStatus === 'timed_out' ||
+              legacyTask?.durableRunStatus === 'interrupted'
+            ? legacyTask.durableRunStatus
             : 'completed'
       : null;
   const optimisticRunStatus = useMemo<ChatRunStatusNode | null>(() => {

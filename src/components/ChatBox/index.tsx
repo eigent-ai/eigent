@@ -40,6 +40,7 @@ import {
   isProjectAchieved,
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
+import { TERMINAL_RUN_STATUSES } from '@/lib/projector/runSummary';
 import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import {
   beginResumeRequest,
@@ -140,6 +141,7 @@ const TERMINAL_QUEUED_RUN_STATUSES = new Set([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
 ]);
 const READ_ONLY_EVENT_NATIVE_RUN_STATUSES = new Set([
@@ -2793,9 +2795,7 @@ function LegacyChatBox(): JSX.Element {
             );
           }
           const run = sharedProjectEventSnapshot.view.runs[op.runId];
-          return (
-            !run || !['completed', 'cancelled', 'failed'].includes(run.status)
-          );
+          return !run || !TERMINAL_RUN_STATUSES.has(run.status);
         })
         .map((op) => (
           <ControlRecovery key={op.key} operation={op} />

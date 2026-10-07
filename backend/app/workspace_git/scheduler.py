@@ -30,6 +30,7 @@ from app.run_journal import (
     get_default_run_journal,
 )
 from app.run_journal.semantic_events import semantic_event_fields
+from app.run_journal.transitions import RUN_TERMINAL_STATES
 
 
 class WorkspaceWriterInterruptedError(RuntimeError):
@@ -352,7 +353,7 @@ class WorkspaceWriterScheduler:
             if (
                 run.run_id in terminalized_run_ids
                 or run.origin != "local"
-                or run.status in {"completed", "failed", "cancelled"}
+                or run.status in RUN_TERMINAL_STATES
                 or self.journal.list_run_attempts(run.run_id)
             ):
                 continue
@@ -410,7 +411,7 @@ class WorkspaceWriterScheduler:
 
     def _cancel_orphaned_run(self, run_id: str) -> None:
         run = self.journal.get_run(run_id)
-        if run is None or run.status in {"completed", "failed", "cancelled"}:
+        if run is None or run.status in RUN_TERMINAL_STATES:
             return
         request_id = run.cancel_request_id or (
             f"startup-orphaned-admission:{run_id}"

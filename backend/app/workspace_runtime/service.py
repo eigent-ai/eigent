@@ -32,6 +32,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.transitions import RUN_TERMINAL_STATES
+
 from .admission import (
     AdmissionConflict,
     AdmissionError,
@@ -737,8 +739,10 @@ class ExecutionService:
         from app.run_journal import InvalidRunTransitionError
 
         run = self.journal.get_run(request.admitted_run_id)
-        terminal = {"completed", "failed", "cancelled"}
-        if run.status not in terminal and run.cancel_request_id is None:
+        if (
+            run.status not in RUN_TERMINAL_STATES
+            and run.cancel_request_id is None
+        ):
             try:
                 self.journal.request_cancel(
                     request.admitted_run_id,
@@ -750,7 +754,7 @@ class ExecutionService:
                 # cancel intent. That fact still does not prove writers stopped.
                 current = self.journal.get_run(request.admitted_run_id)
                 if (
-                    current.status not in terminal
+                    current.status not in RUN_TERMINAL_STATES
                     and current.cancel_request_id is None
                 ):
                     raise
@@ -882,11 +886,10 @@ class ExecutionService:
             if key in self._cancellations or execution.finalized:
                 continue
             run = self.journal.get_run(execution.runtime.binding.run_id)
-            if run.cancel_request_id is not None or run.status in {
-                "completed",
-                "failed",
-                "cancelled",
-            }:
+            if (
+                run.cancel_request_id is not None
+                or run.status in RUN_TERMINAL_STATES
+            ):
                 self._schedule_cancellation(execution)
             elif key not in self._local_authorization_checks:
                 # A slow Session's fresh filesystem/Git check must not hold

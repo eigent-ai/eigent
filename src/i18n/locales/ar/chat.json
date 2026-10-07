@@ -518,5 +518,16 @@
   "approval-expired-description": "انتهت صلاحية طلب الموافقة قبل قبول القرار. عند الاستئناف، يُعاد تقييم العمل المتبقي وتُطلب موافقة جديدة عند الحاجة. لا يمكن إعادة استخدام طلبات الموافقة السابقة.",
   "approval-tool-ended-description": "أُلغيت الموافقة لأن الأداة انتهت قبل بدء التنفيذ. عند الاستئناف، يُعاد تقييم العمل المتبقي وتُطلب موافقة جديدة عند الحاجة. لا يمكن إعادة استخدام طلبات الموافقة السابقة.",
   "approval-recorded-reason": "السبب المسجّل: {{reason}}",
-  "approval-read-only-receipt": "سجل للقراءة فقط"
+  "approval-read-only-receipt": "سجل للقراءة فقط",
+  "timed-out-after": "انتهت المهلة بعد <elapsed>{{time}}</elapsed>",
+  "run-terminal-reason-completed": "اكتملت المهمة.",
+  "run-terminal-reason-user_cancelled": "تم إيقاف المهمة.",
+  "run-terminal-reason-deadline_exceeded": "بلغت المهمة حدها الزمني.",
+  "run-terminal-reason-approval_expired": "انتهت صلاحية طلب كان بانتظار ردك قبل الرد عليه.",
+  "run-terminal-reason-brain_restart": "أُعيد تشغيل Eigent أثناء تنفيذ هذه المهمة.",
+  "run-terminal-reason-runtime_lost": "توقفت العملية التي كانت تنفذ هذه المهمة بشكل غير متوقع.",
+  "run-terminal-reason-error": "توقفت المهمة بسبب خطأ.",
+  "run-terminal-reason-budget_exhausted": "استنفدت المهمة الميزانية المتاحة.",
+  "tool-status-timed_out": "انتهت المهلة",
+  "run-resume-reevaluates-hint": "عند الاستئناف، يُعاد تقييم العمل المتبقي ويُطلب منك الرد مجددًا عند الحاجة."
 }

@@ -64,6 +64,10 @@ from app.run_journal import (
     configured_run_journal_path,
     get_default_run_journal,
 )
+from app.run_journal.transitions import (
+    RUN_TERMINAL_STATES,
+    RUN_UNSUCCESSFUL_STATES,
+)
 from app.run_runtime import RunCoordinator, get_default_run_coordinator
 from app.run_runtime.admission import (
     WarmRunAdmission,
@@ -757,7 +761,7 @@ async def _resolve_continuation_admission(
     next_action = frontier.get("next_action")
     remaining = frontier.get("remaining")
     retry_failed_run = False
-    if latest is not None and latest.status == "failed":
+    if latest is not None and latest.status in RUN_UNSUCCESSFUL_STATES:
         blocked_by = frontier.get("blocked_by")
         if (
             latest_has_unknown_tool_outcome
@@ -2066,7 +2070,7 @@ async def retire_idle_runtime(project_id: str, data: RetireIdleRuntimeRequest):
         )
         if run is None or run.project_id != project_id:
             raise HTTPException(status_code=404, detail="Run not found.")
-        if run.status not in {"completed", "failed", "cancelled"}:
+        if run.status not in RUN_TERMINAL_STATES:
             raise HTTPException(
                 status_code=409,
                 detail="The Run has not reached a terminal state.",

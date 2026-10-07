@@ -50,6 +50,7 @@ import {
 } from '@/lib/messageIdentity';
 import { buildAgentModelConfigFromProvider } from '@/lib/modelConfig';
 import { reportError } from '@/lib/notifyError';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
@@ -62,6 +63,7 @@ import {
   runProjectionStore,
   type RunDomainEvent,
 } from '@/lib/runEvents';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
 import {
   isLocalWorkspaceSpace,
@@ -783,8 +785,15 @@ export type DurableRunDisplayStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'timed_out'
   | 'interrupted'
   | 'stopped';
+
+/** Ended without a result: failure evidence and error presentation apply. */
+export const UNSUCCESSFUL_RUN_STATUSES = new Set<DurableRunDisplayStatus>([
+  'failed',
+  'timed_out',
+]);
 
 interface Task {
   source: 'user' | 'trigger';
@@ -1594,7 +1603,7 @@ const CANONICAL_TERMINAL_RUN_STATUSES: Partial<
 > = {
   'run.completed': 'completed',
   'run.failed': 'failed',
-  'run.deadline_reached': 'failed',
+  'run.deadline_reached': 'timed_out',
   'run.cancelled': 'cancelled',
   'run.interrupted': 'interrupted',
   'runtime.interrupted': 'interrupted',
@@ -1605,6 +1614,7 @@ const CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS: Partial<Record<string, string>> =
     completed: 'run.completed',
     failed: 'run.failed',
     cancelled: 'run.cancelled',
+    timed_out: 'run.deadline_reached',
     interrupted: 'run.interrupted',
   };
 
@@ -1637,7 +1647,7 @@ export function settleLegacyTaskFromCanonicalTerminal(
   state.setIsPending(taskId, false);
   state.setStatus(taskId, ChatTaskStatus.FINISHED);
 
-  if (durableRunStatus === 'failed') {
+  if (UNSUCCESSFUL_RUN_STATUSES.has(durableRunStatus)) {
     state.setTaskRunning(
       taskId,
       task.taskRunning.map((item) =>
@@ -1663,10 +1673,12 @@ export function settleLegacyTaskFromCanonicalTerminal(
     const message =
       typeof rawMessage === 'string' && rawMessage.trim()
         ? rawMessage.trim()
-        : i18next.t('chat.run-no-final-response', {
-            defaultValue:
-              'This task failed before it produced a final response.',
-          });
+        : durableRunStatus === 'timed_out'
+          ? runTerminalReasonText('deadline_exceeded', i18next.t)
+          : i18next.t('chat.run-no-final-response', {
+              defaultValue:
+                'This task failed before it produced a final response.',
+            });
     const content = i18next.t('chat.error-message', {
       defaultValue: '❌ **Error**: {{message}}',
       message,
@@ -2349,12 +2361,21 @@ export async function readTaskFailureFacts(
         task &&
         current &&
         current.executionId === task.executionId &&
-        current.durableRunStatus === 'failed' &&
+        UNSUCCESSFUL_RUN_STATUSES.has(current.durableRunStatus!) &&
         current.status === ChatTaskStatus.FINISHED
       )
     );
   };
   if (!isCurrent()) return null;
+  // Stop events written before the Brain recorded causes carry none; the Run
+  // summary holds the backfilled cause.
+  const withRunTerminalReason = (facts: TaskFailureFacts) => ({
+    ...facts,
+    terminalReason:
+      facts.terminalReason ??
+      runProjectionStore.getRun(projectId, taskId)?.terminalReason ??
+      null,
+  });
   const invalidate = () => {
     if (!isCurrent()) controller.abort();
   };
@@ -2375,10 +2396,14 @@ export async function readTaskFailureFacts(
       includeFailureFacts: true,
     });
     return isCurrent()
-      ? (result.failureFacts ?? unverifiedTaskFailureFacts())
+      ? withRunTerminalReason(
+          result.failureFacts ?? unverifiedTaskFailureFacts()
+        )
       : null;
   } catch {
-    return isCurrent() ? unverifiedTaskFailureFacts() : null;
+    return isCurrent()
+      ? withRunTerminalReason(unverifiedTaskFailureFacts())
+      : null;
   } finally {
     signal.removeEventListener('abort', abort);
     unsubscribe.forEach((dispose) => dispose());
@@ -2399,17 +2424,18 @@ function recoverClosedTerminalResult(
     !task ||
     task.status !== ChatTaskStatus.FINISHED ||
     task.isPending ||
-    !['failed', 'cancelled', 'completed'].includes(outcome || '') ||
+    !['completed', 'failed', 'cancelled', 'timed_out'].includes(
+      outcome || ''
+    ) ||
     terminalUsageRecoveries.has(taskId)
   )
     return;
   const executionId = task.executionId;
   const controller = new AbortController();
   terminalUsageRecoveries.set(taskId, controller);
-  const terminalEventTypes =
-    outcome === 'failed'
-      ? ['run.failed', 'run.deadline_reached']
-      : [`run.${outcome}`];
+  const terminalEventTypes = [
+    CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS[outcome!]!,
+  ];
   void readTerminalRunResult({
     projectId,
     runId: taskId,
@@ -3831,7 +3857,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             observedChatStore.getState().tasks[observedTaskId];
           const failureReason =
             observedTask &&
-            CANONICAL_TERMINAL_RUN_STATUSES[event.eventType] === 'failed'
+            UNSUCCESSFUL_RUN_STATUSES.has(
+              CANONICAL_TERMINAL_RUN_STATUSES[event.eventType]!
+            )
               ? reportError(
                   event.payload,
                   {
@@ -4546,7 +4574,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (
             currentTask.status === ChatTaskStatus.FINISHED &&
-            currentTask.durableRunStatus === 'failed' &&
+            UNSUCCESSFUL_RUN_STATUSES.has(currentTask.durableRunStatus!) &&
             agentMessages.step === AgentStep.ERROR
           ) {
             // A status GET can settle the Run before error details arrive.
@@ -6325,7 +6353,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const failedTask = tasks[currentTaskId];
               const wasAlreadySettledByCanonical =
                 failedTask?.status === ChatTaskStatus.FINISHED &&
-                failedTask?.durableRunStatus === 'failed';
+                UNSUCCESSFUL_RUN_STATUSES.has(failedTask.durableRunStatus!);
               const errorContent = i18next.t('chat.error-message', {
                 defaultValue: '❌ **Error**: {{message}}',
                 message: errorMessage,
@@ -7847,7 +7875,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             .getState()
             .getAllChatStores(projectId)
             .some((entry) => entry.chatStore === store) ||
-          get().tasks[taskId]?.durableRunStatus !== 'failed' ||
+          !UNSUCCESSFUL_RUN_STATUSES.has(
+            get().tasks[taskId]?.durableRunStatus!
+          ) ||
           get().tasks[taskId]?.status !== ChatTaskStatus.FINISHED ||
           get().tasks[taskId]?.executionId !== executionId
         ) {
@@ -7882,9 +7912,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const retireApproval = (message: Message): Message => {
         if (
           !durableRunStatus ||
-          !['interrupted', 'completed', 'failed', 'cancelled'].includes(
-            durableRunStatus
-          ) ||
+          !isStoppedRunStatus(durableRunStatus) ||
           message.interaction?.interaction_type !== 'approval' ||
           message.interaction.receipt
         )

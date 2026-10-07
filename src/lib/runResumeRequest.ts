@@ -77,7 +77,9 @@ export function beginResumeRequest(
     previous &&
     latest &&
     latest.attempt_number > previous.afterAttemptNumber &&
-    ['interrupted', 'completed', 'failed', 'cancelled'].includes(latest.status);
+    ['interrupted', 'completed', 'failed', 'cancelled', 'timed_out'].includes(
+      latest.status
+    );
   const request =
     previous && !previousEnded
       ? previous

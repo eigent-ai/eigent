@@ -498,5 +498,16 @@
   "approval-expired-description": "判断が受け付けられる前に承認リクエストの有効期限が切れました。再開すると残りの作業を再評価し、必要に応じて新たな承認を求めます。以前の承認リクエストは再利用できません。",
   "approval-tool-ended-description": "ツールが実行開始前に終了したため、承認がキャンセルされました。再開すると残りの作業を再評価し、必要に応じて新たな承認を求めます。以前の承認リクエストは再利用できません。",
   "approval-recorded-reason": "記録された理由：{{reason}}",
-  "approval-read-only-receipt": "閲覧専用の記録"
+  "approval-read-only-receipt": "閲覧専用の記録",
+  "timed-out-after": "<elapsed>{{time}}</elapsed> 後にタイムアウト",
+  "run-terminal-reason-completed": "タスクが完了しました。",
+  "run-terminal-reason-user_cancelled": "タスクは停止されました。",
+  "run-terminal-reason-deadline_exceeded": "タスクが制限時間に達しました。",
+  "run-terminal-reason-approval_expired": "回答を待っていたリクエストは、回答される前に有効期限が切れました。",
+  "run-terminal-reason-brain_restart": "タスクの実行中に Eigent が再起動しました。",
+  "run-terminal-reason-runtime_lost": "このタスクを実行していたプロセスが予期せず停止しました。",
+  "run-terminal-reason-error": "エラーによりタスクが停止しました。",
+  "run-terminal-reason-budget_exhausted": "タスクが利用可能な予算を使い切りました。",
+  "tool-status-timed_out": "タイムアウト",
+  "run-resume-reevaluates-hint": "再開すると残りの作業を再評価し、必要に応じて改めて確認します。"
 }

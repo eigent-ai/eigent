@@ -34,6 +34,7 @@ from app.workspace_runtime.routing import (
     claim_managed_in_transaction,
 )
 from tests.app.workspace_runtime import test_registration
+from tests.app.workspace_runtime.test_store import PRE_V42_TERMINAL_COLUMNS
 
 registered_deployment = test_registration.deployment
 
@@ -338,6 +339,10 @@ def test_v39_upgrade_preserves_existing_rows_and_adds_only_local_routing(
     with (
         patch("app.run_journal.store.MIGRATION_V40", ""),
         patch("app.run_journal.store._MIGRATION_V41", ""),
+        patch(
+            "app.run_journal.store._MIGRATION_V42",
+            PRE_V42_TERMINAL_COLUMNS,
+        ),
     ):
         with SQLiteRunJournal(path) as old:
             assert old.schema_version == 39
@@ -361,7 +366,7 @@ def test_v39_upgrade_preserves_existing_rows_and_adds_only_local_routing(
                 )
             }
     with SQLiteRunJournal(path) as current:
-        assert current.schema_version == SCHEMA_VERSION == 41
+        assert current.schema_version == SCHEMA_VERSION == 42
         assert before == {
             table: [
                 tuple(row)
@@ -383,6 +388,6 @@ def test_v39_upgrade_preserves_existing_rows_and_adds_only_local_routing(
         )
     with SQLiteRunJournal(path) as reopened:
         assert (
-            reopened.schema_version == 41
+            reopened.schema_version == 42
             and reopened.get_run("old").status == "completed"
         )

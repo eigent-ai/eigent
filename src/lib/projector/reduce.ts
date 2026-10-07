@@ -12,7 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { TERMINAL_RUN_STATUSES } from './runSummary';
+import { runTerminalReason } from '@/lib/runTerminalReason';
+import { isStoppedRunStatus, TERMINAL_RUN_STATUSES } from './runSummary';
 import type {
   CanonicalProjectEvent,
   ProjectedArtifact,
@@ -37,7 +38,7 @@ const RUN_STATUS_BY_EVENT: Record<string, ProjectedRun['status']> = {
   'approval.cancelled': 'interrupted',
   'run.completed': 'completed',
   'run.failed': 'failed',
-  'run.deadline_reached': 'failed',
+  'run.deadline_reached': 'timed_out',
   'run.cancelled': 'cancelled',
   'run.interrupted': 'interrupted',
   'runtime.interrupted': 'interrupted',
@@ -369,6 +370,7 @@ export function reduceProjectedRun(
         ? previousRun.status
         : candidateStatus;
   let terminalReason = previousRun?.terminalReason ?? null;
+  let terminalDetail = previousRun?.terminalDetail ?? null;
   const acceptsLifecycle =
     lifecycleStatus &&
     event.source === 'canonical' &&
@@ -378,13 +380,18 @@ export function reduceProjectedRun(
       TERMINAL_RUN_STATUSES.has(previousRun.status) &&
       status !== candidateStatus
     );
+  // Mirror the Brain: a stop keeps the cause of the transition that entered
+  // its status, and leaving a stopped status clears it.
   if (acceptsLifecycle) {
-    if (['interrupted', 'failed', 'cancelled', 'completed'].includes(status)) {
-      if (typeof event.payload.reason === 'string' && event.payload.reason)
-        terminalReason = event.payload.reason;
-      else if (event.eventType === 'approval.expired_rejected')
-        terminalReason = 'approval_expired';
-    } else terminalReason = null;
+    if (!isStoppedRunStatus(status)) {
+      terminalReason = terminalDetail = null;
+    } else if (status !== previousRun?.status || !terminalReason) {
+      terminalReason = runTerminalReason(event.payload.terminal_reason);
+      terminalDetail =
+        terminalReason && typeof event.payload.terminal_detail === 'string'
+          ? event.payload.terminal_detail
+          : null;
+    }
   }
   return {
     ...previousRun,
@@ -405,6 +412,7 @@ export function reduceProjectedRun(
     runId: event.runId,
     status,
     terminalReason,
+    terminalDetail,
     // Legacy ChatStep IDs are global database IDs, not Run-local sequences.
     // They must never move the canonical Run gap-detection watermark.
     lastSequence:
@@ -423,8 +431,7 @@ export function reduceProjectedRun(
         ? event.runVersion < previousRun.runVersion
         : previousRun.runVersion > 0 ||
           // Cleanup receipts cannot extend a settled legacy turn's duration.
-          (status === previousRun.status &&
-            (TERMINAL_RUN_STATUSES.has(status) || status === 'interrupted')))
+          (status === previousRun.status && isStoppedRunStatus(status)))
         ? previousRun.updatedAt
         : event.createdAt,
     origin: previousRun?.origin ?? event.origin ?? null,

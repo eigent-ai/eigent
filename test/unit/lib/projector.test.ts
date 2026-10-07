@@ -1602,7 +1602,7 @@ describe('projector pipeline', () => {
   });
 
   it.each([
-    ['run.deadline_reached', 'failed'],
+    ['run.deadline_reached', 'timed_out'],
     ['runtime.interrupted', 'interrupted'],
     ['approval.cancelled', 'interrupted'],
   ] as const)('projects %s as the terminal status %s', (eventType, status) => {

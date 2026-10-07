@@ -34,7 +34,7 @@ from app.run_context import get_current_run_context
 from app.run_journal.models import CommittedRunEvent, RunEventDraft, RunRecord
 from app.run_journal.semantic_events import semantic_event_fields
 from app.run_journal.store import SQLiteRunJournal
-from app.run_journal.transitions import RUN_ACTIVE_STATES
+from app.run_journal.transitions import RUN_ACTIVE_STATES, RUN_TERMINAL_STATES
 from app.utils.file_utils import list_files
 from app.utils.workspace_paths import (
     get_eigent_root,
@@ -625,7 +625,7 @@ def task_modification_windows(
         end = run.updated_at if run.status not in RUN_ACTIVE_STATES else None
         windows.append((run.created_at - 1.0, end))
 
-    return tuple(windows), run.status in {"completed", "failed", "cancelled"}
+    return tuple(windows), run.status in RUN_TERMINAL_STATES
 
 
 def _artifact_projection(
@@ -803,11 +803,7 @@ def finalize_run_artifacts(
     _require_legacy_artifact_run(journal, run.run_id)
     current_run = journal.get_run(run.run_id) or run
     existing = journal.get_run_artifact_manifest_event(run.run_id)
-    if existing is not None and current_run.status in {
-        "completed",
-        "failed",
-        "cancelled",
-    }:
+    if existing is not None and current_run.status in RUN_TERMINAL_STATES:
         return existing
 
     if existing is not None and current_run.status in {

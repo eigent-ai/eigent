@@ -49,8 +49,8 @@ describe('local HumanInteraction API', () => {
     fetchGetMock.mockResolvedValue({
       run_id: 'run-1',
       interactions: [
-        { interaction_id: 'old', status: 'cancelled' },
-        { interaction_id: 'new', status: 'expired' },
+        { interaction_id: 'old', status: 'cancelled', attempt_id: 'a-1' },
+        { interaction_id: 'new', status: 'expired', attempt_id: 'a-2' },
       ],
       approvals: [
         {
@@ -59,10 +59,16 @@ describe('local HumanInteraction API', () => {
         },
         { approval_id: 'new', decision: { reason: 'approval_expired' } },
       ],
+      attempts: [
+        { attempt_id: 'a-1', terminal_reason: 'error' },
+        { attempt_id: 'a-2', terminal_reason: 'approval_expired' },
+      ],
     });
+    // The card names why the owning Attempt stopped, never the raw reason.
     await expect(getHumanInteractionReceipt(interaction)).resolves.toEqual({
       status: 'cancelled',
       reason: 'tool_terminal_before_dispatch',
+      terminal_reason: 'error',
     });
     fetchGetMock.mockResolvedValue({
       run_id: 'other',

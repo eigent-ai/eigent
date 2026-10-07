@@ -61,6 +61,7 @@ import {
   closeIdleSSEConnectionsForTasks,
   createChatStoreInstance,
   hasActiveSSEConnection,
+  UNSUCCESSFUL_RUN_STATUSES,
   VanillaChatStore,
   waitForIdleSSEDisplayTail,
   type DurableRunDisplayStatus,
@@ -140,6 +141,7 @@ const DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);
@@ -147,6 +149,7 @@ const TERMINAL_DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);
@@ -194,7 +197,10 @@ const cachedTaskProjectionIsIncomplete = (
   // seeded user prompt; its freshness anchors still matched SQLite, so it
   // suppressed authoritative replay forever. Treat that shape as a partial
   // projection for both successful and failed Runs.
-  if (localRunStatus === 'completed' || localRunStatus === 'failed') {
+  if (
+    localRunStatus === 'completed' ||
+    UNSUCCESSFUL_RUN_STATUSES.has(localRunStatus!)
+  ) {
     return !messages.some(
       (message) =>
         message !== null &&

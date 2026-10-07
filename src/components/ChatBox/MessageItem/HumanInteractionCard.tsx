@@ -18,10 +18,8 @@ import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
 import { useHost } from '@/host';
-import {
-  approvalTerminalReason,
-  isInteractionTerminal,
-} from '@/lib/approvalPresentation';
+import { isInteractionTerminal } from '@/lib/approvalPresentation';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { controlOwner } from '@/service/controlRequest';
 import {
   decideHumanInteraction,
@@ -29,6 +27,7 @@ import {
   invalidatePendingHumanInteractions,
   isHumanInteractionStillPending,
   type HumanInteractionPayload,
+  type HumanInteractionReceipt,
 } from '@/service/humanInteractionApi';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
@@ -60,7 +59,7 @@ const requestId = () =>
 
 function mergeJournalReceipt(
   interaction: HumanInteractionPayload,
-  receipt: Pick<HumanInteractionPayload, 'status' | 'reason' | 'expires_at'>
+  receipt: HumanInteractionReceipt
 ): HumanInteractionPayload {
   if (!isInteractionTerminal(interaction))
     return { ...interaction, ...receipt };
@@ -71,6 +70,7 @@ function mergeJournalReceipt(
     ...interaction,
     reason: interaction.reason || receipt.reason,
     expires_at: interaction.expires_at ?? receipt.expires_at,
+    terminal_reason: interaction.terminal_reason ?? receipt.terminal_reason,
   };
 }
 
@@ -170,12 +170,9 @@ export function HumanInteractionCard({
   const delivered = useRef<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resolved, setResolved] = useState(false);
-  const [journalReceipt, setJournalReceipt] = useState<{
-    identity: string;
-    status?: string;
-    reason?: string;
-    expires_at?: number | string | null;
-  } | null>(null);
+  const [journalReceipt, setJournalReceipt] = useState<
+    (HumanInteractionReceipt & { identity: string }) | null
+  >(null);
   const receiptInteraction =
     journalReceipt?.identity === viewKey
       ? mergeJournalReceipt(interaction, journalReceipt)
@@ -265,7 +262,7 @@ export function HumanInteractionCard({
   const receiptNeedsReason =
     interaction.interaction_type === 'approval' &&
     (receiptOnly || expiredLocally || pendingUnavailable) &&
-    !receiptInteraction.reason;
+    receiptInteraction.terminal_reason === undefined;
   useEffect(() => {
     if (!receiptNeedsReason) return;
     let cancelled = false;
@@ -284,6 +281,7 @@ export function HumanInteractionCard({
                 status: merged.status,
                 reason: merged.reason,
                 expires_at: merged.expires_at,
+                terminal_reason: merged.terminal_reason,
               };
             });
         })
@@ -448,7 +446,12 @@ export function HumanInteractionCard({
           : inactive
             ? t('chat.approval-inactive-title')
             : t('chat.control-input-required');
-    const reason = approvalTerminalReason(receiptInteraction.reason, t);
+    // Only an approval that ended undecided ended with its Attempt.
+    const reason =
+      receiptInteraction.status === 'expired' ||
+      receiptInteraction.status === 'cancelled'
+        ? runTerminalReasonText(receiptInteraction.terminal_reason, t)
+        : '';
     return (
       <div
         data-human-input-receipt

@@ -273,6 +273,7 @@ describe('session nav lead presentation', () => {
   it.each([
     ['completed', 'finished'],
     ['failed', 'error'],
+    ['timed_out', 'error'],
     ['cancelled', 'idle'],
     ['interrupted', 'warning'],
     ['stopped', 'idle'],

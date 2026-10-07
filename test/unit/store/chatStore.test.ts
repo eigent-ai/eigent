@@ -2833,10 +2833,10 @@ describe('ChatStore - Core Functionality', () => {
               {
                 run_id: 'live-run',
                 project_id: 'project-1',
-                status: 'failed',
+                status: 'timed_out',
                 version: 87,
                 updated_at: Date.now(),
-                latest_attempt: { attempt_number: 1, status: 'failed' },
+                latest_attempt: { attempt_number: 1, status: 'timed_out' },
               },
             ]);
             expect(

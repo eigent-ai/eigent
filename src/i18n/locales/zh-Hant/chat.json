@@ -498,5 +498,16 @@
   "approval-expired-description": "審批請求在決定被接受前已到期。還原時會重新評估剩餘工作，並在需要時請求新的審批。舊審批請求不能重複使用。",
   "approval-tool-ended-description": "工具在開始執行前已終止，因此審批已取消。還原時會重新評估剩餘工作，並在需要時請求新的審批。舊審批請求不能重複使用。",
   "approval-recorded-reason": "記錄的原因：{{reason}}",
-  "approval-read-only-receipt": "唯讀記錄"
+  "approval-read-only-receipt": "唯讀記錄",
+  "timed-out-after": "執行 <elapsed>{{time}}</elapsed> 後逾時",
+  "run-terminal-reason-completed": "任務已完成。",
+  "run-terminal-reason-user_cancelled": "任務已被停止。",
+  "run-terminal-reason-deadline_exceeded": "任務已達到時間上限。",
+  "run-terminal-reason-approval_expired": "等待你回覆的請求在答覆前已到期。",
+  "run-terminal-reason-brain_restart": "任務執行期間 Eigent 重新啟動了。",
+  "run-terminal-reason-runtime_lost": "執行此任務的處理程序意外停止。",
+  "run-terminal-reason-error": "任務因錯誤而停止。",
+  "run-terminal-reason-budget_exhausted": "任務已用盡可用預算。",
+  "tool-status-timed_out": "已逾時",
+  "run-resume-reevaluates-hint": "還原時會重新評估剩餘工作，並在需要時再次詢問。"
 }

@@ -298,6 +298,28 @@ def test_startup_terminalizes_zero_attempt_run_after_writer_was_reclaimed(
     )
 
 
+def test_startup_leaves_a_timed_out_zero_attempt_run_terminal(journal):
+    scheduler = WorkspaceWriterScheduler(journal)
+    journal.ensure_run(
+        run_id="run-timed-out", project_id="project-1", status="pending"
+    )
+    journal.append_event(
+        "run-timed-out",
+        RunEventDraft(
+            event_type="run.deadline_reached",
+            payload={"reason": "persisted_run_deadline_reached"},
+        ),
+    )
+
+    result = scheduler.reconcile_orphaned_admissions()
+
+    assert result.failed_request_ids == ()
+    assert journal.get_run("run-timed-out").status == "timed_out"
+    assert journal.list_events("run-timed-out")[-1].event_type == (
+        "run.deadline_reached"
+    )
+
+
 def _admit_pending(scheduler, run_id, worktree_path="/tmp/space-1"):
     journal = scheduler.journal
     project_id = f"project-{run_id}"

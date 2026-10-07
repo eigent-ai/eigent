@@ -671,7 +671,7 @@ function safeNodeText(node: ChatProjectionNode): string {
     case 'artifact':
       return node.path;
     case 'run_status':
-      return node.reason || '';
+      return node.terminalDetail || '';
     case 'unknown':
       return '';
   }

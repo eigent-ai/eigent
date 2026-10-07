@@ -264,7 +264,7 @@ describe('Task failure summary ownership', () => {
     'preserves %s output and renders one read-only Task summary',
     async (step) => {
       const facts = {
-        terminal: 'failed',
+        terminalReason: 'error',
         finalResponse: 'absent',
         actionsVerified: true,
         actions: [
@@ -351,14 +351,29 @@ describe('Task failure summary ownership', () => {
   });
 
   it.each([
-    ['failed', 'No final reply was recorded.'],
-    ['timed_out', 'Task timed out before a final reply was recorded.'],
+    ['failed', 'error', 'No final reply was recorded.'],
+    [
+      'timed_out',
+      'deadline_exceeded',
+      'Task timed out before a final reply was recorded.',
+    ],
+    // The status says the Task timed out; an earlier cause only says why.
+    [
+      'timed_out',
+      'approval_expired',
+      'Task timed out before a final reply was recorded.',
+    ],
+    [
+      'timed_out',
+      'brain_restart',
+      'Task timed out before a final reply was recorded.',
+    ],
   ])(
-    'states that no actions were recorded for a %s Run without tools',
-    async (terminal, title) => {
+    'states that no actions were recorded for a %s Run (%s) without tools',
+    async (durableRunStatus, terminalReason, title) => {
       const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
         onFacts({
-          terminal,
+          terminalReason,
           finalResponse: 'absent',
           actionsVerified: true,
           actions: [],
@@ -367,7 +382,7 @@ describe('Task failure summary ownership', () => {
       });
       renderGroups([{ id: 'user', role: 'user', content: 'Request' }], {
         status: ChatTaskStatus.FINISHED,
-        durableRunStatus: 'failed',
+        durableRunStatus,
         observeTaskFailureFacts,
       });
       expect(await screen.findByText(title)).toBeInTheDocument();
@@ -384,7 +399,7 @@ describe('Task failure summary ownership', () => {
   it('renders the first actions in order, counts the rest, and warns from every action', async () => {
     const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
       onFacts({
-        terminal: 'failed',
+        terminalReason: 'error',
         finalResponse: 'absent',
         actionsVerified: true,
         actions: [
@@ -424,7 +439,7 @@ describe('Task failure summary ownership', () => {
   it('does not add the summary when a final response is durably recorded', async () => {
     const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
       onFacts({
-        terminal: 'failed',
+        terminalReason: 'error',
         finalResponse: 'present',
         actionsVerified: true,
         actions: [],
