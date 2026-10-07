@@ -625,6 +625,27 @@ function LegacyChatBox(): JSX.Element {
     };
   }, []);
   const legacyInteractionExpired = useHumanInteractionExpiry(activeInteraction);
+  // The canonical Run decides whether the active Run can still be answered:
+  // a task restored for playback keeps legacy status that Resume outdates.
+  const readOnlyRunStatus = (
+    runId: string | null | undefined,
+    legacyStatus: string | undefined
+  ) =>
+    (runId && sharedProjectEventSnapshot?.view.projectId === activeProjectId
+      ? sharedProjectEventSnapshot.view.runs[runId]?.status
+      : undefined) ?? legacyStatus;
+  const activeInteractionReadOnly =
+    !!activeInteraction &&
+    isHumanInteractionReadOnly({
+      interaction: activeInteraction,
+      activeTaskId,
+      taskType: activeAskTask?.type,
+      taskStatus: activeAskTask?.status,
+      durableRunStatus: readOnlyRunStatus(
+        activeTaskId,
+        activeAskTask?.durableRunStatus
+      ),
+    });
   const [verifiedLegacyApproval, setVerifiedLegacyApproval] =
     useState<string>();
   useEffect(() => {
@@ -633,14 +654,7 @@ function LegacyChatBox(): JSX.Element {
       !activeInteraction ||
       activeInteraction.interaction_type !== 'approval' ||
       legacyInteractionExpired ||
-      isHumanInteractionReadOnly({
-        interaction: activeInteraction,
-        activeTaskId,
-        taskType: activeAskTask?.type,
-        taskStatus: activeAskTask?.status,
-        durableRunStatus:
-          projectedLegacyRun?.status ?? activeAskTask?.durableRunStatus,
-      })
+      activeInteractionReadOnly
     )
       return;
     let cancelled = false;
@@ -673,11 +687,7 @@ function LegacyChatBox(): JSX.Element {
   }, [
     legacyControlViewKey,
     activeInteraction,
-    activeTaskId,
-    activeAskTask?.type,
-    activeAskTask?.status,
-    activeAskTask?.durableRunStatus,
-    projectedLegacyRun?.status,
+    activeInteractionReadOnly,
     legacyInteractionExpired,
     host?.ipcRenderer,
   ]);
@@ -685,15 +695,7 @@ function LegacyChatBox(): JSX.Element {
     (activeInteraction?.interaction_type !== 'approval' ||
       verifiedLegacyApproval === legacyControlViewKey) &&
     !legacyInteractionExpired &&
-    (!activeInteraction ||
-      !isHumanInteractionReadOnly({
-        interaction: activeInteraction,
-        activeTaskId,
-        taskType: activeAskTask?.type,
-        taskStatus: activeAskTask?.status,
-        durableRunStatus:
-          projectedLegacyRun?.status ?? activeAskTask?.durableRunStatus,
-      })) &&
+    !activeInteractionReadOnly &&
     !!activeAskTask &&
     activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
@@ -757,7 +759,10 @@ function LegacyChatBox(): JSX.Element {
             .activeTaskId,
           taskType: currentTask.type,
           taskStatus: currentTask.status,
-          durableRunStatus: currentTask.durableRunStatus,
+          durableRunStatus: readOnlyRunStatus(
+            taskId,
+            currentTask.durableRunStatus
+          ),
         })
       )
         return;

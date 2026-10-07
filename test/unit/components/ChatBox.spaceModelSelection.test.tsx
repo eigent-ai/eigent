@@ -179,7 +179,10 @@ vi.mock('@/store/usageNoticeStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store/usageNoticeStore')>()),
   refreshUsage: vi.fn(),
 }));
-vi.mock('@/store/chatEventProjectionBridge', () => ({
+vi.mock('@/store/chatEventProjectionBridge', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/store/chatEventProjectionBridge')
+  >()),
   isChatEventTimelineEnabled: () => false,
 }));
 vi.mock('@/components/ChatBox/BottomBox/useEventNativeHumanControl', () => ({
@@ -219,7 +222,12 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
           Follow up
         </button>
         {variant?.kind === 'approval' ? (
-          <button onClick={() => variant.onApprove('once')}>Approve</button>
+          <button
+            disabled={variant.disabled}
+            onClick={() => variant.onApprove('once')}
+          >
+            Approve
+          </button>
         ) : null}
       </div>
     );
@@ -1902,6 +1910,170 @@ describe('ChatBox after an accepted Space model selection', () => {
       'backend-ready',
       listeners.get('backend-ready')
     );
+  });
+
+  it('decides whether an approval is live from the canonical Run, not stale task status', async () => {
+    await acceptInitialSpaceRun();
+    const taskId = chat.getState().activeTaskId!;
+    chat.getState().setStatus(taskId, 'running');
+    // The task still carries the outcome of an earlier Attempt.
+    chat.getState().setDurableRunStatus(taskId, 'interrupted');
+    chat.getState().setActiveAsk(taskId, 'worker');
+    chat.getState().addMessages(taskId, {
+      id: 'approval-ask',
+      role: 'agent',
+      step: AgentStep.ASK,
+      agent_name: 'worker',
+      content: '',
+      interaction: {
+        interaction_id: 'approval',
+        interaction_type: 'approval',
+        run_id: taskId,
+        version: 0,
+        action_digest: 'digest',
+        question: 'Allow write?',
+      },
+    });
+    const projectCanonicalRun = (status: string) => {
+      const snapshot = getProjectEventStore('session-1').getSnapshot();
+      mocks.snapshot = {
+        ...snapshot,
+        view: {
+          ...snapshot.view,
+          runs: {
+            [taskId]: {
+              runId: taskId,
+              status,
+              lastSequence: 3,
+              runVersion: 3,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        },
+      };
+    };
+    projectCanonicalRun('waiting_for_user');
+    servePendingApproval('approval');
+    const view = await renderChat();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    );
+
+    // An interrupted canonical Run retires the request before the task
+    // receives its own terminal update.
+    chat.getState().setDurableRunStatus(taskId, undefined);
+    projectCanonicalRun('interrupted');
+    view.rerender(
+      <MemoryRouter>
+        <ChatBox />
+      </MemoryRouter>
+    );
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  // Startup restored this Run, which waited for an approval, as playback. The
+  // restart cancelled that approval and interrupted the Run.
+  function restoreInterruptedApprovalRun(runId: string) {
+    mocks.projectStore.getAllChatStores = () => [
+      { chatId: 'restored-chat', chatStore: chat },
+    ];
+    chat.getState().setType(runId, 'replay');
+    chat.getState().addMessages(runId, {
+      id: 'restored-ask',
+      role: 'agent',
+      step: AgentStep.ASK,
+      agent_name: 'worker',
+      content: '',
+      interaction: {
+        interaction_id: 'approval-before-restart',
+        interaction_type: 'approval',
+        run_id: runId,
+        version: 0,
+        action_digest: 'digest',
+        question: 'Allow write?',
+      },
+    });
+    chat.getState().setActiveAsk(runId, 'worker');
+    chat.getState().setDurableRunStatus(runId, 'interrupted');
+    interruptRun(runId);
+  }
+
+  it('offers the approval asked again after Resume of a restored Run', async () => {
+    await acceptInitialSpaceRun();
+    const runId = chat.getState().activeTaskId!;
+    restoreInterruptedApprovalRun(runId);
+    servePendingApproval('approval-after-resume');
+    const view = await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(mocks.sse).toHaveBeenCalledTimes(2));
+
+    // The resumed Attempt asks for the same action again.
+    await act(async () => {
+      await mocks.sse.mock.calls.at(-1)![0].onmessage({
+        data: JSON.stringify({
+          step: AgentStep.ASK,
+          data: {
+            agent: 'worker',
+            interaction_id: 'approval-after-resume',
+            interaction_type: 'approval',
+            run_id: runId,
+            version: 0,
+            action_digest: 'digest',
+            question: 'Allow write?',
+          },
+        }),
+      });
+    });
+    view.rerender(
+      <MemoryRouter>
+        <ChatBox />
+      </MemoryRouter>
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    );
+    const task = chat.getState().tasks[runId];
+    expect(task).toMatchObject({ activeAsk: 'worker', askList: [] });
+    expect(task.type).toBeUndefined();
+    expect(task.durableRunStatus).toBeUndefined();
+    // The approval cancelled by the restart stays a read-only receipt.
+    expect(
+      task.messages.find((message) => message.id === 'restored-ask')
+        ?.interaction?.receipt
+    ).toEqual({ runStatus: 'interrupted' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(
+        `/runs/${encodeURIComponent(runId)}/interactions/approval-after-resume/decisions`,
+        expect.objectContaining({
+          decision: { decision: 'approved', scope: 'once' },
+        }),
+        undefined,
+        expect.anything()
+      )
+    );
+  });
+
+  it('keeps a restored Run as history when Resume is not admitted', async () => {
+    await acceptInitialSpaceRun();
+    const runId = chat.getState().activeTaskId!;
+    restoreInterruptedApprovalRun(runId);
+    mocks.post.mockImplementation(async (url: string) => {
+      if (url.endsWith('/resume'))
+        throw Object.assign(new Error('Resume is blocked'), { status: 409 });
+      return {};
+    });
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(notifyError).toHaveBeenCalled());
+
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(chat.getState().tasks[runId]).toMatchObject({
+      type: 'replay',
+      durableRunStatus: 'interrupted',
+      status: 'finished',
+    });
   });
 
   it('review keeps Cancel recovery visible when the selected history task differs', async () => {

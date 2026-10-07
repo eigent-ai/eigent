@@ -6791,6 +6791,125 @@ describe('ChatStore - Core Functionality', () => {
       expect(store.getState().tasks['approval-run'].messages).toEqual([]);
     });
 
+    const replayHumanInteractionEvents = async (
+      events: Array<{
+        event_type: string;
+        legacy_step?: string;
+        payload: object;
+      }>
+    ) => {
+      const store = createChatStoreInstance();
+      const taskId = store.getState().create();
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, event] of events.entries()) {
+          await opts.onmessage?.({
+            event: 'run_event',
+            id: String(index + 1),
+            data: JSON.stringify({
+              ...event,
+              event_id: `restart-event-${index}`,
+              sequence: index + 1,
+              project_id: 'restart-session',
+              run_id: taskId,
+              created_at: 100 + index,
+            }),
+          } as any);
+        }
+      });
+      await store
+        .getState()
+        .startTask(
+          taskId,
+          'replay',
+          undefined,
+          0,
+          undefined,
+          undefined,
+          undefined,
+          'restart-session',
+          undefined,
+          { replaySource: 'local_durable' }
+        );
+      return store.getState().tasks[taskId];
+    };
+    const approvalAsk = (interactionId: string) => ({
+      event_type: 'legacy.ask',
+      legacy_step: 'ask',
+      payload: {
+        agent: 'worker',
+        interaction_id: interactionId,
+        interaction_type: 'approval',
+        version: 0,
+        title: 'Allow write?',
+      },
+    });
+
+    it.each([
+      [
+        'approval.cancelled',
+        {
+          interaction_id: 'restart-approval',
+          approval_id: 'restart-approval',
+          decision: 'rejected',
+          reason: 'tool_terminal_before_dispatch',
+        },
+      ],
+      [
+        'interaction.cancelled',
+        {
+          interaction_id: 'restart-approval',
+          interaction_type: 'approval',
+          reason: 'brain_restart',
+        },
+      ],
+      [
+        'approval.expired_rejected',
+        { approval_id: 'restart-approval', reason: 'approval_expired' },
+      ],
+      [
+        'interaction.expired',
+        { interaction_id: 'restart-approval', interaction_type: 'approval' },
+      ],
+    ])(
+      'clears a replayed ASK that ended with %s',
+      async (eventType, payload) => {
+        const task = await replayHumanInteractionEvents([
+          approvalAsk('restart-approval'),
+          { event_type: eventType, payload },
+        ]);
+        expect(task.activeAsk).toBe('');
+        expect(task.askList).toEqual([]);
+        expect(task.resolvedInteractionIds).toEqual(['restart-approval']);
+        expect(
+          task.messages.some(
+            (message) =>
+              message.interaction?.interaction_id === 'restart-approval'
+          )
+        ).toBe(false);
+      }
+    );
+
+    it('makes a request asked again after Resume the active one', async () => {
+      const task = await replayHumanInteractionEvents([
+        approvalAsk('restart-approval'),
+        {
+          event_type: 'approval.cancelled',
+          payload: {
+            interaction_id: 'restart-approval',
+            decision: 'rejected',
+            reason: 'tool_terminal_before_dispatch',
+          },
+        },
+        approvalAsk('resumed-approval'),
+      ]);
+      expect(task.activeAsk).toBe('worker');
+      expect(task.askList).toEqual([]);
+      expect(
+        task.messages.findLast((message) => message.step === AgentStep.ASK)
+          ?.interaction?.interaction_id
+      ).toBe('resumed-approval');
+    });
+
     it('replays a recorded human reply without leaving an active wait', async () => {
       vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
         for (const event of [
