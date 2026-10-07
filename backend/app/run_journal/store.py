@@ -2586,6 +2586,17 @@ class InvalidRunTransitionError(RunJournalError):
     pass
 
 
+class ProjectExecutionLeaseConflictError(InvalidRunTransitionError):
+    """Another Run already holds the Project's execution lease."""
+
+    def __init__(self, *, project_id: str, owner_run_id: str) -> None:
+        self.project_id = project_id
+        self.owner_run_id = owner_run_id
+        super().__init__(
+            f"project {project_id!r} already executes Run {owner_run_id!r}"
+        )
+
+
 class UnsafeResumeError(RunJournalError):
     def __init__(self, tool_call_ids: list[str]) -> None:
         self.tool_call_ids = tuple(tool_call_ids)
@@ -13697,9 +13708,9 @@ class SQLiteRunJournal:
         ).fetchone()
         if project_lease is not None:
             if project_lease["run_id"] != run_id:
-                raise InvalidRunTransitionError(
-                    f"project {run['project_id']!r} already executes Run "
-                    f"{project_lease['run_id']!r}"
+                raise ProjectExecutionLeaseConflictError(
+                    project_id=run["project_id"],
+                    owner_run_id=project_lease["run_id"],
                 )
             # A same-Run lease without an active Attempt is stale. This
             # can only be left by a pre-v21 crash or manual DB repair;
@@ -13861,9 +13872,8 @@ class SQLiteRunJournal:
                 (run["project_id"],),
             ).fetchone()
             owner_id = owner["run_id"] if owner is not None else "unknown"
-            raise InvalidRunTransitionError(
-                f"project {run['project_id']!r} already executes Run "
-                f"{owner_id!r}"
+            raise ProjectExecutionLeaseConflictError(
+                project_id=run["project_id"], owner_run_id=owner_id
             ) from exc
         environment_payload = (
             {
