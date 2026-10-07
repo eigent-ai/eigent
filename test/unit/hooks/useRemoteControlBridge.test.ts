@@ -138,7 +138,7 @@ describe('useRemoteControlBridge internals', () => {
               },
             ],
           }
-        : { has_lock: true, status: 'running' }
+        : { has_lock: true, status: 'processing', consumer_alive: true }
     );
 
     const ack = await __remoteControlBridgeTestHooks.executeRemoteCommand(
