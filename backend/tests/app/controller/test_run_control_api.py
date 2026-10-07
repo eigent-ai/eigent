@@ -36,6 +36,7 @@ from app.controller.run_controller import (
 )
 from app.run_journal import SQLiteRunJournal
 from app.run_runtime import RunCoordinator
+from app.service.task import TaskLock
 from app.workspace_config.admission import (
     EnvironmentAdmissionService,
     LegacyEnvironmentImporter,
@@ -487,3 +488,98 @@ async def test_overlapping_retry_delivers_only_once(tmp_path, monkeypatch):
         task_lock.put_human_input.assert_awaited_once_with(
             "worker", "approved"
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("commit_name", "decision", "reply"),
+    [
+        ("resolve_human_interaction", {"reply": "report.csv"}, "report.csv"),
+        ("decide_approval", {"decision": "approved"}, "approved"),
+    ],
+)
+async def test_cancelled_request_still_delivers_committed_decision(
+    tmp_path, monkeypatch, commit_name, decision, reply
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        if commit_name == "decide_approval":
+            journal.create_approval(
+                approval_id="interaction-1",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                prompt={"question": "Allow write?", "agent": "worker"},
+                action_digest="digest-1",
+                now=2,
+            )
+        else:
+            journal.create_human_interaction(
+                interaction_id="interaction-1",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                interaction_type="question",
+                request={"question": "Which file?", "agent": "worker"},
+                now=2,
+            )
+        task_lock = TaskLock("project-1", asyncio.Queue(), {})
+        task_lock.add_human_input_listen("worker")
+        waiters = [
+            asyncio.create_task(task_lock.get_human_input("worker"))
+            for _ in range(2)
+        ]
+        await asyncio.sleep(0)
+        loop = asyncio.get_running_loop()
+        commit = getattr(journal, commit_name)
+        request = None
+
+        def commit_then_disconnect(*args, **kwargs):
+            committed = commit(*args, **kwargs)
+            # The client leaves after the commit, before the worker thread
+            # returns the transition to the request coroutine.
+            loop.call_soon_threadsafe(request.cancel)
+            return committed
+
+        monkeypatch.setattr(journal, commit_name, commit_then_disconnect)
+        body = InteractionDecisionBody(
+            decision_request_id="decision-1",
+            decision=decision,
+            expected_version=0,
+            action_digest="digest-1",
+        )
+        try:
+            with (
+                patch(
+                    "app.controller.run_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.service.task.get_task_lock_if_exists",
+                    return_value=task_lock,
+                ),
+            ):
+                request = asyncio.create_task(
+                    decide_run_interaction("run-1", "interaction-1", body)
+                )
+                with pytest.raises(asyncio.CancelledError):
+                    await request
+                assert await asyncio.wait_for(waiters[0], 1) == reply
+                retried = await decide_run_interaction(
+                    "run-1", "interaction-1", body
+                )
+            assert retried["status"] == "resolved"
+            assert not waiters[1].done(), "A retry answered the next waiter"
+            assert (
+                len(journal.list_human_interaction_decisions("interaction-1"))
+                == 1
+            )
+        finally:
+            for waiter in waiters:
+                waiter.cancel()
+            await asyncio.gather(*waiters, return_exceptions=True)

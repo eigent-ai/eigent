@@ -115,6 +115,101 @@ async def test_unowned_durable_reply_never_delivers_or_mirrors(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("waiting", "disconnect"), [(True, True), (False, True), (False, False)]
+)
+async def test_committed_gui_reply_survives_request_cancellation(
+    tmp_path, monkeypatch, waiting, disconnect
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="session-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        journal.create_human_interaction(
+            interaction_id="gui-question",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            interaction_type="question",
+            request={"agent": "worker", "question": "Which file?"},
+        )
+        lock = TaskLock("session-1", asyncio.Queue(), {})
+        lock.run_context = _run_context(tmp_path)
+        lock.add_human_input_listen("worker")
+        waiters = [
+            asyncio.create_task(lock.get_human_input("worker"))
+            for _ in range(2 if waiting else 0)
+        ]
+        await asyncio.sleep(0)
+        monkeypatch.setattr(
+            chat_controller, "get_default_run_journal", lambda: journal
+        )
+        monkeypatch.setattr(
+            chat_controller, "get_task_lock_if_exists", lambda _: lock
+        )
+        monkeypatch.setattr(
+            "app.run_sync.runtime.notify_default_cloud_sync_worker",
+            lambda: None,
+        )
+        monkeypatch.setattr(
+            "app.utils.server.sync_step.get_default_event_recorder",
+            lambda: EventRecorder(journal),
+        )
+        loop = asyncio.get_running_loop()
+        resolve = journal.resolve_human_interaction
+        request = None
+
+        def resolve_then_disconnect(*args, **kwargs):
+            resolved = resolve(*args, **kwargs)
+            if disconnect:
+                # The client leaves after the commit, before the worker
+                # thread returns the transition to the request coroutine.
+                loop.call_soon_threadsafe(request.cancel)
+            return resolved
+
+        monkeypatch.setattr(
+            journal, "resolve_human_interaction", resolve_then_disconnect
+        )
+        reply = HumanReply(
+            agent="worker",
+            reply="report.csv",
+            interaction_id="gui-question",
+            decision_request_id="gui-submit",
+        )
+        try:
+            request = asyncio.create_task(
+                chat_controller.human_reply(
+                    "session-1", reply, SimpleNamespace(headers={})
+                )
+            )
+            # A missing waiter is reported only to a request still waiting.
+            with pytest.raises(
+                asyncio.CancelledError if disconnect else UserException
+            ):
+                await request
+            if waiting:
+                assert await asyncio.wait_for(waiters[0], 1) == "report.csv"
+                retried = await chat_controller.human_reply(
+                    "session-1", reply, SimpleNamespace(headers={})
+                )
+                assert retried.status_code == 201
+                assert not waiters[1].done(), (
+                    "A retry answered the next live GUI waiter"
+                )
+            assert (
+                len(journal.list_human_interaction_decisions("gui-question"))
+                == 1
+            )
+        finally:
+            for waiter in waiters:
+                waiter.cancel()
+            await asyncio.gather(*waiters, return_exceptions=True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("transport", ["typed", "legacy"])
 async def test_resumed_gui_reply_commits_before_delivery_and_survives_restart(
     tmp_path, monkeypatch, transport

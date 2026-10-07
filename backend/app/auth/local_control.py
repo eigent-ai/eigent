@@ -56,14 +56,15 @@ def _is_loopback(host: str | None) -> bool:
         return False
 
 
-async def require_local_control_principal(
+def _authorize_desktop_renderer(
     request: Request,
-) -> LocalControlPrincipal:
-    """Authorize the renderer capability or an authenticated remote Brain user.
+) -> LocalControlPrincipal | None:
+    """Authorize the renderer capability whenever this Brain has one.
 
     Electron injects a random capability into the child Brain process and gives
     it to the trusted renderer through IPC. It is deliberately separate from
     Cloud device credentials, user bearer tokens, and Remote Control link tokens.
+    A Brain started outside Electron without a capability returns None.
     """
 
     expected = _expected_local_control_capability()
@@ -99,6 +100,17 @@ async def require_local_control_principal(
                 "message": "Desktop control capability is not configured.",
             },
         )
+    return None
+
+
+async def require_local_control_principal(
+    request: Request,
+) -> LocalControlPrincipal:
+    """Authorize the renderer capability or an authenticated remote Brain user."""
+
+    principal = _authorize_desktop_renderer(request)
+    if principal is not None:
+        return principal
 
     # Non-Electron deployments must configure a real Brain auth provider.
     # Header presence alone is not authentication while NoneAuth is active.
@@ -124,3 +136,14 @@ async def require_local_control_principal(
     )
     request.state.local_control_principal = principal
     return principal
+
+
+async def require_local_control_if_configured(request: Request) -> None:
+    """Guard Brain routes that Web and standalone clients still call.
+
+    Desktop always configures the capability, and then these routes accept only
+    the trusted renderer, like the control APIs. A Brain started without one
+    (Web dev, standalone) keeps the router-level Brain auth alone.
+    """
+
+    _authorize_desktop_renderer(request)

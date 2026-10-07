@@ -67,6 +67,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# Desktop leaves EIGENT_CORS_ORIGINS unset: its packaged renderer is a file://
+# page that Electron exempts from CORS, so there is no web origin to allowlist
+# ("null" must never be allowlisted; sandboxed and data: pages share it). Brain
+# routes rely on the Desktop capability (app/auth/local_control.py) instead.
 api.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins or ["*"],

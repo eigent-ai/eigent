@@ -86,6 +86,7 @@ from app.service.task import (
     ActionSupplementData,
     ImprovePayload,
     TaskLock,
+    commit_and_deliver,
     delete_task_lock,
     get_or_create_task_lock,
     get_task_lock,
@@ -2784,6 +2785,18 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             code.error,
             "This task is no longer waiting for a human reply. Please send a new message.",
         )
+
+    async def answer_waiter() -> bool:
+        try:
+            await task_lock.put_human_input(data.agent, data.reply)
+        except KeyError:
+            chat_logger.warning(
+                "Human reply target is no longer waiting for input",
+                extra={"task_id": id, "agent": data.agent},
+            )
+            return False
+        return True
+
     run_context = getattr(task_lock, "run_context", None)
     resolved_interaction_id: str | None = None
     if isinstance(run_context, RunContext):
@@ -2894,7 +2907,8 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                 )
             )
             try:
-                _, decision_applied = await asyncio.to_thread(
+                _, decision_applied, delivered = await commit_and_deliver(
+                    answer_waiter,
                     journal.resolve_human_interaction,
                     interaction.interaction_id,
                     include_transition=True,
@@ -2929,17 +2943,13 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                 chat_logger.exception(
                     "Failed to wake cloud sync after HumanInteraction decision"
                 )
-    try:
-        await task_lock.put_human_input(data.agent, data.reply)
-    except KeyError as exc:
-        chat_logger.warning(
-            "Human reply target is no longer waiting for input",
-            extra={"task_id": id, "agent": data.agent},
-        )
+    else:
+        delivered = await answer_waiter()
+    if not delivered:
         raise UserException(
             code.error,
             "This task is no longer waiting for a human reply. Please send a new message.",
-        ) from exc
+        )
 
     reply_payload = {"agent": data.agent, "reply": data.reply}
     if resolved_interaction_id is not None:

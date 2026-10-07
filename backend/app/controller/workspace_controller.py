@@ -16,9 +16,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.auth import require_local_control_if_configured
 from app.model.enums import Status
 from app.router_layer.hands_resolver import get_environment_hands
 from app.run_journal import (
@@ -44,7 +45,7 @@ from app.workspace_git import (
     NestedRepositoryError,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_local_control_if_configured)])
 logger = logging.getLogger("workspace_controller")
 
 

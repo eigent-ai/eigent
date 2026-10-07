@@ -24,6 +24,7 @@ from app.run_journal import (
     ProjectWorkspaceBindingRecord,
     RunEventDraft,
     SQLiteRunJournal,
+    WorkspaceWriterReleaseResult,
     WorkspaceWriterRequestRecord,
     configured_run_journal_path,
     get_default_run_journal,
@@ -47,6 +48,13 @@ class WorkspaceWriterReconciliation:
     interrupted_request_ids: tuple[str, ...]
     promoted_request_ids: tuple[str, ...]
     preserved_request_ids: tuple[str, ...]
+    failed_request_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WorkspaceWriterReclamation:
+    reclaimed_request_ids: tuple[str, ...]
+    promoted_request_ids: tuple[str, ...]
     failed_request_ids: tuple[str, ...]
 
 
@@ -125,6 +133,7 @@ class WorkspaceWriterScheduler:
         """Wait without a deadline; cancellation belongs to the owning Task."""
 
         request_id = self.request_id(run_id)
+        attention_blocker: str | None = None
         while True:
             request = await asyncio.to_thread(
                 self.journal.get_workspace_writer_request,
@@ -136,6 +145,29 @@ class WorkspaceWriterScheduler:
                 raise WorkspaceWriterInterruptedError(
                     "workspace writer admission belongs to another Task"
                 )
+            if (
+                request.status == "queued"
+                and request.blocker_task_id is not None
+            ):
+                holder = await asyncio.to_thread(
+                    self.journal.workspace_writer_holder_state,
+                    repository_id=request.repository_id,
+                    checkout_id=request.checkout_id,
+                )
+                if holder == "lost" and await asyncio.to_thread(
+                    self.reclaim_lost_writer,
+                    repository_id=request.repository_id,
+                    checkout_id=request.checkout_id,
+                ):
+                    continue
+                if (
+                    holder == "requires_attention"
+                    and attention_blocker != request.blocker_task_id
+                ):
+                    await asyncio.to_thread(
+                        self._record_holder_requires_attention, run_id, request
+                    )
+                    attention_blocker = request.blocker_task_id
             if request.status == "queued" and request.blocker_task_id is None:
                 request = await asyncio.to_thread(
                     self.journal.try_acquire_workspace_writer,
@@ -198,12 +230,58 @@ class WorkspaceWriterScheduler:
         self._record_promoted_request(result.next_acquired)
         return result.finished
 
+    def reclaim_lost_writer(
+        self,
+        *,
+        repository_id: str,
+        checkout_id: str,
+    ) -> WorkspaceWriterReleaseResult | None:
+        """Release a lost holder without unsettled writes and promote FIFO."""
+
+        result = self.journal.reclaim_lost_workspace_writer(
+            repository_id=repository_id,
+            checkout_id=checkout_id,
+        )
+        if result is None:
+            return None
+        run_id = self.run_id_from_request_id(result.finished.request_id)
+        if run_id is not None:
+            self._record_state(
+                run_id,
+                result.finished,
+                event_type="workspace.writer.released",
+            )
+        self._record_promoted_request(result.next_acquired)
+        return result
+
+    def _record_holder_requires_attention(
+        self,
+        run_id: str,
+        request: WorkspaceWriterRequestRecord,
+    ) -> None:
+        """Tell a waiter its holder keeps the lease until the user acts."""
+
+        lease = self.journal.get_workspace_writer_lease(
+            repository_id=request.repository_id,
+            checkout_id=request.checkout_id,
+        )
+        if lease is None or lease.task_id != request.blocker_task_id:
+            return
+        self._record_state(
+            run_id,
+            request,
+            event_type="workspace.writer.queued",
+            reason="holder_requires_attention",
+            blocker_run_id=self.run_id_from_request_id(lease.request_id),
+        )
+
     def reconcile_orphaned_admissions(
         self,
     ) -> WorkspaceWriterReconciliation:
         """Interrupt pre-Attempt writer requests left by a crashed admission.
 
-        An interrupted Run with an acquired writer retains ownership. A
+        An interrupted Run with an acquired writer retains ownership until
+        ``reclaim_lost_writers`` runs after Git startup reconciliation. A
         never-started queued Attempt remains resumable but is ineligible for
         promotion until explicit Resume creates a new Attempt. The journal
         skips only such side-effect-free waiters when releasing an orphan;
@@ -237,7 +315,8 @@ class WorkspaceWriterScheduler:
                 else []
             )
             if attempts:
-                preserved.append(request.request_id)
+                if request.status == "queued":
+                    preserved.append(request.request_id)
                 continue
             try:
                 result = self.journal.interrupt_workspace_writer(
@@ -294,6 +373,42 @@ class WorkspaceWriterScheduler:
             failed_request_ids=tuple(failed),
         )
 
+    def reclaim_lost_writers(self) -> WorkspaceWriterReclamation:
+        """Release writers whose holders did not survive the restart.
+
+        Restart closes every Attempt. Run this after Git startup
+        reconciliation so writes it settled no longer keep the lease; a Run
+        with unsettled writes keeps it until the user acts on that Run.
+        """
+
+        reclaimed: list[str] = []
+        promoted: list[str] = []
+        failed: list[str] = []
+        for request in self.journal.list_active_workspace_writer_requests():
+            if request.status != "acquired":
+                continue
+            try:
+                result = self.reclaim_lost_writer(
+                    repository_id=request.repository_id,
+                    checkout_id=request.checkout_id,
+                )
+            except Exception:
+                failed.append(request.request_id)
+                logger.exception(
+                    "Failed to reclaim a lost workspace writer",
+                    extra={"request_id": request.request_id},
+                )
+                continue
+            if result is not None:
+                reclaimed.append(result.finished.request_id)
+                if result.next_acquired is not None:
+                    promoted.append(result.next_acquired.request_id)
+        return WorkspaceWriterReclamation(
+            reclaimed_request_ids=tuple(reclaimed),
+            promoted_request_ids=tuple(promoted),
+            failed_request_ids=tuple(failed),
+        )
+
     def _cancel_orphaned_run(self, run_id: str) -> None:
         run = self.journal.get_run(run_id)
         if run is None or run.status in RUN_TERMINAL_STATES:
@@ -331,6 +446,8 @@ class WorkspaceWriterScheduler:
         request: WorkspaceWriterRequestRecord,
         *,
         event_type: str,
+        reason: str | None = None,
+        blocker_run_id: str | None = None,
     ) -> None:
         waited = (
             request.acquired_at is not None
@@ -341,23 +458,27 @@ class WorkspaceWriterScheduler:
             if waited and request.acquired_at is not None
             else None
         )
-        # Warm abort can enqueue the same stable key again. Separate those
-        # acquisition events while retaining existing event ids in other lanes.
+        # Warm abort and a lost holder can enqueue the same stable key again.
+        # Separate those acquisition events while retaining existing event ids
+        # in other lanes.
         epoch = (
             f":{request.created_at}"
-            if any(
+            if request.reason in {"holder_lost", "holder_lost_requeued"}
+            or any(
                 attempt.resume_reason == "follow_up_execution"
                 for attempt in self.journal.list_run_attempts(run_id)
             )
             else ""
         )
+        # A waiter can learn why its blocker stays without moving in FIFO.
+        refinement = f":{reason}:{blocker_run_id}" if reason else ""
         self.journal.append_event(
             run_id,
             RunEventDraft(
                 event_id=(
                     f"{event_type}:{request.request_id}:"
                     f"{request.queue_position or 0}:"
-                    f"{request.blocker_task_id or 'none'}{epoch}"
+                    f"{request.blocker_task_id or 'none'}{epoch}{refinement}"
                 ),
                 event_type=event_type,
                 payload={
@@ -383,6 +504,7 @@ class WorkspaceWriterScheduler:
                             "task_id": request.task_id,
                             "project_id": request.project_id,
                             "checkout_id": request.checkout_id,
+                            "blocker_run_id": blocker_run_id,
                         },
                     ),
                     "request_id": request.request_id,
@@ -391,7 +513,7 @@ class WorkspaceWriterScheduler:
                     "task_id": request.task_id,
                     "project_id": request.project_id,
                     "target_ref": request.target_ref,
-                    "reason": request.reason,
+                    "reason": reason or request.reason,
                     "queue_position": request.queue_position,
                     "blocker_task_id": request.blocker_task_id,
                     "waited": waited,

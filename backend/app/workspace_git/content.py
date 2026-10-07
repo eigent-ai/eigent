@@ -29,6 +29,7 @@ from app.run_journal import (
     GitOperationRecord,
     GitRepositoryRecord,
     SQLiteRunJournal,
+    WorkspaceWriterLeaseRecord,
 )
 from app.workspace_config import canonical_digest
 from app.workspace_git.backend import (
@@ -311,6 +312,7 @@ class ContentRepositoryService:
         worktree_root: Path | None = None,
         repository_lock_held: bool = False,
         commit_trailers: dict[str, str] | None = None,
+        writer_lease: WorkspaceWriterLeaseRecord | None = None,
     ) -> GitCheckpointRecord:
         self._validate_identifier("operation_request_id", operation_request_id)
         self._validate_text("actor_id", actor_id)
@@ -386,6 +388,7 @@ class ContentRepositoryService:
                 operation_type="checkpoint.create",
                 payload_digest=canonical_digest(payload),
                 expected_repo_state_digest=expected_repo_state_digest,
+                writer_lease=writer_lease,
             )
             if operation.status == "completed":
                 checkpoint = self.journal.get_git_checkpoint(checkpoint_id)

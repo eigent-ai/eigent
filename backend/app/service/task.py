@@ -16,12 +16,13 @@ import asyncio
 import logging
 import time
 import weakref
+from collections.abc import Awaitable, Callable
 from concurrent.futures import Future
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from camel.tasks import Task
 from pydantic import BaseModel, PrivateAttr
@@ -903,6 +904,49 @@ async def delete_task_lock(id: str):
         "Task lock deleted successfully",
         extra={"task_id": id, "remaining_task_locks": len(task_locks)},
     )
+
+
+_Committed = TypeVar("_Committed")
+_Delivered = TypeVar("_Delivered")
+
+
+async def commit_and_deliver(
+    deliver: Callable[[], Awaitable[_Delivered]],
+    commit: Callable[..., tuple[_Committed, bool]],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> tuple[_Committed, bool, _Delivered | None]:
+    """Commit a human decision and answer its live waiter as one task.
+
+    ``commit`` returns its ``include_transition`` pair, and only the call that
+    applied the transition delivers. A cancelled request waits for both steps
+    instead of stranding a committed decision. A crash between them needs no
+    redelivery: the waiter dies with this process, and startup reconciliation
+    interrupts the Run so Resume asks again.
+    """
+
+    async def commit_then_deliver():
+        committed, decision_applied = await asyncio.to_thread(
+            commit, *args, **kwargs
+        )
+        delivered = await deliver() if decision_applied else None
+        return committed, decision_applied, delivered
+
+    task = asyncio.create_task(commit_then_deliver())
+    cancelled = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            cancelled = error
+        except BaseException:
+            break  # Retrieve the task's own failure below.
+    try:
+        return task.result()
+    finally:
+        if cancelled is not None:
+            raise cancelled
 
 
 def get_camel_task(id: str, tasks: list[Task]) -> None | Task:

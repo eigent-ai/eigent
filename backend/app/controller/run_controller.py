@@ -483,8 +483,40 @@ async def decide_run_interaction(
     interaction_id: str,
     body: InteractionDecisionBody,
 ):
+    from app.service.task import commit_and_deliver, get_task_lock_if_exists
+
     journal = get_default_run_journal()
-    decision_applied = False
+
+    async def answer_waiter() -> None:
+        run = await asyncio.to_thread(journal.get_run, run_id)
+        agent = interaction.request.get("agent")
+        if run is None or not isinstance(agent, str) or not agent:
+            return
+        task_lock = get_task_lock_if_exists(run.project_id)
+        if task_lock is None:
+            return
+        reply_value = body.decision.get("reply")
+        if reply_value is None:
+            reply_value = body.decision.get("decision")
+        if reply_value is None and body.decision:
+            reply_value = json.dumps(
+                body.decision,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        if reply_value is not None:
+            try:
+                await task_lock.put_human_input(agent, str(reply_value))
+            except KeyError:
+                logger.info(
+                    "Interaction decision persisted without a live waiter",
+                    extra={
+                        "run_id": run_id,
+                        "interaction_id": interaction_id,
+                    },
+                )
+
     try:
         interaction = await asyncio.to_thread(
             journal.get_human_interaction, interaction_id
@@ -555,7 +587,8 @@ async def decide_run_interaction(
                 for key, value in body.decision.items()
                 if key != "decision"
             }
-            _, decision_applied = await asyncio.to_thread(
+            await commit_and_deliver(
+                answer_waiter,
                 journal.decide_approval,
                 interaction_id,
                 include_transition=True,
@@ -591,7 +624,8 @@ async def decide_run_interaction(
             )
             assert result is not None
         else:
-            result, decision_applied = await asyncio.to_thread(
+            result, decision_applied, _ = await commit_and_deliver(
+                answer_waiter,
                 journal.resolve_human_interaction,
                 interaction_id,
                 include_transition=True,
@@ -618,39 +652,6 @@ async def decide_run_interaction(
                 )
     except Exception as exc:
         raise _control_error(exc) from exc
-    run = await asyncio.to_thread(journal.get_run, run_id)
-    agent = interaction.request.get("agent")
-    if (
-        decision_applied
-        and run is not None
-        and isinstance(agent, str)
-        and agent
-    ):
-        from app.service.task import get_task_lock_if_exists
-
-        task_lock = get_task_lock_if_exists(run.project_id)
-        if task_lock is not None:
-            reply_value = body.decision.get("reply")
-            if reply_value is None:
-                reply_value = body.decision.get("decision")
-            if reply_value is None and body.decision:
-                reply_value = json.dumps(
-                    body.decision,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-            if reply_value is not None:
-                try:
-                    await task_lock.put_human_input(agent, str(reply_value))
-                except KeyError:
-                    logger.info(
-                        "Interaction decision persisted without a live waiter",
-                        extra={
-                            "run_id": run_id,
-                            "interaction_id": interaction_id,
-                        },
-                    )
     return await asyncio.to_thread(_interaction_receipt, journal, result)
 
 

@@ -338,6 +338,7 @@ def test_v39_upgrade_preserves_existing_rows_and_adds_only_local_routing(
     path = tmp_path / "v39.sqlite"
     with (
         patch("app.run_journal.store.MIGRATION_V40", ""),
+        patch("app.run_journal.store._MIGRATION_V41", ""),
         patch(
             "app.run_journal.store._MIGRATION_V42",
             PRE_V42_TERMINAL_COLUMNS,

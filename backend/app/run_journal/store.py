@@ -157,6 +157,10 @@ SCHEMA_VERSION = 42
 # Pending-only markers; never a terminal execution outcome.
 _WARM_ADMISSION_PREFIX = "warm_admission_preparing:"
 _WARM_ADMISSION_ABORTED = "warm_admission_aborted"
+# A Resume Attempt reserves its Run's writer before /chat attaches a consumer.
+_WORKSPACE_WRITER_ATTACH_GRACE_SECONDS = 60.0
+_WORKSPACE_WRITER_HOLDER_LOST = "holder_lost"
+_WORKSPACE_WRITER_HOLDER_LOST_REQUEUED = "holder_lost_requeued"
 logger = logging.getLogger("run_journal")
 # Per redacted request or response. Oversized documents retain a bounded JSON
 # prefix plus the byte count and digest of the full redacted projection.
@@ -2345,6 +2349,26 @@ PRAGMA user_version = 35;
 COMMIT;
 """
 
+_MIGRATION_V41 = """
+BEGIN IMMEDIATE;
+
+-- One Attempt of the owning Run holds a checkout writer lease. Writes fence
+-- on (version, holder_attempt_id); an existing lease is held by its Run's
+-- latest Attempt, which restart reconciliation has already closed.
+ALTER TABLE workspace_writer_leases ADD COLUMN holder_attempt_id TEXT;
+UPDATE workspace_writer_leases SET holder_attempt_id = (
+    SELECT attempt_id FROM run_attempts
+    WHERE run_id = substr(workspace_writer_leases.request_id, 18)
+    ORDER BY attempt_number DESC LIMIT 1
+) WHERE request_id LIKE 'workspace-writer:%';
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (41, CAST(strftime('%s', 'now') AS REAL));
+PRAGMA user_version = 41;
+COMMIT;
+"""
+
+
 # Requires the run_terminal_cause() SQL function registered by _migrate.
 _MIGRATION_V42 = """
 PRAGMA foreign_keys = OFF;
@@ -2551,6 +2575,10 @@ class UnsupportedSchemaVersionError(RunJournalError):
 
 
 class OutboxLeaseLostError(RunJournalError):
+    pass
+
+
+class WorkspaceWriterLeaseLostError(RunJournalError):
     pass
 
 
@@ -4869,6 +4897,7 @@ class SQLiteRunJournal:
         operation_type: str,
         payload_digest: str,
         expected_repo_state_digest: str | None,
+        writer_lease: WorkspaceWriterLeaseRecord | None = None,
         now: float | None = None,
     ) -> GitOperationRecord:
         if len(payload_digest) != 64:
@@ -4883,6 +4912,10 @@ class SQLiteRunJournal:
             expected_repo_state_digest,
         )
         with self._write_transaction() as connection:
+            if writer_lease is not None:
+                self._require_workspace_writer_lease_in_transaction(
+                    connection, writer_lease
+                )
             if (
                 connection.execute(
                     "SELECT 1 FROM git_repositories WHERE repository_id = ?",
@@ -7732,6 +7765,7 @@ class SQLiteRunJournal:
         actor_id: str,
         trigger: str,
         exclusive_worktree: bool = False,
+        writer_lease: WorkspaceWriterLeaseRecord | None = None,
         now: float | None = None,
     ) -> GitMutationIntentRecord:
         if mutation_scope not in {"exact_path", "broad_process"}:
@@ -7755,6 +7789,10 @@ class SQLiteRunJournal:
             trigger,
         )
         with self._write_transaction() as connection:
+            if writer_lease is not None:
+                self._require_workspace_writer_lease_in_transaction(
+                    connection, writer_lease
+                )
             if exclusive_worktree:
                 # A Run lease admits a task, not every operation within it.
                 # This transaction also fences separate service instances.
@@ -10139,71 +10177,271 @@ class SQLiteRunJournal:
                 raise InvalidRunTransitionError(
                     "workspace writer can only be finished by its owning Task"
                 )
-            if row["status"] in {"released", "interrupted"}:
-                return WorkspaceWriterReleaseResult(
-                    finished=self._workspace_writer_request_from_row(
-                        connection,
-                        row,
-                    ),
-                    next_acquired=None,
-                )
-            next_acquired = None
-            from app.workspace_runtime.store import WorkspaceStateStore
-
-            if WorkspaceStateStore.legacy_requires_settlement(
-                connection, request_id
-            ):
-                return WorkspaceWriterReleaseResult(
-                    finished=self._workspace_writer_request_from_row(
-                        connection, row
-                    ),
-                    next_acquired=None,
-                )
-            if row["status"] == "acquired":
-                lease = connection.execute(
-                    """
-                    SELECT * FROM workspace_writer_leases
-                    WHERE repository_id = ? AND checkout_id = ?
-                    """,
-                    (row["repository_id"], row["checkout_id"]),
-                ).fetchone()
-                if lease is None or lease["request_id"] != request_id:
-                    raise InvalidRunTransitionError(
-                        "workspace writer lease ownership is inconsistent"
-                    )
-                connection.execute(
-                    """
-                    DELETE FROM workspace_writer_leases
-                    WHERE repository_id = ? AND checkout_id = ?
-                    """,
-                    (row["repository_id"], row["checkout_id"]),
-                )
-            connection.execute(
-                """
-                UPDATE workspace_writer_requests
-                SET status = ?, finished_at = ?, updated_at = ?
-                WHERE request_id = ?
-                """,
-                (final_status, timestamp, timestamp, request_id),
+            return self._finish_workspace_writer_in_transaction(
+                connection, row, final_status=final_status, now=timestamp
             )
-            if row["status"] == "acquired":
-                next_acquired = self._promote_workspace_writer_in_transaction(
-                    connection,
-                    repository_id=row["repository_id"],
-                    checkout_id=row["checkout_id"],
-                    now=timestamp,
-                )
-            finished_row = connection.execute(
-                "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
-                (request_id,),
-            ).fetchone()
-            assert finished_row is not None
+
+    def _finish_workspace_writer_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        row: sqlite3.Row,
+        *,
+        final_status: str,
+        now: float,
+        reason: str | None = None,
+    ) -> WorkspaceWriterReleaseResult:
+        request_id = row["request_id"]
+        if row["status"] in {"released", "interrupted"}:
             return WorkspaceWriterReleaseResult(
                 finished=self._workspace_writer_request_from_row(
                     connection,
-                    finished_row,
+                    row,
                 ),
-                next_acquired=next_acquired,
+                next_acquired=None,
+            )
+        next_acquired = None
+        from app.workspace_runtime.store import WorkspaceStateStore
+
+        if WorkspaceStateStore.legacy_requires_settlement(
+            connection, request_id
+        ):
+            return WorkspaceWriterReleaseResult(
+                finished=self._workspace_writer_request_from_row(
+                    connection, row
+                ),
+                next_acquired=None,
+            )
+        if row["status"] == "acquired":
+            lease = connection.execute(
+                """
+                SELECT * FROM workspace_writer_leases
+                WHERE repository_id = ? AND checkout_id = ?
+                """,
+                (row["repository_id"], row["checkout_id"]),
+            ).fetchone()
+            if lease is None or lease["request_id"] != request_id:
+                raise InvalidRunTransitionError(
+                    "workspace writer lease ownership is inconsistent"
+                )
+            connection.execute(
+                """
+                DELETE FROM workspace_writer_leases
+                WHERE repository_id = ? AND checkout_id = ?
+                """,
+                (row["repository_id"], row["checkout_id"]),
+            )
+        connection.execute(
+            """
+            UPDATE workspace_writer_requests
+            SET status = ?, reason = COALESCE(?, reason), finished_at = ?,
+                updated_at = ?
+            WHERE request_id = ?
+            """,
+            (final_status, reason, now, now, request_id),
+        )
+        if row["status"] == "acquired":
+            next_acquired = self._promote_workspace_writer_in_transaction(
+                connection,
+                repository_id=row["repository_id"],
+                checkout_id=row["checkout_id"],
+                now=now,
+            )
+        finished_row = connection.execute(
+            "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
+            (request_id,),
+        ).fetchone()
+        assert finished_row is not None
+        return WorkspaceWriterReleaseResult(
+            finished=self._workspace_writer_request_from_row(
+                connection,
+                finished_row,
+            ),
+            next_acquired=next_acquired,
+        )
+
+    def workspace_writer_holder_state(
+        self,
+        *,
+        repository_id: str,
+        checkout_id: str,
+        now: float | None = None,
+    ) -> Literal["held", "lost", "requires_attention"] | None:
+        """Read-only holder check that keeps waiting Tasks off the write lock."""
+        with self._lock:
+            lease = self._connection.execute(
+                """SELECT * FROM workspace_writer_leases
+                WHERE repository_id=? AND checkout_id=?""",
+                (repository_id, checkout_id),
+            ).fetchone()
+            if lease is None:
+                return None
+            return self._workspace_writer_holder_state(
+                self._connection,
+                lease,
+                now=now if now is not None else time.time(),
+            )
+
+    def reclaim_lost_workspace_writer(
+        self,
+        *,
+        repository_id: str,
+        checkout_id: str,
+        now: float | None = None,
+    ) -> WorkspaceWriterReleaseResult | None:
+        """Release a checkout whose holder Attempt can no longer write.
+
+        Only a holder without unsettled writes is released; anything whose
+        side effects are unknown keeps the lease until the user acts on that
+        Run. A Resume that never attached has no side effects, so it simply
+        queues again behind the Tasks it was holding up.
+        """
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            lease = connection.execute(
+                """SELECT * FROM workspace_writer_leases
+                WHERE repository_id=? AND checkout_id=?""",
+                (repository_id, checkout_id),
+            ).fetchone()
+            if (
+                lease is None
+                or self._workspace_writer_holder_state(
+                    connection, lease, now=timestamp
+                )
+                != "lost"
+            ):
+                return None
+            request = connection.execute(
+                "SELECT * FROM workspace_writer_requests WHERE request_id=?",
+                (lease["request_id"],),
+            ).fetchone()
+            result = self._finish_workspace_writer_in_transaction(
+                connection,
+                request,
+                final_status="released",
+                now=timestamp,
+                reason=_WORKSPACE_WRITER_HOLDER_LOST,
+            )
+            holder = connection.execute(
+                "SELECT * FROM run_attempts WHERE attempt_id=? AND status='pending'",
+                (lease["holder_attempt_id"],),
+            ).fetchone()
+            if holder is not None:
+                self._hand_workspace_writer_to_attempt_in_transaction(
+                    connection,
+                    run_id=holder["run_id"],
+                    attempt_id=holder["attempt_id"],
+                    now=timestamp,
+                )
+            return result
+
+    def _workspace_writer_holder_state(
+        self,
+        connection: sqlite3.Connection,
+        lease: sqlite3.Row,
+        *,
+        now: float,
+    ) -> Literal["held", "lost", "requires_attention"]:
+        """A holder lives as long as its Attempt; restart closes them all.
+
+        An explicit Resume stays pending until /chat activates it, so it keeps
+        the lease only for the attach grace after it could first write. A Run
+        that wrote files keeps it as well: its Git boundary spans the Task.
+        """
+        run_id = self._workspace_writer_run_id(lease["request_id"])
+        if run_id is None or lease["holder_attempt_id"] is None:
+            return "held"  # Non-Run writer, or admission before its Attempt.
+        holder = connection.execute(
+            "SELECT * FROM run_attempts WHERE attempt_id=?",
+            (lease["holder_attempt_id"],),
+        ).fetchone()
+        if (
+            holder is not None
+            and holder["status"] in {"pending", "running", "waiting_for_user"}
+            and not (
+                holder["status"] == "pending"
+                and holder["resume_reason"] == "explicit_resume"
+                and now - max(holder["started_at"], lease["acquired_at"])
+                > _WORKSPACE_WRITER_ATTACH_GRACE_SECONDS
+            )
+        ):
+            return "held"
+        from app.workspace_runtime.store import WorkspaceStateStore
+
+        if (
+            connection.execute(
+                """SELECT 1 FROM tool_calls WHERE run_id=?
+                AND status IN ('dispatched', 'outcome_unknown')
+                UNION ALL SELECT 1 FROM git_change_sets WHERE run_id=?
+                LIMIT 1""",
+                (run_id, run_id),
+            ).fetchone()
+            or self._unresolved_workspace_mutation_in_transaction(
+                connection, run_id
+            )
+            or WorkspaceStateStore.legacy_requires_settlement(
+                connection, lease["request_id"]
+            )
+        ):
+            return "requires_attention"
+        return "lost"
+
+    @staticmethod
+    def _require_workspace_writer_lease_in_transaction(
+        connection: sqlite3.Connection, lease: WorkspaceWriterLeaseRecord
+    ) -> None:
+        """Fence a write on the exact lease its holder observed."""
+        if (
+            connection.execute(
+                """SELECT 1 FROM workspace_writer_leases
+                WHERE repository_id=? AND checkout_id=? AND request_id=?
+                  AND version=? AND holder_attempt_id IS ?""",
+                (
+                    lease.repository_id,
+                    lease.checkout_id,
+                    lease.request_id,
+                    lease.version,
+                    lease.holder_attempt_id,
+                ),
+            ).fetchone()
+            is None
+        ):
+            raise WorkspaceWriterLeaseLostError(
+                "Task does not own the bound checkout writer lease"
+            )
+
+    def _hand_workspace_writer_to_attempt_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        attempt_id: str,
+        now: float,
+    ) -> None:
+        """A new Attempt holds its Run's lease, or queues again if lost."""
+        request_id = f"workspace-writer:{run_id}"
+        request = connection.execute(
+            "SELECT * FROM workspace_writer_requests WHERE request_id=?",
+            (request_id,),
+        ).fetchone()
+        if request is None:
+            return
+        if request["status"] == "acquired":
+            connection.execute(
+                """UPDATE workspace_writer_leases
+                SET holder_attempt_id=?, version=version + 1
+                WHERE request_id=? AND holder_attempt_id IS NOT ?""",
+                (attempt_id, request_id, attempt_id),
+            )
+        elif (
+            request["status"] == "released"
+            and request["reason"] == _WORKSPACE_WRITER_HOLDER_LOST
+        ):
+            connection.execute(
+                """UPDATE workspace_writer_requests
+                SET status='queued', reason=?, created_at=?, acquired_at=NULL,
+                    finished_at=NULL, updated_at=?
+                WHERE request_id=?""",
+                (_WORKSPACE_WRITER_HOLDER_LOST_REQUEUED, now, now, request_id),
             )
 
     def try_acquire_workspace_writer(
@@ -10247,14 +10485,24 @@ class SQLiteRunJournal:
             return self._workspace_writer_request_from_row(connection, row)
 
     @staticmethod
+    def _workspace_writer_run_id(request_id: str) -> str | None:
+        prefix = "workspace-writer:"
+        return (
+            request_id[len(prefix) :]
+            if request_id.startswith(prefix)
+            else None
+        )
+
+    @staticmethod
     def _workspace_writer_promotion_state(
         connection: sqlite3.Connection, request: sqlite3.Row
     ) -> Literal["eligible", "dormant", "blocked"]:
         """Only bypass a dormant Run with durable proof it never executed."""
-        prefix = "workspace-writer:"
-        if not request["request_id"].startswith(prefix):
+        run_id = SQLiteRunJournal._workspace_writer_run_id(
+            request["request_id"]
+        )
+        if run_id is None:
             return "eligible"  # Non-Run writers retain their existing policy.
-        run_id = request["request_id"][len(prefix) :]
         run = connection.execute(
             "SELECT * FROM runs WHERE run_id=?", (run_id,)
         ).fetchone()
@@ -10277,6 +10525,13 @@ class SQLiteRunJournal:
             )
         ):
             return "eligible"
+        if (
+            request["reason"] == _WORKSPACE_WRITER_HOLDER_LOST_REQUEUED
+            and request["acquired_at"] is None
+        ):
+            # Reclaim proved this Run clean, and it cannot write until it
+            # holds the lease again.
+            return "dormant"
         # Queue status alone is insufficient for old/inconsistent records.
         # Missing creation evidence, activation, or any execution evidence
         # keeps the queue fenced; in particular, unknown writes are not replayed
@@ -10376,8 +10631,10 @@ class SQLiteRunJournal:
             """
             INSERT INTO workspace_writer_leases(
                 repository_id, checkout_id, request_id, task_id, project_id,
-                target_ref, acquired_at, version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                target_ref, acquired_at, version, holder_attempt_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, (
+                SELECT active_attempt_id FROM runs WHERE run_id = ?
+            ))
             """,
             (
                 row["repository_id"],
@@ -10387,6 +10644,7 @@ class SQLiteRunJournal:
                 row["project_id"],
                 row["target_ref"],
                 now,
+                SQLiteRunJournal._workspace_writer_run_id(row["request_id"]),
             ),
         )
         connection.execute(
@@ -13668,6 +13926,9 @@ class SQLiteRunJournal:
                 run["project_id"],
                 warm_admission_token is None,
             ),
+        )
+        self._hand_workspace_writer_to_attempt_in_transaction(
+            connection, run_id=run_id, attempt_id=identifier, now=timestamp
         )
         row = connection.execute(
             "SELECT * FROM run_attempts WHERE attempt_id = ?",
@@ -20065,6 +20326,30 @@ class SQLiteRunJournal:
                 provenance_source="run_terminal_reconciliation",
             )
 
+    @staticmethod
+    def _unresolved_workspace_mutation_in_transaction(
+        connection: sqlite3.Connection, run_id: str
+    ) -> sqlite3.Row | None:
+        return connection.execute(
+            """
+            SELECT sets.change_set_id FROM git_change_sets AS sets
+            WHERE sets.run_id = ? AND (
+                sets.state = 'needs_attention'
+                OR EXISTS (
+                    SELECT 1 FROM git_mutation_intents AS intents
+                    WHERE intents.change_set_id = sets.change_set_id
+                    AND intents.status IN ('prepared', 'needs_attention')
+                )
+                OR EXISTS (
+                    SELECT 1 FROM git_change_set_items AS items
+                    WHERE items.change_set_id = sets.change_set_id
+                    AND items.item_state IN ('pending', 'preimage_checkpointed')
+                )
+            ) LIMIT 1
+            """,
+            (run_id,),
+        ).fetchone()
+
     def _append_event_in_transaction(
         self,
         connection: sqlite3.Connection,
@@ -20140,25 +20425,9 @@ class SQLiteRunJournal:
                 f"run {run_id!r} is read-only Cloud-restored history"
             )
         if draft.event_type == "run.completed":
-            unresolved = connection.execute(
-                """
-                SELECT sets.change_set_id FROM git_change_sets AS sets
-                WHERE sets.run_id = ? AND (
-                    sets.state = 'needs_attention'
-                    OR EXISTS (
-                        SELECT 1 FROM git_mutation_intents AS intents
-                        WHERE intents.change_set_id = sets.change_set_id
-                        AND intents.status IN ('prepared', 'needs_attention')
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM git_change_set_items AS items
-                        WHERE items.change_set_id = sets.change_set_id
-                        AND items.item_state IN ('pending', 'preimage_checkpointed')
-                    )
-                ) LIMIT 1
-                """,
-                (run_id,),
-            ).fetchone()
+            unresolved = self._unresolved_workspace_mutation_in_transaction(
+                connection, run_id
+            )
             if unresolved is not None:
                 raise InvalidRunTransitionError(
                     "a Run with an unresolved workspace mutation cannot complete successfully "
@@ -20664,6 +20933,21 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(MIGRATION_V39)
         if version < 40:
             self._connection.executescript(MIGRATION_V40)
+        if version < 41:
+            lease_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(workspace_writer_leases)"
+                ).fetchall()
+            }
+            migration = _MIGRATION_V41
+            if "holder_attempt_id" in lease_columns:
+                migration = migration.replace(
+                    "ALTER TABLE workspace_writer_leases "
+                    "ADD COLUMN holder_attempt_id TEXT;\n",
+                    "",
+                )
+            self._connection.executescript(migration)
         if version < 42:
             run_columns = {
                 row["name"]
@@ -22137,6 +22421,7 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             target_ref=row["target_ref"],
             acquired_at=float(row["acquired_at"]),
             version=int(row["version"]),
+            holder_attempt_id=row["holder_attempt_id"],
         )
 
     @staticmethod
