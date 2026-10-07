@@ -20,6 +20,7 @@ import {
   proxyFetchGet,
 } from '@/api/http';
 import { isDesktop } from '@/client/platform';
+import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
 import {
   getRemoteControlDesktopInstanceId,
   getRemoteControlWebSocketUrl,
@@ -755,14 +756,15 @@ async function dispatchPersistedRemoteFollowUp(
   if (!next || next.request_id !== requestId) {
     return !pending.some((item) => item.request_id === requestId);
   }
-  const status = await fetchGet(
-    `/chat/${encodeURIComponent(projectId)}/status`
+  const admissionMode = await prepareFollowUpAdmission(
+    projectId,
+    useProjectStore.getState().getProjectById(projectId)
   );
-  if (status?.has_lock && status?.status !== 'done') {
+  if (admissionMode === 'busy') {
     return false;
   }
   try {
-    if (status?.has_lock) {
+    if (admissionMode === 'warm') {
       seedRemoteFollowUpPrompt(command);
       await fetchPost(`/chat/${encodeURIComponent(projectId)}`, {
         question: next.content,

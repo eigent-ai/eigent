@@ -14,7 +14,6 @@
 
 import {
   fetchDelete,
-  fetchGet,
   fetchPost,
   proxyFetchDelete,
   proxyFetchGet,
@@ -35,6 +34,8 @@ import {
   isHumanInteractionReadOnly,
 } from '@/lib/approvalPresentation';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
+import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
 import { notifyError } from '@/lib/notifyError';
 import {
   isProjectAchieved,
@@ -71,6 +72,7 @@ import {
 } from '@/service/humanInteractionApi';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import { reconcileHumanInteractionEvents } from '@/service/humanInteractionEventReconciliation';
+import { watchHumanInteractionPending } from '@/service/humanInteractionPendingCheck';
 import { cancelProjectRun } from '@/service/projectRunsApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
@@ -625,79 +627,83 @@ function LegacyChatBox(): JSX.Element {
     };
   }, []);
   const legacyInteractionExpired = useHumanInteractionExpiry(activeInteraction);
-  const [verifiedLegacyApproval, setVerifiedLegacyApproval] =
-    useState<string>();
+  // The canonical Run decides whether the active Run can still be answered:
+  // a task restored for playback keeps legacy status that Resume outdates.
+  const readOnlyRunStatus = (
+    runId: string | null | undefined,
+    legacyStatus: string | undefined
+  ) =>
+    (runId && sharedProjectEventSnapshot?.view.projectId === activeProjectId
+      ? sharedProjectEventSnapshot.view.runs[runId]?.status
+      : undefined) ?? legacyStatus;
+  const activeInteractionReadOnly =
+    !!activeInteraction &&
+    isHumanInteractionReadOnly({
+      interaction: activeInteraction,
+      activeTaskId,
+      taskType: activeAskTask?.type,
+      taskStatus: activeAskTask?.status,
+      durableRunStatus: readOnlyRunStatus(
+        activeTaskId,
+        activeAskTask?.durableRunStatus
+      ),
+    });
+  // Brain confirms that an approval is still pending before it is offered.
+  // `null` means Brain has not answered (the read failed or timed out): the
+  // card stays visible but disabled while the check is retried.
+  const [legacyApprovalCheck, setLegacyApprovalCheck] = useState<{
+    key: string;
+    pending: boolean | null;
+  }>();
   useEffect(() => {
-    setVerifiedLegacyApproval(undefined);
+    setLegacyApprovalCheck(undefined);
     if (
       !activeInteraction ||
       activeInteraction.interaction_type !== 'approval' ||
       legacyInteractionExpired ||
-      isHumanInteractionReadOnly({
-        interaction: activeInteraction,
-        activeTaskId,
-        taskType: activeAskTask?.type,
-        taskStatus: activeAskTask?.status,
-        durableRunStatus:
-          projectedLegacyRun?.status ?? activeAskTask?.durableRunStatus,
-      })
+      activeInteractionReadOnly
     )
       return;
-    let cancelled = false;
-    let checkNumber = 0;
-    const validatePending = () => {
-      const currentCheck = ++checkNumber;
-      void isHumanInteractionStillPending(activeInteraction)
-        .then((pending) => {
-          if (!cancelled && currentCheck === checkNumber)
-            setVerifiedLegacyApproval(
-              pending ? legacyControlViewKey : undefined
-            );
-        })
-        .catch(() => {
-          /* Keep controls unavailable until a lifecycle recovery retries. */
-        });
-    };
-    const revalidatePending = () => {
-      invalidatePendingHumanInteractions(activeInteraction.run_id);
-      validatePending();
-    };
-    validatePending();
-    window.addEventListener('focus', revalidatePending);
-    host?.ipcRenderer?.on('backend-ready', revalidatePending);
+    const pendingWatch = watchHumanInteractionPending(
+      activeInteraction,
+      (pending) =>
+        setLegacyApprovalCheck({ key: legacyControlViewKey, pending })
+    );
+    const stopStreamWatch = onRunStreamReopened(
+      activeInteraction.run_id,
+      pendingWatch.recheck
+    );
+    window.addEventListener('focus', pendingWatch.recheck);
+    host?.ipcRenderer?.on('backend-ready', pendingWatch.recheck);
     return () => {
-      cancelled = true;
-      window.removeEventListener('focus', revalidatePending);
-      host?.ipcRenderer?.off('backend-ready', revalidatePending);
+      pendingWatch.dispose();
+      stopStreamWatch();
+      window.removeEventListener('focus', pendingWatch.recheck);
+      host?.ipcRenderer?.off('backend-ready', pendingWatch.recheck);
     };
   }, [
     legacyControlViewKey,
     activeInteraction,
-    activeTaskId,
-    activeAskTask?.type,
-    activeAskTask?.status,
-    activeAskTask?.durableRunStatus,
-    projectedLegacyRun?.status,
+    activeInteractionReadOnly,
     legacyInteractionExpired,
     host?.ipcRenderer,
   ]);
-  const isInteractiveHumanReply =
-    (activeInteraction?.interaction_type !== 'approval' ||
-      verifiedLegacyApproval === legacyControlViewKey) &&
+  const legacyApprovalPending =
+    legacyApprovalCheck?.key === legacyControlViewKey
+      ? legacyApprovalCheck.pending
+      : undefined;
+  const isLegacyApproval = activeInteraction?.interaction_type === 'approval';
+  const canAnswerActiveAsk =
     !legacyInteractionExpired &&
-    (!activeInteraction ||
-      !isHumanInteractionReadOnly({
-        interaction: activeInteraction,
-        activeTaskId,
-        taskType: activeAskTask?.type,
-        taskStatus: activeAskTask?.status,
-        durableRunStatus:
-          projectedLegacyRun?.status ?? activeAskTask?.durableRunStatus,
-      })) &&
+    !activeInteractionReadOnly &&
     !!activeAskTask &&
     activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
     activeAskTask.status !== ChatTaskStatus.FINISHED;
+  const isInteractiveHumanReply =
+    canAnswerActiveAsk && (!isLegacyApproval || legacyApprovalPending === true);
+  const isLegacyApprovalUnconfirmed =
+    canAnswerActiveAsk && isLegacyApproval && legacyApprovalPending === null;
   const [legacyApprovalSubmitting, setLegacyApprovalSubmitting] =
     useState(false);
 
@@ -737,7 +743,7 @@ function LegacyChatBox(): JSX.Element {
       const isPending = await isHumanInteractionStillPending(interaction);
       if (!isCurrent()) return;
       if (!isPending) {
-        setVerifiedLegacyApproval(undefined);
+        setLegacyApprovalCheck({ key: legacyControlViewKey, pending: false });
         await refreshInterruptedRun();
         return;
       }
@@ -757,7 +763,10 @@ function LegacyChatBox(): JSX.Element {
             .activeTaskId,
           taskType: currentTask.type,
           taskStatus: currentTask.status,
-          durableRunStatus: currentTask.durableRunStatus,
+          durableRunStatus: readOnlyRunStatus(
+            taskId,
+            currentTask.durableRunStatus
+          ),
         })
       )
         return;
@@ -1354,12 +1363,14 @@ function LegacyChatBox(): JSX.Element {
         const queuedFiles = queuedAttaches || [];
         const draftStore = projectStore.getActiveChatStore();
         await waitForPendingStaleRuntimeEviction(targetProjectId);
-        const backendStatus = startsAfterInterruption
-          ? { consumer_alive: false }
-          : await fetchGet(
-              `/chat/${encodeURIComponent(targetProjectId)}/status`
+        const admissionMode = startsAfterInterruption
+          ? 'cold'
+          : await prepareFollowUpAdmission(
+              targetProjectId,
+              projectStore.getProjectById(targetProjectId)
             );
-        if (backendStatus?.consumer_alive) {
+        if (admissionMode !== 'cold') {
+          // A busy consumer still takes the follow-up on its queue, as before.
           chatStore.setNextTaskId(queuedRequestId);
           chatStore.setNextExecutionId(_taskId, undefined);
           await fetchPost(`/chat/${targetProjectId}`, {
@@ -1376,10 +1387,11 @@ function LegacyChatBox(): JSX.Element {
           // the legacy projection and RunDomainEventHub owns the event-native
           // projection. Writing here as well renders the queued prompt twice.
         } else {
-          // Brain restart removes the warm compatibility consumer.  A queued
-          // instruction is still a normal new Run, so start it through the
-          // cold admission path with its durable request id instead of
-          // retrying /chat/{project} forever.
+          // Brain restart removes the warm compatibility consumer, and the
+          // admission decision retires one whose stream this window no longer
+          // holds. A queued instruction is still a normal new Run, so start it
+          // through the cold admission path with its durable request id
+          // instead of retrying /chat/{project} forever.
           const admission = chatStore.startTask(
             queuedRequestId,
             undefined,
@@ -1668,14 +1680,17 @@ function LegacyChatBox(): JSX.Element {
                 sourceStore.getState().setAttaches(_taskId, []);
             };
             await waitForPendingStaleRuntimeEviction(targetProjectId);
-            const backendStatus = await fetchGet(
-              `/chat/${encodeURIComponent(targetProjectId)}/status`
+            const admissionMode = await prepareFollowUpAdmission(
+              targetProjectId,
+              projectStore.getProjectById(targetProjectId)
             );
 
-            if (!backendStatus?.consumer_alive) {
+            if (admissionMode === 'cold') {
               // A stale-runtime transition may have retired the completed warm
-              // consumer while this Project was being reactivated. Admit the
-              // follow-up as a cold Run instead of posting to a dead queue.
+              // consumer while this Project was being reactivated, or this
+              // window lost its stream and the admission decision retired it.
+              // Admit the follow-up as a cold Run instead of posting to a
+              // queue that nobody observes.
               ensureActiveProjectMode();
               const admission = chatStore.startTask(
                 nextTaskId,
@@ -1703,7 +1718,8 @@ function LegacyChatBox(): JSX.Element {
               messageAccepted = true;
               clearOwnedComposer();
             } else {
-              // A normal warm follow-up is a new durable Run. Seed it before
+              // A normal warm follow-up is a new durable Run (a busy consumer
+              // still takes it on its queue, as before). Seed it before
               // admission so its pending work is visible immediately.
               chatStore.setNextTaskId(nextTaskId);
               chatStore.setNextExecutionId(_taskId as string, executionId);
@@ -2693,7 +2709,9 @@ function LegacyChatBox(): JSX.Element {
   }
 
   const legacyApprovalVariant =
-    activeAsk && isInteractiveHumanReply && activeAskMessage
+    activeAsk &&
+    (isInteractiveHumanReply || isLegacyApprovalUnconfirmed) &&
+    activeAskMessage
       ? createLegacyApprovalVariant({
           interaction: activeInteraction,
           fallbackQuestion: activeAskMessage.content.trim(),
@@ -2706,12 +2724,13 @@ function LegacyChatBox(): JSX.Element {
       : null;
   if (
     legacyApprovalVariant &&
-    controlOperations.some(
-      (op) =>
-        op.kind === 'interaction' &&
-        op.runId === activeInteraction?.run_id &&
-        op.interactionId === activeInteraction?.interaction_id
-    )
+    (isLegacyApprovalUnconfirmed ||
+      controlOperations.some(
+        (op) =>
+          op.kind === 'interaction' &&
+          op.runId === activeInteraction?.run_id &&
+          op.interactionId === activeInteraction?.interaction_id
+      ))
   ) {
     legacyApprovalVariant.disabled = true;
   }

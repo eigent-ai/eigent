@@ -12,10 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchGet, fetchPost } from '@/api/http';
+import { fetchGet } from '@/api/http';
 import i18n from '@/i18n';
 import { generateUniqueId } from '@/lib';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import {
+  type LegacyChatRuntimeStatus,
+  isLegacyRuntimeBusy,
+  retireIdleLegacyRuntime,
+} from '@/lib/legacyRuntimeAdmission';
 import { notifyExecutionError } from '@/lib/notifyError';
 import { executionScope } from '@/service/executionApi';
 import {
@@ -48,12 +53,6 @@ interface ActiveBackgroundTask {
   chatTaskId: string;
   executionId: string;
   triggerTaskId?: string;
-}
-
-interface LegacyChatRuntimeStatus {
-  status?: string;
-  run_id?: string | null;
-  consumer_alive?: boolean;
 }
 
 const RETRYABLE_BACKGROUND_ADMISSION_ERROR_CODES = new Set([
@@ -264,10 +263,7 @@ export function useBackgroundTaskProcessor() {
         // task stores and SSE ownership at each boundary as well.
         if (getIdleProjectTaskIds(project.id) === null) continue;
 
-        if (
-          runtimeStatus.consumer_alive &&
-          (runtimeStatus.status !== 'done' || !runtimeStatus.run_id)
-        ) {
+        if (isLegacyRuntimeBusy(runtimeStatus)) {
           console.log(
             '[BackgroundTaskProcessor] Skipping project',
             project.id,
@@ -301,15 +297,12 @@ export function useBackgroundTaskProcessor() {
           // and follow-up admission, leaving the new Run without either the
           // legacy stream or a canonical terminal observer. Scheduled work
           // therefore retires the idle consumer before opening a fresh stream.
-          let retired: LegacyChatRuntimeStatus;
+          let retired: boolean;
           try {
             retired = await requestRuntime((signal) =>
-              fetchPost(
-                `/chat/${encodeURIComponent(project.id)}/runtime/retire-idle`,
-                { run_id: runtimeStatus.run_id },
-                undefined,
-                { signal }
-              )
+              retireIdleLegacyRuntime(project.id, runtimeStatus.run_id, {
+                signal,
+              })
             );
           } catch (error) {
             console.warn(
@@ -321,7 +314,7 @@ export function useBackgroundTaskProcessor() {
             continue;
           }
           if (!lifetime.active) return;
-          if (retired?.consumer_alive) {
+          if (!retired) {
             console.warn(
               '[BackgroundTaskProcessor] Skipping project',
               project.id,
