@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { resolveSourceMessageId } from '@/lib/messageIdentity';
+import { runTerminalReason } from '@/lib/runTerminalReason';
 import i18next from 'i18next';
 import type {
   CanonicalProjectEvent,
@@ -69,7 +70,7 @@ const RUN_STATUS_BY_EVENT: Record<string, ChatRunStatus> = {
   'run.cancelled': 'cancelled',
   'run.completed': 'completed',
   'run.failed': 'failed',
-  'run.deadline_reached': 'failed',
+  'run.deadline_reached': 'timed_out',
   'run.interrupted': 'interrupted',
   'runtime.interrupted': 'interrupted',
 };
@@ -804,6 +805,8 @@ function interactionNode(
         nestedText(payload.prompt)
       ) || undefined,
     response: responseText(decision) || undefined,
+    reason: firstText(payload.reason, asRecord(decision).reason) || undefined,
+    terminalReason: runTerminalReason(payload.terminal_reason) ?? undefined,
     responseOptionIds: responseOptionIds(decision),
     agentName:
       firstText(
@@ -1518,8 +1521,8 @@ function runStatusNode(
     ...base,
     kind: 'run_status',
     status,
-    reason:
-      firstText(payload.reason, payload.error, payload.message) || undefined,
+    terminalReason: runTerminalReason(payload.terminal_reason) ?? undefined,
+    terminalDetail: firstText(payload.terminal_detail) || undefined,
   };
 }
 

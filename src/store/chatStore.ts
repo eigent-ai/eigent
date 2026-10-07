@@ -44,23 +44,27 @@ import {
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
 import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
+import { createLocalError } from '@/lib/localError';
 import {
   resolveSourceEventId,
   resolveSourceMessageId,
 } from '@/lib/messageIdentity';
 import { buildAgentModelConfigFromProvider } from '@/lib/modelConfig';
 import { reportError } from '@/lib/notifyError';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
+import { createSSEAdmissionError } from '@/lib/responseError';
 import {
   runDomainEventHub,
   runEventIngressRegistry,
   runProjectionStore,
   type RunDomainEvent,
 } from '@/lib/runEvents';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
 import {
   isLocalWorkspaceSpace,
@@ -84,7 +88,11 @@ import { executionScope } from '@/service/executionApi';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
-import { readTerminalRunResult } from '@/service/runUsageReconciliation';
+import {
+  readTerminalRunResult,
+  unverifiedTaskFailureFacts,
+  type TaskFailureFacts,
+} from '@/service/runUsageReconciliation';
 import {
   forgetRejectedTriggerRun,
   proxyUpdateTriggerExecution,
@@ -110,7 +118,7 @@ import i18next from 'i18next';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
-import { getAuthStore, getWorkerList } from './authStore';
+import { getAuthStore, getWorkerList, useAuthStore } from './authStore';
 import { enqueueChatEventProjection } from './chatEventProjectionBridge';
 import {
   cloudModelRequestExtraParams,
@@ -778,8 +786,15 @@ export type DurableRunDisplayStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'timed_out'
   | 'interrupted'
   | 'stopped';
+
+/** Ended without a result: failure evidence and error presentation apply. */
+export const UNSUCCESSFUL_RUN_STATUSES = new Set<DurableRunDisplayStatus>([
+  'failed',
+  'timed_out',
+]);
 
 interface Task {
   source: 'user' | 'trigger';
@@ -1274,6 +1289,10 @@ export interface ChatStore {
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
+  observeTaskFailureFacts: (
+    taskId: string,
+    onFacts: (facts: TaskFailureFacts | undefined) => void
+  ) => () => void;
   setDurableRunStatus: (
     taskId: string,
     status: DurableRunDisplayStatus | undefined
@@ -1585,7 +1604,7 @@ const CANONICAL_TERMINAL_RUN_STATUSES: Partial<
 > = {
   'run.completed': 'completed',
   'run.failed': 'failed',
-  'run.deadline_reached': 'failed',
+  'run.deadline_reached': 'timed_out',
   'run.cancelled': 'cancelled',
   'run.interrupted': 'interrupted',
   'runtime.interrupted': 'interrupted',
@@ -1596,6 +1615,7 @@ const CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS: Partial<Record<string, string>> =
     completed: 'run.completed',
     failed: 'run.failed',
     cancelled: 'run.cancelled',
+    timed_out: 'run.deadline_reached',
     interrupted: 'run.interrupted',
   };
 
@@ -1628,7 +1648,7 @@ export function settleLegacyTaskFromCanonicalTerminal(
   state.setIsPending(taskId, false);
   state.setStatus(taskId, ChatTaskStatus.FINISHED);
 
-  if (durableRunStatus === 'failed') {
+  if (UNSUCCESSFUL_RUN_STATUSES.has(durableRunStatus)) {
     state.setTaskRunning(
       taskId,
       task.taskRunning.map((item) =>
@@ -1654,10 +1674,12 @@ export function settleLegacyTaskFromCanonicalTerminal(
     const message =
       typeof rawMessage === 'string' && rawMessage.trim()
         ? rawMessage.trim()
-        : i18next.t('chat.run-no-final-response', {
-            defaultValue:
-              'This task failed before it produced a final response.',
-          });
+        : durableRunStatus === 'timed_out'
+          ? runTerminalReasonText('deadline_exceeded', i18next.t)
+          : i18next.t('chat.run-no-final-response', {
+              defaultValue:
+                'This task failed before it produced a final response.',
+            });
     const content = i18next.t('chat.error-message', {
       defaultValue: '❌ **Error**: {{message}}',
       message,
@@ -2315,6 +2337,80 @@ const updateTriggerExecutionStatus = async (
   }
 };
 
+/** Hydrate mount-scoped failure presentation, without changing history or execution. */
+export async function readTaskFailureFacts(
+  owner: VanillaChatStore,
+  projectId: string,
+  taskId: string,
+  signal: AbortSignal
+): Promise<TaskFailureFacts | null> {
+  const task = owner.getState().tasks[taskId];
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  const controller = new AbortController();
+  const isCurrent = () => {
+    const current = owner.getState().tasks[taskId];
+    const projects = useProjectStore.getState();
+    return (
+      !signal.aborted &&
+      !controller.signal.aborted &&
+      getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+      projects.activeProjectId === projectId &&
+      projects
+        .getAllChatStores(projectId)
+        .some((entry) => entry.chatStore === owner) &&
+      Boolean(
+        task &&
+        current &&
+        current.executionId === task.executionId &&
+        UNSUCCESSFUL_RUN_STATUSES.has(current.durableRunStatus!) &&
+        current.status === ChatTaskStatus.FINISHED
+      )
+    );
+  };
+  if (!isCurrent()) return null;
+  // Stop events written before the Brain recorded causes carry none; the Run
+  // summary holds the backfilled cause.
+  const withRunTerminalReason = (facts: TaskFailureFacts) => ({
+    ...facts,
+    terminalReason:
+      facts.terminalReason ??
+      runProjectionStore.getRun(projectId, taskId)?.terminalReason ??
+      null,
+  });
+  const invalidate = () => {
+    if (!isCurrent()) controller.abort();
+  };
+  const abort = () => controller.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  const unsubscribe = [
+    owner.subscribe(invalidate),
+    useProjectStore.subscribe(invalidate),
+    useAuthStore.subscribe(invalidate),
+  ];
+  try {
+    const result = await readTerminalRunResult({
+      projectId,
+      runId: taskId,
+      terminalEventTypes: ['run.failed', 'run.deadline_reached'],
+      signal: controller.signal,
+      expectedAccountKey: accountKey,
+      includeFailureFacts: true,
+    });
+    return isCurrent()
+      ? withRunTerminalReason(
+          result.failureFacts ?? unverifiedTaskFailureFacts()
+        )
+      : null;
+  } catch {
+    return isCurrent()
+      ? withRunTerminalReason(unverifiedTaskFailureFacts())
+      : null;
+  } finally {
+    signal.removeEventListener('abort', abort);
+    unsubscribe.forEach((dispose) => dispose());
+  }
+}
+
 /** Recover terminal receipts and missing display without replaying execution. */
 function recoverClosedTerminalResult(
   owner: Pick<VanillaChatStore, 'getState'>,
@@ -2329,17 +2425,18 @@ function recoverClosedTerminalResult(
     !task ||
     task.status !== ChatTaskStatus.FINISHED ||
     task.isPending ||
-    !['failed', 'cancelled', 'completed'].includes(outcome || '') ||
+    !['completed', 'failed', 'cancelled', 'timed_out'].includes(
+      outcome || ''
+    ) ||
     terminalUsageRecoveries.has(taskId)
   )
     return;
   const executionId = task.executionId;
   const controller = new AbortController();
   terminalUsageRecoveries.set(taskId, controller);
-  const terminalEventTypes =
-    outcome === 'failed'
-      ? ['run.failed', 'run.deadline_reached']
-      : [`run.${outcome}`];
+  const terminalEventTypes = [
+    CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS[outcome!]!,
+  ];
   void readTerminalRunResult({
     projectId,
     runId: taskId,
@@ -2438,7 +2535,7 @@ function recoverClosedTerminalResult(
 }
 
 const chatStore = (initial?: Partial<ChatStore>) =>
-  createStore<ChatStore>()((set, get) => ({
+  createStore<ChatStore>()((set, get, store) => ({
     activeTaskId: null,
     nextTaskId: null,
     tasks: initial?.tasks ?? {},
@@ -2667,7 +2764,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         ? projectId
         : projectId || projectStore.activeProjectId;
       if (isLiveTask && !project_id) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.no-active-session', {
             defaultValue: 'No active session selected.',
           })
@@ -2693,7 +2790,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? projectStore.getProjectById(project_id)
           : null;
       if (isLiveTask && !project) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.selected-session-unavailable', {
             defaultValue: 'The selected session is not available.',
           })
@@ -3236,7 +3333,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         if (!provider) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.no-model-provider', {
               defaultValue:
                 'No model provider is configured. Go to Settings > Models and configure at least one default model provider.',
@@ -3270,7 +3367,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
         if (!resolvedCloudModel) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.cloud-model-unavailable', {
               defaultValue:
                 'The cloud model is unavailable. Try again or choose another model in Settings > Models.',
@@ -3468,7 +3565,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           workerProviderList = await fetchConfiguredProviders();
         } catch (error) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-load-failed', {
               defaultValue:
                 'Could not load the model provider configured for a worker.',
@@ -3490,7 +3587,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
         if (missingWorker) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-unavailable', {
               defaultValue:
                 'The model provider configured for worker "{{worker}}" is no longer available. Edit the worker and select another model.',
@@ -3653,6 +3750,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let lockedChatStore: VanillaChatStore =
         targetChatStore as VanillaChatStore;
       let lockedTaskId = newTaskId;
+      const createRunBrowserPreviewHandoff = () =>
+        createBrowserPreviewHandoff(
+          !isLiveTask || !getHostIpcRenderer() ? null : project_id,
+          (url, ownerProjectId) =>
+            usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
+        );
+      let handoffBrowserPreview = createRunBrowserPreviewHandoff();
       // Resume keeps its Run ID. Until this admitted Attempt reaches either
       // the stream or a GET snapshot, older terminal receipts are history only.
       let resumedAttemptObserved = false;
@@ -3750,7 +3854,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             observedChatStore.getState().tasks[observedTaskId];
           const failureReason =
             observedTask &&
-            CANONICAL_TERMINAL_RUN_STATUSES[event.eventType] === 'failed'
+            UNSUCCESSFUL_RUN_STATUSES.has(
+              CANONICAL_TERMINAL_RUN_STATUSES[event.eventType]!
+            )
               ? reportError(
                   event.payload,
                   {
@@ -3959,6 +4065,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         newChatStore: VanillaChatStore,
         newTaskId: string
       ) => {
+        if (lockedTaskId !== newTaskId) {
+          // Follow-up Runs reuse this SSE transport, but each owns its one
+          // preview reveal and pending tool receipts. Never carry either
+          // across the same ownership boundary as the reducer lock.
+          handoffBrowserPreview = createRunBrowserPreviewHandoff();
+        }
         lockedChatStore = newChatStore;
         lockedTaskId = newTaskId;
         bindSSEConnectionToTask(sseConnection, newTaskId);
@@ -4101,11 +4213,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         : undefined;
 
-      const handoffBrowserPreview = createBrowserPreviewHandoff(
-        !isLiveTask || !getHostIpcRenderer() ? null : project_id,
-        (url, ownerProjectId) =>
-          usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
-      );
       let resumeStreamOpened = false;
       let resolveResumeStreamOpen: (() => void) | undefined;
       let rejectResumeStreamOpen: ((error: unknown) => void) | undefined;
@@ -4252,16 +4359,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           try {
             const parsed = JSON.parse(event.data);
-            if (!type && completionTailSteps.has(parsed?.step)) {
+            if (
+              isLiveTask &&
+              (completionTailSteps.has(parsed?.step) ||
+                parsed?.step === AgentStep.ACTIVATE_TOOLKIT)
+            ) {
               const ownerRunId = getCurrentTaskId();
-              const explicitRunId = parsed?.run_id ?? parsed?.data?.run_id;
+              // Activation can replace an unkeyed pending browser visit.
+              // Validate it before projection or URL recording, just like
+              // its completion. Legacy frames without ids use this transport's
+              // captured ownership; every explicit id must agree with it.
               if (
                 abortController.signal.aborted ||
                 sseConnection.taskId !== ownerRunId ||
                 activeSSEControllers[ownerRunId] !== sseConnection ||
                 legacyEndRunId === ownerRunId ||
-                (typeof explicitRunId === 'string' &&
-                  explicitRunId !== ownerRunId)
+                [parsed?.run_id, parsed?.data?.run_id].some(
+                  (id) => typeof id === 'string' && id !== ownerRunId
+                ) ||
+                [parsed?.project_id, parsed?.data?.project_id].some(
+                  (id) => typeof id === 'string' && id !== project_id
+                )
               ) {
                 return;
               }
@@ -4431,6 +4549,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             agentMessages.step === AgentStep.WAIT_CONFIRM;
 
           const isPostCompletionProjectionEvent =
+            agentMessages.step === AgentStep.HUMAN_REPLY ||
             agentMessages.step === AgentStep.ARTIFACT_MANIFEST ||
             agentMessages.step === AgentStep.ARTIFACT_UPLOADED ||
             agentMessages.step === AgentStep.PROJECT_METADATA;
@@ -4452,7 +4571,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (
             currentTask.status === ChatTaskStatus.FINISHED &&
-            currentTask.durableRunStatus === 'failed' &&
+            UNSUCCESSFUL_RUN_STATUSES.has(currentTask.durableRunStatus!) &&
             agentMessages.step === AgentStep.ERROR
           ) {
             // A status GET can settle the Run before error details arrive.
@@ -6231,7 +6350,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const failedTask = tasks[currentTaskId];
               const wasAlreadySettledByCanonical =
                 failedTask?.status === ChatTaskStatus.FINISHED &&
-                failedTask?.durableRunStatus === 'failed';
+                UNSUCCESSFUL_RUN_STATUSES.has(failedTask.durableRunStatus!);
               const errorContent = i18next.t('chat.error-message', {
                 defaultValue: '❌ **Error**: {{message}}',
                 message: errorMessage,
@@ -6886,6 +7005,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           if (agentMessages.step === AgentStep.SYNC) return;
           if (agentMessages.step === AgentStep.HUMAN_REPLY) {
+            // canonicalRunEventToLegacyMessage carries these migration-only
+            // fields alongside the legacy reply payload.
+            const resolution = agentMessages.data as AgentMessage['data'] & {
+              __durable_interaction_resolution?: boolean;
+              decision?: { reply?: unknown };
+            };
             const resolvedInteractionId =
               typeof agentMessages.data?.interaction_id === 'string'
                 ? agentMessages.data.interaction_id
@@ -6903,25 +7028,63 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 resolvedInteractionId
               );
             }
-            // A local decision closes and advances the queue immediately.
-            // When the canonical decision later arrives, it is confirmation,
-            // not a second signal to consume another queued interaction.
-            if (interactionWasAlreadyResolved) return;
+            // A canonical question decision is persisted under decision.reply;
+            // legacy human_reply frames carry the same answer at the top level.
+            // Project the receipt even if control cleanup already closed ASK.
             const reply =
+              (resolution?.__durable_interaction_resolution === true &&
+              typeof resolution.decision?.reply === 'string'
+                ? resolution.decision.reply
+                : '') ||
               agentMessages.data?.reply ||
               agentMessages.data?.content ||
               (typeof agentMessages.data === 'string'
                 ? agentMessages.data
                 : '');
-            if (reply) {
+            const existingReply = resolvedInteractionId
+              ? getCurrentChatStore().tasks[currentTaskId]?.messages.find(
+                  (message) =>
+                    message.role === 'user' &&
+                    message.interactionResponseTo === resolvedInteractionId
+                )
+              : undefined;
+            if (reply && !existingReply) {
               addMessages(currentTaskId, {
-                id: generateUniqueId(),
+                id: resolvedInteractionId
+                  ? `interaction-response:${resolvedInteractionId}`
+                  : generateUniqueId(),
                 role: 'user',
                 content: reply,
                 interactionResponseTo:
                   agentMessages.data?.interaction_id || undefined,
+                interactionResponseSource:
+                  resolution?.__durable_interaction_resolution === true
+                    ? 'canonical'
+                    : 'legacy',
+              });
+            } else if (
+              reply &&
+              existingReply &&
+              resolution?.__durable_interaction_resolution === true &&
+              (existingReply.content !== reply ||
+                existingReply.interactionResponseSource !== 'canonical')
+            ) {
+              // A competing client may have resolved the interaction. Only
+              // the journal's answer can replace an optimistic local reply.
+              updateMessage(currentTaskId, existingReply.id, {
+                ...existingReply,
+                content: reply,
+                interactionResponseSource: 'canonical',
               });
             }
+
+            // Receipt deduplication is separate from control idempotency. A
+            // repeated resolution must never consume the next queued ASK.
+            if (
+              interactionWasAlreadyResolved ||
+              tasks[currentTaskId].status === ChatTaskStatus.FINISHED
+            )
+              return;
 
             const latestTask =
               getCurrentChatStore().tasks[currentTaskId] ||
@@ -7006,38 +7169,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // A definitive admission rejection is distinct from lost delivery.
               clearOwnedModelAdmission(newTaskId, modelAdmissionRevision);
             }
-            let detail = `HTTP ${respond.status}`;
-            let errorCode: string | undefined;
-            let userMessage: string | undefined;
-            try {
-              const body = await respond.clone().json();
-              const bodyDetail = body?.detail ?? body?.message ?? body?.text;
-              if (typeof body?.error_code === 'string') {
-                errorCode = body.error_code;
-              }
-              if (typeof bodyDetail === 'string') {
-                detail = bodyDetail;
-                userMessage = bodyDetail;
-              } else if (bodyDetail) {
-                detail = JSON.stringify(bodyDetail);
-                if (typeof bodyDetail?.code === 'string') {
-                  errorCode = bodyDetail.code;
-                }
-                if (typeof bodyDetail?.message === 'string') {
-                  userMessage = bodyDetail.message;
-                }
-              }
-            } catch {
-              // Preserve the HTTP fallback for non-JSON error responses.
-            }
-            const error: any = new Error(
-              contentType.startsWith('text/event-stream')
-                ? `Run stream returned ${detail}`
-                : `Run admission did not return an event stream: ${detail}`
-            );
-            error.status = respond.status;
-            error.code = errorCode;
-            error.userMessage = userMessage;
+            const error = await createSSEAdmissionError(respond, {
+              modelType: effectiveModelType,
+              modelId: resolvedCloudModelId,
+            });
             rejectResumeStreamOpen?.(error);
             throw error;
           }
@@ -7095,13 +7230,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           // Allow automatic retry for connection errors only when task is not finished
+          // Sanitized admission copy must not change the transport's existing
+          // retry decision; its original message is retained as the cause.
+          const transportMessage =
+            err?.response && typeof err?.cause === 'string'
+              ? err.cause
+              : err?.message;
           const isConnectionError =
             err instanceof TypeError ||
-            err?.message?.includes('Failed to fetch') ||
-            err?.message?.includes('ECONNREFUSED') ||
-            err?.message?.includes('NetworkError') ||
-            err?.message?.includes('ERR_NETWORK_CHANGED') ||
-            err?.message?.includes('ERR_INTERNET_DISCONNECTED');
+            transportMessage?.includes('Failed to fetch') ||
+            transportMessage?.includes('ECONNREFUSED') ||
+            transportMessage?.includes('NetworkError') ||
+            transportMessage?.includes('ERR_NETWORK_CHANGED') ||
+            transportMessage?.includes('ERR_INTERNET_DISCONNECTED');
           if (isConnectionError) {
             console.warn(
               '[fetchEventSource] Connection error detected, will retry automatically...'
@@ -7716,10 +7857,71 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
+    observeTaskFailureFacts(taskId, onFacts) {
+      const projectId = useProjectStore.getState().activeProjectId;
+      if (!projectId) return () => {};
+      const executionId = get().tasks[taskId]?.executionId;
+      const accountKey = getAccountEnvironmentKey(getAuthStore());
+      const controller = new AbortController();
+      const invalidate = () => {
+        if (controller.signal.aborted) return;
+        if (
+          getAccountEnvironmentKey(getAuthStore()) !== accountKey ||
+          useProjectStore.getState().activeProjectId !== projectId ||
+          !useProjectStore
+            .getState()
+            .getAllChatStores(projectId)
+            .some((entry) => entry.chatStore === store) ||
+          !UNSUCCESSFUL_RUN_STATUSES.has(
+            get().tasks[taskId]?.durableRunStatus!
+          ) ||
+          get().tasks[taskId]?.status !== ChatTaskStatus.FINISHED ||
+          get().tasks[taskId]?.executionId !== executionId
+        ) {
+          controller.abort();
+          onFacts(undefined);
+        }
+      };
+      const unsubscribe = [
+        useAuthStore.subscribe(invalidate),
+        useProjectStore.subscribe(invalidate),
+        store.subscribe(invalidate),
+      ];
+      void readTaskFailureFacts(
+        store,
+        projectId,
+        taskId,
+        controller.signal
+      ).then((facts) => {
+        if (!controller.signal.aborted && facts) onFacts(facts);
+      });
+      return () => {
+        controller.abort();
+        unsubscribe.forEach((dispose) => dispose());
+      };
+    },
     setDurableRunStatus(
       taskId: string,
       durableRunStatus: DurableRunDisplayStatus | undefined
     ) {
+      // Retired requests stay attached to history even when Resume starts a
+      // new Attempt in this same Run. This receipt never asserts a decision.
+      const retireApproval = (message: Message): Message => {
+        if (
+          !durableRunStatus ||
+          !isStoppedRunStatus(durableRunStatus) ||
+          message.interaction?.interaction_type !== 'approval' ||
+          message.interaction.receipt
+        )
+          return message;
+        return {
+          ...message,
+          interaction: {
+            ...message.interaction,
+            receipt: { runStatus: durableRunStatus },
+          },
+        };
+      };
       set((state) => {
         const task = state.tasks[taskId];
         if (!task) return state;
@@ -7730,6 +7932,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             [taskId]: {
               ...task,
               durableRunStatus,
+              messages: task.messages.map(retireApproval),
+              askList: task.askList.map(retireApproval),
             },
           },
         };

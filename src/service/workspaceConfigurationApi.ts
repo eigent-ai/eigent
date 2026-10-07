@@ -160,6 +160,20 @@ export interface WorkspaceConfigurationReviewResponse {
   space_id: string;
   draft_version: number;
   review: WorkspaceConfigurationSaveReview;
+  // Device observations are not part of the immutable review digest.
+  reference_findings?: WorkspaceBundleReferenceFinding[];
+}
+
+export interface WorkspaceBundleReferenceFinding {
+  location: string;
+  reference: string;
+  code:
+    | 'malformed'
+    | 'unsupported'
+    | 'global_setup_required'
+    | 'model_setup_required'
+    | 'bundle_asset_required'
+    | 'verification_unavailable';
 }
 
 export interface WorkspaceConfigurationAssetPreflight {

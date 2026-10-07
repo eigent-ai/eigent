@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { runTerminalReason } from '@/lib/runTerminalReason';
 import type { ProjectedRun } from './types';
 
 export type DurableRunSummaryInput = {
@@ -22,6 +23,8 @@ export type DurableRunSummaryInput = {
   updated_at: number | string;
   origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
+  terminal_reason?: string | null;
+  terminal_detail?: string | null;
   total_attempt_elapsed_ms?: number | null;
   latest_attempt?: {
     attempt_number: number;
@@ -34,7 +37,16 @@ export const TERMINAL_RUN_STATUSES = new Set<ProjectedRun['status']>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
 ]);
+
+/** Run statuses that carry the cause of their latest stop. */
+export function isStoppedRunStatus(status: string): boolean {
+  return (
+    status === 'interrupted' ||
+    (TERMINAL_RUN_STATUSES as ReadonlySet<string>).has(status)
+  );
+}
 
 const RUN_STATUSES = new Set<ProjectedRun['status']>([
   'pending',
@@ -82,6 +94,14 @@ export function mergeRunSummary(
       summary.resume_blocked_reason === undefined
         ? (existing?.resumeBlockedReason ?? null)
         : summary.resume_blocked_reason,
+    terminalReason:
+      summary.terminal_reason === undefined
+        ? (existing?.terminalReason ?? null)
+        : runTerminalReason(summary.terminal_reason),
+    terminalDetail:
+      summary.terminal_detail === undefined
+        ? (existing?.terminalDetail ?? null)
+        : summary.terminal_detail,
     latestAttempt:
       summary.latest_attempt === undefined
         ? existing?.latestAttempt

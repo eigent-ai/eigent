@@ -26,6 +26,7 @@ import {
   resumeRequestsRevision,
   subscribeResumeRequests,
 } from '@/lib/runResumeRequest';
+import type { RunTerminalReason } from '@/lib/runTerminalReason';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import {
   useCallback,
@@ -42,6 +43,7 @@ export interface DurableRunSummary {
   updated_at: number;
   origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
+  terminalReason?: RunTerminalReason | null;
   /** Local retry authority; the canonical Run remains pending. */
   retry_request_id?: string;
   latest_attempt?: {
@@ -96,6 +98,7 @@ function projectedRunToDurableSummary(
     updated_at: Date.parse(run.updatedAt) / 1000,
     origin: run.origin ?? undefined,
     resume_blocked_reason: run.resumeBlockedReason,
+    terminalReason: run.terminalReason,
     latest_attempt: run.latestAttempt
       ? {
           attempt_number: run.latestAttempt.attemptNumber,

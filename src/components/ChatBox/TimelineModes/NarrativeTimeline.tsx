@@ -184,6 +184,7 @@ function groupNarrativeWork(
 function workLogSummaryI18nKey(run: TimelineRunView): string {
   if (isActiveRunStatus(run.status)) return 'chat.working-on-tasks-for';
   if (run.status === 'failed') return 'chat.failed-after';
+  if (run.status === 'timed_out') return 'chat.timed-out-after';
   if (run.status === 'interrupted') return 'chat.interrupted-after';
   if (run.status === 'cancelled') return 'chat.stopped-after';
   return 'chat.worked-for';

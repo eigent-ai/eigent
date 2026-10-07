@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { classifyError, errorCopy } from '@/lib/usageErrors';
+import { errorCopy, errorPresentationReason } from '@/lib/usageErrors';
 import { formatRelativeTime, formatTime } from '@/lib/utils';
 import {
   proxyFetchTrigger,
@@ -102,7 +102,7 @@ const transformToLogEntry = (
       break;
     case ExecutionStatus.Failed:
       message = execution.error_message
-        ? errorCopy(classifyError(execution.error_message))
+        ? errorCopy(errorPresentationReason(execution.error_message))
         : t('triggers.execution-failed-message');
       break;
     case ExecutionStatus.Running:

@@ -14,6 +14,7 @@
 
 import type { ChatProjectionNode } from '@/lib/projector/chat';
 import { sortTimelineNodes } from '@/lib/projector/chat/presentation';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
   chatTimelineDetailLevels,
   type ChatTimelineDetailLevel,
@@ -310,8 +311,7 @@ function presentSubagentInvocationLifecycles(
 
   const terminalRunKeys = new Set(
     nodes.flatMap((node) =>
-      node.kind === 'run_status' &&
-      ['completed', 'failed', 'cancelled', 'interrupted'].includes(node.status)
+      node.kind === 'run_status' && isStoppedRunStatus(node.status)
         ? [JSON.stringify([node.projectId, node.runId])]
         : []
     )
@@ -735,6 +735,10 @@ function presentHumanInteractionReceipts(
             pair.resolution.kind === 'interaction'
               ? pair.resolution.status
               : 'responded',
+          reason:
+            pair.resolution.kind === 'interaction'
+              ? pair.resolution.reason
+              : undefined,
           response: pair.response,
           requestEventId: node.eventId,
           resolutionEventId: pair.resolution.eventId,
@@ -755,14 +759,20 @@ function presentHumanInteractionReceipts(
 function presentLegacyTranscriptFallbacks(
   nodes: readonly ChatProjectionNode[]
 ): readonly ChatProjectionNode[] {
+  const runKey = (node: MessageNode) =>
+    JSON.stringify([node.projectId, node.runId]);
   const canonicalUserRuns = new Set(
     nodes
       .filter(
         (node): node is MessageNode =>
           node.kind === 'message' && node.eventType === 'user.message'
       )
-      .map((node) => node.runId)
+      .map(runKey)
   );
+  // Cloud playback normalizes confirmed frames to legacy.step.
+  const isLegacyConfirmed = (node: MessageNode) =>
+    node.eventType === 'legacy.confirmed' ||
+    (node.eventType === 'legacy.step' && node.legacyStep === 'confirmed');
   const canonicalAssistantRuns = new Set(
     nodes
       .filter(
@@ -776,8 +786,7 @@ function presentLegacyTranscriptFallbacks(
     (node) =>
       !(
         node.kind === 'message' &&
-        ((node.eventType === 'legacy.confirmed' &&
-          canonicalUserRuns.has(node.runId)) ||
+        ((isLegacyConfirmed(node) && canonicalUserRuns.has(runKey(node))) ||
           (node.eventType === 'legacy.end' &&
             canonicalAssistantRuns.has(node.runId)))
       )
@@ -956,6 +965,7 @@ export {
   presentTaskActivityLifecycles,
   presentTypedMessageLifecycles,
   resolveChatTimelinePresentation,
+  safeInteractionResponse,
 };
 export type {
   ChatTimelineDetailLevel,

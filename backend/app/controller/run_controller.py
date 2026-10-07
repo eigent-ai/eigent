@@ -418,6 +418,30 @@ async def get_run(run_id: str):
     }
 
 
+def _interaction_receipt(journal, interaction):
+    """Return committed decision data, never echo a retry's proposed decision."""
+    receipt = asdict(interaction)
+    decisions = journal.list_human_interaction_decisions(
+        interaction.interaction_id
+    )
+    receipt["response"] = (
+        decisions[-1].decision
+        if interaction.status == "resolved" and decisions
+        else None
+    )
+    if interaction.interaction_type == "approval":
+        approval = next(
+            (
+                item
+                for item in journal.list_approvals(interaction.run_id)
+                if item.approval_id == interaction.interaction_id
+            ),
+            None,
+        )
+        receipt["action_digest"] = approval.action_digest if approval else None
+    return receipt
+
+
 @router.get("/runs/{run_id}/interactions")
 async def list_run_interactions(
     run_id: str,
@@ -442,7 +466,11 @@ async def list_run_interactions(
         )
         items.append(
             {
-                **asdict(interaction),
+                **(
+                    await asyncio.to_thread(
+                        _interaction_receipt, journal, interaction
+                    )
+                ),
                 "options": [asdict(option) for option in options],
             }
         )
@@ -455,8 +483,40 @@ async def decide_run_interaction(
     interaction_id: str,
     body: InteractionDecisionBody,
 ):
+    from app.service.task import commit_and_deliver, get_task_lock_if_exists
+
     journal = get_default_run_journal()
-    decision_applied = False
+
+    async def answer_waiter() -> None:
+        run = await asyncio.to_thread(journal.get_run, run_id)
+        agent = interaction.request.get("agent")
+        if run is None or not isinstance(agent, str) or not agent:
+            return
+        task_lock = get_task_lock_if_exists(run.project_id)
+        if task_lock is None:
+            return
+        reply_value = body.decision.get("reply")
+        if reply_value is None:
+            reply_value = body.decision.get("decision")
+        if reply_value is None and body.decision:
+            reply_value = json.dumps(
+                body.decision,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        if reply_value is not None:
+            try:
+                await task_lock.put_human_input(agent, str(reply_value))
+            except KeyError:
+                logger.info(
+                    "Interaction decision persisted without a live waiter",
+                    extra={
+                        "run_id": run_id,
+                        "interaction_id": interaction_id,
+                    },
+                )
+
     try:
         interaction = await asyncio.to_thread(
             journal.get_human_interaction, interaction_id
@@ -527,9 +587,11 @@ async def decide_run_interaction(
                 for key, value in body.decision.items()
                 if key != "decision"
             }
-            await asyncio.to_thread(
+            await commit_and_deliver(
+                answer_waiter,
                 journal.decide_approval,
                 interaction_id,
+                include_transition=True,
                 decision=approval_decision,
                 details=details,
                 expected_version=body.expected_version,
@@ -561,11 +623,12 @@ async def decide_run_interaction(
                 journal.get_human_interaction, interaction_id
             )
             assert result is not None
-            decision_applied = True
         else:
-            result = await asyncio.to_thread(
+            result, decision_applied, _ = await commit_and_deliver(
+                answer_waiter,
                 journal.resolve_human_interaction,
                 interaction_id,
+                include_transition=True,
                 decision_request_id=body.decision_request_id,
                 decision=body.decision,
                 expected_version=body.expected_version,
@@ -575,8 +638,10 @@ async def decide_run_interaction(
                 source=body.source,
                 continue_active_attempt=body.continue_active_attempt,
             )
-            decision_applied = True
-            if interaction.interaction_type == "merge_conflict":
+            if (
+                decision_applied
+                and interaction.interaction_type == "merge_conflict"
+            ):
                 from app.workspace_git import (
                     get_default_workforce_git_service,
                 )
@@ -587,40 +652,7 @@ async def decide_run_interaction(
                 )
     except Exception as exc:
         raise _control_error(exc) from exc
-    run = await asyncio.to_thread(journal.get_run, run_id)
-    agent = interaction.request.get("agent")
-    if (
-        decision_applied
-        and run is not None
-        and isinstance(agent, str)
-        and agent
-    ):
-        from app.service.task import get_task_lock_if_exists
-
-        task_lock = get_task_lock_if_exists(run.project_id)
-        if task_lock is not None:
-            reply_value = body.decision.get("reply")
-            if reply_value is None:
-                reply_value = body.decision.get("decision")
-            if reply_value is None and body.decision:
-                reply_value = json.dumps(
-                    body.decision,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-            if reply_value is not None:
-                try:
-                    await task_lock.put_human_input(agent, str(reply_value))
-                except KeyError:
-                    logger.info(
-                        "Interaction decision persisted without a live waiter",
-                        extra={
-                            "run_id": run_id,
-                            "interaction_id": interaction_id,
-                        },
-                    )
-    return asdict(result)
+    return await asyncio.to_thread(_interaction_receipt, journal, result)
 
 
 @router.get("/runs/{run_id}/events")

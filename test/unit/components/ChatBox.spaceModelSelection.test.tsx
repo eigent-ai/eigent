@@ -24,11 +24,17 @@ import {
   beginResumeRequest,
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
+import { listControlOperations } from '@/service/controlOperations';
 import { closeSSEConnectionsForTasks, useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
-import { setConnectionConfig } from '@/store/connectionStore';
+import {
+  resetConnectionConfig,
+  setConnectionConfig,
+} from '@/store/connectionStore';
+import { getProjectEventStore } from '@/store/projectEventStore';
 import { openSettings } from '@/store/settingsStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
+import { AgentStep } from '@/types/constants';
 import {
   act,
   cleanup,
@@ -44,6 +50,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // real. Only isolate account/Space containers, HTTP/SSE, and unrelated UI.
 const mocks = vi.hoisted(() => ({
   input: null as any,
+  variant: null as any,
+  snapshot: null as any,
   space: null as any,
   interrupted: null as any,
   refreshInterrupted: vi.fn(),
@@ -61,6 +69,7 @@ const mocks = vi.hoisted(() => ({
   realInterrupted: false,
   realTransport: false,
   durableRun: null as any,
+  host: null as any,
 }));
 vi.mock('@/api/http', () => ({
   fetchGet: (url: string, ...args: unknown[]) => {
@@ -146,7 +155,7 @@ vi.mock('@/hooks/useProjectEventRuntime', () => ({
   useProjectEventRuntime: () => ({
     hydration: { status: 'ready' },
     projectId: 'session-1',
-    snapshot: null,
+    snapshot: mocks.snapshot,
   }),
 }));
 vi.mock('@/hooks/useInterruptedRunStatus', async (load) => {
@@ -189,7 +198,8 @@ vi.mock('@/components/ChatBox/EventNativeProjectTimeline', () => ({
   EventNativeProjectTimeline: () => null,
 }));
 vi.mock('@/components/ChatBox/BottomBox', () => ({
-  default: ({ inputProps, noModelOverlay }: any) => {
+  default: ({ inputProps, noModelOverlay, variant }: any) => {
+    mocks.variant = variant;
     mocks.input = inputProps;
     if (!inputProps) return null;
     return (
@@ -208,16 +218,20 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
         >
           Follow up
         </button>
+        {variant?.kind === 'approval' ? (
+          <button onClick={() => variant.onApprove('once')}>Approve</button>
+        ) : null}
       </div>
     );
   },
 }));
 vi.mock('@/store/settingsStore', () => ({ openSettings: vi.fn() }));
 vi.mock('@/host', () => ({
-  useHost: () => ({
-    electronAPI: {},
-    ipcRenderer: { on: vi.fn(), off: vi.fn() },
-  }),
+  useHost: () =>
+    mocks.host ?? {
+      electronAPI: {},
+      ipcRenderer: { on: vi.fn(), off: vi.fn() },
+    },
 }));
 vi.mock('@/lib/events/appEvents', () => ({
   recordTaskSubmitted: vi.fn(),
@@ -237,6 +251,10 @@ vi.mock('@/lib/runEvents', async (importOriginal) => {
   };
 });
 
+vi.mock('@/service/humanInteractionEventReconciliation', () => ({
+  reconcileHumanInteractionEvents: vi.fn(async () => ({})),
+}));
+
 const cloud = (id: string, type = 'gpt-5.5') => ({
   id,
   display_name: id,
@@ -253,6 +271,8 @@ describe('ChatBox after an accepted Space model selection', () => {
   let installed: any;
   let canonicalRecovery: any;
   beforeEach(() => {
+    resetConnectionConfig();
+    mocks.snapshot = null;
     vi.clearAllMocks();
     window.sessionStorage.clear();
     runProjectionStore.clear();
@@ -260,6 +280,7 @@ describe('ChatBox after an accepted Space model selection', () => {
     mocks.realInterrupted = false;
     mocks.realTransport = false;
     mocks.durableRun = null;
+    mocks.host = null;
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -431,6 +452,7 @@ describe('ChatBox after an accepted Space model selection', () => {
   const request = () => mocks.sse.mock.calls.at(-1)![0].body;
 
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
     if (mocks.realTransport) {
       closeSSEConnectionsForTasks(Object.keys(chat.getState().tasks));
@@ -469,6 +491,30 @@ describe('ChatBox after an accepted Space model selection', () => {
     });
     return accepted;
   }
+  // Legacy approval controls appear only after Brain confirms the ask is
+  // pending. Their revalidation listeners need the stable host the app has.
+  function servePendingApproval(interactionId: string) {
+    mocks.host = {
+      electronAPI: {},
+      ipcRenderer: { on: vi.fn(), off: vi.fn() },
+    };
+    const localGet = mocks.localGet.getMockImplementation()!;
+    mocks.localGet.mockImplementation(async (url, ...args) =>
+      url.endsWith('/interactions?status=pending')
+        ? {
+            interactions: [
+              {
+                interaction_id: interactionId,
+                status: 'requested',
+                version: 0,
+                action_digest: 'digest',
+              },
+            ],
+          }
+        : localGet(url, ...args)
+    );
+  }
+
   async function renderChat(hasModelConfigured = false) {
     const view = render(
       <MemoryRouter>
@@ -1769,5 +1815,430 @@ describe('ChatBox after an accepted Space model selection', () => {
     expect(mocks.sse).toHaveBeenCalledTimes(1);
     expect(chat.getState().activeTaskId).toBe(taskId);
     expect(notifyError).not.toHaveBeenCalled();
+  });
+  it('revalidates legacy approval controls on focus and Brain readiness', async () => {
+    const listeners = new Map<string, () => void>();
+    mocks.host = {
+      electronAPI: {},
+      ipcRenderer: {
+        on: vi.fn((channel: string, listener: () => void) =>
+          listeners.set(channel, listener)
+        ),
+        off: vi.fn(),
+      },
+    };
+    await acceptInitialSpaceRun();
+    const taskId = chat.getState().activeTaskId!;
+    chat.getState().setStatus(taskId, 'running');
+    chat.getState().setActiveAsk(taskId, 'synthetic-agent');
+    chat.getState().addMessages(taskId, {
+      id: 'approval-ask',
+      role: 'agent',
+      content: 'Allow write?',
+      step: AgentStep.ASK,
+      interaction: {
+        interaction_id: 'approval-1',
+        interaction_type: 'approval',
+        run_id: taskId,
+        version: 0,
+        question: 'Allow write?',
+      },
+    });
+    const localGet = mocks.localGet.getMockImplementation()!;
+    let pending: 'offline' | 'pending' | 'resolved' = 'offline';
+    const pendingReads = vi.fn();
+    mocks.localGet.mockImplementation(async (url, ...args) => {
+      if (!url.endsWith('/interactions?status=pending'))
+        return localGet(url, ...args);
+      pendingReads();
+      if (pending === 'offline') throw Error('Brain unavailable');
+      return {
+        interactions:
+          pending === 'pending'
+            ? [
+                {
+                  interaction_id: 'approval-1',
+                  status: 'requested',
+                  version: 0,
+                },
+              ]
+            : [],
+      };
+    });
+    const view = await renderChat();
+    await waitFor(() => expect(pendingReads).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+
+    // The first check failed; returning to the window retries it.
+    pending = 'pending';
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    );
+
+    // A submit-time check that finds the approval settled retires the control.
+    pending = 'resolved';
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    );
+    expect(mocks.post).not.toHaveBeenCalledWith(
+      expect.stringContaining('/decisions'),
+      expect.anything()
+    );
+
+    // Brain readiness bypasses the short pending-list cache.
+    pending = 'pending';
+    act(() => listeners.get('backend-ready')?.());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    );
+
+    view.unmount();
+    expect(mocks.host.ipcRenderer.off).toHaveBeenCalledWith(
+      'backend-ready',
+      listeners.get('backend-ready')
+    );
+  });
+
+  it('review keeps Cancel recovery visible when the selected history task differs', async () => {
+    const historical = chat.getState().create();
+    chat.getState().setActiveTaskId(historical);
+    interruptRun('review-interrupted-target');
+    mocks.post.mockRejectedValue(new Error('Lost cancel acknowledgement'));
+    await renderChat();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel task' }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Check status' })).toBeEnabled()
+    );
+  });
+
+  it.each(
+    ['stay', 'switch-return', 'remount', 'recovery'].flatMap((navigation) =>
+      [0, 1].map((queued) => ({ navigation, queued }))
+    )
+  )(
+    'completes the exact approval after canonical resolution: $navigation, $queued queued',
+    async ({ navigation, queued }) => {
+      const runId = chat.getState().create('review-approval-return');
+      chat.getState().setActiveTaskId(runId);
+      chat.getState().setHasMessages(runId, true);
+      chat.getState().setStatus(runId, 'running');
+      chat.getState().setDurableRunStatus(runId, 'waiting_for_user');
+      chat.getState().setActiveAsk(runId, 'worker');
+      chat.getState().addMessages(runId, {
+        id: 'review-ask',
+        role: 'agent',
+        step: 'ask',
+        agent_name: 'worker',
+        content: 'Allow?',
+        interaction: {
+          interaction_id: 'review-approval',
+          interaction_type: 'approval',
+          run_id: runId,
+          version: 0,
+          action_digest: 'digest',
+          allowed_scopes: ['once'],
+          title: 'Allow?',
+        },
+      });
+      if (queued)
+        chat.getState().setActiveAskList(runId, [
+          {
+            id: 'next-ask',
+            role: 'agent',
+            step: 'ask',
+            agent_name: 'next-worker',
+            content: 'Next?',
+            interaction: {
+              interaction_id: 'next-question',
+              interaction_type: 'question',
+              run_id: runId,
+            },
+          },
+        ]);
+      const history = chat.getState().create('review-history');
+      chat.getState().setActiveTaskId(runId);
+      mocks.post.mockImplementation(() => new Promise(() => {}));
+      servePendingApproval('review-approval');
+      let view = await renderChat();
+      await waitFor(() => expect(mocks.variant?.kind).toBe('approval'));
+      vi.useFakeTimers();
+      act(() => {
+        mocks.variant.onApprove('once');
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15000);
+      });
+      expect(
+        screen.getByRole('button', { name: 'Check status' })
+      ).toBeEnabled();
+      if (navigation !== 'stay') {
+        chat.getState().setActiveTaskId(history);
+        view.rerender(
+          <MemoryRouter>
+            <ChatBox />
+          </MemoryRouter>
+        );
+      }
+      const snapshot = getProjectEventStore('session-1').getSnapshot();
+      mocks.snapshot = {
+        ...snapshot,
+        control: {
+          ...snapshot.control,
+          interactionById: {
+            'review-approval': {
+              interactionId: 'review-approval',
+              runId,
+              status: 'resolved',
+              version: 1,
+              actionDigest: 'digest',
+            },
+          },
+        },
+      };
+      view.rerender(
+        <MemoryRouter>
+          <ChatBox />
+        </MemoryRouter>
+      );
+      const op = listControlOperations().find((op) => op.runId === runId)!;
+      expect(op.phase).toBe('resolved');
+      expect(op.completionPending).toBe(navigation !== 'stay');
+      expect(op.body).toEqual({});
+      expect(op.retryAllowed).toBe(false);
+      expect(chat.getState().tasks[history].activeAsk).toBeFalsy();
+      expect(
+        chat.getState().tasks[history].resolvedInteractionIds
+      ).not.toContain('review-approval');
+      if (navigation !== 'stay')
+        expect(chat.getState().tasks[runId].activeAsk).toBe('worker');
+      if (navigation === 'remount') view.unmount();
+      if (navigation === 'recovery')
+        mocks.projectStore.getActiveChatStore = () => null;
+      act(() => {
+        chat.getState().setActiveTaskId(runId);
+      });
+      if (navigation === 'remount') {
+        view = render(
+          <MemoryRouter>
+            <ChatBox />
+          </MemoryRouter>
+        );
+      } else {
+        view.rerender(
+          <MemoryRouter>
+            <ChatBox />
+          </MemoryRouter>
+        );
+      }
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      if (navigation === 'recovery') {
+        expect(op.completionPending).toBe(true);
+        expect(mocks.variant.disabled).toBe(true);
+        expect(
+          screen.getByRole('button', { name: 'Check status' })
+        ).toBeEnabled();
+        mocks.projectStore.getActiveChatStore = () => chat;
+        mocks.localGet.mockResolvedValue({
+          run_id: runId,
+          interactions: [
+            {
+              run_id: runId,
+              interaction_id: 'review-approval',
+              status: 'resolved',
+              version: 1,
+              action_digest: 'digest',
+              response: { decision: 'approved', scope: 'once' },
+            },
+          ],
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+      }
+      expect(
+        screen.queryByRole('button', { name: 'Check status' })
+      ).not.toBeInTheDocument();
+      expect(chat.getState().tasks[runId].activeAsk).toBe(
+        queued ? 'next-worker' : ''
+      );
+      expect(op.completionPending).toBe(false);
+      expect(chat.getState().tasks[runId].durableRunStatus).toBe(
+        'waiting_for_user'
+      );
+      // A further remount must not advance the next ask or redeliver approval.
+      view.unmount();
+      view = render(
+        <MemoryRouter>
+          <ChatBox />
+        </MemoryRouter>
+      );
+      expect(chat.getState().tasks[runId].activeAsk).toBe(
+        queued ? 'next-worker' : ''
+      );
+      expect(
+        chat
+          .getState()
+          .tasks[runId].messages.filter((message) => message.id === 'next-ask')
+      ).toHaveLength(queued);
+      expect(mocks.post).toHaveBeenCalledTimes(1);
+      view.unmount();
+      vi.useRealTimers();
+    }
+  );
+
+  it.each([0, 1])(
+    'cleans a confirmed approval with %i queued asks through submit, retry and readback',
+    async (queued) => {
+      for (const mode of ['submit', 'retry', 'check']) {
+        const runId = chat.getState().create(`approval-${mode}-${queued}`);
+        chat.getState().setActiveTaskId(runId);
+        chat.getState().setHasMessages(runId, true);
+        chat.getState().setStatus(runId, 'running');
+        chat.getState().setDurableRunStatus(runId, 'waiting_for_user');
+        chat.getState().setActiveAsk(runId, 'worker');
+        chat.getState().addMessages(runId, {
+          id: 'ask',
+          role: 'agent',
+          step: 'ask',
+          agent_name: 'worker',
+          content: 'Allow?',
+          interaction: {
+            interaction_id: 'approval',
+            interaction_type: 'approval',
+            run_id: runId,
+            version: 0,
+            action_digest: 'digest',
+            allowed_scopes: ['once'],
+            title: 'Allow?',
+          },
+        });
+        const next = {
+          id: 'next',
+          role: 'agent',
+          step: 'ask',
+          agent_name: 'next-worker',
+          content: 'Next?',
+          interaction: {
+            interaction_id: 'next',
+            interaction_type: 'question',
+            run_id: runId,
+            version: 0,
+          },
+        };
+        if (queued) chat.getState().setActiveAskList(runId, [next as any]);
+        const receipt = {
+          run_id: runId,
+          interaction_id: 'approval',
+          status: 'resolved',
+          version: 1,
+          action_digest: 'digest',
+          response: { decision: 'approved', scope: 'once' },
+        };
+        mocks.post.mockImplementation(() =>
+          mode === 'submit' ? Promise.resolve(receipt) : new Promise(() => {})
+        );
+        servePendingApproval('approval');
+        const view = await renderChat();
+        await waitFor(() => expect(mocks.variant?.kind).toBe('approval'));
+        vi.useFakeTimers();
+        act(() => {
+          mocks.variant.onApprove('once');
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(mode === 'submit' ? 0 : 15_000);
+        });
+        if (mode !== 'submit') {
+          expect(chat.getState().tasks[runId].activeAsk).toBe('worker');
+          mocks.post.mockResolvedValue(receipt);
+          mocks.localGet.mockResolvedValue({
+            run_id: runId,
+            interactions: [receipt],
+          });
+          fireEvent.click(
+            screen.getByRole('button', {
+              name: mode === 'retry' ? 'Retry same request' : 'Check status',
+            })
+          );
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(0);
+          });
+        }
+        const task = chat.getState().tasks[runId];
+        expect(task.resolvedInteractionIds).toContain('approval');
+        expect(task.activeAsk).toBe(queued ? 'next-worker' : '');
+        expect(task.askList).toHaveLength(0);
+        expect(task.durableRunStatus).toBe('waiting_for_user');
+        expect(
+          task.messages.filter((message) => message.id === 'next')
+        ).toHaveLength(queued);
+        // A repeated canonical status check cannot consume the next waiter.
+        mocks.localGet.mockResolvedValue({
+          run_id: runId,
+          interactions: [receipt],
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(chat.getState().tasks[runId].activeAsk).toBe(
+          queued ? 'next-worker' : ''
+        );
+        expect(
+          chat
+            .getState()
+            .tasks[runId].messages.filter((message) => message.id === 'next')
+        ).toHaveLength(queued);
+        view.unmount();
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it('recovers interrupted Run A with history B selected across timeouts and remount', async () => {
+    const history = chat.getState().create('history-B');
+    chat.getState().setActiveTaskId(history);
+    interruptRun('interrupted-A');
+    mocks.post.mockImplementation(() => new Promise(() => {}));
+    let view = await renderChat();
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel task' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    const envelope = mocks.post.mock.calls[0][1];
+    expect(screen.getByRole('button', { name: 'Cancel task' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel task' })).toHaveAttribute(
+      'title',
+      expect.stringContaining('not confirmed')
+    );
+    expect(screen.getByRole('button', { name: 'Check status' })).toBeEnabled();
+    view.unmount();
+    vi.useRealTimers();
+    view = await renderChat();
+    vi.useFakeTimers();
+    mocks.localGet.mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(screen.getByRole('button', { name: 'Check status' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry same request' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(mocks.post.mock.calls[1][0]).toBe('/runs/interrupted-A/cancel');
+    expect(mocks.post.mock.calls[1][1]).toEqual(envelope);
+    expect(chat.getState().activeTaskId).toBe(history);
+    expect(chat.getState().tasks[history].status).not.toBe('finished');
+    view.unmount();
   });
 });

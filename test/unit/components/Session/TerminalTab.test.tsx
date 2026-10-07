@@ -35,11 +35,20 @@ vi.mock('@/components/Session/PreviewPanel/tabs/terminal/XtermViewer', () => ({
 vi.mock(
   '@/components/Session/PreviewPanel/tabs/terminal/ShellTerminal',
   () => ({
-    ShellTerminal: ({ shellId, cwd }: { shellId: string; cwd?: string }) => (
+    ShellTerminal: ({
+      shellId,
+      cwd,
+      viewportSettled,
+    }: {
+      shellId: string;
+      cwd?: string;
+      viewportSettled: boolean;
+    }) => (
       <div
         data-testid="shell-terminal"
         data-shell-id={shellId}
         data-cwd={cwd}
+        data-settled={viewportSettled}
       />
     ),
   })
@@ -126,6 +135,27 @@ function renderTab(tab: SessionTerminalTab, host: unknown = desktopHost) {
 }
 
 describe('TerminalTab', () => {
+  it('passes display readiness to the interactive shell', async () => {
+    const tab = shellTab();
+    const view = render(
+      <HostProvider host={desktopHost}>
+        <TerminalTab tab={tab} viewportSettled={false} />
+      </HostProvider>
+    );
+    expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
+      'data-settled',
+      'false'
+    );
+    view.rerender(
+      <HostProvider host={desktopHost}>
+        <TerminalTab tab={tab} viewportSettled />
+      </HostProvider>
+    );
+    expect(screen.getByTestId('shell-terminal')).toHaveAttribute(
+      'data-settled',
+      'true'
+    );
+  });
   it('renders an interactive local shell for a plain terminal tab', async () => {
     renderTab(shellTab());
     expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(

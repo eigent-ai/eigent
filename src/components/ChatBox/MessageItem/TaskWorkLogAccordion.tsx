@@ -92,6 +92,7 @@ export function terminalWorkLogI18nKey(
   status: DurableRunDisplayStatus | undefined
 ): string {
   if (status === 'failed') return 'chat.failed-after';
+  if (status === 'timed_out') return 'chat.timed-out-after';
   if (status === 'interrupted') return 'chat.interrupted-after';
   if (status === 'cancelled' || status === 'stopped') {
     return 'chat.stopped-after';

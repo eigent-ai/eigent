@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { RunTerminalReason } from '@/lib/runTerminalReason';
+
 export type ProjectorMode = 'live' | 'rehydrate' | 'playback';
 
 export type CanonicalSemanticStatus =
@@ -166,12 +168,17 @@ export type ProjectedRun = {
     | 'completed'
     | 'failed'
     | 'cancelled'
+    | 'timed_out'
     | 'interrupted';
   lastSequence: number;
   runVersion: number;
   updatedAt: string;
   origin?: 'local' | 'cloud_restore' | 'remote' | null;
   resumeBlockedReason?: string | null;
+  /** Why the Run last stopped, as recorded by the Brain. */
+  terminalReason?: RunTerminalReason | null;
+  /** Free-form diagnostic for Detailed mode; shown verbatim. */
+  terminalDetail?: string | null;
   latestAttempt?: {
     attemptNumber: number;
     status: string;

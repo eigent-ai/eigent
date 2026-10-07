@@ -29,6 +29,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.transitions import RUN_TERMINAL_STATES
+
 if TYPE_CHECKING:
     from app.run_journal.models import (
         AttemptEnvironmentBinding,
@@ -692,7 +694,7 @@ class RunCoordinator:
         run = await asyncio.to_thread(self._journal.get_run, run_id)
         if run is None:
             return False, None
-        if run.status in {"completed", "failed", "cancelled"}:
+        if run.status in RUN_TERMINAL_STATES:
             # A compatibility END frame may close the renderer stream after a
             # durable cancel/failure. It is transport state, not permission to
             # rewrite the canonical Run outcome as success.
@@ -963,38 +965,42 @@ class RunCoordinator:
         Skip stops the active model/tool turn but deliberately keeps the
         Project's compatibility generator alive for follow-ups. Cancelling
         the RuntimeHandle here would cancel the pump currently executing this
-        method, so the durable cancel transition is committed directly.
+        method. Share the admission gate with canonical cancel so no durable
+        cancel intent or terminal state can overtake a preparatory worker.
         """
 
-        journal = self._run_journal()
-        await asyncio.to_thread(
-            journal.request_cancel,
-            run_id,
-            request_id=request_id,
-            reason=reason,
-        )
-        await self._settle_unsuccessful_run(run_id)
-        await self._finalize_artifacts_before_terminal(run_id)
-        cancelled = await asyncio.to_thread(
-            journal.complete_cancel,
-            run_id,
-            request_id=request_id,
-        )
-        try:
-            from app.workspace_git import get_default_workspace_git_lifecycle
-
+        async with self.admission_scope(run_id):
+            journal = self._run_journal()
             await asyncio.to_thread(
-                get_default_workspace_git_lifecycle().finalize_run, run_id
+                journal.request_cancel,
+                run_id,
+                request_id=request_id,
+                reason=reason,
             )
-        except Exception:
-            logger.exception(
-                "Cancelled turn Git finalization needs attention",
-                extra={"run_id": run_id},
+            await self._settle_unsuccessful_run(run_id)
+            await self._finalize_artifacts_before_terminal(run_id)
+            cancelled = await asyncio.to_thread(
+                journal.complete_cancel,
+                run_id,
+                request_id=request_id,
             )
-        from app.run_sync.runtime import notify_default_cloud_sync_worker
+            try:
+                from app.workspace_git import (
+                    get_default_workspace_git_lifecycle,
+                )
 
-        notify_default_cloud_sync_worker()
-        return cancelled
+                await asyncio.to_thread(
+                    get_default_workspace_git_lifecycle().finalize_run, run_id
+                )
+            except Exception:
+                logger.exception(
+                    "Cancelled turn Git finalization needs attention",
+                    extra={"run_id": run_id},
+                )
+            from app.run_sync.runtime import notify_default_cloud_sync_worker
+
+            notify_default_cloud_sync_worker()
+            return cancelled
 
     async def _settle_unsuccessful_run(self, run_id: str) -> None:
         """Stop writers on every terminal path without rewriting the outcome."""
@@ -1080,11 +1086,17 @@ class RunCoordinator:
                 },
             )
         except Exception as exc:
+            from app.run_journal.context_projection import ResumeContextError
+
             await self._commit_execution_terminal(
                 handle,
                 event_type="run.failed",
                 payload={
-                    "reason": "execution_backend_failure",
+                    "reason": (
+                        exc.reason
+                        if isinstance(exc, ResumeContextError)
+                        else "execution_backend_failure"
+                    ),
                     "error_type": type(exc).__name__,
                     "message": str(exc)[:4000],
                 },
@@ -1147,7 +1159,7 @@ class RunCoordinator:
         from app.run_journal.models import RunEventDraft
 
         run = await asyncio.to_thread(self._journal.get_run, run_id)
-        if run is None or run.status in {"completed", "failed", "cancelled"}:
+        if run is None or run.status in RUN_TERMINAL_STATES:
             return
         try:
             await self._settle_unsuccessful_run(run_id)
@@ -1247,11 +1259,7 @@ class RunCoordinator:
                 current = await asyncio.to_thread(
                     self._journal.get_run, handle.run_id
                 )
-                if current is None or current.status in {
-                    "completed",
-                    "failed",
-                    "cancelled",
-                }:
+                if current is None or current.status in RUN_TERMINAL_STATES:
                     return
                 if current.deadline_at is None:
                     # No deadline means there is nothing to poll. Policy
@@ -1279,12 +1287,14 @@ class RunCoordinator:
                     if (
                         current is None
                         or current.deadline_at is None
-                        or current.status
-                        in {"completed", "failed", "cancelled"}
+                        or current.status in RUN_TERMINAL_STATES
                     ):
                         return
                     if time.time() < current.deadline_at:
                         continue
+                if current.cancel_request_id is not None:
+                    # A persisted cancel intent wins; cancel ends the Run.
+                    return
                 attempt = (
                     await asyncio.to_thread(
                         self._journal.get_run_attempt,
