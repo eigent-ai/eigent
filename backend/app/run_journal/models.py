@@ -84,6 +84,7 @@ class WorkspaceWriterLeaseRecord:
     target_ref: str
     acquired_at: float
     version: int
+    holder_attempt_id: str | None
 
 
 @dataclass(frozen=True)

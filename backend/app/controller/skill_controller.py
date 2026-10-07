@@ -15,9 +15,18 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 
+from app.auth import require_local_control_if_configured
 from app.service.skill_config_service import (
     skill_config_delete,
     skill_config_init,
@@ -36,7 +45,7 @@ from app.service.skill_service import (
     skills_scan,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_local_control_if_configured)])
 skill_logger = logging.getLogger("skill_controller")
 
 
