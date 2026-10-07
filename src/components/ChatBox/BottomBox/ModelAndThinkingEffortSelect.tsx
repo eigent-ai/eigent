@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
 import {
   configurationHint,
@@ -406,7 +407,8 @@ export function ModelAndThinkingEffortSelect({
             'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
             'justify-start font-semibold transition-colors',
             'hover:bg-ds-neutral-subtle-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-subtle-default',
-            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none',
+            DS_FOCUS_RING,
+            'focus-visible:ring-offset-ds-neutral-default-default',
             'disabled:pointer-events-none disabled:opacity-50',
             className
           )}

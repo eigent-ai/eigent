@@ -332,13 +332,9 @@ function ModelsContent() {
     );
   }
   const badge = (
-    <DsText
-      as="span"
-      role="meta"
-      className="rounded-full bg-ds-neutral-default-default px-ds-8 py-ds-2 text-ds-ink-muted-default"
-    >
+    <Badge variant="secondary" size="xs">
       {t('setting.default')}
-    </DsText>
+    </Badge>
   );
   const modelStatus = (configured: boolean) => (
     <Badge
@@ -608,7 +604,7 @@ function ModelsContent() {
                                         aria-checked={
                                           selectedDefaultValue === option.id
                                         }
-                                        className="h-8 cursor-pointer"
+                                        className="cursor-pointer"
                                         disabled={busy}
                                         onSelect={() =>
                                           void chooseDefault(option.id)
