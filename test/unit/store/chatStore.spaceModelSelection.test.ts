@@ -868,6 +868,47 @@ describe('Space default through the real Chat start path', () => {
     ).toBe(false);
     expect(project.metadata.modelSelection.cloud_model_type).toBe('manual');
   });
+  const pinConfiguration = (provider_id: number) => {
+    project.metadata.modelSelection = {
+      modelType: 'custom',
+      provider_id,
+      model_platform: 'azure',
+      model_type: 'deployment',
+    };
+  };
+  it('starts a pinned Session with its exact saved configuration', async () => {
+    providers = [
+      provider,
+      { ...provider, id: 43, api_key: 'synthetic-second-key' },
+    ];
+    pinConfiguration(43);
+    await start();
+    expect(request()).toMatchObject({
+      model_type: 'deployment',
+      api_key: 'synthetic-second-key',
+    });
+    expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/providers', {
+      prefer: true,
+    });
+  });
+  it('stops a pinned Session whose saved configuration was removed', async () => {
+    pinConfiguration(99);
+    await expect(start()).rejects.toThrow('model configuration is unavailable');
+    expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/providers', {
+      prefer: true,
+    });
+    expect(mocks.sse).not.toHaveBeenCalled();
+  });
+  it('stops a pinned Session when its saved configuration cannot be loaded', async () => {
+    const original = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation(async (url, params) => {
+      if (url === '/api/v1/providers') throw new Error('offline');
+      return original(url, params);
+    });
+    pinConfiguration(42);
+    await expect(start()).rejects.toThrow('saved model. Check your connection');
+    expect(mocks.sse).not.toHaveBeenCalled();
+  });
   it('keeps provider://default on the existing user default path', async () => {
     installed.model_ref = 'provider://default';
     await start();
