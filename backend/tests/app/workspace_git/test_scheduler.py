@@ -805,10 +805,93 @@ async def test_waiter_learns_holder_requires_attention(journal):
         "holder_requires_attention",
     ]
     assert queued[-1]["blocker_task_id"] == "owner"
-    assert queued[-1]["semantic"]["correlation"]["blocker_run_id"] == "owner"
+    correlation = queued[-1]["semantic"]["correlation"]
+    assert correlation["blocker_run_id"] == "owner"
+    assert correlation["blocker_project_id"] == "project-owner"
+    assert correlation["blocker_reason"] == "unsettled_write"
     waiter.cancel()
     with pytest.raises(asyncio.CancelledError):
         await waiter
+
+
+@pytest.mark.asyncio
+async def test_waiter_names_blocker_stopped_mid_command_until_cancelled(
+    journal,
+):
+    scheduler = WorkspaceWriterScheduler(journal, poll_interval_seconds=0.01)
+    _, attempt = _admit_pending(scheduler, "owner")
+    journal.activate_run_attempt(attempt.attempt_id)
+    shell = dict(
+        tool_call_id="shell-call",
+        run_id="owner",
+        attempt_id=attempt.attempt_id,
+        tool_name="shell_exec",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        request={"command": "npm install"},
+    )
+    journal.checkpoint_tool_call(status="prepared", **shell)
+    journal.checkpoint_tool_call(status="dispatched", **shell)
+    journal.admit_git_run_workspace(
+        run_id="owner",
+        project_id="project-owner",
+        repository_id="repo-1",
+        user_head="a" * 40,
+        user_ref="refs/heads/main",
+    )
+    journal.ensure_git_change_set(
+        change_set_id="changes",
+        run_id="owner",
+        repository_id="repo-1",
+        worktree_ref="refs/heads/main",
+        base_commit="a" * 40,
+    )
+    journal.ensure_git_mutation_intent(
+        intent_id="intent",
+        change_set_id="changes",
+        operation_request_id="shell-call",
+        mutation_scope="broad_process",
+        relative_path=None,
+        preimage_digest=None,
+        actor_id="agent",
+        trigger="terminal",
+        writer_lease=_lease(journal),
+    )
+    # The app quits mid-command: restart cannot prove what it changed.
+    journal.reconcile_startup()
+    scheduler.reconcile_orphaned_admissions()
+    assert scheduler.reclaim_lost_writers().reclaimed_request_ids == ()
+    assert journal.list_tool_calls("owner")[0].status == "outcome_unknown"
+
+    later, _ = _admit_pending(scheduler, "later")
+    waiter = asyncio.create_task(
+        scheduler.wait_until_acquired(run_id="later", task_id="later")
+    )
+    await asyncio.sleep(0.05)
+
+    assert not waiter.done()
+    attention = [
+        event.payload
+        for event in journal.list_events("later")
+        if event.payload["reason"] == "holder_requires_attention"
+    ]
+    assert len(attention) == 1
+    assert attention[0]["semantic"]["correlation"] == {
+        "task_id": "later",
+        "project_id": "project-later",
+        "checkout_id": "checkout-primary",
+        "blocker_run_id": "owner",
+        "blocker_project_id": "project-owner",
+        "blocker_reason": "unknown_tool_outcome",
+    }
+
+    # Cancelling the blocker from its Session hands the Space to the waiter.
+    journal.request_cancel("owner", request_id="cancel", reason="user")
+    journal.complete_cancel("owner", request_id="cancel")
+    scheduler.finish_task(run_id="owner")
+    acquired = await asyncio.wait_for(waiter, timeout=1)
+
+    assert acquired.request_id == later.request_id
+    assert _lease(journal).request_id == later.request_id
 
 
 @pytest.mark.asyncio

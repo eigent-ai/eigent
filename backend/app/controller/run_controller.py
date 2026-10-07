@@ -42,6 +42,8 @@ from app.run_journal import (
     InvalidRunTransitionError,
     OptimisticConcurrencyError,
     RunNotFoundError,
+    RunRecord,
+    SQLiteRunJournal,
     UnsafeResumeError,
     get_default_run_journal,
 )
@@ -56,6 +58,7 @@ from app.run_runtime import (
     SubscriberLaggedError,
     get_default_run_coordinator,
 )
+from app.run_runtime.tool_checkpoint import build_tool_display_projection
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
 
@@ -333,6 +336,33 @@ def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
     return total
 
 
+async def _unsafe_resume_blockers(
+    journal: SQLiteRunJournal, run: RunRecord
+) -> list[dict[str, Any]]:
+    """Name the Tool calls an explicit Resume of this Run refuses to replay.
+
+    Derived from the same fail-closed rule as Resume admission. Only an
+    interrupted Run offers Resume, so every other state reports none.
+    """
+    if run.status != "interrupted":
+        return []
+    calls = await asyncio.to_thread(
+        journal.list_unsafe_resume_blockers, run.run_id
+    )
+    return [
+        {
+            "tool_call_id": call.tool_call_id,
+            "tool_name": call.tool_name,
+            "display_title": build_tool_display_projection(
+                tool_name=call.tool_name,
+                request=call.request,
+                status=call.status,
+            ).title,
+        }
+        for call in calls
+    ]
+
+
 @router.get("/runs")
 async def list_project_runs(
     project_id: str = Query(min_length=1),
@@ -374,6 +404,9 @@ async def list_project_runs(
                     if attempts
                     else None
                 ),
+                "unsafe_resume_blockers": await _unsafe_resume_blockers(
+                    journal, run
+                ),
             }
         )
     return {
@@ -408,6 +441,7 @@ async def get_run(run_id: str):
         "approvals": [asdict(approval) for approval in approvals],
         "interactions": [asdict(interaction) for interaction in interactions],
         "tool_calls": [asdict(tool_call) for tool_call in tool_calls],
+        "unsafe_resume_blockers": await _unsafe_resume_blockers(journal, run),
         "runtime": {
             "consumer_alive": bool(handle and handle.consumer_alive),
             "subscriber_count": handle.subscriber_count if handle else 0,

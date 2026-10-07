@@ -18,6 +18,7 @@ import type {
   CanonicalSemanticEnvelope,
   CanonicalSemanticKindV2,
   ProjectedLegacyStep,
+  ProjectedWriterWait,
 } from '../types';
 
 export type ChatProjectionInput = CanonicalProjectEvent | ProjectedLegacyStep;
@@ -159,6 +160,8 @@ export interface ChatNoticeNode extends ChatProjectionNodeBase {
   toolCallId?: string;
   /** Authored task Step that produced this notice, when explicit. */
   stepId?: string;
+  /** Space writer wait that this notice reports, when it needs the user. */
+  writerWait?: ProjectedWriterWait;
 }
 
 export interface ChatInteractionOption {

@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { runTerminalReason } from '@/lib/runTerminalReason';
-import type { ProjectedRun } from './types';
+import type { ProjectedRun, ProjectedUnsafeResumeBlocker } from './types';
 
 export type DurableRunSummaryInput = {
   run_id: string;
@@ -31,6 +31,11 @@ export type DurableRunSummaryInput = {
     status: string;
     resume_request_id?: string;
   } | null;
+  unsafe_resume_blockers?: Array<{
+    tool_call_id: string;
+    tool_name?: string | null;
+    display_title?: string | null;
+  }>;
 };
 
 export const TERMINAL_RUN_STATUSES = new Set<ProjectedRun['status']>([
@@ -56,6 +61,28 @@ const RUN_STATUSES = new Set<ProjectedRun['status']>([
   'interrupted',
   ...TERMINAL_RUN_STATUSES,
 ]);
+
+function optionalText(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null;
+}
+
+/** Keep only well-formed blockers from the Brain's derived Run field. */
+function unsafeResumeBlockers(value: unknown): ProjectedUnsafeResumeBlocker[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const blocker = item as Record<string, unknown> | null;
+    const toolCallId = optionalText(blocker?.tool_call_id);
+    return toolCallId
+      ? [
+          {
+            toolCallId,
+            toolName: optionalText(blocker?.tool_name),
+            displayTitle: optionalText(blocker?.display_title),
+          },
+        ]
+      : [];
+  });
+}
 
 /** Run aggregates are status checkpoints, never event/history cursors. */
 export function mergeRunSummary(
@@ -122,5 +149,12 @@ export function mergeRunSummary(
       typeof elapsed === 'number' && Number.isFinite(elapsed) && elapsed >= 0
         ? receivedAt
         : null,
+    ...(summary.unsafe_resume_blockers === undefined
+      ? {}
+      : {
+          unsafeResumeBlockers: unsafeResumeBlockers(
+            summary.unsafe_resume_blockers
+          ),
+        }),
   };
 }

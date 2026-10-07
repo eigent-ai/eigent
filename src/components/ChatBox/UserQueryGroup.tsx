@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
+import { useRunWriterWait } from '@/lib/runEvents';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
@@ -22,6 +23,7 @@ import {
   type VanillaChatStore,
 } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
@@ -41,6 +43,7 @@ import {
 } from './MessageItem/HumanInteractionCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
+import { SpaceWaitNotice } from './MessageItem/SpaceWaitNotice';
 import { TaskFailureSummary } from './MessageItem/TaskFailureSummary';
 import {
   getTaskRunDisplayStatus,
@@ -200,6 +203,12 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const viewChanges = activeTaskId
     ? () => openReviewPreview({ runId: activeTaskId })
     : undefined;
+  // The canonical Run says when a start is queued behind another task's
+  // writes; the legacy stream has no event for it.
+  const activeProjectId = useProjectRuntimeStore(
+    (state) => state.activeProjectId
+  );
+  const writerWait = useRunWriterWait(activeProjectId, activeTaskId);
 
   // Subscribe to streaming decompose text separately for efficient updates
   const streamingDecomposeText = useSyncExternalStore(
@@ -482,7 +491,13 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           transition={{ duration: 0.25, delay: 0.05 }}
           className="px-2"
         >
-          {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
+          {showPreparingExecute ? (
+            writerWait ? (
+              <SpaceWaitNotice wait={writerWait} />
+            ) : (
+              <PreparingToExecuteTasks />
+            )
+          ) : null}
           <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
         </motion.div>
       )}
