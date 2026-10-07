@@ -43,7 +43,10 @@ import {
   recordTaskStopped,
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
-import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
+import {
+  notifyDurableRunStatusChanged,
+  notifyRunStreamReopened,
+} from '@/lib/events/durableRunEvents';
 import { createLocalError } from '@/lib/localError';
 import {
   resolveSourceEventId,
@@ -51,6 +54,7 @@ import {
 } from '@/lib/messageIdentity';
 import { buildAgentModelConfigFromProvider } from '@/lib/modelConfig';
 import { reportError } from '@/lib/notifyError';
+import { isTerminalHumanControlEvent } from '@/lib/projector/control/adapter';
 import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
   normalizeRemoteSubAgentProvider,
@@ -179,22 +183,27 @@ export const canonicalRunEventToLegacyMessage = (
     payload?: unknown;
     created_at?: unknown;
   };
-  // Approval decisions are canonical-only events. Project their durable
+  // Interaction outcomes are canonical-only events: a decision, a system
+  // cancellation (for example at restart) or an expiry. Project the durable
   // interaction id into the legacy reducer so reconnect/replay closes the
-  // corresponding ASK card instead of resurrecting an already-decided card.
+  // corresponding ASK card instead of resurrecting it or queueing the next
+  // request (such as the one asked again after Resume) behind it.
   if (
-    event.event_type === 'approval.decided' ||
-    event.event_type === 'interaction.resolved'
+    typeof event.event_type === 'string' &&
+    isTerminalHumanControlEvent(event.event_type)
   ) {
     const payload =
       event.payload && typeof event.payload === 'object'
         ? (event.payload as Record<string, unknown>)
         : null;
-    if (typeof payload?.interaction_id !== 'string') return null;
+    // An approval expiry identifies its request by approval id only.
+    const interactionId = payload?.interaction_id ?? payload?.approval_id;
+    if (typeof interactionId !== 'string' || !interactionId) return null;
     return {
       step: AgentStep.HUMAN_REPLY,
       data: {
         ...payload,
+        interaction_id: interactionId,
         __durable_interaction_resolution: true,
       },
       timestamp:
@@ -800,7 +809,8 @@ interface Task {
   source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
   messages: Message[];
-  type: string;
+  /** Playback kind such as `replay` or `share`; absent for a live task. */
+  type?: string;
   summaryTask: string;
   taskInfo: TaskInfo[];
   attaches: File[];
@@ -1297,6 +1307,12 @@ export interface ChatStore {
     taskId: string,
     status: DurableRunDisplayStatus | undefined
   ) => void;
+  /**
+   * Resume admitted a new Attempt for this task's Run. Drop the playback
+   * identity, interrupted outcome and waiters restored from history so the
+   * new Attempt's requests are live. Retired receipts stay read-only.
+   */
+  markRunResumed: (taskId: string) => void;
   setActiveTaskId: (taskId: string) => void;
   setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
   replay: (
@@ -3743,6 +3759,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           finishStartupFailure();
           throw error;
         }
+        // The admitted Attempt continues this Run in the same task, which may
+        // still be the playback restored at startup. Only now that the Run is
+        // no longer interrupted is that history state retired.
+        targetChatStore.getState().markRunResumed(newTaskId);
       }
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
@@ -7177,7 +7197,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             throw error;
           }
           const firstOpen = !resumeStreamOpened;
-          if (resumeStreamOpened) reconcileStreamRun();
+          if (resumeStreamOpened) {
+            reconcileStreamRun();
+            // Let waiting cards re-check Brain now instead of at their backoff.
+            notifyRunStreamReopened(lockedTaskId);
+          }
           if (commitSpaceModelPin) {
             try {
               commitSpaceModelPin();
@@ -7934,6 +7958,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               durableRunStatus,
               messages: task.messages.map(retireApproval),
               askList: task.askList.map(retireApproval),
+            },
+          },
+        };
+      });
+    },
+    markRunResumed(taskId: string) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              type: undefined,
+              durableRunStatus: undefined,
+              activeAsk: '',
+              askList: [],
             },
           },
         };
