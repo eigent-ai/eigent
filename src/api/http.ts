@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { resolveEventStreamFetch } from '@/api/brainStreamRelay';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { createHost } from '@/host/createHost';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
@@ -487,12 +488,20 @@ export async function sseTransport(
       : options.body
         ? JSON.stringify(options.body)
         : undefined;
+  const method = options.method || 'POST';
 
-  const requestFetch = window.fetch;
+  // Long-lived streams must not hold the renderer's per-host connections:
+  // in Electron, Brain event streams are relayed by the main process.
+  const requestFetch = await resolveEventStreamFetch(
+    fullUrl,
+    method,
+    window.fetch
+  );
+  assertRequestAccount(options);
   let guardRejected = false;
   let guardError: unknown;
   await fetchEventSource(fullUrl, {
-    method: options.method || 'POST',
+    method,
     openWhenHidden: options.openWhenHidden ?? true,
     signal: options.signal,
     headers,
@@ -511,7 +520,7 @@ export async function sseTransport(
             }
             return requestFetch(input, init);
           }
-        : undefined,
+        : requestFetch,
     onmessage(event) {
       assertRequestAccount(options);
       if (!options.signal?.aborted) return options.onmessage(event);

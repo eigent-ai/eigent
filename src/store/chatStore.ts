@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isRelayedEventStreamResponse } from '@/api/brainStreamRelay';
 import {
   fetchDelete,
   fetchGet,
@@ -1474,6 +1475,8 @@ type ActiveSSEConnection = {
   taskId: string;
   recoverClosedUsage?: () => void;
   displayTail?: { taskId: string; promise: Promise<void>; release: () => void };
+  /** Opened through the main-process relay: it holds no renderer connection. */
+  relayed?: boolean;
 };
 
 const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
@@ -7303,6 +7306,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             rejectResumeStreamOpen?.(error);
             throw error;
           }
+          // A reconnect may fall back to the window's own fetch.
+          sseConnection.relayed = isRelayedEventStreamResponse(respond);
           const firstOpen = !resumeStreamOpened;
           if (resumeStreamOpened) {
             reconcileStreamRun();
@@ -8782,9 +8787,29 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
   );
 }
 
+type IdleStreamReclaimOptions = {
+  /** Leave relayed transports open; they hold no renderer connection. */
+  keepRelayed?: boolean;
+};
+
 /** Returns true if any task still owns a physical SSE transport. */
-export function hasSSETransportForTasks(taskIds: string[]): boolean {
-  return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
+export function hasSSETransportForTasks(
+  taskIds: string[],
+  { keepRelayed = false }: IdleStreamReclaimOptions = {}
+): boolean {
+  return taskIds.some((taskId) => {
+    const connection = activeSSEControllers[taskId];
+    return !!connection && !(keepRelayed && connection.relayed);
+  });
+}
+
+/** Idle relayed transports, each physical connection counted once. */
+export function countIdleRelayedSSEConnections(): number {
+  return new Set(
+    Object.values(activeSSEControllers).filter(
+      (connection) => connection.relayed && !connection.logicalActive
+    )
+  ).size;
 }
 
 /** Return the Run id that owns an idle reusable legacy `/chat` transport. */
@@ -8822,10 +8847,18 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
 }
 
 /** Close only reusable transports that no longer have a logically active Run. */
-export function closeIdleSSEConnectionsForTasks(taskIds: string[]): void {
+export function closeIdleSSEConnectionsForTasks(
+  taskIds: string[],
+  { keepRelayed = false }: IdleStreamReclaimOptions = {}
+): void {
   for (const taskId of taskIds) {
     const connection = activeSSEControllers[taskId];
-    if (connection && !connection.logicalActive && !connection.displayTail) {
+    if (
+      connection &&
+      !connection.logicalActive &&
+      !connection.displayTail &&
+      !(keepRelayed && connection.relayed)
+    ) {
       console.log(
         '[closeIdleSSEConnectionsForTasks] Closing idle SSE for task:',
         taskId

@@ -60,6 +60,7 @@ import { create } from 'zustand';
 import { getAuthStore } from './authStore';
 import {
   closeIdleSSEConnectionsForTasks,
+  countIdleRelayedSSEConnections,
   createChatStoreInstance,
   hasActiveSSEConnection,
   hasSSETransportForTasks,
@@ -111,6 +112,11 @@ export async function waitForPendingStaleRuntimeEviction(
 
 // Projects whose idle streams are being released; one release at a time each.
 const idleStreamReclaimsInFlight = new Set<string>();
+
+// Idle streams relayed by the main process hold no renderer connection, and
+// keeping one lets the next follow-up reach its warm runtime. They stay open
+// up to this many; beyond that they are released like any other idle stream.
+const MAX_KEPT_IDLE_RELAYED_STREAMS = 16;
 
 const ACTIVE_RUN_STATUSES = new Set<string>([
   'pending',
@@ -589,6 +595,8 @@ interface ProjectStore {
    * is running, being admitted or queued, or waits for an approval or answer.
    * The runtime state stays loaded; Brain's idle consumer is retired by the
    * next follow-up admission, which then starts cold with its own stream.
+   * Streams relayed by the main process are kept, up to a small budget,
+   * because they do not occupy the renderer's connections.
    */
   reclaimIdleStreams: (
     keepProjectId: string | null,
@@ -1619,6 +1627,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
   reclaimIdleStreams: (keepProjectId, projectIds) => {
     const state = get();
+    const keepRelayed =
+      countIdleRelayedSSEConnections() < MAX_KEPT_IDLE_RELAYED_STREAMS;
     for (const projectId of projectIds ?? Object.keys(state.projects)) {
       // Stale runtimes are released together with their consumer by
       // `_evictStaleOnTransition`.
@@ -1630,7 +1640,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         continue;
       const project = state.projects[projectId];
       const taskIds = project ? getIdleStreamTaskIds(project) : null;
-      if (!taskIds || !hasSSETransportForTasks(taskIds)) continue;
+      if (!taskIds || !hasSSETransportForTasks(taskIds, { keepRelayed }))
+        continue;
 
       idleStreamReclaimsInFlight.add(projectId);
       void (async () => {
@@ -1649,7 +1660,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             latestTaskIds.some((taskId) => !taskIds.includes(taskId))
           )
             return;
-          closeIdleSSEConnectionsForTasks(latestTaskIds);
+          closeIdleSSEConnectionsForTasks(latestTaskIds, { keepRelayed });
         } catch (error) {
           console.warn(
             '[ProjectStore] Kept idle Session streams after a failed check',
