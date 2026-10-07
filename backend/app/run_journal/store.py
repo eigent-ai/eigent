@@ -10292,6 +10292,18 @@ class SQLiteRunJournal:
                 now=now if now is not None else time.time(),
             )
 
+    def workspace_writer_attention_reason(
+        self, request_id: str
+    ) -> Literal["unknown_tool_outcome", "unsettled_write"] | None:
+        """Read why a writer's Run keeps its lease until the user acts."""
+        run_id = self._workspace_writer_run_id(request_id)
+        if run_id is None:
+            return None
+        with self._lock:
+            return self._workspace_writer_attention_reason(
+                self._connection, run_id=run_id, request_id=request_id
+            )
+
     def reclaim_lost_workspace_writer(
         self,
         *,
@@ -10376,25 +10388,42 @@ class SQLiteRunJournal:
             )
         ):
             return "held"
+        if self._workspace_writer_attention_reason(
+            connection, run_id=run_id, request_id=lease["request_id"]
+        ):
+            return "requires_attention"
+        return "lost"
+
+    def _workspace_writer_attention_reason(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        request_id: str,
+    ) -> Literal["unknown_tool_outcome", "unsettled_write"] | None:
+        """Name the unsettled effect that keeps a stopped holder's lease."""
         from app.workspace_runtime.store import WorkspaceStateStore
 
+        if connection.execute(
+            """SELECT 1 FROM tool_calls WHERE run_id=?
+            AND status IN ('dispatched', 'outcome_unknown') LIMIT 1""",
+            (run_id,),
+        ).fetchone():
+            return "unknown_tool_outcome"
         if (
             connection.execute(
-                """SELECT 1 FROM tool_calls WHERE run_id=?
-                AND status IN ('dispatched', 'outcome_unknown')
-                UNION ALL SELECT 1 FROM git_change_sets WHERE run_id=?
-                LIMIT 1""",
-                (run_id, run_id),
+                "SELECT 1 FROM git_change_sets WHERE run_id=? LIMIT 1",
+                (run_id,),
             ).fetchone()
             or self._unresolved_workspace_mutation_in_transaction(
                 connection, run_id
             )
             or WorkspaceStateStore.legacy_requires_settlement(
-                connection, lease["request_id"]
+                connection, request_id
             )
         ):
-            return "requires_attention"
-        return "lost"
+            return "unsettled_write"
+        return None
 
     @staticmethod
     def _require_workspace_writer_lease_in_transaction(
@@ -13722,7 +13751,7 @@ class SQLiteRunJournal:
             )
         blockers = self._unsafe_resume_blockers(connection, run_id)
         if blockers:
-            raise UnsafeResumeError(blockers)
+            raise UnsafeResumeError([row["tool_call_id"] for row in blockers])
         unresolved_tools = connection.execute(
             """
             SELECT calls.tool_call_id, calls.run_id
@@ -15304,6 +15333,16 @@ class SQLiteRunJournal:
                 (run_id,),
             ).fetchall()
             return [self._tool_call_from_row(row) for row in rows]
+
+    def list_unsafe_resume_blockers(self, run_id: str) -> list[ToolCallRecord]:
+        """Tool calls whose unknown outcome makes an explicit Resume unsafe."""
+        with self._lock:
+            return [
+                self._tool_call_from_row(row)
+                for row in self._unsafe_resume_blockers(
+                    self._connection, run_id
+                )
+            ]
 
     def create_human_interaction(
         self,
@@ -21289,11 +21328,10 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
     @staticmethod
     def _unsafe_resume_blockers(
         connection: sqlite3.Connection, run_id: str
-    ) -> list[str]:
+    ) -> list[sqlite3.Row]:
         rows = connection.execute(
             """
-            SELECT tool_call_id, safety_class, idempotency_key
-            FROM tool_calls
+            SELECT * FROM tool_calls
             WHERE run_id = ?
               AND status IN ('dispatched', 'timed_out', 'outcome_unknown')
             ORDER BY created_at
@@ -21301,7 +21339,7 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             (run_id,),
         ).fetchall()
         return [
-            row["tool_call_id"]
+            row
             for row in rows
             if SQLiteRunJournal._tool_call_requires_fail_closed(row)
         ]

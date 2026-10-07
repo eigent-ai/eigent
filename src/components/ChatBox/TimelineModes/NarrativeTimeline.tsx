@@ -14,6 +14,7 @@
 
 import { AgentMessageCard } from '@/components/ChatBox/MessageItem/AgentMessageCard';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
+import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
@@ -668,6 +669,7 @@ function NarrativeNotice({
   const { node } = item;
   const reason = taskErrorReason(node);
   if (reason) return <TaskErrorNotice reason={reason} />;
+  if (node.writerWait) return <SpaceWaitNotice wait={node.writerWait} />;
   return (
     <span
       className={cn(
