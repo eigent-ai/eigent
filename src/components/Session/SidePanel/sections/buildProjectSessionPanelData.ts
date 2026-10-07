@@ -20,7 +20,7 @@ import type {
 } from '@/lib/projector/chat';
 import { resolveSubagentPresentationIdentity } from '@/lib/projector/chat/presentation';
 import { httpUrlOrNull } from '@/lib/richText';
-import { reconcileRunOutputFiles } from '@/lib/sessionOutputFiles';
+import { asLocalFile, reconcileRunOutputFiles } from '@/lib/sessionOutputFiles';
 import { normalizeWorkspaceRelativePath } from '@/lib/workspaceRelativePath';
 import { TaskStatus, type TaskStatusType } from '@/types/constants';
 import {
@@ -893,20 +893,24 @@ export function mergeProjectFiles(
       return item;
     }
 
+    const file: FileInfo = {
+      ...item.file,
+      ...match,
+      name: item.file.name || match.name,
+      type: item.file.type || match.type,
+      path: match.path || item.file.path,
+      relativePath: relativePath || matchRelativePath || undefined,
+      artifactId: artifactId || match.artifactId,
+      artifactChange: item.file.artifactChange,
+      mimeType: item.file.mimeType || match.mimeType,
+    };
     return {
       ...item,
       previewable: true,
-      file: {
-        ...item.file,
-        ...match,
-        name: item.file.name || match.name,
-        type: item.file.type || match.type,
-        path: match.path || item.file.path,
-        relativePath: relativePath || matchRelativePath || undefined,
-        artifactId: artifactId || match.artifactId,
-        artifactChange: item.file.artifactChange,
-        mimeType: item.file.mimeType || match.mimeType,
-      },
+      // A web /files match stays remote; a match on disk is the local copy.
+      file: /^https?:\/\//i.test(file.path)
+        ? file
+        : asLocalFile(file, file.path),
     };
   });
 }

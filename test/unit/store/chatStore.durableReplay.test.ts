@@ -314,6 +314,36 @@ describe('canonical Run replay projection', () => {
     ).toBeNull();
   });
 
+  it.each([
+    [
+      'approval.cancelled',
+      { interaction_id: 'approval-1', decision: 'rejected' },
+    ],
+    ['interaction.cancelled', { interaction_id: 'approval-1' }],
+    ['approval.expired_rejected', { approval_id: 'approval-1' }],
+    ['interaction.expired', { interaction_id: 'approval-1' }],
+  ])(
+    'projects %s as the end of its durable interaction',
+    (eventType, payload) => {
+      expect(
+        canonicalRunEventToLegacyMessage({
+          event_type: eventType,
+          legacy_step: null,
+          payload,
+          created_at: 1_786_026_418,
+        })
+      ).toEqual({
+        step: 'human_reply',
+        data: {
+          ...payload,
+          interaction_id: 'approval-1',
+          __durable_interaction_resolution: true,
+        },
+        timestamp: 1_786_026_418,
+      });
+    }
+  );
+
   it('keeps Resume attempts of one local durable Run in one task', () => {
     expect(
       shouldAppendTaskForConfirmedEvent({

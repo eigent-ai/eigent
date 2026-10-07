@@ -26,6 +26,7 @@ import {
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
 import { listControlOperations } from '@/service/controlOperations';
+import { CONTROL_REQUEST_TIMEOUT_MS } from '@/service/controlRequest';
 import { closeSSEConnectionsForTasks, useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import {
@@ -181,7 +182,10 @@ vi.mock('@/store/usageNoticeStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store/usageNoticeStore')>()),
   refreshUsage: vi.fn(),
 }));
-vi.mock('@/store/chatEventProjectionBridge', () => ({
+vi.mock('@/store/chatEventProjectionBridge', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/store/chatEventProjectionBridge')
+  >()),
   isChatEventTimelineEnabled: () => false,
 }));
 vi.mock('@/components/ChatBox/BottomBox/useEventNativeHumanControl', () => ({
@@ -221,7 +225,12 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
           Follow up
         </button>
         {variant?.kind === 'approval' ? (
-          <button onClick={() => variant.onApprove('once')}>Approve</button>
+          <button
+            disabled={variant.disabled}
+            onClick={() => variant.onApprove('once')}
+          >
+            Approve
+          </button>
         ) : null}
       </div>
     );
@@ -1925,10 +1934,13 @@ describe('ChatBox after an accepted Space model selection', () => {
     });
     const view = await renderChat();
     await waitFor(() => expect(pendingReads).toHaveBeenCalled());
-    await act(async () => undefined);
-    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    // An unanswered check is not a settled approval: it stays visible but
+    // cannot be decided until Brain confirms it.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
+    );
 
-    // The first check failed; returning to the window retries it.
+    // Returning to the window retries the failed check at once.
     pending = 'pending';
     act(() => {
       window.dispatchEvent(new Event('focus'));
@@ -1960,6 +1972,236 @@ describe('ChatBox after an accepted Space model selection', () => {
       'backend-ready',
       listeners.get('backend-ready')
     );
+  });
+
+  it('retries an unanswered approval check until Brain confirms it without a focus event', async () => {
+    mocks.host = {
+      electronAPI: {},
+      ipcRenderer: { on: vi.fn(), off: vi.fn() },
+    };
+    await acceptInitialSpaceRun();
+    const taskId = chat.getState().activeTaskId!;
+    chat.getState().setStatus(taskId, 'running');
+    chat.getState().setActiveAsk(taskId, 'synthetic-agent');
+    chat.getState().addMessages(taskId, {
+      id: 'approval-ask',
+      role: 'agent',
+      content: 'Allow write?',
+      step: AgentStep.ASK,
+      interaction: {
+        interaction_id: 'approval-1',
+        interaction_type: 'approval',
+        run_id: taskId,
+        version: 0,
+        question: 'Allow write?',
+      },
+    });
+    const localGet = mocks.localGet.getMockImplementation()!;
+    const pendingReads = vi.fn();
+    mocks.localGet.mockImplementation((url, ...args) => {
+      if (!url.endsWith('/interactions?status=pending'))
+        return localGet(url, ...args);
+      pendingReads();
+      // With every connection to Brain busy, the first read never completes.
+      return pendingReads.mock.calls.length === 1
+        ? new Promise(() => {})
+        : Promise.resolve({
+            interactions: [
+              { interaction_id: 'approval-1', status: 'requested', version: 0 },
+            ],
+          });
+    });
+    vi.useFakeTimers();
+    render(
+      <MemoryRouter>
+        <ChatBox />
+      </MemoryRouter>
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(pendingReads).toHaveBeenCalledTimes(1);
+    expect(mocks.variant?.kind).not.toBe('approval');
+
+    // The bounded read gives up without an answer: the outcome is unknown,
+    // not "no longer pending", so the card is shown but cannot be decided.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CONTROL_REQUEST_TIMEOUT_MS);
+    });
+    expect(mocks.variant).toMatchObject({ kind: 'approval', disabled: true });
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(pendingReads).toHaveBeenCalledTimes(2);
+    expect(mocks.variant?.kind).toBe('approval');
+    expect(mocks.variant.disabled).toBeFalsy();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
+  });
+
+  it('decides whether an approval is live from the canonical Run, not stale task status', async () => {
+    await acceptInitialSpaceRun();
+    const taskId = chat.getState().activeTaskId!;
+    chat.getState().setStatus(taskId, 'running');
+    // The task still carries the outcome of an earlier Attempt.
+    chat.getState().setDurableRunStatus(taskId, 'interrupted');
+    chat.getState().setActiveAsk(taskId, 'worker');
+    chat.getState().addMessages(taskId, {
+      id: 'approval-ask',
+      role: 'agent',
+      step: AgentStep.ASK,
+      agent_name: 'worker',
+      content: '',
+      interaction: {
+        interaction_id: 'approval',
+        interaction_type: 'approval',
+        run_id: taskId,
+        version: 0,
+        action_digest: 'digest',
+        question: 'Allow write?',
+      },
+    });
+    const projectCanonicalRun = (status: string) => {
+      const snapshot = getProjectEventStore('session-1').getSnapshot();
+      mocks.snapshot = {
+        ...snapshot,
+        view: {
+          ...snapshot.view,
+          runs: {
+            [taskId]: {
+              runId: taskId,
+              status,
+              lastSequence: 3,
+              runVersion: 3,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        },
+      };
+    };
+    projectCanonicalRun('waiting_for_user');
+    servePendingApproval('approval');
+    const view = await renderChat();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    );
+
+    // An interrupted canonical Run retires the request before the task
+    // receives its own terminal update.
+    chat.getState().setDurableRunStatus(taskId, undefined);
+    projectCanonicalRun('interrupted');
+    view.rerender(
+      <MemoryRouter>
+        <ChatBox />
+      </MemoryRouter>
+    );
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  // Startup restored this Run, which waited for an approval, as playback. The
+  // restart cancelled that approval and interrupted the Run.
+  function restoreInterruptedApprovalRun(runId: string) {
+    mocks.projectStore.getAllChatStores = () => [
+      { chatId: 'restored-chat', chatStore: chat },
+    ];
+    chat.getState().setType(runId, 'replay');
+    chat.getState().addMessages(runId, {
+      id: 'restored-ask',
+      role: 'agent',
+      step: AgentStep.ASK,
+      agent_name: 'worker',
+      content: '',
+      interaction: {
+        interaction_id: 'approval-before-restart',
+        interaction_type: 'approval',
+        run_id: runId,
+        version: 0,
+        action_digest: 'digest',
+        question: 'Allow write?',
+      },
+    });
+    chat.getState().setActiveAsk(runId, 'worker');
+    chat.getState().setDurableRunStatus(runId, 'interrupted');
+    interruptRun(runId);
+  }
+
+  it('offers the approval asked again after Resume of a restored Run', async () => {
+    await acceptInitialSpaceRun();
+    const runId = chat.getState().activeTaskId!;
+    restoreInterruptedApprovalRun(runId);
+    servePendingApproval('approval-after-resume');
+    const view = await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(mocks.sse).toHaveBeenCalledTimes(2));
+
+    // The resumed Attempt asks for the same action again.
+    await act(async () => {
+      await mocks.sse.mock.calls.at(-1)![0].onmessage({
+        data: JSON.stringify({
+          step: AgentStep.ASK,
+          data: {
+            agent: 'worker',
+            interaction_id: 'approval-after-resume',
+            interaction_type: 'approval',
+            run_id: runId,
+            version: 0,
+            action_digest: 'digest',
+            question: 'Allow write?',
+          },
+        }),
+      });
+    });
+    view.rerender(
+      <MemoryRouter>
+        <ChatBox />
+      </MemoryRouter>
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    );
+    const task = chat.getState().tasks[runId];
+    expect(task).toMatchObject({ activeAsk: 'worker', askList: [] });
+    expect(task.type).toBeUndefined();
+    expect(task.durableRunStatus).toBeUndefined();
+    // The approval cancelled by the restart stays a read-only receipt.
+    expect(
+      task.messages.find((message) => message.id === 'restored-ask')
+        ?.interaction?.receipt
+    ).toEqual({ runStatus: 'interrupted' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(
+        `/runs/${encodeURIComponent(runId)}/interactions/approval-after-resume/decisions`,
+        expect.objectContaining({
+          decision: { decision: 'approved', scope: 'once' },
+        }),
+        undefined,
+        expect.anything()
+      )
+    );
+  });
+
+  it('keeps a restored Run as history when Resume is not admitted', async () => {
+    await acceptInitialSpaceRun();
+    const runId = chat.getState().activeTaskId!;
+    restoreInterruptedApprovalRun(runId);
+    mocks.post.mockImplementation(async (url: string) => {
+      if (url.endsWith('/resume'))
+        throw Object.assign(new Error('Resume is blocked'), { status: 409 });
+      return {};
+    });
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(notifyError).toHaveBeenCalled());
+
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(chat.getState().tasks[runId]).toMatchObject({
+      type: 'replay',
+      durableRunStatus: 'interrupted',
+      status: 'finished',
+    });
   });
 
   it('review keeps Cancel recovery visible when the selected history task differs', async () => {

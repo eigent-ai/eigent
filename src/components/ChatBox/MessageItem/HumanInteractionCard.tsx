@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
 import { useHost } from '@/host';
 import { isInteractionTerminal } from '@/lib/approvalPresentation';
+import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
 import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { controlOwner } from '@/service/controlRequest';
 import {
@@ -29,6 +30,7 @@ import {
   type HumanInteractionPayload,
   type HumanInteractionReceipt,
 } from '@/service/humanInteractionApi';
+import { watchHumanInteractionPending } from '@/service/humanInteractionPendingCheck';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { ShieldAlert } from 'lucide-react';
@@ -201,8 +203,6 @@ export function HumanInteractionCard({
     setFormValues({});
   }, [viewKey]);
   useEffect(() => {
-    let cancelled = false;
-    let checkNumber = 0;
     setPendingCheck(null);
     if (
       interaction.interaction_type !== 'approval' ||
@@ -212,31 +212,23 @@ export function HumanInteractionCard({
       !interaction.run_id
     )
       return;
-    const validatePending = () => {
-      const currentCheck = ++checkNumber;
-      setPendingCheck(null);
-      void isHumanInteractionStillPending(interaction)
-        .then((isPending) => {
-          if (!cancelled && currentCheck === checkNumber)
-            setPendingCheck({ identity: viewKey, pending: isPending });
-        })
-        .catch((error) => {
-          // Keep fail-closed until a lifecycle recovery retries the check.
-          console.warn(
-            '[HumanInteractionCard] pending interaction revalidation failed',
-            error
-          );
-        });
-    };
+    // Fail closed until Brain answers; an unanswered check is retried.
+    const pendingWatch = watchHumanInteractionPending(interaction, (pending) =>
+      setPendingCheck(pending === null ? null : { identity: viewKey, pending })
+    );
     const revalidatePending = () => {
-      invalidatePendingHumanInteractions(interaction.run_id);
-      validatePending();
+      setPendingCheck(null);
+      pendingWatch.recheck();
     };
-    validatePending();
+    const stopStreamWatch = onRunStreamReopened(
+      interaction.run_id,
+      revalidatePending
+    );
     window.addEventListener('focus', revalidatePending);
     host?.ipcRenderer?.on('backend-ready', revalidatePending);
     return () => {
-      cancelled = true;
+      pendingWatch.dispose();
+      stopStreamWatch();
       window.removeEventListener('focus', revalidatePending);
       host?.ipcRenderer?.off('backend-ready', revalidatePending);
     };
