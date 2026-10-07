@@ -15094,16 +15094,25 @@ class SQLiteRunJournal:
         run_id: str,
         timestamp: float,
         reason: str,
+        agent_requested_only: bool = False,
     ) -> int:
-        """Close HumanInteractions that cannot outlive a terminal Run."""
+        """Close HumanInteractions that cannot outlive a terminal Run.
+
+        ``agent_requested_only`` limits this to requests an Agent awaits in
+        the Brain process; system requests such as merge conflicts stay open.
+        """
 
         interactions = connection.execute(
             """
             SELECT * FROM human_interactions
             WHERE run_id = ? AND status IN ('requested', 'presented')
+              AND (
+                ? = 0 OR requested_by = 'agent'
+                OR requested_by LIKE 'agent:%'
+              )
             ORDER BY created_at, interaction_id
             """,
-            (run_id,),
+            (run_id, agent_requested_only),
         ).fetchall()
         cancelled = 0
         for interaction in interactions:
@@ -17431,6 +17440,17 @@ class SQLiteRunJournal:
                             """,
                             (run["run_id"],),
                         ).fetchall()
+                        # An Agent awaits its question inside the process, so
+                        # a restart abandons it like an approval: the Run is
+                        # interrupted and Resume asks again. System requests,
+                        # such as merge conflicts, keep the Run waiting.
+                        self._cancel_open_human_interactions_in_transaction(
+                            connection,
+                            run_id=run["run_id"],
+                            timestamp=timestamp,
+                            reason="brain_restart",
+                            agent_requested_only=True,
+                        )
                         pending_interaction = connection.execute(
                             """
                             SELECT 1
