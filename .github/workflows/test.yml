@@ -144,6 +144,9 @@ jobs:
       - name: Run browser preview Electron test
         run: xvfb-run --auto-servernum npm run test:preview-browser
 
+      - name: Run event stream relay Electron test
+        run: xvfb-run --auto-servernum npm run test:stream-relay
+
   pytest:
     name: Run Python Tests
     runs-on: ubuntu-latest
