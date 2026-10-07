@@ -141,7 +141,10 @@ jobs:
       - name: Install Electron runtime
         run: npm rebuild electron
 
+      # The test bounds each phase itself; this only backs up a stall that
+      # blocks the Node event loop. A passing run takes under a minute.
       - name: Run browser preview Electron test
+        timeout-minutes: 5
         run: xvfb-run --auto-servernum npm run test:preview-browser
 
   pytest:
