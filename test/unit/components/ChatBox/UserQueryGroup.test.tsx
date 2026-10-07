@@ -566,4 +566,23 @@ describe('UserQueryGroup Space writer wait', () => {
       { requireActiveSelection: true }
     );
   });
+
+  it('does not offer to open the Session that is already open', () => {
+    useSpaceStore.setState({
+      projectIdIndex: { 'session-waiting': 'space-1' },
+      projectsBySpaceId: {
+        'space-1': { 'session-waiting': { id: 'session-waiting' } as never },
+      },
+    });
+    queueWriter({
+      reason: 'holder_requires_attention',
+      semantic: { correlation: { blocker_project_id: 'session-waiting' } },
+    });
+    renderGroups(prompt, pending);
+
+    expect(
+      screen.getByText(/stopped while it was changing files/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open session' })).toBeNull();
+  });
 });

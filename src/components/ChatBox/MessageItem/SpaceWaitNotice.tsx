@@ -36,8 +36,14 @@ function openSession(projectId: string) {
 /** Explains why a task waits to write to its Space instead of "Preparing". */
 export function SpaceWaitNotice({ wait }: { wait: ProjectedWriterWait }) {
   const { t } = useTranslation();
+  const activeProjectId = useProjectRuntimeStore(
+    (state) => state.activeProjectId
+  );
+  // Offer only another Session the sidebar lists; this one is already open.
   const blockerProjectId = useSpaceStore((state) =>
-    wait.blockerProjectId && state.getProjectMeta(wait.blockerProjectId)
+    wait.blockerProjectId &&
+    wait.blockerProjectId !== activeProjectId &&
+    state.getProjectMeta(wait.blockerProjectId)
       ? wait.blockerProjectId
       : undefined
   );
