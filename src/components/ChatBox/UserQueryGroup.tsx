@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
-import { useRunWriterWait } from '@/lib/runEvents';
+import { useProjectedRunStatus, useRunWriterWait } from '@/lib/runEvents';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
@@ -209,6 +209,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     (state) => state.activeProjectId
   );
   const writerWait = useRunWriterWait(activeProjectId, activeTaskId);
+  const projectedRunStatus = useProjectedRunStatus(
+    activeProjectId,
+    activeTaskId
+  );
 
   // Subscribe to streaming decompose text separately for efficient updates
   const streamingDecomposeText = useSyncExternalStore(
@@ -234,6 +238,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     );
 
   const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  // A restored Run keeps the status read when its Session was loaded. A
+  // request raised after that reaches the same replay stream but only moves
+  // the Run projection, so it may lift a status that has not ended.
+  const replayRunStatus =
+    projectedRunStatus === 'waiting_for_user' &&
+    (activeTask?.durableRunStatus === undefined ||
+      activeTask.durableRunStatus === 'pending' ||
+      activeTask.durableRunStatus === 'running')
+      ? projectedRunStatus
+      : activeTask?.durableRunStatus;
   const ownsFailureSummary =
     queryGroup.ownsRunWorkLog === true &&
     UNSUCCESSFUL_RUN_STATUSES.has(activeTask?.durableRunStatus!) &&
@@ -523,7 +537,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             activeTaskId,
             taskType: activeTask.type,
             taskStatus: activeTask.status,
-            durableRunStatus: activeTask.durableRunStatus,
+            durableRunStatus: replayRunStatus,
           });
 
         // A replay reattached to a live durable waiter remains actionable even
