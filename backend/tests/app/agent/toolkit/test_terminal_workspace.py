@@ -29,7 +29,10 @@ from app.agent.toolkit.terminal_toolkit import (
     _original_isolated_local_command,
 )
 from app.run_context import RunContext, run_context_scope
-from app.run_journal import OutboxLeaseLostError
+from app.run_journal import (
+    OutboxLeaseLostError,
+    WorkspaceWriterLeaseLostError,
+)
 from app.run_runtime.tool_checkpoint import ToolInvocationNotDispatchedError
 from app.utils.listen import toolkit_listen
 from app.workspace_git.backend import WorkspaceDeltaLimitExceeded
@@ -593,6 +596,52 @@ def test_terminal_workspace_admission_failure_is_marked_before_dispatch(
             )
 
     assert spawn_called is False
+
+
+def test_terminal_does_not_wait_out_a_lost_writer_lease(
+    tmp_path,
+    monkeypatch,
+):
+    user_root = tmp_path / "user"
+    user_root.mkdir()
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.agent_name = "developer_agent"
+    toolkit.working_dir = str(user_root)
+
+    class _MutationService:
+        attempts = 0
+
+        def prepare_broad_write(self, **_kwargs):
+            self.attempts += 1
+            raise WorkspaceWriterLeaseLostError(
+                "Task does not own the bound checkout writer lease"
+            )
+
+    service = _MutationService()
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_default_workspace_mutation_service",
+        lambda: service,
+    )
+    monkeypatch.setattr(
+        toolkit_listen,
+        "get_task_lock",
+        lambda _task_id: object(),
+    )
+    monkeypatch.setattr(
+        toolkit_listen,
+        "_safe_put_queue",
+        lambda _lock, _event: None,
+    )
+
+    with run_context_scope(_context(user_root)):
+        with pytest.raises(ToolInvocationNotDispatchedError) as error:
+            toolkit.shell_exec(command="which python3", id="terminal-lost")
+
+    assert service.attempts == 1
+    assert "does not own the bound checkout writer lease" in str(error.value)
+    assert "background Terminal session" not in str(error.value)
 
 
 def test_terminal_workspace_waits_for_adjacent_lease_then_spawns(

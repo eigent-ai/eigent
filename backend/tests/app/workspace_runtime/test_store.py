@@ -362,6 +362,7 @@ def test_migrates_real_v35_database_without_changing_legacy_rows(tmp_path):
         patch("app.run_journal.store.MIGRATION_V38", ""),
         patch("app.run_journal.store.MIGRATION_V39", ""),
         patch("app.run_journal.store.MIGRATION_V40", ""),
+        patch("app.run_journal.store._MIGRATION_V41", ""),
     ):
         with SQLiteRunJournal(path) as old:
             assert old.schema_version == 35
@@ -411,7 +412,13 @@ def test_migrates_real_v35_database_without_changing_legacy_rows(tmp_path):
                 ]
                 for table in tables
             }
-            assert before == after
+            # V41 only appends the unknown holder of the legacy lease.
+            assert after == {
+                **before,
+                "workspace_writer_leases": [
+                    (*row, None) for row in before["workspace_writer_leases"]
+                ],
+            }
             assert (
                 upgraded._connection.execute(
                     "PRAGMA foreign_key_check"
@@ -443,6 +450,7 @@ def test_v36_upgrade_keeps_pending_publication_and_temp_receipt(tmp_path):
         patch("app.run_journal.store.MIGRATION_V38", ""),
         patch("app.run_journal.store.MIGRATION_V39", ""),
         patch("app.run_journal.store.MIGRATION_V40", ""),
+        patch("app.run_journal.store._MIGRATION_V41", ""),
     ):
         with SQLiteRunJournal(path) as old:
             assert old.schema_version == 36
