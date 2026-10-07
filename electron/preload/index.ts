@@ -24,6 +24,13 @@ import {
   type AppCommandId,
 } from '../../src/shared/appCommands';
 import {
+  BRAIN_STREAM_RELAY_CANCEL_CHANNEL,
+  BRAIN_STREAM_RELAY_OPEN_CHANNEL,
+  BRAIN_STREAM_RELAY_READ_CHANNEL,
+  BRAIN_STREAM_RELAY_TARGET_CHANNEL,
+  type BrainStreamRelayRequest,
+} from '../../src/shared/brainStreamRelay';
+import {
   NATIVE_MENU_LOCALE_CHANNEL,
   type NativeMenuLocale,
 } from '../../src/shared/nativeMenu';
@@ -229,6 +236,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
   getLocalControlCapability: () =>
     ipcRenderer.invoke('get-local-control-capability'),
+  // Brain event streams relayed by the main process (see brainStreamRelay).
+  brainStreamRelayTarget: () =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_TARGET_CHANNEL),
+  brainStreamRelayOpen: (request: BrainStreamRelayRequest) =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_OPEN_CHANNEL, request),
+  brainStreamRelayRead: (streamId: string) =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_READ_CHANNEL, streamId),
+  brainStreamRelayCancel: (streamId: string) =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_CANCEL_CHANNEL, streamId),
   getDesktopInstanceId: (legacyRendererId?: string) =>
     ipcRenderer.invoke('get-desktop-instance-id', legacyRendererId),
   restartBackend: () => ipcRenderer.invoke('restart-backend'),
