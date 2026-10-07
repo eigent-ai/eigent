@@ -64,6 +64,7 @@ import { v104GuiInputEvents } from '../../fixtures/v104GuiInput';
 
 const {
   closeIdleSSEConnectionsForTasksMock,
+  countIdleRelayedSSEConnectionsMock,
   deleteCachedProjectMock,
   fetchGetMock,
   fetchPostMock,
@@ -80,6 +81,7 @@ const {
   waitForIdleSSEDisplayTailMock,
 } = vi.hoisted(() => ({
   closeIdleSSEConnectionsForTasksMock: vi.fn(),
+  countIdleRelayedSSEConnectionsMock: vi.fn(),
   deleteCachedProjectMock: vi.fn(),
   fetchGetMock: vi.fn(),
   fetchPostMock: vi.fn(),
@@ -141,6 +143,7 @@ vi.mock('@/store/chatStore', async (importOriginal) => {
       return store;
     },
     closeIdleSSEConnectionsForTasks: closeIdleSSEConnectionsForTasksMock,
+    countIdleRelayedSSEConnections: countIdleRelayedSSEConnectionsMock,
     hasActiveSSEConnection: hasActiveSSEConnectionMock,
     hasSSETransportForTasks: hasSSETransportForTasksMock,
     waitForIdleSSEDisplayTail: waitForIdleSSEDisplayTailMock,
@@ -172,6 +175,7 @@ describe('projectStore runtime shape', () => {
     putCachedProjectMock.mockResolvedValue(undefined);
     hasActiveSSEConnectionMock.mockReturnValue(false);
     hasSSETransportForTasksMock.mockReturnValue(false);
+    countIdleRelayedSSEConnectionsMock.mockReturnValue(0);
     waitForIdleSSEDisplayTailMock.mockResolvedValue(undefined);
     fetchGetMock.mockResolvedValue({ runs: [] });
     fetchPostMock.mockResolvedValue({
@@ -2293,7 +2297,8 @@ describe('projectStore runtime shape', () => {
       display.resolve();
       await vi.waitFor(() =>
         expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
-          expect.arrayContaining([runId])
+          expect.arrayContaining([runId]),
+          { keepRelayed: true }
         )
       );
       // Only the stream goes away: the Session stays loaded, and Brain's idle
@@ -2304,6 +2309,38 @@ describe('projectStore runtime shape', () => {
       expect(fetchPostMock).not.toHaveBeenCalled();
       expect(fetchGetMock).not.toHaveBeenCalledWith(
         '/chat/reclaim_finished/status'
+      );
+    });
+
+    it('keeps relayed idle streams while they fit the budget', async () => {
+      const { runId, nextProjectId } = finishedSession('reclaim_relayed');
+      countIdleRelayedSSEConnectionsMock.mockReturnValue(15);
+
+      useProjectStore.getState().setActiveProject(nextProjectId);
+
+      expect(hasSSETransportForTasksMock).toHaveBeenCalledWith(
+        expect.arrayContaining([runId]),
+        { keepRelayed: true }
+      );
+      await vi.waitFor(() =>
+        expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
+          expect.arrayContaining([runId]),
+          { keepRelayed: true }
+        )
+      );
+    });
+
+    it('releases relayed idle streams past the budget', async () => {
+      const { runId, nextProjectId } = finishedSession('reclaim_over_budget');
+      countIdleRelayedSSEConnectionsMock.mockReturnValue(16);
+
+      useProjectStore.getState().setActiveProject(nextProjectId);
+
+      await vi.waitFor(() =>
+        expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
+          expect.arrayContaining([runId]),
+          { keepRelayed: false }
+        )
       );
     });
 
@@ -2410,7 +2447,8 @@ describe('projectStore runtime shape', () => {
         .reclaimIdleStreams(nextProjectId, ['reclaim_background']);
       await vi.waitFor(() =>
         expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
-          expect.arrayContaining([runId])
+          expect.arrayContaining([runId]),
+          { keepRelayed: true }
         )
       );
 

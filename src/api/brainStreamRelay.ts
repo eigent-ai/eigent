@@ -48,6 +48,15 @@ const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 const REASON_PHRASE = /^[\t\x20-\x7e\x80-\xff]*$/;
 const LANGUAGE_TAG = /^[A-Za-z0-9-]{1,35}$/;
 
+// Responses assembled from relayed streams, which hold none of the renderer's
+// per-host connections.
+const relayedResponses = new WeakSet<Response>();
+
+/** Whether a Response was delivered by the main-process relay. */
+export function isRelayedEventStreamResponse(response: Response): boolean {
+  return relayedResponses.has(response);
+}
+
 export function getBrainStreamRelayBridge(): BrainStreamRelayBridge | null {
   const api = createHost().electronAPI;
   if (
@@ -292,6 +301,7 @@ function buildRelayResponse(
     value: request.url,
     enumerable: true,
   });
+  relayedResponses.add(response);
   return response;
 }
 

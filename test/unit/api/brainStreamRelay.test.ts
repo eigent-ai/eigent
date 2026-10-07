@@ -14,6 +14,7 @@
 
 import {
   createBrainStreamRelayFetch,
+  isRelayedEventStreamResponse,
   resolveEventStreamFetch,
   type StreamFetch,
 } from '@/api/brainStreamRelay';
@@ -104,6 +105,19 @@ describe('renderer event stream relay fetch', () => {
     await expect(ending).resolves.toEqual({ done: true, value: undefined });
     expect(received).toEqual(['data: one\n\n', 'data: two\n\n']);
     expect(bridge.brainStreamRelayCancel).not.toHaveBeenCalled();
+  });
+
+  it('marks only responses that main relayed', async () => {
+    const init = { method: 'GET', headers: { accept: 'text/event-stream' } };
+    const relayedPromise = relayFetch(RUN_STREAM, init);
+    bridge.lastOpen().resolve(sseHead());
+    expect(isRelayedEventStreamResponse(await relayedPromise)).toBe(true);
+
+    const fallbackPromise = relayFetch(RUN_STREAM, init);
+    bridge.lastOpen().resolve({ ok: false, reason: 'declined' });
+    const fallbackResponse = await fallbackPromise;
+    expect(fallback).toHaveBeenCalledOnce();
+    expect(isRelayedEventStreamResponse(fallbackResponse)).toBe(false);
   });
 
   it('keeps a non-2xx JSON body readable through clone() and json()', async () => {

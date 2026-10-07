@@ -62,6 +62,16 @@ const { fetchGetMock, fetchPostMock, proxyFetchGetMock, sseTransportMock } =
     sseTransportMock: vi.fn(),
   }));
 
+// Responses that the desktop main process would have relayed.
+const { relayedResponses } = vi.hoisted(() => ({
+  relayedResponses: new WeakSet<Response>(),
+}));
+vi.mock('@/api/brainStreamRelay', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/brainStreamRelay')>()),
+  isRelayedEventStreamResponse: (response: Response) =>
+    relayedResponses.has(response),
+}));
+
 vi.mock('@/api/http', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/http')>()),
   fetchGet: fetchGetMock,
@@ -369,6 +379,67 @@ describe('finished Run streams', () => {
     ).toBe(true);
     expect(fetchPostMock).not.toHaveBeenCalledWith(
       `/chat/${SESSION}`,
+      expect.anything()
+    );
+  });
+
+  it('keeps a relayed idle stream on switch so the follow-up stays warm', async () => {
+    sseTransportMock.mockImplementation(async (options: Stream) => {
+      streams.push(options);
+      const response = opened();
+      if (options.url === '/chat') relayedResponses.add(response);
+      await options.onopen?.(response);
+      await new Promise<void>((resolve) => {
+        if (options.signal.aborted) resolve();
+        options.signal.addEventListener('abort', () => resolve(), {
+          once: true,
+        });
+      });
+    });
+    const first = await startRun('run-1', 'Build the report');
+    fetchGetMock.mockImplementation(async (url: string) =>
+      url === '/runs/run-1' ? runSummary('run-1', 'completed', 2) : undefined
+    );
+    await first.canonical.onmessage(caughtUp('run-1', 0));
+    await first.canonical.onmessage(
+      runEvent('run-1', 1, 'run.attempt_started')
+    );
+    await first.legacy.onmessage(
+      legacyFrame(AgentStep.END, { message: 'Report ready' })
+    );
+    await first.canonical.onmessage(runEvent('run-1', 2, 'run.completed'));
+    await vi.waitFor(() => expect(first.canonical.signal.aborted).toBe(true));
+
+    // The relayed stream holds no renderer connection, so leaving the
+    // Session does not release it.
+    useProjectStore.getState().setActiveProject(OTHER_SESSION);
+    for (let index = 0; index < 5; index += 1)
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(first.legacy.signal.aborted).toBe(false);
+    expect(getIdleSSETransportTaskId(['run-1'])).toBe('run-1');
+
+    useProjectStore.getState().setActiveProject(SESSION);
+    fetchGetMock.mockImplementation(async (url: string) =>
+      url === `/chat/${SESSION}/status`
+        ? {
+            has_lock: true,
+            status: 'done',
+            run_id: 'run-1',
+            consumer_alive: true,
+            subscriber_count: 1,
+          }
+        : undefined
+    );
+    await expect(
+      prepareFollowUpAdmission(
+        SESSION,
+        useProjectStore.getState().getProjectById(SESSION)
+      )
+    ).resolves.toBe('warm');
+    expect(fetchPostMock).not.toHaveBeenCalledWith(
+      `/chat/${SESSION}/runtime/retire-idle`,
+      expect.anything(),
+      undefined,
       expect.anything()
     );
   });
