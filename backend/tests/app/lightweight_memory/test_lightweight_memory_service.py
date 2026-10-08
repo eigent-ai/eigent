@@ -499,7 +499,7 @@ def test_incremental_maintainer_extracts_explicit_scope_memory_without_review(
     assert user_entries[0].confirmed_by_user is False
 
 
-def _extracted_scope(message: str) -> str | None:
+def _extracted(message: str) -> list[tuple[str, str]]:
     item = HistoryQueryResult(
         citation_id="citation-1",
         journal_cursor=1,
@@ -510,12 +510,18 @@ def _extracted_scope(message: str) -> str | None:
         source_trust="user_asserted",
         created_at=0.0,
     )
-    for scope in ("project", "space", "user"):
-        if ConservativeMemoryExtractor().extract(
+    return [
+        (scope, proposal.content)
+        for scope in ("project", "space", "user")
+        for proposal in ConservativeMemoryExtractor().extract(
             active_memory=(), history_delta=(item,), target_scope=scope
-        ):
-            return scope
-    return None
+        )
+    ]
+
+
+def _extracted_scope(message: str) -> str | None:
+    found = _extracted(message)
+    return found[0][0] if found else None
 
 
 @pytest.mark.parametrize(
@@ -586,6 +592,23 @@ def test_extractor_keeps_a_rule_that_follows_a_request():
         )
         == "project"
     )
+
+
+@pytest.mark.parametrize(
+    ("message", "saved"),
+    [
+        (
+            "帮我在这个项目里创建 hello.py，我喜欢用 tabs 缩进",
+            ("user", "用 tabs 缩进"),
+        ),
+        (
+            "Create hello.py in this project, 记住：用 pnpm",
+            ("project", "用 pnpm"),
+        ),
+    ],
+)
+def test_extractor_keeps_a_preference_that_follows_a_request(message, saved):
+    assert _extracted(message) == [saved]
 
 
 def test_incremental_maintainer_saves_scoped_rules_but_not_requests(service):

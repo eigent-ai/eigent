@@ -231,10 +231,11 @@ class ConservativeMemoryExtractor:
                 if not content or len(content) > 1000:
                     break
                 message = raw.strip()
+                # A later pattern, such as "我喜欢", may still hold a rule.
                 if pattern in _SCOPE_PHRASE_PATTERNS and _reads_as_one_off(
                     message, content, message[: match.start()]
                 ):
-                    break
+                    continue
                 normalized = content.casefold()
                 if normalized in known:
                     break
