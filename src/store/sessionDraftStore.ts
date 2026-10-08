@@ -19,8 +19,6 @@ export interface SessionDraft {
   text: string;
   /** Review feedback handed to this draft and not yet sent. */
   reviewHandoffIds: string[];
-  /** The composer mount that last edited this draft. */
-  editor: symbol | null;
 }
 
 type SessionDraftState = {
@@ -31,7 +29,6 @@ type SessionDraftState = {
 export const EMPTY_SESSION_DRAFT: Readonly<SessionDraft> = Object.freeze({
   text: '',
   reviewHandoffIds: [],
-  editor: null,
 });
 
 export const useSessionDraftStore = create<SessionDraftState>()(() => ({

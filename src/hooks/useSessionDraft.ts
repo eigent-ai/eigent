@@ -22,12 +22,9 @@ import {
   useCallback,
   useLayoutEffect,
   useRef,
-  useState,
   type Dispatch,
   type SetStateAction,
 } from 'react';
-
-type DraftContent = Pick<SessionDraft, 'text' | 'reviewHandoffIds'>;
 
 function resolve<T>(value: SetStateAction<T>, current: T): T {
   return typeof value === 'function'
@@ -43,16 +40,24 @@ function resolve<T>(value: SetStateAction<T>, current: T): T {
  * handoffs here until they are sent or edited away.
  *
  * A composer that has left its Session may still settle an earlier submit.
- * It can then change only a draft that no later composer has edited, so a
- * late result never clears or overwrites newer text.
+ * It can then change the draft only while the draft is exactly as that
+ * composer last saw it, so a late result never clears or overwrites newer
+ * text.
  */
 export function useSessionDraft(
   accountKey: string,
   projectId: string | null | undefined
 ) {
   const key = projectId ? sessionDraftKey(accountKey, projectId) : null;
-  const [editor] = useState(() => Symbol('session-draft-editor'));
+  const draft = useSessionDraftStore((state) =>
+    key ? state.drafts[key] : undefined
+  );
   const mountedRef = useRef(false);
+  // The draft of `key` as this composer last rendered or wrote it.
+  const seenRef = useRef({ key, draft });
+  useLayoutEffect(() => {
+    seenRef.current = { key, draft };
+  }, [key, draft]);
   useLayoutEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -60,30 +65,20 @@ export function useSessionDraft(
     };
   }, []);
 
-  const text = useSessionDraftStore(
-    (state) => (key && state.drafts[key]?.text) || EMPTY_SESSION_DRAFT.text
-  );
-  const reviewHandoffIds = useSessionDraftStore(
-    (state) =>
-      (key && state.drafts[key]?.reviewHandoffIds) ||
-      EMPTY_SESSION_DRAFT.reviewHandoffIds
-  );
-
   const update = useCallback(
-    (change: (current: SessionDraft) => Partial<DraftContent>) => {
+    (change: (current: SessionDraft) => Partial<SessionDraft>) => {
       if (!key) return;
-      useSessionDraftStore.setState((state) => {
-        const current = state.drafts[key] ?? EMPTY_SESSION_DRAFT;
-        if (!mountedRef.current && current.editor !== editor) return state;
-        return {
-          drafts: {
-            ...state.drafts,
-            [key]: { ...current, ...change(current), editor },
-          },
-        };
-      });
+      const { drafts } = useSessionDraftStore.getState();
+      const current = drafts[key];
+      const seen = seenRef.current;
+      if (!mountedRef.current && (seen.key !== key || seen.draft !== current))
+        return;
+      const base = current ?? EMPTY_SESSION_DRAFT;
+      const next = { ...base, ...change(base) };
+      seenRef.current = { key, draft: next };
+      useSessionDraftStore.setState({ drafts: { ...drafts, [key]: next } });
     },
-    [editor, key]
+    [key]
   );
 
   const setText = useCallback<Dispatch<SetStateAction<string>>>(
@@ -98,5 +93,11 @@ export function useSessionDraft(
     [update]
   );
 
-  return { text, setText, reviewHandoffIds, setReviewHandoffIds };
+  return {
+    text: draft?.text ?? EMPTY_SESSION_DRAFT.text,
+    setText,
+    reviewHandoffIds:
+      draft?.reviewHandoffIds ?? EMPTY_SESSION_DRAFT.reviewHandoffIds,
+    setReviewHandoffIds,
+  };
 }

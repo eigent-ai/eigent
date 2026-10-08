@@ -140,18 +140,21 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
         intent.current,
         sessionMessageConfiguration(projectId)
       );
-      // The Session accepted this text even if its composer has since been
-      // left, so never offer it again as that Session's draft.
-      setMessage('');
       assertExecutionScope(captured);
       accepted.current = true;
       intent.current = null;
+      setMessage('');
     } catch {
       if (!captured.signal.aborted) {
         setError(true);
         // Before submission it is safe to fix an unsupported configuration.
         // Once sent, Retry keeps the exact original body and identity.
         if (!intent.current?.deliveryAttempted) intent.current = null;
+      } else if (intent.current?.deliveryAttempted) {
+        // Leaving the Session stopped the wait for a delivery the Session may
+        // already have accepted. Retry does not survive the switch, so never
+        // offer this text again as a draft that would send it twice.
+        setMessage('');
       }
     } finally {
       lock.current = false;

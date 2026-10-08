@@ -2184,6 +2184,29 @@ describe('ChatBox Component', async () => {
           );
         });
 
+        it('clears a restored draft sent before the Session was left again', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          remountSession(setup, 'second-project-id');
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Original instruction'
+          );
+
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          remountSession(setup, 'second-project-id');
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue('');
+        });
+
         it('keeps a draft edited after returning before admission finishes', async () => {
           const user = userEvent.setup();
           const setup = setupAdmission(true, 'status');

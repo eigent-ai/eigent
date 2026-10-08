@@ -211,26 +211,48 @@ describe('managed Session composer and fixed artifact preview', () => {
     view.rerender(<SessionExecutionChat key="b" projectId="session-b" />);
     expect(input()).toHaveTextContent(/^Unsent Session B draft$/);
   });
-  it('clears a sent draft even when its Session was left before the send finished', async () => {
-    let finish!: () => void;
+  // Leaving a Session aborts its composer's request, as the real service does,
+  // so a send never settles successfully after the switch.
+  const rejectWhenSessionLeft = (deliveryStarted: boolean) =>
     mocks.submit.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
+      (intent: {
+        scope: { signal: AbortSignal };
+        deliveryAttempted: boolean;
+      }) =>
+        new Promise<void>((_, reject) => {
+          intent.deliveryAttempted = deliveryStarted;
+          intent.scope.signal.addEventListener('abort', () =>
+            reject(new DOMException('Session owner left', 'AbortError'))
+          );
         })
     );
+  it('does not offer a message again when its Session was left during delivery', async () => {
+    rejectWhenSessionLeft(true);
     const view = render(<SessionExecutionChat key="a" projectId="session-a" />);
     type('Sent from Session A');
     fireEvent.keyDown(input(), { key: 'Enter', code: 'Enter' });
     await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(1));
 
     view.rerender(<SessionExecutionChat key="b" projectId="session-b" />);
+    await act(async () => {});
     type('Unsent Session B draft');
-    await act(async () => finish());
 
-    expect(input()).toHaveTextContent(/^Unsent Session B draft$/);
     view.rerender(<SessionExecutionChat key="a" projectId="session-a" />);
     expect(input()).toHaveTextContent('');
+    view.rerender(<SessionExecutionChat key="b" projectId="session-b" />);
+    expect(input()).toHaveTextContent(/^Unsent Session B draft$/);
+  });
+  it('keeps the draft when leaving its Session stopped the send before delivery', async () => {
+    rejectWhenSessionLeft(false);
+    const view = render(<SessionExecutionChat key="a" projectId="session-a" />);
+    type('Not delivered from Session A');
+    fireEvent.keyDown(input(), { key: 'Enter', code: 'Enter' });
+    await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(1));
+
+    view.rerender(<SessionExecutionChat key="b" projectId="session-b" />);
+    await act(async () => {});
+    view.rerender(<SessionExecutionChat key="a" projectId="session-a" />);
+    expect(input()).toHaveTextContent(/^Not delivered from Session A$/);
   });
   it('observes cancellation instead of removing the active task optimistically', async () => {
     mocks.state.requests = [

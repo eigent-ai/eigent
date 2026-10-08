@@ -64,6 +64,30 @@ describe('useSessionDraft', () => {
     expect(returned.result.current.text).toBe('Newer text');
   });
 
+  it('lets a composer that restored a draft settle it after leaving', () => {
+    const typed = draftFor('account-a', 'session-1');
+    act(() => {
+      typed.result.current.setText('Typed on an earlier visit');
+      typed.result.current.setReviewHandoffIds(['handoff-1']);
+    });
+    typed.unmount();
+
+    const restored = draftFor('account-a', 'session-1');
+    expect(restored.result.current.text).toBe('Typed on an earlier visit');
+    const { setText: settleText, setReviewHandoffIds: settleReviewHandoffIds } =
+      restored.result.current;
+    restored.unmount();
+
+    act(() => {
+      settleText('');
+      settleReviewHandoffIds([]);
+    });
+    expect(draftFor('account-a', 'session-1').result.current).toMatchObject({
+      text: '',
+      reviewHandoffIds: [],
+    });
+  });
+
   it('ignores edits while no Session is selected', () => {
     const draft = draftFor('account-a', null);
     act(() => draft.result.current.setText('Nowhere'));
