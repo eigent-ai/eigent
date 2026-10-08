@@ -91,19 +91,20 @@ _RULE_WORDS = re.compile(
 )
 # Verbs that open a request for work rather than a convention. Verbs that
 # also open conventions ("write docs in English", "run lint before ...") are
-# deliberately left out. Verbs that double as nouns ("help text", "delete
-# operations", "下载链接") count only when an object follows them.
+# left out. The rest open conventions too ("create branches from develop",
+# "新建组件放在 src/components 下"), so they count only when a specific target
+# follows them: "the", "me", a number, a file name, "一个", "一下".
+_FILE_NAME = r"[`'\"]?[A-Za-z0-9_./-]*\.[A-Za-z][A-Za-z0-9]{0,5}\b"
 _REQUEST_LEAD = re.compile(
-    r"^\s*(?:(?:please\s+)?(?:"
+    r"^\s*(?:(?:please\s+)?"
     r"(?:create|implement|fix|refactor|investigate|analy[sz]e|summari[sz]e"
-    r"|rename|scrape|set up|tell)\b"
-    r"|(?:help|research|fetch|plot|delete|download|find|remove|compare)"
-    r"(?=\s+(?:the|a|an|all|any|this|that|these|those|my|our|me|us|it"
-    r"|them|some|out|why|what|how|where|which|whether|if)\b))"
+    r"|rename|scrape|set up|tell|help|research|fetch|plot|delete|download"
+    r"|find|remove|compare)\s+"
+    r"(?:(?:the|a|an|all|any|this|that|these|those|my|our|me|us|it|them"
+    r"|some|out|why|what|how|where|which|whether|if)\b|\d|" + _FILE_NAME + r")"
     r"|(?:请)?(?:帮我|帮忙|请帮|麻烦|看看|看一下"
     r"|(?:创建|新建|实现|修复|重构|调研|起草|下载)"
-    r"(?!时|日期|记录|链接|地址|人|者|计划|报告|方案|方式|流程|过程|状态|结果))"
-    r"(?![^，。,\s]{0,2}的))",
+    r"\s*(?:一|个|份|下|几|两|这|那|" + _FILE_NAME + r")))",
     re.I,
 )
 _ENDS_AS_QUESTION = re.compile(r"[?？]\s*$")

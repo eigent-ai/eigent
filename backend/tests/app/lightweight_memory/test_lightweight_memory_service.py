@@ -557,6 +557,12 @@ def _extracted_scope(message: str) -> str | None:
         "In this project, find-and-replace is done with ripgrep.",
         "这个项目里，下载链接 24 小时后失效",
         "这个项目里，创建时间存的是 UTC",
+        # Conventions that open with a request verb but no specific target.
+        "In this project, create migrations with alembic.",
+        "For this Space, summarize in bullet points.",
+        "In this project, fix lint errors with ruff --fix.",
+        "这个项目里，新建组件放在 src/components 下",
+        "当前项目中，实现新功能先写测试",
     ],
 )
 def test_extractor_keeps_rules_that_name_a_scope(message):
