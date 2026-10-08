@@ -410,20 +410,33 @@ export function reduceProjectedRun(
           : null;
     }
   }
+  const activeStatuses = [
+    'pending',
+    'running',
+    'waiting_for_user',
+    'cancelling',
+  ];
+  // A checkpoint read while the Run was live counts wall time from the moment
+  // it was received, in every live state. It therefore stays exact while the
+  // same execution continues without a gap, e.g. across an approval wait;
+  // falling back to the first loaded event instead would rewind the timer.
+  const elapsedCheckpointContinues =
+    previousRun?.totalAttemptElapsedAt != null &&
+    activeStatuses.includes(previousRun.status) &&
+    activeStatuses.includes(status) &&
+    event.runSequence === previousRun.lastSequence + 1;
   return {
     ...previousRun,
     // An active snapshot's elapsed total is measured at its checkpoint. Once
-    // live execution advances, do not keep re-anchoring that old value to new
-    // events (or freeze the final duration at the earlier snapshot value).
+    // live execution leaves, re-enters or skips past it, do not keep
+    // re-anchoring that old value to new events (or freeze the final duration
+    // at the earlier snapshot value).
     ...(previousRun?.totalAttemptElapsedMs != null &&
-    (['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
-      previousRun.status
-    ) ||
-      ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
-        status
-      )) &&
+    (activeStatuses.includes(previousRun.status) ||
+      activeStatuses.includes(status)) &&
     event.source === 'canonical' &&
-    event.runVersion > previousRun.runVersion
+    event.runVersion > previousRun.runVersion &&
+    !elapsedCheckpointContinues
       ? { totalAttemptElapsedMs: null, totalAttemptElapsedAt: null }
       : {}),
     runId: event.runId,

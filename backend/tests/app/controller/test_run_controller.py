@@ -24,6 +24,7 @@ import pytest
 
 from app.controller.run_controller import (
     _is_terminal,
+    _total_attempt_elapsed_ms,
     get_run,
     get_run_events,
     stream_run_events,
@@ -147,6 +148,39 @@ async def test_run_snapshot_includes_process_liveness():
     await subscription.aclose()
     release.set()
     await subscription.handle.wait()
+
+
+@pytest.mark.parametrize(
+    ("status", "ended_at", "expected_ms"),
+    [
+        ("pending", None, 30_000),
+        ("running", None, 30_000),
+        ("waiting_for_user", None, 30_000),
+        ("completed", 25.0, 15_000),
+        # A legacy row that never recorded its end keeps its heartbeat total.
+        ("interrupted", None, 1_500),
+    ],
+)
+def test_total_attempt_elapsed_counts_wall_time_in_every_live_state(
+    status, ended_at, expected_ms
+):
+    attempt = RunAttemptRecord(
+        attempt_id="attempt-1",
+        run_id="run-1",
+        attempt_number=1,
+        status=status,
+        started_at=10.0,
+        ended_at=ended_at,
+        outcome=None,
+        timeout_reason=None,
+        resume_request_id="start-1",
+        resume_reason="initial_execution",
+        policy_version="v1",
+        elapsed_active_ms=1_500,
+        last_consumer_heartbeat_at=11.5,
+    )
+
+    assert _total_attempt_elapsed_ms([attempt], now=40.0) == expected_ms
 
 
 @pytest.mark.asyncio

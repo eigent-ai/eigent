@@ -1626,6 +1626,55 @@ describe('projector pipeline', () => {
     expect(live.runs['run-1'].totalAttemptElapsedMs).toBeNull();
   });
 
+  it('keeps a live elapsed checkpoint while the same execution continues', () => {
+    const waiting = {
+      run_id: 'run-1',
+      status: 'waiting_for_user',
+      run_version: 1,
+      expected_next_run_sequence: 2,
+      updated_at: '2026-08-05T10:00:00Z',
+      total_attempt_elapsed_ms: 62_000,
+      totalAttemptElapsedAt: '2026-08-05T10:01:00.000Z',
+    };
+    const approved = (sequence: number) =>
+      normalizeEvent(
+        event({
+          event_id: `approved-${sequence}`,
+          run_sequence: sequence,
+          run_version: sequence,
+          cloud_cursor: sequence,
+          event_type: 'approval.decided',
+          legacy_step: null,
+          payload: { continued_attempt: true },
+          created_at: '2026-08-05T10:01:00Z',
+        })
+      );
+    const snapshot = projectSnapshot({
+      project_id: 'project-1',
+      current_cursor: 1,
+      runs: [waiting],
+      recent_events: [event({ legacy_step: null })],
+    });
+
+    const continued = reduceProjectView(snapshot, approved(2));
+    expect(continued.runs['run-1']).toMatchObject({
+      status: 'running',
+      totalAttemptElapsedMs: 62_000,
+      totalAttemptElapsedAt: '2026-08-05T10:01:00.000Z',
+    });
+
+    // Skipped events can hide an interruption and Resume; settle on a later
+    // read instead of counting through them.
+    const afterGap = projectSnapshot({
+      project_id: 'project-1',
+      current_cursor: 0,
+      runs: [waiting],
+      recent_events: [approved(5)],
+      events_truncated: true,
+    });
+    expect(afterGap.runs['run-1'].totalAttemptElapsedMs).toBeNull();
+  });
+
   it('preserves legacy raw payload across all V1 importers', () => {
     const legacy = {
       step_id: 9,

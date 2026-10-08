@@ -410,6 +410,84 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_listed_elapsed_time_stays_continuous_through_an_approval_wait(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1", now=100)
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=100,
+        )
+
+        async def elapsed_at(now: float) -> tuple[int, int]:
+            with (
+                patch(
+                    "app.controller.run_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.run_controller.get_default_run_coordinator",
+                    return_value=RunCoordinator(journal),
+                ),
+                patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+                patch(
+                    "app.run_sync.runtime."
+                    "is_default_cloud_history_bootstrap_pending",
+                    return_value=False,
+                ),
+                patch(
+                    "app.controller.run_controller.time.time",
+                    return_value=now,
+                ),
+            ):
+                listed = await list_project_runs(
+                    project_id="project-1", status=None, limit=20
+                )
+                summary = await get_run("run-1")
+            return (
+                listed["runs"][0]["total_attempt_elapsed_ms"],
+                summary["total_attempt_elapsed_ms"],
+            )
+
+        readings = [await elapsed_at(102)]
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow the write?"},
+            now=102,
+        )
+        assert (
+            journal.get_run_attempt(attempt.attempt_id).status
+            == "waiting_for_user"
+        )
+        # A Session reopened during the wait reads the same wall time the
+        # running Attempt reported, not a heartbeat total that stopped at 0.
+        readings += [await elapsed_at(132), await elapsed_at(162)]
+        journal.decide_approval(
+            "approval-1",
+            decision="approved",
+            expected_version=0,
+            continue_active_attempt=True,
+            decision_request_id="approve-once",
+            now=162,
+        )
+        assert journal.get_run_attempt(attempt.attempt_id).status == "running"
+        readings.append(await elapsed_at(165))
+
+    assert readings == [
+        (2_000, 2_000),
+        (32_000, 32_000),
+        (62_000, 62_000),
+        (65_000, 65_000),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_run_summary_names_unsafe_resume_blockers(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1", now=1)

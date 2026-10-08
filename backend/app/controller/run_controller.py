@@ -47,6 +47,7 @@ from app.run_journal import (
     UnsafeResumeError,
     get_default_run_journal,
 )
+from app.run_journal.transitions import ATTEMPT_ACTIVE_STATES
 from app.run_policy import (
     RunTimeoutPolicy,
     TimeoutOutcome,
@@ -317,11 +318,13 @@ async def _load_run_or_404(run_id: str):
 def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
     """Return Run execution wall time without counting gaps between attempts.
 
-    Older/legacy attempts did not emit periodic heartbeat accounting, so their
-    ``elapsed_active_ms`` remains zero. For those rows the durable started/end
-    timestamps are the best available source. Summing each attempt separately
-    deliberately excludes the offline interval between an interruption and a
-    later Resume.
+    An Attempt that has not ended is live in every active state, so waiting
+    for an Approval or an answer counts up to ``now`` exactly like running.
+    ``elapsed_active_ms`` only advances on heartbeats while running, so it is
+    only the fallback for legacy rows that never recorded an end. Startup
+    recovery ends every active Attempt, so a live one never spans a
+    process-down interval. Summing each attempt separately deliberately
+    excludes the offline interval between an interruption and a later Resume.
     """
 
     total = 0
@@ -329,7 +332,7 @@ def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
         ended_at = attempt.ended_at
         if ended_at is not None:
             total += max(0, round((ended_at - attempt.started_at) * 1000))
-        elif attempt.status == "running":
+        elif attempt.status in ATTEMPT_ACTIVE_STATES:
             total += max(0, round((now - attempt.started_at) * 1000))
         else:
             total += max(0, int(attempt.elapsed_active_ms))
