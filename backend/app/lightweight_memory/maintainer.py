@@ -43,41 +43,78 @@ _MAX_FAILURE_RETRIES = 5
 _MAX_RETRY_DELAY_SECONDS = 60.0
 _CONTINUATION_DELAY_SECONDS = 0.5
 
-# A message that only opens with a scope ("In this Space, ...") is usually a
-# task request. These patterns must start the message and state a rule.
-_SCOPE_LEAD_PATTERNS = (
-    re.compile(
-        r"^(?:for|in)\s+(?:this|the\s+current)\s+"
-        r"(?:project|space|workspace)\s*[:,]?\s*(.+)",
-        re.I | re.S,
-    ),
-    re.compile(
-        r"^(?:for|across)\s+all\s+(?:projects|spaces)\s*[:,]?\s*(.+)",
-        re.I | re.S,
-    ),
-    re.compile(
-        r"^在?(?:这个|当前)(?:项目|空间|工作区)(?:中|里)?[：,:，]?\s*(.+)",
-        re.S,
-    ),
-    re.compile(r"^在?(?:所有项目|所有空间)(?:中|里)?[：,:，]?\s*(.+)", re.S),
+_THIS_SCOPE_PATTERN = re.compile(
+    r"\b(?:for|in)\s+(?:this|the\s+current)\s+"
+    r"(?:project|space|workspace)\s*[:,]?\s*(.+)",
+    re.I | re.S,
+)
+_ALL_SCOPES_PATTERN = re.compile(
+    r"\b(?:for|across)\s+all\s+(?:projects|spaces)\s*[:,]?\s*(.+)",
+    re.I | re.S,
+)
+_THIS_SCOPE_PATTERN_ZH = re.compile(
+    r"(?:这个|当前)(?:项目|空间|工作区)(?:中|里)?[：,:，]?\s*(.+)",
+    re.S,
+)
+_ALL_SCOPES_PATTERN_ZH = re.compile(
+    r"(?:所有项目|所有空间)(?:中|里)?[：,:，]?\s*(.+)", re.S
+)
+# A scope phrase opens rules and one-off requests alike, so it is the only
+# kind of match that is checked for a request.
+_SCOPE_PHRASE_PATTERNS = (
+    _THIS_SCOPE_PATTERN,
+    _ALL_SCOPES_PATTERN,
+    _THIS_SCOPE_PATTERN_ZH,
+    _ALL_SCOPES_PATTERN_ZH,
 )
 _EXPLICIT_MEMORY_PATTERNS = (
     re.compile(r"\b(?:please\s+)?remember(?:\s+that)?\s+(.+)", re.I | re.S),
     re.compile(r"\bI\s+prefer\s+(.+)", re.I | re.S),
     re.compile(r"\bmy\s+(?:preference|default)\s+is\s+(.+)", re.I | re.S),
-    _SCOPE_LEAD_PATTERNS[0],
-    _SCOPE_LEAD_PATTERNS[1],
+    _THIS_SCOPE_PATTERN,
+    _ALL_SCOPES_PATTERN,
     re.compile(r"(?:请)?记住[：,:]?\s*(.+)", re.S),
-    _SCOPE_LEAD_PATTERNS[2],
-    _SCOPE_LEAD_PATTERNS[3],
+    _THIS_SCOPE_PATTERN_ZH,
+    _ALL_SCOPES_PATTERN_ZH,
     re.compile(r"我(?:更)?(?:偏好|喜欢)[：,:，]?\s*(.+)", re.S),
 )
-_SCOPED_RULE_MAX_CHARS = 240
-_STANDING_RULE_MARKERS = re.compile(
-    r"\b(?:always|never|every|each|default|standard|convention|should|must"
-    r"|use|uses|prefer|from now on|going forward)\b"
-    r"|总是|始终|每次|每个|默认|统一|一律|以后|今后|使用|规范|约定|标准",
+# Words that make a scoped sentence a rule for later work.
+_RULE_WORDS = re.compile(
+    r"\b(?:always|never|every|each|by default|from now on|going forward|must"
+    r"|should|don'?t|do not|avoid|prefer|convention|standard|reply in"
+    r"|respond in|answer in|before|after|whenever|unless|instead of)\b"
+    r"|总是|始终|每次|每个|默认|一律|以后|今后|从现在|必须|不要|别用|禁止|避免"
+    r"|务必|统一|都用|都要|而不是|回复用|用中文|用英文|之前|前先|之后|每当|的时候",
     re.I,
+)
+_TASK_VERBS = (
+    r"(?:please\s+)?(?:create|write|build|make|generate|add|implement|fix"
+    r"|run|open|find|analy[sz]e|summari[sz]e|draft|research|download"
+    r"|install|delete|remove|update|refactor|test|deploy|check|review"
+    r"|translate|compare|list|show|explain|help|do|investigate|look|tell"
+    r"|set up|rename|move|plot|compute|calculate|scrape|fetch|send)\b"
+)
+_TASK_VERBS_ZH = (
+    r"(?:请)?(?:帮我|帮忙|创建|新建|写|生成|做|实现|修复|运行|跑|打开|查找|找|分析"
+    r"|总结|起草|下载|安装|删除|更新|重构|部署|检查|翻译|列出|解释|看看|看一下|加)"
+)
+_TASK_LEAD = re.compile(
+    r"^\s*(?:" + _TASK_VERBS + r"|" + _TASK_VERBS_ZH + r")", re.I
+)
+_TASK_STEP = re.compile(
+    r"^\s*\d+[.)、]\s*(?:" + _TASK_VERBS + r"|" + _TASK_VERBS_ZH + r")",
+    re.I | re.M,
+)
+_NUMBERED_STEP = re.compile(r"^\s*\d+[.)、]", re.M)
+_QUESTION = re.compile(
+    r"[?？]\s*$|^\s*(?:what|how|why|when|where|which|who|can you|could you"
+    r"|would you|does|is|are)\b|吗[？?]?\s*$|什么|怎么|如何|为什么|哪",
+    re.I,
+)
+_USE_FOR_TASK = re.compile(
+    r"\buse\b.{0,80}?\bto\s+(?:" + _TASK_VERBS + r")"
+    r"|用.{0,40}?(?:来|去)?(?:" + _TASK_VERBS_ZH + r")",
+    re.I | re.S,
 )
 _USER_SCOPE_MARKERS = (
     "across all projects",
@@ -113,12 +150,22 @@ _SPACE_SCOPE_MARKERS = (
 )
 
 
-def _states_standing_rule(content: str) -> bool:
-    """A short, single-line rule rather than a one-off task request."""
-    return (
-        "\n" not in content
-        and len(content) <= _SCOPED_RULE_MAX_CHARS
-        and _STANDING_RULE_MARKERS.search(content) is not None
+def _reads_as_one_off(raw: str, content: str) -> bool:
+    """Whether a scoped message asks for a piece of work, not a rule.
+
+    Only clear requests are skipped, and any rule word keeps the message, so
+    this never saves something the extractor would not have saved before.
+    """
+    if len(_TASK_STEP.findall(content)) >= 2:
+        return True
+    if _RULE_WORDS.search(content):
+        return False
+    return bool(
+        _TASK_LEAD.search(raw)
+        or _TASK_LEAD.search(content)
+        or _QUESTION.search(content)
+        or _NUMBERED_STEP.search(content)
+        or _USE_FOR_TASK.search(content)
     )
 
 
@@ -193,11 +240,11 @@ class ConservativeMemoryExtractor:
                 if proposal_scope != target_scope:
                     continue
                 content = match.group(1).strip().rstrip()
-                if pattern in _SCOPE_LEAD_PATTERNS and not (
-                    _states_standing_rule(content)
-                ):
-                    continue
                 if not content or len(content) > 1000:
+                    break
+                if pattern in _SCOPE_PHRASE_PATTERNS and _reads_as_one_off(
+                    raw.strip(), content
+                ):
                     break
                 normalized = content.casefold()
                 if normalized in known:
