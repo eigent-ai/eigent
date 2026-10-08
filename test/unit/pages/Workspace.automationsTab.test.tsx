@@ -98,7 +98,12 @@ vi.mock(
 vi.mock('@/components/SpaceSidebar', () => ({ default: () => null }));
 vi.mock('@/components/Workspace', () => ({ default: () => null }));
 vi.mock('@/components/Trigger', () => ({
-  default: () => <div data-testid="automations-panel" />,
+  default: ({ isDialogOpen }: { isDialogOpen: boolean }) => (
+    <div
+      data-testid="automations-panel"
+      data-dialog-open={String(isDialogOpen)}
+    />
+  ),
 }));
 vi.mock('@/components/Trigger/Triggers', () => ({
   EXECUTION_LOGS_OPEN_STORAGE_KEY: 'triggers.executionLogs.open',
@@ -111,7 +116,10 @@ describe('Workspace Automations tab without a selected Session', () => {
     mocks.spaceState.activeSpaceId = 'space-1';
     mocks.spaceState.projectsBySpaceId = {};
     mocks.spaceState.lastVisitedProjectBySpace = {};
-    usePageTabStore.setState({ activeWorkspaceTab: 'triggers' });
+    usePageTabStore.setState({
+      activeWorkspaceTab: 'triggers',
+      triggerAddDialogRequestId: 0,
+    });
   });
 
   afterEach(() => {
@@ -140,6 +148,54 @@ describe('Workspace Automations tab without a selected Session', () => {
 
     expect(mocks.projectStore.setActiveProject).not.toHaveBeenCalled();
     expect(usePageTabStore.getState().activeWorkspaceTab).toBe('workforce');
+  });
+
+  it('does not reopen a bounced add request once the Space has a Session', async () => {
+    usePageTabStore.setState({ activeWorkspaceTab: 'workforce' });
+    const { getByTestId } = render(<WorkspacePage />);
+
+    // Adding an automation in a Space with no Sessions returns to the Space
+    // workspace instead of opening the Automations tab.
+    act(() => {
+      usePageTabStore.getState().requestOpenTriggerAddDialog();
+    });
+    await act(async () => {});
+    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('workforce');
+
+    // Later, with a Session selected, opening Automations must not pop up
+    // the stale add dialog.
+    mocks.projectStore.activeProjectId = 'project-1';
+    mocks.spaceState.projectsBySpaceId = {
+      'space-1': [{ id: 'project-1', spaceId: 'space-1', name: 'First' }],
+    };
+    act(() => {
+      usePageTabStore.getState().setActiveWorkspaceTab('triggers');
+    });
+    await act(async () => {});
+
+    expect(getByTestId('automations-panel')).toHaveAttribute(
+      'data-dialog-open',
+      'false'
+    );
+  });
+
+  it('opens the add dialog when the Space has a Session', async () => {
+    mocks.projectStore.activeProjectId = 'project-1';
+    mocks.spaceState.projectsBySpaceId = {
+      'space-1': [{ id: 'project-1', spaceId: 'space-1', name: 'First' }],
+    };
+    usePageTabStore.setState({ activeWorkspaceTab: 'workforce' });
+    const { getByTestId } = render(<WorkspacePage />);
+
+    act(() => {
+      usePageTabStore.getState().requestOpenTriggerAddDialog();
+    });
+    await act(async () => {});
+
+    expect(getByTestId('automations-panel')).toHaveAttribute(
+      'data-dialog-open',
+      'true'
+    );
   });
 
   it('keeps the Session that is already selected', async () => {

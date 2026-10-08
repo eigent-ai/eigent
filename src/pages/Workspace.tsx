@@ -117,6 +117,13 @@ export default function WorkspacePage() {
     setTriggerDialogOpen(true);
   }, [triggerAddDialogRequestId]);
 
+  // The add dialog belongs to the triggers tab. When that tab is left, or
+  // cannot open because the space has no project, drop the request so the
+  // dialog does not pop up the next time the tab opens.
+  useEffect(() => {
+    if (activeWorkspaceTab !== 'triggers') setTriggerDialogOpen(false);
+  }, [activeWorkspaceTab]);
+
   useEffect(() => {
     setTriggerSelectedId(null);
   }, [projectStore.activeProjectId]);
