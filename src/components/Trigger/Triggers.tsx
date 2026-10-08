@@ -23,6 +23,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsText } from '@/components/ui/ds-text';
 import { useTriggerCacheInvalidation } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import {
@@ -67,6 +68,8 @@ export function sortTriggersList(
   });
 }
 
+type TriggerListLoadState = 'idle' | 'loading' | 'ready' | 'error';
+
 export type OverviewProps = {
   sortBy: TriggerSortKey;
   selectedTriggerId: number | null;
@@ -101,28 +104,48 @@ export default function Overview({
 
   // Get projectStore for the active project's task
   const { projectStore } = useChatStoreAdapter();
+  const activeProjectId = projectStore.activeProjectId;
 
   const { addLog } = useActivityLogStore();
 
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
 
-  // Fetch triggers from API on mount
+  const [listLoadState, setListLoadState] = useState<TriggerListLoadState>(
+    () => (activeProjectId ? 'loading' : 'idle')
+  );
+  const [listReloadRequest, setListReloadRequest] = useState(0);
+
+  // Load the active project's triggers. Depend on the project id only: the
+  // project store object changes on every store update, so depending on it
+  // refetched the list over and over.
   useEffect(() => {
-    const fetchTriggers = async () => {
-      try {
-        const response = await proxyFetchProjectTriggers(
-          projectStore.activeProjectId
-        );
+    // Never show the previous project's triggers under another project.
+    setTriggers([]);
 
+    // Triggers are listed per project; never call the API without one.
+    if (!activeProjectId) {
+      setListLoadState('idle');
+      return;
+    }
+
+    let cancelled = false;
+    setListLoadState('loading');
+    proxyFetchProjectTriggers(activeProjectId)
+      .then((response) => {
+        if (cancelled) return;
         setTriggers(response.items || []);
-      } catch (error) {
+        setListLoadState('ready');
+      })
+      .catch((error) => {
+        if (cancelled) return;
         console.error('Failed to fetch triggers:', error);
-        toast.error(t('triggers.failed-to-load'));
-      }
-    };
+        setListLoadState('error');
+      });
 
-    fetchTriggers();
-  }, [projectStore, projectStore.activeProjectId, setTriggers, t]);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId, listReloadRequest, setTriggers]);
 
   // Update hasTriggers based on the trigger list
   useEffect(() => {
@@ -286,7 +309,32 @@ export default function Overview({
           {/* List View Section */}
           <div className="scrollbar-always-visible mx-auto flex h-full w-full max-w-[800px] flex-col overflow-auto pt-2">
             <div className="flex flex-col gap-2">
-              {sortedTriggers.length === 0 ? (
+              {listLoadState === 'error' ? (
+                <div
+                  role="alert"
+                  className="flex flex-col items-center gap-ds-stack-related p-ds-panel-inset text-center"
+                >
+                  <DsText className="text-ds-ink-default-default">
+                    {t('triggers.failed-to-load')}
+                  </DsText>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      setListReloadRequest((request) => request + 1)
+                    }
+                  >
+                    {t('layout.retry')}
+                  </Button>
+                </div>
+              ) : listLoadState === 'loading' ? (
+                <DsText
+                  aria-live="polite"
+                  className="p-ds-panel-inset text-center text-ds-ink-muted-default"
+                >
+                  {t('triggers.loading')}
+                </DsText>
+              ) : listLoadState === 'ready' && sortedTriggers.length === 0 ? (
                 <div
                   onClick={() => {
                     setEditingTrigger(null);
