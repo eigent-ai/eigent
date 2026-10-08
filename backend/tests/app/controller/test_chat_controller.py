@@ -2410,3 +2410,62 @@ def test_queued_stop_carries_expected_task_to_the_consumer():
             == 201
         )
         assert enqueue.call_args.args[1].expected_task_id == "run-original"
+
+
+class _PastSessionModelCheck(Exception):
+    pass
+
+
+def _chat_with_session_model(
+    sample_chat_data, run_platform, session_platform, session_type="gpt-4"
+):
+    return Chat(
+        **{**sample_chat_data, "model_platform": run_platform},
+        session_model_selection={
+            "modelType": "custom",
+            "provider_id": 7,
+            "model_platform": session_platform,
+            "model_type": session_type,
+        },
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "platform", ["grok", "ModelArk", "z.ai", "ernie", "llama.cpp", "openai"]
+)
+async def test_session_model_matches_its_own_provider_alias(
+    sample_chat_data, platform
+):
+    chat_data = _chat_with_session_model(sample_chat_data, platform, platform)
+    with patch(
+        "app.controller.chat_controller.get_or_create_task_lock",
+        side_effect=_PastSessionModelCheck,
+    ):
+        with pytest.raises(_PastSessionModelCheck):
+            await _prepare_chat_run(chat_data, MagicMock())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "run_platform,session_platform,session_type",
+    [
+        ("openai", "grok", "gpt-4"),
+        ("grok", "openai", "gpt-4"),
+        ("z.ai", "grok", "gpt-4"),
+        ("grok", "grok", "another-model"),
+    ],
+)
+async def test_session_model_still_rejects_a_different_model(
+    sample_chat_data, run_platform, session_platform, session_type
+):
+    chat_data = _chat_with_session_model(
+        sample_chat_data, run_platform, session_platform, session_type
+    )
+    with patch(
+        "app.controller.chat_controller.get_or_create_task_lock",
+        side_effect=_PastSessionModelCheck,
+    ):
+        with pytest.raises(HTTPException) as error:
+            await _prepare_chat_run(chat_data, MagicMock())
+    assert error.value.status_code == 422
