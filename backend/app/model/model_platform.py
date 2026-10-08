@@ -241,6 +241,15 @@ def normalize_model_platform(platform: str) -> str:
     return PLATFORM_ALIAS_MAPPING.get(platform, platform)
 
 
+def canonical_model_platform(platform: str) -> str:
+    """Provider identity shared by a Run binding and its Session model.
+
+    A Session keeps the provider name the user picked, while the Run binding
+    stores its normalized alias; admission records the latter lowercased.
+    """
+    return normalize_model_platform(platform).strip().lower()
+
+
 def normalize_optional_model_platform(platform: str | None) -> str | None:
     """Optional variant of normalize_model_platform."""
     if platform is None:
