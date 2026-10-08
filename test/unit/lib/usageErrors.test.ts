@@ -12,8 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { createSSEAdmissionError } from '@/lib/responseError';
 import {
   classifyError,
+  errorPresentationReason,
   isLegacyTaskError,
   isUsageReason,
 } from '@/lib/usageErrors';
@@ -83,6 +85,51 @@ describe('usage error classification', () => {
   it('does not treat a rate limit or a bad request as depleted credits', () => {
     expect(classifyError({ status: 429 })).toBe('rate-limit');
     expect(classifyError({ status: 400 })).toBe('request');
+  });
+  it('explains a thinking effort the model does not support', () => {
+    expect(
+      classifyError({
+        status: 422,
+        code: 'unsupported_thinking_effort',
+        message:
+          'Run admission did not return an event stream: {"code":"unsupported_thinking_effort"}',
+      })
+    ).toBe('thinking-effort');
+  });
+  it('gives a rejected thinking effort its own copy at admission', async () => {
+    const response = new Response(
+      JSON.stringify({
+        detail: {
+          code: 'unsupported_thinking_effort',
+          message:
+            "unknown_model: thinking effort capabilities are not registered; cannot honor effort 'medium'.",
+        },
+      }),
+      { status: 422, headers: { 'content-type': 'application/json' } }
+    );
+    const error = await createSSEAdmissionError(response, {});
+    expect(error.message).toBe('chat.notice-thinking-effort');
+    expect(error).toMatchObject({
+      code: 'unsupported_thinking_effort',
+      userMessage: 'chat.notice-thinking-effort',
+    });
+  });
+  it('shows a provider 5xx as an unavailable model, but not a local one', () => {
+    const outage = `Error code: 503 - {'error': {'message': 'Service Unavailable'}}`;
+    expect(
+      classifyError({
+        message: outage,
+        retryable: true,
+        reason: 'model_transport_error',
+      })
+    ).toBe('model-unavailable');
+    expect(errorPresentationReason(`❌ **Error**: ${outage}`)).toBe(
+      'model-unavailable'
+    );
+    expect(classifyError({ status: 500 })).toBe('task');
+    expect(errorPresentationReason('HTTP 500: {"detail": "boom"}')).toBe(
+      'task'
+    );
   });
   it('only recognizes the legacy system-error prefix', () => {
     expect(isLegacyTaskError('Here is an example: Error code: 403')).toBe(
