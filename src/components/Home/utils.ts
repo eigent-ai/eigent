@@ -12,16 +12,22 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { parseServerTimestamp } from '@/lib/serverTimestamp';
+
 /** Display labels with only the first character capitalized. */
 export function capitalizeLabel(value: string): string {
   if (!value) return value;
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
+function hubDateFromValue(value?: string | number | null): Date | null {
+  const time = parseServerTimestamp(value);
+  return Number.isNaN(time) ? null : new Date(time);
+}
+
 export function formatHubCreatedTime(value?: string | number | null): string {
-  if (value === null || value === undefined || value === '') return '';
-  const date = typeof value === 'number' ? new Date(value) : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  const date = hubDateFromValue(value);
+  if (!date) return '';
 
   const diffMs = Date.now() - date.getTime();
   const diffMinutes = Math.floor(Math.abs(diffMs) / (1000 * 60));
@@ -48,9 +54,8 @@ export function formatHubRelativeAgo(
   value: string | number | null | undefined,
   t: (key: string, options?: Record<string, unknown>) => string
 ): string {
-  if (value === null || value === undefined || value === '') return '';
-  const date = typeof value === 'number' ? new Date(value) : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  const date = hubDateFromValue(value);
+  if (!date) return '';
 
   const diffMs = Date.now() - date.getTime();
   const diffMinutes = Math.floor(Math.abs(diffMs) / (1000 * 60));
@@ -77,9 +82,8 @@ export function formatHubDate(
   value: string | number | null | undefined,
   locale: string
 ): string {
-  if (value === null || value === undefined || value === '') return '';
-  const date = typeof value === 'number' ? new Date(value) : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  const date = hubDateFromValue(value);
+  if (!date) return '';
   return date.toLocaleDateString(locale, {
     month: 'short',
     day: '2-digit',
@@ -132,10 +136,7 @@ export function persistHomeViewMode(mode: HomeViewMode): void {
 }
 
 export function timestampFromHubValue(value?: string | number | null): number {
-  if (value === null || value === undefined || value === '') return 0;
-  const date = typeof value === 'number' ? new Date(value) : new Date(value);
-  const time = date.getTime();
-  return Number.isNaN(time) ? 0 : time;
+  return parseServerTimestamp(value) || 0;
 }
 
 export function compareHubByName(

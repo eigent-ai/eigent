@@ -23,6 +23,7 @@ import {
 } from '@/lib/projectCache';
 import { selectPendingHumanControlCount } from '@/lib/projector/control';
 import { runProjectionStore } from '@/lib/runEvents/projectionStore';
+import { parseServerTimestamp } from '@/lib/serverTimestamp';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import {
   getSessionNavLeadFromRunStatus,
@@ -227,8 +228,7 @@ const promoteSubtaskStatus = (
     : TaskStatus.COMPLETED;
 
 const timestampFromServer = (value?: string | null, fallback = Date.now()) => {
-  if (!value) return fallback;
-  const timestamp = new Date(value).getTime();
+  const timestamp = parseServerTimestamp(value);
   return Number.isFinite(timestamp) ? timestamp : fallback;
 };
 
