@@ -111,7 +111,9 @@ def test_session_model_recovery_uses_local_control_scope_and_preserves_unknown_r
         run_id="unaccepted", project_id="session-1", status="pending"
     )
     monkeypatch.setattr(
-        runtime, "is_default_cloud_history_bootstrap_pending", lambda: True
+        runtime,
+        "is_default_cloud_history_bootstrap_pending",
+        lambda project_id=None: project_id == "session-1",
     )
     before = journal._connection.total_changes
     response = client.get(path, params=params, headers=_headers())
