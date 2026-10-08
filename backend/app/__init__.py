@@ -36,6 +36,8 @@ _default_frame_ancestors = [
     "http://127.0.0.1:*",
     "https://localhost:*",
     "https://127.0.0.1:*",
+    # The packaged Desktop renderer is a file:// page.
+    "file:",
 ]
 _frame_ancestors = " ".join(
     dict.fromkeys(
@@ -45,6 +47,10 @@ _frame_ancestors = " ".join(
         ]
     )
 )
+# File responses the app shows inside a frame: HTML previews, and the file
+# stream that the built-in PDF viewer loads. Every other route stays DENY.
+_framed_file_path_prefixes = ("/files/preview/", "/api/v1/files/preview/")
+_framed_file_paths = ("/files/stream", "/api/v1/files/stream")
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -53,9 +59,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         path = request.url.path
-        is_file_preview = path.startswith(
-            "/files/preview/"
-        ) or path.startswith("/api/v1/files/preview/")
+        is_file_preview = (
+            path.startswith(_framed_file_path_prefixes)
+            or path in _framed_file_paths
+        )
         if is_file_preview:
             if "X-Frame-Options" in response.headers:
                 del response.headers["X-Frame-Options"]

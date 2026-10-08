@@ -40,5 +40,6 @@
   "open-in-finder": "在 Finder 中開啟",
   "open-in-explorer": "在檔案總管中開啟",
   "open-in-folder": "在檔案管理器中開啟",
-  "preview-load-failed": "無法預覽此檔案。請重試或使用外部應用程式開啟。"
+  "preview-load-failed": "無法預覽此檔案。請重試或使用外部應用程式開啟。",
+  "pdf-preview-failed": "無法在此處顯示此 PDF。請改用其他應用程式開啟。"
 }

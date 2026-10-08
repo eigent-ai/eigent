@@ -85,6 +85,11 @@ interface ElectronAPI {
   respondToCloseRequest: (
     response: import('@/shared/windowClose').WindowCloseResponse
   ) => void;
+  onSubframeLoadFailed: (
+    callback: (
+      failure: import('@/shared/subframeLoadFailure').SubframeLoadFailure
+    ) => void
+  ) => () => void;
   getPlatform: () => string;
   getHomeDir: () => Promise<string>;
   createWebView: (id: string, url: string) => Promise<any>;

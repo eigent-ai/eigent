@@ -59,7 +59,7 @@ import {
 import { CsvPreviewTable } from './CsvPreviewTable';
 import { FileOpenActions } from './FileOpenActions';
 import FolderComponent from './FolderComponent';
-import { PdfPreview } from './PdfPreview';
+import { PdfPreview, usePdfFrameLoadFailed } from './PdfPreview';
 import { PreviewFailure } from './PreviewRecovery';
 import { useIdeOpenActions } from './useIdeOpenActions';
 
@@ -2934,7 +2934,8 @@ function BlockedPreviewPlaceholder({ file }: { file: FileInfo }) {
  * Presentational file viewer: breadcrumb header + type-aware content body.
  * Shared by the Files tab and the inline project-page preview so both
  * render markdown/PDF/docs/HTML/media identically. All data and callbacks are
- * supplied by the parent — this component owns no loading state.
+ * supplied by the parent — this component owns no loading state. It only
+ * tracks whether the embedded PDF frame failed, which the parent cannot see.
  */
 export function FileViewerPanel({
   selectedFile,
@@ -2964,6 +2965,11 @@ export function FileViewerPanel({
   const appearance = useAuthStore((state) => state.appearance);
   const segmentsClickable = Boolean(onBreadcrumbSegmentClick);
   const selectedType = selectedFile ? getFileType(selectedFile) : '';
+  const pdfFrameFailed = usePdfFrameLoadFailed(
+    selectedType === 'pdf' && typeof selectedFile?.content === 'string'
+      ? selectedFile.content
+      : undefined
+  );
   const supportsRichView =
     Boolean(selectedFile) &&
     ['md', 'markdown', 'html', 'htm'].includes(selectedType) &&
@@ -3140,7 +3146,9 @@ export function FileViewerPanel({
                 onReveal={onRevealFile}
                 onOpen={
                   !selectedFile.isFolder &&
-                  (loadFailed || selectedFile.preview?.kind === 'blocked')
+                  (loadFailed ||
+                    pdfFrameFailed ||
+                    selectedFile.preview?.kind === 'blocked')
                     ? onOpenExternalFile
                     : undefined
                 }
@@ -3258,11 +3266,20 @@ export function FileViewerPanel({
                   />
                 </DocumentContentRail>
               ) : selectedType === 'pdf' ? (
-                <PdfPreview
-                  key={`${selectedFile.path}:${selectedFile.modifiedAt ?? ''}`}
-                  url={selectedFile.content as string}
-                  name={selectedFile.name}
-                />
+                pdfFrameFailed ? (
+                  <PreviewFailure
+                    message={t('folder.pdf-preview-failed', {
+                      defaultValue:
+                        'This PDF could not be displayed here. Open it in another app instead.',
+                    })}
+                  />
+                ) : (
+                  <PdfPreview
+                    key={`${selectedFile.path}:${selectedFile.modifiedAt ?? ''}`}
+                    url={selectedFile.content as string}
+                    name={selectedFile.name}
+                  />
+                )
               ) : ['doc', 'docx', 'pptx', 'xlsx'].includes(selectedType) ? (
                 <FolderComponent selectedFile={selectedFile} />
               ) : ['html', 'htm'].includes(selectedType) ? (
