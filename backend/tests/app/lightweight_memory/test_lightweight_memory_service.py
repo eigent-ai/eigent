@@ -497,6 +497,48 @@ def test_incremental_maintainer_extracts_explicit_scope_memory_without_review(
     assert user_entries[0].confirmed_by_user is False
 
 
+def test_incremental_maintainer_skips_one_off_requests_that_name_a_scope(
+    service,
+):
+    journal = service.journal
+    journal.bind_memory_project_scopes(
+        project_id="project-1",
+        space_id="space-1",
+        user_id="user-1",
+    )
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    messages = (
+        "Create hello.py in this project and run it.",
+        "In this project, create a hello.py that prints the date.",
+        "For this Space:\n1. Collect the notes.\n2. Use them for a summary.",
+        "For this Space, " + "use the attached outline " * 12,
+        "在当前项目中创建一个 hello.py 并运行。",
+        "Draft a launch plan for all projects in the portfolio.",
+        "In this Project, Python 3.12 is standard.",
+        "Remember that reports use ISO dates.",
+        "在当前空间里，统一使用 UTC 时间。",
+    )
+    for index, content in enumerate(messages):
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id=f"message-{index}",
+                event_type="user.message",
+                payload={"content": content},
+            ),
+        )
+
+    IncrementalMemoryMaintainer(service).process_project("project-1")
+
+    assert sorted(
+        entry.content for entry in service.list_entries("project", "project-1")
+    ) == ["Python 3.12 is standard.", "reports use ISO dates."]
+    assert [
+        entry.content for entry in service.list_entries("space", "space-1")
+    ] == ["统一使用 UTC 时间。"]
+    assert not service.list_entries("user", "user-1")
+
+
 def test_shared_scope_watermarks_are_independent_per_source_project(service):
     journal = service.journal
     for project_id in ("project-1", "project-2"):

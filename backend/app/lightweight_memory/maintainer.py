@@ -43,26 +43,41 @@ _MAX_FAILURE_RETRIES = 5
 _MAX_RETRY_DELAY_SECONDS = 60.0
 _CONTINUATION_DELAY_SECONDS = 0.5
 
-_EXPLICIT_MEMORY_PATTERNS = (
-    re.compile(r"\b(?:please\s+)?remember(?:\s+that)?\s+(.+)", re.I | re.S),
-    re.compile(r"\bI\s+prefer\s+(.+)", re.I | re.S),
-    re.compile(r"\bmy\s+(?:preference|default)\s+is\s+(.+)", re.I | re.S),
+# A message that only opens with a scope ("In this Space, ...") is usually a
+# task request. These patterns must start the message and state a rule.
+_SCOPE_LEAD_PATTERNS = (
     re.compile(
-        r"\b(?:for|in)\s+(?:this|the\s+current)\s+"
+        r"^(?:for|in)\s+(?:this|the\s+current)\s+"
         r"(?:project|space|workspace)\s*[:,]?\s*(.+)",
         re.I | re.S,
     ),
     re.compile(
-        r"\b(?:for|across)\s+all\s+(?:projects|spaces)\s*[:,]?\s*(.+)",
+        r"^(?:for|across)\s+all\s+(?:projects|spaces)\s*[:,]?\s*(.+)",
         re.I | re.S,
     ),
-    re.compile(r"(?:请)?记住[：,:]?\s*(.+)", re.S),
     re.compile(
-        r"(?:这个|当前)(?:项目|空间|工作区)(?:中|里)?[：,:，]?\s*(.+)",
+        r"^在?(?:这个|当前)(?:项目|空间|工作区)(?:中|里)?[：,:，]?\s*(.+)",
         re.S,
     ),
-    re.compile(r"(?:所有项目|所有空间)(?:中|里)?[：,:，]?\s*(.+)", re.S),
+    re.compile(r"^在?(?:所有项目|所有空间)(?:中|里)?[：,:，]?\s*(.+)", re.S),
+)
+_EXPLICIT_MEMORY_PATTERNS = (
+    re.compile(r"\b(?:please\s+)?remember(?:\s+that)?\s+(.+)", re.I | re.S),
+    re.compile(r"\bI\s+prefer\s+(.+)", re.I | re.S),
+    re.compile(r"\bmy\s+(?:preference|default)\s+is\s+(.+)", re.I | re.S),
+    _SCOPE_LEAD_PATTERNS[0],
+    _SCOPE_LEAD_PATTERNS[1],
+    re.compile(r"(?:请)?记住[：,:]?\s*(.+)", re.S),
+    _SCOPE_LEAD_PATTERNS[2],
+    _SCOPE_LEAD_PATTERNS[3],
     re.compile(r"我(?:更)?(?:偏好|喜欢)[：,:，]?\s*(.+)", re.S),
+)
+_SCOPED_RULE_MAX_CHARS = 240
+_STANDING_RULE_MARKERS = re.compile(
+    r"\b(?:always|never|every|each|default|standard|convention|should|must"
+    r"|use|uses|prefer|from now on|going forward)\b"
+    r"|总是|始终|每次|每个|默认|统一|一律|以后|今后|使用|规范|约定|标准",
+    re.I,
 )
 _USER_SCOPE_MARKERS = (
     "across all projects",
@@ -96,6 +111,15 @@ _SPACE_SCOPE_MARKERS = (
     "当前工作区",
     "团队",
 )
+
+
+def _states_standing_rule(content: str) -> bool:
+    """A short, single-line rule rather than a one-off task request."""
+    return (
+        "\n" not in content
+        and len(content) <= _SCOPED_RULE_MAX_CHARS
+        and _STANDING_RULE_MARKERS.search(content) is not None
+    )
 
 
 @dataclass(frozen=True)
@@ -169,6 +193,10 @@ class ConservativeMemoryExtractor:
                 if proposal_scope != target_scope:
                     continue
                 content = match.group(1).strip().rstrip()
+                if pattern in _SCOPE_LEAD_PATTERNS and not (
+                    _states_standing_rule(content)
+                ):
+                    continue
                 if not content or len(content) > 1000:
                     break
                 normalized = content.casefold()
