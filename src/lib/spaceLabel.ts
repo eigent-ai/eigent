@@ -37,6 +37,22 @@ export function isPlaceholderProjectName(
 }
 
 /**
+ * Visible Session name for a Project. System default names matched by
+ * `isPlaceholderProjectName` (empty, `new project`, `Project <id>`) show the
+ * localized "New session" label; names the user chose are shown as stored.
+ * The stored name is not changed.
+ */
+export function getSessionDisplayName(
+  name: string | null | undefined,
+  projectId: string,
+  t: TFunction
+): string {
+  return isPlaceholderProjectName(name, projectId)
+    ? t('layout.new-project')
+    : (name ?? '').trim();
+}
+
+/**
  * Static check (no i18n) for default/placeholder Space names. Mirror of
  * `isPlaceholderProjectName` for spaces — used in store-level pruning logic.
  */

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import type { MemoryScopeType } from '@/service/memoryApi';
 import type { ProjectGroup } from '@/types/history';
 
@@ -56,7 +57,13 @@ export function resolveSpaceDetailMemoryTarget(
     if (project) {
       return {
         scope: { type: 'project', id: project.project_id },
-        label: project.project_name?.trim() || undefined,
+        // System default names fall back to the localized Session label.
+        label: isPlaceholderProjectName(
+          project.project_name,
+          project.project_id
+        )
+          ? undefined
+          : project.project_name?.trim(),
       };
     }
   }

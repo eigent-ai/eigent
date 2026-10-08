@@ -29,6 +29,7 @@ import {
   buildWorkspaceVersionHistoryView,
   technicalRefLabel,
 } from '@/components/Workspace/workspaceVersionHistoryView';
+import { getSessionDisplayName } from '@/lib/spaceLabel';
 import {
   executeAdvancedGit,
   fetchWorkspaceGitHistory,
@@ -98,10 +99,13 @@ export function WorkspaceVersionHistoryDialog({
     () =>
       new Map(
         getVisibleProjectMetasForSpace(projectsBySpaceId, spaceId).map(
-          (project) => [project.id, project.name]
+          (project) => [
+            project.id,
+            getSessionDisplayName(project.name, project.id, t),
+          ]
         )
       ),
-    [projectsBySpaceId, spaceId]
+    [projectsBySpaceId, spaceId, t]
   );
   const versionView = useMemo(
     () => (history ? buildWorkspaceVersionHistoryView(history.branches) : null),

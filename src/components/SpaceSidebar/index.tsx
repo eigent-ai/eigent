@@ -47,6 +47,7 @@ import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getFilesTabBindingLabel,
+  getSessionDisplayName,
   isUnboundUntitledSpace,
 } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON, AUTOMATION_OFF_ICON } from '@/lib/triggerIcon';
@@ -385,10 +386,7 @@ export default function SpaceSidebar({
             : undefined;
           return {
             id: project.id,
-            title:
-              project.name && project.name !== 'new project'
-                ? project.name
-                : t('layout.new-project'),
+            title: getSessionDisplayName(project.name, project.id, t),
             sessionLead: resolveSessionNavLeadPresentation({
               cachedLead: navLeadByProjectId[project.id],
               isHistoryLoading: Boolean(historyLoadingProjectIds[project.id]),

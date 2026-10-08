@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { getSessionDisplayName } from '@/lib/spaceLabel';
 import type { ProjectGroup } from '@/types/history';
 import { MessageCircle } from 'lucide-react';
 import { useMemo } from 'react';
@@ -102,20 +103,18 @@ export default function Projects({
   const filteredProjects = useMemo(() => {
     const filtered = !effectiveSearchQuery.trim()
       ? projects
-      : projects.filter((project) => {
-          const fallbackName = t('layout.new-project');
-          return matchesHubNameSearch(
+      : projects.filter((project) =>
+          matchesHubNameSearch(
             effectiveSearchQuery,
-            project.project_name?.trim() || fallbackName
-          );
-        });
+            getSessionDisplayName(project.project_name, project.project_id, t)
+          )
+        );
 
     return [...filtered].sort((a, b) => {
       if (sortBy === 'name') {
-        const fallbackName = t('layout.new-project');
         return compareHubByName(
-          a.project_name?.trim() || fallbackName,
-          b.project_name?.trim() || fallbackName,
+          getSessionDisplayName(a.project_name, a.project_id, t),
+          getSessionDisplayName(b.project_name, b.project_id, t),
           sortDirection
         );
       }

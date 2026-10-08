@@ -65,4 +65,15 @@ describe('Home Memory routing', () => {
       )
     ).toEqual({ scope: { type: 'space', id: 'space-1' } });
   });
+
+  it('leaves the label to the Session fallback for a system default name', () => {
+    const target = resolveSpaceDetailMemoryTarget(
+      'space-1',
+      new URLSearchParams('memoryScope=project&projectId=project-1'),
+      [{ ...projects[0], project_name: 'new project' }]
+    );
+
+    expect(target.scope).toEqual({ type: 'project', id: 'project-1' });
+    expect(target.label).toBeUndefined();
+  });
 });
