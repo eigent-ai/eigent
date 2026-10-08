@@ -402,6 +402,44 @@ async def test_follow_up_uses_current_capability_and_preserves_selection(
         assert state.journal.list_events("run-old") == old_events
 
 
+@pytest.mark.parametrize("api_mode", ["responses", "chat_completions"])
+def test_resume_outlives_registering_a_model_admitted_without_effort(
+    tmp_path, sample_chat_data, catalog, api_mode
+):
+    # The model is unregistered when the Attempt is admitted.
+    catalog.write(platform="openai")
+    admitted_options = chat_options(
+        sample_chat_data, "azure", cloud=True
+    ).model_copy(update={"thinking_effort": None})
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-old", project_id="project-1", status="pending"
+        )
+        admitted = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="run-old",
+            space_id="space-1",
+            working_directory=tmp_path,
+            created_by="fixture",
+            template=controller._legacy_environment_template(admitted_options),
+        )
+    assert admitted.spec.provider_value == "provider_default"
+
+    catalog.write(platform="azure")
+    options = admitted_options.model_copy(
+        update={"extra_params": {"api_mode": api_mode}}
+    )
+    if api_mode == "responses":
+        template = controller._validate_resume_model_capability(
+            options, admitted.spec
+        )
+        assert template.provider_capability.source == "catalog"
+    else:
+        with pytest.raises(UserException, match="capability changed"):
+            controller._validate_resume_model_capability(
+                options, admitted.spec
+            )
+
+
 def test_refresh_preserves_subscription_authentication_and_requested_effort():
     template = LegacyEnvironmentImporter().build_template(
         model_platform="openai",

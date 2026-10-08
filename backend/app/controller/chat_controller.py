@@ -117,6 +117,7 @@ from app.workspace_bundle.runtime import (
 from app.workspace_config import (
     EffectiveEnvironmentSpec,
     ModelCapabilityConfigError,
+    ProviderModelCapability,
     UnsupportedThinkingEffortError,
     WorkspaceBundleReconfigurationPendingError,
     WorkspaceConfigError,
@@ -526,13 +527,34 @@ def _load_attempt_environment_spec(
     return spec
 
 
+def _admitted_without_effort(
+    spec: EffectiveEnvironmentSpec,
+    current: ProviderModelCapability,
+) -> bool:
+    """Whether an unregistered-model Attempt can resume on today's capability.
+
+    Such an Attempt sends no effort, and Resume keeps its pinned value, so a
+    later registration of the same model does not change its requests.
+    """
+    pinned = spec.semantic_spec.get("runtime_capability_manifest", {}).get(
+        "model_capability", {}
+    )
+    return (
+        spec.provider_value == "provider_default"
+        and pinned.get("status") == "unknown_model"
+        and pinned.get("api_mode") == current.transport
+    )
+
+
 def _validate_resume_model_capability(
     data: Chat,
     spec: EffectiveEnvironmentSpec,
 ) -> EnvironmentAdmissionTemplate:
     template = _legacy_environment_template(data)
     current = template.provider_capability
-    if current.capability_revision != spec.provider_capability_revision:
+    if current.capability_revision != spec.provider_capability_revision and (
+        not _admitted_without_effort(spec, current)
+    ):
         raise UserException(
             code.error,
             "The model capability changed since this Attempt. Start a new "
