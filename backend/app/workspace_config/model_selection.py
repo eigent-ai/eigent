@@ -14,6 +14,7 @@
 
 """Read the installed model policy without loading any provider credentials."""
 
+from app.model.model_platform import canonical_model_platform
 from app.model.session_model import SessionModelSelection
 from app.run_journal import OptimisticConcurrencyError, SQLiteRunJournal
 from app.workspace_bundle.runtime import EnvironmentSetupRequiredError
@@ -117,7 +118,8 @@ def accepted_session_model(
                 not environment
                 or environment.environment_spec_digest
                 != attempt.environment_spec_digest
-                or model.get("platform") != selection.model_platform
+                or model.get("platform")
+                != canonical_model_platform(selection.model_platform)
                 or model.get("type") != selection.model_type
             ):
                 raise ValueError(

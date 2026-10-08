@@ -45,6 +45,7 @@ from app.model.chat import (
     SupplementChat,
     sse_json,
 )
+from app.model.model_platform import canonical_model_platform
 from app.run_context import (
     RunContext,
     apply_run_env_for_third_party,
@@ -1213,7 +1214,8 @@ async def _prepare_chat_run(
 ) -> _PreparedChatRun:
     """Bind fresh runtime inputs for a new Run or explicit Resume Attempt."""
     if data.session_model_selection is not None and (
-        data.session_model_selection.model_platform != data.model_platform
+        canonical_model_platform(data.session_model_selection.model_platform)
+        != canonical_model_platform(data.model_platform)
         or data.session_model_selection.model_type != data.model_type
     ):
         raise HTTPException(

@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from app.model.model_platform import (
     NormalizedModelPlatform,
     NormalizedOptionalModelPlatform,
+    canonical_model_platform,
     configure_meta_model_api_backend,
     is_eigent_cloud_model_endpoint,
     is_meta_model_api_endpoint,
@@ -48,6 +49,15 @@ def test_normalize_model_platform_maps_known_aliases():
 def test_normalize_model_platform_keeps_non_alias_unchanged():
     assert normalize_model_platform("openai") == "openai"
     assert normalize_model_platform("mistral") == "mistral"
+
+
+def test_canonical_model_platform_matches_alias_and_its_target():
+    assert canonical_model_platform("grok") == "openai-compatible-model"
+    assert canonical_model_platform("openai-compatible-model") == (
+        "openai-compatible-model"
+    )
+    assert canonical_model_platform("z.ai") == "zhipuai"
+    assert canonical_model_platform("OpenAI ") == "openai"
 
 
 def test_meta_model_api_endpoint_matches_exact_official_host():
