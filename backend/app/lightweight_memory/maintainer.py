@@ -78,44 +78,33 @@ _EXPLICIT_MEMORY_PATTERNS = (
     _ALL_SCOPES_PATTERN_ZH,
     re.compile(r"我(?:更)?(?:偏好|喜欢)[：,:，]?\s*(.+)", re.S),
 )
-# Words that make a scoped sentence a rule for later work.
+# A scoped message that states a rule is always kept.
 _RULE_WORDS = re.compile(
     r"\b(?:always|never|every|each|by default|from now on|going forward|must"
-    r"|should|don'?t|do not|avoid|prefer|convention|standard|reply in"
-    r"|respond in|answer in|before|after|whenever|unless|instead of)\b"
+    r"|should|don'?t|do not|avoid|prefer|conventions?|standards?|rules?"
+    r"|guidelines?|reply in|respond in|answer in|before|after|whenever|when"
+    r"|wherever|where possible|unless|instead of|rather than)\b"
     r"|总是|始终|每次|每个|默认|一律|以后|今后|从现在|必须|不要|别用|禁止|避免"
-    r"|务必|统一|都用|都要|而不是|回复用|用中文|用英文|之前|前先|之后|每当|的时候",
+    r"|务必|统一|都用|都要|而不是|回复用|用中文|用英文|之前|前先|之后|每当|的时候"
+    r"|不用|尽量|最好|优先|规范|约定|规则|要求|不能|只用|时(?!间)",
     re.I,
 )
-_TASK_VERBS = (
-    r"(?:please\s+)?(?:create|write|build|make|generate|add|implement|fix"
-    r"|run|open|find|analy[sz]e|summari[sz]e|draft|research|download"
-    r"|install|delete|remove|update|refactor|test|deploy|check|review"
-    r"|translate|compare|list|show|explain|help|do|investigate|look|tell"
-    r"|set up|rename|move|plot|compute|calculate|scrape|fetch|send)\b"
-)
-_TASK_VERBS_ZH = (
-    r"(?:请)?(?:帮我|帮忙|创建|新建|写|生成|做|实现|修复|运行|跑|打开|查找|找|分析"
-    r"|总结|起草|下载|安装|删除|更新|重构|部署|检查|翻译|列出|解释|看看|看一下|加)"
-)
-_TASK_LEAD = re.compile(
-    r"^\s*(?:" + _TASK_VERBS + r"|" + _TASK_VERBS_ZH + r")", re.I
-)
-_TASK_STEP = re.compile(
-    r"^\s*\d+[.)、]\s*(?:" + _TASK_VERBS + r"|" + _TASK_VERBS_ZH + r")",
-    re.I | re.M,
-)
-_NUMBERED_STEP = re.compile(r"^\s*\d+[.)、]", re.M)
-_QUESTION = re.compile(
-    r"[?？]\s*$|^\s*(?:what|how|why|when|where|which|who|can you|could you"
-    r"|would you|does|is|are)\b|吗[？?]?\s*$|什么|怎么|如何|为什么|哪",
+# Verbs that open a request for work rather than a convention. Verbs that
+# also open conventions ("write docs in English", "run lint before ...") are
+# deliberately left out.
+_REQUEST_LEAD = re.compile(
+    r"^\s*(?:(?:please\s+)?(?:create|implement|fix|refactor|investigate"
+    r"|analy[sz]e|summari[sz]e|research|download|delete|remove|rename"
+    r"|scrape|fetch|plot|compare|help|tell|find|set up)\b"
+    r"(?!\s+(?:sure|note)\b)"
+    r"|(?:请)?(?:帮我|帮忙|请帮|麻烦|创建|新建|实现|修复|重构|调研|起草|下载"
+    r"|看看|看一下)(?![^，。,\s]{0,2}的))",
     re.I,
 )
-_USE_FOR_TASK = re.compile(
-    r"\buse\b.{0,80}?\bto\s+(?:" + _TASK_VERBS + r")"
-    r"|用.{0,40}?(?:来|去)?(?:" + _TASK_VERBS_ZH + r")",
-    re.I | re.S,
-)
+_ENDS_AS_QUESTION = re.compile(r"[?？]\s*$")
+_SENTENCE_BREAK = re.compile(r"[.!?;](?:\s|$)|[。！？；\n]")
+# Pasted task prompts run long; rules are usually a sentence or a short list.
+_LONG_REQUEST_CHARS = 240
 _USER_SCOPE_MARKERS = (
     "across all projects",
     "across all spaces",
@@ -150,22 +139,19 @@ _SPACE_SCOPE_MARKERS = (
 )
 
 
-def _reads_as_one_off(raw: str, content: str) -> bool:
-    """Whether a scoped message asks for a piece of work, not a rule.
+def _reads_as_one_off(raw: str, content: str, lead: str) -> bool:
+    """Whether a scoped message clearly asks for work rather than a rule.
 
-    Only clear requests are skipped, and any rule word keeps the message, so
-    this never saves something the extractor would not have saved before.
+    ``lead`` is the text before the scope phrase. Only clear requests are
+    skipped, so this never saves something that was not saved before.
     """
-    if len(_TASK_STEP.findall(content)) >= 2:
-        return True
     if _RULE_WORDS.search(content):
         return False
     return bool(
-        _TASK_LEAD.search(raw)
-        or _TASK_LEAD.search(content)
-        or _QUESTION.search(content)
-        or _NUMBERED_STEP.search(content)
-        or _USE_FOR_TASK.search(content)
+        (_REQUEST_LEAD.search(raw) and not _SENTENCE_BREAK.search(lead))
+        or _REQUEST_LEAD.search(content)
+        or _ENDS_AS_QUESTION.search(content)
+        or len(content) > _LONG_REQUEST_CHARS
     )
 
 
@@ -242,8 +228,9 @@ class ConservativeMemoryExtractor:
                 content = match.group(1).strip().rstrip()
                 if not content or len(content) > 1000:
                     break
+                message = raw.strip()
                 if pattern in _SCOPE_PHRASE_PATTERNS and _reads_as_one_off(
-                    raw.strip(), content
+                    message, content, message[: match.start()]
                 ):
                     break
                 normalized = content.casefold()

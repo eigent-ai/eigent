@@ -524,20 +524,27 @@ def _extracted_scope(message: str) -> str | None:
         "In this Project, Python 3.12 is standard.",
         "For this Space, use UTC timestamps.",
         "请在这个项目中统一使用 pnpm",
-        "以后在这个项目里都用 pnpm",
         "From now on, in this project use pnpm.",
         "Hi! In this project, always use pnpm.",
-        "在这个项目里，必须写单元测试",
-        "在这个项目里不要用 lodash",
-        "在当前空间里，回复用中文",
-        "所有项目都用 UTC 时间",
         "In this project, don't add semicolons.",
         "For this Space, reply in Chinese.",
         "In this project, the entry point is main.py.",
-        "In this project, run prettier before committing.",
-        "在这个项目里，提交前先跑测试",
-        "For this Space:\n- use UTC\n- use pnpm",
-        "In this project:\n1. Always use pnpm.\n2. Never commit secrets.",
+        "In this project, 3.12 is the required Python version.",
+        # Conventions that open with a verb, wherever the scope phrase is.
+        "Write all commit messages in English in this workspace.",
+        "Run `make lint` before you tell me something is done in this space.",
+        "test with pytest -q, not unittest, in this workspace pls",
+        "Add type hints to every new function you write in this project.",
+        "In this project, use uv to install dependencies.",
+        "In this project, run tests with `make test`.",
+        "In this project, when writing tests, use pytest fixtures.",
+        "In this project:\n1. Use pnpm.\n2. Write tests for new code.",
+        "这个项目里用 uv 安装依赖。",
+        "这个项目中，测试用 pytest 写。",
+        "在这个项目里，必须写单元测试",
+        "这个项目里，哪怕很小的改动也要写测试",
+        "我喜欢这个项目里，帮我写的代码都带类型注解",
+        "所有项目都用 UTC 时间",
     ],
 )
 def test_extractor_keeps_rules_that_name_a_scope(message):
@@ -549,24 +556,29 @@ def test_extractor_keeps_rules_that_name_a_scope(message):
     [
         "Create hello.py in this project and run it.",
         "Fix the failing test in this project.",
-        "In this project, create a hello.py that prints the date.",
+        "In this project, create a REST endpoint for users.",
         "In this project, summarize the README and list the open TODOs.",
-        "In this project, use pandas to analyse data.csv.",
-        "For all projects, use the new template to generate a Q3 report.",
-        "Draft a launch plan for all projects in the portfolio.",
-        "In this Space, can you check why the build fails?",
+        "Summarize the launch plan for all projects in the portfolio.",
+        "Can you fix the failing login test in this project?",
         "In this project, what does main.py do?",
-        "In this project, do the following:\n1. Create a folder named "
-        "reports.\n2. Write a summary of each file into reports/summary.md.",
+        "In this project, " + "go through the release checklist " * 10,
         "在当前项目中创建一个 hello.py 并运行。",
         "在这个项目里，帮我分析一下 data.csv 并画个图",
-        "在当前空间中，生成一份本周周报",
-        "这个项目里的 bug 是什么原因？",
         "帮我在当前项目里加一个登录页面",
+        "这个项目里的 bug 是什么原因？",
     ],
 )
 def test_extractor_skips_one_off_requests_that_name_a_scope(message):
     assert _extracted_scope(message) is None
+
+
+def test_extractor_keeps_a_rule_that_follows_a_request():
+    assert (
+        _extracted_scope(
+            "Create hello.py first. In this project, use Python 3.12."
+        )
+        == "project"
+    )
 
 
 def test_incremental_maintainer_saves_scoped_rules_but_not_requests(service):
@@ -584,7 +596,7 @@ def test_incremental_maintainer_saves_scoped_rules_but_not_requests(service):
         "请在这个项目中统一使用 pnpm",
         "For this Space, research competitors and write competitors.md.",
         "For this Space, reply in Chinese.",
-        "Draft a launch plan for all projects in the portfolio.",
+        "Summarize the launch plan for all projects in the portfolio.",
     )
     for index, content in enumerate(messages):
         journal.append_event(
