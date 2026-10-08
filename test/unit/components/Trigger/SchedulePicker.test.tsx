@@ -145,6 +145,18 @@ describe('SchedulePicker time validation', () => {
     expect(screen.getByText(message)).toBeInTheDocument();
   });
 
+  it('highlights a cleared hour so the preview message points at it', async () => {
+    const user = userEvent.setup();
+    const { onValidationChange } = renderPicker();
+
+    await commit(user, 'Hour', '');
+
+    expect(lastValidity(onValidationChange)).toBe(false);
+    expect(screen.getByText(HOUR_ERROR)).toBeInTheDocument();
+    await user.click(screen.getByText('Preview Scheduled Times'));
+    expect(screen.getByText(PREVIEW_BLOCKED)).toBeInTheDocument();
+  });
+
   it.each(['One Time', 'Weekly', 'Monthly'])(
     'validates the shared time fields on the %s tab',
     async (tab) => {
@@ -197,6 +209,41 @@ describe('SchedulePicker time validation', () => {
     expect(onChange.mock.calls.length).toBe(callsBeforeEdit);
     expect(screen.getByText(DAY_ERROR)).toBeInTheDocument();
   });
+
+  it('keeps the chosen day of month valid after tabbing through the field', async () => {
+    const user = userEvent.setup();
+    const { onChange, onValidationChange } = renderPicker();
+    await user.click(screen.getByRole('tab', { name: 'Monthly' }));
+    const callsBeforeEdit = onChange.mock.calls.length;
+
+    // The field shows the "1st" label for day 1. Leaving it unchanged must
+    // not save that label as the day.
+    await user.click(field('Day of Month'));
+    await user.tab();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    expect(field('Day of Month')).toHaveValue('1st');
+    expect(screen.queryByText(DAY_ERROR)).not.toBeInTheDocument();
+    expect(lastValidity(onValidationChange)).toBe(true);
+    expect(onChange.mock.calls.length).toBe(callsBeforeEdit);
+  });
+
+  it('accepts a typed day-of-month label such as "15th"', async () => {
+    const user = userEvent.setup();
+    const { onChange, onValidationChange } = renderPicker();
+    await user.click(screen.getByRole('tab', { name: 'Monthly' }));
+    await commit(user, 'Hour', '12');
+    await commit(user, 'Minute', '30');
+
+    await commit(user, 'Day of Month', '15th');
+
+    const { utcHour, utcMinute, dayOffset } = localTimeToUTC(12, 30);
+    expect(screen.queryByText(DAY_ERROR)).not.toBeInTheDocument();
+    expect(lastValidity(onValidationChange)).toBe(true);
+    expect(onChange.mock.lastCall?.[0]).toBe(
+      `${utcMinute} ${utcHour} ${15 + dayOffset} * *`
+    );
+  });
 });
 
 describe('SchedulePicker editing an existing Automation', () => {
@@ -221,6 +268,22 @@ describe('SchedulePicker editing an existing Automation', () => {
     expect(screen.queryByText(MINUTE_ERROR)).not.toBeInTheDocument();
     expect(lastValidity(onValidationChange)).toBe(true);
     // Nothing is emitted when the loaded cron already matches the fields.
+    expect(onChange.mock.lastCall?.[0] ?? cron).toBe(cron);
+  });
+
+  it('keeps a loaded monthly day valid after tabbing through the field', async () => {
+    const user = userEvent.setup();
+    const cron = `${utcMinute} ${utcHour} ${15 + dayOffset} * *`;
+    const { onChange, onValidationChange } = renderPicker(cron);
+    expect(field('Day of Month')).toHaveValue('15th');
+
+    await user.click(field('Day of Month'));
+    await user.tab();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    expect(field('Day of Month')).toHaveValue('15th');
+    expect(screen.queryByText(DAY_ERROR)).not.toBeInTheDocument();
+    expect(lastValidity(onValidationChange)).toBe(true);
     expect(onChange.mock.lastCall?.[0] ?? cron).toBe(cron);
   });
 

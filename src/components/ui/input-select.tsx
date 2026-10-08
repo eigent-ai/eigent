@@ -131,7 +131,12 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
 
       // Use ref to get the latest inputValue (avoids stale closure issue)
       const currentInputValue = inputValueRef.current;
-      let finalValue = currentInputValue;
+      // The input displays an option's label, so text matching a label
+      // commits that option's value instead of the label text.
+      const matchedOption = options.find(
+        (opt) => opt.label === currentInputValue.trim()
+      );
+      let finalValue = matchedOption ? matchedOption.value : currentInputValue;
 
       // Run custom commit handler if provided
       if (onInputCommit) {
@@ -162,7 +167,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       }
 
       isCommittingRef.current = false;
-    }, [value, onInputCommit, validateInput, onChange]);
+    }, [value, options, onInputCommit, validateInput, onChange]);
 
     // Handle click outside to close dropdown
     React.useEffect(() => {

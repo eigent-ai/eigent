@@ -131,23 +131,18 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     minuteNum !== null &&
     (frequency !== 'monthly' || dayOfMonthNum !== null);
 
-  // A typed value shows its range error as soon as it is committed. An empty
-  // field waits for submit, like the other required schedule fields.
+  // These fields always start with a value, so a committed invalid or cleared
+  // value shows its range error right away and matches the preview message.
   const getRangeError = (
-    value: string,
     parsed: number | null,
     { min, max }: ScheduleNumberRange
-  ): string | undefined => {
-    if (parsed !== null || (!value.trim() && !showErrors)) return undefined;
-    return t('triggers.schedule-whole-number-range', { min, max });
-  };
-  const hourError = getRangeError(hour, hourNum, HOUR_RANGE);
-  const minuteError = getRangeError(minute, minuteNum, MINUTE_RANGE);
-  const dayOfMonthError = getRangeError(
-    dayOfMonth,
-    dayOfMonthNum,
-    DAY_OF_MONTH_RANGE
-  );
+  ): string | undefined =>
+    parsed === null
+      ? t('triggers.schedule-whole-number-range', { min, max })
+      : undefined;
+  const hourError = getRangeError(hourNum, HOUR_RANGE);
+  const minuteError = getRangeError(minuteNum, MINUTE_RANGE);
+  const dayOfMonthError = getRangeError(dayOfMonthNum, DAY_OF_MONTH_RANGE);
 
   // Memoize disabled function for date pickers to prevent re-renders
   const _disabledPastDates = useCallback((date: Date) => {
