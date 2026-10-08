@@ -19,6 +19,7 @@ import json
 import sys
 from contextlib import AsyncExitStack, asynccontextmanager
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -35,6 +36,7 @@ from app.model.enums import Status
 from app.run_context import RunContext, run_context_scope
 from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.run_runtime.coordinator import RunCoordinator
+from app.workspace_config import capabilities
 from app.workspace_config.admission import (
     EnvironmentAdmissionService,
     LegacyEnvironmentImporter,
@@ -402,15 +404,61 @@ async def test_follow_up_uses_current_capability_and_preserves_selection(
         assert state.journal.list_events("run-old") == old_events
 
 
-@pytest.mark.parametrize("api_mode", ["responses", "chat_completions"])
-def test_resume_outlives_registering_a_model_admitted_without_effort(
-    tmp_path, sample_chat_data, catalog, api_mode
+@pytest.mark.parametrize(
+    "platform,cloud,extra_params,auth_source,resumes",
+    [
+        # Eigent Cloud sends the Responses transport with every request.
+        ("azure", True, {"api_mode": "responses"}, None, True),
+        # Without it the Attempt was pinned to Chat Completions.
+        ("openai", False, {}, None, False),
+        # Same model and transport, but a different way to pay for it.
+        (
+            "openai",
+            False,
+            {"api_mode": "responses"},
+            "codex_subscription",
+            False,
+        ),
+    ],
+)
+def test_resume_after_sol_is_registered(
+    tmp_path,
+    monkeypatch,
+    sample_chat_data,
+    platform,
+    cloud,
+    extra_params,
+    auth_source,
+    resumes,
 ):
-    # The model is unregistered when the Attempt is admitted.
-    catalog.write(platform="openai")
+    builtin = json.loads(
+        Path(capabilities.__file__)
+        .with_name("model_capabilities.json")
+        .read_text(encoding="utf-8")
+    )
+    before_sol = tmp_path / "before-sol.json"
+    before_sol.write_text(
+        json.dumps(
+            {
+                **builtin,
+                "models": [
+                    model
+                    for model in builtin["models"]
+                    if model["model_type"] != "gpt-6-sol"
+                ],
+            }
+        )
+    )
+    monkeypatch.setenv("EIGENT_MODEL_CAPABILITY_CATALOG", str(before_sol))
     admitted_options = chat_options(
-        sample_chat_data, "azure", cloud=True
-    ).model_copy(update={"thinking_effort": None})
+        sample_chat_data, platform, cloud=cloud
+    ).model_copy(
+        update={
+            "model_type": "gpt-6-sol",
+            "thinking_effort": None,
+            "extra_params": extra_params,
+        }
+    )
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(
             run_id="run-old", project_id="project-1", status="pending"
@@ -424,17 +472,18 @@ def test_resume_outlives_registering_a_model_admitted_without_effort(
         )
     assert admitted.spec.provider_value == "provider_default"
 
-    catalog.write(platform="azure")
+    monkeypatch.delenv("EIGENT_MODEL_CAPABILITY_CATALOG")
     options = admitted_options.model_copy(
-        update={"extra_params": {"api_mode": api_mode}}
+        update={"auth_source": auth_source} if auth_source else {}
     )
-    if api_mode == "responses":
+    if resumes:
         template = controller._validate_resume_model_capability(
             options, admitted.spec
         )
         assert template.provider_capability.source == "catalog"
+        assert template.provider_capability.supported_efforts
     else:
-        with pytest.raises(UserException, match="capability changed"):
+        with pytest.raises(UserException, match="Send a new message"):
             controller._validate_resume_model_capability(
                 options, admitted.spec
             )

@@ -117,7 +117,7 @@ from app.workspace_bundle.runtime import (
 from app.workspace_config import (
     EffectiveEnvironmentSpec,
     ModelCapabilityConfigError,
-    ProviderModelCapability,
+    ModelCapabilityRegistry,
     UnsupportedThinkingEffortError,
     WorkspaceBundleReconfigurationPendingError,
     WorkspaceConfigError,
@@ -136,6 +136,7 @@ from app.workspace_runtime.entry_guard import (
 
 router = APIRouter()
 _CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
+_NO_REGISTERED_MODELS = {"schema_version": 1, "revision": "none", "models": []}
 
 # Logger for chat controller
 chat_logger = logging.getLogger("chat_controller")
@@ -529,20 +530,31 @@ def _load_attempt_environment_spec(
 
 def _admitted_without_effort(
     spec: EffectiveEnvironmentSpec,
-    current: ProviderModelCapability,
+    template: EnvironmentAdmissionTemplate,
 ) -> bool:
-    """Whether an unregistered-model Attempt can resume on today's capability.
+    """Whether a pre-registration Attempt can resume on today's capability.
 
-    Such an Attempt sends no effort, and Resume keeps its pinned value, so a
-    later registration of the same model does not change its requests.
+    It was admitted for a model with no registered efforts and sends none.
+    Resume keeps that, so it may continue after the model is registered,
+    provided nothing else about the model's capability changed.
     """
+    current = template.provider_capability
     pinned = spec.semantic_spec.get("runtime_capability_manifest", {}).get(
         "model_capability", {}
     )
+    if (
+        spec.provider_value != "provider_default"
+        or pinned.get("status") != "unknown_model"
+        or current.source != "catalog"
+        or pinned.get("api_mode") != current.transport
+        or template.model_capability_inputs is None
+    ):
+        return False
+    unregistered = ModelCapabilityRegistry(_NO_REGISTERED_MODELS).resolve(
+        **template.model_capability_inputs
+    )
     return (
-        spec.provider_value == "provider_default"
-        and pinned.get("status") == "unknown_model"
-        and pinned.get("api_mode") == current.transport
+        unregistered.capability_revision == spec.provider_capability_revision
     )
 
 
@@ -553,12 +565,12 @@ def _validate_resume_model_capability(
     template = _legacy_environment_template(data)
     current = template.provider_capability
     if current.capability_revision != spec.provider_capability_revision and (
-        not _admitted_without_effort(spec, current)
+        not _admitted_without_effort(spec, template)
     ):
         raise UserException(
             code.error,
-            "The model capability changed since this Attempt. Start a new "
-            "Attempt with an explicit environment upgrade.",
+            "The model capability changed after this task started, so it "
+            "can't be resumed. Send a new message to continue.",
         )
     persisted_model = spec.semantic_spec.get(
         "runtime_capability_manifest", {}
