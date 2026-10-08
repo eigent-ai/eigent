@@ -437,7 +437,7 @@
   "notice-context": "Esta conversación es demasiado larga para el modelo elegido. Inicia una nueva sesión.",
   "notice-request": "Este modelo no pudo procesar la solicitud.",
   "notice-model-unavailable": "Este modelo no está disponible ahora.",
-  "notice-thinking-effort": "Este modelo no admite el esfuerzo de razonamiento seleccionado. Elige otro esfuerzo de razonamiento u otro modelo e inténtalo de nuevo.",
+  "notice-thinking-effort": "Este modelo no admite el esfuerzo de razonamiento seleccionado. Cambia el esfuerzo de razonamiento a «Predeterminado» o elige otro modelo e inténtalo de nuevo.",
   "notice-task": "La tarea no pudo continuar. Reinténtalo o contacta con soporte.",
   "notice-contact-description": "Contacta con support@eigent.ai para informar del problema.",
   "notice-refresh-description": "Actualiza para consultar tu saldo actual.",

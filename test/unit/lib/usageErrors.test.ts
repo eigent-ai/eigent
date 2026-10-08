@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { createSSEAdmissionError } from '@/lib/responseError';
+import {
+  createSSEAdmissionError,
+  sanitizeResponseError,
+} from '@/lib/responseError';
 import {
   classifyError,
   errorPresentationReason,
@@ -113,6 +116,23 @@ describe('usage error classification', () => {
       code: 'unsupported_thinking_effort',
       userMessage: 'chat.notice-thinking-effort',
     });
+  });
+  it('replaces the diagnostic when a follow-up is refused for its effort', () => {
+    const diagnostic =
+      "unknown_model: thinking effort capabilities are not registered; cannot honor effort 'high'.";
+    const error = Object.assign(new Error(diagnostic), {
+      response: {
+        status: 422,
+        data: {
+          detail: { code: 'unsupported_thinking_effort', message: diagnostic },
+        },
+      },
+    });
+    const reason = classifyError(error);
+    expect(reason).toBe('thinking-effort');
+    expect(sanitizeResponseError(error, reason).message).toBe(
+      'chat.notice-thinking-effort'
+    );
   });
   it('shows a provider 5xx as an unavailable model, but not a local one', () => {
     const outage = `Error code: 503 - {'error': {'message': 'Service Unavailable'}}`;

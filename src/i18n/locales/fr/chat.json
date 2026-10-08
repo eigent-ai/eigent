@@ -437,7 +437,7 @@
   "notice-context": "Cette conversation est trop longue pour le modèle choisi. Démarrez une nouvelle session.",
   "notice-request": "Ce modèle n’a pas pu traiter la requête.",
   "notice-model-unavailable": "Ce modèle est indisponible pour le moment.",
-  "notice-thinking-effort": "Ce modèle ne prend pas en charge l’effort de réflexion sélectionné. Choisissez un autre effort de réflexion ou un autre modèle, puis réessayez.",
+  "notice-thinking-effort": "Ce modèle ne prend pas en charge l’effort de réflexion sélectionné. Réglez l’effort de réflexion sur « Par défaut » ou choisissez un autre modèle, puis réessayez.",
   "notice-task": "La tâche n’a pas pu continuer. Réessayez ou contactez l’assistance.",
   "notice-contact-description": "Contactez support@eigent.ai pour signaler ce problème.",
   "notice-refresh-description": "Actualisez pour consulter votre solde actuel.",
