@@ -18,6 +18,7 @@ import type { VanillaChatStore } from '@/store/chatStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -54,6 +55,12 @@ vi.mock('@/store/projectRuntimeStore', () => ({
       selector({ activeProjectId: 'session-waiting' }),
     { getState: () => ({ setActiveProject: navigation.setActiveProject }) }
   ),
+}));
+
+// Brain confirms that every approval in these tests is still pending.
+vi.mock('@/service/humanInteractionApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/service/humanInteractionApi')>()),
+  isHumanInteractionStillPending: vi.fn(async () => true),
 }));
 
 vi.mock('@/lib/projectRuntimeHydration', () => ({
@@ -584,5 +591,110 @@ describe('UserQueryGroup Space writer wait', () => {
       screen.getByText(/stopped while it was changing files/)
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open session' })).toBeNull();
+  });
+});
+
+describe('UserQueryGroup restored Run requests', () => {
+  const expiresAt = Date.now() / 1000 + 86_400;
+  const messages = [
+    { id: 'user-1', role: 'user', content: 'Write two files' },
+    {
+      id: 'ask-two',
+      role: 'agent',
+      step: AgentStep.ASK,
+      content: 'The agent wants to write a file.',
+      agent_name: 'single_agent',
+      interaction: {
+        interaction_id: 'approval:call-two',
+        interaction_type: 'approval',
+        approval_id: 'approval:call-two',
+        run_id: 'run-1',
+        version: 0,
+        expires_at: expiresAt,
+        question: 'The agent wants to write a file.',
+        title: 'Allow write_to_file?',
+        agent: 'single_agent',
+        action_digest: 'digest-two',
+        allowed_scopes: ['once'],
+        target_resources: [],
+      },
+    },
+  ];
+  let version = 0;
+  const project = (...eventTypes: string[]) => {
+    const ingress = new RunEventIngress('session-waiting', 'run-1');
+    for (const eventType of eventTypes) {
+      version += 1;
+      ingress.ingest({
+        event_id: `restored-${version}`,
+        project_id: 'session-waiting',
+        run_id: 'run-1',
+        run_sequence: version,
+        run_version: version,
+        event_type: eventType,
+        legacy_step: null,
+        created_at: '2026-10-07T10:00:00Z',
+        payload:
+          eventType === 'approval.requested'
+            ? { approval_id: 'approval:call-two', expires_at: expiresAt }
+            : {},
+      });
+    }
+  };
+  const restored = (durableRunStatus: string | undefined) =>
+    renderGroups(messages, { type: 'replay', durableRunStatus });
+  const card = () => screen.queryByText('Allow write_to_file?');
+
+  afterEach(() => {
+    cleanup();
+    runProjectionStore.clear();
+    version = 0;
+  });
+
+  it('offers a request raised after the Session was restored', async () => {
+    project('run.attempt_created', 'run.attempt_started');
+    restored('running');
+    expect(card()).toBeNull();
+
+    act(() => project('approval.requested'));
+
+    expect(card()).not.toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled()
+    );
+  });
+
+  it('keeps the card of a Run that was already waiting when restored', () => {
+    restored('waiting_for_user');
+
+    expect(card()).not.toBeNull();
+  });
+
+  it('keeps the request read-only after the Run was interrupted', () => {
+    project('run.attempt_created', 'run.attempt_started', 'run.interrupted');
+    restored('running');
+
+    expect(card()).toBeNull();
+  });
+
+  it('never reopens a Run that has ended', () => {
+    project('run.attempt_created', 'approval.requested');
+    restored('completed');
+
+    expect(card()).toBeNull();
+  });
+
+  it('offers the request when only the projection knows the Run waits', () => {
+    project('run.attempt_created', 'approval.requested');
+    restored(undefined);
+
+    expect(card()).not.toBeNull();
+  });
+
+  it('keeps a replay read-only until its Run waits', () => {
+    project('run.attempt_created', 'run.attempt_started');
+    restored(undefined);
+
+    expect(card()).toBeNull();
   });
 });
