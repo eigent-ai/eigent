@@ -151,6 +151,22 @@ describe('usage error classification', () => {
       'task'
     );
   });
+  it('shows a retryable provider failure without a status as an unavailable model', () => {
+    const transport = (message: string) =>
+      classifyError({
+        message,
+        retryable: true,
+        reason: 'model_transport_error',
+      });
+    expect(
+      transport('<html><head><title>502 Bad Gateway</title></head></html>')
+    ).toBe('model-unavailable');
+    expect(transport('Connection error.')).toBe('connection');
+    expect(transport('Request timed out.')).toBe('timeout');
+    expect(transport('Error code: 429 - rate limit reached')).toBe(
+      'rate-limit'
+    );
+  });
   it('only recognizes the legacy system-error prefix', () => {
     expect(isLegacyTaskError('Here is an example: Error code: 403')).toBe(
       false

@@ -203,6 +203,9 @@ export function classifyError(
     return 'model-unavailable';
   // A provider's own 5xx reply. A bare status may come from the local backend.
   if (/error code: 5\d\d\b/.test(text)) return 'model-unavailable';
+  // The backend's code for a provider failure it can retry, such as a gateway
+  // page that carries no status in its text.
+  if (reason === 'model_transport_error') return 'model-unavailable';
   return 'task';
 }
 
