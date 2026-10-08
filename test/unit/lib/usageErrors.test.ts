@@ -158,6 +158,8 @@ describe('usage error classification', () => {
         retryable: true,
         reason: 'model_transport_error',
       });
+    // The OpenAI client reports a non-JSON reply by its body alone.
+    expect(transport('Bad Gateway')).toBe('model-unavailable');
     expect(
       transport('<html><head><title>502 Bad Gateway</title></head></html>')
     ).toBe('model-unavailable');
