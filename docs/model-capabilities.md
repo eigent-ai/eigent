@@ -37,6 +37,14 @@ application declarations; the mocked tests do not establish support for a
 particular live Azure deployment. Consult the provider's model/deployment contract
 before registering a deployment.
 
+The built-in `gpt-6-sol` entries for OpenAI and Azure declare `low`, `medium`,
+and `high` only, with `medium` as the default and the same Responses selection
+for tools. `xhigh` and `max` stay unsupported until confirmed for this model.
+
+Do not bump the catalog's top-level `revision` when adding an entry. It is part
+of every catalog entry's capability digest, so a bump would block Resume for
+every interrupted attempt on an existing entry (see Revisions and resume).
+
 Legacy OpenAI/Azure prefix rules remain compatibility fallbacks. New models should
 use a catalog entry or override. The existing Codex subscription mapping of
 `max` to `xhigh` is unchanged. The historical product alias `ultra` normalizes to
@@ -135,6 +143,14 @@ these inputs can invalidate the existing resume capability check, including for
 attempts created with an older capability digest format. This change does not
 rewrite historical attempts or bypass that check. Start a new Run when an older
 attempt cannot satisfy the current capability contract.
+
+One case may resume across a digest change: an attempt admitted for an
+unregistered model, which sent no effort, after that model gains a catalog
+entry. Resume keeps the pinned provider default, so its requests do not change.
+It is allowed only when the current capability comes from the catalog, the
+pinned transport equals the current one, and resolving the current inputs with
+no catalog entries reproduces the pinned digest. A change of authentication
+source, override, or transport is still refused.
 
 ## Anthropic tool compatibility
 
