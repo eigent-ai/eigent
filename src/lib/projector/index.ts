@@ -197,7 +197,15 @@ export function projectSnapshot(
           },
           event
         ).status;
-        const next = reduceProjectedRun(run, event);
+        // `run.lastSequence` already covers the whole retained tail. Reduce
+        // against the proven prefix instead, so an elapsed checkpoint read
+        // while the Run was live continues across appends that follow it.
+        const next = reduceProjectedRun(
+          throughSequence === null
+            ? run
+            : { ...run, lastSequence: throughSequence },
+          event
+        );
         if (
           event.runVersion === aggregateRunVersion ||
           explicitStatus !== 'unknown' ||
@@ -205,7 +213,11 @@ export function projectSnapshot(
             event.runSequence === throughSequence + 1) ||
           TERMINAL_RUN_STATUSES.has(run.status)
         ) {
-          run = { ...next, origin: run.origin };
+          run = {
+            ...next,
+            origin: run.origin,
+            lastSequence: Math.max(run.lastSequence, next.lastSequence),
+          };
           throughSequence = event.runSequence;
         } else {
           // A gap can hide recovery. Keep the last proven state/version so a

@@ -1675,6 +1675,64 @@ describe('projector pipeline', () => {
     expect(afterGap.runs['run-1'].totalAttemptElapsedMs).toBeNull();
   });
 
+  it('keeps a live elapsed checkpoint across events appended after the Run listing', () => {
+    // Reopening a Session lists Runs before it reads their events, so the
+    // event tail can extend past the listed version while the Run continues.
+    const appended = (sequence: number, eventType: string) =>
+      event({
+        event_id: `event-${sequence}`,
+        run_sequence: sequence,
+        run_version: sequence,
+        cloud_cursor: null,
+        event_type: eventType,
+        legacy_step: null,
+        payload: {},
+        created_at: '2026-08-05T10:01:00Z',
+      });
+    const reopened = (eventTypes: string[]) =>
+      projectSnapshot({
+        project_id: 'project-1',
+        current_cursor: 0,
+        runs: [
+          {
+            run_id: 'run-1',
+            status: 'running',
+            run_version: 3,
+            expected_next_run_sequence: 3 + eventTypes.length,
+            updated_at: '2026-08-05T10:00:00Z',
+            total_attempt_elapsed_ms: 62_000,
+            totalAttemptElapsedAt: '2026-08-05T10:01:00.000Z',
+          },
+        ],
+        recent_events: eventTypes.map((eventType, index) =>
+          appended(3 + index, eventType)
+        ),
+        events_truncated: true,
+      }).runs['run-1'];
+
+    expect(
+      reopened(['step.created', 'tool.completed', 'approval.requested'])
+    ).toMatchObject({
+      status: 'waiting_for_user',
+      lastSequence: 5,
+      totalAttemptElapsedMs: 62_000,
+      totalAttemptElapsedAt: '2026-08-05T10:01:00.000Z',
+    });
+    // An interruption among the appends ends that measurement.
+    expect(
+      reopened([
+        'step.created',
+        'runtime.interrupted',
+        'run.attempt_created',
+        'run.attempt_started',
+      ])
+    ).toMatchObject({
+      status: 'running',
+      lastSequence: 6,
+      totalAttemptElapsedMs: null,
+    });
+  });
+
   it('preserves legacy raw payload across all V1 importers', () => {
     const legacy = {
       step_id: 9,
