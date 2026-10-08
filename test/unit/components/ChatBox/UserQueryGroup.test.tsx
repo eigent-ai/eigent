@@ -364,6 +364,37 @@ describe('Task failure summary ownership', () => {
     }
   );
 
+  it('drops the error notice of an Attempt that a completed Resume superseded', () => {
+    const messages = [
+      { id: 'user', role: 'user', content: 'Reply with ok' },
+      {
+        id: 'error',
+        role: 'agent',
+        step: AgentStep.ERROR,
+        content: '❌ **Error**: Bad Gateway',
+        errorReason: 'model-unavailable',
+      },
+      { id: 'end', role: 'agent', step: AgentStep.END, content: 'ok' },
+    ];
+    const completed = renderGroups(messages, {
+      status: ChatTaskStatus.FINISHED,
+      durableRunStatus: 'completed',
+    });
+    expect(
+      screen.queryByTestId('agent-message-card-error')
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('agent-message-card-end')).toHaveTextContent(
+      'ok'
+    );
+
+    completed.unmount();
+    renderGroups(messages, {
+      status: ChatTaskStatus.FINISHED,
+      durableRunStatus: 'interrupted',
+    });
+    expect(screen.getByTestId('agent-message-card-error')).toBeInTheDocument();
+  });
+
   it('renders nothing while the read is pending', () => {
     const { container } = renderGroups(
       [{ id: 'user', role: 'user', content: 'Request' }],

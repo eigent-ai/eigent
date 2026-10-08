@@ -15,6 +15,7 @@
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 import { useProjectedRunStatus, useRunWriterWait } from '@/lib/runEvents';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { isLegacyTaskError } from '@/lib/usageErrors';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
@@ -567,6 +568,18 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         // the matching Human Toolkit position and adds question + answer only
         // after the interaction is resolved.
         if (message.step === AgentStep.ASK) {
+          return null;
+        }
+        // A Resume that completed this Run supersedes the error notice of its
+        // earlier, interrupted Attempt.
+        if (
+          activeTask?.durableRunStatus === 'completed' &&
+          message.step !== AgentStep.END &&
+          (message.step === AgentStep.ERROR ||
+            message.errorReason ||
+            (typeof message.content === 'string' &&
+              isLegacyTaskError(message.content)))
+        ) {
           return null;
         }
         if (message.content.length > 0) {

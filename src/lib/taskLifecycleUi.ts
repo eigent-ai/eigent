@@ -31,6 +31,7 @@ export interface TaskLifecycleFields {
   taskInfo?: { id: string; content: string }[];
   isContextExceeded?: boolean;
   sessionMode?: SessionModeType;
+  durableRunStatus?: string;
 }
 
 function getTaskMessages(task: TaskLifecycleFields): Message[] {
@@ -116,6 +117,8 @@ export function getTaskListShelfTone(
  * (use for splitting **error** vs **warning** in session chrome).
  */
 export function isTaskListRowHardFailure(task: TaskLifecycleFields): boolean {
+  // A Resume that completed the Run supersedes an earlier Attempt's error.
+  if (task.durableRunStatus === 'completed') return false;
   return getTaskMessages(task).some((m) => {
     if (m.role !== 'agent') return false;
     // An error receipt keeps its step in every locale; the English prefix

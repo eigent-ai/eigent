@@ -76,6 +76,9 @@ export function getTaskRunDisplayStatus(task: {
   durableRunStatus?: DurableRunDisplayStatus;
   messages?: Array<{ step?: string; content?: string }>;
 }): DurableRunDisplayStatus | undefined {
+  // A Resume that completed the Run supersedes the error recorded by its
+  // earlier, interrupted Attempt.
+  if (task.durableRunStatus === 'completed') return 'completed';
   // Old cloud replicas can still say "interrupted" even though their legacy
   // event stream contains a concrete error. The visible event is stronger
   // evidence for presentation than that compatibility status projection.

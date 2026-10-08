@@ -28,6 +28,7 @@ import {
   type TimelineItem,
   type ToolItem,
 } from '@/components/ChatBox/MessageItem/TaskWorkLogAccordion';
+import { isTaskListRowHardFailure } from '@/lib/taskLifecycleUi';
 import type { VanillaChatStore } from '@/store/chatStore';
 import {
   AgentStep,
@@ -578,6 +579,28 @@ describe('terminal Run presentation', () => {
       })
     ).toBe('failed');
     expect(terminalWorkLogI18nKey('failed')).toBe('chat.failed-after');
+  });
+
+  it('lets a completed Resume supersede the error of an earlier Attempt', () => {
+    const messages = [
+      {
+        id: 'error',
+        role: 'agent',
+        step: AgentStep.ERROR,
+        content: '❌ **Error**: Bad Gateway',
+      },
+      { id: 'end', role: 'agent', step: AgentStep.END, content: 'ok' },
+    ] as any[];
+    expect(
+      getTaskRunDisplayStatus({ durableRunStatus: 'completed', messages })
+    ).toBe('completed');
+    expect(
+      isTaskListRowHardFailure({ durableRunStatus: 'completed', messages })
+    ).toBe(false);
+    // Until the Run completes, the recorded error still counts.
+    expect(
+      isTaskListRowHardFailure({ durableRunStatus: 'interrupted', messages })
+    ).toBe(true);
   });
 
   it('uses explicit labels for interrupted and stopped Runs', () => {
