@@ -18,6 +18,7 @@ import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPrev
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionDraft } from '@/hooks/useSessionDraft';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
 import {
   assertExecutionScope,
@@ -65,7 +66,11 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
   const { scope, state } = useSessionExecution(projectId);
   const { t } = useTranslation();
   const runtime = useProjectEventRuntime();
-  const [message, setMessage] = useState('');
+  // Switching Sessions remounts this composer; keep each Session's draft.
+  const { text: message, setText: setMessage } = useSessionDraft(
+    scope.accountKey,
+    projectId
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [unsupportedInput, setUnsupportedInput] = useState(false);
@@ -135,10 +140,12 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
         intent.current,
         sessionMessageConfiguration(projectId)
       );
+      // The Session accepted this text even if its composer has since been
+      // left, so never offer it again as that Session's draft.
+      setMessage('');
       assertExecutionScope(captured);
       accepted.current = true;
       intent.current = null;
-      setMessage('');
     } catch {
       if (!captured.signal.aborted) {
         setError(true);

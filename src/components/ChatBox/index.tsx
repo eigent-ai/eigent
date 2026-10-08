@@ -25,6 +25,7 @@ import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionDraft } from '@/hooks/useSessionDraft';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
@@ -210,19 +211,10 @@ export default function ChatBox(): JSX.Element {
     );
   if (!state.route || state.error)
     return <SessionExecutionStatus projectId={projectId} />;
-  return <LegacyChatBox />;
+  return <LegacyChatBox accountKey={scope.accountKey} />;
 }
 
-function LegacyChatBox(): JSX.Element {
-  const [message, setMessageState] = useState<string>('');
-  const composerRevisionRef = useRef(0);
-  const setMessage = useCallback<typeof setMessageState>((value) => {
-    composerRevisionRef.current += 1;
-    setMessageState(value);
-  }, []);
-  const [pendingReviewHandoffIds, setPendingReviewHandoffIds] = useState<
-    string[]
-  >([]);
+function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const host = useHost();
 
   //Get Chatstore for the active project's task
@@ -250,6 +242,21 @@ function LegacyChatBox(): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
+  // Switching Sessions remounts this composer; keep each Session's draft.
+  const {
+    text: message,
+    setText: setDraftMessage,
+    reviewHandoffIds: pendingReviewHandoffIds,
+    setReviewHandoffIds: setPendingReviewHandoffIds,
+  } = useSessionDraft(accountKey, activeProjectId);
+  const composerRevisionRef = useRef(0);
+  const setMessage = useCallback<typeof setDraftMessage>(
+    (value) => {
+      composerRevisionRef.current += 1;
+      setDraftMessage(value);
+    },
+    [setDraftMessage]
+  );
   const controlOperations = useControlOperations();
   const composerProjectRef = useRef(activeProjectId);
   composerProjectRef.current = activeProjectId;
@@ -467,10 +474,6 @@ function LegacyChatBox(): JSX.Element {
   }, [workspaceChatFocusRequestId]);
 
   useEffect(() => {
-    setPendingReviewHandoffIds([]);
-  }, [activeProjectId]);
-
-  useEffect(() => {
     if (
       !workspaceChatDraftRequest ||
       workspaceChatDraftRequest.projectId !== activeProjectId ||
@@ -497,6 +500,7 @@ function LegacyChatBox(): JSX.Element {
     consumeWorkspaceChatDraft,
     workspaceChatDraftRequest,
     setMessage,
+    setPendingReviewHandoffIds,
   ]);
 
   useEffect(() => {
