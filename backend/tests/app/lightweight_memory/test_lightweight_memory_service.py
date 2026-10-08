@@ -545,6 +545,12 @@ def _extracted_scope(message: str) -> str | None:
         "这个项目里，哪怕很小的改动也要写测试",
         "我喜欢这个项目里，帮我写的代码都带类型注解",
         "所有项目都用 UTC 时间",
+        # Facts that open with a noun spelled like a request verb.
+        "In this project, help text goes in docs/help.md.",
+        "In this project, delete operations need a confirmation dialog.",
+        "In this project, find-and-replace is done with ripgrep.",
+        "这个项目里，下载链接 24 小时后失效",
+        "这个项目里，创建时间存的是 UTC",
     ],
 )
 def test_extractor_keeps_rules_that_name_a_scope(message):
@@ -561,7 +567,8 @@ def test_extractor_keeps_rules_that_name_a_scope(message):
         "Summarize the launch plan for all projects in the portfolio.",
         "Can you fix the failing login test in this project?",
         "In this project, what does main.py do?",
-        "In this project, " + "go through the release checklist " * 10,
+        "Delete the unused images in public/old in this project.",
+        "Help me write a README for this project.",
         "在当前项目中创建一个 hello.py 并运行。",
         "在这个项目里，帮我分析一下 data.csv 并画个图",
         "帮我在当前项目里加一个登录页面",
@@ -594,7 +601,7 @@ def test_incremental_maintainer_saves_scoped_rules_but_not_requests(service):
         "In this Project, Python 3.12 is standard.",
         "在当前项目中创建一个 hello.py 并运行。",
         "请在这个项目中统一使用 pnpm",
-        "For this Space, research competitors and write competitors.md.",
+        "For this Space, summarize the competitor notes into competitors.md.",
         "For this Space, reply in Chinese.",
         "Summarize the launch plan for all projects in the portfolio.",
     )

@@ -91,20 +91,23 @@ _RULE_WORDS = re.compile(
 )
 # Verbs that open a request for work rather than a convention. Verbs that
 # also open conventions ("write docs in English", "run lint before ...") are
-# deliberately left out.
+# deliberately left out. Verbs that double as nouns ("help text", "delete
+# operations", "下载链接") count only when an object follows them.
 _REQUEST_LEAD = re.compile(
-    r"^\s*(?:(?:please\s+)?(?:create|implement|fix|refactor|investigate"
-    r"|analy[sz]e|summari[sz]e|research|download|delete|remove|rename"
-    r"|scrape|fetch|plot|compare|help|tell|find|set up)\b"
-    r"(?!\s+(?:sure|note)\b)"
-    r"|(?:请)?(?:帮我|帮忙|请帮|麻烦|创建|新建|实现|修复|重构|调研|起草|下载"
-    r"|看看|看一下)(?![^，。,\s]{0,2}的))",
+    r"^\s*(?:(?:please\s+)?(?:"
+    r"(?:create|implement|fix|refactor|investigate|analy[sz]e|summari[sz]e"
+    r"|rename|scrape|set up|tell)\b"
+    r"|(?:help|research|fetch|plot|delete|download|find|remove|compare)"
+    r"(?=\s+(?:the|a|an|all|any|this|that|these|those|my|our|me|us|it"
+    r"|them|some|out|why|what|how|where|which|whether|if)\b))"
+    r"|(?:请)?(?:帮我|帮忙|请帮|麻烦|看看|看一下"
+    r"|(?:创建|新建|实现|修复|重构|调研|起草|下载)"
+    r"(?!时|日期|记录|链接|地址|人|者|计划|报告|方案|方式|流程|过程|状态|结果))"
+    r"(?![^，。,\s]{0,2}的))",
     re.I,
 )
 _ENDS_AS_QUESTION = re.compile(r"[?？]\s*$")
 _SENTENCE_BREAK = re.compile(r"[.!?;](?:\s|$)|[。！？；\n]")
-# Pasted task prompts run long; rules are usually a sentence or a short list.
-_LONG_REQUEST_CHARS = 240
 _USER_SCOPE_MARKERS = (
     "across all projects",
     "across all spaces",
@@ -151,7 +154,6 @@ def _reads_as_one_off(raw: str, content: str, lead: str) -> bool:
         (_REQUEST_LEAD.search(raw) and not _SENTENCE_BREAK.search(lead))
         or _REQUEST_LEAD.search(content)
         or _ENDS_AS_QUESTION.search(content)
-        or len(content) > _LONG_REQUEST_CHARS
     )
 
 
