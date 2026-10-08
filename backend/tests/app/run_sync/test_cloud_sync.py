@@ -925,6 +925,60 @@ async def test_worker_bootstraps_missing_history_without_upload_echo(journal):
     await worker.close()
 
 
+@pytest.mark.asyncio
+async def test_restore_keeps_only_projects_with_cloud_history_pending(journal):
+    snapshot_requested = asyncio.Event()
+    release_snapshot = asyncio.Event()
+
+    class SlowSnapshotTransport(FakeTransport):
+        async def project_snapshot(self, configuration, project_id):
+            snapshot_requested.set()
+            await release_snapshot.wait()
+            return await super().project_snapshot(configuration, project_id)
+
+    transport = SlowSnapshotTransport()
+    transport.projects = [
+        {
+            "project_id": "project-cloud",
+            "current_cursor": 0,
+            "updated_at": "2026-08-06T00:00:02+00:00",
+        }
+    ]
+    transport.snapshots["project-cloud"] = {
+        "project_id": "project-cloud",
+        "current_cursor": 0,
+        "runs": [],
+        "recent_events": [],
+        "events_truncated": False,
+    }
+    worker = _worker(journal, transport)
+
+    # Before the project list is read, any project may have history.
+    assert worker.bootstrap_pending_for("project-new") is True
+
+    restore = asyncio.create_task(worker.bootstrap_once())
+    await asyncio.wait_for(snapshot_requested.wait(), timeout=5)
+    assert worker.bootstrap_pending
+    assert worker.bootstrap_pending_for("project-cloud") is True
+    assert worker.bootstrap_pending_for("project-new") is False
+
+    release_snapshot.set()
+    await asyncio.wait_for(restore, timeout=5)
+    assert not worker.bootstrap_pending
+    assert worker.bootstrap_pending_for("project-cloud") is False
+
+    # New credentials start a new restore, so every project waits again.
+    worker.configure(
+        CloudSyncConfiguration(
+            endpoint_url="https://example.test/api/v1/sync/events:ingest",
+            authorization="Bearer rotated",
+            desktop_instance_id="desk-1",
+        )
+    )
+    assert worker.bootstrap_pending_for("project-new") is True
+    await worker.close()
+
+
 def test_artifact_cloud_projection_removes_machine_local_paths():
     from app.run_sync.cloud_sync import _cloud_event_payload
 

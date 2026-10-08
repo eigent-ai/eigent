@@ -654,7 +654,9 @@ async def get_workspace_session_model(
             "space_id": space_id,
             "project_id": project_id,
             "accepted": accepted,
-            "restore_pending": is_default_cloud_history_bootstrap_pending(),
+            "restore_pending": is_default_cloud_history_bootstrap_pending(
+                project_id
+            ),
         }
     except Exception as exc:
         raise HTTPException(
