@@ -906,8 +906,9 @@ describe('event-native Timeline Run presentation', () => {
 
       // 60s at the read, then 30s more less an earlier 4s wait.
       expect(reconciled.timestamps.elapsedAnchor).toEqual({
-        accumulatedMs: 86_000,
+        accumulatedMs: 60_000,
         anchoredAt: null,
+        heldDeltaMs: 26_000,
       });
     });
 
@@ -936,8 +937,9 @@ describe('event-native Timeline Run presentation', () => {
 
       // Started at 00:00:01: 30s until this wait, less an earlier 10s one.
       expect(reconciled.timestamps.elapsedAnchor).toEqual({
-        accumulatedMs: 20_000,
+        accumulatedMs: 0,
         anchoredAt: null,
+        heldDeltaMs: 20_000,
       });
     });
 

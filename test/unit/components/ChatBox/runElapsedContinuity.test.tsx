@@ -340,6 +340,47 @@ describe('Run elapsed time leaves out waiting for the user', () => {
     expect(readings).toEqual([4_000, 4_000, 4_000, 4_000, 5_000]);
   });
 
+  it.each([13_000, 3_000])(
+    'does not move when a wait starts or ends after a pause and a run read of %d ms',
+    (listedTotal) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(startedAt);
+      const { requested, answered } = waitEvents.approval;
+      const live = store();
+      deliver(live, events.query());
+      deliver(live, events.started());
+      const timer = watch(live);
+      // Works 2s, is paused for 10s, works 1s, then the Run is read again.
+      advance(2_000);
+      timer.setPaused(true);
+      advance(10_000);
+      timer.setPaused(false);
+      advance(1_000);
+      live.reconcileRunSummary(
+        {
+          run_id: runId,
+          project_id: projectId,
+          status: 'running',
+          version: 2,
+          updated_at: iso(0),
+          origin: 'local',
+          total_attempt_elapsed_ms: listedTotal,
+        },
+        live.getIncarnation()
+      );
+      advance(1_000);
+      const beforeWait = timer.read();
+      deliver(live, requested(3, 14_000, 'approval-1'));
+      const readings = [timer.read()];
+      advance(30_000);
+      readings.push(timer.read());
+      deliver(live, answered(4, 44_000, 'approval-1'));
+      readings.push(timer.read());
+
+      expect(readings).toEqual([beforeWait, beforeWait, beforeWait]);
+    }
+  );
+
   it('adds nothing for a pause taken while waiting for the user', () => {
     vi.useFakeTimers();
     vi.setSystemTime(startedAt);

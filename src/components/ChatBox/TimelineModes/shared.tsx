@@ -183,9 +183,11 @@ export function useRunElapsedMs(run: TimelineRunView, paused = false): number {
   const active = isActiveRunStatus(run.status) && !paused;
   const [now, setNow] = useState(() => Date.now());
   const elapsedAnchor = run.timestamps.elapsedAnchor;
-  // While the Run waits for the user, its anchor already holds the time worked
-  // before the wait, measured in wall time. A pause the user took before the
-  // wait still comes off that value, and a pause during the wait adds nothing.
+  // While the Run waits for the user, its anchor holds the time worked before
+  // the wait: the measured total plus the wall time after it. A pause the user
+  // took before the wait comes off that wall time exactly as while running, so
+  // the value does not move when the wait starts or ends. A pause during the
+  // wait adds nothing.
   const heldForUser =
     run.status === 'waiting_for_user' &&
     elapsedAnchor !== null &&
@@ -202,7 +204,11 @@ export function useRunElapsedMs(run: TimelineRunView, paused = false): number {
 
   if (run.timestamps.durationMs !== null) return run.timestamps.durationMs;
   if (heldForUser) {
-    return Math.max(0, elapsedAnchor.accumulatedMs - pausedOffsetMs);
+    return Math.max(
+      0,
+      elapsedAnchor.accumulatedMs +
+        Math.max(0, (elapsedAnchor.heldDeltaMs ?? 0) - pausedOffsetMs)
+    );
   }
   if (elapsedAnchor) {
     const anchoredAt = safeTimestamp(elapsedAnchor.anchoredAt);

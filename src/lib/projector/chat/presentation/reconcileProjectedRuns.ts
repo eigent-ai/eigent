@@ -59,13 +59,12 @@ function activeElapsedAnchor(
   if (baseline === null) return { accumulatedMs, anchoredAt: baselineAt };
   if (userWaitStartedAt !== null) {
     return {
-      accumulatedMs:
-        accumulatedMs +
-        Math.max(
-          0,
-          Math.max(userWaitStartedAt, baseline) - baseline - userWaitMs
-        ),
+      accumulatedMs,
       anchoredAt: null,
+      heldDeltaMs: Math.max(
+        0,
+        Math.max(userWaitStartedAt, baseline) - baseline - userWaitMs
+      ),
     };
   }
   return {
