@@ -43,11 +43,12 @@ describe('app window frame policy', () => {
   });
 
   it('does not frame pages from other hosts', () => {
-    const webSources = frameSources().filter(
-      (source) => source === '*' || /^(https?:|\*)/.test(source)
-    );
-    for (const source of webSources) {
-      expect(source).toMatch(/^https?:\/\/(localhost|127\.0\.0\.1):(\*|\d+)$/);
+    // Every source must be one of these. A bare host such as `example.com`
+    // would allow that host, so nothing outside the list is accepted.
+    for (const source of frameSources()) {
+      expect(source).toMatch(
+        /^('self'|localfile:|blob:|data:|https?:\/\/(localhost|127\.0\.0\.1):(\*|\d+))$/
+      );
     }
   });
 });
