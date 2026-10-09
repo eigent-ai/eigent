@@ -178,3 +178,75 @@ async def test_agent_creation_failure_releases_assembled_toolkits(
         "terminal.cleanup",
     ]
     assert _browser_is_free(cdp_pool)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_mcp_startup_stops_servers_that_started(
+    sample_chat_data, monkeypatch, tmp_path, cdp_pool
+):
+    options = _options(sample_chat_data, "browser", "terminal", "mcp")
+    events: list[str] = []
+    fake_mcp = _install_toolkits(
+        monkeypatch, tmp_path, options.project_id, events, cdp_pool
+    )
+    started = asyncio.Event()
+
+    class SlowMCPToolkit(fake_mcp):
+        async def connect(self):
+            await super().connect()
+            started.set()
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(assembler, "MCPToolkit", SlowMCPToolkit)
+    assembly = asyncio.create_task(
+        assemble_single_agent_toolkits(
+            options,
+            task_id=options.task_id,
+            working_directory=str(tmp_path),
+            hands=None,
+            can_delegate=False,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=5)
+    assembly.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await assembly
+
+    assert events == [
+        "mcp.started:browser-reserved",
+        "mcp.disconnect",
+        "terminal.cleanup",
+    ]
+    assert _browser_is_free(cdp_pool)
+
+
+@pytest.mark.asyncio
+async def test_failed_mcp_startup_remains_owned_by_the_agent(
+    sample_chat_data, monkeypatch, tmp_path, cdp_pool
+):
+    options = _options(sample_chat_data, "mcp")
+    events: list[str] = []
+    fake_mcp = _install_toolkits(
+        monkeypatch, tmp_path, options.project_id, events, cdp_pool
+    )
+
+    class PartlyFailingMCPToolkit(fake_mcp):
+        async def connect(self):
+            await super().connect()
+            raise RuntimeError("one MCP server failed")
+
+    monkeypatch.setattr(assembler, "MCPToolkit", PartlyFailingMCPToolkit)
+
+    assembly = await assemble_single_agent_toolkits(
+        options,
+        task_id=options.task_id,
+        working_directory=str(tmp_path),
+        hands=None,
+        can_delegate=False,
+    )
+
+    assert "MCPToolkit" not in assembly.tool_names
+    assert [type(toolkit) for toolkit in assembly.cleanup_toolkits] == [
+        PartlyFailingMCPToolkit
+    ]

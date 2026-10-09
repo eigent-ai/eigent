@@ -750,6 +750,9 @@ async def _assemble_single_agent_toolkits(
                 assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
             else:
                 toolkit = MCPToolkit(**mcp_options)
+                # Servers that started before connect() failed or was
+                # cancelled must still be stopped by rollback or disposal.
+                assembly.cleanup_toolkits.append(toolkit)
                 try:
                     await toolkit.connect()
                 except Exception:
@@ -758,7 +761,6 @@ async def _assemble_single_agent_toolkits(
                         exc_info=True,
                     )
                 else:
-                    assembly.cleanup_toolkits.append(toolkit)
                     assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
 
     if _enabled(config, "agent") and can_delegate:
