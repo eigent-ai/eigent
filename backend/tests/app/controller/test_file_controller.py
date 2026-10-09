@@ -23,8 +23,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 from app import api as brain_api
-from app.auth.local_control import LOCAL_CONTROL_CAPABILITY_HEADER
+from app.auth.file_access import (
+    FileAccessScope,
+    issue_file_access_grant,
+    require_file_preview_access,
+    require_file_stream_access,
+)
+from app.auth.local_control import (
+    LOCAL_CONTROL_CAPABILITY_HEADER,
+    require_local_control_if_configured,
+    require_local_control_principal,
+)
 from app.controller import file_controller
+from app.router import register_routers
+
+CAPABILITY = {LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"}
+SCOPE_PARAMS = {"project_id": "project-1", "email": "user@example.com"}
 
 
 def test_brain_cors_exposes_file_preview_metadata_headers():
@@ -487,3 +501,179 @@ def test_task_changes_endpoint_requires_local_capability(
         "scan_status": "complete",
         "truncated": False,
     }
+
+
+def _desktop_file_client(monkeypatch, project_root):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    roots = []
+
+    def resolve_file_root(email, project_id, space_id=None, user_id=None):
+        roots.append((email, project_id, space_id, user_id))
+        return project_root
+
+    monkeypatch.setattr(
+        file_controller, "_resolve_file_root", resolve_file_root
+    )
+    app = FastAPI()
+    register_routers(app)
+    return TestClient(app, client=("127.0.0.1", 50000)), roots
+
+
+def test_every_file_route_declares_an_access_guard():
+    guards = {
+        require_local_control_if_configured,
+        require_local_control_principal,
+        require_file_stream_access,
+        require_file_preview_access,
+    }
+    assert file_controller.router.routes
+    for route in file_controller.router.routes:
+        assert any(
+            dependency.call in guards
+            for dependency in route.dependant.dependencies
+        ), f"{sorted(route.methods)} {route.path} has no access guard"
+
+
+def test_desktop_file_stream_requires_a_grant_for_the_same_root(
+    monkeypatch, tmp_path
+):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "report.pdf").write_bytes(b"0123456789")
+    client, _ = _desktop_file_client(monkeypatch, project_root)
+    file_params = {**SCOPE_PARAMS, "path": "report.pdf"}
+
+    assert client.get("/files/stream", params=file_params).status_code == 401
+    assert client.head("/files/stream", params=file_params).status_code == 401
+    assert client.post("/files/access", json=SCOPE_PARAMS).status_code == 401
+
+    minted = client.post(
+        "/files/access", json=SCOPE_PARAMS, headers=CAPABILITY
+    )
+    assert minted.status_code == 200
+    access = minted.json()["access"]
+    assert minted.json()["expires_at"] > time.time()
+    granted = {**file_params, "access": access}
+
+    ranged = client.get(
+        "/files/stream", params=granted, headers={"Range": "bytes=2-5"}
+    )
+    assert ranged.status_code == 206
+    assert ranged.content == b"2345"
+    assert client.head("/files/stream", params=granted).status_code == 200
+
+    # A grant covers only the file root it was issued for.
+    for other_root in (
+        {"project_id": "project-2"},
+        {"email": "other@example.com"},
+        {"space_id": "space-1"},
+        {"user_id": "7"},
+    ):
+        response = client.get(
+            "/files/stream", params={**granted, **other_root}
+        )
+        assert response.status_code == 401
+
+    expired, _ = issue_file_access_grant(
+        FileAccessScope.of("user@example.com", "project-1"),
+        now=time.time() - 2 * 60 * 60,
+    )
+    for invalid in (expired, f"{access}x", "user@example.com"):
+        response = client.get(
+            "/files/stream", params={**file_params, "access": invalid}
+        )
+        assert response.status_code == 401
+
+    remote = TestClient(client.app, client=("203.0.113.8", 50000))
+    assert remote.get("/files/stream", params=granted).status_code == 403
+
+
+def test_desktop_file_preview_reads_the_root_named_by_its_grant(
+    monkeypatch, tmp_path
+):
+    project_root = tmp_path / "project"
+    (project_root / "site" / "assets").mkdir(parents=True)
+    (project_root / "site" / "index.html").write_text("<p>report</p>")
+    (project_root / "site" / "assets" / "app.css").write_text("p{}")
+    client, roots = _desktop_file_client(monkeypatch, project_root)
+    access = client.post(
+        "/files/access",
+        json={**SCOPE_PARAMS, "space_id": "space-1"},
+        headers=CAPABILITY,
+    ).json()["access"]
+
+    page = client.get(f"/files/preview/{access}/site/index.html")
+    assert page.status_code == 200
+    assert page.text == "<p>report</p>"
+    # Relative references inside the page keep the grant segment.
+    asset = client.get(f"/files/preview/{access}/site/assets/app.css")
+    assert asset.status_code == 200
+    assert asset.text == "p{}"
+    assert roots[-1] == ("user@example.com", "project-1", "space-1", None)
+
+    invalid = client.get("/files/preview/not-a-grant/site/index.html")
+    assert invalid.status_code == 401
+    legacy_url = "/files/preview/user@example.com/project-1/site/index.html"
+    assert client.get(legacy_url).status_code == 401
+
+
+def test_desktop_file_listing_and_upload_require_the_capability(
+    monkeypatch, tmp_path
+):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "notes.txt").write_text("notes")
+    workspace_root = tmp_path / "workspace"
+    client, _ = _desktop_file_client(monkeypatch, project_root)
+    monkeypatch.setattr(
+        file_controller, "_get_workspace_root", lambda: workspace_root
+    )
+
+    assert client.get("/files", params=SCOPE_PARAMS).status_code == 401
+    listing = client.get("/files", params=SCOPE_PARAMS, headers=CAPABILITY)
+    assert listing.status_code == 200
+    assert [item["filename"] for item in listing.json()] == ["notes.txt"]
+
+    upload = {"file": ("note.txt", b"hello", "text/plain")}
+    session = {"X-Session-ID": "session-1"}
+    rejected = client.post("/files", files=upload, headers=session)
+    assert rejected.status_code == 401
+    assert not workspace_root.exists()
+    uploaded = client.post(
+        "/files", files=upload, headers={**session, **CAPABILITY}
+    )
+    assert uploaded.status_code == 200
+
+
+def test_web_mode_keeps_streams_open_and_previews_use_grants(
+    monkeypatch, tmp_path
+):
+    """A Brain without the Desktop capability keeps router-level auth."""
+
+    monkeypatch.delenv("EIGENT_RUNTIME", raising=False)
+    monkeypatch.delenv("EIGENT_LOCAL_CONTROL_CAPABILITY", raising=False)
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "index.html").write_text("<p>web</p>")
+    monkeypatch.setattr(
+        file_controller,
+        "_resolve_file_root",
+        lambda *_args, **_kwargs: project_root,
+    )
+    app = FastAPI()
+    register_routers(app)
+    client = TestClient(app)
+
+    stream = client.get(
+        "/files/stream", params={**SCOPE_PARAMS, "path": "index.html"}
+    )
+    assert stream.status_code == 200
+    assert client.get("/files", params=SCOPE_PARAMS).status_code == 200
+
+    access = client.post("/files/access", json=SCOPE_PARAMS).json()["access"]
+    preview = client.get(f"/files/preview/{access}/index.html")
+    assert preview.status_code == 200
+    assert preview.text == "<p>web</p>"
+    invalid = client.get("/files/preview/not-a-grant/index.html")
+    assert invalid.status_code == 401

@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
+import { authorizeBrainFile } from '@/lib/brainFileAccess';
 import {
   isRemotePreviewSource,
   loadFilePreview,
@@ -85,6 +86,7 @@ export function FilePreview({
       setSelectedFile(target);
       setLoading(true);
       void resolveArtifactAssetFile(target)
+        .then(authorizeBrainFile)
         .then((resolved) =>
           loadFilePreview(resolved, {
             ipcRenderer,
