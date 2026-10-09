@@ -372,8 +372,6 @@
   "your-automations": "내 자동화",
   "queue-empty-body": "예시를 사용해 첫 자동화를 설정해 보세요.",
   "new-badge": "새로 만듦",
-  "back-to-examples": "예시",
-  "next-run": "다음 실행",
   "next-run-at": "다음: {{time}}",
   "paused": "일시 중지됨",
   "paused-schedule": "일시 중지됨 · {{schedule}}",
@@ -381,188 +379,38 @@
   "auto-disabled-short": "실행이 완료되지 않아 꺼짐",
   "consecutive-warning": "{{max}}회 중 {{count}}회 연속으로 실행이 완료되지 않았습니다. {{max}}회에 도달하면 이 자동화는 자동으로 꺼집니다. 예약된 실행은 이 컴퓨터에서 Eigent가 열려 있을 때만 시작됩니다.",
   "auto-disabled-notice": "{{max}}회 연속으로 실행이 완료되지 않아 이 자동화가 자동으로 꺼졌습니다. 예약된 시간에 Eigent를 열어 둘 수 있을 때 다시 켜세요.",
-  "execution-status-missed": "놓침",
-  "execution-missed-reason": "실행을 놓쳤습니다. {{time}}에 Eigent가 열려 있지 않아 이번 실행이 시작되지 않았습니다.",
   "first-run-on": "첫 실행: {{time}}",
-  "turn-on-to-schedule": "이 자동화를 켜면 첫 실행이 예약됩니다",
   "first-run-notice": "첫 실행: {{time}}(현지 시간). 그때 Eigent가 열려 있어야 합니다.",
   "next-run-notice": "다음 실행: {{time}}(현지 시간). 그때 Eigent가 열려 있어야 합니다.",
   "pick-future-time": "미래의 날짜와 시간을 선택하세요.",
   "one-time-within-a-year": "오늘로부터 1년이 되기 전의 날짜를 선택하세요.",
-  "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
+  "monthly-time-crosses-month": "이 시간은 매월 이 날짜에 안정적으로 반복될 수 없습니다. 다른 시간을 선택하세요.",
   "keeps-stored-schedule": "이 일정은 여기에서 편집할 수 없습니다. 위에서 주기를 선택하지 않으면 그대로 유지됩니다.",
   "schedule-label-daily": "매일 {{time}}",
   "schedule-label-weekly": "매주 {{days}} {{time}}",
   "schedule-label-monthly": "매월 {{day}}일 {{time}}",
   "schedule-label-once": "{{date}} {{time}}에 한 번",
-  "turn-on-named": "{{name}} 켜기",
-  "turn-off-named": "{{name}} 끄기",
   "more-actions-named": "{{name}}의 추가 작업",
-  "profile-nudge-title": "나에게 맞춘 예시",
-  "profile-nudge-body": "어떤 일을 하시는지 알려 주세요.",
-  "profile-nudge-action": "프로필 설정",
-  "profile-nudge-picker-title": "어떤 일을 하시나요?",
-  "profile-nudge-picker-body": "예시가 바로 바뀝니다.",
-  "profile-saved": "프로필에 저장됨 · {{role}} 예시 표시 중",
-  "roles": {
-    "software-engineer": "소프트웨어 엔지니어",
-    "backend-engineering": "백엔드 개발",
-    "frontend-engineering": "프론트엔드 개발",
-    "devops": "DevOps",
-    "data-engineering": "데이터 엔지니어링",
-    "product-management": "제품 관리",
-    "marketing": "마케팅",
-    "sales": "영업",
-    "customer-support": "고객 지원",
-    "hr": "인사",
-    "finance": "재무",
-    "qa-testing": "QA 및 테스트"
-  },
   "examples": {
-    "map-unfamiliar-module": {
-      "title": "낯선 모듈 파악하기",
-      "description": "파일이 어떻게 연결되는지 확인합니다.",
-      "prompt": "내가 지정한 모듈의 호출자, 의존성, 진입점을 정리해 주세요."
-    },
-    "trace-request-end-to-end": {
-      "title": "요청을 처음부터 끝까지 추적",
-      "description": "요청이 느려지는 지점을 찾습니다.",
-      "prompt": "주요 요청 경로가 거치는 모든 서비스를 추적하고 가장 느린 구간을 요약해 주세요."
-    },
-    "weekly-flaky-test-report": {
-      "title": "불안정한 테스트 주간 보고서",
-      "description": "이번 주 결과가 바뀐 테스트.",
-      "prompt": "이번 주 CI 실행을 검토하고 통과와 실패를 오간 테스트를 정리해 주세요."
-    },
-    "api-contract-diff": {
-      "title": "API 계약 비교",
-      "description": "호환되지 않는 변경을 매일 표시.",
-      "prompt": "오늘 병합된 풀 리퀘스트의 API 스키마를 비교하고 호환되지 않는 변경을 표시해 주세요."
-    },
-    "slow-query-digest": {
-      "title": "느린 쿼리 요약",
-      "description": "느려진 쿼리.",
-      "prompt": "이번 주 지연 시간이 늘어난 데이터베이스 쿼리를 각각의 예시와 함께 정리해 주세요."
-    },
-    "dependency-vulnerability-scan": {
-      "title": "의존성 취약점 검사",
-      "description": "오래되었거나 표시된 패키지.",
-      "prompt": "서비스 의존성을 검사하고 오래되었거나 취약한 패키지를 정리해 주세요."
-    },
-    "component-usage-audit": {
-      "title": "컴포넌트 사용처 점검",
-      "description": "컴포넌트가 쓰이는 모든 곳.",
-      "prompt": "내가 지정한 컴포넌트의 모든 사용처를 찾아 페이지별로 묶어 주세요."
-    },
-    "bundle-size-watch": {
-      "title": "번들 크기 모니터링",
-      "description": "번들을 키운 병합.",
-      "prompt": "오늘 번들 크기를 예산과 비교하고 크기를 늘린 병합을 알려 주세요."
-    },
-    "broken-link-sweep": {
-      "title": "깨진 링크 점검",
-      "description": "깨진 링크와 누락된 리소스.",
-      "prompt": "문서 사이트를 탐색하고 깨진 링크와 누락된 이미지를 정리해 주세요."
-    },
-    "daily-bug-triage": {
-      "title": "매일 버그 분류",
-      "description": "새 버그를 매일 아침 우선순위대로.",
-      "prompt": "지난 24시간 동안의 버그 보고를 모아 심각도 순으로 정렬해 주세요."
-    },
-    "weekly-incident-summary": {
-      "title": "주간 장애 요약",
-      "description": "이번 주 장애와 수정 사항.",
-      "prompt": "이번 주 장애와 그 영향, 배포된 수정 사항을 요약해 주세요."
-    },
-    "infra-cost-digest": {
-      "title": "인프라 비용 요약",
-      "description": "클라우드 비용 변화.",
-      "prompt": "이번 주 클라우드 비용 변화를 서비스별로 요약해 주세요."
-    },
-    "pipeline-failure-digest": {
-      "title": "파이프라인 실패 요약",
-      "description": "야간 작업 실패와 원인.",
-      "prompt": "밤사이 실패한 파이프라인 작업을 오류와 담당자와 함께 정리해 주세요."
-    },
-    "schema-drift-check": {
-      "title": "스키마 변경 점검",
-      "description": "예상치 않게 스키마가 바뀐 테이블.",
-      "prompt": "데이터 웨어하우스 테이블 스키마를 어제와 비교하고 예상치 못한 변경을 표시해 주세요."
-    },
-    "sample-dataset-generator": {
-      "title": "샘플 데이터셋 생성",
-      "description": "스키마 기반의 현실적인 테스트 데이터.",
-      "prompt": "주문 스키마에 맞는 500행짜리 테스트 데이터셋을 생성해 주세요."
-    },
     "weekly-feature-usage-recap": {
       "title": "기능 사용 주간 요약",
       "description": "새 기능이 쓰이는 방식.",
       "prompt": "내가 지정한 기능의 지난주 사용 현황을 추세와 함께 요약해 주세요."
-    },
-    "customer-feedback-digest": {
-      "title": "고객 피드백 요약",
-      "description": "주간 피드백을 주제별로.",
-      "prompt": "이번 주 고객 피드백을 주제별로 묶고 예시 인용을 함께 정리해 주세요."
-    },
-    "competitor-release-watch": {
-      "title": "경쟁사 출시 모니터링",
-      "description": "경쟁사가 이번 주 출시한 것.",
-      "prompt": "경쟁사 변경 기록을 확인하고 이번 주 출시된 내용을 요약해 주세요."
     },
     "campaign-performance-recap": {
       "title": "캠페인 성과 요약",
       "description": "캠페인 지표를 쉬운 말로.",
       "prompt": "지난주 캠페인 지표를 요약하고 달라진 점을 짚어 주세요."
     },
-    "content-calendar-draft": {
-      "title": "콘텐츠 캘린더 초안",
-      "description": "다음 주 게시물 초안.",
-      "prompt": "이번 주 제품 소식을 바탕으로 다음 주 소셜 게시물 5개를 작성해 주세요."
-    },
-    "brand-mention-sweep": {
-      "title": "브랜드 언급 수집",
-      "description": "브랜드가 언급된 곳.",
-      "prompt": "오늘의 브랜드 언급을 모으고 답변이 필요한 것을 표시해 주세요."
-    },
-    "pipeline-health-digest": {
-      "title": "영업 파이프라인 요약",
-      "description": "진전되었거나 멈춘 거래.",
-      "prompt": "이번 주 단계가 바뀌었거나 정체된 거래를 다음 단계와 함께 정리해 주세요."
-    },
     "meeting-prep-brief": {
       "title": "미팅 준비 브리핑",
       "description": "통화마다 준비하는 브리핑.",
       "prompt": "오늘 일정에 있는 각 영업 통화에 대해 잠재 고객 브리핑을 짧게 작성해 주세요."
     },
-    "lead-follow-up-reminder": {
-      "title": "리드 후속 조치 알림",
-      "description": "5일간 연락 없는 리드.",
-      "prompt": "지난 5일 동안 연락하지 않은 리드를 오래된 순으로 정리해 주세요."
-    },
     "inbox-triage": {
       "title": "받은편지함 분류",
       "description": "긴급도순으로 정렬한 새 티켓.",
       "prompt": "어제 이후 받은 티켓을 긴급도순으로 정렬하고 상위 5개에 태그를 달아 주세요."
-    },
-    "draft-urgent-replies": {
-      "title": "긴급 티켓 답장 초안",
-      "description": "팀원이 검토할 답장 초안.",
-      "prompt": "긴급 태그가 달린 티켓에 대한 답장을 팀원이 검토할 수 있도록 작성해 주세요."
-    },
-    "weekly-satisfaction-recap": {
-      "title": "주간 고객 만족도 요약",
-      "description": "CSAT 추세와 자주 나온 불만.",
-      "prompt": "이번 주 CSAT 점수와 가장 많이 나온 불만을 요약해 주세요."
-    },
-    "new-hire-paperwork-check": {
-      "title": "신규 입사자 서류 점검",
-      "description": "누락된 온보딩 서류 표시.",
-      "prompt": "신규 입사자의 온보딩 폴더를 확인하고 누락된 서류를 정리해 주세요."
-    },
-    "policy-document-review": {
-      "title": "정책 문서 검토",
-      "description": "오래된 정책 문구 표시.",
-      "prompt": "정책 문서를 검토하고 오래되었거나 서로 맞지 않는 문구를 표시해 주세요."
     },
     "hiring-pipeline-digest": {
       "title": "채용 파이프라인 요약",
@@ -573,39 +421,10 @@
       "title": "경비 보고서 검토",
       "description": "정책을 위반한 보고서.",
       "prompt": "새 경비 보고서를 검토하고 정책을 위반한 것을 표시해 주세요."
-    },
-    "monthly-close-checklist": {
-      "title": "월말 결산 체크리스트",
-      "description": "아직 남은 결산 작업.",
-      "prompt": "월말 결산 체크리스트를 확인하고 완료되지 않은 항목을 정리해 주세요."
-    },
-    "vendor-invoice-triage": {
-      "title": "거래처 청구서 분류",
-      "description": "지급 기한순으로 정렬한 청구서.",
-      "prompt": "새 거래처 청구서를 지급 기한순으로 정렬하고 예산을 넘는 금액을 표시해 주세요."
-    },
-    "flaky-test-tracker": {
-      "title": "불안정한 테스트 추적",
-      "description": "실행마다 결과가 바뀌는 테스트.",
-      "prompt": "최근 20번의 CI 실행에서 통과와 실패를 오간 테스트를 찾아 주세요."
-    },
-    "regression-risk-summary": {
-      "title": "회귀 위험 요약",
-      "description": "병합으로 위험해진 영역.",
-      "prompt": "오늘 병합된 내용을 검토하고 회귀 위험이 있는 영역을 정리해 주세요."
-    },
-    "test-coverage-digest": {
-      "title": "테스트 커버리지 요약",
-      "description": "이번 주 커버리지 변화.",
-      "prompt": "이번 주 테스트 커버리지 변화를 패키지별로 요약해 주세요."
     }
   },
   "detail-when": "실행 시점",
   "detail-what": "실행 내용",
-  "detail-edit-instructions": "지침 편집",
-  "detail-availability": "예약된 시간에 Eigent가 열려 있어야 합니다.",
-  "detail-pause": "자동화 일시 중지",
-  "detail-resume": "자동화 재개",
   "detail-local-time": "현지 시간",
   "detail-paused": "재개할 때까지 일시 중지됨",
   "detail-on-event": "이벤트를 수신하면 실행",

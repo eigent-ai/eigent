@@ -372,8 +372,6 @@
   "your-automations": "あなたのオートメーション",
   "queue-empty-body": "例を試して、最初のオートメーションを設定しましょう。",
   "new-badge": "新規",
-  "back-to-examples": "例",
-  "next-run": "次回の実行",
   "next-run-at": "次回：{{time}}",
   "paused": "一時停止中",
   "paused-schedule": "一時停止中 · {{schedule}}",
@@ -381,188 +379,38 @@
   "auto-disabled-short": "未完了が続いたためオフになりました",
   "consecutive-warning": "連続 {{count}} 回（上限 {{max}} 回）実行が完了しませんでした。{{max}} 回に達すると、このオートメーションは自動的にオフになります。スケジュール実行は、このコンピューターで Eigent が開いているときにのみ開始されます。",
   "auto-disabled-notice": "{{max}} 回連続で実行が完了しなかったため、このオートメーションは自動的にオフになりました。予定時刻に Eigent を開いておけるようになったら、もう一度オンにしてください。",
-  "execution-status-missed": "スキップ",
-  "execution-missed-reason": "実行はスキップされました。{{time}} に Eigent が開いていなかったため、この実行は開始されませんでした。",
   "first-run-on": "初回の実行：{{time}}",
-  "turn-on-to-schedule": "オンにすると初回の実行が予約されます",
   "first-run-notice": "初回の実行：{{time}}（現地時間）。その時刻に Eigent を開いておく必要があります。",
   "next-run-notice": "次回の実行：{{time}}（現地時間）。その時刻に Eigent を開いておく必要があります。",
   "pick-future-time": "未来の日時を選んでください。",
   "one-time-within-a-year": "今日から1年未満の日付を選んでください。",
-  "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
+  "monthly-time-crosses-month": "この時刻は、毎月この日に確実に繰り返すことができません。別の時刻を選んでください。",
   "keeps-stored-schedule": "このスケジュールはここでは編集できません。上で頻度を選択しない限り、現在のまま保持されます。",
   "schedule-label-daily": "毎日 {{time}}",
   "schedule-label-weekly": "毎週 {{days}} {{time}}",
   "schedule-label-monthly": "毎月 {{day}} 日 {{time}}",
   "schedule-label-once": "{{date}} {{time}} に 1 回",
-  "turn-on-named": "{{name}}をオンにする",
-  "turn-off-named": "{{name}}をオフにする",
   "more-actions-named": "{{name}}のその他の操作",
-  "profile-nudge-title": "あなたに合った例",
-  "profile-nudge-body": "お仕事を教えてください。",
-  "profile-nudge-action": "プロフィールを設定",
-  "profile-nudge-picker-title": "どんな仕事をしていますか？",
-  "profile-nudge-picker-body": "例はすぐに切り替わります。",
-  "profile-saved": "プロフィールに保存しました · {{role}}の例を表示中",
-  "roles": {
-    "software-engineer": "ソフトウェアエンジニア",
-    "backend-engineering": "バックエンド開発",
-    "frontend-engineering": "フロントエンド開発",
-    "devops": "DevOps",
-    "data-engineering": "データエンジニアリング",
-    "product-management": "プロダクトマネジメント",
-    "marketing": "マーケティング",
-    "sales": "営業",
-    "customer-support": "カスタマーサポート",
-    "hr": "人事",
-    "finance": "経理・財務",
-    "qa-testing": "QA・テスト"
-  },
   "examples": {
-    "map-unfamiliar-module": {
-      "title": "見慣れないモジュールを把握",
-      "description": "ファイルのつながりを確認します。",
-      "prompt": "指定したモジュールについて、呼び出し元、依存関係、エントリーポイントを一覧にしてください。"
-    },
-    "trace-request-end-to-end": {
-      "title": "リクエストを端から端まで追跡",
-      "description": "リクエストが遅くなる箇所を探します。",
-      "prompt": "主要なリクエスト経路が通るすべてのサービスを追跡し、最も遅い区間をまとめてください。"
-    },
-    "weekly-flaky-test-report": {
-      "title": "不安定なテストの週次レポート",
-      "description": "今週結果が揺れたテスト。",
-      "prompt": "今週の CI 実行を確認し、成功と失敗を行き来したテストを一覧にしてください。"
-    },
-    "api-contract-diff": {
-      "title": "API 契約の差分チェック",
-      "description": "互換性のない変更を毎日検出。",
-      "prompt": "今日マージされたプルリクエストの API スキーマを比較し、互換性のない変更を指摘してください。"
-    },
-    "slow-query-digest": {
-      "title": "遅いクエリのまとめ",
-      "description": "遅くなったクエリ。",
-      "prompt": "今週レイテンシが悪化したデータベースクエリを、それぞれの例とともに一覧にしてください。"
-    },
-    "dependency-vulnerability-scan": {
-      "title": "依存関係の脆弱性スキャン",
-      "description": "古いパッケージや要注意パッケージ。",
-      "prompt": "各サービスの依存関係をスキャンし、古いパッケージや脆弱なパッケージを一覧にしてください。"
-    },
-    "component-usage-audit": {
-      "title": "コンポーネント使用箇所の監査",
-      "description": "コンポーネントが使われている全箇所。",
-      "prompt": "指定したコンポーネントの使用箇所をすべて見つけ、ページごとにまとめてください。"
-    },
-    "bundle-size-watch": {
-      "title": "バンドルサイズの監視",
-      "description": "バンドルを大きくしたマージ。",
-      "prompt": "今日のバンドルサイズを予算と比較し、サイズを増やしたマージを挙げてください。"
-    },
-    "broken-link-sweep": {
-      "title": "リンク切れの一斉チェック",
-      "description": "リンク切れと欠けているアセット。",
-      "prompt": "ドキュメントサイトを巡回し、リンク切れと見つからない画像を一覧にしてください。"
-    },
-    "daily-bug-triage": {
-      "title": "毎日のバグ仕分け",
-      "description": "新しいバグを毎朝優先度順に。",
-      "prompt": "過去 24 時間のバグ報告を集め、重大度順に並べてください。"
-    },
-    "weekly-incident-summary": {
-      "title": "インシデントの週次まとめ",
-      "description": "今週のインシデントと修正。",
-      "prompt": "今週のインシデント、その影響、リリースした修正をまとめてください。"
-    },
-    "infra-cost-digest": {
-      "title": "インフラコストのまとめ",
-      "description": "クラウド費用の変化。",
-      "prompt": "今週のクラウド費用の変化をサービスごとにまとめてください。"
-    },
-    "pipeline-failure-digest": {
-      "title": "パイプライン失敗のまとめ",
-      "description": "夜間のジョブ失敗と原因。",
-      "prompt": "夜間に失敗したパイプラインジョブを、エラー内容と担当者とともに一覧にしてください。"
-    },
-    "schema-drift-check": {
-      "title": "スキーマのずれチェック",
-      "description": "予期せずスキーマが変わったテーブル。",
-      "prompt": "データウェアハウスのテーブルスキーマを昨日と比較し、予期しない変更を指摘してください。"
-    },
-    "sample-dataset-generator": {
-      "title": "サンプルデータの生成",
-      "description": "スキーマから現実的なテストデータを。",
-      "prompt": "注文スキーマに沿った 500 行のテストデータを生成してください。"
-    },
     "weekly-feature-usage-recap": {
       "title": "機能利用状況の週次まとめ",
       "description": "新機能の使われ方。",
       "prompt": "指定した機能の先週の利用状況を、傾向とともにまとめてください。"
-    },
-    "customer-feedback-digest": {
-      "title": "顧客フィードバックのまとめ",
-      "description": "今週のフィードバックをテーマ別に。",
-      "prompt": "今週の顧客フィードバックをテーマ別にまとめ、代表的な声を添えてください。"
-    },
-    "competitor-release-watch": {
-      "title": "競合のリリース監視",
-      "description": "競合が今週出したもの。",
-      "prompt": "競合の変更履歴を確認し、今週リリースされた内容をまとめてください。"
     },
     "campaign-performance-recap": {
       "title": "キャンペーン成果のまとめ",
       "description": "キャンペーン指標をわかりやすく。",
       "prompt": "先週のキャンペーン指標をまとめ、変化した点を指摘してください。"
     },
-    "content-calendar-draft": {
-      "title": "コンテンツカレンダーの下書き",
-      "description": "来週の投稿を下書き。",
-      "prompt": "今週のプロダクトのハイライトをもとに、来週の SNS 投稿を 5 本下書きしてください。"
-    },
-    "brand-mention-sweep": {
-      "title": "ブランド言及の収集",
-      "description": "ブランドが言及された場所。",
-      "prompt": "今日のブランドへの言及を集め、返信が必要なものに印を付けてください。"
-    },
-    "pipeline-health-digest": {
-      "title": "商談パイプラインのまとめ",
-      "description": "進んだ商談と止まった商談。",
-      "prompt": "今週ステージが進んだ商談と停滞した商談を、次のアクションとともに一覧にしてください。"
-    },
     "meeting-prep-brief": {
       "title": "商談準備のブリーフ",
       "description": "通話ごとの事前メモ。",
       "prompt": "今日の予定にある各営業通話について、見込み客の簡単なブリーフを書いてください。"
     },
-    "lead-follow-up-reminder": {
-      "title": "リードのフォローアップ通知",
-      "description": "5 日間連絡のないリード。",
-      "prompt": "過去 5 日間連絡していないリードを、古い順に一覧にしてください。"
-    },
     "inbox-triage": {
       "title": "受信トレイの仕分け",
       "description": "新しいチケットを緊急度順に。",
       "prompt": "昨日以降に届いたチケットを緊急度順に並べ、上位 5 件にタグを付けてください。"
-    },
-    "draft-urgent-replies": {
-      "title": "緊急チケットへの返信下書き",
-      "description": "チームが確認する返信の下書き。",
-      "prompt": "緊急タグの付いたチケットへの返信を、チームメンバーが確認できるよう下書きしてください。"
-    },
-    "weekly-satisfaction-recap": {
-      "title": "顧客満足度の週次まとめ",
-      "description": "CSAT の傾向とよくある不満。",
-      "prompt": "今週の CSAT スコアと、最も多かった不満をまとめてください。"
-    },
-    "new-hire-paperwork-check": {
-      "title": "新入社員の書類チェック",
-      "description": "不足している入社書類を検出。",
-      "prompt": "新入社員のオンボーディングフォルダを確認し、不足している書類を一覧にしてください。"
-    },
-    "policy-document-review": {
-      "title": "規程文書の見直し",
-      "description": "古くなった規程の文言を検出。",
-      "prompt": "規程文書を確認し、古い表現や矛盾する表現を指摘してください。"
     },
     "hiring-pipeline-digest": {
       "title": "採用パイプラインのまとめ",
@@ -573,39 +421,10 @@
       "title": "経費精算のチェック",
       "description": "規程に反する精算。",
       "prompt": "新しい経費精算を確認し、規程に反するものを指摘してください。"
-    },
-    "monthly-close-checklist": {
-      "title": "月次決算チェックリスト",
-      "description": "未完了の決算タスク。",
-      "prompt": "月末決算のチェックリストを確認し、未完了の項目を一覧にしてください。"
-    },
-    "vendor-invoice-triage": {
-      "title": "取引先請求書の仕分け",
-      "description": "支払期日順に並べた請求書。",
-      "prompt": "新しい取引先請求書を支払期日順に並べ、予算を超える金額を指摘してください。"
-    },
-    "flaky-test-tracker": {
-      "title": "不安定なテストの追跡",
-      "description": "実行ごとに結果が変わるテスト。",
-      "prompt": "直近 20 回の CI 実行で、成功と失敗を行き来したテストを見つけてください。"
-    },
-    "regression-risk-summary": {
-      "title": "リグレッションリスクのまとめ",
-      "description": "マージで影響を受けそうな箇所。",
-      "prompt": "今日のマージを確認し、リグレッションの恐れがある箇所を一覧にしてください。"
-    },
-    "test-coverage-digest": {
-      "title": "テストカバレッジのまとめ",
-      "description": "今週のカバレッジの変化。",
-      "prompt": "今週のテストカバレッジの変化をパッケージごとにまとめてください。"
     }
   },
   "detail-when": "実行タイミング",
   "detail-what": "実行内容",
-  "detail-edit-instructions": "指示を編集",
-  "detail-availability": "予定時刻には Eigent を開いておく必要があります。",
-  "detail-pause": "オートメーションを一時停止",
-  "detail-resume": "オートメーションを再開",
   "detail-local-time": "現地時間",
   "detail-paused": "再開するまで一時停止",
   "detail-on-event": "イベントを受信すると実行",
