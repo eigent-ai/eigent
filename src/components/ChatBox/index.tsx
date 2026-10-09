@@ -36,6 +36,11 @@ import {
 } from '@/lib/approvalPresentation';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
+import {
+  followUpAdmissionClaims,
+  notifyFollowUpAdmissionReleased,
+  onFollowUpAdmissionReleased,
+} from '@/lib/followUpAdmissionClaims';
 import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
 import { notifyError } from '@/lib/notifyError';
 import {
@@ -524,8 +529,17 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
-  const followUpAdmissionsRef = useRef(new Map<string, symbol>());
+  // Shared across mounts: a composer remounted by a Session switch must still
+  // see an admission that an earlier mount has not finished.
+  const followUpAdmissionsRef = useRef(followUpAdmissionClaims);
   const [followUpAdmissionRevision, setFollowUpAdmissionRevision] = useState(0);
+  useEffect(
+    () =>
+      onFollowUpAdmissionReleased(() =>
+        setFollowUpAdmissionRevision((revision) => revision + 1)
+      ),
+    []
+  );
   const interruptedAdmissionRef = useRef<string | null>(null);
   // Admission is monotonic. Late pending-list responses must never restore a
   // request already accepted by HTTP or observed starting in the event stream.
@@ -1869,8 +1883,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       ) {
         followUpAdmissionsRef.current.delete(targetProjectId);
         // Wake a queued dispatch that yielded to this admission, including
-        // when the lookup failed without producing a Run/store update.
-        setFollowUpAdmissionRevision((revision) => revision + 1);
+        // when the lookup failed without producing a Run/store update, and
+        // in a composer remounted while it was running.
+        notifyFollowUpAdmissionReleased();
       }
       if (interruptedAdmissionRef.current === targetProjectId)
         interruptedAdmissionRef.current = null;

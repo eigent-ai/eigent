@@ -26,6 +26,7 @@ vi.mock('@/hooks/useSessionExecution', () => ({
 
 import BottomBox from '@/components/ChatBox/BottomBox';
 import { generateUniqueId } from '@/lib';
+import { resetFollowUpAdmissionClaims } from '@/lib/followUpAdmissionClaims';
 import { runProjectionStore } from '@/lib/runEvents';
 import { errorCopy } from '@/lib/usageErrors';
 import { createChatStoreInstance } from '@/store/chatStore';
@@ -517,6 +518,7 @@ describe('ChatBox Component', async () => {
   beforeEach(() => {
     resetConnectionConfig();
     resetSessionDrafts();
+    resetFollowUpAdmissionClaims();
     setUsageAccount(null);
     setUsageModelType('cloud');
     modelConfigHarness.cloudUsageLimitReached = false;
@@ -2230,6 +2232,29 @@ describe('ChatBox Component', async () => {
           expect(screen.getByTestId('message-input')).toHaveValue(
             'Newer Session A draft'
           );
+        });
+
+        it('does not send a restored draft again while its admission is still running', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          remountSession(setup, 'second-project-id');
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(setup.admissionCount()).toBe(1);
+          expect(screen.getByTestId('message-input')).toHaveValue('');
         });
       });
 
