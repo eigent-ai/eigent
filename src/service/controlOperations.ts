@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost } from '@/api/http';
+import { TERMINAL_RUN_STATUSES } from '@/lib/projector/runSummary';
 import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import {
   getProjectEventStore,
@@ -382,7 +383,7 @@ export function reconcileControlOperations(
         ? !interaction ||
           interaction.runId !== op.runId ||
           !['resolved', 'expired', 'cancelled'].includes(String(status))
-        : !['completed', 'cancelled', 'failed'].includes(String(status))
+        : !run || !TERMINAL_RUN_STATUSES.has(run.status)
     )
       continue;
     if (

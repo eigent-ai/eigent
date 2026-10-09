@@ -21,6 +21,7 @@ import {
   putCachedProject,
   type CachedTask,
 } from '@/lib/projectCache';
+import { selectPendingHumanControlCount } from '@/lib/projector/control';
 import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import {
@@ -59,8 +60,11 @@ import { create } from 'zustand';
 import { getAuthStore } from './authStore';
 import {
   closeIdleSSEConnectionsForTasks,
+  countIdleRelayedSSEConnections,
   createChatStoreInstance,
   hasActiveSSEConnection,
+  hasSSETransportForTasks,
+  UNSUCCESSFUL_RUN_STATUSES,
   VanillaChatStore,
   waitForIdleSSEDisplayTail,
   type DurableRunDisplayStatus,
@@ -106,6 +110,63 @@ export async function waitForPendingStaleRuntimeEviction(
   }
 }
 
+// Projects whose idle streams are being released; one release at a time each.
+const idleStreamReclaimsInFlight = new Set<string>();
+
+// Idle streams relayed by the main process hold no renderer connection, and
+// keeping one lets the next follow-up reach its warm runtime. They stay open
+// up to this many; beyond that they are released like any other idle stream.
+const MAX_KEPT_IDLE_RELAYED_STREAMS = 16;
+
+const ACTIVE_RUN_STATUSES = new Set<string>([
+  'pending',
+  'running',
+  'waiting_for_user',
+  'cancelling',
+]);
+
+/**
+ * Task ids of a Project once none of its work can use a legacy `/chat`
+ * stream any more, or null while some of it might: a running, admitting or
+ * queued Run, or an approval or question waiting for the user.
+ */
+function getIdleStreamTaskIds(project: Project): string[] | null {
+  if (project.queuedMessages?.length) return null;
+  const states = Object.values(project.chatStores).map((store) =>
+    store.getState()
+  );
+  const tasks = new Map(states.flatMap((state) => Object.entries(state.tasks)));
+  for (const task of tasks.values()) {
+    if (
+      task.isPending ||
+      task.isTakeControl ||
+      task.activeAsk ||
+      (task.status !== ChatTaskStatus.FINISHED && task.messages.length > 0)
+    )
+      return null;
+  }
+  const isFinished = (runId: string) =>
+    tasks.get(runId)?.status === ChatTaskStatus.FINISHED;
+  // A warm follow-up names its Run before Brain confirms it on the stream.
+  if (states.some((state) => state.nextTaskId && !isFinished(state.nextTaskId)))
+    return null;
+  // The legacy END may precede the canonical terminal of a Run this window
+  // finished; any other active Run may still need the Project's stream.
+  const runs = Object.values(
+    runProjectionStore.getProject(project.id)?.runs ?? {}
+  );
+  if (
+    runs.some(
+      (run) => ACTIVE_RUN_STATUSES.has(run.status) && !isFinished(run.runId)
+    )
+  )
+    return null;
+  const control = peekProjectEventStore(project.id)?.getSnapshot().control;
+  if (control && selectPendingHumanControlCount(control) > 0) return null;
+  const taskIds = [...tasks.keys()];
+  return hasActiveSSEConnection(taskIds) ? null : taskIds;
+}
+
 /**
  * After a history project finishes replaying, the per-subtask `status` may be
  * incomplete: backend's recorded SSE stream only carries `task_state` for
@@ -140,6 +201,7 @@ const DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);
@@ -147,6 +209,7 @@ const TERMINAL_DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);
@@ -194,7 +257,10 @@ const cachedTaskProjectionIsIncomplete = (
   // seeded user prompt; its freshness anchors still matched SQLite, so it
   // suppressed authoritative replay forever. Treat that shape as a partial
   // projection for both successful and failed Runs.
-  if (localRunStatus === 'completed' || localRunStatus === 'failed') {
+  if (
+    localRunStatus === 'completed' ||
+    UNSUCCESSFUL_RUN_STATUSES.has(localRunStatus!)
+  ) {
     return !messages.some(
       (message) =>
         message !== null &&
@@ -515,11 +581,27 @@ interface ProjectStore {
    * On an active-project transition, retry eviction for every stale runtime
    * except the Project being activated. This includes older entries whose
    * backend status/retirement request failed during an earlier transition.
+   * It also releases the idle streams of every other Project
+   * (`reclaimIdleStreams`).
    * Call this immediately before any direct write to `activeProjectId` so all
    * transition paths (`setActiveProject`, `createProject`, `replayProject`,
    * `loadProjectFromHistory`) honour the stale-eviction contract.
    */
   _evictStaleOnTransition: (nextProjectId: string | null) => void;
+  /**
+   * Close the idle legacy `/chat` streams of Projects other than
+   * `keepProjectId` (all loaded Projects, or only `projectIds`) once their
+   * displayed frames have drained. A Project keeps its streams while any Run
+   * is running, being admitted or queued, or waits for an approval or answer.
+   * The runtime state stays loaded; Brain's idle consumer is retired by the
+   * next follow-up admission, which then starts cold with its own stream.
+   * Streams relayed by the main process are kept, up to a small budget,
+   * because they do not occupy the renderer's connections.
+   */
+  reclaimIdleStreams: (
+    keepProjectId: string | null,
+    projectIds?: readonly string[]
+  ) => void;
 
   // Project management
   /**
@@ -1538,6 +1620,56 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           staleRuntimeEvictionsInFlight.delete(staleProjectId);
         }
       });
+    }
+
+    get().reclaimIdleStreams(nextProjectId);
+  },
+
+  reclaimIdleStreams: (keepProjectId, projectIds) => {
+    const state = get();
+    const keepRelayed =
+      countIdleRelayedSSEConnections() < MAX_KEPT_IDLE_RELAYED_STREAMS;
+    for (const projectId of projectIds ?? Object.keys(state.projects)) {
+      // Stale runtimes are released together with their consumer by
+      // `_evictStaleOnTransition`.
+      if (
+        projectId === keepProjectId ||
+        state.staleProjectIds.has(projectId) ||
+        idleStreamReclaimsInFlight.has(projectId)
+      )
+        continue;
+      const project = state.projects[projectId];
+      const taskIds = project ? getIdleStreamTaskIds(project) : null;
+      if (!taskIds || !hasSSETransportForTasks(taskIds, { keepRelayed }))
+        continue;
+
+      idleStreamReclaimsInFlight.add(projectId);
+      void (async () => {
+        try {
+          // Let frames this window already received finish rendering.
+          await waitForIdleSSEDisplayTail(taskIds);
+          const latest = get();
+          const latestProject = latest.projects[projectId];
+          const latestTaskIds =
+            latestProject && latest.activeProjectId !== projectId
+              ? getIdleStreamTaskIds(latestProject)
+              : null;
+          if (
+            latestTaskIds === null ||
+            latestTaskIds.length !== taskIds.length ||
+            latestTaskIds.some((taskId) => !taskIds.includes(taskId))
+          )
+            return;
+          closeIdleSSEConnectionsForTasks(latestTaskIds, { keepRelayed });
+        } catch (error) {
+          console.warn(
+            '[ProjectStore] Kept idle Session streams after a failed check',
+            error
+          );
+        } finally {
+          idleStreamReclaimsInFlight.delete(projectId);
+        }
+      })();
     }
   },
 

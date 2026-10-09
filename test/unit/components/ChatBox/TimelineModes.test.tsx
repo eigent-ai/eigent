@@ -618,19 +618,11 @@ describe('ChatBox timeline modes', () => {
   });
 
   it.each([
-    [
-      'expired',
-      'approval_expired',
-      i18next.t('chat.approval-expired-description'),
-    ],
-    [
-      'cancelled',
-      'tool_terminal_before_dispatch',
-      i18next.t('chat.approval-tool-ended-description'),
-    ],
+    ['expired', 'approval_expired', 'approval_expired'],
+    ['cancelled', 'tool_terminal_before_dispatch', 'error'],
   ] as const)(
-    'shows the recorded %s approval reason in expanded Detailed history',
-    (status, reason, description) => {
+    'shows the closed cause and the recorded %s approval reason in expanded Detailed history',
+    (status, reason, terminalReason) => {
       const { container } = render(
         <TimelineModeRenderer
           detailLevel="trajectory"
@@ -648,6 +640,7 @@ describe('ChatBox timeline modes', () => {
               prompt: 'Allow this tool?',
               status,
               reason,
+              terminalReason,
             },
           ])}
         />
@@ -659,16 +652,85 @@ describe('ChatBox timeline modes', () => {
       expect(toggle).toHaveAttribute('aria-expanded', 'false');
       fireEvent.click(toggle);
       expect(toggle).toHaveAttribute('aria-expanded', 'true');
-      expect(within(row).getByText(description)).toHaveClass(
-        '!text-ds-text-meta',
-        'text-ds-ink-muted-default'
-      );
+      for (const text of [
+        i18next.t(`chat.run-terminal-reason-${terminalReason}`),
+        `Recorded reason: ${reason}`,
+      ]) {
+        expect(within(row).getByText(text)).toHaveClass(
+          '!text-ds-text-meta',
+          'text-ds-ink-muted-default'
+        );
+      }
       expect(
         within(row).queryByRole('button', { name: 'Approve once' })
       ).toBeNull();
       expect(within(row).queryByText(reason)).toBeNull();
     }
   );
+
+  it('shows a timed-out Run cause and its recorded detail verbatim in Detailed mode', () => {
+    const detail = 'persisted_run_deadline_reached: model note "limit hit"';
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="trajectory"
+        runs={composeTimelineRuns([
+          {
+            ...base,
+            kind: 'run_status',
+            id: 'run-timed-out',
+            eventId: 'run-timed-out',
+            eventType: 'run.deadline_reached',
+            runSequence: 1,
+            createdAt: '2026-08-19T00:00:00Z',
+            status: 'timed_out',
+            terminalReason: 'deadline_exceeded',
+            terminalDetail: detail,
+          },
+        ])}
+      />
+    );
+    const view = within(container);
+    const status = container.querySelector(
+      '[data-detailed-status="timed_out"]'
+    ) as HTMLElement;
+    expect(status).toHaveClass('text-ds-text-status-error-default-default');
+    expect(status.querySelector('svg')).toHaveClass(
+      '!text-ds-text-status-error-default-default'
+    );
+    fireEvent.click(view.getByRole('button'));
+    expect(
+      view.getByText(i18next.t('chat.run-terminal-reason-deadline_exceeded'))
+    ).toBeInTheDocument();
+    expect(view.getByText(detail)).toHaveClass('text-ds-ink-muted-default');
+  });
+
+  it('names an earlier expiry of a timed-out Run without a Resume hint', () => {
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="trajectory"
+        runs={composeTimelineRuns([
+          {
+            ...base,
+            kind: 'run_status',
+            id: 'run-timed-out',
+            eventId: 'run-timed-out',
+            eventType: 'run.deadline_reached',
+            runSequence: 1,
+            createdAt: '2026-08-19T00:00:00Z',
+            status: 'timed_out',
+            terminalReason: 'approval_expired',
+            terminalDetail: 'approval_expired',
+          },
+        ])}
+      />
+    );
+    const view = within(container);
+    fireEvent.click(view.getByRole('button'));
+    expect(
+      view.getByText(i18next.t('chat.run-terminal-reason-approval_expired'))
+    ).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/resume/i);
+  });
 
   it('uses lightly tinted backgrounds with strong text for agent tags', () => {
     const agentNode: ChatProjectionNode = {

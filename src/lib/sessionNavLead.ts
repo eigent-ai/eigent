@@ -183,6 +183,7 @@ export function getSessionNavLeadFromRunStatus(
     case 'completed':
       return presentationForKind('finished');
     case 'failed':
+    case 'timed_out':
       return presentationForKind('error');
     case 'interrupted':
       return presentationForKind('warning');
@@ -301,9 +302,14 @@ export function getSessionNavLeadPresentation(
   const durableStatus = task.durableRunStatus;
   if (
     durableStatus &&
-    (['completed', 'failed', 'cancelled', 'interrupted', 'stopped'].includes(
-      durableStatus
-    ) ||
+    ([
+      'completed',
+      'failed',
+      'cancelled',
+      'timed_out',
+      'interrupted',
+      'stopped',
+    ].includes(durableStatus) ||
       task.type === 'replay' ||
       task.status === ChatTaskStatus.FINISHED)
   ) {

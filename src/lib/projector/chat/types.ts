@@ -12,11 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { RunTerminalReason } from '@/lib/runTerminalReason';
 import type {
   CanonicalProjectEvent,
   CanonicalSemanticEnvelope,
   CanonicalSemanticKindV2,
   ProjectedLegacyStep,
+  ProjectedWriterWait,
 } from '../types';
 
 export type ChatProjectionInput = CanonicalProjectEvent | ProjectedLegacyStep;
@@ -94,6 +96,7 @@ export type ChatRunStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'timed_out'
   | 'interrupted'
   | 'unknown';
 
@@ -157,6 +160,8 @@ export interface ChatNoticeNode extends ChatProjectionNodeBase {
   toolCallId?: string;
   /** Authored task Step that produced this notice, when explicit. */
   stepId?: string;
+  /** Space writer wait that this notice reports, when it needs the user. */
+  writerWait?: ProjectedWriterWait;
 }
 
 export interface ChatInteractionOption {
@@ -178,6 +183,8 @@ export interface ChatInteractionNode extends ChatProjectionNodeBase {
   /** Safe option identifiers from a decision; opaque option values are omitted. */
   responseOptionIds?: string[];
   reason?: string;
+  /** Closed cause when this interaction's end also stopped its Run. */
+  terminalReason?: RunTerminalReason;
   /** Presentation-only receipt links; source nodes remain unchanged. */
   requestEventId?: string;
   resolutionEventId?: string;
@@ -295,7 +302,9 @@ export interface ChatArtifactNode extends ChatProjectionNodeBase {
 export interface ChatRunStatusNode extends ChatProjectionNodeBase {
   kind: 'run_status';
   status: ChatRunStatus;
-  reason?: string;
+  terminalReason?: RunTerminalReason;
+  /** Brain/model diagnostic, shown verbatim in Detailed mode. */
+  terminalDetail?: string;
   /** Latest Attempt start retained when lifecycle rows are collapsed. */
   startedAt?: string;
 }

@@ -161,6 +161,7 @@ import {
   waitForBackendReady,
 } from '@/api/http';
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
+import { RUN_STREAM_REOPENED_EVENT } from '@/lib/events/durableRunEvents';
 import { selectRenderableChatNodes } from '@/lib/projector/chat';
 import {
   composeTimelineRuns,
@@ -2833,10 +2834,10 @@ describe('ChatStore - Core Functionality', () => {
               {
                 run_id: 'live-run',
                 project_id: 'project-1',
-                status: 'failed',
+                status: 'timed_out',
                 version: 87,
                 updated_at: Date.now(),
-                latest_attempt: { attempt_number: 1, status: 'failed' },
+                latest_attempt: { attempt_number: 1, status: 'timed_out' },
               },
             ]);
             expect(
@@ -4128,6 +4129,26 @@ describe('ChatStore - Core Functionality', () => {
         expect(runDomainEventHub.listenerCount()).toBe(0);
       });
 
+      it('announces a reopened legacy stream so waiting requests re-check Brain', async () => {
+        const reopened = vi.fn();
+        const listener = (event: Event) =>
+          reopened((event as CustomEvent).detail);
+        window.addEventListener(RUN_STREAM_REOPENED_EVENT, listener);
+        try {
+          const { streamContaining } = await startObservedLiveTask();
+          expect(reopened).not.toHaveBeenCalled();
+          await streamContaining('/chat').onopen?.(
+            new Response('', {
+              status: 200,
+              headers: { 'content-type': 'text/event-stream' },
+            })
+          );
+          expect(reopened).toHaveBeenCalledWith({ runId: 'live-run' });
+        } finally {
+          window.removeEventListener(RUN_STREAM_REOPENED_EVENT, listener);
+        }
+      });
+
       it.each(['event', 'snapshot'] as const)(
         'settles only the admitted Resume attempt from a terminal %s',
         async (terminalSource) => {
@@ -4516,6 +4537,33 @@ describe('ChatStore - Core Functionality', () => {
         expect(hasActiveSSEConnection(['idle-run'])).toBe(false);
         expect(hasSSETransportForTasks(['idle-run'])).toBe(false);
         expect(getIdleSSETransportTaskId(['idle-run'])).toBeNull();
+      });
+
+      it('stops holding a finished Run stream once that stream errors', async () => {
+        const { store, streamContaining } = await startObservedLiveTask({
+          initialRunId: 'idle-run',
+        });
+        const legacyStream = streamContaining('/chat');
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.END,
+            data: { content: 'Done' },
+          }),
+        });
+        expect(store.getState().tasks['idle-run'].status).toBe(
+          ChatTaskStatus.FINISHED
+        );
+        expect(getIdleSSETransportTaskId(['idle-run'])).toBe('idle-run');
+
+        // Sleep or a network change: a finished Run never reconnects (#1212),
+        // so follow-up admission must not treat this stream as still held.
+        expect(() =>
+          legacyStream.onerror?.(new TypeError('Failed to fetch'))
+        ).toThrow();
+
+        expect(getIdleSSETransportTaskId(['idle-run'])).toBeNull();
+        expect(hasSSETransportForTasks(['idle-run'])).toBe(false);
+        expect((legacyStream.signal as AbortSignal).aborted).toBe(true);
       });
 
       describe('successful canonical legacy tails', () => {
@@ -6789,6 +6837,125 @@ describe('ChatStore - Core Functionality', () => {
           { replaySource: 'local_durable' }
         );
       expect(store.getState().tasks['approval-run'].messages).toEqual([]);
+    });
+
+    const replayHumanInteractionEvents = async (
+      events: Array<{
+        event_type: string;
+        legacy_step?: string;
+        payload: object;
+      }>
+    ) => {
+      const store = createChatStoreInstance();
+      const taskId = store.getState().create();
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, event] of events.entries()) {
+          await opts.onmessage?.({
+            event: 'run_event',
+            id: String(index + 1),
+            data: JSON.stringify({
+              ...event,
+              event_id: `restart-event-${index}`,
+              sequence: index + 1,
+              project_id: 'restart-session',
+              run_id: taskId,
+              created_at: 100 + index,
+            }),
+          } as any);
+        }
+      });
+      await store
+        .getState()
+        .startTask(
+          taskId,
+          'replay',
+          undefined,
+          0,
+          undefined,
+          undefined,
+          undefined,
+          'restart-session',
+          undefined,
+          { replaySource: 'local_durable' }
+        );
+      return store.getState().tasks[taskId];
+    };
+    const approvalAsk = (interactionId: string) => ({
+      event_type: 'legacy.ask',
+      legacy_step: 'ask',
+      payload: {
+        agent: 'worker',
+        interaction_id: interactionId,
+        interaction_type: 'approval',
+        version: 0,
+        title: 'Allow write?',
+      },
+    });
+
+    it.each([
+      [
+        'approval.cancelled',
+        {
+          interaction_id: 'restart-approval',
+          approval_id: 'restart-approval',
+          decision: 'rejected',
+          reason: 'tool_terminal_before_dispatch',
+        },
+      ],
+      [
+        'interaction.cancelled',
+        {
+          interaction_id: 'restart-approval',
+          interaction_type: 'approval',
+          reason: 'brain_restart',
+        },
+      ],
+      [
+        'approval.expired_rejected',
+        { approval_id: 'restart-approval', reason: 'approval_expired' },
+      ],
+      [
+        'interaction.expired',
+        { interaction_id: 'restart-approval', interaction_type: 'approval' },
+      ],
+    ])(
+      'clears a replayed ASK that ended with %s',
+      async (eventType, payload) => {
+        const task = await replayHumanInteractionEvents([
+          approvalAsk('restart-approval'),
+          { event_type: eventType, payload },
+        ]);
+        expect(task.activeAsk).toBe('');
+        expect(task.askList).toEqual([]);
+        expect(task.resolvedInteractionIds).toEqual(['restart-approval']);
+        expect(
+          task.messages.some(
+            (message) =>
+              message.interaction?.interaction_id === 'restart-approval'
+          )
+        ).toBe(false);
+      }
+    );
+
+    it('makes a request asked again after Resume the active one', async () => {
+      const task = await replayHumanInteractionEvents([
+        approvalAsk('restart-approval'),
+        {
+          event_type: 'approval.cancelled',
+          payload: {
+            interaction_id: 'restart-approval',
+            decision: 'rejected',
+            reason: 'tool_terminal_before_dispatch',
+          },
+        },
+        approvalAsk('resumed-approval'),
+      ]);
+      expect(task.activeAsk).toBe('worker');
+      expect(task.askList).toEqual([]);
+      expect(
+        task.messages.findLast((message) => message.step === AgentStep.ASK)
+          ?.interaction?.interaction_id
+      ).toBe('resumed-approval');
     });
 
     it('replays a recorded human reply without leaving an active wait', async () => {

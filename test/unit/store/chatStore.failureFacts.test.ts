@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet } from '@/api/http';
+import { runProjectionStore } from '@/lib/runEvents';
 import { useAuthStore } from '@/store/authStore';
 import {
   createChatStoreInstance,
@@ -94,6 +95,62 @@ describe('scoped Task failure presentation hydration', () => {
     });
   });
 
+  it('hydrates a timed-out Task with the reason recorded on its terminal event', async () => {
+    const owner = setup();
+    owner.getState().setDurableRunStatus('failed-run', 'timed_out');
+    const page = events();
+    page.events[1] = {
+      ...page.events[1],
+      event_type: 'run.deadline_reached',
+      payload: {
+        terminal_reason: 'deadline_exceeded',
+        terminal_detail: 'persisted_run_deadline_reached',
+      },
+    };
+    fetchGetMock.mockResolvedValue(page);
+    expect(
+      await readTaskFailureFacts(
+        owner,
+        'session',
+        'failed-run',
+        new AbortController().signal
+      )
+    ).toMatchObject({
+      terminalReason: 'deadline_exceeded',
+      finalResponse: 'absent',
+    });
+  });
+
+  it('falls back to the Run summary reason for a stop event without one', async () => {
+    const owner = setup();
+    owner.getState().setDurableRunStatus('failed-run', 'timed_out');
+    const page = events();
+    page.events[1] = { ...page.events[1], event_type: 'run.deadline_reached' };
+    fetchGetMock.mockResolvedValue(page);
+    runProjectionStore.upsertRunSummaries('session', [
+      {
+        run_id: 'failed-run',
+        project_id: 'session',
+        status: 'timed_out',
+        version: 1,
+        updated_at: 1,
+        terminal_reason: 'deadline_exceeded',
+      },
+    ]);
+    try {
+      expect(
+        await readTaskFailureFacts(
+          owner,
+          'session',
+          'failed-run',
+          new AbortController().signal
+        )
+      ).toMatchObject({ terminalReason: 'deadline_exceeded' });
+    } finally {
+      runProjectionStore.clearProject('session');
+    }
+  });
+
   it.each(['account', 'navigation', 'cancel', 'delete', 'replace-owner'])(
     'ignores delayed reads after %s changes, including switching back',
     async (change) => {
@@ -158,7 +215,7 @@ describe('scoped Task failure presentation hydration', () => {
         new AbortController().signal
       )
     ).toEqual({
-      terminal: 'failed',
+      terminalReason: null,
       finalResponse: 'unverified',
       actionsVerified: false,
       actions: [],

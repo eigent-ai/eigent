@@ -32,6 +32,8 @@ vi.mock('@/store/sessionExecutionStore', () => ({
 import { partitionLegacyMessageEvidence } from '@/components/ChatBox/EventTimeline/legacyReplyEvidence';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { PROJECT_CACHE_SCHEMA_VERSION } from '@/lib/projectCache';
+import { normalizeLocalRunEvent } from '@/lib/projector';
+import { selectPendingHumanControlCount } from '@/lib/projector/control';
 import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { refreshSessionNavStatuses } from '@/service/sessionNavStatus';
@@ -52,17 +54,23 @@ import {
   waitForPendingStaleRuntimeEviction,
 } from '@/store/projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
-import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
+import {
+  ChatTaskStatus,
+  normalizeThinkingEffort,
+  ThinkingEffort,
+} from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { v104GuiInputEvents } from '../../fixtures/v104GuiInput';
 
 const {
   closeIdleSSEConnectionsForTasksMock,
+  countIdleRelayedSSEConnectionsMock,
   deleteCachedProjectMock,
   fetchGetMock,
   fetchPostMock,
   getCachedProjectMock,
   hasActiveSSEConnectionMock,
+  hasSSETransportForTasksMock,
   putCachedProjectMock,
   proxyFetchGetMock,
   proxyCreateSpaceProjectMock,
@@ -73,11 +81,13 @@ const {
   waitForIdleSSEDisplayTailMock,
 } = vi.hoisted(() => ({
   closeIdleSSEConnectionsForTasksMock: vi.fn(),
+  countIdleRelayedSSEConnectionsMock: vi.fn(),
   deleteCachedProjectMock: vi.fn(),
   fetchGetMock: vi.fn(),
   fetchPostMock: vi.fn(),
   getCachedProjectMock: vi.fn(),
   hasActiveSSEConnectionMock: vi.fn(),
+  hasSSETransportForTasksMock: vi.fn(),
   putCachedProjectMock: vi.fn(),
   proxyFetchGetMock: vi.fn(),
   proxyCreateSpaceProjectMock: vi.fn(),
@@ -133,7 +143,9 @@ vi.mock('@/store/chatStore', async (importOriginal) => {
       return store;
     },
     closeIdleSSEConnectionsForTasks: closeIdleSSEConnectionsForTasksMock,
+    countIdleRelayedSSEConnections: countIdleRelayedSSEConnectionsMock,
     hasActiveSSEConnection: hasActiveSSEConnectionMock,
+    hasSSETransportForTasks: hasSSETransportForTasksMock,
     waitForIdleSSEDisplayTail: waitForIdleSSEDisplayTailMock,
   };
 });
@@ -162,6 +174,8 @@ describe('projectStore runtime shape', () => {
     getCachedProjectMock.mockResolvedValue(null);
     putCachedProjectMock.mockResolvedValue(undefined);
     hasActiveSSEConnectionMock.mockReturnValue(false);
+    hasSSETransportForTasksMock.mockReturnValue(false);
+    countIdleRelayedSSEConnectionsMock.mockReturnValue(0);
     waitForIdleSSEDisplayTailMock.mockResolvedValue(undefined);
     fetchGetMock.mockResolvedValue({ runs: [] });
     fetchPostMock.mockResolvedValue({
@@ -2230,6 +2244,222 @@ describe('projectStore runtime shape', () => {
     expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
       expect.arrayContaining(['task_finished'])
     );
+  });
+
+  describe('idle stream reclaim', () => {
+    const finishedSession = (projectId: string) => {
+      const runId = `${projectId}-run`;
+      useProjectStore
+        .getState()
+        .createProject('Finished', undefined, projectId);
+      const { chatStore } = useProjectStore
+        .getState()
+        .appendInitChatStore(projectId, runId)!;
+      chatStore.getState().addMessages(runId, {
+        id: `${runId}-prompt`,
+        role: 'user',
+        content: 'Build the report',
+      });
+      chatStore.getState().setStatus(runId, ChatTaskStatus.FINISHED);
+      // The window still holds this finished Run's idle `/chat` stream.
+      hasSSETransportForTasksMock.mockImplementation((taskIds: string[]) =>
+        taskIds.includes(runId)
+      );
+      const nextProjectId = useProjectStore
+        .getState()
+        .createProject(
+          'Next',
+          undefined,
+          `${projectId}-next`,
+          undefined,
+          undefined,
+          false
+        );
+      return { chatStore, runId, nextProjectId };
+    };
+    const settle = async () => {
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+    };
+
+    it('releases the idle stream of a finished Session after its display drains', async () => {
+      const { runId, nextProjectId } = finishedSession('reclaim_finished');
+      const display = deferred<void>();
+      waitForIdleSSEDisplayTailMock.mockReturnValueOnce(display.promise);
+
+      useProjectStore.getState().setActiveProject(nextProjectId);
+
+      expect(waitForIdleSSEDisplayTailMock).toHaveBeenCalledWith(
+        expect.arrayContaining([runId])
+      );
+      await settle();
+      expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+
+      display.resolve();
+      await vi.waitFor(() =>
+        expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
+          expect.arrayContaining([runId]),
+          { keepRelayed: true }
+        )
+      );
+      // Only the stream goes away: the Session stays loaded, and Brain's idle
+      // consumer is left for the next follow-up admission to retire.
+      expect(
+        useProjectStore.getState().projects.reclaim_finished
+      ).toBeDefined();
+      expect(fetchPostMock).not.toHaveBeenCalled();
+      expect(fetchGetMock).not.toHaveBeenCalledWith(
+        '/chat/reclaim_finished/status'
+      );
+    });
+
+    it('keeps relayed idle streams while they fit the budget', async () => {
+      const { runId, nextProjectId } = finishedSession('reclaim_relayed');
+      countIdleRelayedSSEConnectionsMock.mockReturnValue(15);
+
+      useProjectStore.getState().setActiveProject(nextProjectId);
+
+      expect(hasSSETransportForTasksMock).toHaveBeenCalledWith(
+        expect.arrayContaining([runId]),
+        { keepRelayed: true }
+      );
+      await vi.waitFor(() =>
+        expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
+          expect.arrayContaining([runId]),
+          { keepRelayed: true }
+        )
+      );
+    });
+
+    it('releases relayed idle streams past the budget', async () => {
+      const { runId, nextProjectId } = finishedSession('reclaim_over_budget');
+      countIdleRelayedSSEConnectionsMock.mockReturnValue(16);
+
+      useProjectStore.getState().setActiveProject(nextProjectId);
+
+      await vi.waitFor(() =>
+        expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
+          expect.arrayContaining([runId]),
+          { keepRelayed: false }
+        )
+      );
+    });
+
+    it.each([
+      'a running Run',
+      'a logically active stream',
+      'a pending admission',
+      'a queued follow-up',
+      'a follow-up awaiting confirmation',
+      'a question waiting for an answer',
+      'a Run waiting for approval',
+      'a pending approval request',
+    ])('keeps the stream of a Session with %s', async (work) => {
+      const { chatStore, runId, nextProjectId } =
+        finishedSession('reclaim_busy');
+      const state = chatStore.getState();
+      if (work === 'a running Run')
+        state.setStatus(runId, ChatTaskStatus.RUNNING);
+      if (work === 'a logically active stream')
+        hasActiveSSEConnectionMock.mockReturnValue(true);
+      if (work === 'a pending admission') state.setIsPending(runId, true);
+      if (work === 'a queued follow-up')
+        useProjectStore.getState().restoreQueuedMessage('reclaim_busy', {
+          task_id: 'queued-follow-up',
+          content: 'Then summarize it',
+          timestamp: 1,
+          attaches: [],
+        });
+      if (work === 'a follow-up awaiting confirmation')
+        state.setNextTaskId('warm-follow-up');
+      if (work === 'a question waiting for an answer')
+        state.setActiveAsk(runId, 'developer_agent');
+      if (work === 'a Run waiting for approval')
+        runProjectionStore.upsertRunSummaries('reclaim_busy', [
+          {
+            project_id: 'reclaim_busy',
+            run_id: 'approval-run',
+            status: 'waiting_for_user',
+            version: 2,
+            origin: 'local',
+            updated_at: 2,
+          },
+        ]);
+      if (work === 'a pending approval request') {
+        const eventStore = getProjectEventStore('reclaim_busy');
+        eventStore.enqueue(
+          normalizeLocalRunEvent(
+            {
+              schema_version: 1,
+              event_id: 'approval-requested-1',
+              project_id: 'reclaim_busy',
+              run_id: 'approval-run',
+              run_sequence: 1,
+              run_version: 1,
+              event_type: 'approval.requested',
+              payload: {
+                interaction_id: 'approval-1',
+                interaction_type: 'approval',
+              },
+              created_at: 1,
+            },
+            'reclaim_busy'
+          )
+        );
+        eventStore.flushNow();
+        expect(
+          selectPendingHumanControlCount(eventStore.getSnapshot().control)
+        ).toBe(1);
+      }
+
+      useProjectStore.getState().setActiveProject(nextProjectId);
+      await settle();
+
+      expect(waitForIdleSSEDisplayTailMock).not.toHaveBeenCalled();
+      expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+    });
+
+    it.each(['returns to it', 'starts new work in it'])(
+      'keeps the stream when the user %s before the display drains',
+      async (change) => {
+        const { chatStore, runId, nextProjectId } =
+          finishedSession('reclaim_changed');
+        const display = deferred<void>();
+        waitForIdleSSEDisplayTailMock.mockReturnValueOnce(display.promise);
+        useProjectStore.getState().setActiveProject(nextProjectId);
+        expect(waitForIdleSSEDisplayTailMock).toHaveBeenCalledOnce();
+
+        if (change === 'returns to it')
+          useProjectStore.getState().setActiveProject('reclaim_changed');
+        else chatStore.getState().setIsPending(runId, true);
+        display.resolve();
+        await settle();
+
+        expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+      }
+    );
+
+    it('releases a background Session when its Run finishes there', async () => {
+      const { runId, nextProjectId } = finishedSession('reclaim_background');
+      useProjectStore.setState({ activeProjectId: nextProjectId });
+
+      useProjectStore
+        .getState()
+        .reclaimIdleStreams(nextProjectId, ['reclaim_background']);
+      await vi.waitFor(() =>
+        expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
+          expect.arrayContaining([runId]),
+          { keepRelayed: true }
+        )
+      );
+
+      closeIdleSSEConnectionsForTasksMock.mockClear();
+      useProjectStore.setState({ activeProjectId: 'reclaim_background' });
+      useProjectStore
+        .getState()
+        .reclaimIdleStreams('reclaim_background', ['reclaim_background']);
+      await settle();
+      expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+    });
   });
 
   it('replays stale cached history during the same project open', async () => {

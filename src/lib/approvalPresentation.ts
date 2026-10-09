@@ -12,49 +12,36 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  type RunTerminalReason,
+  runTerminalReasonText,
+} from '@/lib/runTerminalReason';
 import type { HumanInteractionPayload } from '@/service/humanInteractionApi';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
-function mappedApprovalReason(
+/** Detailed mode keeps the journal's own reason verbatim. */
+export function approvalRecordedReason(
   reason: string | null | undefined,
   t: Translate
 ): string {
-  if (
-    [
-      'approval_expired',
-      'tool_approval_expired',
-      'approval.expired_rejected',
-    ].includes(reason ?? '')
-  ) {
-    return t('chat.approval-expired-description');
-  }
-  if (reason === 'tool_terminal_before_dispatch') {
-    return t('chat.approval-tool-ended-description');
-  }
-  return '';
+  return reason ? t('chat.approval-recorded-reason', { reason }) : '';
 }
 
-/** Keep the journal reason verbatim unless it has an explicitly supported label. */
-export function approvalTerminalReason(
-  reason: string | null | undefined,
-  t: Translate
-): string {
-  if (!reason) return '';
-  return (
-    mappedApprovalReason(reason, t) ||
-    t('chat.approval-recorded-reason', { reason })
-  );
-}
-
-/** Banners name only mapped approval causes; raw reasons stay in Detailed mode. */
+/** Banners name only the closed cause; its detail stays in Detailed mode. */
 export function interruptedRunDescription(
-  reason: string | null | undefined,
-  t: Translate
+  reason: RunTerminalReason | null | undefined,
+  t: Translate,
+  /** Replaces the promise that Resume picks up when it cannot. */
+  resumeUnavailableReason?: string
 ): string {
   return [
-    mappedApprovalReason(reason, t),
-    t('chat.run-interrupted-description'),
+    runTerminalReasonText(reason, t),
+    // Only a Run that can resume asks an expired request again.
+    reason === 'approval_expired' && !resumeUnavailableReason
+      ? t('chat.run-resume-reevaluates-hint')
+      : '',
+    resumeUnavailableReason ?? t('chat.run-interrupted-description'),
   ]
     .filter(Boolean)
     .join(' ');
@@ -98,6 +85,7 @@ export function isHumanInteractionReadOnly(input: {
       'completed',
       'failed',
       'cancelled',
+      'timed_out',
       'cancelling',
       'stopped',
     ].includes(input.durableRunStatus || '')

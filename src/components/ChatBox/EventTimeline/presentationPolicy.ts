@@ -14,6 +14,7 @@
 
 import type { ChatProjectionNode } from '@/lib/projector/chat';
 import { sortTimelineNodes } from '@/lib/projector/chat/presentation';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
   chatTimelineDetailLevels,
   type ChatTimelineDetailLevel,
@@ -310,8 +311,7 @@ function presentSubagentInvocationLifecycles(
 
   const terminalRunKeys = new Set(
     nodes.flatMap((node) =>
-      node.kind === 'run_status' &&
-      ['completed', 'failed', 'cancelled', 'interrupted'].includes(node.status)
+      node.kind === 'run_status' && isStoppedRunStatus(node.status)
         ? [JSON.stringify([node.projectId, node.runId])]
         : []
     )

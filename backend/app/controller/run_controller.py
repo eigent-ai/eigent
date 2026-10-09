@@ -42,6 +42,8 @@ from app.run_journal import (
     InvalidRunTransitionError,
     OptimisticConcurrencyError,
     RunNotFoundError,
+    RunRecord,
+    SQLiteRunJournal,
     UnsafeResumeError,
     get_default_run_journal,
 )
@@ -56,6 +58,7 @@ from app.run_runtime import (
     SubscriberLaggedError,
     get_default_run_coordinator,
 )
+from app.run_runtime.tool_checkpoint import build_tool_display_projection
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
 
@@ -333,6 +336,33 @@ def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
     return total
 
 
+async def _unsafe_resume_blockers(
+    journal: SQLiteRunJournal, run: RunRecord
+) -> list[dict[str, Any]]:
+    """Name the Tool calls an explicit Resume of this Run refuses to replay.
+
+    Derived from the same fail-closed rule as Resume admission. Only an
+    interrupted Run offers Resume, so every other state reports none.
+    """
+    if run.status != "interrupted":
+        return []
+    calls = await asyncio.to_thread(
+        journal.list_unsafe_resume_blockers, run.run_id
+    )
+    return [
+        {
+            "tool_call_id": call.tool_call_id,
+            "tool_name": call.tool_name,
+            "display_title": build_tool_display_projection(
+                tool_name=call.tool_name,
+                request=call.request,
+                status=call.status,
+            ).title,
+        }
+        for call in calls
+    ]
+
+
 @router.get("/runs")
 async def list_project_runs(
     project_id: str = Query(min_length=1),
@@ -374,6 +404,9 @@ async def list_project_runs(
                     if attempts
                     else None
                 ),
+                "unsafe_resume_blockers": await _unsafe_resume_blockers(
+                    journal, run
+                ),
             }
         )
     return {
@@ -408,6 +441,7 @@ async def get_run(run_id: str):
         "approvals": [asdict(approval) for approval in approvals],
         "interactions": [asdict(interaction) for interaction in interactions],
         "tool_calls": [asdict(tool_call) for tool_call in tool_calls],
+        "unsafe_resume_blockers": await _unsafe_resume_blockers(journal, run),
         "runtime": {
             "consumer_alive": bool(handle and handle.consumer_alive),
             "subscriber_count": handle.subscriber_count if handle else 0,
@@ -483,8 +517,40 @@ async def decide_run_interaction(
     interaction_id: str,
     body: InteractionDecisionBody,
 ):
+    from app.service.task import commit_and_deliver, get_task_lock_if_exists
+
     journal = get_default_run_journal()
-    decision_applied = False
+
+    async def answer_waiter() -> None:
+        run = await asyncio.to_thread(journal.get_run, run_id)
+        agent = interaction.request.get("agent")
+        if run is None or not isinstance(agent, str) or not agent:
+            return
+        task_lock = get_task_lock_if_exists(run.project_id)
+        if task_lock is None:
+            return
+        reply_value = body.decision.get("reply")
+        if reply_value is None:
+            reply_value = body.decision.get("decision")
+        if reply_value is None and body.decision:
+            reply_value = json.dumps(
+                body.decision,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        if reply_value is not None:
+            try:
+                await task_lock.put_human_input(agent, str(reply_value))
+            except KeyError:
+                logger.info(
+                    "Interaction decision persisted without a live waiter",
+                    extra={
+                        "run_id": run_id,
+                        "interaction_id": interaction_id,
+                    },
+                )
+
     try:
         interaction = await asyncio.to_thread(
             journal.get_human_interaction, interaction_id
@@ -555,7 +621,8 @@ async def decide_run_interaction(
                 for key, value in body.decision.items()
                 if key != "decision"
             }
-            _, decision_applied = await asyncio.to_thread(
+            await commit_and_deliver(
+                answer_waiter,
                 journal.decide_approval,
                 interaction_id,
                 include_transition=True,
@@ -591,7 +658,8 @@ async def decide_run_interaction(
             )
             assert result is not None
         else:
-            result, decision_applied = await asyncio.to_thread(
+            result, decision_applied, _ = await commit_and_deliver(
+                answer_waiter,
                 journal.resolve_human_interaction,
                 interaction_id,
                 include_transition=True,
@@ -618,39 +686,6 @@ async def decide_run_interaction(
                 )
     except Exception as exc:
         raise _control_error(exc) from exc
-    run = await asyncio.to_thread(journal.get_run, run_id)
-    agent = interaction.request.get("agent")
-    if (
-        decision_applied
-        and run is not None
-        and isinstance(agent, str)
-        and agent
-    ):
-        from app.service.task import get_task_lock_if_exists
-
-        task_lock = get_task_lock_if_exists(run.project_id)
-        if task_lock is not None:
-            reply_value = body.decision.get("reply")
-            if reply_value is None:
-                reply_value = body.decision.get("decision")
-            if reply_value is None and body.decision:
-                reply_value = json.dumps(
-                    body.decision,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-            if reply_value is not None:
-                try:
-                    await task_lock.put_human_input(agent, str(reply_value))
-                except KeyError:
-                    logger.info(
-                        "Interaction decision persisted without a live waiter",
-                        extra={
-                            "run_id": run_id,
-                            "interaction_id": interaction_id,
-                        },
-                    )
     return await asyncio.to_thread(_interaction_receipt, journal, result)
 
 

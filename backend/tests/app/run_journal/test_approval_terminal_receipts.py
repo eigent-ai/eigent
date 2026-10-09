@@ -78,11 +78,15 @@ def test_expiry_receipt_survives_restart_and_resume_rejects_old_authority(
             expire(journal, attempt)
     with SQLiteRunJournal(path) as journal:
         journal.reconcile_startup(now=6)
-        assert journal.get_run("run-1").status == "interrupted"
+        run = journal.get_run("run-1")
+        assert (run.status, run.terminal_reason) == (
+            "interrupted",
+            "approval_expired",
+        )
+        latest = journal.list_run_attempts("run-1")[-1]
+        assert latest.terminal_reason == "approval_expired"
         if offline:
-            assert journal.list_run_attempts("run-1")[-1].outcome == (
-                "approval_expired"
-            )
+            assert latest.outcome == "approval_expired"
         old = journal.list_approvals("run-1")[0]
         assert old.decision["reason"] == "approval_expired"
         assert (
@@ -113,6 +117,7 @@ def test_expiry_receipt_survives_restart_and_resume_rejects_old_authority(
             now=8,
         )
         assert resumed.attempt_id != attempt.attempt_id
+        assert journal.get_run("run-1").terminal_reason is None
         journal.create_approval(
             approval_id="new-approval",
             run_id="run-1",
@@ -170,7 +175,11 @@ def test_offline_expiry_after_the_run_deadline_keeps_the_deadline_outcome(
     with SQLiteRunJournal(path) as journal:
         result = journal.reconcile_startup(now=6)
         assert result.deadline_run_ids == ("run-1",)
-        assert journal.get_run("run-1").status == "failed"
+        run = journal.get_run("run-1")
+        assert (run.status, run.terminal_reason) == (
+            "timed_out",
+            "deadline_exceeded",
+        )
         assert journal.list_run_attempts("run-1")[-1].outcome == (
             "run.deadline_reached"
         )
@@ -197,7 +206,14 @@ def test_manual_cancel_and_expiry_keep_the_winning_approval_reason(
             with pytest.raises(InvalidRunTransitionError):
                 expire(journal, attempt)
         journal.reconcile_startup(now=8)
-        assert journal.get_run("run-1").status == "cancelled"
+        run = journal.get_run("run-1")
+        assert (run.status, run.terminal_reason) == (
+            "cancelled",
+            "user_cancelled",
+        )
+        assert journal.get_run_attempt(attempt.attempt_id).terminal_reason == (
+            "approval_expired" if expiry_first else "user_cancelled"
+        )
         approval = journal.list_approvals("run-1")[0]
         assert approval.decision["reason"] == (
             "approval_expired" if expiry_first else "run_terminal:cancelled"

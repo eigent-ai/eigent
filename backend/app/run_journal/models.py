@@ -42,6 +42,8 @@ class RunRecord:
     cancel_requested_at: float | None = None
     origin: str = "local"
     resume_blocked_reason: str | None = None
+    terminal_reason: str | None = None
+    terminal_detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,7 @@ class WorkspaceWriterLeaseRecord:
     target_ref: str
     acquired_at: float
     version: int
+    holder_attempt_id: str | None
 
 
 @dataclass(frozen=True)
@@ -401,6 +404,8 @@ class RunAttemptRecord:
     provider_capability_revision: str | None = None
     workload_profile: WorkloadProfileRecord | None = None
     workload_profile_digest: str | None = None
+    terminal_reason: str | None = None
+    terminal_detail: str | None = None
 
 
 @dataclass(frozen=True)

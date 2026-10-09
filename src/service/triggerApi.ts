@@ -503,7 +503,7 @@ async function reconcileTrackedTriggerRuns(): Promise<void> {
         const status =
           summary.status === 'completed'
             ? ExecutionStatus.Completed
-            : summary.status === 'failed'
+            : summary.status === 'failed' || summary.status === 'timed_out'
               ? ExecutionStatus.Failed
               : summary.status === 'cancelled'
                 ? ExecutionStatus.Cancelled
@@ -521,8 +521,8 @@ async function reconcileTrackedTriggerRuns(): Promise<void> {
               projectId: record.projectId,
               runId: record.runId,
               terminalEventTypes:
-                summary.status === 'failed'
-                  ? ['run.failed', 'run.deadline_reached']
+                summary.status === 'timed_out'
+                  ? ['run.deadline_reached']
                   : [`run.${summary.status}`],
               signal: controller.signal,
               expectedAccountKey: record.accountKey,

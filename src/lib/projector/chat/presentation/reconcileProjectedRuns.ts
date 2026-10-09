@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isStoppedRunStatus } from '../../runSummary';
 import type { ProjectedRun } from '../../types';
 import type { TimelineRunView } from './types';
 
@@ -20,13 +21,6 @@ const ACTIVE_RUN_STATUSES = new Set<ProjectedRun['status']>([
   'running',
   'waiting_for_user',
   'cancelling',
-]);
-
-const TERMINAL_RUN_STATUSES = new Set<ProjectedRun['status']>([
-  'completed',
-  'failed',
-  'cancelled',
-  'interrupted',
 ]);
 
 function timestampValue(value: string | null): number | null {
@@ -63,7 +57,7 @@ export function reconcileTimelineRun(
 
   const status = projectedRun.status;
   const active = ACTIVE_RUN_STATUSES.has(status);
-  const terminal = TERMINAL_RUN_STATUSES.has(status);
+  const terminal = isStoppedRunStatus(status);
   const authoritativeUpdatedAt = projectedRun.updatedAt || null;
   const totalAttemptElapsedMs = nonNegativeElapsed(
     projectedRun.totalAttemptElapsedMs
@@ -91,15 +85,20 @@ export function reconcileTimelineRun(
         anchoredAt: null,
       };
 
+  const runFacts = {
+    status,
+    terminalReason: projectedRun.terminalReason ?? undefined,
+    terminalDetail: projectedRun.terminalDetail ?? undefined,
+  };
   const nodes = run.nodes.map((node) =>
-    node.kind === 'run_status' ? { ...node, status } : node
+    node.kind === 'run_status' ? { ...node, ...runFacts } : node
   );
   const traceRows = run.traceRows.map((row) =>
     row.kind === 'node' && row.node.kind === 'run_status'
-      ? { ...row, node: { ...row.node, status } }
+      ? { ...row, node: { ...row.node, ...runFacts } }
       : row
   );
-  const runStatus = run.runStatus ? { ...run.runStatus, status } : null;
+  const runStatus = run.runStatus ? { ...run.runStatus, ...runFacts } : null;
 
   return {
     ...run,

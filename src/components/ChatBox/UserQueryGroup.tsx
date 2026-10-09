@@ -13,12 +13,17 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
+import { useProjectedRunStatus, useRunWriterWait } from '@/lib/runEvents';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
-import type { VanillaChatStore } from '@/store/chatStore';
+import {
+  UNSUCCESSFUL_RUN_STATUSES,
+  type VanillaChatStore,
+} from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
@@ -38,6 +43,7 @@ import {
 } from './MessageItem/HumanInteractionCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
+import { SpaceWaitNotice } from './MessageItem/SpaceWaitNotice';
 import { TaskFailureSummary } from './MessageItem/TaskFailureSummary';
 import {
   getTaskRunDisplayStatus,
@@ -197,6 +203,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const viewChanges = activeTaskId
     ? () => openReviewPreview({ runId: activeTaskId })
     : undefined;
+  // The canonical Run says when a start is queued behind another task's
+  // writes; the legacy stream has no event for it.
+  const activeProjectId = useProjectRuntimeStore(
+    (state) => state.activeProjectId
+  );
+  const writerWait = useRunWriterWait(activeProjectId, activeTaskId);
+  const projectedRunStatus = useProjectedRunStatus(
+    activeProjectId,
+    activeTaskId
+  );
 
   // Subscribe to streaming decompose text separately for efficient updates
   const streamingDecomposeText = useSyncExternalStore(
@@ -222,10 +238,20 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     );
 
   const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  // A restored Run keeps the status read when its Session was loaded. A
+  // request raised after that reaches the same replay stream but only moves
+  // the Run projection, so it may lift a status that has not ended.
+  const replayRunStatus =
+    projectedRunStatus === 'waiting_for_user' &&
+    (activeTask?.durableRunStatus === undefined ||
+      activeTask.durableRunStatus === 'pending' ||
+      activeTask.durableRunStatus === 'running')
+      ? projectedRunStatus
+      : activeTask?.durableRunStatus;
   const ownsFailureSummary =
     queryGroup.ownsRunWorkLog === true &&
-    activeTask?.durableRunStatus === 'failed' &&
-    activeTask.status === ChatTaskStatus.FINISHED;
+    UNSUCCESSFUL_RUN_STATUSES.has(activeTask?.durableRunStatus!) &&
+    activeTask?.status === ChatTaskStatus.FINISHED;
   const [failureEvidence, setFailureEvidence] = useState<{
     taskId: string;
     owner: VanillaChatStore;
@@ -479,7 +505,13 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           transition={{ duration: 0.25, delay: 0.05 }}
           className="px-2"
         >
-          {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
+          {showPreparingExecute ? (
+            writerWait ? (
+              <SpaceWaitNotice wait={writerWait} />
+            ) : (
+              <PreparingToExecuteTasks />
+            )
+          ) : null}
           <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
         </motion.div>
       )}
@@ -505,7 +537,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             activeTaskId,
             taskType: activeTask.type,
             taskStatus: activeTask.status,
-            durableRunStatus: activeTask.durableRunStatus,
+            durableRunStatus: replayRunStatus,
           });
 
         // A replay reattached to a live durable waiter remains actionable even
@@ -678,7 +710,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       })}
 
       {ownsFailureSummary ? (
-        <TaskFailureSummary key={activeTaskId} facts={failureFacts} />
+        <TaskFailureSummary
+          key={activeTaskId}
+          facts={failureFacts}
+          status={activeTask?.durableRunStatus}
+        />
       ) : null}
 
       {showMissingFinalResponse ? (

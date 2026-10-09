@@ -18,10 +18,9 @@ import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
 import { useHost } from '@/host';
-import {
-  approvalTerminalReason,
-  isInteractionTerminal,
-} from '@/lib/approvalPresentation';
+import { isInteractionTerminal } from '@/lib/approvalPresentation';
+import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { controlOwner } from '@/service/controlRequest';
 import {
   decideHumanInteraction,
@@ -29,7 +28,9 @@ import {
   invalidatePendingHumanInteractions,
   isHumanInteractionStillPending,
   type HumanInteractionPayload,
+  type HumanInteractionReceipt,
 } from '@/service/humanInteractionApi';
+import { watchHumanInteractionPending } from '@/service/humanInteractionPendingCheck';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { ShieldAlert } from 'lucide-react';
@@ -60,7 +61,7 @@ const requestId = () =>
 
 function mergeJournalReceipt(
   interaction: HumanInteractionPayload,
-  receipt: Pick<HumanInteractionPayload, 'status' | 'reason' | 'expires_at'>
+  receipt: HumanInteractionReceipt
 ): HumanInteractionPayload {
   if (!isInteractionTerminal(interaction))
     return { ...interaction, ...receipt };
@@ -71,6 +72,7 @@ function mergeJournalReceipt(
     ...interaction,
     reason: interaction.reason || receipt.reason,
     expires_at: interaction.expires_at ?? receipt.expires_at,
+    terminal_reason: interaction.terminal_reason ?? receipt.terminal_reason,
   };
 }
 
@@ -170,12 +172,9 @@ export function HumanInteractionCard({
   const delivered = useRef<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resolved, setResolved] = useState(false);
-  const [journalReceipt, setJournalReceipt] = useState<{
-    identity: string;
-    status?: string;
-    reason?: string;
-    expires_at?: number | string | null;
-  } | null>(null);
+  const [journalReceipt, setJournalReceipt] = useState<
+    (HumanInteractionReceipt & { identity: string }) | null
+  >(null);
   const receiptInteraction =
     journalReceipt?.identity === viewKey
       ? mergeJournalReceipt(interaction, journalReceipt)
@@ -204,8 +203,6 @@ export function HumanInteractionCard({
     setFormValues({});
   }, [viewKey]);
   useEffect(() => {
-    let cancelled = false;
-    let checkNumber = 0;
     setPendingCheck(null);
     if (
       interaction.interaction_type !== 'approval' ||
@@ -215,31 +212,23 @@ export function HumanInteractionCard({
       !interaction.run_id
     )
       return;
-    const validatePending = () => {
-      const currentCheck = ++checkNumber;
-      setPendingCheck(null);
-      void isHumanInteractionStillPending(interaction)
-        .then((isPending) => {
-          if (!cancelled && currentCheck === checkNumber)
-            setPendingCheck({ identity: viewKey, pending: isPending });
-        })
-        .catch((error) => {
-          // Keep fail-closed until a lifecycle recovery retries the check.
-          console.warn(
-            '[HumanInteractionCard] pending interaction revalidation failed',
-            error
-          );
-        });
-    };
+    // Fail closed until Brain answers; an unanswered check is retried.
+    const pendingWatch = watchHumanInteractionPending(interaction, (pending) =>
+      setPendingCheck(pending === null ? null : { identity: viewKey, pending })
+    );
     const revalidatePending = () => {
-      invalidatePendingHumanInteractions(interaction.run_id);
-      validatePending();
+      setPendingCheck(null);
+      pendingWatch.recheck();
     };
-    validatePending();
+    const stopStreamWatch = onRunStreamReopened(
+      interaction.run_id,
+      revalidatePending
+    );
     window.addEventListener('focus', revalidatePending);
     host?.ipcRenderer?.on('backend-ready', revalidatePending);
     return () => {
-      cancelled = true;
+      pendingWatch.dispose();
+      stopStreamWatch();
       window.removeEventListener('focus', revalidatePending);
       host?.ipcRenderer?.off('backend-ready', revalidatePending);
     };
@@ -265,7 +254,7 @@ export function HumanInteractionCard({
   const receiptNeedsReason =
     interaction.interaction_type === 'approval' &&
     (receiptOnly || expiredLocally || pendingUnavailable) &&
-    !receiptInteraction.reason;
+    receiptInteraction.terminal_reason === undefined;
   useEffect(() => {
     if (!receiptNeedsReason) return;
     let cancelled = false;
@@ -284,6 +273,7 @@ export function HumanInteractionCard({
                 status: merged.status,
                 reason: merged.reason,
                 expires_at: merged.expires_at,
+                terminal_reason: merged.terminal_reason,
               };
             });
         })
@@ -448,7 +438,12 @@ export function HumanInteractionCard({
           : inactive
             ? t('chat.approval-inactive-title')
             : t('chat.control-input-required');
-    const reason = approvalTerminalReason(receiptInteraction.reason, t);
+    // Only an approval that ended undecided ended with its Attempt.
+    const reason =
+      receiptInteraction.status === 'expired' ||
+      receiptInteraction.status === 'cancelled'
+        ? runTerminalReasonText(receiptInteraction.terminal_reason, t)
+        : '';
     return (
       <div
         data-human-input-receipt

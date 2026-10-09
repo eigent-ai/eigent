@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isRelayedEventStreamResponse } from '@/api/brainStreamRelay';
 import {
   fetchDelete,
   fetchGet,
@@ -31,6 +32,7 @@ import { generateUniqueId, uploadLog } from '@/lib';
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { createBrowserPreviewHandoff } from '@/lib/browserPreviewHandoff';
+import { fetchConfiguredProviders } from '@/lib/configuredModels';
 import {
   classifyError,
   classifyTaskCategory,
@@ -42,7 +44,10 @@ import {
   recordTaskStopped,
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
-import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
+import {
+  notifyDurableRunStatusChanged,
+  notifyRunStreamReopened,
+} from '@/lib/events/durableRunEvents';
 import { createLocalError } from '@/lib/localError';
 import {
   resolveSourceEventId,
@@ -50,6 +55,8 @@ import {
 } from '@/lib/messageIdentity';
 import { buildAgentModelConfigFromProvider } from '@/lib/modelConfig';
 import { reportError } from '@/lib/notifyError';
+import { isTerminalHumanControlEvent } from '@/lib/projector/control/adapter';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
@@ -62,6 +69,7 @@ import {
   runProjectionStore,
   type RunDomainEvent,
 } from '@/lib/runEvents';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
 import {
   isLocalWorkspaceSpace,
@@ -137,15 +145,37 @@ const PROJECT_CONTEXT_MAX_RUNS = 8;
 // end step.
 const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
 
+/** Resume admission refuses to replay a write whose outcome is unknown. */
+function isUnsafeResumeBlocked(error: unknown): boolean {
+  const failure = error as {
+    status?: unknown;
+    response?: { data?: { detail?: { code?: unknown } } };
+  } | null;
+  return (
+    failure?.status === 409 &&
+    failure.response?.data?.detail?.code === 'unsafe_resume_blocked'
+  );
+}
+
 export async function admitDurableRunResume(
   runId: string,
   requestId: string,
   post: typeof fetchPost = fetchPost
 ): Promise<number> {
-  const response = await post(`/runs/${encodeURIComponent(runId)}/resume`, {
-    request_id: requestId,
-    reason: 'explicit_resume',
-  });
+  let response;
+  try {
+    response = await post(`/runs/${encodeURIComponent(runId)}/resume`, {
+      request_id: requestId,
+      reason: 'explicit_resume',
+    });
+  } catch (error) {
+    // Retrying cannot help; explain the refusal instead of a generic failure.
+    throw isUnsafeResumeBlocked(error)
+      ? createLocalError(i18next.t('chat.run-resume-unsafe-blocked'), {
+          cause: error,
+        })
+      : error;
+  }
   const attemptNumber = response?.attempt?.attempt_number;
   if (!Number.isSafeInteger(attemptNumber) || attemptNumber < 1) {
     throw new Error(
@@ -176,22 +206,27 @@ export const canonicalRunEventToLegacyMessage = (
     payload?: unknown;
     created_at?: unknown;
   };
-  // Approval decisions are canonical-only events. Project their durable
+  // Interaction outcomes are canonical-only events: a decision, a system
+  // cancellation (for example at restart) or an expiry. Project the durable
   // interaction id into the legacy reducer so reconnect/replay closes the
-  // corresponding ASK card instead of resurrecting an already-decided card.
+  // corresponding ASK card instead of resurrecting it or queueing the next
+  // request (such as the one asked again after Resume) behind it.
   if (
-    event.event_type === 'approval.decided' ||
-    event.event_type === 'interaction.resolved'
+    typeof event.event_type === 'string' &&
+    isTerminalHumanControlEvent(event.event_type)
   ) {
     const payload =
       event.payload && typeof event.payload === 'object'
         ? (event.payload as Record<string, unknown>)
         : null;
-    if (typeof payload?.interaction_id !== 'string') return null;
+    // An approval expiry identifies its request by approval id only.
+    const interactionId = payload?.interaction_id ?? payload?.approval_id;
+    if (typeof interactionId !== 'string' || !interactionId) return null;
     return {
       step: AgentStep.HUMAN_REPLY,
       data: {
         ...payload,
+        interaction_id: interactionId,
         __durable_interaction_resolution: true,
       },
       timestamp:
@@ -783,14 +818,22 @@ export type DurableRunDisplayStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'timed_out'
   | 'interrupted'
   | 'stopped';
+
+/** Ended without a result: failure evidence and error presentation apply. */
+export const UNSUCCESSFUL_RUN_STATUSES = new Set<DurableRunDisplayStatus>([
+  'failed',
+  'timed_out',
+]);
 
 interface Task {
   source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
   messages: Message[];
-  type: string;
+  /** Playback kind such as `replay` or `share`; absent for a live task. */
+  type?: string;
   summaryTask: string;
   taskInfo: TaskInfo[];
   attaches: File[];
@@ -1287,6 +1330,12 @@ export interface ChatStore {
     taskId: string,
     status: DurableRunDisplayStatus | undefined
   ) => void;
+  /**
+   * Resume admitted a new Attempt for this task's Run. Drop the playback
+   * identity, interrupted outcome and waiters restored from history so the
+   * new Attempt's requests are live. Retired receipts stay read-only.
+   */
+  markRunResumed: (taskId: string) => void;
   setActiveTaskId: (taskId: string) => void;
   setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
   replay: (
@@ -1426,6 +1475,8 @@ type ActiveSSEConnection = {
   taskId: string;
   recoverClosedUsage?: () => void;
   displayTail?: { taskId: string; promise: Promise<void>; release: () => void };
+  /** Opened through the main-process relay: it holds no renderer connection. */
+  relayed?: boolean;
 };
 
 const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
@@ -1578,6 +1629,20 @@ function markSSEConnectionIdleForTask(
   }
 }
 
+/**
+ * A Run that finishes while its Session is in the background has nothing more
+ * to render on its idle stream. Release it now instead of at the next Session
+ * switch, so finished background Runs do not hold the renderer's connections.
+ */
+function reclaimIdleStreamInBackground(projectId: string): void {
+  const projectState = useProjectStore.getState();
+  if (projectState.activeProjectId === projectId) return;
+  // Partial Project store doubles may omit this action.
+  projectState.reclaimIdleStreams?.(projectState.activeProjectId ?? null, [
+    projectId,
+  ]);
+}
+
 function cleanupTaskSSEResources(
   taskId: string,
   { abort = true }: { abort?: boolean } = {}
@@ -1594,7 +1659,7 @@ const CANONICAL_TERMINAL_RUN_STATUSES: Partial<
 > = {
   'run.completed': 'completed',
   'run.failed': 'failed',
-  'run.deadline_reached': 'failed',
+  'run.deadline_reached': 'timed_out',
   'run.cancelled': 'cancelled',
   'run.interrupted': 'interrupted',
   'runtime.interrupted': 'interrupted',
@@ -1605,6 +1670,7 @@ const CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS: Partial<Record<string, string>> =
     completed: 'run.completed',
     failed: 'run.failed',
     cancelled: 'run.cancelled',
+    timed_out: 'run.deadline_reached',
     interrupted: 'run.interrupted',
   };
 
@@ -1637,7 +1703,7 @@ export function settleLegacyTaskFromCanonicalTerminal(
   state.setIsPending(taskId, false);
   state.setStatus(taskId, ChatTaskStatus.FINISHED);
 
-  if (durableRunStatus === 'failed') {
+  if (UNSUCCESSFUL_RUN_STATUSES.has(durableRunStatus)) {
     state.setTaskRunning(
       taskId,
       task.taskRunning.map((item) =>
@@ -1663,10 +1729,12 @@ export function settleLegacyTaskFromCanonicalTerminal(
     const message =
       typeof rawMessage === 'string' && rawMessage.trim()
         ? rawMessage.trim()
-        : i18next.t('chat.run-no-final-response', {
-            defaultValue:
-              'This task failed before it produced a final response.',
-          });
+        : durableRunStatus === 'timed_out'
+          ? runTerminalReasonText('deadline_exceeded', i18next.t)
+          : i18next.t('chat.run-no-final-response', {
+              defaultValue:
+                'This task failed before it produced a final response.',
+            });
     const content = i18next.t('chat.error-message', {
       defaultValue: '❌ **Error**: {{message}}',
       message,
@@ -2349,12 +2417,21 @@ export async function readTaskFailureFacts(
         task &&
         current &&
         current.executionId === task.executionId &&
-        current.durableRunStatus === 'failed' &&
+        UNSUCCESSFUL_RUN_STATUSES.has(current.durableRunStatus!) &&
         current.status === ChatTaskStatus.FINISHED
       )
     );
   };
   if (!isCurrent()) return null;
+  // Stop events written before the Brain recorded causes carry none; the Run
+  // summary holds the backfilled cause.
+  const withRunTerminalReason = (facts: TaskFailureFacts) => ({
+    ...facts,
+    terminalReason:
+      facts.terminalReason ??
+      runProjectionStore.getRun(projectId, taskId)?.terminalReason ??
+      null,
+  });
   const invalidate = () => {
     if (!isCurrent()) controller.abort();
   };
@@ -2375,10 +2452,14 @@ export async function readTaskFailureFacts(
       includeFailureFacts: true,
     });
     return isCurrent()
-      ? (result.failureFacts ?? unverifiedTaskFailureFacts())
+      ? withRunTerminalReason(
+          result.failureFacts ?? unverifiedTaskFailureFacts()
+        )
       : null;
   } catch {
-    return isCurrent() ? unverifiedTaskFailureFacts() : null;
+    return isCurrent()
+      ? withRunTerminalReason(unverifiedTaskFailureFacts())
+      : null;
   } finally {
     signal.removeEventListener('abort', abort);
     unsubscribe.forEach((dispose) => dispose());
@@ -2399,17 +2480,18 @@ function recoverClosedTerminalResult(
     !task ||
     task.status !== ChatTaskStatus.FINISHED ||
     task.isPending ||
-    !['failed', 'cancelled', 'completed'].includes(outcome || '') ||
+    !['completed', 'failed', 'cancelled', 'timed_out'].includes(
+      outcome || ''
+    ) ||
     terminalUsageRecoveries.has(taskId)
   )
     return;
   const executionId = task.executionId;
   const controller = new AbortController();
   terminalUsageRecoveries.set(taskId, controller);
-  const terminalEventTypes =
-    outcome === 'failed'
-      ? ['run.failed', 'run.deadline_reached']
-      : [`run.${outcome}`];
+  const terminalEventTypes = [
+    CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS[outcome!]!,
+  ];
   void readTerminalRunResult({
     projectId,
     runId: taskId,
@@ -3279,21 +3361,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         let provider: any = spaceModelBinding?.provider ?? null;
         if (!provider && pinnedModelSelection?.provider_id !== undefined) {
           try {
-            const res = await proxyFetchGet('/api/v1/providers');
-            const providerList = Array.isArray(res) ? res : res.items || [];
+            const providerList = await fetchConfiguredProviders();
             provider =
               providerList.find(
                 (p: { id: number }) => p.id === pinnedModelSelection.provider_id
               ) || null;
           } catch (error) {
             console.error('Failed to load pinned model provider:', error);
+            finishStartupFailure();
+            throw new Error(i18next.t('setting.model-list.pinned-load-failed'));
           }
           if (!provider) {
-            toast.warning(
-              i18next.t('chat.model-fallback-warning', {
-                defaultValue:
-                  'The model used earlier in this conversation is no longer available. Falling back to the default model.',
-              })
+            finishStartupFailure();
+            throw new Error(
+              i18next.t('setting.model-list.missing-configuration')
             );
           }
         }
@@ -3301,7 +3382,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const res = await proxyFetchGet('/api/v1/providers', {
             prefer: true,
           });
-          const providerList = res.items || [];
+          const providerList = Array.isArray(res) ? res : res.items || [];
           provider = providerList[0];
         }
 
@@ -3310,7 +3391,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           throw createLocalError(
             i18next.t('chat.no-model-provider', {
               defaultValue:
-                'No model provider is configured. Go to Agents > Models and configure at least one default model provider.',
+                'No model provider is configured. Go to Settings > Models and configure at least one default model provider.',
             })
           );
         }
@@ -3344,7 +3425,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           throw createLocalError(
             i18next.t('chat.cloud-model-unavailable', {
               defaultValue:
-                'The cloud model is unavailable. Try again or choose another model in Agents > Models.',
+                'The cloud model is unavailable. Try again or choose another model in Settings > Models.',
             })
           );
         }
@@ -3536,10 +3617,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (workerProviderIds.length > 0) {
         let workerProviderList: any[];
         try {
-          const providersRes = await proxyFetchGet('/api/v1/providers');
-          workerProviderList = Array.isArray(providersRes)
-            ? providersRes
-            : providersRes.items || [];
+          workerProviderList = await fetchConfiguredProviders();
         } catch (error) {
           finishStartupFailure();
           throw createLocalError(
@@ -3720,6 +3798,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           finishStartupFailure();
           throw error;
         }
+        // The admitted Attempt continues this Run in the same task, which may
+        // still be the playback restored at startup. Only now that the Run is
+        // no longer interrupted is that history state retired.
+        targetChatStore.getState().markRunResumed(newTaskId);
       }
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
@@ -3831,7 +3913,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             observedChatStore.getState().tasks[observedTaskId];
           const failureReason =
             observedTask &&
-            CANONICAL_TERMINAL_RUN_STATUSES[event.eventType] === 'failed'
+            UNSUCCESSFUL_RUN_STATUSES.has(
+              CANONICAL_TERMINAL_RUN_STATUSES[event.eventType]!
+            )
               ? reportError(
                   event.payload,
                   {
@@ -3911,6 +3995,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // ownership, in which case the guarded idle transition is a
             // no-op but this terminal observer is still finished.
             binding.dispose();
+            reclaimIdleStreamInBackground(project_id);
           } else {
             binding.dispose();
             cleanupSSEConnection(sseConnection);
@@ -4281,6 +4366,69 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       ]);
       let legacyEndRunId: string | null = null;
 
+      // Admission failed before the event stream existed. Unlike an execution
+      // error, no later END frame can clear the optimistic pending state, so
+      // close it here and surface the typed Brain reason instead of leaving
+      // the composer stuck on "Preparing".
+      const failAdmission = (err: any) => {
+        if (
+          err?.code === 'project_consumer_active' &&
+          createdTriggerBinding &&
+          !startOptions.resumeRequestId &&
+          triggerExecutionId &&
+          project_id
+        ) {
+          forgetRejectedTriggerRun(triggerExecutionId, project_id, newTaskId);
+        }
+        finishStartupFailure();
+        const failureState = targetChatStore.getState();
+        const failureTask = failureState.tasks[newTaskId];
+        const userMessage =
+          typeof err?.userMessage === 'string' && err.userMessage.trim()
+            ? err.userMessage.trim()
+            : typeof err?.message === 'string' && err.message.trim()
+              ? err.message.trim()
+              : i18next.t('chat.task-admission-failed', {
+                  defaultValue:
+                    'The task could not be started. Please try again.',
+                });
+        const isContinuationClarification =
+          typeof err?.code === 'string' && err.code.startsWith('continuation_');
+        const content = isContinuationClarification
+          ? i18next.t('chat.control-input-required-message', {
+              defaultValue: 'Input required: {{message}}',
+              message: userMessage,
+            })
+          : i18next.t('chat.error-message', {
+              defaultValue: '❌ **Error**: {{message}}',
+              message: userMessage,
+            });
+        const alreadyRendered = failureTask?.messages.some(
+          (message) => message.role === 'agent' && message.content === content
+        );
+        if (failureTask && !alreadyRendered) {
+          failureState.addMessages(newTaskId, {
+            id: generateUniqueId(),
+            role: 'agent',
+            content,
+            ...(!isContinuationClarification
+              ? {
+                  step: AgentStep.ERROR,
+                  errorReason: reportError(
+                    err,
+                    {
+                      modelType: effectiveModelType,
+                      modelId: resolvedCloudModelId,
+                      executionId,
+                    },
+                    requestAccount
+                  ),
+                }
+              : {}),
+          });
+        }
+      };
+
       const guardDelivery =
         adoptingSpaceDefault || startOptions.resumeRequestId;
       if (!guardDelivery) admissionRequested = true;
@@ -4546,7 +4694,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (
             currentTask.status === ChatTaskStatus.FINISHED &&
-            currentTask.durableRunStatus === 'failed' &&
+            UNSUCCESSFUL_RUN_STATUSES.has(currentTask.durableRunStatus!) &&
             agentMessages.step === AgentStep.ERROR
           ) {
             // A status GET can settle the Run before error details arrive.
@@ -6325,7 +6473,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const failedTask = tasks[currentTaskId];
               const wasAlreadySettledByCanonical =
                 failedTask?.status === ChatTaskStatus.FINISHED &&
-                failedTask?.durableRunStatus === 'failed';
+                UNSUCCESSFUL_RUN_STATUSES.has(failedTask.durableRunStatus!);
               const errorContent = i18next.t('chat.error-message', {
                 defaultValue: '❌ **Error**: {{message}}',
                 message: errorMessage,
@@ -6682,6 +6830,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // await below. A following NEW_TASK_STATE can then reactivate and
             // transfer ownership without a resumed END handler undoing it.
             markSSEConnectionIdleForTask(sseConnection, currentTaskId);
+            if (!type && project_id) reclaimIdleStreamInBackground(project_id);
 
             // Finish the local UI projection before any cloud upload or
             // history request. Camel-log and generated-file uploads can take
@@ -7148,11 +7297,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               modelType: effectiveModelType,
               modelId: resolvedCloudModelId,
             });
+            // An awaited admission settles on this rejection and aborts the
+            // transport, which then never reaches onerror. Settle the new task
+            // here so it keeps its error receipt. A Resume keeps its
+            // interrupted task, whose controls ChatBox restores.
+            if (startOptions.awaitAdmission && !startOptions.resumeRequestId)
+              failAdmission(error);
             rejectResumeStreamOpen?.(error);
             throw error;
           }
+          // A reconnect may fall back to the window's own fetch.
+          sseConnection.relayed = isRelayedEventStreamResponse(respond);
           const firstOpen = !resumeStreamOpened;
-          if (resumeStreamOpened) reconcileStreamRun();
+          if (resumeStreamOpened) {
+            reconcileStreamRun();
+            // Let waiting cards re-check Brain now instead of at their backoff.
+            notifyRunStreamReopened(lockedTaskId);
+          }
           if (commitSpaceModelPin) {
             try {
               commitSpaceModelPin();
@@ -7225,75 +7386,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
-          if (!resumeStreamOpened) rejectResumeStreamOpen?.(err);
-
           if (!resumeStreamOpened) {
-            if (
-              err?.code === 'project_consumer_active' &&
-              createdTriggerBinding &&
-              !startOptions.resumeRequestId &&
-              triggerExecutionId &&
-              project_id
-            ) {
-              forgetRejectedTriggerRun(
-                triggerExecutionId,
-                project_id,
-                newTaskId
-              );
-            }
-            // Admission failed before the event stream existed. Unlike an
-            // execution error, no later END frame can clear the optimistic
-            // pending state, so close it here and surface the typed Brain
-            // reason instead of leaving the composer stuck on "Preparing".
-            finishStartupFailure();
-            const failureState = targetChatStore.getState();
-            const failureTask = failureState.tasks[newTaskId];
-            const userMessage =
-              typeof err?.userMessage === 'string' && err.userMessage.trim()
-                ? err.userMessage.trim()
-                : typeof err?.message === 'string' && err.message.trim()
-                  ? err.message.trim()
-                  : i18next.t('chat.task-admission-failed', {
-                      defaultValue:
-                        'The task could not be started. Please try again.',
-                    });
-            const isContinuationClarification =
-              typeof err?.code === 'string' &&
-              err.code.startsWith('continuation_');
-            const content = isContinuationClarification
-              ? i18next.t('chat.control-input-required-message', {
-                  defaultValue: 'Input required: {{message}}',
-                  message: userMessage,
-                })
-              : i18next.t('chat.error-message', {
-                  defaultValue: '❌ **Error**: {{message}}',
-                  message: userMessage,
-                });
-            const alreadyRendered = failureTask?.messages.some(
-              (message) =>
-                message.role === 'agent' && message.content === content
-            );
-            if (failureTask && !alreadyRendered) {
-              failureState.addMessages(newTaskId, {
-                id: generateUniqueId(),
-                role: 'agent',
-                content,
-                ...(!isContinuationClarification
-                  ? {
-                      step: AgentStep.ERROR,
-                      errorReason: reportError(
-                        err,
-                        {
-                          modelType: effectiveModelType,
-                          modelId: resolvedCloudModelId,
-                          executionId,
-                        },
-                        requestAccount
-                      ),
-                    }
-                  : {}),
-              });
-            }
+            rejectResumeStreamOpen?.(err);
+            failAdmission(err);
           }
 
           // A transport error does not establish a cancelled execution outcome.
@@ -7847,7 +7942,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             .getState()
             .getAllChatStores(projectId)
             .some((entry) => entry.chatStore === store) ||
-          get().tasks[taskId]?.durableRunStatus !== 'failed' ||
+          !UNSUCCESSFUL_RUN_STATUSES.has(
+            get().tasks[taskId]?.durableRunStatus!
+          ) ||
           get().tasks[taskId]?.status !== ChatTaskStatus.FINISHED ||
           get().tasks[taskId]?.executionId !== executionId
         ) {
@@ -7882,9 +7979,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const retireApproval = (message: Message): Message => {
         if (
           !durableRunStatus ||
-          !['interrupted', 'completed', 'failed', 'cancelled'].includes(
-            durableRunStatus
-          ) ||
+          !isStoppedRunStatus(durableRunStatus) ||
           message.interaction?.interaction_type !== 'approval' ||
           message.interaction.receipt
         )
@@ -7909,6 +8004,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               durableRunStatus,
               messages: task.messages.map(retireApproval),
               askList: task.askList.map(retireApproval),
+            },
+          },
+        };
+      });
+    },
+    markRunResumed(taskId: string) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              type: undefined,
+              durableRunStatus: undefined,
+              activeAsk: '',
+              askList: [],
             },
           },
         };
@@ -8673,9 +8787,29 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
   );
 }
 
+type IdleStreamReclaimOptions = {
+  /** Leave relayed transports open; they hold no renderer connection. */
+  keepRelayed?: boolean;
+};
+
 /** Returns true if any task still owns a physical SSE transport. */
-export function hasSSETransportForTasks(taskIds: string[]): boolean {
-  return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
+export function hasSSETransportForTasks(
+  taskIds: string[],
+  { keepRelayed = false }: IdleStreamReclaimOptions = {}
+): boolean {
+  return taskIds.some((taskId) => {
+    const connection = activeSSEControllers[taskId];
+    return !!connection && !(keepRelayed && connection.relayed);
+  });
+}
+
+/** Idle relayed transports, each physical connection counted once. */
+export function countIdleRelayedSSEConnections(): number {
+  return new Set(
+    Object.values(activeSSEControllers).filter(
+      (connection) => connection.relayed && !connection.logicalActive
+    )
+  ).size;
 }
 
 /** Return the Run id that owns an idle reusable legacy `/chat` transport. */
@@ -8713,10 +8847,18 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
 }
 
 /** Close only reusable transports that no longer have a logically active Run. */
-export function closeIdleSSEConnectionsForTasks(taskIds: string[]): void {
+export function closeIdleSSEConnectionsForTasks(
+  taskIds: string[],
+  { keepRelayed = false }: IdleStreamReclaimOptions = {}
+): void {
   for (const taskId of taskIds) {
     const connection = activeSSEControllers[taskId];
-    if (connection && !connection.logicalActive && !connection.displayTail) {
+    if (
+      connection &&
+      !connection.logicalActive &&
+      !connection.displayTail &&
+      !(keepRelayed && connection.relayed)
+    ) {
       console.log(
         '[closeIdleSSEConnectionsForTasks] Closing idle SSE for task:',
         taskId

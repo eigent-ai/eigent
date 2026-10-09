@@ -45,6 +45,7 @@ from app.model.chat import (
     SupplementChat,
     sse_json,
 )
+from app.model.model_platform import canonical_model_platform
 from app.run_context import (
     RunContext,
     apply_run_env_for_third_party,
@@ -57,12 +58,17 @@ from app.run_journal import (
     IdempotencyConflictError,
     InvalidRunTransitionError,
     OptimisticConcurrencyError,
+    ProjectExecutionLeaseConflictError,
     RunAttemptRecord,
     RunEventDraft,
     RunNotFoundError,
     SQLiteRunJournal,
     configured_run_journal_path,
     get_default_run_journal,
+)
+from app.run_journal.transitions import (
+    RUN_TERMINAL_STATES,
+    RUN_UNSUCCESSFUL_STATES,
 )
 from app.run_runtime import RunCoordinator, get_default_run_coordinator
 from app.run_runtime.admission import (
@@ -82,6 +88,7 @@ from app.service.task import (
     ActionSupplementData,
     ImprovePayload,
     TaskLock,
+    commit_and_deliver,
     delete_task_lock,
     get_or_create_task_lock,
     get_task_lock,
@@ -110,6 +117,7 @@ from app.workspace_bundle.runtime import (
 from app.workspace_config import (
     EffectiveEnvironmentSpec,
     ModelCapabilityConfigError,
+    ModelCapabilityRegistry,
     UnsupportedThinkingEffortError,
     WorkspaceBundleReconfigurationPendingError,
     WorkspaceConfigError,
@@ -128,6 +136,7 @@ from app.workspace_runtime.entry_guard import (
 
 router = APIRouter()
 _CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
+_NO_REGISTERED_MODELS = {"schema_version": 1, "revision": "none", "models": []}
 
 # Logger for chat controller
 chat_logger = logging.getLogger("chat_controller")
@@ -519,17 +528,49 @@ def _load_attempt_environment_spec(
     return spec
 
 
+def _admitted_without_effort(
+    spec: EffectiveEnvironmentSpec,
+    template: EnvironmentAdmissionTemplate,
+) -> bool:
+    """Whether a pre-registration Attempt can resume on today's capability.
+
+    It was admitted for a model with no registered efforts and sends none.
+    Resume keeps that, so it may continue after the model is registered,
+    provided nothing else about the model's capability changed.
+    """
+    current = template.provider_capability
+    pinned = spec.semantic_spec.get("runtime_capability_manifest", {}).get(
+        "model_capability", {}
+    )
+    if (
+        spec.provider_value != "provider_default"
+        or pinned.get("status") != "unknown_model"
+        or current.source != "catalog"
+        or pinned.get("api_mode") != current.transport
+        or template.model_capability_inputs is None
+    ):
+        return False
+    unregistered = ModelCapabilityRegistry(_NO_REGISTERED_MODELS).resolve(
+        **template.model_capability_inputs
+    )
+    return (
+        unregistered.capability_revision == spec.provider_capability_revision
+    )
+
+
 def _validate_resume_model_capability(
     data: Chat,
     spec: EffectiveEnvironmentSpec,
 ) -> EnvironmentAdmissionTemplate:
     template = _legacy_environment_template(data)
     current = template.provider_capability
-    if current.capability_revision != spec.provider_capability_revision:
+    if current.capability_revision != spec.provider_capability_revision and (
+        not _admitted_without_effort(spec, template)
+    ):
         raise UserException(
             code.error,
-            "The model capability changed since this Attempt. Start a new "
-            "Attempt with an explicit environment upgrade.",
+            "The model capability changed after this task started, so it "
+            "can't be resumed. Send a new message to continue.",
         )
     persisted_model = spec.semantic_spec.get(
         "runtime_capability_manifest", {}
@@ -756,7 +797,7 @@ async def _resolve_continuation_admission(
     next_action = frontier.get("next_action")
     remaining = frontier.get("remaining")
     retry_failed_run = False
-    if latest is not None and latest.status == "failed":
+    if latest is not None and latest.status in RUN_UNSUCCESSFUL_STATES:
         blocked_by = frontier.get("blocked_by")
         if (
             latest_has_unknown_tool_outcome
@@ -1207,7 +1248,8 @@ async def _prepare_chat_run(
 ) -> _PreparedChatRun:
     """Bind fresh runtime inputs for a new Run or explicit Resume Attempt."""
     if data.session_model_selection is not None and (
-        data.session_model_selection.model_platform != data.model_platform
+        canonical_model_platform(data.session_model_selection.model_platform)
+        != canonical_model_platform(data.model_platform)
         or data.session_model_selection.model_type != data.model_type
     ):
         raise HTTPException(
@@ -1913,6 +1955,19 @@ async def start_chat_stream(data: Chat, request: Request):
                 request_id=request_id,
             )
         try:
+            if isinstance(journal, SQLiteRunJournal):
+                # Attempt admission refuses a Run while another one holds the
+                # Project execution lease, but only after preparation has
+                # persisted it. Refuse first, so the rejection leaves no
+                # pending Run behind.
+                owner = await asyncio.to_thread(
+                    journal.get_active_project_run, data.project_id
+                )
+                if owner is not None and owner.run_id != run_id:
+                    raise ProjectExecutionLeaseConflictError(
+                        project_id=data.project_id,
+                        owner_run_id=owner.run_id,
+                    )
             prepared = await _prepare_chat_run(
                 data,
                 request,
@@ -1959,6 +2014,18 @@ async def post(data: Chat, request: Request):
         ) from exc
     except (ModelCapabilityConfigError, UnsupportedThinkingEffortError) as exc:
         raise _model_capability_http_error(exc) from exc
+    except ProjectExecutionLeaseConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_run_active",
+                "message": (
+                    "Another Run in this Session must finish or be stopped "
+                    "before a new one starts."
+                ),
+                "run_id": exc.owner_run_id,
+            },
+        ) from exc
     return StreamingResponse(
         stream,
         media_type="text/event-stream",
@@ -2065,7 +2132,7 @@ async def retire_idle_runtime(project_id: str, data: RetireIdleRuntimeRequest):
         )
         if run is None or run.project_id != project_id:
             raise HTTPException(status_code=404, detail="Run not found.")
-        if run.status not in {"completed", "failed", "cancelled"}:
+        if run.status not in RUN_TERMINAL_STATES:
             raise HTTPException(
                 status_code=409,
                 detail="The Run has not reached a terminal state.",
@@ -2780,6 +2847,18 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             code.error,
             "This task is no longer waiting for a human reply. Please send a new message.",
         )
+
+    async def answer_waiter() -> bool:
+        try:
+            await task_lock.put_human_input(data.agent, data.reply)
+        except KeyError:
+            chat_logger.warning(
+                "Human reply target is no longer waiting for input",
+                extra={"task_id": id, "agent": data.agent},
+            )
+            return False
+        return True
+
     run_context = getattr(task_lock, "run_context", None)
     resolved_interaction_id: str | None = None
     if isinstance(run_context, RunContext):
@@ -2890,7 +2969,8 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                 )
             )
             try:
-                _, decision_applied = await asyncio.to_thread(
+                _, decision_applied, delivered = await commit_and_deliver(
+                    answer_waiter,
                     journal.resolve_human_interaction,
                     interaction.interaction_id,
                     include_transition=True,
@@ -2925,17 +3005,13 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                 chat_logger.exception(
                     "Failed to wake cloud sync after HumanInteraction decision"
                 )
-    try:
-        await task_lock.put_human_input(data.agent, data.reply)
-    except KeyError as exc:
-        chat_logger.warning(
-            "Human reply target is no longer waiting for input",
-            extra={"task_id": id, "agent": data.agent},
-        )
+    else:
+        delivered = await answer_waiter()
+    if not delivered:
         raise UserException(
             code.error,
             "This task is no longer waiting for a human reply. Please send a new message.",
-        ) from exc
+        )
 
     reply_payload = {"agent": data.agent, "reply": data.reply}
     if resolved_interaction_id is not None:

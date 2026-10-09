@@ -79,15 +79,52 @@ describe('useInterruptedRunStatus', () => {
           status: 'interrupted',
           version: 3,
           updated_at: 100,
-          latest_attempt: {
-            attempt_number: 1,
-            status: 'interrupted',
-            outcome: 'approval_expired',
-          },
+          terminal_reason: 'approval_expired',
+          terminal_detail: 'approval_expired',
+          latest_attempt: { attempt_number: 1, status: 'interrupted' },
         },
       ])
     );
     expect(result.current.run?.terminalReason).toBe('approval_expired');
+  });
+
+  it('carries the Tool calls that make Resume unsafe', async () => {
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() =>
+      runProjectionStore.upsertRunSummaries('project_one', [
+        {
+          run_id: 'run-1',
+          project_id: 'project_one',
+          status: 'interrupted',
+          version: 3,
+          updated_at: 100,
+          latest_attempt: { attempt_number: 1, status: 'interrupted' },
+          unsafe_resume_blockers: [
+            {
+              tool_call_id: 'shell-call',
+              tool_name: 'shell_exec',
+              display_title: 'Ran command',
+            },
+            // Malformed entries never become blockers.
+            { tool_name: 'missing_id' } as never,
+          ],
+        },
+      ])
+    );
+    expect(result.current.run?.unsafeResumeBlockers).toEqual([
+      {
+        toolCallId: 'shell-call',
+        toolName: 'shell_exec',
+        displayTitle: 'Ran command',
+      },
+    ]);
+    expect(result.current.run?.resume_blocked_reason).toBeNull();
   });
 
   it.each([

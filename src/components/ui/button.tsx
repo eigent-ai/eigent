@@ -354,7 +354,7 @@ const SIZE_ICON: Record<Exclude<ButtonSize, 'xxs'>, string> = {
 };
 
 const buttonVariants = cva(
-  'inline-flex items-center whitespace-nowrap !border !border-solid !border-x !border-y transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:!text-inherit outline-none aria-invalid:ring-ds-ring-error-default-default/20 aria-invalid:border-ds-border-status-error-default-default shrink-0 cursor-pointer',
+  'inline-flex items-center whitespace-nowrap !border !border-solid !border-x !border-y transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:transition-[background-color,border-color,color,box-shadow,opacity] disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:!text-inherit outline-none aria-invalid:ring-ds-ring-error-default-default/20 aria-invalid:border-ds-border-status-error-default-default shrink-0 cursor-pointer',
   {
     variants: {
       variant: {

@@ -62,6 +62,14 @@ const eventNativeHarness = vi.hoisted(() => ({
   controlOptions: null as any,
 }));
 const waitForPendingStaleRuntimeEvictionMock = vi.hoisted(() => vi.fn());
+// Run whose idle legacy `/chat` stream this renderer still holds.
+const legacyStreamHarness = vi.hoisted(() => ({
+  idleRunId: 'test-task-id' as string | null,
+}));
+vi.mock('@/store/chatStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store/chatStore')>()),
+  getIdleSSETransportTaskId: () => legacyStreamHarness.idleRunId,
+}));
 
 const modelConfigHarness = vi.hoisted(() => ({
   hasModel: true,
@@ -546,6 +554,7 @@ describe('ChatBox Component', async () => {
     }));
     waitForPendingStaleRuntimeEvictionMock.mockReset();
     waitForPendingStaleRuntimeEvictionMock.mockResolvedValue(undefined);
+    legacyStreamHarness.idleRunId = 'test-task-id';
 
     // Setup default store states
     mockUseChatStoreAdapter.mockReturnValue({
@@ -564,6 +573,7 @@ describe('ChatBox Component', async () => {
               status: 'done',
               run_id: 'test-task-id',
               consumer_alive: true,
+              subscriber_count: 1,
             }
           : { runs: [] }
       )
@@ -1266,6 +1276,261 @@ describe('ChatBox Component', async () => {
       );
     });
 
+    describe('follow-up admission after the previous Run finished', () => {
+      const retireIdleCall = [
+        '/chat/test-project-id/runtime/retire-idle',
+        { run_id: 'test-task-id' },
+        undefined,
+        { signal: undefined },
+      ] as const;
+      const finishedTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        messages: [
+          { id: '1', role: 'user', content: 'Initial task', attaches: [] },
+          { id: '2', role: 'agent', content: 'Done', step: AgentStep.END },
+        ],
+        hasMessages: true,
+        status: ChatTaskStatus.FINISHED,
+      };
+      const mockIdleConsumer = (subscriberCount: number) => {
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url === '/chat/test-project-id/status'
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  run_id: 'test-task-id',
+                  consumer_alive: true,
+                  subscriber_count: subscriberCount,
+                }
+              : { items: [] }
+          )
+        );
+        _mockFetchPost.mockImplementation((url: string) =>
+          Promise.resolve(
+            url === retireIdleCall[0]
+              ? { retired: true, consumer_alive: false }
+              : { success: true }
+          )
+        );
+      };
+
+      it.each([
+        {
+          route: 'cold',
+          reason: 'its stream errored after the Run finished',
+          idleRunId: null,
+          subscriberCount: 0,
+        },
+        {
+          route: 'cold',
+          reason: 'Brain no longer counts its subscriber',
+          idleRunId: 'test-task-id',
+          subscriberCount: 0,
+        },
+        {
+          route: 'warm',
+          reason: 'this window still holds its stream',
+          idleRunId: 'test-task-id',
+          subscriberCount: 1,
+        },
+      ])(
+        'admits a follow-up $route when $reason',
+        async ({ route, idleRunId, subscriberCount }) => {
+          const user = userEvent.setup();
+          legacyStreamHarness.idleRunId = idleRunId;
+          mockIdleConsumer(subscriberCount);
+          const finishedChatState = {
+            ...defaultChatStoreState,
+            tasks: { 'test-task-id': finishedTask },
+          };
+          mockUseChatStoreAdapter.mockReturnValue({
+            projectStore: defaultProjectStoreState as any,
+            chatStore: finishedChatState as any,
+          });
+
+          renderChatBox();
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Continue after sleep'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          const retirements = () =>
+            _mockFetchPost.mock.calls.filter(
+              ([url]) => url === retireIdleCall[0]
+            );
+
+          if (route === 'warm') {
+            await waitFor(() =>
+              expect(_mockFetchPost).toHaveBeenCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({ question: 'Continue after sleep' })
+              )
+            );
+            expect(retirements()).toEqual([]);
+            expect(finishedChatState.startTask).not.toHaveBeenCalled();
+            return;
+          }
+          await waitFor(() =>
+            expect(finishedChatState.startTask).toHaveBeenCalledWith(
+              'test-unique-id',
+              undefined,
+              undefined,
+              undefined,
+              'Continue after sleep',
+              [],
+              undefined,
+              'test-project-id',
+              'single-agent',
+              expect.objectContaining({
+                preserveTaskId: true,
+                awaitAdmission: true,
+              })
+            )
+          );
+          expect(retirements()).toEqual([retireIdleCall]);
+          const retirement = _mockFetchPost.mock.calls.findIndex(
+            ([url]) => url === retireIdleCall[0]
+          );
+          expect(
+            _mockFetchPost.mock.invocationCallOrder[retirement]
+          ).toBeLessThan(
+            finishedChatState.startTask.mock.invocationCallOrder[0]
+          );
+          expect(_mockFetchPost).not.toHaveBeenCalledWith(
+            '/chat/test-project-id',
+            expect.anything()
+          );
+        }
+      );
+
+      it.each([
+        {
+          source: 'a Session restored after a window reload',
+          task: { ...finishedTask, type: 'replay' },
+        },
+        {
+          source: 'a Run resumed after an error',
+          task: {
+            ...finishedTask,
+            messages: [
+              finishedTask.messages[0],
+              {
+                id: 'error',
+                role: 'agent',
+                content: '❌ **Error**: Bad Gateway',
+                step: AgentStep.ERROR,
+              },
+              finishedTask.messages[1],
+            ],
+          },
+        },
+      ])(
+        'retires the idle consumer before a follow-up to $source',
+        async ({ task }) => {
+          const user = userEvent.setup();
+          legacyStreamHarness.idleRunId = null;
+          mockIdleConsumer(0);
+          const chatState = {
+            ...defaultChatStoreState,
+            tasks: { 'test-task-id': task },
+          };
+          mockUseChatStoreAdapter.mockReturnValue({
+            projectStore: defaultProjectStoreState as any,
+            chatStore: chatState as any,
+          });
+
+          renderChatBox();
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Continue after reload'
+          );
+          await user.click(screen.getByTestId('send-button'));
+
+          await waitFor(() =>
+            expect(chatState.startTask).toHaveBeenCalledWith(
+              'test-unique-id',
+              undefined,
+              undefined,
+              undefined,
+              'Continue after reload',
+              [],
+              undefined,
+              'test-project-id',
+              'single-agent',
+              expect.objectContaining({
+                preserveTaskId: true,
+                awaitAdmission: true,
+              })
+            )
+          );
+          const retirement = _mockFetchPost.mock.calls.findIndex(
+            ([url]) => url === retireIdleCall[0]
+          );
+          expect(_mockFetchPost.mock.calls[retirement]).toEqual(retireIdleCall);
+          expect(
+            _mockFetchPost.mock.invocationCallOrder[retirement]
+          ).toBeLessThan(chatState.startTask.mock.invocationCallOrder[0]);
+        }
+      );
+
+      it('admits a queued follow-up cold through the same decision', async () => {
+        legacyStreamHarness.idleRunId = null;
+        mockIdleConsumer(0);
+        defaultProjectStoreState.getProjectById.mockImplementation(
+          () =>
+            ({
+              queuedMessages: [
+                {
+                  task_id: 'queued-after-sleep',
+                  run_id: 'queued-after-sleep',
+                  content: 'Queued after sleep',
+                  timestamp: 1,
+                  attaches: [],
+                },
+              ],
+            }) as any
+        );
+        const finishedChatState = {
+          ...defaultChatStoreState,
+          tasks: { 'test-task-id': finishedTask },
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: finishedChatState as any,
+        });
+        eventNativeHarness.enabled = true;
+        eventNativeHarness.snapshot = runningEventNativeSnapshot();
+        eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+          'completed';
+
+        renderChatBox();
+
+        await waitFor(() =>
+          expect(finishedChatState.startTask).toHaveBeenCalledWith(
+            'queued-after-sleep',
+            undefined,
+            undefined,
+            undefined,
+            'Queued after sleep',
+            [],
+            undefined,
+            'test-project-id',
+            'single-agent',
+            expect.objectContaining({
+              preserveTaskId: true,
+              awaitAdmission: true,
+            })
+          )
+        );
+        expect(_mockFetchPost).toHaveBeenCalledWith(...retireIdleCall);
+        expect(_mockFetchPost).not.toHaveBeenCalledWith(
+          '/chat/test-project-id',
+          expect.anything()
+        );
+      });
+    });
+
     describe('normal follow-up admission ownership', () => {
       const originalAttachment = {
         fileName: 'original.pdf',
@@ -1303,6 +1568,7 @@ describe('ChatBox Component', async () => {
           status: 'done',
           run_id: 'test-task-id',
           consumer_alive: warm,
+          subscriber_count: warm ? 1 : 0,
         };
         const pendingOwnership = new Promise<any>((resolve, rejectPromise) => {
           release = () => resolve(stage === 'status' ? status : undefined);
@@ -2970,6 +3236,7 @@ describe('ChatBox Component', async () => {
             status: 'done',
             run_id: 'test-task-id',
             consumer_alive: true,
+            subscriber_count: 1,
           });
         }
         return Promise.resolve({ items: [] });

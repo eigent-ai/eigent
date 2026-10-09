@@ -31,6 +31,7 @@ from app.workspace_config.models import (
 )
 
 from .context_projection import _TERMINAL_TOOL_EVENT_TYPES, _latest_tool_events
+from .transitions import RUN_STOP_EVENT_TYPES, RUN_STOPPED_STATES
 
 MAX_RUNS = 8
 MAX_EVENTS = 512
@@ -117,7 +118,8 @@ def render_managed_run(events, *, run_id, attempt_id, outcome):
     latest = _latest_tool_events(events)
     typed_user = any(e.event_type == "user.message" for e in events)
     typed_final = any(e.event_type == "assistant.final" for e in events)
-    if not any(e.event_type == f"run.{outcome}" for e in events):
+    stop_event_types = RUN_STOP_EVENT_TYPES.get(outcome, frozenset())
+    if not any(e.event_type in stop_event_types for e in events):
         raise ContextSourceUnavailable("context_terminal_evidence_missing")
     records, source_ids = [], []
     for event in events:
@@ -354,8 +356,7 @@ def _owner(connection, row, *, request, binding, snapshot, current=False):
     elif (
         run["state"] != "settled"
         or not run["writer_settled"]
-        or run["status"]
-        not in {"completed", "failed", "cancelled", "interrupted"}
+        or run["status"] not in RUN_STOPPED_STATES
         or run["outcome"] != run["status"]
     ):
         _fail()

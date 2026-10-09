@@ -15,6 +15,7 @@
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { itemFadeMotion } from '@/components/ui/motion';
 import type { TimelineRunView } from '@/lib/projector/chat/presentation';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import type {
   ProjectedArtifact,
   ProjectedArtifactManifest,
@@ -42,7 +43,7 @@ export function isActiveRunStatus(status: TimelineRunView['status']): boolean {
 export function isTerminalRunStatus(
   status: TimelineRunView['status']
 ): boolean {
-  return ['completed', 'failed', 'cancelled', 'interrupted'].includes(status);
+  return isStoppedRunStatus(status);
 }
 
 /** A submitted query and a pending receipt are still startup state. */
