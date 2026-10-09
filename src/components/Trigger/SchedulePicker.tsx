@@ -159,7 +159,7 @@ export function getNextScheduledTimes({
     case 'monthly': {
       if (dayOfMonth === null) break;
       for (let month = 0; month < 48 && times.length < count; month++) {
-        const next = new Date(
+        const candidate: Date = new Date(
           now.getFullYear(),
           now.getMonth() + month,
           dayOfMonth,
@@ -167,7 +167,8 @@ export function getNextScheduledTimes({
           minute
         );
         // Day 31 rolls into the next month where the month is shorter.
-        if (next.getDate() === dayOfMonth && next > now) times.push(next);
+        if (candidate.getDate() === dayOfMonth && candidate > now)
+          times.push(candidate);
       }
       break;
     }
