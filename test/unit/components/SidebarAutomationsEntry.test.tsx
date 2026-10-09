@@ -132,7 +132,8 @@ vi.mock('@/lib/projectRuntimeHydration', () => ({
 vi.mock('@/lib/scratchSpaceWorkspace', () => ({
   ensureScratchSpaceWorkspaceBinding: vi.fn(),
 }));
-vi.mock('@/lib/spaceLabel', () => ({
+vi.mock('@/lib/spaceLabel', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/spaceLabel')>()),
   getFilesTabBindingLabel: () => null,
   isUnboundUntitledSpace: () => false,
 }));
