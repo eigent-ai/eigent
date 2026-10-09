@@ -364,5 +364,74 @@
   "task-queued": "In coda: {{name}}",
   "task-queued-description": "L'attività è stata aggiunta alla coda della sessione",
   "select-method": "Seleziona metodo",
-  "status-cancelled": "Annullato"
+  "status-cancelled": "Annullato",
+  "try-an-example": "Prova un esempio",
+  "examples-heading": "Automatizza le tue attività",
+  "examples-subtitle": "Lascia che Eigent gestisca le attività di routine mentre ti concentri su ciò che conta.",
+  "example-card-label": "Configura {{title}}: {{description}} {{schedule}}",
+  "your-automations": "Le tue automazioni",
+  "queue-empty-body": "Prova un esempio per configurare la prima.",
+  "new-badge": "Nuova",
+  "next-run-at": "Prossima: {{time}}",
+  "paused": "In pausa",
+  "paused-schedule": "In pausa · {{schedule}}",
+  "runs-did-not-complete": "{{count}} esecuzioni di fila non completate",
+  "auto-disabled-short": "Disattivata dopo esecuzioni non completate",
+  "consecutive-warning": "{{count}} esecuzioni consecutive su {{max}} non sono state completate. Dopo {{max}}, questa automazione si disattiva automaticamente. Le esecuzioni programmate partono solo mentre Eigent è aperto su questo computer.",
+  "auto-disabled-notice": "Questa automazione si è disattivata automaticamente dopo {{max}} esecuzioni di fila non completate. Riattivala quando Eigent potrà restare aperto all'orario programmato.",
+  "first-run-on": "Prima esecuzione: {{time}}",
+  "first-run-notice": "Prima esecuzione: {{time}} (ora locale). Eigent deve essere aperto in quel momento.",
+  "next-run-notice": "Prossima esecuzione: {{time}} (ora locale). Eigent deve essere aperto in quel momento.",
+  "pick-future-time": "Scegli una data e un'ora nel futuro.",
+  "one-time-within-a-year": "Scegli una data a meno di un anno da oggi.",
+  "monthly-time-crosses-month": "Quest'ora non può ripetersi in modo affidabile in questo giorno del mese. Scegli un'altra ora.",
+  "keeps-stored-schedule": "Questa pianificazione non può essere modificata qui. Resta invariata a meno che tu non scelga una frequenza qui sopra.",
+  "schedule-label-daily": "Ogni giorno alle {{time}}",
+  "schedule-label-weekly": "Ogni {{days}} alle {{time}}",
+  "schedule-label-monthly": "Ogni mese il giorno {{day}} alle {{time}}",
+  "schedule-label-once": "Una volta il {{date}} alle {{time}}",
+  "more-actions-named": "Altre azioni per {{name}}",
+  "examples": {
+    "weekly-feature-usage-recap": {
+      "title": "Riepilogo settimanale dell'uso di una funzione",
+      "description": "Come viene usata una nuova funzione.",
+      "prompt": "Riassumi l'uso della scorsa settimana della funzione che indico, con le tendenze."
+    },
+    "campaign-performance-recap": {
+      "title": "Riepilogo delle prestazioni delle campagne",
+      "description": "Metriche delle campagne in parole semplici.",
+      "prompt": "Riassumi le metriche delle campagne della scorsa settimana ed evidenzia cosa è cambiato."
+    },
+    "meeting-prep-brief": {
+      "title": "Scheda di preparazione alle riunioni",
+      "description": "Una scheda per ogni chiamata.",
+      "prompt": "Per ogni chiamata commerciale nel calendario di oggi, scrivi una breve scheda sul potenziale cliente."
+    },
+    "inbox-triage": {
+      "title": "Triage della posta in arrivo",
+      "description": "Nuovi ticket ordinati per urgenza.",
+      "prompt": "Ordina per urgenza i ticket ricevuti da ieri ed etichetta i primi cinque."
+    },
+    "hiring-pipeline-digest": {
+      "title": "Riepilogo del processo di selezione",
+      "description": "Avanzamento dei candidati questa settimana.",
+      "prompt": "Riassumi come si sono mossi i candidati tra le fasi di selezione questa settimana."
+    },
+    "expense-report-review": {
+      "title": "Revisione delle note spese",
+      "description": "Note spese che violano la policy.",
+      "prompt": "Esamina le nuove note spese e segnala quelle che non rispettano la policy."
+    }
+  },
+  "detail-when": "Quando viene eseguita",
+  "detail-what": "Cosa fa",
+  "detail-local-time": "Ora locale",
+  "detail-paused": "In pausa fino alla ripresa",
+  "detail-on-event": "Viene eseguita alla ricezione di un evento",
+  "detail-not-started": "Non avviata",
+  "action-run-now": "Esegui ora",
+  "action-pause": "Sospendi",
+  "action-resume": "Riprendi",
+  "action-run-queued": "Esecuzione richiesta",
+  "action-run-failed": "Impossibile avviare questa esecuzione. Riprova."
 }

@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   addLog: vi.fn(),
   modifyLog: vi.fn(() => false),
   proxyFetchPut: vi.fn(),
+  proxyFetchPost: vi.fn(),
   fetchGet: vi.fn(),
   auth: { user_id: 1, email: 'one@example.invalid' },
 }));
@@ -27,7 +28,7 @@ vi.mock('@/api/http', () => ({
   fetchGet: mocks.fetchGet,
   proxyFetchDelete: vi.fn(),
   proxyFetchGet: vi.fn(),
-  proxyFetchPost: vi.fn(),
+  proxyFetchPost: mocks.proxyFetchPost,
   proxyFetchPut: mocks.proxyFetchPut,
 }));
 vi.mock('@/store/authStore', () => ({ getAuthStore: () => mocks.auth }));
@@ -65,6 +66,29 @@ describe('trigger execution status delivery', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('requests a manual execution with a unique identity without changing the schedule', async () => {
+    const { proxyRunTriggerNow } = await import('@/service/triggerApi');
+    mocks.proxyFetchPost.mockResolvedValue({ execution_id: 'accepted' });
+    await proxyRunTriggerNow(12);
+    await proxyRunTriggerNow(12);
+    const [first, second] = mocks.proxyFetchPost.mock.calls;
+    expect(first[0]).toBe('/api/v1/execution/');
+    expect(first[1]).toEqual({
+      trigger_id: 12,
+      execution_id: expect.any(String),
+      execution_type: 'manual',
+      input_data: {},
+    });
+    expect(first[1].execution_id).not.toBe(second[1].execution_id);
+    expect(mocks.proxyFetchPut).not.toHaveBeenCalled();
+  });
+
+  it('propagates a rejected run request so the page can report failure', async () => {
+    const { proxyRunTriggerNow } = await import('@/service/triggerApi');
+    mocks.proxyFetchPost.mockRejectedValueOnce(new Error('Offline'));
+    await expect(proxyRunTriggerNow(12)).rejects.toThrow('Offline');
   });
 
   describe('unobserved durable terminal recovery', () => {

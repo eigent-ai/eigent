@@ -364,5 +364,74 @@
       "label": "요청 메타데이터 포함",
       "notice": "실행 입력에 요청 메타데이터(메서드, URL, 클라이언트 IP)를 포함합니다"
     }
-  }
+  },
+  "try-an-example": "예시 사용해 보기",
+  "examples-heading": "작업을 자동화하세요",
+  "examples-subtitle": "반복적인 작업은 Eigent에 맡기고 중요한 일에 집중하세요.",
+  "example-card-label": "{{title}} 설정: {{description}} {{schedule}}",
+  "your-automations": "내 자동화",
+  "queue-empty-body": "예시를 사용해 첫 자동화를 설정해 보세요.",
+  "new-badge": "새로 만듦",
+  "next-run-at": "다음: {{time}}",
+  "paused": "일시 중지됨",
+  "paused-schedule": "일시 중지됨 · {{schedule}}",
+  "runs-did-not-complete": "{{count}}회 연속 실행이 완료되지 않음",
+  "auto-disabled-short": "실행이 완료되지 않아 꺼짐",
+  "consecutive-warning": "{{max}}회 중 {{count}}회 연속으로 실행이 완료되지 않았습니다. {{max}}회에 도달하면 이 자동화는 자동으로 꺼집니다. 예약된 실행은 이 컴퓨터에서 Eigent가 열려 있을 때만 시작됩니다.",
+  "auto-disabled-notice": "{{max}}회 연속으로 실행이 완료되지 않아 이 자동화가 자동으로 꺼졌습니다. 예약된 시간에 Eigent를 열어 둘 수 있을 때 다시 켜세요.",
+  "first-run-on": "첫 실행: {{time}}",
+  "first-run-notice": "첫 실행: {{time}}(현지 시간). 그때 Eigent가 열려 있어야 합니다.",
+  "next-run-notice": "다음 실행: {{time}}(현지 시간). 그때 Eigent가 열려 있어야 합니다.",
+  "pick-future-time": "미래의 날짜와 시간을 선택하세요.",
+  "one-time-within-a-year": "오늘로부터 1년이 되기 전의 날짜를 선택하세요.",
+  "monthly-time-crosses-month": "이 시간은 매월 이 날짜에 안정적으로 반복될 수 없습니다. 다른 시간을 선택하세요.",
+  "keeps-stored-schedule": "이 일정은 여기에서 편집할 수 없습니다. 위에서 주기를 선택하지 않으면 그대로 유지됩니다.",
+  "schedule-label-daily": "매일 {{time}}",
+  "schedule-label-weekly": "매주 {{days}} {{time}}",
+  "schedule-label-monthly": "매월 {{day}}일 {{time}}",
+  "schedule-label-once": "{{date}} {{time}}에 한 번",
+  "more-actions-named": "{{name}}의 추가 작업",
+  "examples": {
+    "weekly-feature-usage-recap": {
+      "title": "기능 사용 주간 요약",
+      "description": "새 기능이 쓰이는 방식.",
+      "prompt": "내가 지정한 기능의 지난주 사용 현황을 추세와 함께 요약해 주세요."
+    },
+    "campaign-performance-recap": {
+      "title": "캠페인 성과 요약",
+      "description": "캠페인 지표를 쉬운 말로.",
+      "prompt": "지난주 캠페인 지표를 요약하고 달라진 점을 짚어 주세요."
+    },
+    "meeting-prep-brief": {
+      "title": "미팅 준비 브리핑",
+      "description": "통화마다 준비하는 브리핑.",
+      "prompt": "오늘 일정에 있는 각 영업 통화에 대해 잠재 고객 브리핑을 짧게 작성해 주세요."
+    },
+    "inbox-triage": {
+      "title": "받은편지함 분류",
+      "description": "긴급도순으로 정렬한 새 티켓.",
+      "prompt": "어제 이후 받은 티켓을 긴급도순으로 정렬하고 상위 5개에 태그를 달아 주세요."
+    },
+    "hiring-pipeline-digest": {
+      "title": "채용 파이프라인 요약",
+      "description": "이번 주 후보자 진행 상황.",
+      "prompt": "이번 주 후보자가 채용 단계 사이에서 어떻게 이동했는지 요약해 주세요."
+    },
+    "expense-report-review": {
+      "title": "경비 보고서 검토",
+      "description": "정책을 위반한 보고서.",
+      "prompt": "새 경비 보고서를 검토하고 정책을 위반한 것을 표시해 주세요."
+    }
+  },
+  "detail-when": "실행 시점",
+  "detail-what": "실행 내용",
+  "detail-local-time": "현지 시간",
+  "detail-paused": "재개할 때까지 일시 중지됨",
+  "detail-on-event": "이벤트를 수신하면 실행",
+  "detail-not-started": "시작되지 않음",
+  "action-run-now": "지금 실행",
+  "action-pause": "일시 중지",
+  "action-resume": "재개",
+  "action-run-queued": "실행을 요청했습니다",
+  "action-run-failed": "실행을 시작할 수 없습니다. 다시 시도해 주세요."
 }

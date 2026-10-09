@@ -6548,13 +6548,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (existingError) {
                 if (
                   existingError.content !== errorContent ||
-                  existingError.errorReason !== errorReason
+                  existingError.errorReason !== errorReason ||
+                  Boolean(existingError.resumable) !== isRetryableRunError
                 ) {
                   updateMessage(currentTaskId, existingError.id, {
                     ...existingError,
                     content: errorContent,
                     step: AgentStep.ERROR,
                     errorReason,
+                    resumable: isRetryableRunError,
                   });
                 }
               } else {
@@ -6564,6 +6566,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   content: errorContent,
                   step: AgentStep.ERROR,
                   errorReason,
+                  resumable: isRetryableRunError,
                 });
               }
               // Record the tokens consumed before the failure so the run's
