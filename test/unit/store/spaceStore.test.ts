@@ -62,6 +62,8 @@ vi.mock('@/service/spaceApi', () => ({
 }));
 
 vi.mock('@/service/workspaceApi', () => ({
+  createScratchWorkspaceForSpace: vi.fn(),
+  fetchWorkspaceCurrent: vi.fn(),
   reconcileWorkspaceBindings: vi.fn().mockResolvedValue(undefined),
   unbindWorkspaceFromBrain: vi.fn(),
 }));
@@ -1235,6 +1237,9 @@ describe('spaceStore user scoping', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     backendReadinessMock.waitForBackendReadiness.mockResolvedValue(undefined);
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockReset();
+    vi.mocked(workspaceApi.createScratchWorkspaceForSpace).mockReset();
     const spaceApi = await import('@/service/spaceApi');
     vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([]);
     vi.mocked(spaceApi.proxyFetchSpaceProjects).mockResolvedValue([]);
@@ -1494,6 +1499,14 @@ describe('spaceStore user scoping', () => {
 
   it('keeps a confirmed local scratch root when cloud hydration omits it', async () => {
     const spaceApi = await import('@/service/spaceApi');
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockResolvedValue({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+      bound: true,
+      workspace_root: '/Users/test/eigent/space_selected',
+    });
     const localSpace: Space = {
       ...makeSpace('space_selected', 'Selected Space', 'blank', '2'),
       rootPath: '/Users/test/eigent/space_selected',
@@ -1520,6 +1533,14 @@ describe('spaceStore user scoping', () => {
     });
 
     await useSpaceStore.getState().hydrateFromServer(2);
+    await vi.waitFor(() =>
+      expect(workspaceApi.fetchWorkspaceCurrent).toHaveBeenCalledWith(
+        'space_selected',
+        'new@example.com',
+        2
+      )
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(useSpaceStore.getState().spaces.space_selected).toMatchObject({
       name: 'Renamed Space',
@@ -1535,6 +1556,110 @@ describe('spaceStore user scoping', () => {
     expect(
       useSpaceStore.getState().spaces.space_selected.metadata
     ).not.toHaveProperty('staleCloudValue');
+  });
+
+  const hydrateKeptScratchRoot = async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
+      makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+    ]);
+    useSpaceStore.setState({
+      activeSpaceId: 'space_selected',
+      spaces: {
+        space_selected: {
+          ...makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+          rootPath: '/Users/test/eigent/space_selected',
+          metadata: {
+            localWorkspaceRoot: '/Users/test/eigent/space_selected',
+            localWorkspaceSource: 'scratch_space',
+          },
+        },
+      },
+      projectsSyncedAt: { space_selected: Date.now() },
+    });
+    await useSpaceStore.getState().hydrateFromServer(2);
+  };
+
+  it('clears a kept scratch root whose folder the backend no longer has, so the binding flow recreates it', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    const { ensureScratchSpaceWorkspaceBinding } =
+      await import('@/lib/scratchSpaceWorkspace');
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockResolvedValue({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+      bound: false,
+      workspace_root: '/Users/test/eigent/space_selected',
+    });
+    vi.mocked(workspaceApi.createScratchWorkspaceForSpace).mockResolvedValue({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+      bound: true,
+      workspace_root: '/Users/test/eigent/space_selected',
+    });
+
+    await hydrateKeptScratchRoot();
+
+    await vi.waitFor(() =>
+      expect(useSpaceStore.getState().spaces.space_selected.rootPath).toBe(null)
+    );
+    await expect(
+      ensureScratchSpaceWorkspaceBinding({
+        email: 'new@example.com',
+        userId: 2,
+        space: useSpaceStore.getState().spaces.space_selected,
+      })
+    ).resolves.toBe('/Users/test/eigent/space_selected');
+    expect(workspaceApi.createScratchWorkspaceForSpace).toHaveBeenCalledWith({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+    });
+    expect(useSpaceStore.getState().spaces.space_selected.rootPath).toBe(
+      '/Users/test/eigent/space_selected'
+    );
+  });
+
+  it('replaces a kept scratch root with the root the backend has bound', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockResolvedValue({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+      bound: true,
+      workspace_root: '/Users/test/eigent/space_selected_moved',
+    });
+
+    await hydrateKeptScratchRoot();
+
+    await vi.waitFor(() =>
+      expect(useSpaceStore.getState().spaces.space_selected).toMatchObject({
+        rootPath: '/Users/test/eigent/space_selected_moved',
+        metadata: {
+          localWorkspaceRoot: '/Users/test/eigent/space_selected_moved',
+          localWorkspaceSource: 'scratch_space',
+        },
+      })
+    );
+  });
+
+  it('keeps a kept scratch root when the backend check fails', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockRejectedValue(
+      new Error('backend unavailable')
+    );
+
+    await hydrateKeptScratchRoot();
+
+    await vi.waitFor(() =>
+      expect(workspaceApi.fetchWorkspaceCurrent).toHaveBeenCalled()
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(useSpaceStore.getState().spaces.space_selected.rootPath).toBe(
+      '/Users/test/eigent/space_selected'
+    );
   });
 
   it('keeps a confirmed local scratch root across server upserts', () => {
