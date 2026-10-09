@@ -12,16 +12,21 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-/** Shared responsive width for fixed right-side content rails. */
-export const RIGHT_RAIL_CONTENT_WIDTH_CLASS =
-  'w-[min(360px,40vw)] max-w-[400px]';
+import { afterAll, beforeAll } from 'vitest';
 
-/** Full-width stacked content below the desktop split-layout breakpoint. */
-export const RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS =
-  'w-full max-w-none lg:w-[min(360px,40vw)] lg:max-w-[400px]';
-
-/** Expanded outer rail width; matches its content without an extra clip. */
-export const RIGHT_RAIL_EXPANDED_OUTER_CLASS = RIGHT_RAIL_CONTENT_WIDTH_CLASS;
-
-/** Folded outer rail width; full-width content can remain mounted and clipped. */
-export const RIGHT_RAIL_FOLDED_OUTER_CLASS = 'w-[40px]';
+/**
+ * Runs the enclosing describe block in `timeZone`, whatever the machine's
+ * zone is. Node applies a changed TZ to every Date created afterwards, so
+ * create dates inside tests or hooks, not while the block is collected.
+ */
+export function useTimeZone(timeZone: string) {
+  let original: string | undefined;
+  beforeAll(() => {
+    original = process.env.TZ;
+    process.env.TZ = timeZone;
+  });
+  afterAll(() => {
+    if (original === undefined) delete process.env.TZ;
+    else process.env.TZ = original;
+  });
+}

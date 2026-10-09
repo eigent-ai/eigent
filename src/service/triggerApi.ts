@@ -28,8 +28,10 @@ import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { getAuthStore } from '@/store/authStore';
 import {
   ExecutionStatus,
+  ExecutionType,
   SkipReason,
   Trigger,
+  TriggerExecution,
   TriggerInput,
   TriggerStatus,
   TriggerType,
@@ -226,6 +228,17 @@ export const proxyDeactivateTrigger = async (
     throw error;
   }
 };
+
+/** Create a tracked manual run; the existing execution subscription admits it. */
+export const proxyRunTriggerNow = (
+  triggerId: number
+): Promise<TriggerExecution> =>
+  proxyFetchPost('/api/v1/execution/', {
+    trigger_id: triggerId,
+    execution_id: crypto.randomUUID(),
+    execution_type: ExecutionType.Manual,
+    input_data: {},
+  });
 
 // Trigger Executions
 export const proxyFetchTriggerExecutions = async (

@@ -364,5 +364,74 @@
   "task-queued": "En attente : {{name}}",
   "task-queued-description": "La tâche a été ajoutée à la file de la session",
   "select-method": "Sélectionner la méthode",
-  "status-cancelled": "Annulée"
+  "status-cancelled": "Annulée",
+  "try-an-example": "Essayer un exemple",
+  "examples-heading": "Automatisez vos tâches",
+  "examples-subtitle": "Laissez Eigent gérer les tâches répétitives pendant que vous vous concentrez sur l’essentiel.",
+  "example-card-label": "Configurer {{title}} : {{description}} {{schedule}}",
+  "your-automations": "Vos automatisations",
+  "queue-empty-body": "Essayez un exemple pour configurer votre première automatisation.",
+  "new-badge": "Nouveau",
+  "next-run-at": "Prochaine : {{time}}",
+  "paused": "En pause",
+  "paused-schedule": "En pause · {{schedule}}",
+  "runs-did-not-complete": "{{count}} exécutions d’affilée non terminées",
+  "auto-disabled-short": "Désactivée après des exécutions non terminées",
+  "consecutive-warning": "{{count}} exécutions consécutives sur {{max}} ne se sont pas terminées. Au bout de {{max}}, cette automatisation se désactive automatiquement. Les exécutions planifiées ne démarrent que si Eigent est ouvert sur cet ordinateur.",
+  "auto-disabled-notice": "Cette automatisation s’est désactivée automatiquement après {{max}} exécutions d’affilée non terminées. Réactivez-la lorsqu’Eigent pourra rester ouvert à l’heure prévue.",
+  "first-run-on": "Première exécution : {{time}}",
+  "first-run-notice": "Première exécution : {{time}} (votre heure locale). Eigent doit être ouvert à ce moment-là.",
+  "next-run-notice": "Prochaine exécution : {{time}} (votre heure locale). Eigent doit être ouvert à ce moment-là.",
+  "pick-future-time": "Choisissez une date et une heure dans le futur.",
+  "one-time-within-a-year": "Choisissez une date à moins d’un an d’aujourd’hui.",
+  "monthly-time-crosses-month": "Cette heure ne peut pas se répéter de manière fiable ce jour du mois. Choisissez une autre heure.",
+  "keeps-stored-schedule": "Cette planification ne peut pas être modifiée ici. Elle reste inchangée, sauf si vous choisissez une fréquence ci-dessus.",
+  "schedule-label-daily": "Tous les jours à {{time}}",
+  "schedule-label-weekly": "Chaque {{days}} à {{time}}",
+  "schedule-label-monthly": "Tous les mois le {{day}} à {{time}}",
+  "schedule-label-once": "Une fois le {{date}} à {{time}}",
+  "more-actions-named": "Plus d’actions pour {{name}}",
+  "examples": {
+    "weekly-feature-usage-recap": {
+      "title": "Bilan hebdomadaire d’utilisation d’une fonctionnalité",
+      "description": "Comment une nouveauté est utilisée.",
+      "prompt": "Résume l’utilisation de la semaine dernière de la fonctionnalité que j’indique, avec les tendances."
+    },
+    "campaign-performance-recap": {
+      "title": "Bilan de performance des campagnes",
+      "description": "Indicateurs de campagne en clair.",
+      "prompt": "Résume les indicateurs de campagne de la semaine dernière et souligne ce qui a changé."
+    },
+    "meeting-prep-brief": {
+      "title": "Fiche de préparation de rendez-vous",
+      "description": "Une fiche pour chaque appel.",
+      "prompt": "Pour chaque appel commercial de l’agenda du jour, rédige une courte fiche sur le prospect."
+    },
+    "inbox-triage": {
+      "title": "Tri de la boîte de réception",
+      "description": "Nouveaux tickets triés par urgence.",
+      "prompt": "Trie par urgence les tickets reçus depuis hier et étiquette les cinq premiers."
+    },
+    "hiring-pipeline-digest": {
+      "title": "Synthèse du processus de recrutement",
+      "description": "Avancée des candidats cette semaine.",
+      "prompt": "Résume l’avancée des candidats entre les étapes de recrutement cette semaine."
+    },
+    "expense-report-review": {
+      "title": "Contrôle des notes de frais",
+      "description": "Notes contraires à la politique.",
+      "prompt": "Examine les nouvelles notes de frais et signale celles qui ne respectent pas la politique."
+    }
+  },
+  "detail-when": "Quand elle s’exécute",
+  "detail-what": "Ce qu’elle fait",
+  "detail-local-time": "Heure locale",
+  "detail-paused": "En pause jusqu’à la reprise",
+  "detail-on-event": "S’exécute à la réception d’un événement",
+  "detail-not-started": "Non démarrée",
+  "action-run-now": "Exécuter maintenant",
+  "action-pause": "Suspendre",
+  "action-resume": "Reprendre",
+  "action-run-queued": "Exécution demandée",
+  "action-run-failed": "Impossible de démarrer cette exécution. Réessayez."
 }

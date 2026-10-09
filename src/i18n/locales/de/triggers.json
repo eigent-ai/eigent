@@ -364,5 +364,74 @@
   "task-queued": "In Warteschlange: {{name}}",
   "task-queued-description": "Die Aufgabe wurde zur Sitzungswarteschlange hinzugefügt",
   "select-method": "Wählen Sie eine Methode",
-  "status-cancelled": "Aufgabe gestellt"
+  "status-cancelled": "Aufgabe gestellt",
+  "try-an-example": "Beispiel ausprobieren",
+  "examples-heading": "Automatisiere deine Aufgaben",
+  "examples-subtitle": "Lass Eigent Routineaufgaben erledigen, während du dich auf das Wesentliche konzentrierst.",
+  "example-card-label": "{{title}} einrichten: {{description}} {{schedule}}",
+  "your-automations": "Deine Automatisierungen",
+  "queue-empty-body": "Probiere ein Beispiel aus, um deine erste einzurichten.",
+  "new-badge": "Neu",
+  "next-run-at": "Nächste: {{time}}",
+  "paused": "Pausiert",
+  "paused-schedule": "Pausiert · {{schedule}}",
+  "runs-did-not-complete": "{{count}} Ausführungen in Folge nicht abgeschlossen",
+  "auto-disabled-short": "Ausgeschaltet nach nicht abgeschlossenen Ausführungen",
+  "consecutive-warning": "{{count}} von {{max}} Ausführungen in Folge wurden nicht abgeschlossen. Nach {{max}} schaltet sich diese Automatisierung automatisch aus. Geplante Ausführungen starten nur, während Eigent auf diesem Computer geöffnet ist.",
+  "auto-disabled-notice": "Diese Automatisierung wurde automatisch ausgeschaltet, nachdem {{max}} Ausführungen in Folge nicht abgeschlossen wurden. Schalte sie wieder ein, wenn Eigent zur geplanten Zeit geöffnet bleiben kann.",
+  "first-run-on": "Erste Ausführung: {{time}}",
+  "first-run-notice": "Erste Ausführung: {{time}} (deine Ortszeit). Eigent muss dann geöffnet sein.",
+  "next-run-notice": "Nächste Ausführung: {{time}} (deine Ortszeit). Eigent muss dann geöffnet sein.",
+  "pick-future-time": "Wähle ein Datum und eine Uhrzeit in der Zukunft.",
+  "one-time-within-a-year": "Wähle ein Datum, das weniger als ein Jahr in der Zukunft liegt.",
+  "monthly-time-crosses-month": "Diese Uhrzeit lässt sich an diesem Tag des Monats nicht zuverlässig wiederholen. Wähle eine andere Uhrzeit.",
+  "keeps-stored-schedule": "Diese Planung kann hier nicht bearbeitet werden. Sie bleibt unverändert, sofern du oben keine Frequenz auswählst.",
+  "schedule-label-daily": "Täglich um {{time}}",
+  "schedule-label-weekly": "Jeden {{days}} um {{time}}",
+  "schedule-label-monthly": "Monatlich am {{day}}. um {{time}}",
+  "schedule-label-once": "Einmalig am {{date}} um {{time}}",
+  "more-actions-named": "Weitere Aktionen für {{name}}",
+  "examples": {
+    "weekly-feature-usage-recap": {
+      "title": "Wöchentlicher Feature-Nutzungsbericht",
+      "description": "Wie ein neues Feature genutzt wird.",
+      "prompt": "Fasse die Nutzung des Features, das ich nenne, in der letzten Woche mit Trends zusammen."
+    },
+    "campaign-performance-recap": {
+      "title": "Kampagnen-Performance im Überblick",
+      "description": "Kampagnenzahlen in klarer Sprache.",
+      "prompt": "Fasse die Kampagnenkennzahlen der letzten Woche zusammen und hebe hervor, was sich geändert hat."
+    },
+    "meeting-prep-brief": {
+      "title": "Briefing zur Meeting-Vorbereitung",
+      "description": "Ein Briefing für jedes Gespräch.",
+      "prompt": "Schreibe für jedes Vertriebsgespräch im heutigen Kalender ein kurzes Briefing zum Interessenten."
+    },
+    "inbox-triage": {
+      "title": "Posteingang sortieren",
+      "description": "Neue Tickets nach Dringlichkeit sortiert.",
+      "prompt": "Sortiere die seit gestern eingegangenen Tickets nach Dringlichkeit und markiere die fünf wichtigsten."
+    },
+    "hiring-pipeline-digest": {
+      "title": "Recruiting-Pipeline im Überblick",
+      "description": "Bewegung der Kandidaten diese Woche.",
+      "prompt": "Fasse zusammen, wie sich Kandidaten diese Woche zwischen den Recruiting-Phasen bewegt haben."
+    },
+    "expense-report-review": {
+      "title": "Spesenabrechnungen prüfen",
+      "description": "Abrechnungen, die Richtlinien verletzen.",
+      "prompt": "Prüfe neue Spesenabrechnungen und markiere die, die gegen die Richtlinien verstoßen."
+    }
+  },
+  "detail-when": "Wann sie läuft",
+  "detail-what": "Was sie macht",
+  "detail-local-time": "Ortszeit",
+  "detail-paused": "Pausiert, bis du sie fortsetzt",
+  "detail-on-event": "Läuft beim Empfang eines Ereignisses",
+  "detail-not-started": "Nicht gestartet",
+  "action-run-now": "Jetzt ausführen",
+  "action-pause": "Pausieren",
+  "action-resume": "Fortsetzen",
+  "action-run-queued": "Ausführung angefordert",
+  "action-run-failed": "Die Ausführung konnte nicht gestartet werden. Versuche es erneut."
 }
