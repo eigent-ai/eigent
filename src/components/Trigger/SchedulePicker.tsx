@@ -809,7 +809,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 : undefined
             }
           />
-          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+          <div className="grid min-w-0 grid-cols-2 items-start gap-3">
             <div className="min-w-0">
               <InputSelect
                 value={hour}
@@ -840,7 +840,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="daily" className="mt-4 space-y-3">
-          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+          <div className="grid min-w-0 grid-cols-2 items-start gap-3">
             <div className="min-w-0">
               <InputSelect
                 value={hour}
@@ -885,7 +885,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="weekly" className="mt-4 space-y-3">
-          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+          <div className="grid min-w-0 grid-cols-2 items-start gap-3">
             <div className="min-w-0">
               <InputSelect
                 value={hour}
@@ -1015,7 +1015,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             state={dayOfMonthError ? 'error' : undefined}
             errorNote={dayOfMonthError}
           />
-          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+          <div className="grid min-w-0 grid-cols-2 items-start gap-3">
             <div className="min-w-0">
               <InputSelect
                 value={hour}
