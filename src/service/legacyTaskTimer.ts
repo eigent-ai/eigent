@@ -65,6 +65,9 @@ export function stopTaskTimer(
  * the user; call it whenever the Run projection changes. It stops the clock
  * while the Run waits and restarts it once the Run continues. A user pause
  * stays in force, and a decision that ends the Run leaves the clock stopped.
+ * A clock stopped by a wait stays held through any status between the wait
+ * and the Run continuing, such as the `interrupted` projected for a request
+ * cancelled while another one is still open.
  */
 export function createTaskTimerWaitSync({
   projectId,
@@ -77,24 +80,25 @@ export function createTaskTimerWaitSync({
   getState: () => TaskTimerState;
   now?: () => number;
 }): () => void {
-  let waiting = false;
+  let held = false;
   return () => {
     const state = getState();
     const status = runProjectionStore.getRun(projectId, runId)?.status;
-    const wasWaiting = waiting;
-    waiting = status === 'waiting_for_user';
     const task = state.tasks[runId];
-    if (!task) return;
-    if (waiting) {
-      stopTaskTimer(state, runId, now());
-    } else if (
-      wasWaiting &&
-      status === 'running' &&
-      task.status === ChatTaskStatus.RUNNING &&
-      task.taskTime === 0
-    ) {
-      state.setTaskTime(runId, now());
+    if (status === 'waiting_for_user') {
+      held = true;
+      if (task) stopTaskTimer(state, runId, now());
+      return;
     }
+    if (!held) return;
+    if (status && TERMINAL_RUN_STATUSES.has(status)) {
+      held = false;
+      return;
+    }
+    if (status !== 'running') return;
+    held = false;
+    if (task?.status === ChatTaskStatus.RUNNING && task.taskTime === 0)
+      state.setTaskTime(runId, now());
   };
 }
 

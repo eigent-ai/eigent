@@ -499,6 +499,48 @@ describe('Run restored while it runs', () => {
       }
     );
 
+    it('continues once the open approval is answered after another one was cancelled', async () => {
+      const history = [
+        started(),
+        todo(0),
+        requested('call-one', 2_000),
+        ask('call-one', 2_000),
+        requested('call-two', 2_000),
+        ask('call-two', 2_000),
+      ];
+      vi.setSystemTime(startedAt + 32_000);
+      const deliver = await reload({
+        status: 'waiting_for_user',
+        totalMs: 2_000,
+        history,
+      });
+      expect(shownMs()).toBe(2_000);
+
+      // A request cancelled while another is open projects as interrupted.
+      await deliver(
+        timedEvent(
+          'approval.cancelled',
+          {
+            approval_id: 'approval:call-one',
+            interaction_id: 'approval:call-one',
+            decision: 'rejected',
+            continued_attempt: false,
+          },
+          now()
+        )
+      );
+      expect(runProjectionStore.getRun(SESSION, RUN)?.status).toBe(
+        'interrupted'
+      );
+      advance(10_000);
+      expect(shownMs()).toBe(2_000);
+
+      await deliver(decided('call-two', now()));
+      expect(runProjectionStore.getRun(SESSION, RUN)?.status).toBe('running');
+      advance(3_000);
+      expect(shownMs()).toBe(5_000);
+    });
+
     it('continues from the time worked when restored after an approval, and holds a later one', async () => {
       // Worked 2s, waited 60s, worked 1s more; reopened then.
       const history = [
