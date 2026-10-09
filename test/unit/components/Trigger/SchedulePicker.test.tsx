@@ -12,36 +12,247 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { SchedulePicker } from '@/components/Trigger/SchedulePicker';
 import {
-  getNextScheduledTimes,
-  parseScheduleNumber,
-  SchedulePicker,
-} from '@/components/Trigger/SchedulePicker';
+  scheduleToCron,
+  type LocalSchedule,
+} from '@/components/Trigger/automationSchedule';
 import { localTimeToUTC } from '@/lib/utils';
-import { act, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useTimeZone } from '../../../mocks/timeZone';
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(2026, 9, 5, 12, 15));
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+describe('schedule initialization', () => {
+  it('keeps a stored January date in the next year when edited in December', async () => {
+    vi.setSystemTime(new Date(2026, 11, 15, 12));
+    const valid = vi.fn();
+    const config = vi.fn();
+    render(
+      <SchedulePicker
+        value="0 9 5 1 *"
+        isEditing
+        initialConfig={{ date: '2027-01-05' }}
+        onChange={vi.fn()}
+        onConfigChange={config}
+        onValidationChange={valid}
+      />
+    );
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(true));
+    expect(screen.getByLabelText(/^Date/)).toHaveValue('2027-01-05');
+    await waitFor(() =>
+      expect(config).toHaveBeenLastCalledWith(
+        expect.objectContaining({ date: '2027-01-05' })
+      )
+    );
+  });
+
+  it('allows an unchanged past one-time schedule to be edited but rejects changing it to another past date', async () => {
+    const valid = vi.fn();
+    render(
+      <SchedulePicker
+        value="0 9 5 1 *"
+        isEditing
+        initialConfig={{ date: '2026-01-05' }}
+        onChange={vi.fn()}
+        onValidationChange={valid}
+      />
+    );
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(true));
+    expect(screen.getByText('No upcoming executions')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Pick a date and time in the future.')
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^Date/), {
+      target: { value: '2026-02-05' },
+    });
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(false));
+  });
+
+  it('rejects a one-time date a year or more ahead, which cron would run a year early', async () => {
+    const valid = vi.fn();
+    render(
+      <SchedulePicker
+        value="0 9 5 1 *"
+        initialConfig={{ date: '2028-01-05' }}
+        onChange={vi.fn()}
+        onValidationChange={valid}
+      />
+    );
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(false));
+    expect(
+      screen.getByText('Choose a date less than a year from today.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/First run/)).not.toBeInTheDocument();
+
+    const date = screen.getByLabelText(/^Date/);
+    expect(date).toHaveAttribute('max', '2027-10-04');
+    fireEvent.change(date, { target: { value: '2027-10-05' } });
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(false));
+    fireEvent.change(date, { target: { value: '2027-10-04' } });
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(true));
+    expect(screen.getByText(/First run/)).toBeInTheDocument();
+  });
+
+  it('rejects creating a one-time schedule in the past', async () => {
+    const valid = vi.fn();
+    render(
+      <SchedulePicker
+        value="0 9 5 1 *"
+        initialConfig={{ date: '2026-01-05' }}
+        onChange={vi.fn()}
+        onValidationChange={valid}
+      />
+    );
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(false));
+  });
+  it.each([true, false])(
+    'preserves midnight UTC for an existing schedule or an example draft (editing=%s)',
+    async (isEditing) => {
+      // From 00:15 UTC the next full local hour is never midnight UTC, in any
+      // zone, so the picker's default always differs from the stored value.
+      vi.setSystemTime(new Date(Date.UTC(2026, 9, 5, 0, 15)));
+      const change = vi.fn();
+      render(
+        <SchedulePicker
+          value="0 0 * * *"
+          isEditing={isEditing}
+          onChange={change}
+        />
+      );
+      await waitFor(() => expect(change).toHaveBeenLastCalledWith('0 0 * * *'));
+    }
+  );
+
+  it('starts only the blank create form at the next full local hour', async () => {
+    vi.setSystemTime(new Date(Date.UTC(2026, 9, 5, 0, 15)));
+    const nextHour = new Date();
+    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
+    const change = vi.fn();
+    render(
+      <SchedulePicker value="0 0 * * *" useDefaultTime onChange={change} />
+    );
+    const expected = scheduleToCron({
+      frequency: 'daily',
+      hour: nextHour.getHours(),
+      minute: 0,
+    });
+    expect(expected).not.toBe('0 0 * * *');
+    await waitFor(() => expect(change).toHaveBeenLastCalledWith(expected));
+  });
+});
+
+describe('stored schedules the editor cannot show', () => {
+  it('keeps the stored cron and dates until a frequency is chosen', async () => {
+    const change = vi.fn();
+    const valid = vi.fn();
+    const config = vi.fn();
+    render(
+      <SchedulePicker
+        value="*/15 * * * *"
+        isEditing
+        initialConfig={{ expirationDate: '2026-12-31', max_failure_count: 3 }}
+        onChange={change}
+        onConfigChange={config}
+        onValidationChange={valid}
+      />
+    );
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(true));
+    expect(change).not.toHaveBeenCalled();
+    expect(config).toHaveBeenLastCalledWith({
+      expirationDate: '2026-12-31',
+      max_failure_count: 3,
+    });
+    expect(
+      screen.getByText(/This schedule can't be edited here/)
+    ).toBeInTheDocument();
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab).toHaveAttribute('aria-selected', 'false');
+    }
+
+    // Moving focus into the tabs is not a choice.
+    fireEvent.focus(screen.getByRole('tab', { name: 'One Time' }));
+    expect(change).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Weekly' }));
+    await waitFor(() =>
+      expect(change).toHaveBeenLastCalledWith(
+        scheduleToCron({
+          frequency: 'weekly',
+          hour: 13,
+          minute: 0,
+          weekdays: [1],
+        })
+      )
+    );
+  });
+});
+
+describe('a last-day monthly schedule after a DST change', () => {
+  // New Zealand is UTC+13 in January and UTC+12 in July.
+  useTimeZone('Pacific/Auckland');
+
+  it('opens as monthly on day 1 instead of falling back to daily', async () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 12, 15));
+    const change = vi.fn();
+    render(<SchedulePicker value="30 11 L * *" isEditing onChange={change} />);
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Monthly' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+    );
+    expect(change).toHaveBeenLastCalledWith(
+      scheduleToCron({
+        frequency: 'monthly',
+        hour: 0,
+        minute: 30,
+        dayOfMonth: 1,
+      })
+    );
+  });
+});
 
 const HOUR_ERROR = 'Enter a whole number from 0 to 23';
 const MINUTE_ERROR = 'Enter a whole number from 0 to 59';
 const DAY_ERROR = 'Enter a whole number from 1 to 31';
-const PREVIEW_BLOCKED = 'Fix the highlighted fields to see scheduled times';
+const FIX_FIELDS = 'Fix the highlighted fields to see scheduled times';
+// Preview rows start with a long date such as "October 31, 2026".
+const PREVIEW_ROW = /^\w+ \d{1,2}, \d{4}/;
 
 type User = ReturnType<typeof userEvent.setup>;
 
-function renderPicker(value = '0 0 * * *') {
+function renderPicker(
+  value = '0 0 * * *',
+  props: { isEditing?: boolean } = {}
+) {
   const onChange = vi.fn();
   const onValidationChange = vi.fn();
-  const onConfigChange = vi.fn();
   render(
     <SchedulePicker
       value={value}
       onChange={onChange}
       onValidationChange={onValidationChange}
-      onConfigChange={onConfigChange}
+      {...props}
     />
   );
-  return { onChange, onValidationChange, onConfigChange };
+  return { onChange, onValidationChange };
 }
 
 function field(label: string): HTMLInputElement {
@@ -51,6 +262,10 @@ function field(label: string): HTMLInputElement {
   return input;
 }
 
+// The field commits its text on blur after a short delay.
+const settleBlur = () =>
+  act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
 // Type into an InputSelect and commit with Enter, then let the field's
 // delayed blur commit run so the next edit starts from a settled state.
 async function commit(user: User, label: string, value: string) {
@@ -58,152 +273,21 @@ async function commit(user: User, label: string, value: string) {
   await user.clear(input);
   if (value) await user.type(input, value);
   await user.keyboard('{Enter}');
-  await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
-}
-
-function dailyCron(hour: number, minute: number) {
-  const { utcHour, utcMinute } = localTimeToUTC(hour, minute);
-  return `${utcMinute} ${utcHour} * * *`;
+  await settleBlur();
 }
 
 function lastValidity(onValidationChange: ReturnType<typeof vi.fn>) {
   return onValidationChange.mock.lastCall?.[0];
 }
 
-describe('parseScheduleNumber', () => {
-  it.each([
-    ['0', 0],
-    ['00', 0],
-    ['07', 7],
-    ['23', 23],
-    [' 9 ', 9],
-  ])('accepts hour %j', (value, expected) => {
-    expect(parseScheduleNumber(value, { min: 0, max: 23 })).toBe(expected);
-  });
+const notice = () => screen.getByRole('status');
 
-  it.each(['24', '25', '-1', '1.5', '12abc', '+5', '1e1', '', '  '])(
-    'rejects hour %j',
-    (value) => {
-      expect(parseScheduleNumber(value, { min: 0, max: 23 })).toBeNull();
-    }
-  );
-
-  it('applies the minute and day-of-month ranges', () => {
-    expect(parseScheduleNumber('59', { min: 0, max: 59 })).toBe(59);
-    expect(parseScheduleNumber('60', { min: 0, max: 59 })).toBeNull();
-    expect(parseScheduleNumber('31', { min: 1, max: 31 })).toBe(31);
-    expect(parseScheduleNumber('0', { min: 1, max: 31 })).toBeNull();
-    expect(parseScheduleNumber('32', { min: 1, max: 31 })).toBeNull();
-  });
-});
-
-describe('getNextScheduledTimes', () => {
-  // Local dates, as the preview shows them: [year, month (1-12), day, hour, minute].
-  const local = (y: number, m: number, d: number, h = 9, min = 0) =>
-    new Date(y, m - 1, d, h, min, 0, 0);
-  const preview = (
-    overrides: Partial<Parameters<typeof getNextScheduledTimes>[0]> & {
-      now: Date;
-    }
-  ) =>
-    getNextScheduledTimes({
-      frequency: 'daily',
-      hour: 9,
-      minute: 0,
-      weekdays: ['1'],
-      dayOfMonth: 1,
-      ...overrides,
-    });
-
-  it('keeps daily runs in order across the end of a month', () => {
-    expect(preview({ now: local(2026, 10, 30, 10) })).toEqual([
-      local(2026, 10, 31),
-      local(2026, 11, 1),
-      local(2026, 11, 2),
-      local(2026, 11, 3),
-      local(2026, 11, 4),
-    ]);
-  });
-
-  it('keeps weekly runs in order across the end of a month', () => {
-    // 2026-10-26 is a Monday.
-    expect(
-      preview({
-        frequency: 'weekly',
-        weekdays: ['1', '3'],
-        now: local(2026, 10, 27, 10),
-      })
-    ).toEqual([
-      local(2026, 10, 28),
-      local(2026, 11, 2),
-      local(2026, 11, 4),
-      local(2026, 11, 9),
-      local(2026, 11, 11),
-    ]);
-  });
-
-  it('keeps monthly runs in order across the end of a year', () => {
-    expect(
-      preview({
-        frequency: 'monthly',
-        dayOfMonth: 15,
-        now: local(2026, 11, 20, 10),
-      })
-    ).toEqual([
-      local(2026, 12, 15),
-      local(2027, 1, 15),
-      local(2027, 2, 15),
-      local(2027, 3, 15),
-      local(2027, 4, 15),
-    ]);
-  });
-
-  it('shows a monthly day only in months that have it', () => {
-    expect(
-      preview({
-        frequency: 'monthly',
-        dayOfMonth: 31,
-        now: local(2027, 1, 15, 10),
-      })
-    ).toEqual([
-      local(2027, 1, 31),
-      local(2027, 3, 31),
-      local(2027, 5, 31),
-      local(2027, 7, 31),
-      local(2027, 8, 31),
-    ]);
-  });
-
-  it('includes today when its time is still ahead', () => {
-    expect(
-      preview({
-        frequency: 'monthly',
-        dayOfMonth: 30,
-        now: local(2026, 10, 30, 8),
-      })[0]
-    ).toEqual(local(2026, 10, 30));
-    expect(preview({ now: local(2026, 10, 30, 8) })[0]).toEqual(
-      local(2026, 10, 30)
-    );
-  });
-
-  it('shows a one-time run only while it is in the future', () => {
-    expect(
-      preview({
-        frequency: 'one-time',
-        oneTimeDate: local(2026, 11, 1, 0),
-        now: local(2026, 10, 30, 10),
-      })
-    ).toEqual([local(2026, 11, 1)]);
-    expect(
-      preview({
-        frequency: 'one-time',
-        oneTimeDate: local(2026, 10, 1, 0),
-        now: local(2026, 10, 30, 10),
-      })
-    ).toEqual([]);
-  });
-});
+async function openPreview(user: User) {
+  await user.click(screen.getByText('Preview Scheduled Times'));
+  return screen
+    .queryAllByText(PREVIEW_ROW)
+    .map((row) => row.textContent?.match(PREVIEW_ROW)?.[0]);
+}
 
 describe('SchedulePicker time validation', () => {
   it('rejects 25:54 on a daily schedule instead of rolling it over to 01:54', async () => {
@@ -216,21 +300,25 @@ describe('SchedulePicker time validation', () => {
 
     expect(lastValidity(onValidationChange)).toBe(false);
     // No cron is generated from the invalid hour.
-    expect(onChange).not.toHaveBeenCalledWith(dailyCron(1, 54));
+    expect(onChange).not.toHaveBeenCalledWith(
+      scheduleToCron({ frequency: 'daily', hour: 1, minute: 54 })
+    );
     expect(onChange.mock.calls.length).toBe(callsBeforeEdit);
     expect(screen.getByText(HOUR_ERROR)).toBeInTheDocument();
-
-    await user.click(screen.getByText('Preview Scheduled Times'));
-    expect(screen.queryByText(/1:54/)).not.toBeInTheDocument();
-    expect(screen.getByText(PREVIEW_BLOCKED)).toBeInTheDocument();
+    expect(notice()).toHaveTextContent(FIX_FIELDS);
+    expect(notice()).not.toHaveTextContent(/01:54/);
+    expect(await openPreview(user)).toEqual([]);
 
     await commit(user, 'Hour', '23');
 
     expect(screen.queryByText(HOUR_ERROR)).not.toBeInTheDocument();
-    expect(screen.queryByText(PREVIEW_BLOCKED)).not.toBeInTheDocument();
-    expect(screen.getAllByText(/11:54 PM/).length).toBeGreaterThan(0);
+    expect(notice()).not.toHaveTextContent(FIX_FIELDS);
+    expect(notice()).toHaveTextContent(/23:54/);
+    expect(screen.getAllByText(/11:54 PM/)).toHaveLength(5);
     expect(lastValidity(onValidationChange)).toBe(true);
-    expect(onChange.mock.lastCall?.[0]).toBe(dailyCron(23, 54));
+    expect(onChange.mock.lastCall?.[0]).toBe(
+      scheduleToCron({ frequency: 'daily', hour: 23, minute: 54 })
+    );
   });
 
   it.each([
@@ -252,9 +340,10 @@ describe('SchedulePicker time validation', () => {
     expect(lastValidity(onValidationChange)).toBe(false);
     expect(onChange.mock.calls.length).toBe(callsBeforeEdit);
     expect(screen.getByText(message)).toBeInTheDocument();
+    expect(notice()).toHaveTextContent(FIX_FIELDS);
   });
 
-  it('highlights a cleared hour so the preview message points at it', async () => {
+  it('highlights a cleared hour so the notice points at it', async () => {
     const user = userEvent.setup();
     const { onValidationChange } = renderPicker();
 
@@ -262,8 +351,7 @@ describe('SchedulePicker time validation', () => {
 
     expect(lastValidity(onValidationChange)).toBe(false);
     expect(screen.getByText(HOUR_ERROR)).toBeInTheDocument();
-    await user.click(screen.getByText('Preview Scheduled Times'));
-    expect(screen.getByText(PREVIEW_BLOCKED)).toBeInTheDocument();
+    expect(notice()).toHaveTextContent(FIX_FIELDS);
   });
 
   it.each(['One Time', 'Weekly', 'Monthly'])(
@@ -282,13 +370,14 @@ describe('SchedulePicker time validation', () => {
       expect(screen.getByText(HOUR_ERROR)).toBeInTheDocument();
       expect(screen.getByText(MINUTE_ERROR)).toBeInTheDocument();
 
-      await commit(user, 'Hour', '08');
+      // Later today, so the default one-time date is still in the future.
+      await commit(user, 'Hour', '23');
       await commit(user, 'Minute', '05');
 
       expect(screen.queryByText(HOUR_ERROR)).not.toBeInTheDocument();
       expect(screen.queryByText(MINUTE_ERROR)).not.toBeInTheDocument();
       expect(lastValidity(onValidationChange)).toBe(true);
-      const { utcHour, utcMinute } = localTimeToUTC(8, 5);
+      const { utcHour, utcMinute } = localTimeToUTC(23, 5);
       expect(onChange.mock.lastCall?.[0]).toMatch(
         new RegExp(`^${utcMinute} ${utcHour} `)
       );
@@ -317,6 +406,7 @@ describe('SchedulePicker time validation', () => {
     expect(lastValidity(onValidationChange)).toBe(false);
     expect(onChange.mock.calls.length).toBe(callsBeforeEdit);
     expect(screen.getByText(DAY_ERROR)).toBeInTheDocument();
+    expect(notice()).toHaveTextContent(FIX_FIELDS);
   });
 
   it('keeps the chosen day of month valid after tabbing through the field', async () => {
@@ -329,7 +419,7 @@ describe('SchedulePicker time validation', () => {
     // not save that label as the day.
     await user.click(field('Day of Month'));
     await user.tab();
-    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    await settleBlur();
 
     expect(field('Day of Month')).toHaveValue('1st');
     expect(screen.queryByText(DAY_ERROR)).not.toBeInTheDocument();
@@ -346,35 +436,37 @@ describe('SchedulePicker time validation', () => {
 
     await commit(user, 'Day of Month', '15th');
 
-    const { utcHour, utcMinute, dayOffset } = localTimeToUTC(12, 30);
     expect(screen.queryByText(DAY_ERROR)).not.toBeInTheDocument();
     expect(lastValidity(onValidationChange)).toBe(true);
     expect(onChange.mock.lastCall?.[0]).toBe(
-      `${utcMinute} ${utcHour} ${15 + dayOffset} * *`
+      scheduleToCron({
+        frequency: 'monthly',
+        hour: 12,
+        minute: 30,
+        dayOfMonth: 15,
+      })
     );
   });
 });
 
 describe('SchedulePicker editing an existing Automation', () => {
-  // Midday local times keep the UTC conversion on the same calendar day for
-  // typical test time zones; the day offset is still applied where needed.
-  const local = { hour: 12, minute: 30 };
-  const { utcHour, utcMinute, dayOffset } = localTimeToUTC(
-    local.hour,
-    local.minute
-  );
+  const time = { hour: 12, minute: 30 };
 
-  it.each([
-    ['daily', `${utcMinute} ${utcHour} * * *`],
-    ['weekly', `${utcMinute} ${utcHour} * * ${(1 + dayOffset + 7) % 7}`],
-    ['monthly', `${utcMinute} ${utcHour} ${15 + dayOffset} * *`],
-  ])('loads a valid %s schedule without errors', (_type, cron) => {
-    const { onChange, onValidationChange } = renderPicker(cron);
+  it.each<LocalSchedule>([
+    { frequency: 'daily', ...time },
+    { frequency: 'weekly', ...time, weekdays: [1] },
+    { frequency: 'monthly', ...time, dayOfMonth: 15 },
+  ])('loads a valid $frequency schedule without errors', (schedule) => {
+    const cron = scheduleToCron(schedule);
+    const { onChange, onValidationChange } = renderPicker(cron, {
+      isEditing: true,
+    });
 
     expect(field('Hour')).toHaveValue('12');
     expect(field('Minute')).toHaveValue('30');
     expect(screen.queryByText(HOUR_ERROR)).not.toBeInTheDocument();
     expect(screen.queryByText(MINUTE_ERROR)).not.toBeInTheDocument();
+    expect(screen.queryByText(DAY_ERROR)).not.toBeInTheDocument();
     expect(lastValidity(onValidationChange)).toBe(true);
     // Nothing is emitted when the loaded cron already matches the fields.
     expect(onChange.mock.lastCall?.[0] ?? cron).toBe(cron);
@@ -382,13 +474,19 @@ describe('SchedulePicker editing an existing Automation', () => {
 
   it('keeps a loaded monthly day valid after tabbing through the field', async () => {
     const user = userEvent.setup();
-    const cron = `${utcMinute} ${utcHour} ${15 + dayOffset} * *`;
-    const { onChange, onValidationChange } = renderPicker(cron);
+    const cron = scheduleToCron({
+      frequency: 'monthly',
+      ...time,
+      dayOfMonth: 15,
+    });
+    const { onChange, onValidationChange } = renderPicker(cron, {
+      isEditing: true,
+    });
     expect(field('Day of Month')).toHaveValue('15th');
 
     await user.click(field('Day of Month'));
     await user.tab();
-    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    await settleBlur();
 
     expect(field('Day of Month')).toHaveValue('15th');
     expect(screen.queryByText(DAY_ERROR)).not.toBeInTheDocument();
@@ -399,14 +497,9 @@ describe('SchedulePicker editing an existing Automation', () => {
   it('loads a valid one-time schedule without errors', () => {
     const date = new Date();
     date.setDate(date.getDate() + 1);
-    const oneTime = localTimeToUTC(local.hour, local.minute, date);
-    const utcDate = new Date(date);
-    utcDate.setDate(utcDate.getDate() + oneTime.dayOffset);
-    const cron = `${oneTime.utcMinute} ${oneTime.utcHour} ${utcDate.getDate()} ${
-      utcDate.getMonth() + 1
-    } *`;
+    const cron = scheduleToCron({ frequency: 'once', ...time, date });
 
-    const { onValidationChange } = renderPicker(cron);
+    const { onValidationChange } = renderPicker(cron, { isEditing: true });
 
     expect(screen.getByRole('tab', { name: 'One Time' })).toHaveAttribute(
       'aria-selected',
@@ -416,5 +509,67 @@ describe('SchedulePicker editing an existing Automation', () => {
     expect(field('Minute')).toHaveValue('30');
     expect(screen.queryByText(HOUR_ERROR)).not.toBeInTheDocument();
     expect(lastValidity(onValidationChange)).toBe(true);
+  });
+});
+
+describe('schedule preview across month and year ends', () => {
+  // A zone without DST, where 09:00 local stays on the same UTC day.
+  useTimeZone('Asia/Shanghai');
+
+  it.each<[string, LocalSchedule, [number, number, number], string[]]>([
+    [
+      'daily runs across a month end',
+      { frequency: 'daily', hour: 9, minute: 0 },
+      [2026, 9, 30],
+      [
+        'October 31, 2026',
+        'November 1, 2026',
+        'November 2, 2026',
+        'November 3, 2026',
+        'November 4, 2026',
+      ],
+    ],
+    [
+      'weekly runs across a month end',
+      { frequency: 'weekly', hour: 9, minute: 0, weekdays: [1, 3] },
+      [2026, 9, 27],
+      [
+        'October 28, 2026',
+        'November 2, 2026',
+        'November 4, 2026',
+        'November 9, 2026',
+        'November 11, 2026',
+      ],
+    ],
+    [
+      'monthly runs across a year end',
+      { frequency: 'monthly', hour: 9, minute: 0, dayOfMonth: 15 },
+      [2026, 10, 20],
+      [
+        'December 15, 2026',
+        'January 15, 2027',
+        'February 15, 2027',
+        'March 15, 2027',
+        'April 15, 2027',
+      ],
+    ],
+    [
+      'a monthly day 31 only in months that have it',
+      { frequency: 'monthly', hour: 9, minute: 0, dayOfMonth: 31 },
+      [2027, 0, 15],
+      [
+        'January 31, 2027',
+        'March 31, 2027',
+        'May 31, 2027',
+        'July 31, 2027',
+        'August 31, 2027',
+      ],
+    ],
+  ])('lists %s in order', async (_case, schedule, [y, m, d], expected) => {
+    vi.setSystemTime(new Date(y, m, d, 10));
+    const user = userEvent.setup();
+    renderPicker(scheduleToCron(schedule), { isEditing: true });
+
+    expect(await openPreview(user)).toEqual(expected);
   });
 });

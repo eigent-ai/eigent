@@ -366,5 +366,74 @@
   "task-queued": "في قائمة الانتظار: {{name}}",
   "task-queued-description": "أُضيفت المهمة إلى قائمة انتظار الجلسة",
   "select-method": "حدّد الطريقة",
-  "status-cancelled": "ملغى"
+  "status-cancelled": "ملغى",
+  "try-an-example": "جرّب مثالًا",
+  "examples-heading": "أتمت مهامك",
+  "examples-subtitle": "دع Eigent يتولى المهام الروتينية بينما تركز على ما يهمك.",
+  "example-card-label": "إعداد {{title}}: {{description}} {{schedule}}",
+  "your-automations": "أتمتاتك",
+  "queue-empty-body": "جرّب مثالًا لإعداد أول أتمتة لك.",
+  "new-badge": "جديدة",
+  "next-run-at": "التالي: {{time}}",
+  "paused": "متوقفة مؤقتًا",
+  "paused-schedule": "متوقفة مؤقتًا · {{schedule}}",
+  "runs-did-not-complete": "لم يكتمل {{count}} تشغيل متتالٍ",
+  "auto-disabled-short": "أُوقفت بعد تشغيلات لم تكتمل",
+  "consecutive-warning": "لم يكتمل {{count}} من أصل {{max}} تشغيل متتالٍ. بعد {{max}}، تتوقف هذه الأتمتة تلقائيًا. لا تبدأ التشغيلات المجدولة إلا عندما يكون Eigent مفتوحًا على هذا الكمبيوتر.",
+  "auto-disabled-notice": "توقفت هذه الأتمتة تلقائيًا بعد أن لم يكتمل {{max}} تشغيل متتالٍ. أعد تشغيلها عندما يمكن إبقاء Eigent مفتوحًا في الوقت المجدول.",
+  "first-run-on": "التشغيل الأول: {{time}}",
+  "first-run-notice": "التشغيل الأول: {{time}} (بتوقيتك المحلي). يجب أن يكون Eigent مفتوحًا حينها.",
+  "next-run-notice": "التشغيل التالي: {{time}} (بتوقيتك المحلي). يجب أن يكون Eigent مفتوحًا حينها.",
+  "pick-future-time": "اختر تاريخًا ووقتًا في المستقبل.",
+  "one-time-within-a-year": "اختر تاريخًا يقع بعد أقل من عام من اليوم.",
+  "monthly-time-crosses-month": "لا يمكن تكرار هذا الوقت بشكل موثوق في هذا اليوم من الشهر. اختر وقتًا آخر.",
+  "keeps-stored-schedule": "لا يمكن تعديل هذا الجدول الزمني هنا. سيبقى كما هو ما لم تختر تكرارًا أعلاه.",
+  "schedule-label-daily": "يوميًا عند {{time}}",
+  "schedule-label-weekly": "كل {{days}} عند {{time}}",
+  "schedule-label-monthly": "شهريًا في اليوم {{day}} عند {{time}}",
+  "schedule-label-once": "مرة واحدة في {{date}} عند {{time}}",
+  "more-actions-named": "مزيد من الإجراءات لـ {{name}}",
+  "examples": {
+    "weekly-feature-usage-recap": {
+      "title": "ملخص أسبوعي لاستخدام ميزة",
+      "description": "كيف تُستخدم ميزة جديدة.",
+      "prompt": "لخّص استخدام الميزة التي أحددها خلال الأسبوع الماضي مع الاتجاهات."
+    },
+    "campaign-performance-recap": {
+      "title": "ملخص أداء الحملات",
+      "description": "مقاييس الحملات بلغة واضحة.",
+      "prompt": "لخّص مقاييس الحملات للأسبوع الماضي ووضّح ما تغيّر."
+    },
+    "meeting-prep-brief": {
+      "title": "موجز التحضير للاجتماعات",
+      "description": "موجز لكل مكالمة.",
+      "prompt": "لكل مكالمة مبيعات في تقويم اليوم، اكتب موجزًا قصيرًا عن العميل المحتمل."
+    },
+    "inbox-triage": {
+      "title": "فرز صندوق الوارد",
+      "description": "تذاكر جديدة مرتّبة حسب الأولوية.",
+      "prompt": "رتّب التذاكر الواردة منذ أمس حسب الأولوية وضع وسمًا على أول خمس منها."
+    },
+    "hiring-pipeline-digest": {
+      "title": "ملخص مسار التوظيف",
+      "description": "تقدّم المرشحين هذا الأسبوع.",
+      "prompt": "لخّص تنقّل المرشحين بين مراحل التوظيف هذا الأسبوع."
+    },
+    "expense-report-review": {
+      "title": "مراجعة تقارير المصروفات",
+      "description": "تقارير تخالف السياسة.",
+      "prompt": "راجع تقارير المصروفات الجديدة وحدد ما يخالف السياسة منها."
+    }
+  },
+  "detail-when": "موعد التشغيل",
+  "detail-what": "ما الذي تنفذه",
+  "detail-local-time": "التوقيت المحلي",
+  "detail-paused": "متوقفة مؤقتًا حتى الاستئناف",
+  "detail-on-event": "تعمل عند استلام حدث",
+  "detail-not-started": "لم تبدأ",
+  "action-run-now": "تشغيل الآن",
+  "action-pause": "إيقاف مؤقت",
+  "action-resume": "استئناف",
+  "action-run-queued": "تم طلب التشغيل",
+  "action-run-failed": "تعذر بدء هذا التشغيل. حاول مجددًا."
 }

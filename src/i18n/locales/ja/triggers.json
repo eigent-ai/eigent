@@ -366,5 +366,74 @@
   "task-queued": "キューに追加：{{name}}",
   "task-queued-description": "タスクをセッションキューに追加しました",
   "select-method": "方法を選択",
-  "status-cancelled": "キャンセル済み"
+  "status-cancelled": "キャンセル済み",
+  "try-an-example": "例を試す",
+  "examples-heading": "タスクを自動化",
+  "examples-subtitle": "日々の作業は Eigent に任せて、大切なことに集中しましょう。",
+  "example-card-label": "{{title}}を設定：{{description}} {{schedule}}",
+  "your-automations": "あなたのオートメーション",
+  "queue-empty-body": "例を試して、最初のオートメーションを設定しましょう。",
+  "new-badge": "新規",
+  "next-run-at": "次回：{{time}}",
+  "paused": "一時停止中",
+  "paused-schedule": "一時停止中 · {{schedule}}",
+  "runs-did-not-complete": "{{count}} 回連続で完了しませんでした",
+  "auto-disabled-short": "未完了が続いたためオフになりました",
+  "consecutive-warning": "連続 {{count}} 回（上限 {{max}} 回）実行が完了しませんでした。{{max}} 回に達すると、このオートメーションは自動的にオフになります。スケジュール実行は、このコンピューターで Eigent が開いているときにのみ開始されます。",
+  "auto-disabled-notice": "{{max}} 回連続で実行が完了しなかったため、このオートメーションは自動的にオフになりました。予定時刻に Eigent を開いておけるようになったら、もう一度オンにしてください。",
+  "first-run-on": "初回の実行：{{time}}",
+  "first-run-notice": "初回の実行：{{time}}（現地時間）。その時刻に Eigent を開いておく必要があります。",
+  "next-run-notice": "次回の実行：{{time}}（現地時間）。その時刻に Eigent を開いておく必要があります。",
+  "pick-future-time": "未来の日時を選んでください。",
+  "one-time-within-a-year": "今日から1年未満の日付を選んでください。",
+  "monthly-time-crosses-month": "この時刻は、毎月この日に確実に繰り返すことができません。別の時刻を選んでください。",
+  "keeps-stored-schedule": "このスケジュールはここでは編集できません。上で頻度を選択しない限り、現在のまま保持されます。",
+  "schedule-label-daily": "毎日 {{time}}",
+  "schedule-label-weekly": "毎週 {{days}} {{time}}",
+  "schedule-label-monthly": "毎月 {{day}} 日 {{time}}",
+  "schedule-label-once": "{{date}} {{time}} に 1 回",
+  "more-actions-named": "{{name}}のその他の操作",
+  "examples": {
+    "weekly-feature-usage-recap": {
+      "title": "機能利用状況の週次まとめ",
+      "description": "新機能の使われ方。",
+      "prompt": "指定した機能の先週の利用状況を、傾向とともにまとめてください。"
+    },
+    "campaign-performance-recap": {
+      "title": "キャンペーン成果のまとめ",
+      "description": "キャンペーン指標をわかりやすく。",
+      "prompt": "先週のキャンペーン指標をまとめ、変化した点を指摘してください。"
+    },
+    "meeting-prep-brief": {
+      "title": "商談準備のブリーフ",
+      "description": "通話ごとの事前メモ。",
+      "prompt": "今日の予定にある各営業通話について、見込み客の簡単なブリーフを書いてください。"
+    },
+    "inbox-triage": {
+      "title": "受信トレイの仕分け",
+      "description": "新しいチケットを緊急度順に。",
+      "prompt": "昨日以降に届いたチケットを緊急度順に並べ、上位 5 件にタグを付けてください。"
+    },
+    "hiring-pipeline-digest": {
+      "title": "採用パイプラインのまとめ",
+      "description": "今週の候補者の動き。",
+      "prompt": "今週、候補者が採用ステージ間でどう進んだかをまとめてください。"
+    },
+    "expense-report-review": {
+      "title": "経費精算のチェック",
+      "description": "規程に反する精算。",
+      "prompt": "新しい経費精算を確認し、規程に反するものを指摘してください。"
+    }
+  },
+  "detail-when": "実行タイミング",
+  "detail-what": "実行内容",
+  "detail-local-time": "現地時間",
+  "detail-paused": "再開するまで一時停止",
+  "detail-on-event": "イベントを受信すると実行",
+  "detail-not-started": "未開始",
+  "action-run-now": "今すぐ実行",
+  "action-pause": "一時停止",
+  "action-resume": "再開",
+  "action-run-queued": "実行をリクエストしました",
+  "action-run-failed": "実行を開始できませんでした。もう一度お試しください。"
 }

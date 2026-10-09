@@ -437,6 +437,7 @@
   "notice-context": "Questa conversazione è troppo lunga per il modello selezionato. Avvia una nuova sessione.",
   "notice-request": "Questo modello non ha potuto elaborare la richiesta.",
   "notice-model-unavailable": "Questo modello non è disponibile al momento.",
+  "notice-thinking-effort": "Questo modello non supporta l’impegno di ragionamento selezionato. Imposta l’impegno di ragionamento su «Predefinito» o scegli un altro modello, poi riprova.",
   "notice-task": "Impossibile continuare. Riprova o contatta l’assistenza.",
   "notice-contact-description": "Contatta support@eigent.ai per segnalare il problema.",
   "notice-refresh-description": "Aggiorna per controllare il saldo attuale.",
