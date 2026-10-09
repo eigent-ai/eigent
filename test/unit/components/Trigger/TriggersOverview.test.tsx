@@ -37,6 +37,7 @@ vi.mock('@/service/triggerApi', () => ({
   proxyActivateTrigger: vi.fn(),
   proxyDeactivateTrigger: vi.fn(),
   proxyDeleteTrigger: vi.fn(),
+  proxyRunTriggerNow: vi.fn(),
 }));
 
 // The real project store hook returns a new store object whenever any
@@ -58,10 +59,6 @@ vi.mock('sonner', () => ({
   toast: { error: mocks.toastError, success: vi.fn() },
 }));
 
-vi.mock('@/components/Trigger/ExecutionLogs', () => ({
-  ExecutionLogs: () => null,
-}));
-
 vi.mock('@/components/Trigger/TriggerDialog', () => ({
   TriggerDialog: () => null,
 }));
@@ -72,7 +69,7 @@ vi.mock('@/components/Trigger/TriggerListItem', () => ({
   ),
 }));
 
-const CREATE_GUIDE = 'Create an automation to run tasks for you';
+const EMPTY_LIST = 'No automations yet';
 
 const automation: Trigger = {
   id: 1,
@@ -86,11 +83,10 @@ const automation: Trigger = {
 };
 
 const props: OverviewProps = {
-  sortBy: 'createdAt',
   selectedTriggerId: null,
   onSelectedTriggerIdChange: vi.fn(),
-  isExecutionLogsOpen: false,
-  onExecutionLogsOpenChange: vi.fn(),
+  isDialogOpen: false,
+  onDialogOpenChange: vi.fn(),
 };
 
 describe('Workspace automations list', () => {
@@ -117,23 +113,23 @@ describe('Workspace automations list', () => {
 
     expect(mocks.fetchProjectTriggers).not.toHaveBeenCalled();
     expect(mocks.toastError).not.toHaveBeenCalled();
-    expect(screen.queryByText(CREATE_GUIDE)).not.toBeInTheDocument();
+    expect(screen.queryByText(EMPTY_LIST)).not.toBeInTheDocument();
     // Another Session's automations must not linger in the list.
     expect(screen.queryByTestId('automation-row')).not.toBeInTheDocument();
   });
 
-  it('shows loading instead of the create guide while the list loads', async () => {
+  it('shows loading instead of the empty list while the list loads', async () => {
     mocks.projectState.activeProjectId = 'project-1';
 
     render(<Overview {...props} />);
     await act(async () => {});
 
     expect(screen.getByText('Loading...')).toBeInTheDocument();
-    expect(screen.queryByText(CREATE_GUIDE)).not.toBeInTheDocument();
+    expect(screen.queryByText(EMPTY_LIST)).not.toBeInTheDocument();
     expect(mocks.fetchProjectTriggers).toHaveBeenCalledWith('project-1');
   });
 
-  it('shows a load failure with retry instead of the create guide', async () => {
+  it('shows a load failure with retry instead of the empty list', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.projectState.activeProjectId = 'project-1';
     mocks.fetchProjectTriggers
@@ -146,7 +142,7 @@ describe('Workspace automations list', () => {
     expect(
       within(alert).getByText('Failed to load automations')
     ).toBeInTheDocument();
-    expect(screen.queryByText(CREATE_GUIDE)).not.toBeInTheDocument();
+    expect(screen.queryByText(EMPTY_LIST)).not.toBeInTheDocument();
     expect(mocks.toastError).not.toHaveBeenCalled();
 
     fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
@@ -179,7 +175,7 @@ describe('Workspace automations list', () => {
     mocks.fetchProjectTriggers.mockResolvedValueOnce({ items: [] });
 
     const { rerender } = render(<Overview {...props} />);
-    expect(await screen.findByText(CREATE_GUIDE)).toBeInTheDocument();
+    expect(await screen.findByText(EMPTY_LIST)).toBeInTheDocument();
 
     // Unrelated project store updates hand out a new store object while the
     // same Session stays selected.
@@ -190,5 +186,32 @@ describe('Workspace automations list', () => {
     }
 
     expect(mocks.fetchProjectTriggers).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a late reply for a Session that is no longer selected', async () => {
+    let resolveFirst!: (value: { items: Trigger[] }) => void;
+    mocks.fetchProjectTriggers
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          })
+      )
+      .mockResolvedValueOnce({ items: [] });
+    mocks.projectState.activeProjectId = 'project-1';
+
+    const { rerender } = render(<Overview {...props} />);
+    await act(async () => {});
+
+    mocks.projectState = { activeProjectId: 'project-2' };
+    rerender(<Overview {...props} />);
+    expect(await screen.findByText(EMPTY_LIST)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirst({ items: [automation] });
+    });
+
+    expect(screen.queryByText('Morning digest')).not.toBeInTheDocument();
+    expect(mocks.fetchProjectTriggers).toHaveBeenNthCalledWith(2, 'project-2');
   });
 });

@@ -105,9 +105,6 @@ vi.mock('@/components/Trigger', () => ({
     />
   ),
 }));
-vi.mock('@/components/Trigger/Triggers', () => ({
-  EXECUTION_LOGS_OPEN_STORAGE_KEY: 'triggers.executionLogs.open',
-}));
 
 describe('Workspace Automations tab without a selected Session', () => {
   beforeEach(() => {

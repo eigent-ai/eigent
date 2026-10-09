@@ -31,6 +31,7 @@ export interface TaskLifecycleFields {
   taskInfo?: { id: string; content: string }[];
   isContextExceeded?: boolean;
   sessionMode?: SessionModeType;
+  durableRunStatus?: string;
 }
 
 function getTaskMessages(task: TaskLifecycleFields): Message[] {
@@ -112,12 +113,25 @@ export function getTaskListShelfTone(
 }
 
 /**
+ * An error that stopped a resumable Attempt, once a Resume completed the Run.
+ * It no longer describes the Run's outcome. Other errors of a completed Run,
+ * such as a Workforce timeout reported before its end, still count.
+ */
+export function isSupersededRunError(
+  task: Pick<TaskLifecycleFields, 'durableRunStatus'>,
+  message: { resumable?: boolean }
+): boolean {
+  return task.durableRunStatus === 'completed' && message.resumable === true;
+}
+
+/**
  * Agent-reported failures and error-shaped content — excludes `isContextExceeded`
  * (use for splitting **error** vs **warning** in session chrome).
  */
 export function isTaskListRowHardFailure(task: TaskLifecycleFields): boolean {
   return getTaskMessages(task).some((m) => {
     if (m.role !== 'agent') return false;
+    if (isSupersededRunError(task, m)) return false;
     // An error receipt keeps its step in every locale; the English prefix
     // below covers receipts recorded without one.
     if (m.step === AgentStep.FAILED || m.step === AgentStep.ERROR) return true;

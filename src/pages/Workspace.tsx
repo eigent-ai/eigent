@@ -47,10 +47,6 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import {
-  EXECUTION_LOGS_OPEN_STORAGE_KEY,
-  type TriggerSortKey,
-} from '../components/Trigger/Triggers';
 
 import Session from '@/components/Session';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
@@ -91,26 +87,9 @@ export default function WorkspacePage() {
 
   const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
-  const [triggerSortBy, setTriggerSortBy] =
-    useState<TriggerSortKey>('createdAt');
   const [triggerSelectedId, setTriggerSelectedId] = useState<number | null>(
     null
   );
-  const [triggerExecutionLogsOpen, setTriggerExecutionLogsOpen] = useState(
-    () => {
-      if (typeof window === 'undefined') return false;
-      return (
-        window.localStorage.getItem(EXECUTION_LOGS_OPEN_STORAGE_KEY) === 'true'
-      );
-    }
-  );
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      EXECUTION_LOGS_OPEN_STORAGE_KEY,
-      String(triggerExecutionLogsOpen)
-    );
-  }, [triggerExecutionLogsOpen]);
 
   useEffect(() => {
     if (triggerAddDialogRequestId === 0) return;
@@ -455,12 +434,8 @@ export default function WorkspacePage() {
         return (
           <TriggerPanel
             className={mainPanelContentClass}
-            sortBy={triggerSortBy}
-            onSortByChange={setTriggerSortBy}
             selectedTriggerId={triggerSelectedId}
             onSelectedTriggerIdChange={setTriggerSelectedId}
-            isExecutionLogsOpen={triggerExecutionLogsOpen}
-            onExecutionLogsOpenChange={setTriggerExecutionLogsOpen}
             isDialogOpen={triggerDialogOpen}
             onDialogOpenChange={setTriggerDialogOpen}
           />
