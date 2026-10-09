@@ -55,6 +55,16 @@ def _context(tmp_path: Path) -> RunContext:
     )
 
 
+class _ManualLoopClock:
+    """Event-loop clock that only moves when the test advances it."""
+
+    def __init__(self, now: float) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+
 @pytest.mark.asyncio
 async def test_unsafe_tool_is_not_dispatched_until_digest_bound_approval(
     tmp_path,
@@ -114,8 +124,11 @@ async def test_unsafe_tool_is_not_dispatched_until_digest_bound_approval(
 @pytest.mark.asyncio
 async def test_durable_approval_wait_outlives_agent_execution_timeout(
     tmp_path,
+    monkeypatch,
 ):
     task_lock = TaskLock("project-1", asyncio.Queue(), {})
+    agent_budget = 30 * 60
+    human_decision_latency = 60 * 60
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
         journal.create_run_attempt(
@@ -134,36 +147,57 @@ async def test_durable_approval_wait_outlives_agent_execution_timeout(
                 journal=journal,
             )
             assert checkpoint is not None
-            async with ActiveExecutionTimeout(0.02):
-                waiter = asyncio.create_task(
-                    authorize_tool_checkpoint(
-                        checkpoint,
-                        arguments={
-                            "path": "report.md",
-                            "content": "hello",
-                        },
-                        toolkit_name="File Toolkit",
-                        agent_name="worker",
-                        task_lock=task_lock,
-                        journal=journal,
+            # The Agent budget runs on the event-loop clock. Driving that
+            # clock by hand keeps the real time spent writing the Approval
+            # from deciding whether the budget expires before the wait
+            # pauses it.
+            loop = asyncio.get_running_loop()
+            clock = _ManualLoopClock(loop.time())
+            with monkeypatch.context() as patch:
+                patch.setattr(loop, "time", clock)
+                async with ActiveExecutionTimeout(agent_budget) as timeout:
+                    waiter = asyncio.create_task(
+                        authorize_tool_checkpoint(
+                            checkpoint,
+                            arguments={
+                                "path": "report.md",
+                                "content": "hello",
+                            },
+                            toolkit_name="File Toolkit",
+                            agent_name="worker",
+                            task_lock=task_lock,
+                            journal=journal,
+                        )
                     )
-                )
-                ask = await task_lock.get_queue()
-                # This exceeds the active Agent budget but remains below the
-                # durable Approval expiry. It must not cancel the tool loop.
-                await asyncio.sleep(0.04)
-                approval = journal.list_approvals("run-1")[0]
-                journal.decide_approval(
-                    approval.approval_id,
-                    decision="approved",
-                    expected_version=0,
-                    action_digest=ask.data["action_digest"],
-                    decision_request_id="decision-after-long-wait",
-                    continue_active_attempt=True,
-                    now=2,
-                )
-                await task_lock.put_human_input("worker", "approved")
-                await waiter
+                    ask = await task_lock.get_queue()
+                    # The ASK is published only once the wait has paused the
+                    # Agent budget.
+                    assert task_lock.active_execution_budget_paused
+                    # This exceeds the active Agent budget but remains below
+                    # the durable Approval expiry. It must not cancel the
+                    # tool loop.
+                    assert (
+                        human_decision_latency
+                        < ask.data["expires_at"] - time.time()
+                    )
+                    clock.now += human_decision_latency
+                    assert timeout.remaining() == pytest.approx(agent_budget)
+                    approval = journal.list_approvals("run-1")[0]
+                    journal.decide_approval(
+                        approval.approval_id,
+                        decision="approved",
+                        expected_version=0,
+                        action_digest=ask.data["action_digest"],
+                        decision_request_id="decision-after-long-wait",
+                        continue_active_attempt=True,
+                        now=2,
+                    )
+                    await task_lock.put_human_input("worker", "approved")
+                    decision = await waiter
+                    assert decision.action_digest == ask.data["action_digest"]
+                    # Resuming restores the budget the wait did not consume.
+                    assert timeout.remaining() == pytest.approx(agent_budget)
+                assert not timeout.expired
 
 
 @pytest.mark.asyncio
