@@ -40,11 +40,14 @@ import {
   runEventIngressRegistry,
   runProjectionStore,
 } from '@/lib/runEvents';
+import { settleTaskElapsedMs } from '@/lib/taskDuration';
+import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { useAuthStore } from '@/store/authStore';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { closeSSEConnectionsForTasks } from '@/store/chatStore';
 import { resetProjectEventStoresForTests } from '@/store/projectEventStore';
 import { useProjectStore } from '@/store/projectStore';
-import { AgentStep } from '@/types/constants';
+import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { fetchGetMock, sseTransportMock } = vi.hoisted(() => ({
@@ -271,6 +274,294 @@ describe('Run restored while it runs', () => {
       // The restored snapshot never moves; the chat reads the projection.
       durableRunStatus: 'running',
       activeAsk: 'single_agent',
+    });
+  });
+
+  describe('task timer', () => {
+    const startedAt = Date.parse('2026-10-01T10:00:00.000Z');
+
+    beforeEach(() => {
+      // Installed builds render the legacy chat view.
+      vi.stubEnv('VITE_CHATBOX_EVENT_BUS', '');
+      vi.useFakeTimers({ toFake: ['Date'] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    });
+
+    const advance = (ms: number) => vi.setSystemTime(Date.now() + ms);
+    // `vi.waitFor` would move the faked clock while it polls.
+    const until = async (condition: () => boolean) => {
+      for (let attempt = 0; !condition(); attempt++) {
+        if (attempt > 200) throw new Error('Condition not reached');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    };
+    /** What the legacy work log shows for the restored task right now. */
+    const shownMs = () => settleTaskElapsedMs(taskOf()!, Date.now());
+    const timedEvent = (
+      eventType: string,
+      payload: Record<string, unknown>,
+      offsetMs: number,
+      step: string | null = null
+    ) => {
+      sequence += 1;
+      return {
+        id: String(sequence),
+        event: 'run_event',
+        data: JSON.stringify({
+          schema_version: 1,
+          event_id: `${RUN}-${sequence}`,
+          project_id: SESSION,
+          run_id: RUN,
+          run_sequence: sequence,
+          run_version: sequence,
+          event_type: eventType,
+          legacy_step: step,
+          payload,
+          created_at: (startedAt + offsetMs) / 1000,
+        }),
+      };
+    };
+    const now = () => Date.now() - startedAt;
+    const started = () =>
+      timedEvent('run.attempt_started', { attempt_number: 1 }, 0);
+    const todo = (offsetMs: number) =>
+      timedEvent(
+        'legacy.todo_state',
+        {
+          agent_id: 'single-1',
+          todos: [{ id: 'sub-1', content: 'Write', status: 'in_progress' }],
+        },
+        offsetMs,
+        'todo_state'
+      );
+    const requested = (callId: string, offsetMs: number) =>
+      timedEvent(
+        'approval.requested',
+        { approval_id: `approval:${callId}`, version: 0 },
+        offsetMs
+      );
+    const ask = (callId: string, offsetMs: number) =>
+      timedEvent(
+        'legacy.ask',
+        {
+          interaction_id: `approval:${callId}`,
+          interaction_type: 'approval',
+          approval_id: `approval:${callId}`,
+          run_id: RUN,
+          version: 0,
+          question: 'The agent wants to write a file.',
+          agent: 'single_agent',
+        },
+        offsetMs,
+        'ask'
+      );
+    const decided = (callId: string, offsetMs: number) =>
+      timedEvent(
+        'approval.decided',
+        {
+          approval_id: `approval:${callId}`,
+          interaction_id: `approval:${callId}`,
+          decision: 'approved',
+          continued_attempt: true,
+          remaining_interaction_count: 0,
+        },
+        offsetMs
+      );
+
+    /** Reload the Session from a run listing and the Run's stored events. */
+    const reload = async ({
+      status,
+      totalMs,
+      history,
+    }: {
+      status: 'running' | 'waiting_for_user';
+      totalMs: number;
+      history: ReturnType<typeof timedEvent>[];
+    }) => {
+      expect(isChatEventTimelineEnabled()).toBe(false);
+      const version = sequence;
+      fetchGetMock.mockImplementation(async (url: string) =>
+        url === '/runs'
+          ? {
+              project_id: SESSION,
+              runs: [
+                {
+                  project_id: SESSION,
+                  run_id: RUN,
+                  status,
+                  version,
+                  origin: 'local',
+                  created_at: startedAt / 1000,
+                  updated_at: Date.now() / 1000,
+                  total_attempt_elapsed_ms: totalMs,
+                },
+              ],
+            }
+          : undefined
+      );
+      const load = useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          [RUN],
+          PROMPT,
+          SESSION,
+          'history-restored',
+          'Restored',
+          'space-restored',
+          { [RUN]: PROMPT },
+          200
+        );
+      await until(() =>
+        streams.some((stream) => stream.url.includes(`/runs/${RUN}`))
+      );
+      const stream = streams.find((item) => item.url.includes(`/runs/${RUN}`))!;
+      for (const frame of history) await stream.onmessage?.(frame as never);
+      await stream.onmessage?.({
+        id: '',
+        event: 'replay_caught_up',
+        data: JSON.stringify({ run_id: RUN, after_sequence: sequence }),
+      } as never);
+      await load;
+      expect(stream.signal.aborted).toBe(false);
+      return (frame: ReturnType<typeof timedEvent>) =>
+        stream.onmessage?.(frame as never);
+    };
+    /** Finish the Run; the timer settles on the time worked, then stays. */
+    const finish = async (
+      deliver: (frame: ReturnType<typeof timedEvent>) => unknown,
+      workedMs: number,
+      outcome: 'completed' | 'failed' = 'completed'
+    ) => {
+      await deliver(
+        outcome === 'completed'
+          ? timedEvent('legacy.end', { content: 'Done' }, now(), 'end')
+          : timedEvent(
+              'legacy.error',
+              { message: 'The write failed.' },
+              now(),
+              'error'
+            )
+      );
+      expect(taskOf()).toMatchObject({
+        status: ChatTaskStatus.FINISHED,
+        taskTime: 0,
+        elapsed: workedMs,
+      });
+      await deliver(
+        timedEvent(
+          `run.${outcome}`,
+          outcome === 'failed' ? { message: 'The write failed.' } : {},
+          now()
+        )
+      );
+      expect(taskOf()).toMatchObject({ taskTime: 0, elapsed: workedMs });
+      // The Run total from the backend leaves the waits out as well.
+      expect(
+        runProjectionStore.getRun(SESSION, RUN)?.totalAttemptElapsedMs
+      ).toBe(workedMs);
+    };
+
+    it.each(['completed', 'failed'] as const)(
+      'holds the time worked when restored during an approval and continues until the Run %s',
+      async (outcome) => {
+        // Worked 2s, then asked for approval; reopened 30s into the wait.
+        const history = [
+          started(),
+          todo(0),
+          requested('call-one', 2_000),
+          ask('call-one', 2_000),
+        ];
+        vi.setSystemTime(startedAt + 32_000);
+        const deliver = await reload({
+          status: 'waiting_for_user',
+          totalMs: 2_000,
+          history,
+        });
+
+        expect(taskOf()).toMatchObject({
+          status: ChatTaskStatus.RUNNING,
+          taskTime: 0,
+          elapsed: 2_000,
+        });
+        advance(30_000);
+        expect(shownMs()).toBe(2_000);
+
+        await deliver(decided('call-one', now()));
+        expect(shownMs()).toBe(2_000);
+        advance(3_000);
+        expect(shownMs()).toBe(5_000);
+
+        await finish(deliver, 5_000, outcome);
+      }
+    );
+
+    it('continues from the time worked when restored after an approval, and holds a later one', async () => {
+      // Worked 2s, waited 60s, worked 1s more; reopened then.
+      const history = [
+        started(),
+        todo(0),
+        requested('call-one', 2_000),
+        ask('call-one', 2_000),
+        decided('call-one', 62_000),
+      ];
+      vi.setSystemTime(startedAt + 63_000);
+      const deliver = await reload({
+        status: 'running',
+        totalMs: 3_000,
+        history,
+      });
+
+      expect(shownMs()).toBe(3_000);
+      advance(2_000);
+      expect(shownMs()).toBe(5_000);
+
+      await deliver(requested('call-two', now()));
+      await deliver(ask('call-two', now()));
+      advance(40_000);
+      expect(shownMs()).toBe(5_000);
+      await deliver(decided('call-two', now()));
+      advance(1_000);
+      expect(shownMs()).toBe(6_000);
+
+      await finish(deliver, 6_000);
+    });
+
+    it('keeps a pause during a restored wait off the time shown', async () => {
+      const history = [
+        started(),
+        todo(0),
+        requested('call-one', 2_000),
+        ask('call-one', 2_000),
+      ];
+      vi.setSystemTime(startedAt + 32_000);
+      const deliver = await reload({
+        status: 'waiting_for_user',
+        totalMs: 2_000,
+        history,
+      });
+      const project = useProjectStore.getState().projects[SESSION];
+      const chatStore = project.chatStores[project.activeChatId];
+      const control = (action: 'pause' | 'resume') =>
+        takeControlOfTask({
+          chatStore: chatStore.getState(),
+          action,
+          projectId: SESSION,
+          taskId: RUN,
+          request: vi.fn().mockResolvedValue(undefined),
+        });
+
+      await control('pause');
+      advance(10_000);
+      await control('resume');
+      advance(10_000);
+      expect(shownMs()).toBe(2_000);
+      await deliver(decided('call-one', now()));
+      advance(3_000);
+      expect(shownMs()).toBe(5_000);
     });
   });
 });

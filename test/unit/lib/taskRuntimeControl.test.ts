@@ -12,10 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import type { ChatStore } from '@/store/chatStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 function createStore(status = ChatTaskStatus.RUNNING) {
   const task = { status, elapsed: 100, taskTime: 1_000 };
@@ -91,5 +92,62 @@ describe('takeControlOfTask', () => {
       taskTime: 1_000,
     });
     consoleError.mockRestore();
+  });
+
+  describe('while the Run waits for the user', () => {
+    afterEach(() => runProjectionStore.clear());
+
+    const waitForUser = () =>
+      runProjectionStore.upsertRunSummaries('project-1', [
+        {
+          project_id: 'project-1',
+          run_id: 'task-1',
+          status: 'waiting_for_user',
+          version: 3,
+          updated_at: 1,
+        },
+      ]);
+
+    it('keeps the held time when the task is paused', async () => {
+      waitForUser();
+      const { store, task } = createStore();
+      task.taskTime = 0;
+
+      await takeControlOfTask({
+        chatStore: store,
+        action: 'pause',
+        projectId: 'project-1',
+        taskId: 'task-1',
+        request: vi.fn().mockResolvedValue(undefined),
+        now: () => 1_500,
+      });
+
+      expect(task).toMatchObject({
+        status: ChatTaskStatus.PAUSE,
+        elapsed: 100,
+        taskTime: 0,
+      });
+    });
+
+    it('keeps the clock stopped when the task is resumed', async () => {
+      waitForUser();
+      const { store, task } = createStore(ChatTaskStatus.PAUSE);
+      task.taskTime = 0;
+
+      await takeControlOfTask({
+        chatStore: store,
+        action: 'resume',
+        projectId: 'project-1',
+        taskId: 'task-1',
+        request: vi.fn().mockResolvedValue(undefined),
+        now: () => 2_000,
+      });
+
+      expect(task).toMatchObject({
+        status: ChatTaskStatus.RUNNING,
+        elapsed: 100,
+        taskTime: 0,
+      });
+    });
   });
 });

@@ -36,6 +36,7 @@ import { normalizeLocalRunEvent } from '@/lib/projector';
 import { selectPendingHumanControlCount } from '@/lib/projector/control';
 import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
+import { settleTaskElapsedMs } from '@/lib/taskDuration';
 import { refreshSessionNavStatuses } from '@/service/sessionNavStatus';
 import type {
   ProjectPayload,
@@ -3053,6 +3054,91 @@ describe('projectStore runtime shape', () => {
         })
       );
     } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
+  it('holds a cached clock while its Run waits for the user and continues it after the answer', async () => {
+    const { useAuthStore } = await import('@/store/authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.parse('2026-10-01T10:00:32.000Z'));
+    const projectId = 'project_cached_waiting';
+    const runId = 'task_cached_waiting';
+    const summary = (status: string, version: number) => ({
+      project_id: projectId,
+      run_id: runId,
+      status,
+      version,
+      origin: 'local' as const,
+      updated_at: 300,
+      // Worked 2s before the approval request.
+      total_attempt_elapsed_ms: 2_000,
+    });
+    try {
+      fetchGetMock.mockResolvedValue({
+        project_id: projectId,
+        runs: [summary('waiting_for_user', 4)],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: PROJECT_CACHE_SCHEMA_VERSION,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: [runId],
+        tasks: {
+          [runId]: {
+            taskState: {
+              status: 'running',
+              durableRunStatus: 'waiting_for_user',
+              elapsed: 0,
+              taskTime: 100,
+              messages: [
+                { id: 'user-1', role: 'user', content: 'cached prompt' },
+              ],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          [runId],
+          'cached prompt',
+          projectId,
+          'history_cached_waiting',
+          'Cached waiting project',
+          'space_test',
+          { [runId]: 'cached prompt' },
+          200
+        );
+
+      expect(replayMock).not.toHaveBeenCalled();
+      const chatStore = () => {
+        const project = useProjectStore.getState().projects[projectId];
+        return project.chatStores[project.activeChatId];
+      };
+      const shownMs = () =>
+        settleTaskElapsedMs(chatStore().getState().tasks[runId], Date.now());
+      expect(chatStore().getState().tasks[runId]).toMatchObject({
+        elapsed: 2_000,
+        taskTime: 0,
+      });
+      vi.setSystemTime(Date.now() + 30_000);
+      expect(shownMs()).toBe(2_000);
+
+      // A Run read after the answer reports the Run working again.
+      runProjectionStore.upsertRunSummaries(projectId, [summary('running', 5)]);
+      expect(chatStore().getState().tasks[runId].taskTime).toBe(Date.now());
+      vi.setSystemTime(Date.now() + 3_000);
+      expect(shownMs()).toBe(5_000);
+    } finally {
+      vi.useRealTimers();
       useAuthStore.setState({ user_id: previousUserId });
     }
   });

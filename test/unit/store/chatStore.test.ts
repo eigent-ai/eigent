@@ -167,8 +167,11 @@ import {
   composeTimelineRuns,
   reconcileTimelineRuns,
 } from '@/lib/projector/chat/presentation';
+import { settleTaskElapsedMs } from '@/lib/taskDuration';
+import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { getAuthStore } from '@/store/authStore';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
   getProjectEventStore,
@@ -4065,6 +4068,342 @@ describe('ChatStore - Core Functionality', () => {
           ).toHaveLength(executionStatus ? 1 : 0);
         }
       );
+
+      describe('task timer while the Run waits for the user', () => {
+        const startedAt = Date.parse('2026-10-01T10:00:00.000Z');
+        let sequence = 0;
+
+        beforeEach(() => {
+          // Installed builds render the legacy chat view.
+          vi.stubEnv('VITE_CHATBOX_EVENT_BUS', '');
+          vi.useFakeTimers({ toFake: ['Date'] });
+          vi.setSystemTime(startedAt);
+          sequence = 0;
+        });
+
+        afterEach(() => {
+          vi.useRealTimers();
+          vi.unstubAllEnvs();
+        });
+
+        const advance = (ms: number) => vi.setSystemTime(Date.now() + ms);
+        const taskOf = (store: ReturnType<typeof createChatStoreInstance>) =>
+          store.getState().tasks['live-run'];
+        /** What the legacy work log shows for the task right now. */
+        const shownMs = (store: ReturnType<typeof createChatStoreInstance>) =>
+          settleTaskElapsedMs(taskOf(store), Date.now());
+        const sendLegacy = (
+          streamContaining: (path: string) => any,
+          step: string,
+          data: Record<string, unknown>
+        ) =>
+          streamContaining('/chat').onmessage?.({
+            data: JSON.stringify({ step, data }),
+          });
+        /** Deliver a durable Run event on the Run's own event stream. */
+        const deliver = async (
+          streamContaining: (path: string) => any,
+          eventType: string,
+          payload: Record<string, unknown> = {}
+        ) => {
+          sequence += 1;
+          await streamContaining('/runs/live-run/stream').onmessage?.({
+            event: 'run_event',
+            data: JSON.stringify({
+              event_id: `live-run:${sequence}`,
+              event_type: eventType,
+              legacy_step: null,
+              payload,
+              project_id: 'project-1',
+              run_id: 'live-run',
+              sequence,
+              run_version: sequence,
+              created_at: Date.now() / 1000,
+            }),
+          });
+          // The observer checks the Run projection in a microtask.
+          await Promise.resolve();
+          await Promise.resolve();
+        };
+        const approvalRequested = (id: string) => ({
+          approval_id: id,
+          prompt: { question: 'Allow the write?' },
+        });
+        const approvalDecided = (
+          id: string,
+          continued = true,
+          remaining = 0
+        ) => ({
+          approval_id: id,
+          interaction_id: id,
+          decision: continued ? 'approved' : 'rejected',
+          continued_attempt: continued,
+          remaining_interaction_count: remaining,
+        });
+        const startWorking = async () => {
+          expect(isChatEventTimelineEnabled()).toBe(false);
+          const started = await startObservedLiveTask();
+          await deliver(started.streamContaining, 'run.attempt_started', {
+            attempt_number: 1,
+          });
+          await sendLegacy(started.streamContaining, AgentStep.TODO_STATE, {
+            agent_id: 'single-1',
+            todos: [
+              { id: 'sub-1', content: 'Write the file', status: 'in_progress' },
+            ],
+          });
+          expect(taskOf(started.store)).toMatchObject({
+            status: ChatTaskStatus.RUNNING,
+            taskTime: Date.now(),
+          });
+          return started;
+        };
+        const controlOf =
+          (store: ReturnType<typeof createChatStoreInstance>) =>
+          (action: 'pause' | 'resume') =>
+            takeControlOfTask({
+              chatStore: store.getState(),
+              action,
+              projectId: 'project-1',
+              taskId: 'live-run',
+              request: vi.fn().mockResolvedValue(undefined),
+            });
+
+        it.each(['terminal event', 'run read'] as const)(
+          'holds the time worked during an approval and settles on the Run total after a %s',
+          async (ending) => {
+            const { store, streamContaining } = await startWorking();
+            advance(2_000);
+            expect(shownMs(store)).toBe(2_000);
+
+            await deliver(
+              streamContaining,
+              'approval.requested',
+              approvalRequested('approval:call-1')
+            );
+            await sendLegacy(streamContaining, AgentStep.ASK, {
+              agent: 'single_agent',
+              interaction_id: 'approval:call-1',
+              interaction_type: 'approval',
+              approval_id: 'approval:call-1',
+              question: 'Allow the write?',
+            });
+            expect(taskOf(store).taskTime).toBe(0);
+            advance(30_000);
+            // A step that arrives late on the chat stream does not restart it.
+            await sendLegacy(streamContaining, AgentStep.TODO_STATE, {
+              agent_id: 'single-1',
+              todos: [
+                {
+                  id: 'sub-1',
+                  content: 'Write the file',
+                  status: 'in_progress',
+                },
+              ],
+            });
+            expect(shownMs(store)).toBe(2_000);
+            advance(30_000);
+            expect(shownMs(store)).toBe(2_000);
+
+            await deliver(
+              streamContaining,
+              'approval.decided',
+              approvalDecided('approval:call-1')
+            );
+            expect(shownMs(store)).toBe(2_000);
+            advance(3_000);
+            expect(shownMs(store)).toBe(5_000);
+
+            if (ending === 'terminal event') {
+              await deliver(streamContaining, 'run.completed');
+            } else {
+              vi.mocked(fetchGet).mockResolvedValueOnce({
+                project_id: 'project-1',
+                run_id: 'live-run',
+                status: 'completed',
+                version: sequence + 1,
+                origin: 'local',
+                updated_at: Date.now() / 1000,
+                latest_attempt: { attempt_number: 1, status: 'completed' },
+                // The backend leaves the approval wait out of the Run total.
+                total_attempt_elapsed_ms: 5_000,
+              });
+              await streamContaining('/runs/live-run/stream').onmessage?.({
+                event: 'runtime_detached',
+                data: '{}',
+              });
+            }
+            await vi.waitFor(() =>
+              expect(taskOf(store).status).toBe(ChatTaskStatus.FINISHED)
+            );
+            expect(taskOf(store)).toMatchObject({
+              taskTime: 0,
+              elapsed: 5_000,
+            });
+            advance(10_000);
+            expect(shownMs(store)).toBe(5_000);
+          }
+        );
+
+        it('stays held until the last of two overlapping approvals is answered', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          advance(8_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-2')
+          );
+          advance(20_000);
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-1', false, 1)
+          );
+          expect(
+            runProjectionStore.getRun('project-1', 'live-run')?.status
+          ).toBe('waiting_for_user');
+          advance(20_000);
+          expect(shownMs(store)).toBe(2_000);
+
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-2')
+          );
+          advance(3_000);
+          expect(shownMs(store)).toBe(5_000);
+        });
+
+        it('holds the time worked while a question waits for an answer', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(streamContaining, 'interaction.requested', {
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            request: { question: 'Which region?' },
+          });
+          await sendLegacy(streamContaining, AgentStep.ASK, {
+            agent: 'single_agent',
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            question: 'Which region?',
+          });
+          advance(58_000);
+          expect(shownMs(store)).toBe(2_000);
+
+          await deliver(streamContaining, 'interaction.resolved', {
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            decision: { reply: 'eu-west' },
+            continued_attempt: true,
+            remaining_interaction_count: 0,
+          });
+          advance(3_000);
+          expect(shownMs(store)).toBe(5_000);
+        });
+
+        it('keeps the time worked when the decision ends the Run', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          advance(60_000);
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-1', false)
+          );
+          await vi.waitFor(() =>
+            expect(taskOf(store).status).toBe(ChatTaskStatus.FINISHED)
+          );
+          expect(taskOf(store)).toMatchObject({
+            durableRunStatus: 'interrupted',
+            taskTime: 0,
+            elapsed: 2_000,
+          });
+        });
+
+        it('keeps a pause taken before the wait off the time shown', async () => {
+          const { store, streamContaining } = await startWorking();
+          const control = controlOf(store);
+          advance(2_000);
+          await control('pause');
+          advance(10_000);
+          await control('resume');
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          advance(60_000);
+          expect(shownMs(store)).toBe(4_000);
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-1')
+          );
+          advance(1_000);
+          expect(shownMs(store)).toBe(5_000);
+        });
+
+        it.each(['before', 'after'] as const)(
+          'adds nothing for a pause during the wait resumed %s the answer',
+          async (resumed) => {
+            const { store, streamContaining } = await startWorking();
+            const control = controlOf(store);
+            advance(2_000);
+            await deliver(
+              streamContaining,
+              'approval.requested',
+              approvalRequested('approval:call-1')
+            );
+            advance(20_000);
+            await control('pause');
+            expect(taskOf(store)).toMatchObject({
+              status: ChatTaskStatus.PAUSE,
+              taskTime: 0,
+              elapsed: 2_000,
+            });
+            advance(10_000);
+            if (resumed === 'before') {
+              await control('resume');
+              advance(30_000);
+              expect(taskOf(store)).toMatchObject({
+                status: ChatTaskStatus.RUNNING,
+                taskTime: 0,
+              });
+              expect(shownMs(store)).toBe(2_000);
+              await deliver(
+                streamContaining,
+                'approval.decided',
+                approvalDecided('approval:call-1')
+              );
+            } else {
+              await deliver(
+                streamContaining,
+                'approval.decided',
+                approvalDecided('approval:call-1')
+              );
+              advance(30_000);
+              expect(shownMs(store)).toBe(2_000);
+              await control('resume');
+            }
+            expect(shownMs(store)).toBe(2_000);
+            advance(3_000);
+            expect(shownMs(store)).toBe(5_000);
+          }
+        );
+      });
 
       it('ignores the previous Run snapshot after rebinding to a follow-up', async () => {
         const { store, streamContaining } = await startObservedLiveTask();

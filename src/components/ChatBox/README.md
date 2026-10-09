@@ -219,6 +219,15 @@ answer, also in a Session reopened during the wait. This is independent of
 comes off the held value, and a pause during the wait is not taken off a
 second time after the answer.
 
+The legacy renderer, which ships by default, follows the same rule with the
+chat task's `elapsed` and `taskTime`. `src/service/legacyTaskTimer.ts` stops
+the clock while the projected Run is `waiting_for_user` and restarts it when
+the Run continues; the Run's own event stream updates that status in both
+renderers. Pause and resume keep the clock stopped during an open wait. A
+Session reopened during a wait shows the listed total until the Run continues,
+and a restored Run that ends settles on the time it worked rather than on the
+span of its loaded events.
+
 ### Repeated tool-call presentation
 
 `EventTimeline/activityGrouping.ts` converts consecutive identical tool
