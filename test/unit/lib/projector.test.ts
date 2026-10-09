@@ -26,6 +26,7 @@ import {
   selectPendingLegacyAsk,
   selectRunArtifacts,
 } from '@/lib/projector';
+import { mergeRunSummary } from '@/lib/projector/runSummary';
 import { describe, expect, it } from 'vitest';
 
 function event(overrides: Record<string, unknown> = {}) {
@@ -1730,6 +1731,226 @@ describe('projector pipeline', () => {
       status: 'running',
       lastSequence: 6,
       totalAttemptElapsedMs: null,
+    });
+  });
+
+  describe('waiting for the user', () => {
+    const at = (time: string) => `2026-08-05T${time}.000Z`;
+    const runEvent = (
+      sequence: number,
+      eventType: string,
+      time: string,
+      payload: Record<string, unknown> = {}
+    ) =>
+      normalizeEvent(
+        event({
+          event_id: `event-${sequence}`,
+          run_sequence: sequence,
+          run_version: sequence,
+          cloud_cursor: null,
+          event_type: eventType,
+          legacy_step: null,
+          payload,
+          created_at: at(time),
+        })
+      );
+    const decided = (
+      sequence: number,
+      time: string,
+      payload: Record<string, unknown> = {}
+    ) =>
+      runEvent(sequence, 'approval.decided', time, {
+        continued_attempt: true,
+        remaining_interaction_count: 0,
+        ...payload,
+      });
+    const listed = (
+      status: string,
+      elapsedMs: number,
+      measuredAt: string,
+      recentEvents: ReturnType<typeof runEvent>[]
+    ) =>
+      projectSnapshot({
+        project_id: 'project-1',
+        current_cursor: 0,
+        runs: [
+          {
+            run_id: 'run-1',
+            status,
+            run_version: 3,
+            expected_next_run_sequence: 4,
+            updated_at: at('10:00:02'),
+            total_attempt_elapsed_ms: elapsedMs,
+            totalAttemptElapsedAt: at(measuredAt),
+          },
+        ],
+        recent_events: recentEvents,
+        events_truncated: true,
+      });
+
+    it('records each wait from its request to its answer', () => {
+      const requested = projectRawEvents(
+        'project-1',
+        [
+          runEvent(1, 'run.attempt_started', '10:00:00'),
+          runEvent(2, 'approval.requested', '10:00:02'),
+        ],
+        'live'
+      ).state;
+      expect(requested.runs['run-1']).toMatchObject({
+        status: 'waiting_for_user',
+        userWaitStartedAt: at('10:00:02'),
+      });
+      expect(requested.runs['run-1'].userWaitMs).toBeUndefined();
+
+      const approved = reduceProjectView(requested, decided(3, '10:01:02'));
+      expect(approved.runs['run-1']).toMatchObject({
+        status: 'running',
+        userWaitMs: 60_000,
+      });
+      expect(approved.runs['run-1'].userWaitStartedAt).toBeUndefined();
+    });
+
+    it('starts an open wait at a listing read during that wait', () => {
+      // The listed total already leaves out the wait up to its read.
+      const reopened = listed('waiting_for_user', 2_000, '10:01:02', [
+        runEvent(3, 'approval.requested', '10:00:02'),
+      ]);
+      expect(reopened.runs['run-1']).toMatchObject({
+        status: 'waiting_for_user',
+        totalAttemptElapsedMs: 2_000,
+        userWaitStartedAt: at('10:01:02'),
+      });
+
+      const approved = reduceProjectView(reopened, decided(4, '10:01:32'));
+      expect(approved.runs['run-1']).toMatchObject({
+        status: 'running',
+        totalAttemptElapsedMs: 2_000,
+        totalAttemptElapsedAt: at('10:01:02'),
+        userWaitMs: 30_000,
+      });
+    });
+
+    it('never starts a wait before a listing read while running', () => {
+      const reopened = listed('running', 5_000, '10:01:00', [
+        runEvent(3, 'step.created', '10:00:02'),
+      ]);
+      expect(
+        reduceProjectView(
+          reopened,
+          runEvent(4, 'approval.requested', '10:01:10')
+        ).runs['run-1'].userWaitStartedAt
+      ).toBe(at('10:01:10'));
+      // A request written just before the read is already counted by it.
+      expect(
+        reduceProjectView(
+          reopened,
+          runEvent(4, 'approval.requested', '10:00:59')
+        ).runs['run-1'].userWaitStartedAt
+      ).toBe(at('10:01:00'));
+    });
+
+    it('settles a listing read on the active time when the Run stops', () => {
+      let state = listed('running', 5_000, '10:01:00', [
+        runEvent(3, 'step.created', '10:00:02'),
+      ]);
+      for (const next of [
+        runEvent(4, 'approval.requested', '10:01:10'),
+        decided(5, '10:02:10'),
+        runEvent(6, 'run.completed', '10:02:13'),
+      ]) {
+        state = reduceProjectView(state, next);
+      }
+
+      // 5s at the read, 10s before the request and 3s after the answer.
+      expect(state.runs['run-1']).toMatchObject({
+        status: 'completed',
+        totalAttemptElapsedMs: 18_000,
+        totalAttemptElapsedAt: at('10:02:13'),
+      });
+      expect(state.runs['run-1'].userWaitMs).toBeUndefined();
+    });
+
+    it('keeps waiting while another request is still open', () => {
+      const requested = projectRawEvents(
+        'project-1',
+        [
+          runEvent(1, 'run.attempt_started', '10:00:00'),
+          runEvent(2, 'approval.requested', '10:00:02'),
+          runEvent(3, 'approval.requested', '10:00:10'),
+        ],
+        'live'
+      ).state;
+      const firstAnswered = reduceProjectView(
+        requested,
+        decided(4, '10:00:30', {
+          continued_attempt: false,
+          remaining_interaction_count: 1,
+        })
+      );
+      expect(firstAnswered.runs['run-1']).toMatchObject({
+        status: 'waiting_for_user',
+        userWaitStartedAt: at('10:00:02'),
+      });
+
+      const bothAnswered = reduceProjectView(
+        firstAnswered,
+        decided(5, '10:00:50')
+      );
+      expect(bothAnswered.runs['run-1']).toMatchObject({
+        status: 'running',
+        userWaitMs: 48_000,
+      });
+      // A rejection that leaves nothing open still interrupts the Attempt.
+      expect(
+        reduceProjectView(
+          requested,
+          decided(4, '10:00:30', { continued_attempt: false })
+        ).runs['run-1'].status
+      ).toBe('interrupted');
+    });
+
+    it('restarts the wait record at a measured Run read', () => {
+      const approved = reduceProjectView(
+        projectRawEvents(
+          'project-1',
+          [
+            runEvent(1, 'run.attempt_started', '10:00:00'),
+            runEvent(2, 'approval.requested', '10:00:02'),
+          ],
+          'live'
+        ).state,
+        decided(3, '10:01:02')
+      ).runs['run-1'];
+      const summary = {
+        run_id: 'run-1',
+        project_id: 'project-1',
+        version: 4,
+        updated_at: at('10:01:02'),
+      };
+
+      const running = mergeRunSummary(
+        approved,
+        { ...summary, status: 'running', total_attempt_elapsed_ms: 2_000 },
+        at('10:01:05')
+      );
+      expect(running).toMatchObject({
+        totalAttemptElapsedMs: 2_000,
+        totalAttemptElapsedAt: at('10:01:05'),
+      });
+      expect(running?.userWaitMs).toBeUndefined();
+
+      const waiting = mergeRunSummary(
+        approved,
+        {
+          ...summary,
+          status: 'waiting_for_user',
+          total_attempt_elapsed_ms: 2_000,
+        },
+        at('10:01:05')
+      );
+      expect(waiting).toMatchObject({ userWaitStartedAt: at('10:01:05') });
+      expect(waiting?.userWaitMs).toBeUndefined();
     });
   });
 

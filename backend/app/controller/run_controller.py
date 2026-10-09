@@ -26,6 +26,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import asdict
 from typing import Annotated, Any
@@ -315,27 +316,80 @@ async def _load_run_or_404(run_id: str):
     return run
 
 
-def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
-    """Return Run execution wall time without counting gaps between attempts.
+UserWaits = Mapping[str, Sequence[tuple[float, float | None]]]
 
-    An Attempt that has not ended is live in every active state, so waiting
-    for an Approval or an answer counts up to ``now`` exactly like running.
-    ``elapsed_active_ms`` only advances on heartbeats while running, so it is
-    only the fallback for legacy rows that never recorded an end. Startup
-    recovery ends every active Attempt, so a live one never spans a
-    process-down interval. Summing each attempt separately deliberately
-    excludes the offline interval between an interruption and a later Resume.
+
+def _user_wait_seconds(
+    waits: Sequence[tuple[float, float | None]], *, start: float, end: float
+) -> float:
+    """Return how long the union of ``waits`` covers ``[start, end]``.
+
+    Overlapping waits, e.g. parallel workers asking at once, count once. An
+    open wait (no end yet) lasts until ``end``.
     """
 
+    clipped = sorted(
+        (
+            max(wait_start, start),
+            min(end if wait_end is None else wait_end, end),
+        )
+        for wait_start, wait_end in waits
+    )
+    covered = 0.0
+    cursor = start
+    for wait_start, wait_end in clipped:
+        wait_start = max(wait_start, cursor)
+        if wait_end > wait_start:
+            covered += wait_end - wait_start
+            cursor = wait_end
+    return covered
+
+
+def _user_waits_by_attempt(interactions: list[Any]) -> UserWaits:
+    """Group already loaded HumanInteractions as ``list_attempt_user_waits``."""
+
+    waits: dict[str, list[tuple[float, float | None]]] = {}
+    for interaction in interactions:
+        if interaction.attempt_id is not None:
+            waits.setdefault(interaction.attempt_id, []).append(
+                (interaction.created_at, interaction.resolved_at)
+            )
+    return waits
+
+
+def _total_attempt_elapsed_ms(
+    attempts: list[Any], *, now: float, user_waits: UserWaits | None = None
+) -> int:
+    """Return how long a Run's attempts worked, leaving out user waits.
+
+    Each Attempt counts from its start to its end, or to ``now`` while it is
+    live, minus the time it spent waiting for an approval or for an answer
+    to a question (``user_waits``, keyed by attempt id). An open wait lasts
+    until ``now``, so an Attempt that is waiting for the user reports a value
+    that does not grow. ``elapsed_active_ms`` only advances on heartbeats
+    while running, so it is only the fallback for legacy rows that never
+    recorded an end. Startup recovery ends every active Attempt, so a live
+    one never spans a process-down interval. Summing each attempt separately
+    deliberately excludes the offline interval between an interruption and a
+    later Resume.
+    """
+
+    waits_by_attempt = user_waits or {}
     total = 0
     for attempt in attempts:
-        ended_at = attempt.ended_at
-        if ended_at is not None:
-            total += max(0, round((ended_at - attempt.started_at) * 1000))
+        if attempt.ended_at is not None:
+            end = attempt.ended_at
         elif attempt.status in ATTEMPT_ACTIVE_STATES:
-            total += max(0, round((now - attempt.started_at) * 1000))
+            end = now
         else:
             total += max(0, int(attempt.elapsed_active_ms))
+            continue
+        waited = _user_wait_seconds(
+            waits_by_attempt.get(attempt.attempt_id, ()),
+            start=attempt.started_at,
+            end=end,
+        )
+        total += max(0, round((end - attempt.started_at - waited) * 1000))
     return total
 
 
@@ -393,6 +447,9 @@ async def list_project_runs(
         limit=limit,
     )
     items: list[dict[str, Any]] = []
+    user_waits = await asyncio.to_thread(
+        journal.list_attempt_user_waits, [run.run_id for run in runs]
+    )
     now = time.time()
     for run in runs:
         attempts = await asyncio.to_thread(
@@ -403,7 +460,9 @@ async def list_project_runs(
                 **asdict(run),
                 "latest_attempt": (asdict(attempts[-1]) if attempts else None),
                 "total_attempt_elapsed_ms": (
-                    _total_attempt_elapsed_ms(attempts, now=now)
+                    _total_attempt_elapsed_ms(
+                        attempts, now=now, user_waits=user_waits
+                    )
                     if attempts
                     else None
                 ),
@@ -437,7 +496,11 @@ async def get_run(run_id: str):
         "attempts": [asdict(attempt) for attempt in attempts],
         "latest_attempt": asdict(attempts[-1]) if attempts else None,
         "total_attempt_elapsed_ms": (
-            _total_attempt_elapsed_ms(attempts, now=time.time())
+            _total_attempt_elapsed_ms(
+                attempts,
+                now=time.time(),
+                user_waits=_user_waits_by_attempt(interactions),
+            )
             if attempts
             else None
         ),

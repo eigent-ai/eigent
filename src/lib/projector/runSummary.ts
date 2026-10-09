@@ -53,6 +53,61 @@ export function isStoppedRunStatus(status: string): boolean {
   );
 }
 
+/**
+ * Replace a Run's user-wait ledger (see `ProjectedRun.userWaitMs`). Empty
+ * fields are omitted so Runs that never waited keep their existing shape.
+ */
+export function withUserWait(
+  run: ProjectedRun,
+  waitMs: number,
+  waitStartedAt: string | null
+): ProjectedRun {
+  const {
+    userWaitMs: _waitMs,
+    userWaitStartedAt: _waitStartedAt,
+    ...rest
+  } = run;
+  return {
+    ...rest,
+    ...(Number.isFinite(waitMs) && waitMs > 0 ? { userWaitMs: waitMs } : {}),
+    ...(waitStartedAt && Number.isFinite(Date.parse(waitStartedAt))
+      ? { userWaitStartedAt: waitStartedAt }
+      : {}),
+  };
+}
+
+/**
+ * Active attempt time of a Run with an elapsed checkpoint at `atMs`, or null
+ * without a usable checkpoint. Waits for the user after the checkpoint are
+ * left out; the checkpoint itself already leaves out earlier ones.
+ */
+export function checkpointElapsedMsAt(
+  run: ProjectedRun,
+  atMs: number
+): number | null {
+  const checkpointMs = run.totalAttemptElapsedMs;
+  const anchorMs = Date.parse(run.totalAttemptElapsedAt ?? '');
+  if (
+    typeof checkpointMs !== 'number' ||
+    !Number.isFinite(checkpointMs) ||
+    !Number.isFinite(anchorMs) ||
+    !Number.isFinite(atMs)
+  ) {
+    return null;
+  }
+  const waitStartedMs = Date.parse(run.userWaitStartedAt ?? '');
+  const openWaitMs = Number.isFinite(waitStartedMs)
+    ? Math.max(0, atMs - Math.max(waitStartedMs, anchorMs))
+    : 0;
+  return Math.max(
+    0,
+    checkpointMs +
+      Math.max(0, atMs - anchorMs) -
+      (run.userWaitMs ?? 0) -
+      openWaitMs
+  );
+}
+
 const RUN_STATUSES = new Set<ProjectedRun['status']>([
   'pending',
   'running',
@@ -109,13 +164,16 @@ export function mergeRunSummary(
   )
     return existing;
   const elapsed = summary.total_attempt_elapsed_ms;
-  return {
+  const elapsedMeasured =
+    typeof elapsed === 'number' && Number.isFinite(elapsed) && elapsed >= 0;
+  const updatedAt = new Date(timestamp).toISOString();
+  const run: ProjectedRun = {
     ...existing,
     runId: summary.run_id,
     status,
     lastSequence: existing?.lastSequence ?? 0,
     runVersion: version ?? 0,
-    updatedAt: new Date(timestamp).toISOString(),
+    updatedAt,
     origin: summary.origin ?? existing?.origin ?? null,
     resumeBlockedReason:
       summary.resume_blocked_reason === undefined
@@ -141,14 +199,8 @@ export function mergeRunSummary(
                 : {}),
             }
           : null,
-    totalAttemptElapsedMs:
-      typeof elapsed === 'number' && Number.isFinite(elapsed) && elapsed >= 0
-        ? elapsed
-        : null,
-    totalAttemptElapsedAt:
-      typeof elapsed === 'number' && Number.isFinite(elapsed) && elapsed >= 0
-        ? receivedAt
-        : null,
+    totalAttemptElapsedMs: elapsedMeasured ? elapsed : null,
+    totalAttemptElapsedAt: elapsedMeasured ? receivedAt : null,
     ...(summary.unsafe_resume_blockers === undefined
       ? {}
       : {
@@ -157,4 +209,22 @@ export function mergeRunSummary(
           ),
         }),
   };
+  // A measured total already leaves out every wait for the user up to its
+  // read, so the timer's wait ledger restarts there.
+  if (elapsedMeasured) {
+    return withUserWait(
+      run,
+      0,
+      status === 'waiting_for_user' ? receivedAt : null
+    );
+  }
+  return withUserWait(
+    run,
+    existing?.userWaitMs ?? 0,
+    status !== 'waiting_for_user'
+      ? null
+      : existing?.status === 'waiting_for_user' && existing.userWaitStartedAt
+        ? existing.userWaitStartedAt
+        : updatedAt
+  );
 }

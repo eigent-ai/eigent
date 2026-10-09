@@ -883,4 +883,78 @@ describe('event-native Timeline Run presentation', () => {
       anchoredAt: '2026-08-19T00:01:00.000Z',
     });
   });
+
+  describe('time spent waiting for the user', () => {
+    const composed = () =>
+      composeTimelineRun([tool('running', 'run-1', 1)], 'run-1')!;
+    const measured = {
+      runId: 'run-1',
+      lastSequence: 2,
+      runVersion: 2,
+      updatedAt: '2026-08-19T00:01:10.000Z',
+      totalAttemptElapsedMs: 60_000,
+      totalAttemptElapsedAt: '2026-08-19T00:01:00.000Z',
+      userWaitMs: 4_000,
+    } satisfies Partial<ProjectedRun>;
+
+    it('holds a waiting Run at the time it had worked when the wait began', () => {
+      const reconciled = reconcileTimelineRun(composed(), {
+        ...measured,
+        status: 'waiting_for_user',
+        userWaitStartedAt: '2026-08-19T00:01:30.000Z',
+      });
+
+      // 60s at the read, then 30s more less an earlier 4s wait.
+      expect(reconciled.timestamps.elapsedAnchor).toEqual({
+        accumulatedMs: 86_000,
+        anchoredAt: null,
+      });
+    });
+
+    it('counts a running Run on from its read less the waits after it', () => {
+      const reconciled = reconcileTimelineRun(composed(), {
+        ...measured,
+        status: 'running',
+      });
+
+      expect(reconciled.timestamps.elapsedAnchor).toEqual({
+        accumulatedMs: 60_000,
+        anchoredAt: '2026-08-19T00:01:04.000Z',
+      });
+    });
+
+    it('holds a Run watched from its start while it waits', () => {
+      const reconciled = reconcileTimelineRun(composed(), {
+        runId: 'run-1',
+        status: 'waiting_for_user',
+        lastSequence: 2,
+        runVersion: 2,
+        updatedAt: '2026-08-19T00:00:31.000Z',
+        userWaitMs: 10_000,
+        userWaitStartedAt: '2026-08-19T00:00:31.000Z',
+      });
+
+      // Started at 00:00:01: 30s until this wait, less an earlier 10s one.
+      expect(reconciled.timestamps.elapsedAnchor).toEqual({
+        accumulatedMs: 20_000,
+        anchoredAt: null,
+      });
+    });
+
+    it('leaves the waits out of a stopped Run without a measured total', () => {
+      const reconciled = reconcileTimelineRun(composed(), {
+        runId: 'run-1',
+        status: 'completed',
+        lastSequence: 3,
+        runVersion: 3,
+        updatedAt: '2026-08-19T00:01:01.000Z',
+        userWaitMs: 40_000,
+      });
+
+      expect(reconciled.timestamps).toMatchObject({
+        durationMs: 20_000,
+        elapsedAnchor: { accumulatedMs: 20_000, anchoredAt: null },
+      });
+    });
+  });
 });

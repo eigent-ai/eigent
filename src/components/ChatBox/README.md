@@ -208,6 +208,15 @@ holds, the shimmer and status spinners stop, and the header reads
 `usePausedOffsetMs` subtracts the paused span so the timer continues from where
 it stopped rather than jumping forward by the wait.
 
+### Waiting for the user
+
+Time a Run spends waiting for an approval or an answer is not task time. The
+backend leaves it out of `total_attempt_elapsed_ms`, and the projector records
+the waits it observes (`userWaitMs`, `userWaitStartedAt`), so the timer holds
+while the Run is `waiting_for_user` and continues from the same value after the
+answer, also in a Session reopened during the wait. This is independent of
+`paused`, which remains a user action.
+
 ### Repeated tool-call presentation
 
 `EventTimeline/activityGrouping.ts` converts consecutive identical tool

@@ -29,7 +29,7 @@ import {
   reduceProjectedRun,
   reduceProjectView,
 } from './reduce';
-import { TERMINAL_RUN_STATUSES } from './runSummary';
+import { TERMINAL_RUN_STATUSES, withUserWait } from './runSummary';
 import type {
   CanonicalProjectEvent,
   ProjectedRun,
@@ -177,6 +177,17 @@ export function projectSnapshot(
         ? { latestAttempt: previousRun.latestAttempt }
         : {}),
     };
+    if (status === 'waiting_for_user') {
+      // A listed total already leaves out the open wait up to its read;
+      // without one, the Run's last update approximates when the wait began.
+      run = withUserWait(
+        run,
+        0,
+        (run.totalAttemptElapsedMs != null
+          ? run.totalAttemptElapsedAt
+          : null) ?? run.updatedAt
+      );
+    }
     if (aggregateRunVersion !== null) {
       let throughSequence: number | null = null;
       for (const event of acceptedRunEvents.get(aggregate.run_id) ?? []) {

@@ -29,7 +29,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15775,6 +15775,48 @@ class SQLiteRunJournal:
         with self._lock:
             rows = self._connection.execute(query, (run_id,)).fetchall()
             return [self._human_interaction_from_row(row) for row in rows]
+
+    def list_attempt_user_waits(
+        self, run_ids: Iterable[str]
+    ) -> dict[str, list[tuple[float, float | None]]]:
+        """Return when each Attempt of these Runs waited for the user.
+
+        Keys are attempt ids; each wait is ``(started_at, ended_at)`` and
+        ``ended_at`` is ``None`` while it is still open. A wait lasts from a
+        HumanInteraction's request until the journal records its end, whether
+        it was answered, expired or cancelled. Approvals are journaled as
+        HumanInteractions too, so this one table covers both kinds of wait.
+        """
+
+        unique_run_ids = list(dict.fromkeys(run_ids))
+        waits: dict[str, list[tuple[float, float | None]]] = {}
+        with self._lock:
+            # Stay far below SQLite's bound-parameter limit.
+            for offset in range(0, len(unique_run_ids), 500):
+                chunk = unique_run_ids[offset : offset + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = self._connection.execute(
+                    f"""
+                    SELECT attempt_id, created_at, resolved_at
+                    FROM human_interactions
+                    WHERE run_id IN ({placeholders})
+                      AND attempt_id IS NOT NULL
+                    ORDER BY created_at, interaction_id
+                    """,
+                    chunk,
+                ).fetchall()
+                for row in rows:
+                    waits.setdefault(str(row["attempt_id"]), []).append(
+                        (
+                            float(row["created_at"]),
+                            (
+                                float(row["resolved_at"])
+                                if row["resolved_at"] is not None
+                                else None
+                            ),
+                        )
+                    )
+        return waits
 
     def find_human_interactions_by_decision_request(
         self, run_id: str, decision_request_id: str
