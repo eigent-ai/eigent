@@ -33,6 +33,8 @@ export function sanitizeResponseError(
   if (
     force ||
     isUsageReason(reason) ||
+    // The backend's capability diagnostic is written for developers.
+    reason === 'thinking-effort' ||
     (ownErrorField(error, 'response') &&
       (((typeof status === 'number' || typeof status === 'string') &&
         [402, 429].includes(Number(status))) ||

@@ -104,11 +104,8 @@ async def test_bad_metadata_returns_422_without_echoing_provider_secrets(
     assert "fixture-secret" not in str(error.value.detail)
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
-async def test_unknown_model_rejects_materialized_bundle_effort(
-    tmp_path, monkeypatch, sample_chat_data, effort
-):
+def _install_bundle(journal, effort):
+    """Materialize a Bundle whose default model profile pins ``effort``."""
     manifest = WorkspaceBundleManifest.model_validate(
         {
             "apiVersion": "eigent.ai/v1alpha1",
@@ -128,43 +125,51 @@ async def test_unknown_model_rejects_materialized_bundle_effort(
             },
         }
     ).canonical_payload()
+    revision = journal.put_workspace_config_revision(
+        revision_id="bundle-fixture@1",
+        bundle_id="bundle-fixture",
+        revision_number=1,
+        manifest=manifest,
+        status="published",
+        created_by="fixture",
+    )
+    journal.put_workspace_config_materialization(
+        materialization_id="materialization-fixture",
+        space_id="space-1",
+        revision_id=revision.revision_id,
+        config_placement="sidecar",
+    )
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="proposal-fixture",
+        request_id="install-fixture",
+        space_id="space-1",
+        bundle_id="bundle-fixture",
+        revision_id=revision.revision_id,
+        config_placement="sidecar",
+        manifest=manifest,
+        assets=[],
+        install_plan={
+            "connector_slots": [],
+            "local_path_slots": [],
+            "script_actions": [],
+        },
+    )
+    for state in ("approved", "materializing", "materialized"):
+        proposal = journal.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state=state,
+            decided_by="fixture",
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+async def test_unknown_model_rejects_materialized_bundle_effort(
+    tmp_path, monkeypatch, sample_chat_data, effort
+):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
-        revision = journal.put_workspace_config_revision(
-            revision_id="bundle-fixture@1",
-            bundle_id="bundle-fixture",
-            revision_number=1,
-            manifest=manifest,
-            status="published",
-            created_by="fixture",
-        )
-        journal.put_workspace_config_materialization(
-            materialization_id="materialization-fixture",
-            space_id="space-1",
-            revision_id=revision.revision_id,
-            config_placement="sidecar",
-        )
-        proposal = journal.put_workspace_bundle_install_proposal(
-            proposal_id="proposal-fixture",
-            request_id="install-fixture",
-            space_id="space-1",
-            bundle_id="bundle-fixture",
-            revision_id=revision.revision_id,
-            config_placement="sidecar",
-            manifest=manifest,
-            assets=[],
-            install_plan={
-                "connector_slots": [],
-                "local_path_slots": [],
-                "script_actions": [],
-            },
-        )
-        for state in ("approved", "materializing", "materialized"):
-            proposal = journal.transition_workspace_bundle_install_proposal(
-                proposal.proposal_id,
-                expected_version=proposal.version,
-                state=state,
-                decided_by="fixture",
-            )
+        _install_bundle(journal, effort)
         journal.ensure_run(
             run_id="run-1", project_id="project-1", status="pending"
         )
@@ -196,3 +201,52 @@ async def test_unknown_model_rejects_materialized_bundle_effort(
         assert journal.list_run_attempts("run-1") == []
         assert not journal.list_model_invocations("run-1")
         assert not journal.list_events("run-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", ["azure", "openai"])
+@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+async def test_sol_runs_in_a_bundle_space_within_its_efforts(
+    tmp_path, monkeypatch, sample_chat_data, platform, effort
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        _install_bundle(journal, effort)
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="pending"
+        )
+        admitted = []
+
+        async def admit(data, request):
+            admitted.append(
+                EnvironmentAdmissionService(journal).persist_for_run(
+                    run_id="run-1",
+                    space_id="space-1",
+                    working_directory=tmp_path,
+                    created_by="fixture",
+                    template=chat_controller._legacy_environment_template(
+                        data
+                    ),
+                )
+            )
+
+        monkeypatch.setattr(chat_controller, "start_chat_stream", admit)
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_type": "gpt-6-sol",
+                "model_platform": platform,
+                "thinking_effort": None,
+            }
+        )
+        if effort in {"xhigh", "max"}:
+            with pytest.raises(HTTPException) as error:
+                await chat_controller.post(options, MagicMock())
+            assert error.value.status_code == 422
+            assert error.value.detail["code"] == "unsupported_thinking_effort"
+            assert "low, medium, high" in error.value.detail["message"]
+            assert not admitted
+            return
+        await chat_controller.post(options, MagicMock())
+        [result] = admitted
+        assert result.spec.thinking_effort_effective.value == effort
+        assert result.spec.provider_value == effort

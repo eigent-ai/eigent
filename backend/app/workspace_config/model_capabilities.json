@@ -85,6 +85,44 @@
       "default_transport": "chat_completions",
       "tools_transport": "responses",
       "model_platform": "azure"
+    },
+    {
+      "schema_version": 1,
+      "revision": "sol-api-2026-10-08",
+      "model_type": "gpt-6-sol",
+      "supported_efforts": ["low", "medium", "high"],
+      "default_effort": "medium",
+      "provider_mapping": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high"
+      },
+      "transport_parameters": {
+        "chat_completions": "reasoning_effort",
+        "responses": "reasoning.effort"
+      },
+      "default_transport": "chat_completions",
+      "tools_transport": "responses",
+      "model_platform": "openai"
+    },
+    {
+      "schema_version": 1,
+      "revision": "sol-api-2026-10-08",
+      "model_type": "gpt-6-sol",
+      "supported_efforts": ["low", "medium", "high"],
+      "default_effort": "medium",
+      "provider_mapping": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high"
+      },
+      "transport_parameters": {
+        "chat_completions": "reasoning_effort",
+        "responses": "reasoning.effort"
+      },
+      "default_transport": "chat_completions",
+      "tools_transport": "responses",
+      "model_platform": "azure"
     }
   ]
 }

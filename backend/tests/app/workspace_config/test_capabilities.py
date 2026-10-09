@@ -60,6 +60,60 @@ def test_luna_tools_preserve_effort_and_require_responses(
     assert not resolution.remapped
 
 
+@pytest.mark.parametrize("platform", ["openai", "azure"])
+def test_sol_accepts_low_medium_and_high_only(platform):
+    capability = ModelCapabilityRegistry().resolve(
+        model_platform=platform, model_type="gpt-6-sol"
+    )
+    assert capability.source == "catalog"
+    assert capability.supported_efforts == (
+        ThinkingEffort.LOW,
+        ThinkingEffort.MEDIUM,
+        ThinkingEffort.HIGH,
+    )
+    assert capability.resolve(None).provider_value == "medium"
+    for effort in (ThinkingEffort.XHIGH, ThinkingEffort.MAX):
+        with pytest.raises(
+            UnsupportedThinkingEffortError, match="low, medium, high"
+        ):
+            capability.resolve(effort, allow_dynamic_remap=True)
+
+
+@pytest.mark.parametrize(
+    "platform,model,revision",
+    [
+        (
+            "openai",
+            "gpt-6-astra",
+            "modelcap_771b7c57cf6ad8af6b71de109c8d64846869f2d749366713dcf1effa8427e0c2",
+        ),
+        (
+            "azure",
+            "gpt-6-astra",
+            "modelcap_7b279ce664615947033118b66c4787dbc40a961ae5713f63489cd643dd691d8e",
+        ),
+        (
+            "openai",
+            "gpt-6-luna",
+            "modelcap_d5d22d79638549ce3b8ad67c63bd1d6eb784b1d9e1d6eec1c98fa373c84afc86",
+        ),
+        (
+            "azure",
+            "gpt-6-luna",
+            "modelcap_e417cbf8c459285e7200b85416d634e87c8ce0ca2aeae92fe542df6216a9f29c",
+        ),
+    ],
+)
+def test_registering_a_model_keeps_other_capability_revisions(
+    platform, model, revision
+):
+    # Attempts pin these revisions, and Resume refuses a changed one.
+    capability = ModelCapabilityRegistry().resolve(
+        model_platform=platform, model_type=model
+    )
+    assert capability.capability_revision == revision
+
+
 @pytest.mark.parametrize("effort", tuple(ThinkingEffort))
 def test_unknown_never_accepts_explicit_effort(effort):
     capability = ModelCapabilityRegistry().resolve(
