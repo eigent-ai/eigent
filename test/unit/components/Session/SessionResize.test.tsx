@@ -44,7 +44,7 @@ const mocks = vi.hoisted(() => ({
     id: 'project-1',
     name: 'Project 1',
     mode: 'single_agent',
-    metadata: {},
+    metadata: {} as Record<string, unknown>,
   },
   pageState: {
     activeWorkspaceTab: 'project',
@@ -233,6 +233,7 @@ describe('Session preview resize', () => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     mocks.chatBoxRenderCount = 0;
     mocks.projectMeta.name = 'Project 1';
+    mocks.projectMeta.metadata = {};
     mocks.pageState.previewSlice.open = true;
     mocks.pageState.sessionPreviewProjectId = 'project-1';
     mocks.pageState.activeWorkspaceTab = 'project';
@@ -288,6 +289,18 @@ describe('Session preview resize', () => {
     expect(screen.getByTestId('session-header')).toHaveAttribute(
       'data-project-name',
       'Project 1'
+    );
+  });
+
+  it('shows the same history title as the Session list for a default name', () => {
+    mocks.projectMeta.name = 'new project';
+    mocks.projectMeta.metadata = { historyDisplayName: 'Plan the launch' };
+
+    render(<Session />);
+
+    expect(screen.getByTestId('session-header')).toHaveAttribute(
+      'data-project-name',
+      'Plan the launch'
     );
   });
 

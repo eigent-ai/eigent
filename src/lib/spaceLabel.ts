@@ -52,6 +52,42 @@ export function getSessionDisplayName(
     : (name ?? '').trim();
 }
 
+type SessionNameMeta = {
+  id: string;
+  name?: string | null;
+  metadata?: { historyDisplayName?: unknown; nameSource?: unknown } | null;
+};
+
+/**
+ * The restored history title that stands in for a Session's system default
+ * name, as the Session list shows it. Null when the user named the Session or
+ * there is no history title.
+ */
+export function sessionHistoryDisplayName(
+  meta: SessionNameMeta
+): string | null {
+  const historyDisplayName =
+    typeof meta.metadata?.historyDisplayName === 'string'
+      ? meta.metadata.historyDisplayName.trim()
+      : '';
+  return historyDisplayName &&
+    !meta.metadata?.nameSource &&
+    isPlaceholderProjectName(meta.name, meta.id)
+    ? historyDisplayName
+    : null;
+}
+
+/** Visible Session name for a Session meta, matching the Session list. */
+export function getSessionMetaDisplayName(
+  meta: SessionNameMeta,
+  t: TFunction
+): string {
+  return (
+    sessionHistoryDisplayName(meta) ??
+    getSessionDisplayName(meta.name, meta.id, t)
+  );
+}
+
 /**
  * Static check (no i18n) for default/placeholder Space names. Mirror of
  * `isPlaceholderProjectName` for spaces — used in store-level pruning logic.

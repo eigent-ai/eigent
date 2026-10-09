@@ -25,7 +25,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
-import { getSessionDisplayName } from '@/lib/spaceLabel';
+import { getSessionMetaDisplayName } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import {
   getSessionPreviewSlice,
@@ -581,11 +581,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
             <HeaderBox
               projectName={
                 activeProjectMeta
-                  ? getSessionDisplayName(
-                      activeProjectMeta.name,
-                      activeProjectMeta.id,
-                      t
-                    )
+                  ? getSessionMetaDisplayName(activeProjectMeta, t)
                   : undefined
               }
               totalTokens={activeTask?.tokens ?? 0}

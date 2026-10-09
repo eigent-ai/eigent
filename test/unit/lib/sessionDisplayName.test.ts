@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getSessionDisplayName } from '@/lib/spaceLabel';
+import {
+  getSessionDisplayName,
+  getSessionMetaDisplayName,
+} from '@/lib/spaceLabel';
 import type { TFunction } from 'i18next';
 import { describe, expect, it } from 'vitest';
 
@@ -42,5 +45,55 @@ describe('getSessionDisplayName', () => {
     expect(getSessionDisplayName('Project session-2', 'session-1', t)).toBe(
       'Project session-2'
     );
+  });
+});
+
+describe('getSessionMetaDisplayName', () => {
+  it('shows the history title that stands in for a default name', () => {
+    expect(
+      getSessionMetaDisplayName(
+        {
+          id: 'session-1',
+          name: 'new project',
+          metadata: { historyDisplayName: '  Plan the launch ' },
+        },
+        t
+      )
+    ).toBe('Plan the launch');
+  });
+
+  it('keeps a name the user chose over the history title', () => {
+    expect(
+      getSessionMetaDisplayName(
+        {
+          id: 'session-1',
+          name: 'Launch plan',
+          metadata: { historyDisplayName: 'Plan the launch' },
+        },
+        t
+      )
+    ).toBe('Launch plan');
+    expect(
+      getSessionMetaDisplayName(
+        {
+          id: 'session-1',
+          name: 'new project',
+          metadata: {
+            historyDisplayName: 'Plan the launch',
+            nameSource: 'user',
+          },
+        },
+        t
+      )
+    ).toBe('New session');
+  });
+
+  it('falls back to New session without a history title', () => {
+    expect(
+      getSessionMetaDisplayName(
+        { id: 'session-1', name: 'new project', metadata: {} },
+        t
+      )
+    ).toBe('New session');
   });
 });
