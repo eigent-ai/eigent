@@ -2675,7 +2675,8 @@ function LegacyChatBox(): JSX.Element {
             interruptedRunDescription(
               interruptedRun.terminalReason,
               t,
-              unsafeResumeReason
+              unsafeResumeReason,
+              interruptedRun.terminalDetail
             )),
       },
       runId: interruptedRun.run_id,
@@ -2864,7 +2865,8 @@ function LegacyChatBox(): JSX.Element {
                       : interruptedRunDescription(
                           interruptedRun.terminalReason,
                           t,
-                          unsafeResumeReason
+                          unsafeResumeReason,
+                          interruptedRun.terminalDetail
                         )
                   }
                   disabledReason={cancelRecoveryReason}
@@ -2967,7 +2969,8 @@ function LegacyChatBox(): JSX.Element {
                       : interruptedRunDescription(
                           interruptedRun.terminalReason,
                           t,
-                          unsafeResumeReason
+                          unsafeResumeReason,
+                          interruptedRun.terminalDetail
                         )
                   }
                   attemptNumber={interruptedRun.latest_attempt?.attempt_number}

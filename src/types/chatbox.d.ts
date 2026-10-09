@@ -129,6 +129,8 @@ declare global {
     feedbackMessageId?: string;
     role: 'user' | 'agent';
     errorReason?: import('@/lib/usageErrors').ErrorReason;
+    /** This error stopped an Attempt that Resume can continue. */
+    resumable?: boolean;
     content: string;
     step?: AgentStepType;
     agent_id?: string;
