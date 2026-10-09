@@ -171,7 +171,7 @@ async def _rollback_runtime_assembly(
     options: Chat,
     hands: IHands | None,
 ) -> None:
-    """Best-effort rollback when fail-closed Bundle assembly aborts."""
+    """Best-effort rollback when assembly or Agent creation aborts."""
 
     candidates = list(assembly.cleanup_toolkits)
     if (
@@ -387,7 +387,29 @@ def _mcp_config(
 
 async def assemble_single_agent_toolkits(
     options: Chat,
+    **kwargs,
+) -> ToolkitAssembly:
+    assembly = ToolkitAssembly()
+    try:
+        return await _assemble_single_agent_toolkits(
+            options, assembly=assembly, **kwargs
+        )
+    except BaseException:
+        # A failure or cancellation can arrive after the Browser reservation,
+        # Terminal or MCP servers were created. Nothing else owns them yet.
+        await _rollback_runtime_assembly(
+            assembly,
+            project_id=options.project_id,
+            options=options,
+            hands=kwargs.get("hands"),
+        )
+        raise
+
+
+async def _assemble_single_agent_toolkits(
+    options: Chat,
     *,
+    assembly: ToolkitAssembly,
     task_id: str,
     working_directory: str,
     hands: IHands | None,
@@ -397,7 +419,6 @@ async def assemble_single_agent_toolkits(
     runtime_environment: ResolvedRuntimeEnvironment | None = None,
 ) -> ToolkitAssembly:
     config = _merged_config(options)
-    assembly = ToolkitAssembly()
     pinned_skill_sources = (
         runtime_environment.pinned_skill_sources(Agents.single_agent)
         if runtime_environment is not None
@@ -723,12 +744,6 @@ async def assemble_single_agent_toolkits(
                         EnvironmentSetupRequiredError,
                     )
 
-                    await _rollback_runtime_assembly(
-                        assembly,
-                        project_id=options.project_id,
-                        options=options,
-                        hands=hands,
-                    )
                     raise EnvironmentSetupRequiredError(
                         ["bundle_mcp_start_failed"]
                     ) from exc
