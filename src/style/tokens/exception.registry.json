@@ -16,13 +16,6 @@
       "removal": "none"
     },
     {
-      "id": "automation-panel-headers",
-      "owner": "automations",
-      "reason": "Product-requested 44px height aligns the automation main-panel and queue headers, including their Storybook counterparts. Canonical ContentHeader sizes remain unchanged.",
-      "platform": "all",
-      "removal": "When the automation panels adopt a canonical content-header height."
-    },
-    {
       "id": "chat-scroll-anchor",
       "owner": "chat",
       "reason": "Chat scroll-anchor gaps and spacer calculations.",

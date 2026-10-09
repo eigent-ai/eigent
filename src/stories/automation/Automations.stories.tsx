@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ContentHeader from '@/components/Layout/ContentHeader';
 import { RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { AutomationDashboardView } from '@/components/Trigger/AutomationDashboard';
 import { AutomationExamples } from '@/components/Trigger/AutomationExamples';
@@ -201,18 +202,24 @@ function AutomationsPage({
           RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS
         )}
       >
-        <div className="flex h-[44px] shrink-0 items-center justify-between gap-ds-8 px-ds-16">
+        <ContentHeader
+          border={false}
+          inset="none"
+          className="px-ds-16"
+          actions={
+            <Button variant="primary" size="sm">
+              <Plus aria-hidden />
+              Create
+            </Button>
+          }
+        >
           <DsText as="h2" role="base" weight="semibold">
             Your automations
             <span className="ml-ds-6 font-medium text-ds-ink-subtle-default">
               {items.length}
             </span>
           </DsText>
-          <Button variant="primary" size="sm">
-            <Plus aria-hidden />
-            Create
-          </Button>
-        </div>
+        </ContentHeader>
         <ul className="scrollbar-always-visible m-0 flex min-h-0 flex-1 list-none flex-col gap-ds-2 overflow-y-auto pr-0 pb-ds-16 pl-ds-8">
           {items.length === 0 ? (
             <li className="m-ds-8 flex flex-col gap-ds-4 rounded-ds-card border border-x border-y border-dashed border-ds-hairline-default-default px-ds-16 py-ds-24 text-center">

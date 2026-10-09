@@ -59,12 +59,10 @@ export function AutomationMainPanel({
       }
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      {/* Product-requested height; see automation-panel-headers exception. */}
       <ContentHeader
         border={false}
-        height="adaptive"
         inset="none"
-        className="h-[44px] pr-ds-16 pl-ds-6"
+        className="pr-ds-16 pl-ds-6"
         leading={
           trigger && (
             <Button

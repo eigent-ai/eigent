@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ContentHeader from '@/components/Layout/ContentHeader';
 import { RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { AutomationDashboard } from '@/components/Trigger/AutomationDashboard';
 import { AutomationExamples } from '@/components/Trigger/AutomationExamples';
@@ -297,8 +298,17 @@ export default function Overview({
           RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS
         )}
       >
-        {/* Product-requested height; see automation-panel-headers exception. */}
-        <div className="flex h-[44px] shrink-0 items-center justify-between gap-ds-8 px-ds-16">
+        <ContentHeader
+          border={false}
+          inset="none"
+          className="px-ds-16"
+          actions={
+            <Button variant="primary" size="sm" onClick={() => openDialog({})}>
+              <Plus aria-hidden />
+              {t('triggers.create')}
+            </Button>
+          }
+        >
           <DsText
             as="h2"
             id="your-automations-title"
@@ -310,11 +320,7 @@ export default function Overview({
               {sortedTriggers.length}
             </span>
           </DsText>
-          <Button variant="primary" size="sm" onClick={() => openDialog({})}>
-            <Plus aria-hidden />
-            {t('triggers.create')}
-          </Button>
-        </div>
+        </ContentHeader>
 
         <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto pr-0 pb-ds-16 pl-ds-8">
           {sortedTriggers.length === 0 ? (
