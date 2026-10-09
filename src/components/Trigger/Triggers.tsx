@@ -309,7 +309,10 @@ export default function Overview({
           {/* List View Section */}
           <div className="scrollbar-always-visible mx-auto flex h-full w-full max-w-[800px] flex-col overflow-auto pt-2">
             <div className="flex flex-col gap-2">
-              {listLoadState === 'error' ? (
+              {/* Automations created or received while the list could not
+                  load are still listed; the states below are for an empty
+                  list only. */}
+              {sortedTriggers.length === 0 && listLoadState === 'error' ? (
                 <div
                   role="alert"
                   className="flex flex-col items-center gap-ds-stack-related p-ds-panel-inset text-center"
@@ -327,7 +330,7 @@ export default function Overview({
                     {t('layout.retry')}
                   </Button>
                 </div>
-              ) : listLoadState === 'loading' ? (
+              ) : sortedTriggers.length === 0 && listLoadState === 'loading' ? (
                 <DsText
                   aria-live="polite"
                   className="p-ds-panel-inset text-center text-ds-ink-muted-default"

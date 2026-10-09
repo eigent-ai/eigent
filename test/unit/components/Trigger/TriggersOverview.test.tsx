@@ -158,6 +158,22 @@ describe('Workspace automations list', () => {
     expect(mocks.fetchProjectTriggers).toHaveBeenNthCalledWith(2, 'project-1');
   });
 
+  it('lists an automation created after the list failed to load', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.projectState.activeProjectId = 'project-1';
+    mocks.fetchProjectTriggers.mockRejectedValueOnce(new Error('network down'));
+
+    render(<Overview {...props} />);
+    await screen.findByRole('alert');
+
+    act(() => {
+      useTriggerStore.getState().addTrigger(automation);
+    });
+
+    expect(screen.getByText('Morning digest')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('loads the Session automations once across re-renders', async () => {
     mocks.projectState.activeProjectId = 'project-1';
     mocks.fetchProjectTriggers.mockResolvedValueOnce({ items: [] });
