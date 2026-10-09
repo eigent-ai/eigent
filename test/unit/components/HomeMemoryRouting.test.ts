@@ -76,4 +76,14 @@ describe('Home Memory routing', () => {
     expect(target.scope).toEqual({ type: 'project', id: 'project-1' });
     expect(target.label).toBeUndefined();
   });
+
+  it('keeps a chosen name that reads like a default', () => {
+    const target = resolveSpaceDetailMemoryTarget(
+      'space-1',
+      new URLSearchParams('memoryScope=project&projectId=project-1'),
+      [{ ...projects[0], project_name: 'New Project', nameSource: 'manual' }]
+    );
+
+    expect(target.label).toBe('New Project');
+  });
 });

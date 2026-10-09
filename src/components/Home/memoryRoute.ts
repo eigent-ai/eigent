@@ -57,13 +57,13 @@ export function resolveSpaceDetailMemoryTarget(
     if (project) {
       return {
         scope: { type: 'project', id: project.project_id },
-        // System default names fall back to the localized Session label.
-        label: isPlaceholderProjectName(
-          project.project_name,
-          project.project_id
-        )
-          ? undefined
-          : project.project_name?.trim(),
+        // System default names fall back to the localized Session label; a
+        // chosen name (`nameSource`) is kept even when it reads like one.
+        label:
+          !project.nameSource &&
+          isPlaceholderProjectName(project.project_name, project.project_id)
+            ? undefined
+            : project.project_name?.trim(),
       };
     }
   }
