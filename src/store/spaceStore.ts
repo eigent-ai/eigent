@@ -227,6 +227,57 @@ const spaceBelongsToUser = (space: Space, userId?: string | number | null) => {
   return String(space.userId) === ownerId;
 };
 
+/**
+ * Scratch workspace roots belong to this machine and are intentionally kept
+ * in the persisted renderer store. Cloud Space responses can omit that local
+ * binding, so merging one must not make an already-confirmed root disappear.
+ */
+const mergeServerSpaceWithLocalBinding = (
+  serverSpace: Space,
+  localSpace: Space | undefined
+): Space => {
+  if (
+    !localSpace ||
+    serverSpace.sourceType !== 'blank' ||
+    localSpace.sourceType !== 'blank' ||
+    serverSpace.status !== 'active' ||
+    localSpace.status !== 'active' ||
+    (serverSpace.userId &&
+      localSpace.userId &&
+      String(serverSpace.userId) !== String(localSpace.userId))
+  ) {
+    return serverSpace;
+  }
+
+  const serverRoot = serverSpace.rootPath;
+  if (serverRoot) return serverSpace;
+
+  const localRoot = localSpace.rootPath;
+  const rememberedRoot =
+    typeof localSpace.metadata?.localWorkspaceRoot === 'string'
+      ? localSpace.metadata.localWorkspaceRoot
+      : '';
+  if (
+    !localRoot ||
+    rememberedRoot !== localRoot ||
+    localSpace.metadata?.localWorkspaceSource !== 'scratch_space'
+  ) {
+    return serverSpace;
+  }
+
+  return {
+    ...serverSpace,
+    rootPath: localRoot,
+    rootFingerprint:
+      serverSpace.rootFingerprint ?? localSpace.rootFingerprint ?? null,
+    metadata: {
+      ...serverSpace.metadata,
+      localWorkspaceRoot: localRoot,
+      localWorkspaceSource: 'scratch_space',
+    },
+  };
+};
+
 export const legacySpaceIdForUser = (userId?: string | number | null) =>
   `legacy_${canonicalUserId(userId)}`;
 
@@ -594,6 +645,40 @@ const isHydrationStillCurrentForUser = async (ownerId: string) => {
   }
 };
 
+/**
+ * Hydration keeps a confirmed scratch root that the Cloud copy omits. Clearing
+ * that root used to send the Space back through the binding flow, so re-check
+ * each kept root with the backend instead: a deleted folder or a moved binding
+ * must still be repaired before the next task starts in that Space.
+ */
+const verifyKeptScratchRoots = async (
+  spaceIds: string[],
+  ownerId: string,
+  environmentKey: string
+) => {
+  const [scratchModule, installationModule] = await Promise.all([
+    import('@/lib/scratchSpaceWorkspace'),
+    import('@/store/installationStore'),
+  ]);
+  await installationModule.waitForBackendReadiness();
+  const { email, user_id: userId } = getAuthStore();
+  if (
+    !email ||
+    canonicalUserId(userId) !== ownerId ||
+    getAuthEnvironmentKey() !== environmentKey
+  )
+    return;
+  await Promise.all(
+    spaceIds.map((spaceId) =>
+      scratchModule.verifyScratchSpaceWorkspaceRoot({
+        email,
+        userId,
+        space: useSpaceStore.getState().spaces[spaceId],
+      })
+    )
+  );
+};
+
 const captureSpaceResponseGuard = async (
   get: () => SpaceStore,
   spaceId: string
@@ -839,10 +924,18 @@ export const useSpaceStore = create<SpaceStore>()(
             serverLegacySpace?.id ?? legacySpaceIdForUser(ownerId);
           const hasServerLegacySpace = Boolean(serverLegacySpace);
 
+          const keptScratchRootSpaceIds: string[] = [];
           set((state) => {
             const nextSpaces: Record<string, Space> = {};
             for (const space of spaces) {
-              nextSpaces[space.id] = space;
+              const merged = mergeServerSpaceWithLocalBinding(
+                space,
+                state.spaces[space.id]
+              );
+              if (merged.rootPath && !space.rootPath) {
+                keptScratchRootSpaceIds.push(space.id);
+              }
+              nextSpaces[space.id] = merged;
             }
             return {
               spaces: nextSpaces,
@@ -853,6 +946,18 @@ export const useSpaceStore = create<SpaceStore>()(
               ),
             };
           });
+          if (keptScratchRootSpaceIds.length > 0) {
+            void verifyKeptScratchRoots(
+              keptScratchRootSpaceIds,
+              ownerId,
+              environmentKey
+            ).catch((error) => {
+              console.warn(
+                '[spaceStore] Failed to verify kept scratch workspace roots:',
+                error
+              );
+            });
+          }
 
           const projectStore = projectModule.useProjectRuntimeStore.getState();
           projectStore.cleanupAutoCreatedEmptyProjects();
@@ -904,7 +1009,10 @@ export const useSpaceStore = create<SpaceStore>()(
         set((state) => {
           const nextSpaces = { ...state.spaces };
           for (const space of spaces) {
-            nextSpaces[space.id] = space;
+            nextSpaces[space.id] = mergeServerSpaceWithLocalBinding(
+              space,
+              state.spaces[space.id]
+            );
           }
           return {
             spaces: nextSpaces,
