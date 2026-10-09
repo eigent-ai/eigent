@@ -19,15 +19,15 @@ interface ProjectWorkspaceRootState {
 }
 
 /**
- * Resolve the trusted local root for the Project currently shown in a Space.
+ * Resolve the Space that owns a Project.
  *
  * Server hydration or snapshot replacement can temporarily omit the persisted
  * Project index. The runtime Project still owns the same Space binding during
- * that window, so it can resolve the registered root without falling back to
- * an unrelated active Space.
+ * that window, so it can resolve the owner without falling back to an
+ * unrelated active Space.
  */
-export function selectProjectWorkspaceRoot(
-  state: ProjectWorkspaceRootState,
+export function selectProjectSpaceId(
+  state: Pick<ProjectWorkspaceRootState, 'activeSpaceId' | 'projectIdIndex'>,
   projectId?: string | null,
   runtimeSpaceId?: string | null
 ): string | null {
@@ -38,8 +38,17 @@ export function selectProjectWorkspaceRoot(
   if (indexedSpaceId && runtimeSpaceId && indexedSpaceId !== runtimeSpaceId) {
     return null;
   }
-  const spaceId = projectId
-    ? indexedSpaceId || runtimeSpaceId
+  return projectId
+    ? indexedSpaceId || runtimeSpaceId || null
     : runtimeSpaceId || state.activeSpaceId;
+}
+
+/** Resolve the trusted local root for the Project currently shown in a Space. */
+export function selectProjectWorkspaceRoot(
+  state: ProjectWorkspaceRootState,
+  projectId?: string | null,
+  runtimeSpaceId?: string | null
+): string | null {
+  const spaceId = selectProjectSpaceId(state, projectId, runtimeSpaceId);
   return spaceId ? state.spaces[spaceId]?.rootPath || null : null;
 }

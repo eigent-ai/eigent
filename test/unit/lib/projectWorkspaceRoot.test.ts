@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
+import {
+  selectProjectSpaceId,
+  selectProjectWorkspaceRoot,
+} from '@/lib/projectWorkspaceRoot';
 import { describe, expect, it } from 'vitest';
 
 const state = {
@@ -75,5 +78,25 @@ describe('Project workspace root selection', () => {
 
   it('uses the active Space only when no Project is selected', () => {
     expect(selectProjectWorkspaceRoot(state, null)).toBe('/workspace/active');
+  });
+
+  it('resolves the owning Space with the same fail-closed rules', () => {
+    expect(selectProjectSpaceId(state, 'project-1', 'space-project')).toBe(
+      'space-project'
+    );
+    expect(
+      selectProjectSpaceId(
+        { ...state, projectIdIndex: {} },
+        'project-new',
+        'space-runtime'
+      )
+    ).toBe('space-runtime');
+    expect(
+      selectProjectSpaceId(state, 'project-1', 'space-runtime')
+    ).toBeNull();
+    expect(
+      selectProjectSpaceId({ ...state, projectIdIndex: {} }, 'project-new')
+    ).toBeNull();
+    expect(selectProjectSpaceId(state, null)).toBe('space-active');
   });
 });
