@@ -22,6 +22,7 @@ import subprocess
 import threading
 import time
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -527,6 +528,139 @@ async def test_cancel_before_activation_never_enters_handler(
     assert world.service.admission.get_claim("p").state == "released"
 
 
+def _finalization_execution():
+    return SimpleNamespace(
+        request=object(),
+        runtime=object(),
+        policy=SimpleNamespace(provider=object()),
+        finalizing=asyncio.Lock(),
+        finalization_task=None,
+        finalized=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_service_finalization_single_flight_survives_cancelled_first_caller(
+    world, monkeypatch
+):
+    from app.workspace_runtime.finalizer import WorkspaceFinalizer
+
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def blocked(
+        _finalizer, _request, _runtime, _provider, result, outcome
+    ):
+        calls.append((result, outcome))
+        entered.set()
+        await release.wait()
+        return "checkpoint"
+
+    monkeypatch.setattr(WorkspaceFinalizer, "finalize", blocked)
+    execution = _finalization_execution()
+    active = asyncio.create_task(
+        world.service._finalize(execution, "done", "completed")
+    )
+    waiting = None
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        waiting = asyncio.create_task(
+            world.service._finalize(execution, "", "cancelled")
+        )
+        await asyncio.sleep(0)
+        assert calls == [("done", "completed")]
+        assert not waiting.done()
+
+        active.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await active
+        assert not waiting.done()
+        assert execution.finalization_task is not None
+        assert not execution.finalization_task.done()
+    finally:
+        release.set()
+        tasks = (active,) if waiting is None else (active, waiting)
+        await asyncio.gather(*tasks, return_exceptions=True)
+    assert execution.finalized
+    await world.service._finalize(execution, "retry", "failed")
+    assert calls == [("done", "completed")]
+
+
+@pytest.mark.asyncio
+async def test_service_close_joins_finalization_after_only_caller_is_cancelled(
+    world, monkeypatch
+):
+    from app.workspace_runtime.finalizer import WorkspaceFinalizer
+
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def blocked(
+        _finalizer, _request, _runtime, _provider, result, outcome
+    ):
+        calls.append((result, outcome))
+        entered.set()
+        await release.wait()
+        return "checkpoint"
+
+    monkeypatch.setattr(WorkspaceFinalizer, "finalize", blocked)
+    execution = _finalization_execution()
+    caller = asyncio.create_task(
+        world.service._finalize(execution, "done", "completed")
+    )
+    closing = None
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        caller.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await caller
+        assert execution.finalization_task in world.service._finalizations
+
+        closing = asyncio.create_task(world.service.close())
+        await asyncio.sleep(0)
+        assert not closing.done()
+        assert calls == [("done", "completed")]
+    finally:
+        release.set()
+        tasks = (caller,) if closing is None else (caller, closing)
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    assert closing is not None and not closing.cancelled()
+    assert execution.finalized
+    assert calls == [("done", "completed")]
+    assert not world.service._finalizations
+
+
+@pytest.mark.asyncio
+async def test_service_finalization_retries_only_after_owner_failure(
+    world, monkeypatch
+):
+    from app.workspace_runtime.finalizer import WorkspaceFinalizer
+
+    calls = []
+
+    async def fail_once(
+        _finalizer, _request, _runtime, _provider, result, outcome
+    ):
+        calls.append((result, outcome))
+        if len(calls) == 1:
+            raise RuntimeError("injected finalization failure")
+        return "checkpoint"
+
+    monkeypatch.setattr(WorkspaceFinalizer, "finalize", fail_once)
+    execution = _finalization_execution()
+
+    await world.service._finalize(execution, "first", "completed")
+    failed = execution.finalization_task
+    assert failed is not None and failed.done()
+    assert not execution.finalized
+
+    await world.service._finalize(execution, "retry", "failed")
+    assert execution.finalized
+    assert execution.finalization_task is not failed
+    assert calls == [("first", "completed"), ("retry", "failed")]
+
+
 @pytest.mark.asyncio
 async def test_cancel_during_finalization_does_not_orphan_capture(
     world, monkeypatch
@@ -1030,7 +1164,7 @@ async def test_terminal_fact_does_not_skip_stopping_live_writer(
             attempt_id=runtime.binding.attempt_id,
         )
     )
-    assert world.journal.get_run("r").status == "failed"
+    assert world.journal.get_run("r").status == "timed_out"
     if stop == "cancel":
         await world.service.cancel("r", origin=world.origin)
     elif stop == "close":
@@ -1038,7 +1172,7 @@ async def test_terminal_fact_does_not_skip_stopping_live_writer(
     await eventually(
         lambda: world.service.admission.get_claim("p").state == "released"
     )
-    assert world.journal.get_run("r").status == "failed"
+    assert world.journal.get_run("r").status == "timed_out"
     assert runtime.sealed
     assert all(
         item.process.returncode is not None for item in runtime._processes

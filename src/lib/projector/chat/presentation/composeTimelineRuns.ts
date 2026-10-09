@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isStoppedRunStatus } from '../../runSummary';
 import type {
   ChatActivityNode,
   ChatActivityPhase,
@@ -40,13 +41,6 @@ const TERMINAL_ACTIVITY_STATUSES = new Set<ChatActivityStatus>([
   'timed_out',
   'outcome_unknown',
   'cancelled',
-]);
-
-const TERMINAL_RUN_STATUSES = new Set<ChatRunStatus>([
-  'completed',
-  'failed',
-  'cancelled',
-  'interrupted',
 ]);
 
 function timestampValue(value: string | null | undefined): number | null {
@@ -516,7 +510,7 @@ function composeRunTimestamps(
     ) ||
     createdAt;
   const endedAt =
-    (runStatus && TERMINAL_RUN_STATUSES.has(runStatus.status)
+    (runStatus && isStoppedRunStatus(runStatus.status)
       ? runStatus.createdAt
       : null) ||
     finalAssistantResponse?.createdAt ||

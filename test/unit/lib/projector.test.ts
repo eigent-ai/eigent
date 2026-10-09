@@ -283,6 +283,64 @@ describe('projector pipeline', () => {
     }
   );
 
+  it('tracks why a Run waits for its Space writer until it gets it', () => {
+    const writer = (
+      sequence: number,
+      eventType: string,
+      payload: Record<string, unknown>
+    ) =>
+      normalizeEvent(
+        event({
+          event_id: `writer-${sequence}`,
+          event_type: eventType,
+          legacy_step: null,
+          run_sequence: sequence,
+          run_version: sequence,
+          cloud_cursor: sequence,
+          payload,
+        })
+      );
+    const queued = reduceProjectView(
+      createProjectViewState('project-1', 'live'),
+      writer(1, 'workspace.writer.queued', { reason: 'task.mutating_default' })
+    );
+    expect(queued.runs['run-1'].writerWait).toEqual({
+      holderNeedsAttention: false,
+    });
+
+    const blocked = reduceProjectView(
+      queued,
+      writer(2, 'workspace.writer.queued', {
+        reason: 'holder_requires_attention',
+        semantic: {
+          correlation: {
+            blocker_run_id: 'run-0',
+            blocker_project_id: 'project-0',
+            blocker_reason: 'unknown_tool_outcome',
+          },
+        },
+      })
+    );
+    expect(blocked.runs['run-1'].writerWait).toEqual({
+      holderNeedsAttention: true,
+      blockerProjectId: 'project-0',
+    });
+
+    const attempt = reduceProjectView(
+      blocked,
+      writer(3, 'run.attempt_created', {})
+    );
+    expect(attempt.runs['run-1'].writerWait).toBe(
+      blocked.runs['run-1'].writerWait
+    );
+
+    const acquired = reduceProjectView(
+      attempt,
+      writer(4, 'workspace.writer.acquired', { waited: true })
+    );
+    expect(acquired.runs['run-1'].writerWait).toBeNull();
+  });
+
   it('continues updating canonical lifecycle timestamps after legacy replay', () => {
     const running = normalizeEvent(
       event({ event_type: 'run.running', legacy_step: null })
@@ -1602,7 +1660,7 @@ describe('projector pipeline', () => {
   });
 
   it.each([
-    ['run.deadline_reached', 'failed'],
+    ['run.deadline_reached', 'timed_out'],
     ['runtime.interrupted', 'interrupted'],
     ['approval.cancelled', 'interrupted'],
   ] as const)('projects %s as the terminal status %s', (eventType, status) => {

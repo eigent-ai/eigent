@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { runDomainEventHub, runProjectionStore } from '@/lib/runEvents';
+import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import {
   forgetRejectedTriggerRun,
   trackTriggerExecutionRun,
@@ -21,7 +22,7 @@ import { closeSSEConnectionsForTasks, useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { setConnectionConfig } from '@/store/connectionStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
-import { ChatTaskStatus } from '@/types/constants';
+import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   auth: {} as any,
@@ -556,6 +557,46 @@ describe('Fresh Space admission at actual HTTP delivery', () => {
     expect(project.metadata.modelSelection).toBe(selection);
     expect(project.metadata.spaceModelAdmissionRunId).toBeNull();
     expect(project.metadata.spaceModelDefaultPending).toBe(false);
+  });
+
+  it('keeps the error receipt instead of a completed empty task when admission is refused', async () => {
+    await useActualTransport();
+    // A Session after an interruption keeps its pinned model; only the Brain
+    // refuses the new task, so the awaited admission aborts the transport.
+    project.metadata = {
+      modelSelection: { modelType: 'cloud', cloud_model_type: 'global' },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              detail: {
+                code: 'project_run_active',
+                message: 'Another Run in this Session must finish first.',
+                run_id: 'interrupted-run',
+              },
+            }),
+            { status: 409, headers: { 'content-type': 'application/json' } }
+          )
+      )
+    );
+
+    await expect(start()).rejects.toMatchObject({
+      code: 'project_run_active',
+    });
+
+    const task = chat.getState().tasks[request().run_id];
+    expect(task).toMatchObject({
+      isPending: false,
+      status: ChatTaskStatus.FINISHED,
+    });
+    expect(task.messages).toEqual([
+      expect.objectContaining({ role: 'user', content: 'fixture question' }),
+      expect.objectContaining({ role: 'agent', step: AgentStep.ERROR }),
+    ]);
+    expect(getSessionNavLeadPresentation(task).kind).toBe('error');
   });
 
   it('retains an unknown-ACK receipt and refuses to blindly create another Run', async () => {

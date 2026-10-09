@@ -13,6 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import i18n from 'i18next';
+import {
+  ERROR_DEPTH_LIMIT,
+  ERROR_NODE_LIMIT,
+  ERROR_TEXT_LIMIT,
+  ownErrorField,
+  parseErrorLiteral,
+} from './errorEnvelope';
 
 export type UsageReason =
   | 'credits'
@@ -32,6 +39,7 @@ export type ErrorReason =
   | 'request'
   | 'model-restricted'
   | 'model-unavailable'
+  | 'thinking-effort'
   | 'task';
 export interface ErrorContext {
   /** Routing selected for this request, never inferred from provider wording. */
@@ -55,6 +63,7 @@ const copyKeys: Record<ErrorReason, string> = {
   request: 'chat.notice-request',
   'model-restricted': 'chat.notice-model-restricted',
   'model-unavailable': 'chat.notice-model-unavailable',
+  'thinking-effort': 'chat.notice-thinking-effort',
   task: 'chat.notice-task',
 };
 
@@ -68,11 +77,29 @@ export const isUsageReason = (reason: ErrorReason): reason is UsageReason =>
     'model-access',
     'service',
   ].includes(reason);
+/** Status-level classifications that a more specific signal may refine. */
+export const isRefinableReason = (reason: ErrorReason) =>
+  ['task', 'request', 'model-unavailable', 'rate-limit'].includes(reason);
 
 function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object'
-    ? (value as Record<string, unknown>)
-    : {};
+  const result: Record<string, unknown> = Object.create(null);
+  for (const key of [
+    'usageReason',
+    'response',
+    'data',
+    'detail',
+    'error',
+    'message',
+    'text',
+    'code',
+    'reason',
+    'type',
+    'status',
+    'cause',
+  ]) {
+    result[key] = ownErrorField(value, key);
+  }
+  return result;
 }
 
 /** Read structured envelopes first. Legacy Python repr is only matched, never evaluated. */
@@ -81,7 +108,10 @@ export function classifyError(
   context: ErrorContext = {}
 ): ErrorReason {
   const outer = record(value);
-  if (typeof outer.usageReason === 'string' && outer.usageReason in copyKeys)
+  if (
+    typeof outer.usageReason === 'string' &&
+    Object.prototype.hasOwnProperty.call(copyKeys, outer.usageReason)
+  )
     return outer.usageReason as ErrorReason;
   const response = record(outer.response);
   const body = record(response.data ?? value);
@@ -104,13 +134,17 @@ export function classifyError(
     parts.some((part) => typeof part === 'string' && part === errorCopy(reason))
   );
   if (localized) return localized;
-  const code = String(body.code ?? detail.code ?? error.code ?? '');
-  const reason = String(
+  const scalar = (value: unknown) =>
+    typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+  const code = scalar(body.code ?? detail.code ?? error.code);
+  const reason = scalar(
     body.reason ?? detail.reason ?? error.type ?? body.type ?? ''
   );
   const cloud = context.modelType === 'cloud';
   const ownProvider = context.modelType === 'custom';
-  const status = Number(outer.status ?? response.status ?? body.status ?? code);
+  const status = Number(
+    scalar(outer.status ?? response.status ?? body.status ?? code)
+  );
 
   // Gateway entitlement and spend-limit signals are distinct from upstream quota.
   if (reason === 'managed_service_unavailable') return 'service';
@@ -135,6 +169,7 @@ export function classifyError(
     return 'model-access';
   if (reason === 'trial_daily_exhausted') return 'trial-daily';
   if (reason === 'trial_total_exhausted') return 'trial-total';
+  if (code === 'unsupported_thinking_effort') return 'thinking-effort';
 
   const providerQuota =
     /insufficient_quota|insufficient[_ ]balance|余额不足|额度已用尽|quota.*exceed|credit.*(exhaust|insufficient)|run out of credit/.test(
@@ -166,6 +201,11 @@ export function classifyError(
   if (status === 400 || /error code: 400\b/.test(text)) return 'request';
   if (status === 403 || /error code: 403\b/.test(text))
     return 'model-unavailable';
+  // A provider's own 5xx reply. A bare status may come from the local backend.
+  if (/error code: 5\d\d\b/.test(text)) return 'model-unavailable';
+  // The backend's code for a provider failure it can retry, such as a gateway
+  // page that carries no status in its text.
+  if (reason === 'model_transport_error') return 'model-unavailable';
   return 'task';
 }
 
@@ -176,4 +216,131 @@ export function isLegacyTaskError(content: string): boolean {
       content.trimStart()
     ) || /^Errore:\s*(?:Error code:|HTTP \d{3}|\{)/.test(content.trimStart())
   );
+}
+
+/** Untrusted diagnostics are never copy. Ordinary local notification text is allowed. */
+export function isRawErrorMessage(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    (value.length > 1000 ||
+      /error code:|HTTP \d{3}|\{\s*["']|\[object Object\]|<\/?[a-z][^>]*>|\b(?:api[_ -]?key|authorization|secret|token)\s*[:=]/i.test(
+        value
+      ))
+  );
+}
+
+/**
+ * Presentation only: unwrap known transport fields without changing the incident
+ * classifier (which also owns admission). Never evaluate Python repr or walk
+ * arbitrary diagnostic fields. Bounds apply to both parsing and traversal.
+ */
+export function errorPresentationReason(
+  value: unknown,
+  context: ErrorContext = {}
+): ErrorReason {
+  const pending: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
+  const seen = new Set<unknown>();
+  let fallback: ErrorReason = 'task';
+  let messageReason: ErrorReason | null = null;
+  let remaining = ERROR_NODE_LIMIT;
+  const signal = (code: unknown): ErrorReason => {
+    if (typeof code !== 'string' && typeof code !== 'number') return 'task';
+    switch (String(code)) {
+      case 'trial_daily_exhausted':
+        return 'trial-daily';
+      case 'trial_total_exhausted':
+        return 'trial-total';
+      case 'model_plan_required':
+        return 'model-access';
+      case 'managed_service_unavailable':
+        return 'service';
+      case '20':
+      case '22':
+      case 'budget_exceeded':
+      case 'eigent_low_balance_model_restricted':
+      case 'insufficient_quota':
+        return classifyError({ reason: String(code), code }, context);
+      default:
+        return 'task';
+    }
+  };
+  while (pending.length && remaining-- > 0) {
+    const { value: current, depth } = pending.shift()!;
+    if (depth > ERROR_DEPTH_LIMIT || current == null || seen.has(current))
+      continue;
+    seen.add(current);
+    let reason: ErrorReason = 'task';
+    if (typeof current === 'string') {
+      if (current.length > ERROR_TEXT_LIMIT) continue;
+      // Only strip complete, recognized transport/display prefixes. The rest
+      // must parse as one literal; never search its unknown fields for codes.
+      const text = current
+        .trim()
+        .replace(
+          /^❌\s*\*\*(?:Error|Fehler|Erreur|Ошибка|错误|錯誤|エラー|오류|خطأ)\*\*\s*[:：]\s*/,
+          ''
+        )
+        .replace(/^Errore:\s*(?=Error code:|HTTP \d{3}|\{)/, '')
+        .replace(
+          /^Run (?:admission did not return an event stream: |stream returned )/,
+          ''
+        );
+      const prefix =
+        /^(?:Error code:\s*(\d{3})\s*-\s*|(?:HTTP\s+)?(\d{3}):\s*)/.exec(text);
+      const literal = prefix ? text.slice(prefix[0].length) : text;
+      if (/^[{["']/.test(literal)) {
+        try {
+          const parsed = parseErrorLiteral(literal, depth);
+          pending.push({ value: parsed, depth: depth + 1 });
+          if (prefix) {
+            const statusReason = classifyError(
+              { status: Number(prefix[1] ?? prefix[2]), message: prefix[0] },
+              context
+            );
+            if (statusReason !== 'task') fallback = statusReason;
+          }
+        } catch {
+          // Malformed, oversized, or overly nested diagnostics stay generic.
+        }
+        continue;
+      }
+      // Braces in unrecognized prefixes / malformed literals are diagnostics,
+      // not natural-language evidence of a billing cause.
+      if (/[{}\[\]]/.test(literal)) continue;
+      reason = classifyError(literal, context);
+      if (prefix && reason === 'task')
+        reason = classifyError(
+          { status: Number(prefix[1] ?? prefix[2]), message: prefix[0] },
+          context
+        );
+    } else if (typeof current === 'object') {
+      const item = record(current);
+      for (const code of [item.reason, item.type, item.code]) {
+        const matched = signal(code);
+        if (matched !== 'task') return matched;
+      }
+      // Read status independently: nested objects and large messages must not
+      // be coerced into strings by the legacy classifier.
+      const statusReason = classifyError(
+        { status: item.status, code: item.code },
+        context
+      );
+      if (statusReason !== 'task') fallback = statusReason;
+      for (const field of [
+        'response',
+        'data',
+        'detail',
+        'error',
+        'message',
+        'text',
+        'cause',
+      ]) {
+        if (item[field] != null && pending.length < ERROR_NODE_LIMIT)
+          pending.push({ value: item[field], depth: depth + 1 });
+      }
+    }
+    if (!isRefinableReason(reason)) messageReason ??= reason;
+    if (reason !== 'task') fallback = reason;
+  }
+  return messageReason ?? fallback;
 }

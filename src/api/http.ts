@@ -12,11 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { resolveEventStreamFetch } from '@/api/brainStreamRelay';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { createHost } from '@/host/createHost';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { reportError } from '@/lib/notifyError';
-import { errorCopy, isUsageReason } from '@/lib/usageErrors';
+import { sanitizeResponseError } from '@/lib/responseError';
 import { getAuthStore } from '@/store/authStore';
 import {
   getConnectionConfig,
@@ -123,13 +124,14 @@ export function resetBaseURL(): void {
   setConnectionConfig({ brainEndpoint: '' });
 }
 
-export async function getBaseURL() {
+export async function getBaseURL(beforeResolve?: () => void) {
   const cfg = getConnectionConfig();
   if (cfg.brainEndpoint) {
     return cfg.brainEndpoint.replace(/\/$/, '');
   }
   // Electron: get port from IPC
   const port = await createHost().ipcRenderer?.invoke('get-backend-port');
+  beforeResolve?.();
   if (port && port > 0) {
     const resolved = `http://localhost:${port}`;
     setConnectionConfig({ brainEndpoint: resolved });
@@ -146,6 +148,8 @@ export async function getBaseURL() {
 }
 
 export type FetchRequestOptions = {
+  /** Optional lifetime fence for bounded control receipts. */
+  assertCurrent?: () => void;
   signal?: AbortSignal;
   expectedAccountKey?: string;
   /** Revalidate mutable admission context after asynchronous header lookup. */
@@ -180,7 +184,7 @@ async function fetchRequest(
   customHeaders: Record<string, string> = {},
   requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
-  const baseURL = await getBaseURL();
+  const baseURL = await getBaseURL(requestOptions.assertCurrent);
   const fullUrl = `${baseURL}${url}`;
   assertRequestAccount(requestOptions);
   const headers = await buildBrainHeaders(url, customHeaders);
@@ -232,6 +236,7 @@ async function handleResponse(
   try {
     const res = await responsePromise;
     assertRequestAccount(requestOptions);
+    requestOptions.assertCurrent?.();
     persistSessionIdFromResponse(res);
     if (res.status === 204) {
       return { code: 0, text: '' };
@@ -261,6 +266,7 @@ async function handleResponse(
     }
     const resData = await res.json();
     assertRequestAccount(requestOptions);
+    requestOptions.assertCurrent?.();
     if (!resData) {
       return null;
     }
@@ -307,13 +313,18 @@ async function handleResponse(
         typeof msg === 'string' ? msg : JSON.stringify(msg)
       );
       err.status = res.status;
-      err.response = { data: resData, status: res.status };
+      err.response = {
+        data: resData,
+        status: res.status,
+        headers: res.headers,
+      };
       throw err;
     }
 
     return resData;
   } catch (err: any) {
     assertRequestAccount(requestOptions);
+    requestOptions.assertCurrent?.();
     if (err?.name === 'AbortError') {
       throw err;
     }
@@ -323,11 +334,7 @@ async function handleResponse(
       { modelType: requestData?.api_url === 'cloud' ? 'cloud' : undefined },
       requestAccount
     );
-    if (isUsageReason(reason)) {
-      // Keep the response for diagnostics/classification, but sanitize catch-handler copy.
-      err.message = errorCopy(reason);
-      err.usageReason = reason;
-    }
+    err = sanitizeResponseError(err, reason);
 
     console.error('[fetch error]:', err);
 
@@ -481,12 +488,20 @@ export async function sseTransport(
       : options.body
         ? JSON.stringify(options.body)
         : undefined;
+  const method = options.method || 'POST';
 
-  const requestFetch = window.fetch;
+  // Long-lived streams must not hold the renderer's per-host connections:
+  // in Electron, Brain event streams are relayed by the main process.
+  const requestFetch = await resolveEventStreamFetch(
+    fullUrl,
+    method,
+    window.fetch
+  );
+  assertRequestAccount(options);
   let guardRejected = false;
   let guardError: unknown;
   await fetchEventSource(fullUrl, {
-    method: options.method || 'POST',
+    method,
     openWhenHidden: options.openWhenHidden ?? true,
     signal: options.signal,
     headers,
@@ -505,7 +520,7 @@ export async function sseTransport(
             }
             return requestFetch(input, init);
           }
-        : undefined,
+        : requestFetch,
     onmessage(event) {
       assertRequestAccount(options);
       if (!options.signal?.aborted) return options.onmessage(event);

@@ -253,3 +253,39 @@ describe('AgentMessageCard feedback', () => {
     });
   });
 });
+
+it.each(['service', 'provider-credits'] as const)(
+  'preserves request-time %s ownership when rendering a legacy quota failure',
+  (errorReason) => {
+    const { container } = render(
+      <AgentMessageCard
+        id={`failure-${errorReason}`}
+        content="❌ **Error**: {'error': {'type': 'insufficient_quota'}}"
+        errorReason={errorReason}
+      />
+    );
+    expect(container.querySelector('[data-task-error]')).toHaveAttribute(
+      'data-task-error',
+      errorReason
+    );
+    expect(container.textContent).not.toContain('insufficient_quota');
+  }
+);
+
+it('refines a generic legacy reason without displaying the original dictionary', () => {
+  const { container, unmount } = render(
+    <AgentMessageCard
+      id="trial-failure"
+      content={
+        '❌ **Error**: {"detail":{"code":"trial_total_exhausted","secret":"synthetic-secret"}}'
+      }
+      errorReason="task"
+    />
+  );
+  expect(container.querySelector('[data-task-error]')).toHaveAttribute(
+    'data-task-error',
+    'trial-total'
+  );
+  expect(container.textContent).not.toContain('synthetic-secret');
+  unmount();
+});

@@ -12,12 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { TERMINAL_RUN_STATUSES } from './runSummary';
+import { runTerminalReason } from '@/lib/runTerminalReason';
+import { isStoppedRunStatus, TERMINAL_RUN_STATUSES } from './runSummary';
 import type {
   CanonicalProjectEvent,
   ProjectedArtifact,
   ProjectedLegacyStep,
   ProjectedRun,
+  ProjectedWriterWait,
   ProjectorMode,
   ProjectViewState,
 } from './types';
@@ -37,7 +39,7 @@ const RUN_STATUS_BY_EVENT: Record<string, ProjectedRun['status']> = {
   'approval.cancelled': 'interrupted',
   'run.completed': 'completed',
   'run.failed': 'failed',
-  'run.deadline_reached': 'failed',
+  'run.deadline_reached': 'timed_out',
   'run.cancelled': 'cancelled',
   'run.interrupted': 'interrupted',
   'runtime.interrupted': 'interrupted',
@@ -324,6 +326,22 @@ export function completeProjectViewResync(
   };
 }
 
+/** Read why a `workspace.writer.queued` Run cannot start writing yet. */
+export function projectWriterWait(
+  payload: Record<string, unknown>
+): ProjectedWriterWait {
+  const semantic = payload.semantic as Record<string, unknown> | undefined;
+  const correlation = semantic?.correlation as
+    Record<string, unknown> | undefined;
+  const blockerProjectId = correlation?.blocker_project_id;
+  return {
+    holderNeedsAttention: payload.reason === 'holder_requires_attention',
+    ...(typeof blockerProjectId === 'string' && blockerProjectId
+      ? { blockerProjectId }
+      : {}),
+  };
+}
+
 /** Update Run facts only; callers own event acceptance and history cursors. */
 export function reduceProjectedRun(
   previousRun: ProjectedRun | undefined,
@@ -349,9 +367,13 @@ export function reduceProjectedRun(
   const status =
     previousRun &&
     ((TERMINAL_RUN_STATUSES.has(previousRun.status) &&
-      ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
-        candidateStatus
-      )) ||
+      [
+        'pending',
+        'running',
+        'waiting_for_user',
+        'cancelling',
+        'interrupted',
+      ].includes(candidateStatus)) ||
       (event.source === 'canonical'
         ? event.runVersion < previousRun.runVersion
         : previousRun.runVersion > 0))
@@ -364,6 +386,30 @@ export function reduceProjectedRun(
           candidateStatus === 'running'
         ? previousRun.status
         : candidateStatus;
+  let terminalReason = previousRun?.terminalReason ?? null;
+  let terminalDetail = previousRun?.terminalDetail ?? null;
+  const acceptsLifecycle =
+    lifecycleStatus &&
+    event.source === 'canonical' &&
+    event.runVersion >= (previousRun?.runVersion ?? 0) &&
+    !(
+      previousRun &&
+      TERMINAL_RUN_STATUSES.has(previousRun.status) &&
+      status !== candidateStatus
+    );
+  // Mirror the Brain: a stop keeps the cause of the transition that entered
+  // its status, and leaving a stopped status clears it.
+  if (acceptsLifecycle) {
+    if (!isStoppedRunStatus(status)) {
+      terminalReason = terminalDetail = null;
+    } else if (status !== previousRun?.status || !terminalReason) {
+      terminalReason = runTerminalReason(event.payload.terminal_reason);
+      terminalDetail =
+        terminalReason && typeof event.payload.terminal_detail === 'string'
+          ? event.payload.terminal_detail
+          : null;
+    }
+  }
   return {
     ...previousRun,
     // An active snapshot's elapsed total is measured at its checkpoint. Once
@@ -382,6 +428,8 @@ export function reduceProjectedRun(
       : {}),
     runId: event.runId,
     status,
+    terminalReason,
+    terminalDetail,
     // Legacy ChatStep IDs are global database IDs, not Run-local sequences.
     // They must never move the canonical Run gap-detection watermark.
     lastSequence:
@@ -400,12 +448,20 @@ export function reduceProjectedRun(
         ? event.runVersion < previousRun.runVersion
         : previousRun.runVersion > 0 ||
           // Cleanup receipts cannot extend a settled legacy turn's duration.
-          (status === previousRun.status &&
-            (TERMINAL_RUN_STATUSES.has(status) || status === 'interrupted')))
+          (status === previousRun.status && isStoppedRunStatus(status)))
         ? previousRun.updatedAt
         : event.createdAt,
     origin: previousRun?.origin ?? event.origin ?? null,
     resumeBlockedReason: previousRun?.resumeBlockedReason ?? null,
+    // The latest writer fact wins: queued names the wait, any other ends it.
+    ...(event.eventType.startsWith('workspace.writer.')
+      ? {
+          writerWait:
+            event.eventType === 'workspace.writer.queued'
+              ? projectWriterWait(event.payload)
+              : null,
+        }
+      : {}),
   };
 }
 

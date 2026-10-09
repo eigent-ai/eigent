@@ -15,7 +15,10 @@
 import { useHost } from '@/host';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
-import type { ProjectedRun } from '@/lib/projector';
+import type {
+  ProjectedRun,
+  ProjectedUnsafeResumeBlocker,
+} from '@/lib/projector';
 import {
   runEventIngressRegistry,
   runProjectionStore,
@@ -26,6 +29,7 @@ import {
   resumeRequestsRevision,
   subscribeResumeRequests,
 } from '@/lib/runResumeRequest';
+import type { RunTerminalReason } from '@/lib/runTerminalReason';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import {
   useCallback,
@@ -42,6 +46,7 @@ export interface DurableRunSummary {
   updated_at: number;
   origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
+  terminalReason?: RunTerminalReason | null;
   /** Local retry authority; the canonical Run remains pending. */
   retry_request_id?: string;
   latest_attempt?: {
@@ -49,6 +54,8 @@ export interface DurableRunSummary {
     status: string;
     resume_request_id?: string;
   } | null;
+  /** Tool calls with unknown outcomes; Resume is refused while any remain. */
+  unsafeResumeBlockers?: ProjectedUnsafeResumeBlocker[];
 }
 
 type RunsByProject = Record<string, DurableRunSummary | null>;
@@ -96,6 +103,8 @@ function projectedRunToDurableSummary(
     updated_at: Date.parse(run.updatedAt) / 1000,
     origin: run.origin ?? undefined,
     resume_blocked_reason: run.resumeBlockedReason,
+    terminalReason: run.terminalReason,
+    unsafeResumeBlockers: run.unsafeResumeBlockers,
     latest_attempt: run.latestAttempt
       ? {
           attempt_number: run.latestAttempt.attemptNumber,

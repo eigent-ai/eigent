@@ -1070,6 +1070,72 @@ def test_cloud_history_restore_is_read_only_and_does_not_echo_to_outbox(
         )
 
 
+def test_cloud_restore_takes_status_from_the_latest_synced_stop_event(
+    journal,
+):
+    synced = [
+        ("run-timed-out", 1, "message.created", {"content": "hello"}),
+        (
+            "run-timed-out",
+            2,
+            "run.deadline_reached",
+            {"reason": "persisted_run_deadline_reached"},
+        ),
+        ("run-unstopped", 1, "message.created", {"content": "hello"}),
+    ]
+    journal.import_cloud_project_page(
+        project_id="project-cloud",
+        after_cursor=0,
+        next_cursor=len(synced),
+        events=[
+            CloudRunEventReplica(
+                event_id=f"cloud-event-{cursor}",
+                project_id="project-cloud",
+                run_id=run_id,
+                run_sequence=sequence,
+                run_version=sequence,
+                cloud_cursor=cursor,
+                event_type=event_type,
+                payload=payload,
+                legacy_step=None,
+                created_at=10.0 + cursor,
+            )
+            for cursor, (run_id, sequence, event_type, payload) in enumerate(
+                synced, start=1
+            )
+        ],
+    )
+    # The Cloud still projects a reached deadline as failed, and the last
+    # Run has no synced events, like an older replica.
+    journal.reconcile_cloud_project_runs(
+        project_id="project-cloud",
+        current_cursor=len(synced),
+        runs=[
+            CloudRunReplica(
+                run_id=run_id,
+                status="failed",
+                expected_next_run_sequence=3,
+                updated_at=20.0,
+            )
+            for run_id in ("run-timed-out", "run-unstopped", "run-no-events")
+        ],
+    )
+
+    assert {
+        run.run_id: (run.status, run.terminal_reason, run.terminal_detail)
+        for run in journal.list_all_runs()
+    } == {
+        "run-timed-out": (
+            "timed_out",
+            "deadline_exceeded",
+            "persisted_run_deadline_reached",
+        ),
+        # Without a stop event the Cloud aggregate status still decides.
+        "run-unstopped": ("failed", None, None),
+        "run-no-events": ("failed", None, None),
+    }
+
+
 def test_cloud_history_restore_rejects_cursor_gaps(journal):
     with pytest.raises(IdempotencyConflictError, match="not contiguous"):
         journal.import_cloud_project_page(

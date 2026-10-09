@@ -171,3 +171,57 @@ def test_private_recovery_pin_schema_excludes_credentials(admitted):
         SessionModelSelection.model_validate(
             {**selection, "api_key": "synthetic-secret"}
         )
+
+
+@pytest.mark.asyncio
+async def test_recovery_keeps_the_provider_alias_the_user_picked(tmp_path):
+    selection = {
+        "modelType": "custom",
+        "provider_id": 7,
+        "model_platform": "grok",
+        "model_type": "grok-4",
+    }
+    with SQLiteRunJournal(tmp_path / "alias.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="alias-run", project_id="session-1", status="pending"
+        )
+        # The Run binding receives the normalized alias of the same provider.
+        template = LegacyEnvironmentImporter().build_template(
+            model_platform="openai-compatible-model",
+            model_type="grok-4",
+            auth_source=None,
+            requested_effort=None,
+            allow_local_system=False,
+            session_mode="single-agent",
+        )
+        environment = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="alias-run",
+            space_id="space-1",
+            working_directory=tmp_path,
+            created_by="fixture",
+            template=template,
+        )
+        journal.create_run_attempt(
+            "alias-run",
+            request_id="alias-request",
+            reason="initial_execution",
+            activate=False,
+            environment=environment.binding,
+        )
+        await chat_controller._record_canonical_user_message(
+            journal,
+            run_context=SimpleNamespace(
+                project_id="session-1", run_id="alias-run"
+            ),
+            request_id="alias-request",
+            content="Synthetic question",
+            source="chat",
+            attaches=[],
+            session_model_selection={
+                "space_id": "space-1",
+                "selection": selection,
+            },
+        )
+        assert accepted_session_model(
+            journal, space_id="space-1", project_id="session-1"
+        ) == {"run_id": "alias-run", "selection": selection}

@@ -21,8 +21,15 @@ import {
   putCachedProject,
   type CachedTask,
 } from '@/lib/projectCache';
+import { selectPendingHumanControlCount } from '@/lib/projector/control';
+import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
-import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import {
+  getSessionNavLeadFromRunStatus,
+  getSessionNavLeadPresentation,
+  selectSessionNavRun,
+  SESSION_NAV_IDLE_LEAD,
+} from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import {
   recoverSpaceSessionModel,
@@ -30,7 +37,10 @@ import {
 } from '@/lib/spaceModelBinding';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import { executionScope } from '@/service/executionApi';
-import { fetchProjectRuns } from '@/service/projectRunsApi';
+import {
+  fetchProjectRuns,
+  projectRunSummaries,
+} from '@/service/projectRunsApi';
 import type { ServerProject } from '@/service/spaceApi';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import {
@@ -50,18 +60,24 @@ import { create } from 'zustand';
 import { getAuthStore } from './authStore';
 import {
   closeIdleSSEConnectionsForTasks,
+  countIdleRelayedSSEConnections,
   createChatStoreInstance,
   hasActiveSSEConnection,
+  hasSSETransportForTasks,
+  UNSUCCESSFUL_RUN_STATUSES,
   VanillaChatStore,
   waitForIdleSSEDisplayTail,
   type DurableRunDisplayStatus,
 } from './chatStore';
 import { usePageTabStore } from './pageTabStore';
 import {
+  peekProjectEventStore,
   releaseProjectEventStore,
   resetProjectEventStore,
+  subscribeProjectEventStores,
 } from './projectEventStore';
 import {
+  getVisibleProjectMetasForSpace,
   projectMetaFromServer,
   useSpaceStore,
   type SpaceProjectMeta,
@@ -92,6 +108,63 @@ export async function waitForPendingStaleRuntimeEviction(
     if (!eviction) return;
     await eviction;
   }
+}
+
+// Projects whose idle streams are being released; one release at a time each.
+const idleStreamReclaimsInFlight = new Set<string>();
+
+// Idle streams relayed by the main process hold no renderer connection, and
+// keeping one lets the next follow-up reach its warm runtime. They stay open
+// up to this many; beyond that they are released like any other idle stream.
+const MAX_KEPT_IDLE_RELAYED_STREAMS = 16;
+
+const ACTIVE_RUN_STATUSES = new Set<string>([
+  'pending',
+  'running',
+  'waiting_for_user',
+  'cancelling',
+]);
+
+/**
+ * Task ids of a Project once none of its work can use a legacy `/chat`
+ * stream any more, or null while some of it might: a running, admitting or
+ * queued Run, or an approval or question waiting for the user.
+ */
+function getIdleStreamTaskIds(project: Project): string[] | null {
+  if (project.queuedMessages?.length) return null;
+  const states = Object.values(project.chatStores).map((store) =>
+    store.getState()
+  );
+  const tasks = new Map(states.flatMap((state) => Object.entries(state.tasks)));
+  for (const task of tasks.values()) {
+    if (
+      task.isPending ||
+      task.isTakeControl ||
+      task.activeAsk ||
+      (task.status !== ChatTaskStatus.FINISHED && task.messages.length > 0)
+    )
+      return null;
+  }
+  const isFinished = (runId: string) =>
+    tasks.get(runId)?.status === ChatTaskStatus.FINISHED;
+  // A warm follow-up names its Run before Brain confirms it on the stream.
+  if (states.some((state) => state.nextTaskId && !isFinished(state.nextTaskId)))
+    return null;
+  // The legacy END may precede the canonical terminal of a Run this window
+  // finished; any other active Run may still need the Project's stream.
+  const runs = Object.values(
+    runProjectionStore.getProject(project.id)?.runs ?? {}
+  );
+  if (
+    runs.some(
+      (run) => ACTIVE_RUN_STATUSES.has(run.status) && !isFinished(run.runId)
+    )
+  )
+    return null;
+  const control = peekProjectEventStore(project.id)?.getSnapshot().control;
+  if (control && selectPendingHumanControlCount(control) > 0) return null;
+  const taskIds = [...tasks.keys()];
+  return hasActiveSSEConnection(taskIds) ? null : taskIds;
 }
 
 /**
@@ -128,6 +201,7 @@ const DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);
@@ -135,6 +209,7 @@ const TERMINAL_DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);
@@ -182,7 +257,10 @@ const cachedTaskProjectionIsIncomplete = (
   // seeded user prompt; its freshness anchors still matched SQLite, so it
   // suppressed authoritative replay forever. Treat that shape as a partial
   // projection for both successful and failed Runs.
-  if (localRunStatus === 'completed' || localRunStatus === 'failed') {
+  if (
+    localRunStatus === 'completed' ||
+    UNSUCCESSFUL_RUN_STATUSES.has(localRunStatus!)
+  ) {
     return !messages.some(
       (message) =>
         message !== null &&
@@ -503,11 +581,27 @@ interface ProjectStore {
    * On an active-project transition, retry eviction for every stale runtime
    * except the Project being activated. This includes older entries whose
    * backend status/retirement request failed during an earlier transition.
+   * It also releases the idle streams of every other Project
+   * (`reclaimIdleStreams`).
    * Call this immediately before any direct write to `activeProjectId` so all
    * transition paths (`setActiveProject`, `createProject`, `replayProject`,
    * `loadProjectFromHistory`) honour the stale-eviction contract.
    */
   _evictStaleOnTransition: (nextProjectId: string | null) => void;
+  /**
+   * Close the idle legacy `/chat` streams of Projects other than
+   * `keepProjectId` (all loaded Projects, or only `projectIds`) once their
+   * displayed frames have drained. A Project keeps its streams while any Run
+   * is running, being admitted or queued, or waits for an approval or answer.
+   * The runtime state stays loaded; Brain's idle consumer is retired by the
+   * next follow-up admission, which then starts cold with its own stream.
+   * Streams relayed by the main process are kept, up to a small budget,
+   * because they do not occupy the renderer's connections.
+   */
+  reclaimIdleStreams: (
+    keepProjectId: string | null,
+    projectIds?: readonly string[]
+  ) => void;
 
   // Project management
   /**
@@ -749,7 +843,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     set((state) => ({
       navLeadByProjectId: {
         ...state.navLeadByProjectId,
-        [projectId]: lead,
+        [projectId]: resolveProjectNavLead(state, projectId, lead),
       },
     })),
 
@@ -769,7 +863,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             : Object.keys(project.chatStores ?? {}).length > 0)
         );
         if (!hasLiveStore) {
-          next[projectId] = lead;
+          next[projectId] = resolveProjectNavLead(state, projectId, lead);
         }
       }
       return { navLeadByProjectId: next };
@@ -1527,6 +1621,56 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         }
       });
     }
+
+    get().reclaimIdleStreams(nextProjectId);
+  },
+
+  reclaimIdleStreams: (keepProjectId, projectIds) => {
+    const state = get();
+    const keepRelayed =
+      countIdleRelayedSSEConnections() < MAX_KEPT_IDLE_RELAYED_STREAMS;
+    for (const projectId of projectIds ?? Object.keys(state.projects)) {
+      // Stale runtimes are released together with their consumer by
+      // `_evictStaleOnTransition`.
+      if (
+        projectId === keepProjectId ||
+        state.staleProjectIds.has(projectId) ||
+        idleStreamReclaimsInFlight.has(projectId)
+      )
+        continue;
+      const project = state.projects[projectId];
+      const taskIds = project ? getIdleStreamTaskIds(project) : null;
+      if (!taskIds || !hasSSETransportForTasks(taskIds, { keepRelayed }))
+        continue;
+
+      idleStreamReclaimsInFlight.add(projectId);
+      void (async () => {
+        try {
+          // Let frames this window already received finish rendering.
+          await waitForIdleSSEDisplayTail(taskIds);
+          const latest = get();
+          const latestProject = latest.projects[projectId];
+          const latestTaskIds =
+            latestProject && latest.activeProjectId !== projectId
+              ? getIdleStreamTaskIds(latestProject)
+              : null;
+          if (
+            latestTaskIds === null ||
+            latestTaskIds.length !== taskIds.length ||
+            latestTaskIds.some((taskId) => !taskIds.includes(taskId))
+          )
+            return;
+          closeIdleSSEConnectionsForTasks(latestTaskIds, { keepRelayed });
+        } catch (error) {
+          console.warn(
+            '[ProjectStore] Kept idle Session streams after a failed check',
+            error
+          );
+        } finally {
+          idleStreamReclaimsInFlight.delete(projectId);
+        }
+      })();
+    }
   },
 
   removeProject: (
@@ -1815,6 +1959,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     );
 
     const cacheUserId = getAuthStore().user_id;
+    const hydrationAccountKey = getAccountEnvironmentKey(getAuthStore());
     const restored = get().projects[loadProjectId];
     if (
       (restored?.metadata?.spaceModelDefaultPending ||
@@ -1873,6 +2018,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       >();
       let localCanonicalUpdatedAt: number | null = null;
       try {
+        const hydrationProject = get().projects[loadProjectId];
+        const hydrationChatId = hydrationProject.activeChatId;
+        if (!hydrationChatId) return loadProjectId;
+        const hydrationChatStore = hydrationProject.chatStores[hydrationChatId];
         const localRunController = new AbortController();
         const localRunDeadline = setTimeout(
           () => localRunController.abort(),
@@ -1881,8 +2030,21 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         const localRuns = await fetchProjectRuns(
           loadProjectId,
           100,
-          localRunController.signal
+          localRunController.signal,
+          hydrationAccountKey
         ).finally(() => clearTimeout(localRunDeadline));
+        if (
+          getAccountEnvironmentKey(getAuthStore()) !== hydrationAccountKey ||
+          get().projects[loadProjectId]?.chatStores[hydrationChatId] !==
+            hydrationChatStore
+        )
+          return loadProjectId;
+        // Hydration and sidebar GETs share version arbitration. Preserve the
+        // checkpoint before projecting its status into the unversioned Task.
+        runProjectionStore.upsertRunSummaries(
+          loadProjectId,
+          projectRunSummaries(loadProjectId, localRuns)
+        );
         for (const run of localRuns?.runs ?? []) {
           if (run?.run_id) {
             if (
@@ -3411,21 +3573,14 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
 export const useProjectStore = projectStore;
 
-/**
- * Centralized live nav-lead subscription registry.
- *
- * For every Project that has an active chat store, subscribe to that chat
- * store and push the derived `SessionNavLeadPresentation` into
- * `navLeadByProjectId`. This makes the sidebar row icons react to live task
- * status changes (running → finished, etc.) without requiring each consumer
- * to subscribe to chat-store internals.
- *
- * The registry is reconciled whenever `projectStore.projects` changes (chat
- * store swap, project add/remove). Stale subscriptions are torn down.
- */
+/** Navigation is a read-only consumer of both canonical projections and ChatTask. */
 const navLeadSubscriptions = new Map<
   string,
-  { chatStore: VanillaChatStore; unsubscribe: () => void }
+  {
+    chatStore?: VanillaChatStore;
+    eventStore: ReturnType<typeof peekProjectEventStore>;
+    unsubscribe: () => void;
+  }
 >();
 
 const navLeadsEqual = (
@@ -3433,46 +3588,132 @@ const navLeadsEqual = (
   b: SessionNavLeadPresentation
 ) => !!a && a.kind === b.kind && a.Icon === b.Icon && a.spin === b.spin;
 
-const pushLiveNavLead = (projectId: string, chatStore: VanillaChatStore) => {
-  const chatState = chatStore.getState();
-  const activeTask = chatState.activeTaskId
-    ? chatState.tasks[chatState.activeTaskId]
-    : undefined;
-  if (!activeTask) return;
-  const lead = getSessionNavLeadPresentation(activeTask);
-  const current = projectStore.getState().navLeadByProjectId[projectId];
+function resolveProjectNavLead(
+  state: ProjectStore,
+  projectId: string,
+  fallback: SessionNavLeadPresentation
+): SessionNavLeadPresentation {
+  const project = state.projects[projectId];
+  const chatStore = project?.activeChatId
+    ? project.chatStores[project.activeChatId]
+    : Object.values(project?.chatStores ?? {})[0];
+  const chatState = chatStore?.getState();
+  const taskId = chatState?.activeTaskId;
+  const task = taskId ? chatState?.tasks[taskId] : undefined;
+  const loading = state.historyLoadingProjectIds[projectId];
+  const run = selectSessionNavRun(
+    projectId,
+    [
+      runProjectionStore.getProject(projectId),
+      peekProjectEventStore(projectId)?.getSnapshot().view,
+    ],
+    task && !loading ? taskId : undefined
+  );
+  if (run) {
+    if (
+      task &&
+      taskId === run.runId &&
+      !loading &&
+      durableRunDisplayStatus(run.status)
+    ) {
+      return getSessionNavLeadPresentation({
+        ...task,
+        durableRunStatus: durableRunDisplayStatus(run.status),
+      });
+    }
+    const lead = getSessionNavLeadFromRunStatus(run.status);
+    if (lead) return lead;
+  }
+  if (task && !loading) return getSessionNavLeadPresentation(task);
+  return fallback;
+}
+
+const pushLiveNavLead = (projectId: string) => {
+  const state = projectStore.getState();
+  if (!navLeadSubscriptions.has(projectId)) return;
+  const current = state.navLeadByProjectId[projectId];
+  const lead = resolveProjectNavLead(
+    state,
+    projectId,
+    current ?? SESSION_NAV_IDLE_LEAD
+  );
   if (navLeadsEqual(current, lead)) return;
-  projectStore.getState().setProjectNavLead(projectId, lead);
+  state.setProjectNavLead(projectId, lead);
 };
 
-const reconcileNavLeadSubscriptions = (state: ProjectStore) => {
-  const seen = new Set<string>();
-  for (const [projectId, project] of Object.entries(state.projects)) {
-    const activeChatId = project.activeChatId;
-    const chatStore = activeChatId
-      ? project.chatStores[activeChatId]
-      : Object.values(project.chatStores ?? {})[0];
-    if (!chatStore) continue;
-    seen.add(projectId);
-
-    const existing = navLeadSubscriptions.get(projectId);
-    if (existing?.chatStore === chatStore) continue;
+// Navigation only peeks at event stores, so cold or evicted Sessions never
+// allocate one; the registry subscription below rebinds as stores come and go.
+const syncNavLeadSubscription = (state: ProjectStore, projectId: string) => {
+  const project = state.projects[projectId];
+  const chatStore = project?.activeChatId
+    ? project.chatStores[project.activeChatId]
+    : Object.values(project?.chatStores ?? {})[0];
+  const eventStore = peekProjectEventStore(projectId);
+  const existing = navLeadSubscriptions.get(projectId);
+  if (
+    !existing ||
+    existing.chatStore !== chatStore ||
+    existing.eventStore !== eventStore
+  ) {
     existing?.unsubscribe();
-
-    pushLiveNavLead(projectId, chatStore);
-    const unsubscribe = chatStore.subscribe(() =>
-      pushLiveNavLead(projectId, chatStore)
-    );
-    navLeadSubscriptions.set(projectId, { chatStore, unsubscribe });
+    const push = () => pushLiveNavLead(projectId);
+    const unsubscribers = [
+      chatStore?.subscribe(push),
+      eventStore?.subscribe(push),
+      runProjectionStore.subscribeProject(projectId, push),
+    ];
+    navLeadSubscriptions.set(projectId, {
+      chatStore,
+      eventStore,
+      unsubscribe: () =>
+        unsubscribers.forEach((unsubscribe) => unsubscribe?.()),
+    });
   }
+  pushLiveNavLead(projectId);
+};
+
+const reconcileNavLeadSubscriptions = (
+  state: ProjectStore,
+  previous?: ProjectStore
+) => {
+  if (
+    previous &&
+    state.projects === previous.projects &&
+    state.historyLoadingProjectIds === previous.historyLoadingProjectIds
+  )
+    return;
+  const spaces = useSpaceStore.getState();
+  // Persisted Session rows remain visible even when Cloud Project sync fails.
+  const projectIds = new Set([
+    ...Object.keys(state.projects),
+    ...getVisibleProjectMetasForSpace(
+      spaces.projectsBySpaceId,
+      spaces.activeSpaceId
+    ).map((meta) => meta.id),
+  ]);
   for (const [projectId, entry] of navLeadSubscriptions) {
-    if (seen.has(projectId)) continue;
+    if (projectIds.has(projectId)) continue;
     entry.unsubscribe();
     navLeadSubscriptions.delete(projectId);
+  }
+  for (const projectId of projectIds) {
+    syncNavLeadSubscription(state, projectId);
   }
 };
 
 projectStore.subscribe(reconcileNavLeadSubscriptions);
+useSpaceStore.subscribe((state, previous) => {
+  if (
+    state.projectsBySpaceId !== previous.projectsBySpaceId ||
+    state.activeSpaceId !== previous.activeSpaceId
+  ) {
+    reconcileNavLeadSubscriptions(projectStore.getState());
+  }
+});
+subscribeProjectEventStores((projectId) => {
+  if (navLeadSubscriptions.has(projectId))
+    syncNavLeadSubscription(projectStore.getState(), projectId);
+});
 reconcileNavLeadSubscriptions(projectStore.getState());
 
 if (typeof queueMicrotask === 'function') {

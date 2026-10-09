@@ -20,6 +20,7 @@ import { useSessionArtifactPreview } from '@/components/ChatBox/SessionArtifactP
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
 import {
+  asLocalFile,
   reconcileRunOutputFiles,
   type RunOutputSources,
 } from '@/lib/sessionOutputFiles';
@@ -59,14 +60,7 @@ export function resolveRunFilePreview(
   // previews keep using Electron's bounded local loader (including the rich
   // HTML renderer) instead of a short-lived, CORS-sensitive signed URL.
   const localPath = resolveWorkspaceFilePath(workspaceRoot, file.relativePath);
-  if (localPath) {
-    return {
-      ...file,
-      path: localPath,
-      localPathAvailable: true,
-      isRemote: false,
-    };
-  }
+  if (localPath) return asLocalFile(file, localPath);
 
   const existingPath = file.path?.trim();
   if (existingPath && !file.isRemote) return file;

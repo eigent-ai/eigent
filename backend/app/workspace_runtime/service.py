@@ -32,6 +32,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.transitions import RUN_TERMINAL_STATES
+
 from .admission import (
     AdmissionConflict,
     AdmissionError,
@@ -299,7 +301,9 @@ class _Execution:
     configuration: RuntimeConfiguration
     policy: ExecutionPolicy
     ready: asyncio.Event = field(default_factory=asyncio.Event)
+    # This lock protects task identity, not the long-running finalization body.
     finalizing: asyncio.Lock = field(default_factory=asyncio.Lock)
+    finalization_task: asyncio.Task[None] | None = None
     handle: RuntimeHandle | None = None
     finalized: bool = False
 
@@ -333,6 +337,7 @@ class ExecutionService:
         self._close_task: asyncio.Task | None = None
         self._tasks: dict[str, asyncio.Task] = {}
         self._executions: dict[str, _Execution] = {}
+        self._finalizations: set[asyncio.Task[None]] = set()
         self._publications: dict[str, asyncio.Task] = {}
         self._cancellations: dict[str, asyncio.Task] = {}
         self._authorization_checks: dict[str, asyncio.Task] = {}
@@ -737,8 +742,10 @@ class ExecutionService:
         from app.run_journal import InvalidRunTransitionError
 
         run = self.journal.get_run(request.admitted_run_id)
-        terminal = {"completed", "failed", "cancelled"}
-        if run.status not in terminal and run.cancel_request_id is None:
+        if (
+            run.status not in RUN_TERMINAL_STATES
+            and run.cancel_request_id is None
+        ):
             try:
                 self.journal.request_cancel(
                     request.admitted_run_id,
@@ -750,7 +757,7 @@ class ExecutionService:
                 # cancel intent. That fact still does not prove writers stopped.
                 current = self.journal.get_run(request.admitted_run_id)
                 if (
-                    current.status not in terminal
+                    current.status not in RUN_TERMINAL_STATES
                     and current.cancel_request_id is None
                 ):
                     raise
@@ -882,11 +889,10 @@ class ExecutionService:
             if key in self._cancellations or execution.finalized:
                 continue
             run = self.journal.get_run(execution.runtime.binding.run_id)
-            if run.cancel_request_id is not None or run.status in {
-                "completed",
-                "failed",
-                "cancelled",
-            }:
+            if (
+                run.cancel_request_id is not None
+                or run.status in RUN_TERMINAL_STATES
+            ):
                 self._schedule_cancellation(execution)
             elif key not in self._local_authorization_checks:
                 # A slow Session's fresh filesystem/Git check must not hold
@@ -1333,22 +1339,41 @@ class ExecutionService:
             await asyncio.shield(finalization)
 
     async def _finalize(self, execution, result, outcome):
-        from .finalizer import WorkspaceFinalizer
-
         async with execution.finalizing:
             if execution.finalized:
                 return
-            try:
-                await WorkspaceFinalizer(self.journal).finalize(
-                    execution.request,
-                    execution.runtime,
-                    execution.policy.provider,
-                    result,
-                    outcome,
+            finalization = execution.finalization_task
+            if finalization is None or finalization.done():
+                finalization = asyncio.create_task(
+                    self._finalize_once(execution, result, outcome)
                 )
+                execution.finalization_task = finalization
+                self._finalizations.add(finalization)
+                finalization.add_done_callback(self._finalization_done)
+        await asyncio.shield(finalization)
+
+    def _finalization_done(self, task):
+        self._finalizations.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            logger.warning("Execution finalization owner task failed")
+        self._wake.set()
+
+    async def _finalize_once(self, execution, result, outcome):
+        from .finalizer import WorkspaceFinalizer
+
+        try:
+            await WorkspaceFinalizer(self.journal).finalize(
+                execution.request,
+                execution.runtime,
+                execution.policy.provider,
+                result,
+                outcome,
+            )
+            async with execution.finalizing:
                 execution.finalized = True
-            except Exception:
-                logger.warning("Isolated execution requires owner recovery")
+        except Exception:
+            logger.warning("Isolated execution requires owner recovery")
+        finally:
             self._wake.set()
 
     async def close(self) -> None:
@@ -1375,6 +1400,13 @@ class ExecutionService:
             await asyncio.gather(*tuple(self._publications.values()))
         if self._cancellations:
             await asyncio.gather(*tuple(self._cancellations.values()))
+        # Finalization survives cancellation of any individual caller. Join the
+        # service-owned tasks before the journal may be closed. Loop in case a
+        # producer finishing above registered another owner during the snapshot.
+        while self._finalizations:
+            await asyncio.gather(
+                *tuple(self._finalizations), return_exceptions=True
+            )
         checks = (
             *self._authorization_checks.values(),
             *self._local_authorization_checks.values(),

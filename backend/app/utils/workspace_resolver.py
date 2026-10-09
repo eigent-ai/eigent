@@ -778,6 +778,69 @@ class WorkspaceResolver:
             shutil.rmtree(workdir)
         return _copy_space_baseline(source_root, workdir)
 
+    def owned_project_workdir(
+        self,
+        *,
+        space_id: str,
+        project_id: str,
+        email: str,
+        user_id: str | int | None = None,
+    ) -> Path | None:
+        """Return the Project's Eigent-created workdir copy, if one exists.
+
+        The workdir is user-visible work, so callers that delete it rely on
+        every check here: owner-scoped path without symlinks, the copy marker,
+        and no overlap with any folder this owner has bound to a Space.
+        """
+
+        if (
+            sanitize_identity(space_id) != space_id
+            or sanitize_identity(project_id) != project_id
+        ):
+            raise ValueError("Invalid Project workdir identifier")
+        workdir = project_workdir_root(email, space_id, project_id, user_id)
+        if not workdir.exists() and not workdir.is_symlink():
+            return None
+        owner_root = workdir.parents[4]
+        resolved = workdir.resolve()
+        owned = owner_root.resolve() / workdir.relative_to(owner_root)
+        if workdir.is_symlink() or not resolved.is_dir() or resolved != owned:
+            raise ValueError("Project workdir is not an owned directory")
+        marker = workdir / WORKDIR_MARKER
+        marker_data = (
+            None if marker.is_symlink() else _read_workdir_marker(workdir)
+        )
+        if not marker_data or not marker_data.get("base_snapshot_id"):
+            raise ValueError("Project workdir has no Eigent workdir marker")
+        for binding in self.store.list_bindings(email, user_id):
+            root = Path(binding.workspace_root).expanduser().resolve()
+            if (
+                root == resolved
+                or root in resolved.parents
+                or resolved in root.parents
+            ):
+                raise ValueError("Project workdir overlaps a bound Space root")
+        return workdir
+
+    def delete_project_workdir(
+        self,
+        *,
+        space_id: str,
+        project_id: str,
+        email: str,
+        user_id: str | int | None = None,
+    ) -> bool:
+        workdir = self.owned_project_workdir(
+            space_id=space_id,
+            project_id=project_id,
+            email=email,
+            user_id=user_id,
+        )
+        if workdir is None:
+            return False
+        shutil.rmtree(workdir)
+        return True
+
 
 _resolver: WorkspaceResolver | None = None
 

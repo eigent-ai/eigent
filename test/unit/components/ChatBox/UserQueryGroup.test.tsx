@@ -12,17 +12,59 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { RunEventIngress, runProjectionStore } from '@/lib/runEvents';
+import { unverifiedTaskFailureFacts } from '@/service/runUsageReconciliation';
 import type { VanillaChatStore } from '@/store/chatStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { groupMessagesByQuery } from '@/components/ChatBox/ProjectSection';
 import { UserQueryGroup } from '@/components/ChatBox/UserQueryGroup';
 
+const navigation = vi.hoisted(() => ({
+  setActiveProject: vi.fn(),
+  setActiveWorkspaceTab: vi.fn(),
+  ensureProjectRuntimeLoaded: vi.fn(async () => undefined),
+}));
+
 vi.mock('@/store/pageTabStore', () => ({
-  usePageTabStore: (selector: (state: any) => unknown) =>
-    selector({ openFilePreview: vi.fn() }),
+  WorkspaceTab: { Project: 'project' },
+  usePageTabStore: Object.assign(
+    (selector: (state: any) => unknown) =>
+      selector({ openFilePreview: vi.fn() }),
+    {
+      getState: () => ({
+        setActiveWorkspaceTab: navigation.setActiveWorkspaceTab,
+      }),
+    }
+  ),
+}));
+
+vi.mock('@/store/projectRuntimeStore', () => ({
+  useProjectRuntimeStore: Object.assign(
+    (selector: (state: any) => unknown) =>
+      selector({ activeProjectId: 'session-waiting' }),
+    { getState: () => ({ setActiveProject: navigation.setActiveProject }) }
+  ),
+}));
+
+// Brain confirms that every approval in these tests is still pending.
+vi.mock('@/service/humanInteractionApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/service/humanInteractionApi')>()),
+  isHumanInteractionStillPending: vi.fn(async () => true),
+}));
+
+vi.mock('@/lib/projectRuntimeHydration', () => ({
+  ensureProjectRuntimeLoaded: navigation.ensureProjectRuntimeLoaded,
 }));
 
 vi.mock('@/components/ChatBox/MessageItem/TaskWorkLogAccordion', () => ({
@@ -77,7 +119,7 @@ vi.mock('@/components/ChatBox/TaskBox/PlanTaskBox', () => ({
   PlanTaskBox: () => <div data-testid="plan-task-box" />,
 }));
 
-function createStore(messages: any[]): VanillaChatStore {
+function createStore(messages: any[], overrides: any = {}): VanillaChatStore {
   const state: any = {
     activeTaskId: 'run-1',
     tasks: {
@@ -96,8 +138,11 @@ function createStore(messages: any[]): VanillaChatStore {
         cotList: [],
         activeAsk: 'single_agent',
         askList: [],
+        ...overrides,
       },
     },
+    observeTaskFailureFacts:
+      overrides.observeTaskFailureFacts ?? vi.fn(() => () => {}),
     addTaskInfo: vi.fn(),
     updateTaskInfo: vi.fn(),
     saveTaskInfo: vi.fn(),
@@ -113,8 +158,8 @@ function createStore(messages: any[]): VanillaChatStore {
   } as VanillaChatStore;
 }
 
-function renderGroups(messages: any[]) {
-  const store = createStore(messages);
+function renderGroups(messages: any[], overrides: any = {}) {
+  const store = createStore(messages, overrides);
   const groups = groupMessagesByQuery(messages);
   const rendered = render(
     <>
@@ -252,5 +297,404 @@ describe('UserQueryGroup Run work-log ownership', () => {
 
     expect(screen.queryByText('Which format?')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+  });
+});
+
+describe('Task failure summary ownership', () => {
+  it.each([AgentStep.ERROR, AgentStep.ACTIVATE_AGENT, AgentStep.AGENT_END])(
+    'preserves %s output and renders one read-only Task summary',
+    async (step) => {
+      const facts = {
+        terminalReason: 'error',
+        finalResponse: 'absent',
+        actionsVerified: true,
+        actions: [
+          {
+            id: 'send',
+            title: 'send_email',
+            outcome: 'outcome_unknown',
+            output: 'Recorded safe detail',
+          },
+        ],
+      };
+      const dispose = vi.fn();
+      const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+        onFacts(facts);
+        return dispose;
+      });
+      const { container, store, unmount } = renderGroups(
+        [
+          { id: 'user', role: 'user', content: 'First request' },
+          { id: 'partial', role: 'agent', step, content: 'Existing evidence' },
+          {
+            id: 'next-user',
+            role: 'user',
+            content: 'Another message in the same Task',
+          },
+        ],
+        {
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+          observeTaskFailureFacts,
+        }
+      );
+      const before = JSON.stringify(store.getState().tasks);
+      await screen.findByText('No final reply was recorded.');
+      expect(
+        container.querySelectorAll('[data-task-failure-summary]')
+      ).toHaveLength(1);
+      expect(screen.getByText('Existing evidence')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'An external action may have occurred; its outcome is unknown.'
+        )
+      ).toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'View recorded actions' })
+      );
+      expect(screen.getByText('Outcome unknown')).toBeInTheDocument();
+      expect(screen.getByText('Recorded safe detail')).toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Hide recorded actions' })
+      );
+      expect(observeTaskFailureFacts).toHaveBeenCalledOnce();
+      expect(JSON.stringify(store.getState().tasks)).toBe(before);
+      unmount();
+      expect(dispose).toHaveBeenCalledOnce();
+    }
+  );
+
+  it('renders nothing while the read is pending', () => {
+    const { container } = renderGroups(
+      [{ id: 'user', role: 'user', content: 'Request' }],
+      { status: ChatTaskStatus.FINISHED, durableRunStatus: 'failed' }
+    );
+    expect(container.querySelector('[data-task-failure-summary]')).toBeNull();
+  });
+
+  it('leaves an incomplete read explicitly unverified', async () => {
+    const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+      onFacts(unverifiedTaskFailureFacts());
+      return () => {};
+    });
+    renderGroups([{ id: 'user', role: 'user', content: 'Request' }], {
+      status: ChatTaskStatus.FINISHED,
+      durableRunStatus: 'failed',
+      observeTaskFailureFacts,
+    });
+    expect(await screen.findByText('Task failed.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Action outcomes could not be verified.')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No final reply was recorded.')
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['failed', 'error', 'No final reply was recorded.'],
+    [
+      'timed_out',
+      'deadline_exceeded',
+      'Task timed out before a final reply was recorded.',
+    ],
+    // The status says the Task timed out; an earlier cause only says why.
+    [
+      'timed_out',
+      'approval_expired',
+      'Task timed out before a final reply was recorded.',
+    ],
+    [
+      'timed_out',
+      'brain_restart',
+      'Task timed out before a final reply was recorded.',
+    ],
+  ])(
+    'states that no actions were recorded for a %s Run (%s) without tools',
+    async (durableRunStatus, terminalReason, title) => {
+      const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+        onFacts({
+          terminalReason,
+          finalResponse: 'absent',
+          actionsVerified: true,
+          actions: [],
+        });
+        return () => {};
+      });
+      renderGroups([{ id: 'user', role: 'user', content: 'Request' }], {
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus,
+        observeTaskFailureFacts,
+      });
+      expect(await screen.findByText(title)).toBeInTheDocument();
+      expect(screen.getByText('No actions were recorded.')).toBeInTheDocument();
+      expect(
+        screen.queryByText('Action outcomes could not be verified.')
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'View recorded actions' })
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it('renders the first actions in order, counts the rest, and warns from every action', async () => {
+    const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+      onFacts({
+        terminalReason: 'error',
+        finalResponse: 'absent',
+        actionsVerified: true,
+        actions: [
+          ...Array.from({ length: 120 }, (_, index) => ({
+            id: String(index),
+            title: `read_${index}`,
+            outcome: 'completed',
+          })),
+          { id: 'send', title: 'send_email', outcome: 'outcome_unknown' },
+        ],
+      });
+      return () => {};
+    });
+    const { container } = renderGroups(
+      [{ id: 'user', role: 'user', content: 'Request' }],
+      {
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus: 'failed',
+        observeTaskFailureFacts,
+      }
+    );
+    expect(
+      await screen.findByText(
+        'An external action may have occurred; its outcome is unknown.'
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View recorded actions' })
+    );
+    const rendered = container.querySelectorAll('[data-action-outcome] h3');
+    expect(rendered).toHaveLength(100);
+    expect(rendered[0]).toHaveTextContent('read_0');
+    expect(rendered[99]).toHaveTextContent('read_99');
+    expect(screen.getByText('21 more actions not shown.')).toBeInTheDocument();
+  });
+
+  it('does not add the summary when a final response is durably recorded', async () => {
+    const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+      onFacts({
+        terminalReason: 'error',
+        finalResponse: 'present',
+        actionsVerified: true,
+        actions: [],
+      });
+      return () => {};
+    });
+    const { container } = renderGroups(
+      [{ id: 'user', role: 'user', content: 'Request' }],
+      {
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus: 'failed',
+        observeTaskFailureFacts,
+      }
+    );
+    await waitFor(() =>
+      expect(container.querySelector('[data-task-failure-summary]')).toBeNull()
+    );
+  });
+});
+
+describe('UserQueryGroup Space writer wait', () => {
+  const prompt = [{ id: 'user-1', role: 'user', content: 'Update the docs' }];
+  const pending = { status: ChatTaskStatus.PENDING, isPending: true };
+  const queueWriter = (payload: Record<string, unknown>) =>
+    new RunEventIngress('session-waiting', 'run-1').ingest({
+      event_id: 'writer-queued',
+      project_id: 'session-waiting',
+      run_id: 'run-1',
+      run_sequence: 1,
+      run_version: 1,
+      event_type: 'workspace.writer.queued',
+      legacy_step: null,
+      created_at: '2026-10-07T10:00:00Z',
+      payload,
+    });
+
+  afterEach(() => {
+    cleanup();
+    runProjectionStore.clear();
+    useSpaceStore.setState({ projectIdIndex: {}, projectsBySpaceId: {} });
+    vi.clearAllMocks();
+  });
+
+  it('keeps Preparing until the Run waits for its Space', () => {
+    renderGroups(prompt, pending);
+
+    expect(screen.getByTestId('preparing')).toBeInTheDocument();
+  });
+
+  it('waits plainly while another task is writing to the Space', () => {
+    queueWriter({ reason: 'task.mutating_default' });
+    renderGroups(prompt, pending);
+
+    expect(screen.queryByTestId('preparing')).toBeNull();
+    expect(screen.getByText('Waiting for Space')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open session' })).toBeNull();
+  });
+
+  it('names a stopped writer and opens its Session', () => {
+    useSpaceStore.setState({
+      projectIdIndex: { 'session-blocker': 'space-1' },
+      projectsBySpaceId: {
+        'space-1': { 'session-blocker': { id: 'session-blocker' } as never },
+      },
+    });
+    queueWriter({
+      reason: 'holder_requires_attention',
+      semantic: {
+        correlation: {
+          blocker_run_id: 'run-blocker',
+          blocker_project_id: 'session-blocker',
+          blocker_reason: 'unknown_tool_outcome',
+        },
+      },
+    });
+    renderGroups(prompt, pending);
+
+    expect(screen.queryByTestId('preparing')).toBeNull();
+    expect(
+      screen.getByText(
+        'Another task in this Space stopped while it was changing files and needs your attention. This task will start after that task is resolved.'
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
+    expect(navigation.setActiveProject).toHaveBeenCalledWith('session-blocker');
+    expect(navigation.setActiveWorkspaceTab).toHaveBeenCalledWith('project');
+    expect(navigation.ensureProjectRuntimeLoaded).toHaveBeenCalledWith(
+      expect.anything(),
+      'session-blocker',
+      { requireActiveSelection: true }
+    );
+  });
+
+  it('does not offer to open the Session that is already open', () => {
+    useSpaceStore.setState({
+      projectIdIndex: { 'session-waiting': 'space-1' },
+      projectsBySpaceId: {
+        'space-1': { 'session-waiting': { id: 'session-waiting' } as never },
+      },
+    });
+    queueWriter({
+      reason: 'holder_requires_attention',
+      semantic: { correlation: { blocker_project_id: 'session-waiting' } },
+    });
+    renderGroups(prompt, pending);
+
+    expect(
+      screen.getByText(/stopped while it was changing files/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open session' })).toBeNull();
+  });
+});
+
+describe('UserQueryGroup restored Run requests', () => {
+  const expiresAt = Date.now() / 1000 + 86_400;
+  const messages = [
+    { id: 'user-1', role: 'user', content: 'Write two files' },
+    {
+      id: 'ask-two',
+      role: 'agent',
+      step: AgentStep.ASK,
+      content: 'The agent wants to write a file.',
+      agent_name: 'single_agent',
+      interaction: {
+        interaction_id: 'approval:call-two',
+        interaction_type: 'approval',
+        approval_id: 'approval:call-two',
+        run_id: 'run-1',
+        version: 0,
+        expires_at: expiresAt,
+        question: 'The agent wants to write a file.',
+        title: 'Allow write_to_file?',
+        agent: 'single_agent',
+        action_digest: 'digest-two',
+        allowed_scopes: ['once'],
+        target_resources: [],
+      },
+    },
+  ];
+  let version = 0;
+  const project = (...eventTypes: string[]) => {
+    const ingress = new RunEventIngress('session-waiting', 'run-1');
+    for (const eventType of eventTypes) {
+      version += 1;
+      ingress.ingest({
+        event_id: `restored-${version}`,
+        project_id: 'session-waiting',
+        run_id: 'run-1',
+        run_sequence: version,
+        run_version: version,
+        event_type: eventType,
+        legacy_step: null,
+        created_at: '2026-10-07T10:00:00Z',
+        payload:
+          eventType === 'approval.requested'
+            ? { approval_id: 'approval:call-two', expires_at: expiresAt }
+            : {},
+      });
+    }
+  };
+  const restored = (durableRunStatus: string | undefined) =>
+    renderGroups(messages, { type: 'replay', durableRunStatus });
+  const card = () => screen.queryByText('Allow write_to_file?');
+
+  afterEach(() => {
+    cleanup();
+    runProjectionStore.clear();
+    version = 0;
+  });
+
+  it('offers a request raised after the Session was restored', async () => {
+    project('run.attempt_created', 'run.attempt_started');
+    restored('running');
+    expect(card()).toBeNull();
+
+    act(() => project('approval.requested'));
+
+    expect(card()).not.toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled()
+    );
+  });
+
+  it('keeps the card of a Run that was already waiting when restored', () => {
+    restored('waiting_for_user');
+
+    expect(card()).not.toBeNull();
+  });
+
+  it('keeps the request read-only after the Run was interrupted', () => {
+    project('run.attempt_created', 'run.attempt_started', 'run.interrupted');
+    restored('running');
+
+    expect(card()).toBeNull();
+  });
+
+  it('never reopens a Run that has ended', () => {
+    project('run.attempt_created', 'approval.requested');
+    restored('completed');
+
+    expect(card()).toBeNull();
+  });
+
+  it('offers the request when only the projection knows the Run waits', () => {
+    project('run.attempt_created', 'approval.requested');
+    restored(undefined);
+
+    expect(card()).not.toBeNull();
+  });
+
+  it('keeps a replay read-only until its Run waits', () => {
+    project('run.attempt_created', 'run.attempt_started');
+    restored(undefined);
+
+    expect(card()).toBeNull();
   });
 });

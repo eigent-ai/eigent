@@ -19,9 +19,10 @@ import socket
 from urllib.parse import urlsplit
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.auth import require_local_control_if_configured
 from app.component.error_format import normalize_error_to_openai_format
 from app.component.model_validation import (
     ValidationErrorType,
@@ -34,7 +35,7 @@ from app.model.model_platform import NormalizedModelPlatform
 logger = logging.getLogger("model_controller")
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_local_control_if_configured)])
 
 
 class ValidateModelRequest(BaseModel):

@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -28,13 +29,16 @@ from app.controller.run_controller import (
     cancel_run,
     decide_run_interaction,
     fork_run,
+    get_run,
     list_project_runs,
     list_run_interactions,
     resume_run,
     signal_run,
 )
 from app.run_journal import SQLiteRunJournal
+from app.run_policy import ToolSafetyClass
 from app.run_runtime import RunCoordinator
+from app.service.task import TaskLock
 from app.workspace_config.admission import (
     EnvironmentAdmissionService,
     LegacyEnvironmentImporter,
@@ -72,6 +76,19 @@ async def test_run_control_api_creates_attempt_fork_and_cancel_intent(
                 CancelRunBody(request_id="cancel-1"),
             )
             assert cancelled["status"] == "cancelled"
+            retried = await cancel_run(
+                "run-1", CancelRunBody(request_id="cancel-1")
+            )
+            assert retried["status"] == "cancelled"
+            assert retried["version"] == cancelled["version"]
+            assert (
+                len(
+                    journal.list_events(
+                        "run-1", event_type_prefix="run.cancelled"
+                    )
+                )
+                == 1
+            )
         await coordinator.close()
 
 
@@ -222,6 +239,7 @@ async def test_typed_interaction_api_lists_and_resolves_question(tmp_path):
             "b",
         ]
         assert resolved["status"] == "resolved"
+        assert resolved["response"] == {"option_id": "b"}
         task_lock.put_human_input.assert_awaited_once_with(
             "worker", '{"option_id":"b"}'
         )
@@ -278,9 +296,70 @@ async def test_interaction_decision_converges_on_terminal_state(tmp_path):
                 ),
             )
 
+            recovered = await list_run_interactions("run-1", status="all")
+
         assert result["status"] == "resolved"
+        assert result["response"]["decision"] == "rejected"
+        assert result["action_digest"] == approval.action_digest
+        assert (
+            recovered["interactions"][0]["response"]["decision"] == "rejected"
+        )
+        assert len(journal.list_human_interaction_decisions("approval-1")) == 1
         assert journal.list_approvals("run-1")[0].status == "rejected"
         task_lock.put_human_input.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lost_approval_receipt_retry_does_not_deliver_twice(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow write?", "agent": "worker"},
+            action_digest="digest-1",
+            now=2,
+        )
+        task_lock = AsyncMock()
+        body = InteractionDecisionBody(
+            decision_request_id="original-request",
+            decision={"decision": "approved", "scope": "once"},
+            expected_version=0,
+            action_digest="digest-1",
+            continue_active_attempt=True,
+        )
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.service.task.get_task_lock_if_exists",
+                return_value=task_lock,
+            ),
+        ):
+            committed = await decide_run_interaction(
+                "run-1", "approval-1", body
+            )
+            retried = await decide_run_interaction("run-1", "approval-1", body)
+            recovered = await list_run_interactions("run-1", status="all")
+        assert retried == committed
+        assert (
+            recovered["interactions"][0]["response"] == committed["response"]
+        )
+        assert committed["response"]["decision"] == "approved"
+        assert len(journal.list_human_interaction_decisions("approval-1")) == 1
+        task_lock.put_human_input.assert_awaited_once_with(
+            "worker", "approved"
+        )
 
 
 @pytest.mark.asyncio
@@ -328,3 +407,251 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
     assert result["runs"][0]["total_attempt_elapsed_ms"] == 0
     notify_sync.assert_called_once_with()
     bootstrap_history.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_summary_names_unsafe_resume_blockers(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1", now=1)
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        shell = dict(
+            tool_call_id="shell-call",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="shell_exec",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"command": "npm install"},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **shell)
+        journal.checkpoint_tool_call(status="dispatched", now=3, **shell)
+        # The app quits mid-command; restart cannot confirm its outcome.
+        journal.reconcile_startup(now=4)
+        journal.ensure_run(run_id="run-2", project_id="project-1", now=5)
+        coordinator = RunCoordinator(journal)
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.controller.run_controller.get_default_run_coordinator",
+                return_value=coordinator,
+            ),
+            patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+            patch(
+                "app.run_sync.runtime."
+                "is_default_cloud_history_bootstrap_pending",
+                return_value=False,
+            ),
+        ):
+            listed = await list_project_runs(
+                project_id="project-1", status=None, limit=20
+            )
+            snapshot = await get_run("run-1")
+            with pytest.raises(HTTPException) as refused:
+                await resume_run("run-1", ResumeRunBody(request_id="resume-1"))
+        await coordinator.close()
+
+    blockers = [
+        {
+            "tool_call_id": "shell-call",
+            "tool_name": "shell_exec",
+            "display_title": "Ran command",
+        }
+    ]
+    runs = {run["run_id"]: run for run in listed["runs"]}
+    assert runs["run-1"]["status"] == "interrupted"
+    assert runs["run-1"]["unsafe_resume_blockers"] == blockers
+    assert runs["run-2"]["unsafe_resume_blockers"] == []
+    assert snapshot["unsafe_resume_blockers"] == blockers
+    # Blocked Resume is not read-only history: Cancel remains available.
+    assert snapshot["resume_blocked_reason"] is None
+    assert refused.value.status_code == 409
+    assert refused.value.detail == {
+        "code": "unsafe_resume_blocked",
+        "tool_call_ids": ["shell-call"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_overlapping_retry_delivers_only_once(tmp_path, monkeypatch):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow write?", "agent": "worker"},
+            action_digest="digest-1",
+            now=2,
+        )
+        original_to_thread = asyncio.to_thread
+        readers = 0
+        both_read = asyncio.Event()
+
+        async def synchronized_read(fn, *args, **kwargs):
+            nonlocal readers
+            result = await original_to_thread(fn, *args, **kwargs)
+            if (
+                getattr(fn, "__name__", "") == "get_human_interaction"
+                and readers < 2
+            ):
+                readers += 1
+                if readers == 2:
+                    both_read.set()
+                await both_read.wait()
+            return result
+
+        monkeypatch.setattr(asyncio, "to_thread", synchronized_read)
+        task_lock = AsyncMock()
+        first_waiter = asyncio.get_running_loop().create_future()
+        subsequent_waiter = asyncio.get_running_loop().create_future()
+
+        async def deliver(_agent, reply):
+            waiter = subsequent_waiter if first_waiter.done() else first_waiter
+            waiter.set_result(reply)
+
+        task_lock.put_human_input.side_effect = deliver
+        body = InteractionDecisionBody(
+            decision_request_id="original-request",
+            decision={"decision": "approved", "scope": "once"},
+            expected_version=0,
+            action_digest="digest-1",
+            continue_active_attempt=True,
+        )
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.service.task.get_task_lock_if_exists",
+                return_value=task_lock,
+            ),
+        ):
+            committed, retried = await asyncio.gather(
+                decide_run_interaction("run-1", "approval-1", body),
+                decide_run_interaction("run-1", "approval-1", body),
+            )
+            # The next live waiter must not receive a retry of the prior decision.
+            await decide_run_interaction("run-1", "approval-1", body)
+            assert first_waiter.result() == "approved"
+            assert not subsequent_waiter.done()
+            recovered = await list_run_interactions("run-1", status="all")
+        assert retried == committed
+        assert (
+            recovered["interactions"][0]["response"] == committed["response"]
+        )
+        assert committed["response"]["decision"] == "approved"
+        assert len(journal.list_human_interaction_decisions("approval-1")) == 1
+        task_lock.put_human_input.assert_awaited_once_with(
+            "worker", "approved"
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("commit_name", "decision", "reply"),
+    [
+        ("resolve_human_interaction", {"reply": "report.csv"}, "report.csv"),
+        ("decide_approval", {"decision": "approved"}, "approved"),
+    ],
+)
+async def test_cancelled_request_still_delivers_committed_decision(
+    tmp_path, monkeypatch, commit_name, decision, reply
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        if commit_name == "decide_approval":
+            journal.create_approval(
+                approval_id="interaction-1",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                prompt={"question": "Allow write?", "agent": "worker"},
+                action_digest="digest-1",
+                now=2,
+            )
+        else:
+            journal.create_human_interaction(
+                interaction_id="interaction-1",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                interaction_type="question",
+                request={"question": "Which file?", "agent": "worker"},
+                now=2,
+            )
+        task_lock = TaskLock("project-1", asyncio.Queue(), {})
+        task_lock.add_human_input_listen("worker")
+        waiters = [
+            asyncio.create_task(task_lock.get_human_input("worker"))
+            for _ in range(2)
+        ]
+        await asyncio.sleep(0)
+        loop = asyncio.get_running_loop()
+        commit = getattr(journal, commit_name)
+        request = None
+
+        def commit_then_disconnect(*args, **kwargs):
+            committed = commit(*args, **kwargs)
+            # The client leaves after the commit, before the worker thread
+            # returns the transition to the request coroutine.
+            loop.call_soon_threadsafe(request.cancel)
+            return committed
+
+        monkeypatch.setattr(journal, commit_name, commit_then_disconnect)
+        body = InteractionDecisionBody(
+            decision_request_id="decision-1",
+            decision=decision,
+            expected_version=0,
+            action_digest="digest-1",
+        )
+        try:
+            with (
+                patch(
+                    "app.controller.run_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.service.task.get_task_lock_if_exists",
+                    return_value=task_lock,
+                ),
+            ):
+                request = asyncio.create_task(
+                    decide_run_interaction("run-1", "interaction-1", body)
+                )
+                with pytest.raises(asyncio.CancelledError):
+                    await request
+                assert await asyncio.wait_for(waiters[0], 1) == reply
+                retried = await decide_run_interaction(
+                    "run-1", "interaction-1", body
+                )
+            assert retried["status"] == "resolved"
+            assert not waiters[1].done(), "A retry answered the next waiter"
+            assert (
+                len(journal.list_human_interaction_decisions("interaction-1"))
+                == 1
+            )
+        finally:
+            for waiter in waiters:
+                waiter.cancel()
+            await asyncio.gather(*waiters, return_exceptions=True)

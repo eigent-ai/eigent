@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ChatNoticeNode } from '@/lib/projector/chat/types';
-import { classifyError, type ErrorReason } from '@/lib/usageErrors';
+import { errorPresentationReason, type ErrorReason } from '@/lib/usageErrors';
 import { useProjectStore } from '@/store/projectStore';
 
 /** Presentation boundary shared by every timeline, including collapsed summaries. */
@@ -28,7 +28,7 @@ export function taskErrorReason(
     ? useProjectStore.getState().projects[node.projectId]?.metadata
         ?.modelSelection
     : undefined;
-  return classifyError(
+  return errorPresentationReason(
     { message: node.content, code: node.code },
     { modelType: model?.modelType }
   );

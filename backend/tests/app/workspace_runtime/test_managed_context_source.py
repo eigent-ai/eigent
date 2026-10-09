@@ -17,6 +17,7 @@
 import asyncio
 import copy
 import json
+import time
 
 import pytest
 
@@ -25,6 +26,7 @@ from app.run_journal import (
     RunEventDraft,
     managed_context_projection as projection,
 )
+from app.run_policy import RunTimeoutPolicy, TimeoutOutcome, TimeoutScope
 from app.workspace_runtime import runtime
 from app.workspace_runtime.agent_adapter import SingleAgentExecutionAdapter
 from tests.app.workspace_runtime import (
@@ -239,6 +241,55 @@ async def test_capture_after_queued_predecessor_settles_and_other_space_is_exclu
         assert "other-space-secret" not in text
     finally:
         release.set()
+
+
+@pytest.mark.asyncio
+async def test_capture_after_a_timed_out_predecessor_keeps_its_history(
+    deployment, monkeypatch
+):
+    d = deployment
+    d.project("a")
+    await configure_test_provider(d)
+    envelope = await d.register("a")
+    entered, release = asyncio.Event(), asyncio.Event()
+    sources, errors = {}, []
+    observe_capture(monkeypatch, sources, errors)
+
+    async def reply(context, role, call, messages):
+        if context.run_id == "first":
+            entered.set()
+            await release.wait()
+        return response(content="result-for-" + context.run_id)
+
+    ModelScript(monkeypatch, reply)
+    await d.service.start()
+    try:
+        await send(d, "first", envelope, content="prior-instruction-sentinel")
+        await asyncio.wait_for(entered.wait(), 5)
+        now = time.time()
+        d.journal.set_timeout_policy(
+            "first", RunTimeoutPolicy(run_deadline_at=now - 1)
+        )
+        d.journal.record_timeout_outcome(
+            TimeoutOutcome(
+                scope=TimeoutScope.RUN_DEADLINE,
+                policy_version="v1",
+                reason="run_deadline_reached",
+                started_at=now - 2,
+                ended_at=now,
+                run_id="first",
+                attempt_id=d.journal.get_run("first").active_attempt_id,
+            )
+        )
+        release.set()
+        await send(d, "second", envelope)
+        await terminal(d, "second", errors)
+    finally:
+        release.set()
+    assert d.journal.get_run("first").status == "timed_out"
+    retained = sources["second"].runs[0]
+    assert json.loads(retained.text)["outcome"] == "timed_out"
+    assert "prior-instruction-sentinel" in retained.text
 
 
 @pytest.mark.asyncio

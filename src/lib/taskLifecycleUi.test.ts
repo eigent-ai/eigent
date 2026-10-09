@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { AgentStep } from '@/types/constants';
 import { describe, expect, it } from 'vitest';
 import { isTaskListRowHardFailure } from './taskLifecycleUi';
 
@@ -41,6 +42,21 @@ describe('task lifecycle failure projection', () => {
             id: 'failure',
             role: 'agent',
             content: '  ❌ **Error**: provider failed',
+          },
+        ],
+      })
+    ).toBe(true);
+  });
+
+  it('identifies a localized error receipt by its step', () => {
+    expect(
+      isTaskListRowHardFailure({
+        messages: [
+          {
+            id: 'receipt',
+            role: 'agent',
+            content: '❌ **Fehler**: Die Aufgabe konnte nicht starten.',
+            step: AgentStep.ERROR,
           },
         ],
       })

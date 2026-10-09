@@ -20,6 +20,7 @@ import {
   proxyFetchGet,
 } from '@/api/http';
 import { isDesktop } from '@/client/platform';
+import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
 import {
   getRemoteControlDesktopInstanceId,
   getRemoteControlWebSocketUrl,
@@ -755,14 +756,15 @@ async function dispatchPersistedRemoteFollowUp(
   if (!next || next.request_id !== requestId) {
     return !pending.some((item) => item.request_id === requestId);
   }
-  const status = await fetchGet(
-    `/chat/${encodeURIComponent(projectId)}/status`
+  const admissionMode = await prepareFollowUpAdmission(
+    projectId,
+    useProjectStore.getState().getProjectById(projectId)
   );
-  if (status?.has_lock && status?.status !== 'done') {
+  if (admissionMode === 'busy') {
     return false;
   }
   try {
-    if (status?.has_lock) {
+    if (admissionMode === 'warm') {
       seedRemoteFollowUpPrompt(command);
       await fetchPost(`/chat/${encodeURIComponent(projectId)}`, {
         question: next.content,
@@ -851,7 +853,9 @@ async function executeRemoteCommand(
       };
     }
     case 'human_reply': {
-      await requestBrain(
+      // The remote command id is the stable decision identity, so a
+      // redelivered command binds to the interaction it already answered.
+      const result = await requestBrain(
         command,
         token,
         'POST',
@@ -859,8 +863,18 @@ async function executeRemoteCommand(
         {
           agent: command.payload.agent,
           reply: command.payload.reply || command.payload.content || '',
+          interaction_id: command.payload.interaction_id || null,
+          decision_request_id: `remote-human-reply:${command.id}`,
         }
       );
+      // Brain reports a rejected reply as HTTP 200 with `code: 1`.
+      if (result?.code === 1) {
+        const error: any = new Error(
+          result.text || 'Remote human reply was rejected'
+        );
+        error.code = result.error_code || 'BRIDGE_HUMAN_REPLY_REJECTED';
+        throw error;
+      }
       break;
     }
     case 'interaction_decision': {
