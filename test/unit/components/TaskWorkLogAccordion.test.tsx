@@ -582,15 +582,18 @@ describe('terminal Run presentation', () => {
   });
 
   it('lets a completed Resume supersede the error of an earlier Attempt', () => {
-    const messages = [
-      {
-        id: 'error',
-        role: 'agent',
-        step: AgentStep.ERROR,
-        content: '❌ **Error**: Bad Gateway',
-      },
-      { id: 'end', role: 'agent', step: AgentStep.END, content: 'ok' },
-    ] as any[];
+    const withError = (resumable: boolean) =>
+      [
+        {
+          id: 'error',
+          role: 'agent',
+          step: AgentStep.ERROR,
+          content: '❌ **Error**: Bad Gateway',
+          resumable,
+        },
+        { id: 'end', role: 'agent', step: AgentStep.END, content: 'ok' },
+      ] as any[];
+    const messages = withError(true);
     expect(
       getTaskRunDisplayStatus({ durableRunStatus: 'completed', messages })
     ).toBe('completed');
@@ -600,6 +603,19 @@ describe('terminal Run presentation', () => {
     // Until the Run completes, the recorded error still counts.
     expect(
       isTaskListRowHardFailure({ durableRunStatus: 'interrupted', messages })
+    ).toBe(true);
+    // A Workforce can report an error and still end; that error still counts.
+    expect(
+      getTaskRunDisplayStatus({
+        durableRunStatus: 'completed',
+        messages: withError(false),
+      })
+    ).toBe('failed');
+    expect(
+      isTaskListRowHardFailure({
+        durableRunStatus: 'completed',
+        messages: withError(false),
+      })
     ).toBe(true);
   });
 

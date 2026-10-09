@@ -15,7 +15,7 @@
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 import { useProjectedRunStatus, useRunWriterWait } from '@/lib/runEvents';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
-import { isLegacyTaskError } from '@/lib/usageErrors';
+import { isSupersededRunError } from '@/lib/taskLifecycleUi';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
@@ -572,14 +572,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         }
         // A Resume that completed this Run supersedes the error notice of its
         // earlier, interrupted Attempt.
-        if (
-          activeTask?.durableRunStatus === 'completed' &&
-          message.step !== AgentStep.END &&
-          (message.step === AgentStep.ERROR ||
-            message.errorReason ||
-            (typeof message.content === 'string' &&
-              isLegacyTaskError(message.content)))
-        ) {
+        if (activeTask && isSupersededRunError(activeTask, message)) {
           return null;
         }
         if (message.content.length > 0) {
