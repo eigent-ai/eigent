@@ -388,6 +388,7 @@
   "first-run-notice": "التشغيل الأول: {{time}} (بتوقيتك المحلي). يجب أن يكون Eigent مفتوحًا حينها.",
   "next-run-notice": "التشغيل التالي: {{time}} (بتوقيتك المحلي). يجب أن يكون Eigent مفتوحًا حينها.",
   "pick-future-time": "اختر تاريخًا ووقتًا في المستقبل.",
+  "one-time-within-a-year": "اختر تاريخًا يقع بعد أقل من عام من اليوم.",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "keeps-stored-schedule": "لا يمكن تعديل هذا الجدول الزمني هنا. سيبقى كما هو ما لم تختر تكرارًا أعلاه.",
   "schedule-label-daily": "يوميًا عند {{time}}",

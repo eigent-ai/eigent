@@ -388,6 +388,7 @@
   "first-run-notice": "첫 실행: {{time}}(현지 시간). 그때 Eigent가 열려 있어야 합니다.",
   "next-run-notice": "다음 실행: {{time}}(현지 시간). 그때 Eigent가 열려 있어야 합니다.",
   "pick-future-time": "미래의 날짜와 시간을 선택하세요.",
+  "one-time-within-a-year": "오늘로부터 1년이 되기 전의 날짜를 선택하세요.",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "keeps-stored-schedule": "이 일정은 여기에서 편집할 수 없습니다. 위에서 주기를 선택하지 않으면 그대로 유지됩니다.",
   "schedule-label-daily": "매일 {{time}}",

@@ -79,6 +79,31 @@ describe('schedule initialization', () => {
     await waitFor(() => expect(valid).toHaveBeenLastCalledWith(false));
   });
 
+  it('rejects a one-time date a year or more ahead, which cron would run a year early', async () => {
+    const valid = vi.fn();
+    render(
+      <SchedulePicker
+        value="0 9 5 1 *"
+        initialConfig={{ date: '2028-01-05' }}
+        onChange={vi.fn()}
+        onValidationChange={valid}
+      />
+    );
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(false));
+    expect(
+      screen.getByText('Choose a date less than a year from today.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/First run/)).not.toBeInTheDocument();
+
+    const date = screen.getByLabelText(/^Date/);
+    expect(date).toHaveAttribute('max', '2027-10-04');
+    fireEvent.change(date, { target: { value: '2027-10-05' } });
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(false));
+    fireEvent.change(date, { target: { value: '2027-10-04' } });
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(true));
+    expect(screen.getByText(/First run/)).toBeInTheDocument();
+  });
+
   it('rejects creating a one-time schedule in the past', async () => {
     const valid = vi.fn();
     render(

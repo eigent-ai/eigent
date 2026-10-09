@@ -388,6 +388,7 @@
   "first-run-notice": "First run: {{time}} (your local time). Eigent needs to be open then.",
   "next-run-notice": "Next run: {{time}} (your local time). Eigent needs to be open then.",
   "pick-future-time": "Pick a date and time in the future.",
+  "one-time-within-a-year": "Choose a date less than a year from today.",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "keeps-stored-schedule": "This schedule can't be edited here. It stays as it is unless you choose a frequency above.",
   "schedule-label-daily": "Daily at {{time}}",

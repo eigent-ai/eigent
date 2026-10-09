@@ -388,6 +388,7 @@
   "first-run-notice": "Prima esecuzione: {{time}} (ora locale). Eigent deve essere aperto in quel momento.",
   "next-run-notice": "Prossima esecuzione: {{time}} (ora locale). Eigent deve essere aperto in quel momento.",
   "pick-future-time": "Scegli una data e un'ora nel futuro.",
+  "one-time-within-a-year": "Scegli una data a meno di un anno da oggi.",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "keeps-stored-schedule": "Questa pianificazione non può essere modificata qui. Resta invariata a meno che tu non scelga una frequenza qui sopra.",
   "schedule-label-daily": "Ogni giorno alle {{time}}",

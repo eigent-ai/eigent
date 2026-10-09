@@ -388,6 +388,7 @@
   "first-run-notice": "Первый запуск: {{time}} (ваше местное время). В это время Eigent должен быть открыт.",
   "next-run-notice": "Следующий запуск: {{time}} (ваше местное время). В это время Eigent должен быть открыт.",
   "pick-future-time": "Выберите дату и время в будущем.",
+  "one-time-within-a-year": "Выберите дату менее чем через год от сегодняшнего дня.",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "keeps-stored-schedule": "Это расписание нельзя изменить здесь. Оно останется прежним, если вы не выберете частоту выше.",
   "schedule-label-daily": "Ежедневно в {{time}}",

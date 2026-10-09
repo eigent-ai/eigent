@@ -24,9 +24,14 @@ export type RecurringSchedule = {
   dayOfMonth?: number;
 };
 
-export type LocalSchedule =
-  | RecurringSchedule
-  | { frequency: 'once'; hour: number; minute: number; date: Date };
+export type OneTimeSchedule = {
+  frequency: 'once';
+  hour: number;
+  minute: number;
+  date: Date;
+};
+
+export type LocalSchedule = RecurringSchedule | OneTimeSchedule;
 
 const WEEKDAY_KEYS = [
   'sunday',
@@ -81,6 +86,39 @@ export function scheduleToCron(
     return `${utcMinute} ${utcHour} ${day} * *`;
   }
   return `${utcMinute} ${utcHour} * * *`;
+}
+
+/**
+ * Cron has no year, so the server runs a one-time cron at its next UTC match
+ * and then turns it off. A date a year or more ahead would run a year early.
+ */
+export function isOneTimeTooFarAhead(
+  schedule: OneTimeSchedule,
+  from: Date = new Date()
+): boolean {
+  const date = new Date(schedule.date);
+  date.setHours(schedule.hour, schedule.minute, 0, 0);
+  const sameDayNextYear = new Date(
+    from.getFullYear() + 1,
+    from.getMonth(),
+    from.getDate()
+  );
+  const yearEarlier = new Date(date);
+  yearEarlier.setUTCFullYear(date.getUTCFullYear() - 1);
+  return date >= sameDayNextYear || yearEarlier > from;
+}
+
+/** The next UTC match of a one-time cron: the run the server will start. */
+function nextOneTimeCronMatch(cron: string, from: Date): Date | null {
+  const [minute, hour, day, month] = cron.trim().split(/\s+/).map(Number);
+  // Leap days match only every four years.
+  for (let offset = 0; offset <= 8; offset++) {
+    const match = new Date(
+      Date.UTC(from.getUTCFullYear() + offset, month - 1, day, hour, minute)
+    );
+    if (match.getUTCMonth() === month - 1 && match > from) return match;
+  }
+  return null;
 }
 
 export function isOneTimeCron(cron?: string): boolean {
@@ -278,7 +316,13 @@ export function getNextRun(
   from: Date = new Date()
 ): Date | null {
   const schedule = parseTriggerSchedule(trigger, from);
-  if (schedule?.frequency === 'once') return nextOccurrence(schedule, from);
+  if (schedule?.frequency === 'once') {
+    const chosen = nextOccurrence(schedule, from);
+    // A date saved a year or more ahead still runs at the cron's next match.
+    const match =
+      chosen && nextOneTimeCronMatch(trigger.custom_cron_expression!, from);
+    return match && match < chosen ? match : chosen;
+  }
   if (trigger.next_run_at) {
     const date = new Date(trigger.next_run_at);
     if (!Number.isNaN(date.getTime()) && date > from) return date;

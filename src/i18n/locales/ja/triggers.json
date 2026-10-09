@@ -388,6 +388,7 @@
   "first-run-notice": "初回の実行：{{time}}（現地時間）。その時刻に Eigent を開いておく必要があります。",
   "next-run-notice": "次回の実行：{{time}}（現地時間）。その時刻に Eigent を開いておく必要があります。",
   "pick-future-time": "未来の日時を選んでください。",
+  "one-time-within-a-year": "今日から1年未満の日付を選んでください。",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
   "keeps-stored-schedule": "このスケジュールはここでは編集できません。上で頻度を選択しない限り、現在のまま保持されます。",
   "schedule-label-daily": "毎日 {{time}}",

@@ -17,6 +17,7 @@ import {
   formatScheduleLabel,
   getNextRun,
   isOneTimeCron,
+  isOneTimeTooFarAhead,
   nextOccurrence,
   parseCron,
   parseTriggerSchedule,
@@ -390,5 +391,44 @@ describe('last-day monthly crons after a DST change', () => {
   it('does not invent a day for a last-day cron that never reaches day 1', () => {
     expect(parseCron('0 5 L * *', summer())).toBeNull();
     expect(parseCron('0 5 L * *', winter())).toBeNull();
+  });
+});
+
+describe('one-time dates a year or more ahead', () => {
+  // Cron has no year, so the server would run these a year early.
+  const from = () => new Date(2026, 9, 9, 12, 0);
+  const once = (date: Date) => ({
+    frequency: 'once' as const,
+    hour: date.getHours(),
+    minute: date.getMinutes(),
+    date,
+  });
+
+  it('accepts dates up to the day before the same date next year', () => {
+    expect(isOneTimeTooFarAhead(once(new Date(2026, 9, 10, 9)), from())).toBe(
+      false
+    );
+    expect(
+      isOneTimeTooFarAhead(once(new Date(2027, 9, 8, 23, 30)), from())
+    ).toBe(false);
+  });
+
+  it('rejects the same date next year and anything later', () => {
+    expect(isOneTimeTooFarAhead(once(new Date(2027, 9, 9, 9)), from())).toBe(
+      true
+    );
+    expect(isOneTimeTooFarAhead(once(new Date(2028, 0, 5, 9)), from())).toBe(
+      true
+    );
+  });
+
+  it('shows the run the server will start for a date already saved too far ahead', () => {
+    const trigger = {
+      custom_cron_expression: '0 9 5 1 *',
+      config: { date: '2028-01-05' },
+    };
+    expect(getNextRun(trigger, new Date('2026-12-15T12:00:00Z'))).toEqual(
+      new Date('2027-01-05T09:00:00Z')
+    );
   });
 });

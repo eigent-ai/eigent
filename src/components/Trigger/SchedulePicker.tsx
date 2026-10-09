@@ -28,13 +28,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn, localTimeToUTC } from '@/lib/utils';
-import { format, parse } from 'date-fns';
+import { addYears, format, parse, subDays } from 'date-fns';
 import { Clock, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   formatRunTime,
   getNextRun,
+  isOneTimeTooFarAhead,
   nextOccurrence,
   parseCron,
   scheduleToCron,
@@ -240,8 +241,13 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frequency, oneTimeDate, expiredAt, maxFailureCount, hour, minute]);
 
+  const oneTimeTooFarAhead =
+    selectedSchedule?.frequency === 'once' &&
+    isOneTimeTooFarAhead(selectedSchedule);
+
   const nextScheduledTimes = useMemo(() => {
-    if (!selectedSchedule || !cron) return [];
+    // The server would not use a date a year or more ahead; do not preview it.
+    if (!selectedSchedule || !cron || oneTimeTooFarAhead) return [];
     const times: Date[] = [];
     let cursor = new Date();
     for (let index = 0; index < 5; index++) {
@@ -254,7 +260,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
       cursor = next;
     }
     return times;
-  }, [selectedSchedule, cron]);
+  }, [selectedSchedule, cron, oneTimeTooFarAhead]);
 
   const firstRun = unsupportedMonthlyTime
     ? null
@@ -265,6 +271,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
       : null;
   selectedOneTimeDate?.setHours(Number(hour), Number(minute), 0, 0);
   const unchangedPastOneTime =
+    !oneTimeTooFarAhead &&
     isEditing &&
     originalSchedule?.frequency === 'once' &&
     selectedOneTimeDate?.getTime() === originalSchedule.date.getTime();
@@ -358,6 +365,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 : new Date(),
               'yyyy-MM-dd'
             )}
+            max={format(subDays(addYears(new Date(), 1), 1), 'yyyy-MM-dd')}
             required
             state={showErrors && !oneTimeDate ? 'error' : 'default'}
             note={
@@ -640,9 +648,11 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
               ? t('triggers.keeps-stored-schedule')
               : unsupportedMonthlyTime
                 ? t('triggers.monthly-time-crosses-month')
-                : unchangedPastOneTime
-                  ? t('triggers.no-upcoming-executions')
-                  : t('triggers.pick-future-time')}
+                : oneTimeTooFarAhead
+                  ? t('triggers.one-time-within-a-year')
+                  : unchangedPastOneTime
+                    ? t('triggers.no-upcoming-executions')
+                    : t('triggers.pick-future-time')}
         </DsText>
       </div>
 
