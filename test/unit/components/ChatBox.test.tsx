@@ -1536,18 +1536,21 @@ describe('ChatBox Component', async () => {
             task: restoredTask,
             idleRunId: null,
             subscriberCount: 0,
+            direct: false,
           },
           {
             session: 'whose last task failed to start',
             task: failedStartTask,
             idleRunId: null,
             subscriberCount: 0,
+            direct: true,
           },
           {
             session: 'whose last answer was followed by an error',
             task: errorAfterAnswerTask,
             idleRunId: null,
             subscriberCount: 0,
+            direct: false,
           },
           {
             session:
@@ -1555,20 +1558,26 @@ describe('ChatBox Component', async () => {
             task: failedStartTask,
             idleRunId: 'test-task-id',
             subscriberCount: 1,
+            direct: true,
           },
         ])(
           'retires the idle consumer before a cold start in a Session $session',
-          async ({ task, idleRunId, subscriberCount }) => {
+          async ({ task, idleRunId, subscriberCount, direct }) => {
             legacyStreamHarness.idleRunId = idleRunId;
             mockIdleConsumer(subscriberCount);
 
             const chatState = await sendFrom(task);
 
+            // A restored or errored finished task may also start through the
+            // normal follow-up path. Either way exactly one new task starts,
+            // after the idle consumer is retired.
             await waitFor(() =>
-              expect(chatState.startTask).toHaveBeenCalledWith(
-                ...directStartCall
-              )
+              expect(chatState.startTask).toHaveBeenCalledTimes(1)
             );
+            const [startCall] = chatState.startTask.mock.calls;
+            if (direct) expect(startCall).toEqual([...directStartCall]);
+            expect(startCall[4]).toBe('Next task');
+            expect(startCall[7]).toBe('test-project-id');
             expect(retirements()).toEqual([retireIdleCall]);
             const retirement = _mockFetchPost.mock.calls.findIndex(
               ([url]) => url === retireIdleCall[0]
@@ -1600,7 +1609,7 @@ describe('ChatBox Component', async () => {
             )
           );
 
-          const chatState = await sendFrom(restoredTask);
+          const chatState = await sendFrom(failedStartTask);
 
           await waitFor(() =>
             expect(toast.error).toHaveBeenCalledWith(
@@ -1625,7 +1634,7 @@ describe('ChatBox Component', async () => {
               : Promise.resolve({ items: [] })
           );
 
-          const chatState = await sendFrom(restoredTask);
+          const chatState = await sendFrom(failedStartTask);
 
           await waitFor(() =>
             expect(chatState.startTask).toHaveBeenCalledWith(...directStartCall)
