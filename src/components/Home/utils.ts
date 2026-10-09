@@ -25,31 +25,6 @@ function hubDateFromValue(value?: string | number | null): Date | null {
   return Number.isNaN(time) ? null : new Date(time);
 }
 
-export function formatHubCreatedTime(value?: string | number | null): string {
-  const date = hubDateFromValue(value);
-  if (!date) return '';
-
-  const diffMs = Date.now() - date.getTime();
-  const diffMinutes = Math.floor(Math.abs(diffMs) / (1000 * 60));
-  const diffHours = Math.floor(diffMinutes / 60);
-
-  if (diffMinutes < 1) {
-    return 'just now';
-  }
-  if (diffHours < 1) {
-    return `${diffMinutes}m`;
-  }
-  if (diffHours < 24) {
-    return `${diffHours}h`;
-  }
-
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric',
-  });
-}
-
 export function formatHubRelativeAgo(
   value: string | number | null | undefined,
   t: (key: string, options?: Record<string, unknown>) => string

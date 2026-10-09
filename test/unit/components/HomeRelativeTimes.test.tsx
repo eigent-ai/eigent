@@ -19,7 +19,6 @@ import {
 import { useSpaceDetailData } from '@/components/Home/hooks/useSpaceDetailData';
 import {
   compareHubByTimestamp,
-  formatHubCreatedTime,
   formatHubDate,
   formatHubRelativeAgo,
   timestampFromHubValue,
@@ -103,8 +102,7 @@ describe('Home relative times for API timestamps', () => {
     expect(new Date(2026, 9, 8).getTimezoneOffset()).toBe(-480);
   });
 
-  it('shows a Task created five minutes ago as 5m', () => {
-    expect(formatHubCreatedTime(FIVE_MINUTES_AGO_FROM_API)).toBe('5m');
+  it('shows a Task created five minutes ago as 5 minutes ago', () => {
     expect(formatHubRelativeAgo(FIVE_MINUTES_AGO_FROM_API, t)).toBe(
       'layout.home-relative-minutes-ago:5'
     );
@@ -115,7 +113,6 @@ describe('Home relative times for API timestamps', () => {
     ['an offset string', '2026-10-08T12:00:00+08:00'],
     ['epoch milliseconds', FOUR_AM_UTC],
   ])('keeps the meaning of %s', (_label, value) => {
-    expect(formatHubCreatedTime(value)).toBe('5m');
     expect(formatHubRelativeAgo(value, t)).toBe(
       'layout.home-relative-minutes-ago:5'
     );
@@ -137,23 +134,25 @@ describe('Home relative times for API timestamps', () => {
     );
   });
 
-  it('shows a Space created five minutes ago as 5m', () => {
+  it('shows a Space created five minutes ago as 5 minutes ago', () => {
     const space = toLocalSpace(serverSpace());
 
     expect(space.createdAt).toBe(FOUR_AM_UTC + 123);
     expect(space.updatedAt).toBe(FOUR_AM_UTC + 123);
-    expect(formatHubCreatedTime(space.createdAt)).toBe('5m');
+    expect(formatHubRelativeAgo(space.createdAt, t)).toBe(
+      'layout.home-relative-minutes-ago:5'
+    );
   });
 
-  it('shows a Session updated five minutes ago as 5m', () => {
+  it('shows a Session updated five minutes ago as 5 minutes ago', () => {
     const meta = projectMetaFromServer(serverProject());
 
     expect(meta.createdAt).toBe(FOUR_AM_UTC + 123);
     expect(meta.updatedAt).toBe(FOUR_AM_UTC + 123);
     // Sessions without Task history fall back to their metadata timestamp.
-    expect(formatHubCreatedTime(new Date(meta.updatedAt).toISOString())).toBe(
-      '5m'
-    );
+    expect(
+      formatHubRelativeAgo(new Date(meta.updatedAt).toISOString(), t)
+    ).toBe('layout.home-relative-minutes-ago:5');
   });
 
   it('orders Space detail Sessions by their real last update', () => {
