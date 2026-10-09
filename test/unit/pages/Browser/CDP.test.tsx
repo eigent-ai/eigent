@@ -57,7 +57,19 @@ vi.mock('react-i18next', () => ({
         'layout.close-all': 'Close all',
         'layout.no-browsers-in-pool': 'No browsers in pool',
         'layout.add-browsers-hint': 'Add a browser to get started',
+        'layout.cancel': 'Cancel',
+        'layout.check-and-connect': 'Check & Connect',
+        'layout.enter-port-number': 'Enter Port Number',
+        'layout.invalid-port': 'Please enter a valid port number (1-65535)',
       };
+
+      if (key === 'layout.no-browser-on-port') {
+        return `No browser found on port ${options?.port}`;
+      }
+
+      if (key === 'layout.external-browser-name') {
+        return `External Browser (${options?.port})`;
+      }
 
       if (key === 'layout.launching-browser') {
         return `Launching browser on port ${options?.port ?? '...'}`;
@@ -185,5 +197,175 @@ describe('CDP Browser Page', () => {
     await waitFor(() => {
       expect(mockFetchDelete).toHaveBeenCalledWith('/browser/cdp/9222');
     });
+  });
+
+  describe('Connect Existing Browser dialog', () => {
+    const invalidPortMessage = 'Please enter a valid port number (1-65535)';
+
+    const renderPage = async () => {
+      render(
+        <MemoryRouter>
+          <CDP />
+        </MemoryRouter>
+      );
+      await screen.findByText('No browsers in pool');
+      return screen.getByRole('button', { name: 'Connect Existing Browser' });
+    };
+
+    const submitPort = async (
+      user: ReturnType<typeof userEvent.setup>,
+      value: string
+    ) => {
+      await user.click(
+        screen.getByRole('button', { name: 'Connect Existing Browser' })
+      );
+      const dialog = await screen.findByRole('dialog', {
+        name: 'Connect Existing Browser',
+      });
+      const input = within(dialog).getByPlaceholderText('Enter Port Number');
+      if (value) await user.type(input, value);
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Check & Connect' })
+      );
+      return input;
+    };
+
+    const mockDesktopHost = () => {
+      const electronAPI = {
+        getCdpBrowsers: vi.fn().mockResolvedValue([]),
+        addCdpBrowser: vi.fn().mockResolvedValue({ success: true }),
+        onCdpPoolChanged: vi.fn(() => () => {}),
+      };
+      mockUseHost.mockReturnValue({ electronAPI } as unknown as ReturnType<
+        typeof useHost
+      >);
+      return electronAPI;
+    };
+
+    it.each([
+      '65535abc',
+      '1.5',
+      '1e3',
+      '+9222',
+      '-1',
+      '0x50',
+      '9222 9223',
+      '',
+      '0',
+      '65536',
+      'abc',
+    ])(
+      'rejects port "%s" with a field error and makes no connection attempt',
+      async (value) => {
+        const user = userEvent.setup();
+        await renderPage();
+
+        const input = await submitPort(user, value);
+
+        expect(await screen.findByText(invalidPortMessage)).toBeInTheDocument();
+        expect(input).toHaveAttribute('aria-invalid', 'true');
+        expect(input).toHaveAccessibleDescription(invalidPortMessage);
+        expect(mockFetchPost).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(['65535abc', '1.5'])(
+      'does not probe a truncated port for "%s" in the desktop app',
+      async (value) => {
+        const electronAPI = mockDesktopHost();
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        try {
+          const user = userEvent.setup();
+          await renderPage();
+
+          await submitPort(user, value);
+
+          expect(
+            await screen.findByText(invalidPortMessage)
+          ).toBeInTheDocument();
+          expect(
+            screen.queryByText(/No browser found on port/)
+          ).not.toBeInTheDocument();
+          expect(fetchSpy).not.toHaveBeenCalled();
+          expect(electronAPI.addCdpBrowser).not.toHaveBeenCalled();
+        } finally {
+          fetchSpy.mockRestore();
+        }
+      }
+    );
+
+    it('connects to a port typed with surrounding spaces', async () => {
+      const user = userEvent.setup();
+      await renderPage();
+
+      await submitPort(user, ' 9222 ');
+
+      await waitFor(() => {
+        expect(mockFetchPost).toHaveBeenCalledWith('/browser/cdp/connect', {
+          port: 9222,
+          name: 'External Browser (9222)',
+        });
+      });
+    });
+
+    it('probes the exact port typed in the desktop app', async () => {
+      const electronAPI = mockDesktopHost();
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(new Response('{}', { status: 200 }));
+      try {
+        const user = userEvent.setup();
+        await renderPage();
+
+        await submitPort(user, '9222');
+
+        await waitFor(() => {
+          expect(electronAPI.addCdpBrowser).toHaveBeenCalledWith(
+            9222,
+            true,
+            'External Browser (9222)'
+          );
+        });
+        expect(fetchSpy).toHaveBeenCalledWith(
+          'http://localhost:9222/json/version',
+          expect.anything()
+        );
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it.each(['Cancel', 'Escape'])(
+      'returns focus to the Connect Existing Browser button after %s',
+      async (closeWith) => {
+        const user = userEvent.setup();
+        const trigger = await renderPage();
+
+        await user.click(trigger);
+        const dialog = await screen.findByRole('dialog', {
+          name: 'Connect Existing Browser',
+        });
+        await waitFor(() => {
+          expect(
+            within(dialog).getByPlaceholderText('Enter Port Number')
+          ).toHaveFocus();
+        });
+
+        if (closeWith === 'Cancel') {
+          await user.click(
+            within(dialog).getByRole('button', { name: 'Cancel' })
+          );
+        } else {
+          await user.keyboard('{Escape}');
+        }
+
+        await waitFor(() => {
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+        await waitFor(() => {
+          expect(trigger).toHaveFocus();
+        });
+      }
+    );
   });
 });
