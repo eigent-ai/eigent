@@ -15,6 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
+import { authorizeBrainFile } from '@/lib/brainFileAccess';
 import {
   isRemotePreviewSource,
   loadFilePreview,
@@ -86,6 +87,7 @@ export function FilePreview({
       setSelectedFile(target);
       setLoading(true);
       void resolveArtifactAssetFile(target, controller.signal)
+        .then(authorizeBrainFile)
         .then((resolved) =>
           loadFilePreview(resolved, {
             ipcRenderer,
