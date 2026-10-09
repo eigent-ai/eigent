@@ -2005,6 +2005,9 @@ export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
   return files;
 }
 
+/** Matches the terminal receipt read deadline in runUsageReconciliation. */
+const TERMINAL_ARTIFACT_MANIFEST_TIMEOUT_MS = 5_000;
+
 type TaskArtifactFileListResult = {
   canonical: boolean;
   files: FileInfo[];
@@ -2017,11 +2020,13 @@ async function loadTaskArtifactFileList({
   projectId,
   email,
   userId,
+  signal,
 }: {
   taskId: string;
   projectId?: string;
   email?: string;
   userId?: string | number | null;
+  signal?: AbortSignal;
 }): Promise<TaskArtifactFileListResult> {
   // The index contains absolute local paths and is intentionally Desktop-only.
   if (!getHostIpcRenderer()?.invoke || !projectId || !email) {
@@ -2034,12 +2039,15 @@ async function loadTaskArtifactFileList({
   }
 
   try {
-    const response = await fetchGet('/files/changes', {
+    const params = {
       task_id: taskId,
       project_id: projectId,
       email,
       ...(userId ? { user_id: userId } : {}),
-    });
+    };
+    const response = signal
+      ? await fetchGet('/files/changes', params, undefined, { signal })
+      : await fetchGet('/files/changes', params);
     const envelope =
       response && !Array.isArray(response) && typeof response === 'object'
         ? (response as Record<string, unknown>)
@@ -2065,6 +2073,42 @@ async function loadTaskArtifactFileList({
       truncated: false,
     };
   }
+}
+
+/**
+ * Read the artifact index for receipt recovery without letting it hold the
+ * receipts back. A failed, slow or abandoned read resolves as non-canonical,
+ * so tokens, the END display and trigger status still recover on time.
+ */
+function loadRecoveredTaskArtifactFileList(
+  input: Omit<Parameters<typeof loadTaskArtifactFileList>[0], 'signal'>,
+  signal: AbortSignal
+): Promise<TaskArtifactFileListResult> {
+  const notCanonical: TaskArtifactFileListResult = {
+    canonical: false,
+    files: [],
+    scanStatus: null,
+    truncated: false,
+  };
+  const controller = new AbortController();
+  const stopped = new Promise<TaskArtifactFileListResult>((resolve) => {
+    controller.signal.addEventListener('abort', () => resolve(notCanonical), {
+      once: true,
+    });
+  });
+  const abort = () => controller.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  if (signal.aborted) abort();
+  const deadline = setTimeout(abort, TERMINAL_ARTIFACT_MANIFEST_TIMEOUT_MS);
+  return Promise.race([
+    loadTaskArtifactFileList({ ...input, signal: controller.signal }).catch(
+      () => notCanonical
+    ),
+    stopped,
+  ]).finally(() => {
+    clearTimeout(deadline);
+    signal.removeEventListener('abort', abort);
+  });
 }
 
 function normalizedFileIdentity(value: string | undefined): string {
@@ -2511,12 +2555,15 @@ function recoverClosedTerminalResult(
       signal: controller.signal,
     }),
     outcome === 'completed' && !task.artifactManifestFinalized
-      ? loadTaskArtifactFileList({
-          taskId,
-          projectId,
-          email: auth.email || undefined,
-          userId: auth.user_id,
-        })
+      ? loadRecoveredTaskArtifactFileList(
+          {
+            taskId,
+            projectId,
+            email: auth.email || undefined,
+            userId: auth.user_id,
+          },
+          controller.signal
+        )
       : Promise.resolve<TaskArtifactFileListResult>({
           canonical: false,
           files: [],
