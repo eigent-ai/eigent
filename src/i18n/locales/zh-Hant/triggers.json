@@ -364,5 +364,74 @@
   "task-queued": "已排隊：{{name}}",
   "task-queued-description": "任務已新增到工作階段佇列",
   "select-method": "選擇方法",
-  "status-cancelled": "已取消"
+  "status-cancelled": "已取消",
+  "try-an-example": "試試範例",
+  "examples-heading": "自動處理您的任務",
+  "examples-subtitle": "讓 Eigent 處理日常任務，讓您專注於重要的事。",
+  "example-card-label": "設定{{title}}：{{description}} {{schedule}}",
+  "your-automations": "您的自動化",
+  "queue-empty-body": "試試範例，設定您的第一個自動化。",
+  "new-badge": "新建",
+  "next-run-at": "下次：{{time}}",
+  "paused": "已暫停",
+  "paused-schedule": "已暫停 · {{schedule}}",
+  "runs-did-not-complete": "連續 {{count}} 次執行未完成",
+  "auto-disabled-short": "因執行未完成已關閉",
+  "consecutive-warning": "已連續 {{count}} 次執行未完成（上限 {{max}} 次）。達到 {{max}} 次後，此自動化會自動關閉。只有當 Eigent 在這台電腦上開啟時，排定的執行才會開始。",
+  "auto-disabled-notice": "由於連續 {{max}} 次執行未完成，此自動化已自動關閉。等您能在排定時間讓 Eigent 保持開啟時，再重新開啟。",
+  "first-run-on": "首次執行：{{time}}",
+  "first-run-notice": "首次執行：{{time}}（您的當地時間）。屆時 Eigent 需要保持開啟。",
+  "next-run-notice": "下次執行：{{time}}（您的當地時間）。屆時 Eigent 需要保持開啟。",
+  "pick-future-time": "請選擇未來的日期和時間。",
+  "one-time-within-a-year": "請選擇距今不到一年的日期。",
+  "monthly-time-crosses-month": "此時間無法在每月的這一天可靠地重複。請選擇其他時間。",
+  "keeps-stored-schedule": "此計劃無法在此編輯。除非您在上方選擇頻率，否則它將保持不變。",
+  "schedule-label-daily": "每天 {{time}}",
+  "schedule-label-weekly": "每{{days}} {{time}}",
+  "schedule-label-monthly": "每月 {{day}} 日 {{time}}",
+  "schedule-label-once": "{{date}} {{time}} 執行一次",
+  "more-actions-named": "{{name}}的更多操作",
+  "examples": {
+    "weekly-feature-usage-recap": {
+      "title": "功能使用週報",
+      "description": "新功能的使用情況。",
+      "prompt": "總結我指定功能上週的使用情況與趨勢。"
+    },
+    "campaign-performance-recap": {
+      "title": "行銷活動成效回顧",
+      "description": "用淺白語言解讀活動指標。",
+      "prompt": "總結上週的行銷活動指標，並指出有哪些變化。"
+    },
+    "meeting-prep-brief": {
+      "title": "會議準備簡報",
+      "description": "每通電話一份簡報。",
+      "prompt": "為今天行事曆中的每通業務電話寫一份簡短的潛在客戶簡報。"
+    },
+    "inbox-triage": {
+      "title": "收件匣分類",
+      "description": "依緊急程度排序的新工單。",
+      "prompt": "將昨天以來收到的工單依緊急程度排序，並標記前五個。"
+    },
+    "hiring-pipeline-digest": {
+      "title": "招募進度摘要",
+      "description": "本週候選人的進度。",
+      "prompt": "總結本週候選人在各招募階段之間的進度。"
+    },
+    "expense-report-review": {
+      "title": "費用報銷審核",
+      "description": "違反規章的報銷單。",
+      "prompt": "審核新的費用報銷單，標記違反規章的單據。"
+    }
+  },
+  "detail-when": "何時執行",
+  "detail-what": "執行內容",
+  "detail-local-time": "本地時間",
+  "detail-paused": "恢復後才會執行",
+  "detail-on-event": "收到事件時執行",
+  "detail-not-started": "未啟動",
+  "action-run-now": "立即執行",
+  "action-pause": "暫停",
+  "action-resume": "恢復",
+  "action-run-queued": "已請求執行",
+  "action-run-failed": "無法啟動此次執行。請重試。"
 }

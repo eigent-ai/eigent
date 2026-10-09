@@ -16,6 +16,10 @@
 export const RIGHT_RAIL_CONTENT_WIDTH_CLASS =
   'w-[min(360px,40vw)] max-w-[400px]';
 
+/** Full-width stacked content below the desktop split-layout breakpoint. */
+export const RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS =
+  'w-full max-w-none lg:w-[min(360px,40vw)] lg:max-w-[400px]';
+
 /** Expanded outer rail width; matches its content without an extra clip. */
 export const RIGHT_RAIL_EXPANDED_OUTER_CLASS = RIGHT_RAIL_CONTENT_WIDTH_CLASS;
 

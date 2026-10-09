@@ -199,6 +199,27 @@ describe('file selection and loading recovery', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     expect(loadFilePreviewMock).toHaveBeenCalledTimes(2);
   });
+  it('cancels the Artifact lookup of a preview that was replaced', async () => {
+    resolveArtifactAssetFileMock.mockImplementationOnce(
+      () => new Promise<FileInfo>(() => {})
+    );
+    const next = { ...file, name: 'next.zip', path: '/workspace/next.zip' };
+    const { rerender } = render(<FilePreview file={file} />);
+    await waitFor(() =>
+      expect(resolveArtifactAssetFileMock).toHaveBeenCalledTimes(1)
+    );
+    const [, signal] = resolveArtifactAssetFileMock.mock.calls[0];
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal.aborted).toBe(false);
+
+    rerender(<FilePreview file={next} />);
+
+    await waitFor(() =>
+      expect(resolveArtifactAssetFileMock).toHaveBeenCalledTimes(2)
+    );
+    expect(signal.aborted).toBe(true);
+    expect(resolveArtifactAssetFileMock.mock.calls[1][1].aborted).toBe(false);
+  });
   it('does not restore a cleared selection when an old request finishes', async () => {
     let resolve!: (value: FileInfo) => void;
     loadFilePreviewMock.mockImplementationOnce(

@@ -58,15 +58,22 @@ describe('Artifact asset resolution', () => {
         contentType: 'text/csv',
       },
     } as FileInfo;
+    const controller = new AbortController();
 
-    await expect(resolveArtifactAssetFile(file)).resolves.toMatchObject({
+    await expect(
+      resolveArtifactAssetFile(file, controller.signal)
+    ).resolves.toMatchObject({
       path: 'https://assets.example/report.csv?signature=one',
       isRemote: true,
       size: 123,
       mimeType: 'text/csv',
     });
+    // The preview owner can cancel the lookup when it moves to another file.
     expect(proxyFetchGetMock).toHaveBeenCalledWith(
-      '/api/v1/chat/files/73/download'
+      '/api/v1/chat/files/73/download',
+      undefined,
+      undefined,
+      { signal: controller.signal }
     );
   });
 

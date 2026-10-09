@@ -44,6 +44,49 @@ function rememberLocalWorkspaceRoot(spaceId: string, rootPath: string) {
   });
 }
 
+/**
+ * Re-check a scratch root that this device kept while a Cloud copy omitted it.
+ *
+ * The backend binding is authoritative: a binding that moved replaces the kept
+ * root, and a missing binding or folder clears it so the regular binding flow
+ * creates the folder again. A failed check proves nothing, so the root stays.
+ */
+export async function verifyScratchSpaceWorkspaceRoot({
+  email,
+  userId,
+  space,
+}: EnsureScratchSpaceWorkspaceBindingInput): Promise<string | null> {
+  const keptRoot = space?.rootPath;
+  if (!space || space.sourceType !== 'blank' || !keptRoot || !email) {
+    return keptRoot ?? null;
+  }
+
+  let current: Awaited<ReturnType<typeof fetchWorkspaceCurrent>>;
+  try {
+    current = await fetchWorkspaceCurrent(space.id, email, userId);
+  } catch (error) {
+    console.warn(
+      `[scratchSpaceWorkspace] Could not verify scratch Space ${space.id}:`,
+      error
+    );
+    return keptRoot;
+  }
+  if (!current) return keptRoot;
+
+  // Another binding flow may have replaced the root while this check ran.
+  const latest = useSpaceStore.getState().spaces[space.id];
+  if (!latest || latest.rootPath !== keptRoot) return latest?.rootPath ?? null;
+
+  if (current.bound && current.workspace_root) {
+    if (current.workspace_root !== keptRoot) {
+      rememberLocalWorkspaceRoot(space.id, current.workspace_root);
+    }
+    return current.workspace_root;
+  }
+  useSpaceStore.getState().updateSpace(space.id, { rootPath: null });
+  return null;
+}
+
 export async function ensureScratchSpaceWorkspaceBinding({
   email,
   userId,

@@ -364,5 +364,74 @@
   "task-queued": "已排队：{{name}}",
   "task-queued-description": "任务已添加到会话队列",
   "select-method": "选择方法",
-  "status-cancelled": "已取消"
+  "status-cancelled": "已取消",
+  "try-an-example": "试试示例",
+  "examples-heading": "自动处理您的任务",
+  "examples-subtitle": "让 Eigent 处理日常任务，让您专注于重要的事。",
+  "example-card-label": "设置{{title}}：{{description}} {{schedule}}",
+  "your-automations": "您的自动化",
+  "queue-empty-body": "试试示例，设置您的第一个自动化。",
+  "new-badge": "新建",
+  "next-run-at": "下次：{{time}}",
+  "paused": "已暂停",
+  "paused-schedule": "已暂停 · {{schedule}}",
+  "runs-did-not-complete": "连续 {{count}} 次运行未完成",
+  "auto-disabled-short": "因运行未完成已关闭",
+  "consecutive-warning": "已连续 {{count}} 次运行未完成（上限 {{max}} 次）。达到 {{max}} 次后，此自动化会自动关闭。只有当 Eigent 在这台电脑上打开时，计划的运行才会开始。",
+  "auto-disabled-notice": "由于连续 {{max}} 次运行未完成，此自动化已自动关闭。等您能在计划时间保持 Eigent 打开时，再重新开启。",
+  "first-run-on": "首次运行：{{time}}",
+  "first-run-notice": "首次运行：{{time}}（您的本地时间）。届时 Eigent 需要保持打开。",
+  "next-run-notice": "下次运行：{{time}}（您的本地时间）。届时 Eigent 需要保持打开。",
+  "pick-future-time": "请选择未来的日期和时间。",
+  "one-time-within-a-year": "请选择距今不到一年的日期。",
+  "monthly-time-crosses-month": "此时间无法在每月的这一天可靠地重复。请选择其他时间。",
+  "keeps-stored-schedule": "此计划无法在此编辑。除非您在上方选择频率，否则它将保持不变。",
+  "schedule-label-daily": "每天 {{time}}",
+  "schedule-label-weekly": "每{{days}} {{time}}",
+  "schedule-label-monthly": "每月 {{day}} 日 {{time}}",
+  "schedule-label-once": "{{date}} {{time}} 运行一次",
+  "more-actions-named": "{{name}}的更多操作",
+  "examples": {
+    "weekly-feature-usage-recap": {
+      "title": "功能使用周报",
+      "description": "新功能的使用情况。",
+      "prompt": "总结我指定功能上周的使用情况和趋势。"
+    },
+    "campaign-performance-recap": {
+      "title": "营销活动效果回顾",
+      "description": "用通俗语言解读活动指标。",
+      "prompt": "总结上周的营销活动指标，并指出有哪些变化。"
+    },
+    "meeting-prep-brief": {
+      "title": "会议准备简报",
+      "description": "每通电话一份简报。",
+      "prompt": "为今天日程中的每通销售电话写一份简短的潜在客户简报。"
+    },
+    "inbox-triage": {
+      "title": "收件箱分拣",
+      "description": "按紧急程度排序的新工单。",
+      "prompt": "将昨天以来收到的工单按紧急程度排序，并标记前五个。"
+    },
+    "hiring-pipeline-digest": {
+      "title": "招聘进展摘要",
+      "description": "本周候选人的进展。",
+      "prompt": "总结本周候选人在各招聘阶段之间的进展。"
+    },
+    "expense-report-review": {
+      "title": "报销单审核",
+      "description": "违反制度的报销单。",
+      "prompt": "审核新的报销单，标记违反制度的单据。"
+    }
+  },
+  "detail-when": "何时运行",
+  "detail-what": "执行内容",
+  "detail-local-time": "本地时间",
+  "detail-paused": "恢复后才会运行",
+  "detail-on-event": "收到事件时运行",
+  "detail-not-started": "未启动",
+  "action-run-now": "立即运行",
+  "action-pause": "暂停",
+  "action-resume": "恢复",
+  "action-run-queued": "已请求运行",
+  "action-run-failed": "无法启动此次运行。请重试。"
 }
