@@ -1549,22 +1549,16 @@ function LegacyChatBox(): JSX.Element {
           const hasComplexTask = chatStore.tasks[
             _taskId as string
           ].messages.some((m) => m.step === 'to_sub_tasks');
-          const hasErrorMessage = chatStore.tasks[
-            _taskId as string
-          ].messages.some(
-            (m) => m.role === 'agent' && m.content.startsWith('❌ **Error**:')
-          );
-
-          // Only start a new task if: pending, no messages processed yet
-          // OR while or after replaying a project
+          // Only start a new task if: pending, no messages processed yet.
+          // A finished Run, including one restored after a window reload or
+          // resumed after an error, goes through follow-up admission: Brain
+          // may still hold its idle consumer, which must be retired first.
           if (
-            (chatStore.tasks[_taskId as string].status ===
+            chatStore.tasks[_taskId as string].status ===
               ChatTaskStatus.PENDING &&
-              !hasSimpleResponse &&
-              !hasComplexTask &&
-              !isFinished) ||
-            chatStore.tasks[_taskId].type === 'replay' ||
-            hasErrorMessage
+            !hasSimpleResponse &&
+            !hasComplexTask &&
+            !isFinished
           ) {
             if (!preserveComposer) setMessage('');
             // Pass the message content to startTask instead of adding it to current chatStore
