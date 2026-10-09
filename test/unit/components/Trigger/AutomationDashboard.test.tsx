@@ -281,9 +281,9 @@ describe('automation details and compact list', () => {
       screen.getByRole('menuitem', { name: 'Edit', exact: true })
     );
     expect(edit).toHaveBeenCalledWith(trigger);
-    fireEvent.click(
-      screen.getByRole('switch', { name: 'Turn on Daily brief' })
-    );
+    const toggleSwitch = screen.getByRole('switch', { name: 'Daily brief' });
+    expect(toggleSwitch).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(toggleSwitch);
     await waitFor(() => expect(toggle).toHaveBeenCalledWith(trigger));
   });
 
@@ -332,9 +332,7 @@ describe('automation details and compact list', () => {
       screen.getByText('Runs when an event is received')
     ).toBeInTheDocument();
     expect(screen.queryByText('Local time')).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('switch', { name: 'Turn on Daily brief' })
-    ).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Daily brief' })).toBeDisabled();
   });
 
   it('routes Run now to the selected item without toggling its schedule', async () => {
@@ -419,13 +417,20 @@ describe('automation details and compact list', () => {
     expect(
       screen.getAllByRole('menuitem').map((item) => item.textContent)
     ).toEqual(['Run now', 'Resume', 'Edit', 'Delete']);
+    const icon = (name: string) =>
+      screen
+        .getByRole('menuitem', { name })
+        .querySelector('svg')
+        ?.getAttribute('class');
+    expect(icon('Resume')).toBeTruthy();
+    expect(icon('Resume')).not.toBe(icon('Run now'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Resume' }));
     expect(toggle).toHaveBeenCalledWith(trigger);
     expect(select).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /Daily brief Paused/ }));
     expect(select).toHaveBeenCalledWith(trigger.id);
-    expect(
-      screen.getByRole('button', { name: /Daily brief Paused/ })
-    ).toHaveAttribute('aria-pressed', 'true');
+    const row = screen.getByRole('button', { name: /Daily brief Paused/ });
+    expect(row).toHaveAttribute('aria-current', 'true');
+    expect(row).not.toHaveAttribute('aria-pressed');
   });
 });

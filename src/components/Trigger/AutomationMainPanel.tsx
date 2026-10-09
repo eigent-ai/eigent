@@ -95,12 +95,8 @@ export function AutomationMainPanel({
                 checked={isActive}
                 disabled={isBusy || !!needsAuth}
                 onCheckedChange={() => void onToggleActive(trigger)}
-                aria-label={t(
-                  isActive
-                    ? 'triggers.turn-off-named'
-                    : 'triggers.turn-on-named',
-                  { name: trigger.name }
-                )}
+                // The name stays put; `checked` announces on or off.
+                aria-label={trigger.name}
               />
             </div>
           )

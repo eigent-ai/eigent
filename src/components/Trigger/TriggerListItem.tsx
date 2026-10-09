@@ -23,7 +23,14 @@ import { DsText } from '@/components/ui/ds-text';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { cn } from '@/lib/utils';
 import { Trigger, TriggerStatus, TriggerType } from '@/types';
-import { MoreHorizontal, Pause, Pencil, Play, Trash2 } from 'lucide-react';
+import {
+  CirclePlay,
+  MoreHorizontal,
+  Pause,
+  Pencil,
+  Play,
+  Trash2,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   formatRunTime,
@@ -113,7 +120,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
     >
       <button
         type="button"
-        aria-pressed={isSelected}
+        aria-current={isSelected ? 'true' : undefined}
         onClick={() => onSelect(trigger.id)}
         className={cn(
           'flex min-w-0 flex-1 flex-col gap-ds-4 rounded-ds-field text-left',
@@ -186,7 +193,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             disabled={isBusy || !!needsAuth}
             onSelect={() => onToggleActive(trigger)}
           >
-            {isActive ? <Pause aria-hidden /> : <Play aria-hidden />}
+            {isActive ? <Pause aria-hidden /> : <CirclePlay aria-hidden />}
             {t(isActive ? 'triggers.action-pause' : 'triggers.action-resume')}
           </DropdownMenuItem>
           <DropdownMenuItem
