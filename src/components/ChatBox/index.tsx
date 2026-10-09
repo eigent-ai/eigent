@@ -36,11 +36,6 @@ import {
 } from '@/lib/approvalPresentation';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
-import {
-  followUpAdmissionClaims,
-  notifyFollowUpAdmissionReleased,
-  onFollowUpAdmissionReleased,
-} from '@/lib/followUpAdmissionClaims';
 import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
 import { notifyError } from '@/lib/notifyError';
 import {
@@ -84,6 +79,11 @@ import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
+import {
+  followUpAdmissionClaims,
+  notifyFollowUpAdmissionReleased,
+  onFollowUpAdmissionReleased,
+} from '@/store/followUpAdmissionClaims';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';

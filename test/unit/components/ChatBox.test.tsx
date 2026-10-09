@@ -26,11 +26,11 @@ vi.mock('@/hooks/useSessionExecution', () => ({
 
 import BottomBox from '@/components/ChatBox/BottomBox';
 import { generateUniqueId } from '@/lib';
-import { resetFollowUpAdmissionClaims } from '@/lib/followUpAdmissionClaims';
 import { runProjectionStore } from '@/lib/runEvents';
 import { errorCopy } from '@/lib/usageErrors';
 import { createChatStoreInstance } from '@/store/chatStore';
 import { resetConnectionConfig } from '@/store/connectionStore';
+import { resetFollowUpAdmissionClaims } from '@/store/followUpAdmissionClaims';
 import { resetSessionDrafts } from '@/store/sessionDraftStore';
 import {
   acknowledgeUsageNotice,
