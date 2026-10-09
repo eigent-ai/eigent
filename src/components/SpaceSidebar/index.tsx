@@ -386,7 +386,12 @@ export default function SpaceSidebar({
             : undefined;
           return {
             id: project.id,
-            title: getSessionDisplayName(project.name, project.id, t),
+            title: getSessionDisplayName(
+              project.name,
+              project.id,
+              t,
+              project.metadata?.nameSource
+            ),
             sessionLead: resolveSessionNavLeadPresentation({
               cachedLead: navLeadByProjectId[project.id],
               isHistoryLoading: Boolean(historyLoadingProjectIds[project.id]),

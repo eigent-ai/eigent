@@ -106,15 +106,20 @@ export default function Projects({
       : projects.filter((project) =>
           matchesHubNameSearch(
             effectiveSearchQuery,
-            getSessionDisplayName(project.project_name, project.project_id, t)
+            getSessionDisplayName(
+              project.project_name,
+              project.project_id,
+              t,
+              project.nameSource
+            )
           )
         );
 
     return [...filtered].sort((a, b) => {
       if (sortBy === 'name') {
         return compareHubByName(
-          getSessionDisplayName(a.project_name, a.project_id, t),
-          getSessionDisplayName(b.project_name, b.project_id, t),
+          getSessionDisplayName(a.project_name, a.project_id, t, a.nameSource),
+          getSessionDisplayName(b.project_name, b.project_id, t, b.nameSource),
           sortDirection
         );
       }

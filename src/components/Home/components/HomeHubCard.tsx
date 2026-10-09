@@ -301,7 +301,8 @@ function ProjectItemContent({
   const title = getSessionDisplayName(
     project.project_name,
     project.project_id,
-    t
+    t,
+    project.nameSource
   );
   const tokenCount = resolveProjectTokenCount(project);
 
@@ -325,7 +326,8 @@ function ProjectItemContent({
       icon: <Pencil className="h-4 w-4" aria-hidden />,
       onSelect: () => {
         setRenameValue(
-          isPlaceholderProjectName(project.project_name, project.project_id)
+          !project.nameSource &&
+            isPlaceholderProjectName(project.project_name, project.project_id)
             ? ''
             : project.project_name?.trim() || ''
         );
@@ -448,7 +450,12 @@ function TaskItemContent({
   const storedProjectName =
     project?.project_name?.trim() || task.project_name?.trim() || '';
   const projectName = storedProjectName
-    ? getSessionDisplayName(storedProjectName, task.project_id, t)
+    ? getSessionDisplayName(
+        storedProjectName,
+        task.project_id,
+        t,
+        project?.project_name?.trim() ? project.nameSource : undefined
+      )
     : '';
   const menuItems = [
     ...(controlAction && onControl

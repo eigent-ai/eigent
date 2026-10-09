@@ -46,6 +46,18 @@ describe('getSessionDisplayName', () => {
       'Project session-2'
     );
   });
+
+  it('keeps a chosen name that reads like a default', () => {
+    expect(getSessionDisplayName('New Project', 'session-1', t, 'manual')).toBe(
+      'New Project'
+    );
+    expect(
+      getSessionDisplayName('Project session-1', 'session-1', t, 'initial')
+    ).toBe('Project session-1');
+    expect(getSessionDisplayName('', 'session-1', t, 'manual')).toBe(
+      'New session'
+    );
+  });
 });
 
 describe('getSessionMetaDisplayName', () => {
@@ -80,12 +92,12 @@ describe('getSessionMetaDisplayName', () => {
           name: 'new project',
           metadata: {
             historyDisplayName: 'Plan the launch',
-            nameSource: 'user',
+            nameSource: 'manual',
           },
         },
         t
       )
-    ).toBe('New session');
+    ).toBe('new project');
   });
 
   it('falls back to New session without a history title', () => {

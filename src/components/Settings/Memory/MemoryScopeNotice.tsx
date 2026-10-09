@@ -43,6 +43,8 @@ interface MemoryDirectoryItem {
   spaceId: string;
   projectId?: string;
   name: string;
+  /** The Session meta's `metadata.nameSource`, for Session items. */
+  nameSource?: unknown;
   parentName?: string;
   projectCount?: number;
   updatedAt: number;
@@ -128,6 +130,7 @@ export function MemoryScopeDirectory({
           spaceId: space.id,
           projectId: project.id,
           name: project.name,
+          nameSource: project.metadata?.nameSource,
           parentName: space.name,
           updatedAt: project.updatedAt,
         })
@@ -189,7 +192,12 @@ export function MemoryScopeDirectory({
         item.projectId
           ? {
               ...item,
-              name: getSessionDisplayName(item.name, item.projectId, t),
+              name: getSessionDisplayName(
+                item.name,
+                item.projectId,
+                t,
+                item.nameSource
+              ),
             }
           : item
       )

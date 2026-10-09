@@ -101,7 +101,12 @@ export function WorkspaceVersionHistoryDialog({
         getVisibleProjectMetasForSpace(projectsBySpaceId, spaceId).map(
           (project) => [
             project.id,
-            getSessionDisplayName(project.name, project.id, t),
+            getSessionDisplayName(
+              project.name,
+              project.id,
+              t,
+              project.metadata?.nameSource
+            ),
           ]
         )
       ),

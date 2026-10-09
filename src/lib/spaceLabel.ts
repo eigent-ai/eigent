@@ -40,16 +40,21 @@ export function isPlaceholderProjectName(
  * Visible Session name for a Project. System default names matched by
  * `isPlaceholderProjectName` (empty, `new project`, `Project <id>`) show the
  * localized "New session" label; names the user chose are shown as stored.
+ * A `nameSource` (the Session meta's `metadata.nameSource`) marks a name that
+ * was chosen rather than defaulted, even one that reads like a default.
  * The stored name is not changed.
  */
 export function getSessionDisplayName(
   name: string | null | undefined,
   projectId: string,
-  t: TFunction
+  t: TFunction,
+  nameSource?: unknown
 ): string {
+  const storedName = (name ?? '').trim();
+  if (nameSource && storedName) return storedName;
   return isPlaceholderProjectName(name, projectId)
     ? t('layout.new-project')
-    : (name ?? '').trim();
+    : storedName;
 }
 
 type SessionNameMeta = {
@@ -84,7 +89,7 @@ export function getSessionMetaDisplayName(
 ): string {
   return (
     sessionHistoryDisplayName(meta) ??
-    getSessionDisplayName(meta.name, meta.id, t)
+    getSessionDisplayName(meta.name, meta.id, t, meta.metadata?.nameSource)
   );
 }
 
