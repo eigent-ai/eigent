@@ -3695,6 +3695,14 @@ describe('ChatStore - Core Functionality', () => {
               expect(store.getState().tasks['live-run'].durableRunStatus).toBe(
                 'interrupted'
               );
+              // A completed Resume later supersedes exactly this error.
+              expect(
+                store
+                  .getState()
+                  .tasks['live-run'].messages.find(
+                    (message) => message.step === AgentStep.ERROR
+                  )?.resumable
+              ).toBe(true);
               expect(fetchDelete).not.toHaveBeenCalledWith('/chat/project-1');
             }
             runEventIngressRegistry.ingest(
