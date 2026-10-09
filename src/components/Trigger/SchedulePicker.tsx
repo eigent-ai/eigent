@@ -92,6 +92,89 @@ const generateMinuteOptions = (): InputSelectOption[] => {
   });
 };
 
+/**
+ * The next local run times shown in the schedule preview. Each run is counted
+ * on from the previous one, so a preview that crosses a month or year end
+ * stays in order, and a monthly day only appears in months that have it, as
+ * the cron expression runs.
+ */
+export function getNextScheduledTimes({
+  frequency,
+  hour,
+  minute,
+  weekdays,
+  dayOfMonth,
+  oneTimeDate,
+  now,
+  count = 5,
+}: {
+  frequency: FrequencyType;
+  hour: number;
+  minute: number;
+  weekdays: string[];
+  dayOfMonth: number | null;
+  oneTimeDate?: Date;
+  now: Date;
+  count?: number;
+}): Date[] {
+  const times: Date[] = [];
+  const atTime = (date: Date) => {
+    const next = new Date(date);
+    next.setHours(hour, minute, 0, 0);
+    return next;
+  };
+  const nextDay = (date: Date) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + 1);
+    next.setHours(hour, minute, 0, 0);
+    return next;
+  };
+
+  switch (frequency) {
+    case 'one-time': {
+      if (!oneTimeDate) break;
+      const oneTime = atTime(oneTimeDate);
+      if (oneTime > now) times.push(oneTime);
+      break;
+    }
+    case 'daily': {
+      let next = atTime(now);
+      if (next <= now) next = nextDay(next);
+      while (times.length < count) {
+        times.push(next);
+        next = nextDay(next);
+      }
+      break;
+    }
+    case 'weekly': {
+      const targetWeekdays = new Set(weekdays.map((w) => parseInt(w, 10)));
+      if (targetWeekdays.size === 0) break;
+      let next = atTime(now);
+      for (let day = 0; day < 7 * (count + 1) && times.length < count; day++) {
+        if (targetWeekdays.has(next.getDay()) && next > now) times.push(next);
+        next = nextDay(next);
+      }
+      break;
+    }
+    case 'monthly': {
+      if (dayOfMonth === null) break;
+      for (let month = 0; month < 48 && times.length < count; month++) {
+        const next = new Date(
+          now.getFullYear(),
+          now.getMonth() + month,
+          dayOfMonth,
+          hour,
+          minute
+        );
+        // Day 31 rolls into the next month where the month is shorter.
+        if (next.getDate() === dayOfMonth && next > now) times.push(next);
+      }
+      break;
+    }
+  }
+  return times;
+}
+
 export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   value,
   onChange,
@@ -632,113 +715,22 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   };
 
   // Calculate next 5 scheduled times based on frequency
-  const nextScheduledTimes = useMemo(() => {
-    const times: Date[] = [];
-    // Never preview a time that Date has rolled over from an invalid value.
-    if (hourNum === null || minuteNum === null) return times;
-    const now = new Date();
-
-    for (let i = 0; i < 5; i++) {
-      let nextTime: Date | null = null;
-
-      switch (frequency) {
-        case 'one-time':
-          // One-time execution at specified date and time
-          if (oneTimeDate && i === 0) {
-            const oneTime = new Date(oneTimeDate);
-            oneTime.setHours(hourNum);
-            oneTime.setMinutes(minuteNum);
-            oneTime.setSeconds(0);
-            oneTime.setMilliseconds(0);
-            if (oneTime > now) {
-              nextTime = oneTime;
-            }
-          }
-          break;
-        case 'daily':
-          // At specified hour:minute each day
-          const dailyTime = new Date(now);
-          dailyTime.setHours(hourNum);
-          dailyTime.setMinutes(minuteNum);
-          dailyTime.setSeconds(0);
-          dailyTime.setMilliseconds(0);
-          if (i === 0 && dailyTime <= now) {
-            dailyTime.setDate(dailyTime.getDate() + 1);
-          } else if (i > 0) {
-            dailyTime.setDate(times[i - 1].getDate() + 1);
-          }
-          nextTime = dailyTime;
-          break;
-        case 'weekly':
-          // On specified weekdays at specified time
-          const weeklyTime = new Date(now);
-          weeklyTime.setHours(hourNum);
-          weeklyTime.setMinutes(minuteNum);
-          weeklyTime.setSeconds(0);
-          weeklyTime.setMilliseconds(0);
-          const targetWeekdays = weekdays.map((w) => parseInt(w));
-          if (i === 0) {
-            const currentWeekday = weeklyTime.getDay();
-            // Find next matching weekday
-            let daysUntilTarget = 7;
-            for (const targetWeekday of targetWeekdays) {
-              let days = (targetWeekday - currentWeekday + 7) % 7;
-              if (days === 0 && weeklyTime <= now) {
-                days = 7; // Move to next week
-              }
-              daysUntilTarget = Math.min(daysUntilTarget, days);
-            }
-            weeklyTime.setDate(weeklyTime.getDate() + daysUntilTarget);
-          } else {
-            // Find next weekday from the selected weekdays
-            const lastWeekday = times[i - 1].getDay();
-            let daysUntilNext = 7;
-            for (const targetWeekday of targetWeekdays) {
-              let days = (targetWeekday - lastWeekday + 7) % 7;
-              if (days === 0) days = 7;
-              daysUntilNext = Math.min(daysUntilNext, days);
-            }
-            weeklyTime.setDate(times[i - 1].getDate() + daysUntilNext);
-          }
-          nextTime = weeklyTime;
-          break;
-        case 'monthly':
-          // On specified day of month at specified time
-          if (dayOfMonthNum === null) break;
-          const monthlyTime = new Date(now);
-          monthlyTime.setHours(hourNum);
-          monthlyTime.setMinutes(minuteNum);
-          monthlyTime.setSeconds(0);
-          monthlyTime.setMilliseconds(0);
-          const targetDay = dayOfMonthNum;
-          if (i === 0) {
-            const currentDay = monthlyTime.getDate();
-            if (currentDay < targetDay) {
-              monthlyTime.setDate(targetDay);
-            } else if (currentDay > targetDay || monthlyTime <= now) {
-              // Move to next month
-              monthlyTime.setMonth(monthlyTime.getMonth() + 1);
-              monthlyTime.setDate(targetDay);
-            }
-          } else {
-            // Move to next month
-            monthlyTime.setMonth(times[i - 1].getMonth() + 1);
-            monthlyTime.setDate(targetDay);
-          }
-          nextTime = monthlyTime;
-          break;
-      }
-
-      if (nextTime) {
-        times.push(nextTime);
-      } else {
-        // If we can't calculate more times, break
-        break;
-      }
-    }
-
-    return times;
-  }, [frequency, hourNum, minuteNum, weekdays, dayOfMonthNum, oneTimeDate]);
+  const nextScheduledTimes = useMemo(
+    () =>
+      // Never preview a time that Date has rolled over from an invalid value.
+      hourNum === null || minuteNum === null
+        ? []
+        : getNextScheduledTimes({
+            frequency,
+            hour: hourNum,
+            minute: minuteNum,
+            weekdays,
+            dayOfMonth: dayOfMonthNum,
+            oneTimeDate,
+            now: new Date(),
+          }),
+    [frequency, hourNum, minuteNum, weekdays, dayOfMonthNum, oneTimeDate]
+  );
 
   // Format date for display
   const formatScheduledTime = (date: Date): string => {

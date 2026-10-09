@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  getNextScheduledTimes,
   parseScheduleNumber,
   SchedulePicker,
 } from '@/components/Trigger/SchedulePicker';
@@ -93,6 +94,114 @@ describe('parseScheduleNumber', () => {
     expect(parseScheduleNumber('31', { min: 1, max: 31 })).toBe(31);
     expect(parseScheduleNumber('0', { min: 1, max: 31 })).toBeNull();
     expect(parseScheduleNumber('32', { min: 1, max: 31 })).toBeNull();
+  });
+});
+
+describe('getNextScheduledTimes', () => {
+  // Local dates, as the preview shows them: [year, month (1-12), day, hour, minute].
+  const local = (y: number, m: number, d: number, h = 9, min = 0) =>
+    new Date(y, m - 1, d, h, min, 0, 0);
+  const preview = (
+    overrides: Partial<Parameters<typeof getNextScheduledTimes>[0]> & {
+      now: Date;
+    }
+  ) =>
+    getNextScheduledTimes({
+      frequency: 'daily',
+      hour: 9,
+      minute: 0,
+      weekdays: ['1'],
+      dayOfMonth: 1,
+      ...overrides,
+    });
+
+  it('keeps daily runs in order across the end of a month', () => {
+    expect(preview({ now: local(2026, 10, 30, 10) })).toEqual([
+      local(2026, 10, 31),
+      local(2026, 11, 1),
+      local(2026, 11, 2),
+      local(2026, 11, 3),
+      local(2026, 11, 4),
+    ]);
+  });
+
+  it('keeps weekly runs in order across the end of a month', () => {
+    // 2026-10-26 is a Monday.
+    expect(
+      preview({
+        frequency: 'weekly',
+        weekdays: ['1', '3'],
+        now: local(2026, 10, 27, 10),
+      })
+    ).toEqual([
+      local(2026, 10, 28),
+      local(2026, 11, 2),
+      local(2026, 11, 4),
+      local(2026, 11, 9),
+      local(2026, 11, 11),
+    ]);
+  });
+
+  it('keeps monthly runs in order across the end of a year', () => {
+    expect(
+      preview({
+        frequency: 'monthly',
+        dayOfMonth: 15,
+        now: local(2026, 11, 20, 10),
+      })
+    ).toEqual([
+      local(2026, 12, 15),
+      local(2027, 1, 15),
+      local(2027, 2, 15),
+      local(2027, 3, 15),
+      local(2027, 4, 15),
+    ]);
+  });
+
+  it('shows a monthly day only in months that have it', () => {
+    expect(
+      preview({
+        frequency: 'monthly',
+        dayOfMonth: 31,
+        now: local(2027, 1, 15, 10),
+      })
+    ).toEqual([
+      local(2027, 1, 31),
+      local(2027, 3, 31),
+      local(2027, 5, 31),
+      local(2027, 7, 31),
+      local(2027, 8, 31),
+    ]);
+  });
+
+  it('includes today when its time is still ahead', () => {
+    expect(
+      preview({
+        frequency: 'monthly',
+        dayOfMonth: 30,
+        now: local(2026, 10, 30, 8),
+      })[0]
+    ).toEqual(local(2026, 10, 30));
+    expect(preview({ now: local(2026, 10, 30, 8) })[0]).toEqual(
+      local(2026, 10, 30)
+    );
+  });
+
+  it('shows a one-time run only while it is in the future', () => {
+    expect(
+      preview({
+        frequency: 'one-time',
+        oneTimeDate: local(2026, 11, 1, 0),
+        now: local(2026, 10, 30, 10),
+      })
+    ).toEqual([local(2026, 11, 1)]);
+    expect(
+      preview({
+        frequency: 'one-time',
+        oneTimeDate: local(2026, 10, 1, 0),
+        now: local(2026, 10, 30, 10),
+      })
+    ).toEqual([]);
   });
 });
 
