@@ -56,6 +56,35 @@ def _is_loopback(host: str | None) -> bool:
         return False
 
 
+def desktop_control_configured(request: Request) -> bool:
+    """Return whether this Brain enforces the Desktop control boundary.
+
+    When it does, only loopback clients are accepted. An Electron Brain that
+    lost its capability fails closed instead of reporting an open boundary.
+    """
+
+    if _expected_local_control_capability():
+        if not _is_loopback(getattr(request.client, "host", None)):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "local_control_loopback_required",
+                    "message": "Desktop control APIs only accept loopback clients.",
+                },
+            )
+        return True
+
+    if os.environ.get("EIGENT_RUNTIME", "").lower() == "electron":
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "local_control_capability_unconfigured",
+                "message": "Desktop control capability is not configured.",
+            },
+        )
+    return False
+
+
 def _authorize_desktop_renderer(
     request: Request,
 ) -> LocalControlPrincipal | None:
@@ -67,40 +96,21 @@ def _authorize_desktop_renderer(
     A Brain started outside Electron without a capability returns None.
     """
 
+    if not desktop_control_configured(request):
+        return None
     expected = _expected_local_control_capability()
-    if expected:
-        if not _is_loopback(getattr(request.client, "host", None)):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "code": "local_control_loopback_required",
-                    "message": "Desktop control APIs only accept loopback clients.",
-                },
-            )
-        presented = request.headers.get(LOCAL_CONTROL_CAPABILITY_HEADER, "")
-        if not presented or not hmac.compare_digest(presented, expected):
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "code": "local_control_capability_required",
-                    "message": "A valid Desktop control capability is required.",
-                },
-            )
-        principal = LocalControlPrincipal(
-            kind="desktop_renderer", user_id="local"
-        )
-        request.state.local_control_principal = principal
-        return principal
-
-    if os.environ.get("EIGENT_RUNTIME", "").lower() == "electron":
+    presented = request.headers.get(LOCAL_CONTROL_CAPABILITY_HEADER, "")
+    if not presented or not hmac.compare_digest(presented, expected):
         raise HTTPException(
-            status_code=503,
+            status_code=401,
             detail={
-                "code": "local_control_capability_unconfigured",
-                "message": "Desktop control capability is not configured.",
+                "code": "local_control_capability_required",
+                "message": "A valid Desktop control capability is required.",
             },
         )
-    return None
+    principal = LocalControlPrincipal(kind="desktop_renderer", user_id="local")
+    request.state.local_control_principal = principal
+    return principal
 
 
 async def require_local_control_principal(

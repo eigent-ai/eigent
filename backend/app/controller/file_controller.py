@@ -32,6 +32,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from app.artifacts import (
@@ -39,7 +40,14 @@ from app.artifacts import (
     scan_task_changed_files,
     task_modification_windows,
 )
-from app.auth import require_local_control_principal
+from app.auth import (
+    FileAccessScope,
+    issue_file_access_grant,
+    require_file_preview_access,
+    require_file_stream_access,
+    require_local_control_if_configured,
+    require_local_control_principal,
+)
 from app.component.environment import env
 from app.run_journal import get_default_run_journal
 from app.utils.file_utils import list_files, resolve_under_base
@@ -104,7 +112,9 @@ def _redacted_path_suffix(path: Path) -> str:
     return (".../" + "/".join(parts)) if parts else "..."
 
 
-@router.post("/files")
+@router.post(
+    "/files", dependencies=[Depends(require_local_control_if_configured)]
+)
 async def upload_file(
     file: Annotated[UploadFile, File()],
     x_session_id: Annotated[str | None, Header(alias="X-Session-ID")] = None,
@@ -316,7 +326,9 @@ async def list_task_changed_files(
     }
 
 
-@router.get("/files")
+@router.get(
+    "/files", dependencies=[Depends(require_local_control_if_configured)]
+)
 async def list_project_files(
     project_id: str = Query(..., description="Project ID"),
     email: str = Query(..., description="User email"),
@@ -414,7 +426,36 @@ async def list_project_files(
     return result
 
 
-@router.api_route("/files/stream", methods=["GET", "HEAD"])
+class FileAccessRequest(BaseModel):
+    project_id: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=1)
+    space_id: str | None = None
+    user_id: str | None = None
+
+
+@router.post(
+    "/files/access",
+    dependencies=[Depends(require_local_control_if_configured)],
+)
+async def create_file_access(body: FileAccessRequest) -> dict:
+    """Issue a grant that file URLs for one project root can carry.
+
+    Elements such as <img> and <iframe> cannot send the Desktop capability
+    header, so /files/stream and /files/preview accept this grant instead.
+    """
+    access, expires_at = issue_file_access_grant(
+        FileAccessScope.of(
+            body.email, body.project_id, body.space_id, body.user_id
+        )
+    )
+    return {"access": access, "expires_at": expires_at}
+
+
+@router.api_route(
+    "/files/stream",
+    methods=["GET", "HEAD"],
+    dependencies=[Depends(require_file_stream_access)],
+)
 async def stream_file(
     path: str = Query(..., description="Relative path from project root"),
     project_id: str = Query(..., description="Project ID"),
@@ -455,27 +496,22 @@ async def stream_file(
     )
 
 
-@router.get("/files/preview/{email}/{project_id}/{file_path:path}")
+@router.get("/files/preview/{access}/{file_path:path}")
 async def preview_file(
-    email: str,
-    project_id: str,
     file_path: str,
-    space_id: str | None = Query(None, description="Optional Space ID"),
-    user_id: str | None = Query(
-        None, description="Optional canonical user ID"
-    ),
+    scope: Annotated[FileAccessScope, Depends(require_file_preview_access)],
 ):
     """
     Preview file content with a path-based URL so relative references inside
-    HTML/CSS/JS resolve against the project directory structure.
+    HTML/CSS/JS resolve against the project directory structure. The grant
+    names the project root.
     """
-    if not file_path or not project_id or not email:
-        raise HTTPException(
-            status_code=400,
-            detail="file_path, project_id and email are required",
-        )
+    if not file_path:
+        raise HTTPException(status_code=400, detail="file_path is required")
 
-    project_root = _resolve_file_root(email, project_id, space_id, user_id)
+    project_root = _resolve_file_root(
+        scope.email, scope.project_id, scope.space_id, scope.user_id
+    )
     try:
         resolved = resolve_under_base(file_path, str(project_root.resolve()))
     except Exception as e:

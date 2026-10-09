@@ -72,6 +72,11 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import {
+  authorizeBrainFile,
+  getBrainFilePreviewUrl,
+  shareBrainFileAccess,
+} from '@/lib/brainFileAccess';
+import {
   isRemotePreviewSource,
   loadFilePreview,
   toLocalPreviewUrl,
@@ -1143,6 +1148,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
     }
     setLoading(true);
     void resolveArtifactAssetFile(file)
+      .then(authorizeBrainFile)
       .then((resolvedFile) =>
         loadFilePreview(resolvedFile, {
           ipcRenderer,
@@ -2386,42 +2392,12 @@ function getRemoteRelativePath(file: FileInfo): string | undefined {
   }
 }
 
-function encodePathSegments(path: string): string {
-  return path
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-}
-
 function getRemotePreviewUrl(file: FileInfo): string | undefined {
   const relativePath = getRemoteRelativePath(file);
   if (!relativePath || !file.path) {
     return undefined;
   }
-
-  try {
-    const url = new URL(file.path, window.location.origin);
-    const email = url.searchParams.get('email');
-    const projectId = url.searchParams.get('project_id');
-    const spaceId = url.searchParams.get('space_id');
-    const userId = url.searchParams.get('user_id');
-    if (!email || !projectId) {
-      return undefined;
-    }
-
-    const filesIndex = url.pathname.indexOf('/files/stream');
-    const routePrefix =
-      filesIndex >= 0 ? url.pathname.substring(0, filesIndex) : '';
-
-    const query = new URLSearchParams();
-    if (spaceId) query.set('space_id', spaceId);
-    if (userId) query.set('user_id', userId);
-    const queryString = query.toString();
-    return `${url.origin}${routePrefix}/files/preview/${encodeURIComponent(email)}/${encodeURIComponent(projectId)}/${encodePathSegments(relativePath)}${queryString ? `?${queryString}` : ''}`;
-  } catch {
-    return undefined;
-  }
+  return getBrainFilePreviewUrl(file.path, relativePath);
 }
 
 function getRemotePreviewBaseHref(file: FileInfo): string | undefined {
@@ -2498,7 +2474,10 @@ function rewriteRemoteHtmlReferences(
     const matchedFile = fileMap.get(normalizeLookupPath(resolvedRelativePath));
 
     if (matchedFile?.path) {
-      element.setAttribute(attributeName, `${matchedFile.path}${suffix}`);
+      element.setAttribute(
+        attributeName,
+        `${shareBrainFileAccess(matchedFile.path, selectedFile.path)}${suffix}`
+      );
     }
   };
 
