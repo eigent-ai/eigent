@@ -120,6 +120,7 @@ export enum ListenerType {
 }
 
 export enum ExecutionType {
+  Manual = 'manual',
   Scheduled = 'scheduled',
   Webhook = 'webhook',
   Slack = 'slack',
