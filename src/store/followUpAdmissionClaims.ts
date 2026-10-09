@@ -21,6 +21,10 @@
  */
 export const followUpAdmissionClaims = new Map<string, symbol>();
 
+/** Project ids whose new task after an interrupted Run is still admitting.
+ * Shared for the same reason as `followUpAdmissionClaims`. */
+export const interruptedAdmissionClaims = new Set<string>();
+
 const releaseListeners = new Set<() => void>();
 
 /** Call `listener` whenever a claim is released. Returns an unsubscribe. */
@@ -39,4 +43,5 @@ export function notifyFollowUpAdmissionReleased(): void {
 /** Forget all claims (tests). */
 export function resetFollowUpAdmissionClaims(): void {
   followUpAdmissionClaims.clear();
+  interruptedAdmissionClaims.clear();
 }

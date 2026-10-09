@@ -81,6 +81,7 @@ import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import {
   followUpAdmissionClaims,
+  interruptedAdmissionClaims,
   notifyFollowUpAdmissionReleased,
   onFollowUpAdmissionReleased,
 } from '@/store/followUpAdmissionClaims';
@@ -540,7 +541,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       ),
     []
   );
-  const interruptedAdmissionRef = useRef<string | null>(null);
+  const interruptedAdmissionsRef = useRef(interruptedAdmissionClaims);
   // Admission is monotonic. Late pending-list responses must never restore a
   // request already accepted by HTTP or observed starting in the event stream.
   const acknowledgedQueuedRequests = useRef(new Set<string>());
@@ -1219,7 +1220,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       interruptedRun?.project_id === targetProjectId;
     if (
       startsAfterInterruption &&
-      (interruptedAdmissionRef.current === targetProjectId ||
+      (interruptedAdmissionsRef.current.has(targetProjectId) ||
         (!queuedRequestId && queuedDispatchRef.current !== null))
     )
       return;
@@ -1348,11 +1349,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     let messageAccepted = false;
     let followUpAdmission: symbol | undefined;
+    let interruptedAdmission = false;
     try {
       if (startsAfterInterruption && !queuedRequestId) {
         // A new instruction is a new task, never an implicit Resume. Keep the
         // interrupted task and its tool outcomes intact for history/review.
-        interruptedAdmissionRef.current = targetProjectId;
+        interruptedAdmissionsRef.current.add(targetProjectId);
+        interruptedAdmission = true;
         await waitForPendingStaleRuntimeEviction(targetProjectId);
         const nextTaskId = generateUniqueId();
         const attachesToSend = composerAttachments || [];
@@ -1887,8 +1890,10 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         // in a composer remounted while it was running.
         notifyFollowUpAdmissionReleased();
       }
-      if (interruptedAdmissionRef.current === targetProjectId)
-        interruptedAdmissionRef.current = null;
+      if (interruptedAdmission) {
+        interruptedAdmissionsRef.current.delete(targetProjectId);
+        notifyFollowUpAdmissionReleased();
+      }
       if (messageAccepted && !requiresHumanReply) {
         if (startsAfterInterruption) setInterruptedRun(null);
         acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
@@ -2213,7 +2218,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     if (
       queuedDispatchRef.current ||
       followUpAdmissionsRef.current.has(projectId) ||
-      interruptedAdmissionRef.current === projectId ||
+      interruptedAdmissionsRef.current.has(projectId) ||
       queueActionRef.current?.projectId === projectId
     )
       return;

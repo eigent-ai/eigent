@@ -2836,6 +2836,95 @@ describe('ChatBox Component', async () => {
       }
     );
 
+    it('does not start a second task from a restored draft while the task after interruption is admitting', async () => {
+      eventNativeHarness.enabled = false;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      const user = userEvent.setup();
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.endsWith('/status')
+            ? { has_lock: true, status: 'done', consumer_alive: false }
+            : { runs: [] }
+        )
+      );
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              hasMessages: true,
+              messages: [
+                { id: 'old-prompt', role: 'user', content: 'Old task' },
+              ],
+            },
+          },
+        } as any,
+      });
+      let admit!: () => void;
+      defaultChatStoreState.startTask.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            admit = resolve;
+          })
+      );
+      // Switching Sessions remounts the chat surface, keyed by the Session id.
+      const sessionView = (projectId: string) => {
+        defaultProjectStoreState.activeProjectId = projectId;
+        return (
+          <BrowserRouter>
+            <ChatBox key={projectId} />
+          </BrowserRouter>
+        );
+      };
+      const view = render(sessionView('test-project-id'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        runProjectionStore.upsertRunSummaries('test-project-id', [
+          {
+            run_id: 'test-task-id',
+            project_id: 'test-project-id',
+            status: 'interrupted',
+            updated_at: 100,
+            origin: 'local',
+            latest_attempt: { attempt_number: 1, status: 'interrupted' },
+          },
+        ]);
+      });
+      expect(
+        screen.getByText('chat.run-interrupted-title')
+      ).toBeInTheDocument();
+      await user.type(
+        screen.getByTestId('message-input'),
+        'Create three new notes'
+      );
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+      );
+
+      view.rerender(sessionView('second-project-id'));
+      view.rerender(sessionView('test-project-id'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Create three new notes'
+      );
+      await user.click(screen.getByTestId('send-button'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1);
+
+      await act(async () => admit());
+      await waitFor(() =>
+        expect(screen.getByTestId('message-input')).toHaveValue('')
+      );
+      expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1);
+    });
+
     it.each([
       ['cloud', 'local', false],
       ['cloud', 'custom', false],
