@@ -15788,34 +15788,32 @@ class SQLiteRunJournal:
         HumanInteractions too, so this one table covers both kinds of wait.
         """
 
-        unique_run_ids = list(dict.fromkeys(run_ids))
-        waits: dict[str, list[tuple[float, float | None]]] = {}
+        identifiers = list(dict.fromkeys(run_ids))
+        if not identifiers:
+            return {}
         with self._lock:
-            # Stay far below SQLite's bound-parameter limit.
-            for offset in range(0, len(unique_run_ids), 500):
-                chunk = unique_run_ids[offset : offset + 500]
-                placeholders = ",".join("?" for _ in chunk)
-                rows = self._connection.execute(
-                    f"""
-                    SELECT attempt_id, created_at, resolved_at
-                    FROM human_interactions
-                    WHERE run_id IN ({placeholders})
-                      AND attempt_id IS NOT NULL
-                    ORDER BY created_at, interaction_id
-                    """,
-                    chunk,
-                ).fetchall()
-                for row in rows:
-                    waits.setdefault(str(row["attempt_id"]), []).append(
-                        (
-                            float(row["created_at"]),
-                            (
-                                float(row["resolved_at"])
-                                if row["resolved_at"] is not None
-                                else None
-                            ),
-                        )
-                    )
+            rows = self._connection.execute(
+                """
+                SELECT attempt_id, created_at, resolved_at
+                FROM human_interactions
+                WHERE run_id IN (SELECT value FROM json_each(?))
+                  AND attempt_id IS NOT NULL
+                ORDER BY created_at, interaction_id
+                """,
+                (json.dumps(identifiers, separators=(",", ":")),),
+            ).fetchall()
+        waits: dict[str, list[tuple[float, float | None]]] = {}
+        for row in rows:
+            waits.setdefault(str(row["attempt_id"]), []).append(
+                (
+                    float(row["created_at"]),
+                    (
+                        float(row["resolved_at"])
+                        if row["resolved_at"] is not None
+                        else None
+                    ),
+                )
+            )
         return waits
 
     def find_human_interactions_by_decision_request(
