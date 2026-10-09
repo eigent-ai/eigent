@@ -151,6 +151,33 @@ async def test_late_assembly_failure_releases_started_toolkits(
 
 
 @pytest.mark.asyncio
+async def test_browser_toolkit_failure_releases_the_browser_slot(
+    sample_chat_data, monkeypatch, tmp_path, cdp_pool
+):
+    options = _options(sample_chat_data, "browser")
+    _install_toolkits(monkeypatch, tmp_path, options.project_id, [], cdp_pool)
+
+    class FailingBrowserToolkit:
+        def __init__(self, *_args, **_kwargs):
+            raise TypeError("unsupported browser option")
+
+    monkeypatch.setattr(
+        assembler, "HybridBrowserToolkit", FailingBrowserToolkit
+    )
+
+    with pytest.raises(TypeError, match="unsupported browser option"):
+        await assemble_single_agent_toolkits(
+            options,
+            task_id=options.task_id,
+            working_directory=str(tmp_path),
+            hands=None,
+            can_delegate=False,
+        )
+
+    assert _browser_is_free(cdp_pool)
+
+
+@pytest.mark.asyncio
 async def test_agent_creation_failure_releases_assembled_toolkits(
     sample_chat_data, monkeypatch, tmp_path, cdp_pool
 ):

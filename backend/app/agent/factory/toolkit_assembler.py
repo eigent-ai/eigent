@@ -650,15 +650,17 @@ async def _assemble_single_agent_toolkits(
                 "owned_target_url": owned_target_url,
                 "stealth": not bool(owned_target_url),
             }
+            # Record the reservation first, so rollback can return it even
+            # if the toolkit cannot be constructed.
+            assembly.browser_port = selected_port
+            assembly.browser_cdp_url = cdp_url
+            assembly.browser_session_id = toolkit_session_id
+            assembly.browser_owned_by_hands = cdp_owned_by_hands
             toolkit = HybridBrowserToolkit(
                 options.project_id, **browser_options
             )
             toolkit.agent_name = Agents.single_agent
             assembly.browser_toolkit = toolkit
-            assembly.browser_port = selected_port
-            assembly.browser_cdp_url = cdp_url
-            assembly.browser_session_id = toolkit_session_id
-            assembly.browser_owned_by_hands = cdp_owned_by_hands
             assembly.toolkits_to_register_agent.append(toolkit)
             registered = message_integration.register_toolkits(toolkit)
             assembly.add_tools(
