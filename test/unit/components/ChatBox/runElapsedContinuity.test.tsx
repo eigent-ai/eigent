@@ -139,17 +139,29 @@ function timelineRun(value: ProjectEventStore): TimelineRunView {
   return run;
 }
 
-function ElapsedProbe({ run }: { run: TimelineRunView }) {
-  return <output data-testid="elapsed">{useRunElapsedMs(run)}</output>;
+function ElapsedProbe({
+  run,
+  paused = false,
+}: {
+  run: TimelineRunView;
+  paused?: boolean;
+}) {
+  return <output data-testid="elapsed">{useRunElapsedMs(run, paused)}</output>;
 }
 
 /** Render a Session's timer and read it as the clock advances. */
 function watch(value: ProjectEventStore) {
-  const view = render(<ElapsedProbe run={timelineRun(value)} />);
+  let paused = false;
+  const show = () => <ElapsedProbe paused={paused} run={timelineRun(value)} />;
+  const view = render(show());
   return {
     read(): number {
-      view.rerender(<ElapsedProbe run={timelineRun(value)} />);
+      view.rerender(show());
       return Number(screen.getByTestId('elapsed').textContent);
+    },
+    setPaused(next: boolean) {
+      paused = next;
+      view.rerender(show());
     },
     unmount: () => view.unmount(),
   };
@@ -295,6 +307,58 @@ describe('Run elapsed time leaves out waiting for the user', () => {
     advance(20_000);
     readings.push(timer.read());
     deliver(live, answered(6, 50_000, 'approval-2'));
+    advance(3_000);
+    readings.push(timer.read());
+
+    expect(readings).toEqual([2_000, 2_000, 5_000]);
+  });
+
+  it('keeps an earlier pause out of the time held during a wait', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(startedAt);
+    const { requested, answered } = waitEvents.approval;
+    const live = store();
+    deliver(live, events.query());
+    deliver(live, events.started());
+    const timer = watch(live);
+    // Works 2s, is paused by the user for 10s, then works 2s more.
+    advance(2_000);
+    timer.setPaused(true);
+    advance(10_000);
+    timer.setPaused(false);
+    advance(2_000);
+    const readings = [timer.read()];
+    deliver(live, requested(3, 14_000, 'approval-1'));
+    readings.push(timer.read());
+    advance(60_000);
+    readings.push(timer.read());
+    deliver(live, answered(4, 74_000, 'approval-1'));
+    readings.push(timer.read());
+    advance(1_000);
+    readings.push(timer.read());
+
+    expect(readings).toEqual([4_000, 4_000, 4_000, 4_000, 5_000]);
+  });
+
+  it('adds nothing for a pause taken while waiting for the user', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(startedAt);
+    const { requested, answered } = waitEvents.approval;
+    const live = store();
+    deliver(live, events.query());
+    deliver(live, events.started());
+    const timer = watch(live);
+    advance(2_000);
+    deliver(live, requested(3, 2_000, 'approval-1'));
+    // The user pauses for 10s in the middle of the 60s wait.
+    advance(10_000);
+    timer.setPaused(true);
+    advance(10_000);
+    const readings = [timer.read()];
+    timer.setPaused(false);
+    advance(40_000);
+    deliver(live, answered(4, 62_000, 'approval-1'));
+    readings.push(timer.read());
     advance(3_000);
     readings.push(timer.read());
 

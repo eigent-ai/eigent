@@ -215,7 +215,9 @@ backend leaves it out of `total_attempt_elapsed_ms`, and the projector records
 the waits it observes (`userWaitMs`, `userWaitStartedAt`), so the timer holds
 while the Run is `waiting_for_user` and continues from the same value after the
 answer, also in a Session reopened during the wait. This is independent of
-`paused`, which remains a user action.
+`paused`, which remains a user action: a pause taken before the wait still
+comes off the held value, and a pause during the wait is not taken off a
+second time after the answer.
 
 ### Repeated tool-call presentation
 
