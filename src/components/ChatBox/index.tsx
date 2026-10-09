@@ -1349,13 +1349,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     let messageAccepted = false;
     let followUpAdmission: symbol | undefined;
-    let interruptedAdmission = false;
     try {
       if (startsAfterInterruption && !queuedRequestId) {
         // A new instruction is a new task, never an implicit Resume. Keep the
         // interrupted task and its tool outcomes intact for history/review.
         interruptedAdmissionsRef.current.add(targetProjectId);
-        interruptedAdmission = true;
         await waitForPendingStaleRuntimeEviction(targetProjectId);
         const nextTaskId = generateUniqueId();
         const attachesToSend = composerAttachments || [];
@@ -1890,7 +1888,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         // in a composer remounted while it was running.
         notifyFollowUpAdmissionReleased();
       }
-      if (interruptedAdmission) {
+      // Only the submit that took the claim gets here: the guard above
+      // returns synchronously while it is held.
+      if (startsAfterInterruption && !queuedRequestId) {
         interruptedAdmissionsRef.current.delete(targetProjectId);
         notifyFollowUpAdmissionReleased();
       }
