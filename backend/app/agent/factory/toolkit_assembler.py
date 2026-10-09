@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import inspect
 import logging
 import os
@@ -188,7 +189,13 @@ async def _rollback_runtime_assembly(
             if cleanup is None:
                 cleanup = getattr(toolkit, "cleanup", None)
             if cleanup is not None:
-                outcome = cleanup()
+                # Terminal cleanup waits for process groups to stop. Keep that
+                # wait off the event loop shared by every other Session.
+                outcome = (
+                    cleanup()
+                    if inspect.iscoroutinefunction(cleanup)
+                    else await asyncio.to_thread(cleanup)
+                )
                 if inspect.isawaitable(outcome):
                     await outcome
             disposed.append(toolkit)

@@ -250,3 +250,38 @@ async def test_failed_mcp_startup_remains_owned_by_the_agent(
     assert [type(toolkit) for toolkit in assembly.cleanup_toolkits] == [
         PartlyFailingMCPToolkit
     ]
+
+
+@pytest.mark.asyncio
+async def test_rollback_runs_sync_cleanup_off_the_event_loop(
+    sample_chat_data,
+):
+    import threading
+
+    loop_thread = threading.get_ident()
+    cleanup_threads: list[int] = []
+    disconnect_threads: list[int] = []
+
+    class BlockingCleanupToolkit:
+        def cleanup(self):
+            cleanup_threads.append(threading.get_ident())
+
+    class AsyncDisconnectToolkit:
+        async def disconnect(self):
+            disconnect_threads.append(threading.get_ident())
+
+    options = Chat(**sample_chat_data)
+    assembly = assembler.ToolkitAssembly(
+        cleanup_toolkits=[BlockingCleanupToolkit(), AsyncDisconnectToolkit()]
+    )
+
+    await assembler._rollback_runtime_assembly(
+        assembly,
+        project_id=options.project_id,
+        options=options,
+        hands=None,
+    )
+
+    assert len(cleanup_threads) == 1
+    assert cleanup_threads[0] != loop_thread
+    assert disconnect_threads == [loop_thread]
