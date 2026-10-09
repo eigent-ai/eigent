@@ -25,6 +25,7 @@ import {
 } from '@/components/Trigger/automationSchedule';
 import enTriggers from '@/i18n/locales/en-us/triggers.json';
 import { describe, expect, it } from 'vitest';
+import { useTimeZone } from '../../../mocks/timeZone';
 
 // A Wednesday at 12:00 local time, away from any DST change.
 const REFERENCE = new Date(2026, 6, 15, 12, 0, 0);
@@ -351,5 +352,43 @@ describe('schedule date regressions', () => {
         REFERENCE
       )
     ).toEqual(new Date(2026, 6, 15, 18, 30));
+  });
+});
+
+describe('last-day monthly crons after a DST change', () => {
+  // New Zealand is UTC+13 in January and UTC+12 in July.
+  useTimeZone('Pacific/Auckland');
+  const summer = () => new Date(2026, 0, 15, 12);
+  const winter = () => new Date(2026, 6, 15, 12);
+  const dayOne: RecurringSchedule = {
+    frequency: 'monthly',
+    hour: 0,
+    minute: 30,
+    dayOfMonth: 1,
+  };
+
+  it('reads a cron saved in summer as day 1 in winter', () => {
+    const cron = scheduleToCron(dayOne, summer());
+    expect(cron).toBe('30 11 L * *');
+    expect(parseCron(cron, winter())).toEqual(dayOne);
+  });
+
+  it('keeps the current offset while it still reaches local day 1', () => {
+    const cron = scheduleToCron(dayOne, winter());
+    expect(cron).toBe('30 12 L * *');
+    expect(parseCron(cron, summer())).toEqual({ ...dayOne, hour: 1 });
+  });
+
+  it('still shows when the server runs it', () => {
+    const trigger = { custom_cron_expression: '30 11 L * *' };
+    expect(parseTriggerSchedule(trigger, winter())).toEqual(dayOne);
+    expect(getNextRun(trigger, winter())).toEqual(
+      new Date('2026-07-31T11:30:00Z')
+    );
+  });
+
+  it('does not invent a day for a last-day cron that never reaches day 1', () => {
+    expect(parseCron('0 5 L * *', summer())).toBeNull();
+    expect(parseCron('0 5 L * *', winter())).toBeNull();
   });
 });

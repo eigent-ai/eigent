@@ -389,6 +389,7 @@
   "next-run-notice": "التشغيل التالي: {{time}} (بتوقيتك المحلي). يجب أن يكون Eigent مفتوحًا حينها.",
   "pick-future-time": "اختر تاريخًا ووقتًا في المستقبل.",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
+  "keeps-stored-schedule": "لا يمكن تعديل هذا الجدول الزمني هنا. سيبقى كما هو ما لم تختر تكرارًا أعلاه.",
   "schedule-label-daily": "يوميًا عند {{time}}",
   "schedule-label-weekly": "كل {{days}} عند {{time}}",
   "schedule-label-monthly": "شهريًا في اليوم {{day}} عند {{time}}",

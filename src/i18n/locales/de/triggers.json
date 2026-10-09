@@ -389,6 +389,7 @@
   "next-run-notice": "Nächste Ausführung: {{time}} (deine Ortszeit). Eigent muss dann geöffnet sein.",
   "pick-future-time": "Wähle ein Datum und eine Uhrzeit in der Zukunft.",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
+  "keeps-stored-schedule": "Diese Planung kann hier nicht bearbeitet werden. Sie bleibt unverändert, sofern du oben keine Frequenz auswählst.",
   "schedule-label-daily": "Täglich um {{time}}",
   "schedule-label-weekly": "Jeden {{days}} um {{time}}",
   "schedule-label-monthly": "Monatlich am {{day}}. um {{time}}",

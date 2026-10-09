@@ -389,6 +389,7 @@
   "next-run-notice": "Próxima ejecución: {{time}} (tu hora local). Eigent debe estar abierto en ese momento.",
   "pick-future-time": "Elige una fecha y hora futuras.",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
+  "keeps-stored-schedule": "Esta programación no se puede editar aquí. Se mantendrá igual a menos que elijas una frecuencia arriba.",
   "schedule-label-daily": "Cada día a las {{time}}",
   "schedule-label-weekly": "Cada {{days}} a las {{time}}",
   "schedule-label-monthly": "Cada mes el día {{day}} a las {{time}}",

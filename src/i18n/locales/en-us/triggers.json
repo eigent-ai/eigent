@@ -389,6 +389,7 @@
   "next-run-notice": "Next run: {{time}} (your local time). Eigent needs to be open then.",
   "pick-future-time": "Pick a date and time in the future.",
   "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
+  "keeps-stored-schedule": "This schedule can't be edited here. It stays as it is unless you choose a frequency above.",
   "schedule-label-daily": "Daily at {{time}}",
   "schedule-label-weekly": "Every {{days}} at {{time}}",
   "schedule-label-monthly": "Monthly on day {{day}} at {{time}}",

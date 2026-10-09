@@ -102,7 +102,11 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   useDefaultTime = false,
 }) => {
   const { t, i18n } = useTranslation();
-  const [frequency, setFrequency] = useState<FrequencyType>('daily');
+  // A stored schedule the editor cannot show selects no frequency, so it is
+  // kept until the user picks one.
+  const [frequency, setFrequency] = useState<FrequencyType | null>(() =>
+    value && !parseCron(value, new Date(), initialConfig?.date) ? null : 'daily'
+  );
   const [defaultStart] = useState(nextFullHour);
   const [hour, setHour] = useState<string>(
     defaultStart.getHours().toString().padStart(2, '0')
@@ -139,7 +143,9 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   useEffect(() => {
     if (!value || value === previousCronRef.current) return;
     const parsed = parseCron(value, new Date(), initialConfig?.date);
-    if (parsed && !(useDefaultTime && value === '0 0 * * *')) {
+    if (!parsed) {
+      setFrequency(null);
+    } else if (!(useDefaultTime && value === '0 0 * * *')) {
       setFrequency(parsed.frequency === 'once' ? 'one-time' : parsed.frequency);
       setHour(String(parsed.hour).padStart(2, '0'));
       setMinute(String(parsed.minute).padStart(2, '0'));
@@ -153,7 +159,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   }, [value, useDefaultTime, initialConfig?.date]);
 
   const selectedSchedule = useMemo<LocalSchedule | null>(() => {
-    if (!hour || !minute) return null;
+    if (!frequency || !hour || !minute) return null;
     const time = { hour: Number(hour), minute: Number(minute) };
     if (frequency === 'one-time')
       return oneTimeDate
@@ -193,6 +199,13 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   useEffect(() => {
     const config: ScheduleConfig = {};
 
+    if (frequency === null) {
+      // The kept schedule keeps its stored dates too.
+      if (initialConfig?.date) config.date = initialConfig.date;
+      if (initialConfig?.expirationDate)
+        config.expirationDate = initialConfig.expirationDate;
+    }
+
     if (frequency === 'one-time' && oneTimeDate) {
       // Apply UTC dayOffset so config.date matches the UTC date in the cron expression
       const { dayOffset } = localTimeToUTC(
@@ -205,7 +218,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
       config.date = format(utcDate, 'yyyy-MM-dd');
     }
 
-    if (expiredAt) {
+    if (frequency !== null && expiredAt) {
       // Apply UTC dayOffset so expiration date aligns with the UTC date the cron actually fires on.
       // e.g. if local 23:00 in UTC-5 becomes 04:00 UTC next day (dayOffset=+1),
       // the "last allowed UTC run date" must also shift forward by 1.
@@ -255,10 +268,14 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     isEditing &&
     originalSchedule?.frequency === 'once' &&
     selectedOneTimeDate?.getTime() === originalSchedule.date.getTime();
+  const keepsStoredSchedule = frequency === null;
   const validSchedule =
-    !!selectedSchedule &&
-    !unsupportedMonthlyTime &&
-    (firstRun !== null || unchangedPastOneTime);
+    keepsStoredSchedule ||
+    (!!selectedSchedule &&
+      !unsupportedMonthlyTime &&
+      (firstRun !== null || unchangedPastOneTime));
+  const noticeIsInformation =
+    !!firstRun || unchangedPastOneTime || keepsStoredSchedule;
   useEffect(() => {
     onValidationChange?.(validSchedule);
   }, [validSchedule, onValidationChange]);
@@ -299,7 +316,9 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   return (
     <div className="flex h-full w-full min-w-0 flex-col space-y-4">
       <Tabs
-        value={frequency}
+        value={frequency ?? ''}
+        // Moving focus through the tabs must not replace a kept schedule.
+        activationMode={keepsStoredSchedule ? 'manual' : 'automatic'}
         onValueChange={(value) => setFrequency(value as FrequencyType)}
         className="min-w-0 flex-1"
       >
@@ -593,18 +612,18 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         role="status"
         className={cn(
           'flex items-start gap-ds-8 rounded-ds-field p-ds-12',
-          firstRun || unchangedPastOneTime
+          noticeIsInformation
             ? 'bg-ds-bg-information-subtle-default'
             : 'bg-ds-bg-error-subtle-default'
         )}
       >
         <DsIcon
-          icon={firstRun || unchangedPastOneTime ? Clock : TriangleAlert}
+          icon={noticeIsInformation ? Clock : TriangleAlert}
           recipe="main"
           aria-hidden
           className={cn(
             'mt-ds-2',
-            firstRun || unchangedPastOneTime
+            noticeIsInformation
               ? 'text-ds-icon-information-default-default'
               : 'text-ds-icon-error-default-default'
           )}
@@ -617,11 +636,13 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                   : 'triggers.first-run-notice',
                 { time: formatRunTime(firstRun, i18n.language) }
               )
-            : unsupportedMonthlyTime
-              ? t('triggers.monthly-time-crosses-month')
-              : unchangedPastOneTime
-                ? t('triggers.no-upcoming-executions')
-                : t('triggers.pick-future-time')}
+            : keepsStoredSchedule
+              ? t('triggers.keeps-stored-schedule')
+              : unsupportedMonthlyTime
+                ? t('triggers.monthly-time-crosses-month')
+                : unchangedPastOneTime
+                  ? t('triggers.no-upcoming-executions')
+                  : t('triggers.pick-future-time')}
         </DsText>
       </div>
 

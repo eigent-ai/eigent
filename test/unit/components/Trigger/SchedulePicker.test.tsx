@@ -22,6 +22,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useTimeZone } from '../../../mocks/timeZone';
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -93,6 +94,9 @@ describe('schedule initialization', () => {
   it.each([true, false])(
     'preserves midnight UTC for an existing schedule or an example draft (editing=%s)',
     async (isEditing) => {
+      // From 00:15 UTC the next full local hour is never midnight UTC, in any
+      // zone, so the picker's default always differs from the stored value.
+      vi.setSystemTime(new Date(Date.UTC(2026, 9, 5, 0, 15)));
       const change = vi.fn();
       render(
         <SchedulePicker
@@ -106,15 +110,90 @@ describe('schedule initialization', () => {
   );
 
   it('starts only the blank create form at the next full local hour', async () => {
+    vi.setSystemTime(new Date(Date.UTC(2026, 9, 5, 0, 15)));
+    const nextHour = new Date();
+    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
     const change = vi.fn();
     render(
       <SchedulePicker value="0 0 * * *" useDefaultTime onChange={change} />
     );
     const expected = scheduleToCron({
       frequency: 'daily',
-      hour: 13,
+      hour: nextHour.getHours(),
       minute: 0,
     });
+    expect(expected).not.toBe('0 0 * * *');
     await waitFor(() => expect(change).toHaveBeenLastCalledWith(expected));
+  });
+});
+
+describe('stored schedules the editor cannot show', () => {
+  it('keeps the stored cron and dates until a frequency is chosen', async () => {
+    const change = vi.fn();
+    const valid = vi.fn();
+    const config = vi.fn();
+    render(
+      <SchedulePicker
+        value="*/15 * * * *"
+        isEditing
+        initialConfig={{ expirationDate: '2026-12-31', max_failure_count: 3 }}
+        onChange={change}
+        onConfigChange={config}
+        onValidationChange={valid}
+      />
+    );
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(true));
+    expect(change).not.toHaveBeenCalled();
+    expect(config).toHaveBeenLastCalledWith({
+      expirationDate: '2026-12-31',
+      max_failure_count: 3,
+    });
+    expect(
+      screen.getByText(/This schedule can't be edited here/)
+    ).toBeInTheDocument();
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab).toHaveAttribute('aria-selected', 'false');
+    }
+
+    // Moving focus into the tabs is not a choice.
+    fireEvent.focus(screen.getByRole('tab', { name: 'One Time' }));
+    expect(change).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Weekly' }));
+    await waitFor(() =>
+      expect(change).toHaveBeenLastCalledWith(
+        scheduleToCron({
+          frequency: 'weekly',
+          hour: 13,
+          minute: 0,
+          weekdays: [1],
+        })
+      )
+    );
+  });
+});
+
+describe('a last-day monthly schedule after a DST change', () => {
+  // New Zealand is UTC+13 in January and UTC+12 in July.
+  useTimeZone('Pacific/Auckland');
+
+  it('opens as monthly on day 1 instead of falling back to daily', async () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 12, 15));
+    const change = vi.fn();
+    render(<SchedulePicker value="30 11 L * *" isEditing onChange={change} />);
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Monthly' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+    );
+    expect(change).toHaveBeenLastCalledWith(
+      scheduleToCron({
+        frequency: 'monthly',
+        hour: 0,
+        minute: 30,
+        dayOfMonth: 1,
+      })
+    );
   });
 });

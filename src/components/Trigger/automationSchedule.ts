@@ -152,10 +152,41 @@ export function parseCron(
     monthPart === '*' &&
     weekdayPart === '*'
   ) {
-    if (dayPart === 'L' && dayOffset !== 1) return null;
+    if (dayPart === 'L') {
+      const local = lastDayCronLocalTime(utcHour, utcMinute, reference);
+      return local
+        ? {
+            frequency: 'monthly',
+            hour: local.localHour,
+            minute: local.localMinute,
+            dayOfMonth: 1,
+          }
+        : null;
+    }
     const shiftedDay = Number(dayPart) + dayOffset;
-    const dayOfMonth = dayPart === 'L' ? 1 : shiftedDay === 0 ? 31 : shiftedDay;
+    const dayOfMonth = shiftedDay === 0 ? 31 : shiftedDay;
     return { frequency: 'monthly', ...base, dayOfMonth };
+  }
+  return null;
+}
+
+/**
+ * `L` only encodes local day 1 east of UTC. After a DST change the same UTC
+ * time can fall before local midnight, so read it with the offset it was
+ * saved under.
+ */
+function lastDayCronLocalTime(
+  utcHour: number,
+  utcMinute: number,
+  reference: Date
+): ReturnType<typeof utcTimeToLocal> | null {
+  for (let month = 0; month < 12; month++) {
+    const probe =
+      month === 0
+        ? reference
+        : new Date(reference.getFullYear(), reference.getMonth() + month, 15);
+    const local = utcTimeToLocal(utcHour, utcMinute, probe);
+    if (local.dayOffset === 1) return local;
   }
   return null;
 }
