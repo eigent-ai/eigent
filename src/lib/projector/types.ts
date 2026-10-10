@@ -199,9 +199,21 @@ export type ProjectedRun = {
     status: string;
     resumeRequestId?: string;
   } | null;
+  /**
+   * Attempt time measured at `totalAttemptElapsedAt`, leaving out time spent
+   * waiting for an approval or an answer.
+   */
   totalAttemptElapsedMs?: number | null;
   /** Renderer receipt time for a canonical elapsed checkpoint; never persisted. */
   totalAttemptElapsedAt?: string | null;
+  /**
+   * Finished waits for an approval or an answer that the task timer leaves
+   * out, counted after the timer's baseline: the elapsed checkpoint when one
+   * is present, otherwise the start of the Run. Omitted when zero.
+   */
+  userWaitMs?: number;
+  /** When the current wait for the user began; present only while waiting. */
+  userWaitStartedAt?: string;
   /** Derived by the Brain; Resume is refused while any remain. */
   unsafeResumeBlockers?: ProjectedUnsafeResumeBlocker[];
   /** Present while the Run waits for its Space writer. */

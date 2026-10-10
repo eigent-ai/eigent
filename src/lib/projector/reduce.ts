@@ -13,7 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { runTerminalReason } from '@/lib/runTerminalReason';
-import { isStoppedRunStatus, TERMINAL_RUN_STATUSES } from './runSummary';
+import {
+  checkpointElapsedMsAt,
+  isStoppedRunStatus,
+  TERMINAL_RUN_STATUSES,
+  withUserWait,
+} from './runSummary';
 import type {
   CanonicalProjectEvent,
   ProjectedArtifact,
@@ -347,11 +352,23 @@ export function reduceProjectedRun(
   previousRun: ProjectedRun | undefined,
   event: CanonicalProjectEvent
 ): ProjectedRun {
+  const isInteractionDecision =
+    event.eventType === 'interaction.resolved' ||
+    event.eventType === 'approval.decided';
   const interactionDecisionContinued =
-    (event.eventType === 'interaction.resolved' ||
-      event.eventType === 'approval.decided') &&
-    event.payload.continued_attempt === true;
-  let lifecycleStatus = RUN_STATUS_BY_EVENT[event.eventType];
+    isInteractionDecision && event.payload.continued_attempt === true;
+  // Answering one of several open requests (e.g. parallel workers asking at
+  // once) leaves the Attempt waiting for the others.
+  const interactionDecisionKeepsWaiting =
+    isInteractionDecision &&
+    !interactionDecisionContinued &&
+    previousRun?.status === 'waiting_for_user' &&
+    typeof event.payload.remaining_interaction_count === 'number' &&
+    event.payload.remaining_interaction_count > 0;
+  let lifecycleStatus: ProjectedRun['status'] | undefined =
+    interactionDecisionKeepsWaiting
+      ? 'waiting_for_user'
+      : RUN_STATUS_BY_EVENT[event.eventType];
   if (!lifecycleStatus && event.source !== 'canonical') {
     if (event.legacyStep === 'end') lifecycleStatus = 'completed';
     // Failed legacy turns emit ERROR and close without an END frame.
@@ -410,22 +427,63 @@ export function reduceProjectedRun(
           : null;
     }
   }
-  return {
-    ...previousRun,
-    // An active snapshot's elapsed total is measured at its checkpoint. Once
-    // live execution advances, do not keep re-anchoring that old value to new
-    // events (or freeze the final duration at the earlier snapshot value).
-    ...(previousRun?.totalAttemptElapsedMs != null &&
-    (['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
-      previousRun.status
-    ) ||
-      ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
-        status
-      )) &&
+  const activeStatuses = [
+    'pending',
+    'running',
+    'waiting_for_user',
+    'cancelling',
+  ];
+  // A checkpoint read while the Run was live keeps counting from the moment
+  // it was received, except while the Run waits for the user. It therefore
+  // stays exact while the same execution continues without a gap, e.g.
+  // across an approval wait; falling back to the first loaded event instead
+  // would rewind the timer.
+  const elapsedCheckpointIsContiguous =
+    previousRun?.totalAttemptElapsedAt != null &&
+    activeStatuses.includes(previousRun.status) &&
+    event.runSequence === previousRun.lastSequence + 1;
+  const elapsedCheckpointContinues =
+    elapsedCheckpointIsContiguous && activeStatuses.includes(status);
+  // An active snapshot's elapsed total is measured at its checkpoint. Once
+  // live execution leaves, re-enters or skips past it, do not keep
+  // re-anchoring that old value to new events (or freeze the final duration
+  // at the earlier snapshot value).
+  const elapsedCheckpointEnds =
+    previousRun?.totalAttemptElapsedMs != null &&
+    (activeStatuses.includes(previousRun.status) ||
+      activeStatuses.includes(status)) &&
     event.source === 'canonical' &&
-    event.runVersion > previousRun.runVersion
-      ? { totalAttemptElapsedMs: null, totalAttemptElapsedAt: null }
-      : {}),
+    event.runVersion > previousRun.runVersion &&
+    !elapsedCheckpointContinues;
+  // A Run that stops right after its checkpoint settles on the time it had
+  // worked when it stopped, until the Run's final read replaces it.
+  const settledElapsedMs =
+    previousRun && elapsedCheckpointEnds && elapsedCheckpointIsContiguous
+      ? checkpointElapsedMsAt(previousRun, Date.parse(event.createdAt))
+      : null;
+  const elapsedCheckpoint = !elapsedCheckpointEnds
+    ? {}
+    : settledElapsedMs !== null
+      ? {
+          totalAttemptElapsedMs: settledElapsedMs,
+          totalAttemptElapsedAt: event.createdAt,
+        }
+      : { totalAttemptElapsedMs: null, totalAttemptElapsedAt: null };
+  const [userWaitMs, userWaitStartedAt] =
+    settledElapsedMs !== null
+      ? [0, null]
+      : nextUserWait(
+          previousRun,
+          status,
+          event.createdAt,
+          // A kept checkpoint already leaves out every wait before it.
+          previousRun?.totalAttemptElapsedMs != null && !elapsedCheckpointEnds
+            ? (previousRun.totalAttemptElapsedAt ?? null)
+            : null
+        );
+  const run: ProjectedRun = {
+    ...previousRun,
+    ...elapsedCheckpoint,
     runId: event.runId,
     status,
     terminalReason,
@@ -463,6 +521,44 @@ export function reduceProjectedRun(
         }
       : {}),
   };
+  return withUserWait(run, userWaitMs, userWaitStartedAt);
+}
+
+/**
+ * Track the waits for the user that the task timer leaves out: a wait opens
+ * when the Run starts waiting for an approval or an answer and closes when it
+ * leaves that state. A wait never starts before `keptCheckpointAt`.
+ */
+function nextUserWait(
+  previousRun: ProjectedRun | undefined,
+  status: ProjectedRun['status'],
+  eventAt: string,
+  keptCheckpointAt: string | null
+): [number, string | null] {
+  const eventAtMs = Date.parse(eventAt);
+  const waitMs = previousRun?.userWaitMs ?? 0;
+  const waitStartedAt = previousRun?.userWaitStartedAt ?? null;
+  const wasWaiting = previousRun?.status === 'waiting_for_user';
+  const isWaiting = status === 'waiting_for_user';
+  if (wasWaiting && !isWaiting) {
+    const waitStartedMs = Date.parse(waitStartedAt ?? '');
+    return [
+      Number.isFinite(waitStartedMs) && Number.isFinite(eventAtMs)
+        ? waitMs + Math.max(0, eventAtMs - waitStartedMs)
+        : waitMs,
+      null,
+    ];
+  }
+  if (!wasWaiting && isWaiting && Number.isFinite(eventAtMs)) {
+    const anchorMs = Date.parse(keptCheckpointAt ?? '');
+    return [
+      waitMs,
+      new Date(
+        Number.isFinite(anchorMs) ? Math.max(eventAtMs, anchorMs) : eventAtMs
+      ).toISOString(),
+    ];
+  }
+  return [waitMs, waitStartedAt];
 }
 
 export function reduceProjectView(

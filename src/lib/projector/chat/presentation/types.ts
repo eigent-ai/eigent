@@ -56,6 +56,9 @@ export interface TimelineElapsedAnchor {
   accumulatedMs: number;
   /** Add wall-clock time after this instant while the Run remains active. */
   anchoredAt: string | null;
+  /** While the Run waits for the user: wall-clock time worked after
+   * `accumulatedMs` was measured, up to the start of the wait. */
+  heldDeltaMs?: number;
 }
 
 /** Stable timing metadata shared by all three Timeline presentations. */

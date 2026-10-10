@@ -37,6 +37,7 @@ import {
 } from '@/lib/spaceModelBinding';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import { executionScope } from '@/service/executionApi';
+import { followRestoredTaskTimer } from '@/service/legacyTaskTimer';
 import {
   fetchProjectRuns,
   projectRunSummaries,
@@ -2164,6 +2165,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               if (localRun) {
                 const canonicalElapsed =
                   localRun.status === 'running' ||
+                  localRun.status === 'waiting_for_user' ||
                   (localRun.status &&
                     TERMINAL_DURABLE_RUN_DISPLAY_STATUSES.has(localRun.status))
                     ? resolveHistoricalRunElapsedMs({
@@ -2175,11 +2177,23 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                 const chatState = chatStore.getState();
                 chatState.setDurableRunStatus(cachedTaskId, localRun.status);
                 if (canonicalElapsed !== undefined) {
+                  // A Run waiting for the user holds the time it worked
+                  // before the wait until it continues.
                   chatState.setElapsed(cachedTaskId, canonicalElapsed);
                   chatState.setTaskTime(
                     cachedTaskId,
                     localRun.status === 'running' ? Date.now() : 0
                   );
+                }
+                if (
+                  localRun.status &&
+                  ACTIVE_RUN_STATUSES.has(localRun.status)
+                ) {
+                  followRestoredTaskTimer({
+                    projectId: loadProjectId,
+                    runId: cachedTaskId,
+                    chatStore,
+                  });
                 }
 
                 const cachedTaskState =
@@ -2305,18 +2319,37 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                   .getState()
                   .setDurableRunStatus(taskId, localRun?.status);
                 if (
-                  localRun?.status === 'running' &&
+                  (localRun?.status === 'running' ||
+                    localRun?.status === 'waiting_for_user') &&
                   localRun.totalAttemptElapsedMs !== undefined &&
                   chatStore.getState().tasks[taskId]
                 ) {
                   // `/runs` measures the active Attempt up to the history
                   // request. Continue from that canonical baseline while the
                   // attached stream is still open; otherwise replay's first
-                  // TODO event restarts the visible clock at Date.now().
+                  // TODO event restarts the visible clock at Date.now(). A
+                  // Run waiting for the user reports the time it worked
+                  // before the wait; that value holds until the Run continues.
                   chatStore
                     .getState()
                     .setElapsed(taskId, localRun.totalAttemptElapsedMs);
-                  chatStore.getState().setTaskTime(taskId, Date.now());
+                  chatStore
+                    .getState()
+                    .setTaskTime(
+                      taskId,
+                      localRun.status === 'running' ? Date.now() : 0
+                    );
+                }
+                if (
+                  localRun?.status &&
+                  ACTIVE_RUN_STATUSES.has(localRun.status) &&
+                  chatStore.getState().tasks[taskId]
+                ) {
+                  followRestoredTaskTimer({
+                    projectId: loadProjectId,
+                    runId: taskId,
+                    chatStore,
+                  });
                 }
                 await replayPromise;
                 const canonicalElapsed =
