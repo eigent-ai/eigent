@@ -106,6 +106,8 @@
   "date-required": "التاريخ مطلوب",
   "weekday-required": "يجب تحديد يوم واحد على الأقل من أيام الأسبوع",
   "schedule-required-fields": "يُرجى ملء جميع الحقول المطلوبة للجدول الزمني",
+  "schedule-whole-number-range": "أدخل عددًا صحيحًا من {{min}} إلى {{max}}",
+  "schedule-preview-invalid": "صحّح الحقول المميزة لعرض الأوقات المجدولة",
   "create-trigger-agent": "أتمتة هذه المهمة",
   "trigger-overview": "نظرة عامة على الأتمتة",
   "edit": "تعديل",

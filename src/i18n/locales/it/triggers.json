@@ -106,6 +106,8 @@
   "date-required": "La data è richiesta",
   "weekday-required": "È necessaria almeno una settimana lavorativa",
   "schedule-required-fields": "Compila tutti i campi obbligatori per la programmazione del piano",
+  "schedule-whole-number-range": "Inserisci un numero intero da {{min}} a {{max}}",
+  "schedule-preview-invalid": "Correggi i campi evidenziati per vedere gli orari pianificati",
   "create-trigger-agent": "Seleziona l'attività da automatizzare",
   "trigger-overview": "Panoramica dell'automazione",
   "edit": "Modifica",

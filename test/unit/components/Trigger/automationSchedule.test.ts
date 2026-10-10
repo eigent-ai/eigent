@@ -20,6 +20,7 @@ import {
   isOneTimeTooFarAhead,
   nextOccurrence,
   parseCron,
+  parseScheduleNumber,
   parseTriggerSchedule,
   scheduleToCron,
   type RecurringSchedule,
@@ -52,6 +53,35 @@ describe('scheduleToCron / parseCron', () => {
   it('returns null for crons it cannot describe', () => {
     expect(parseCron('*/5 * * * *', REFERENCE)).toBeNull();
     expect(parseCron('not a cron', REFERENCE)).toBeNull();
+  });
+});
+
+describe('parseScheduleNumber', () => {
+  const HOUR = { min: 0, max: 23 };
+
+  it.each([
+    ['0', 0],
+    ['00', 0],
+    ['07', 7],
+    ['23', 23],
+    [' 9 ', 9],
+  ])('accepts hour %j', (value, expected) => {
+    expect(parseScheduleNumber(value, HOUR)).toBe(expected);
+  });
+
+  it.each(['24', '25', '-1', '1.5', '12abc', '+5', '1e1', '0x10', '', '  '])(
+    'rejects hour %j',
+    (value) => {
+      expect(parseScheduleNumber(value, HOUR)).toBeNull();
+    }
+  );
+
+  it('applies the minute and day-of-month ranges', () => {
+    expect(parseScheduleNumber('59', { min: 0, max: 59 })).toBe(59);
+    expect(parseScheduleNumber('60', { min: 0, max: 59 })).toBeNull();
+    expect(parseScheduleNumber('31', { min: 1, max: 31 })).toBe(31);
+    expect(parseScheduleNumber('0', { min: 1, max: 31 })).toBeNull();
+    expect(parseScheduleNumber('32', { min: 1, max: 31 })).toBeNull();
   });
 });
 
