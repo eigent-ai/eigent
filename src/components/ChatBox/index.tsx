@@ -25,6 +25,7 @@ import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionDraft } from '@/hooks/useSessionDraft';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
@@ -78,6 +79,12 @@ import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
+import {
+  followUpAdmissionClaims,
+  interruptedAdmissionClaims,
+  notifyFollowUpAdmissionReleased,
+  onFollowUpAdmissionReleased,
+} from '@/store/followUpAdmissionClaims';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
@@ -210,19 +217,10 @@ export default function ChatBox(): JSX.Element {
     );
   if (!state.route || state.error)
     return <SessionExecutionStatus projectId={projectId} />;
-  return <LegacyChatBox />;
+  return <LegacyChatBox accountKey={scope.accountKey} />;
 }
 
-function LegacyChatBox(): JSX.Element {
-  const [message, setMessageState] = useState<string>('');
-  const composerRevisionRef = useRef(0);
-  const setMessage = useCallback<typeof setMessageState>((value) => {
-    composerRevisionRef.current += 1;
-    setMessageState(value);
-  }, []);
-  const [pendingReviewHandoffIds, setPendingReviewHandoffIds] = useState<
-    string[]
-  >([]);
+function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const host = useHost();
 
   //Get Chatstore for the active project's task
@@ -250,6 +248,21 @@ function LegacyChatBox(): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
+  // Switching Sessions remounts this composer; keep each Session's draft.
+  const {
+    text: message,
+    setText: setDraftMessage,
+    reviewHandoffIds: pendingReviewHandoffIds,
+    setReviewHandoffIds: setPendingReviewHandoffIds,
+  } = useSessionDraft(accountKey, activeProjectId);
+  const composerRevisionRef = useRef(0);
+  const setMessage = useCallback<typeof setDraftMessage>(
+    (value) => {
+      composerRevisionRef.current += 1;
+      setDraftMessage(value);
+    },
+    [setDraftMessage]
+  );
   const controlOperations = useControlOperations();
   const composerProjectRef = useRef(activeProjectId);
   composerProjectRef.current = activeProjectId;
@@ -467,10 +480,6 @@ function LegacyChatBox(): JSX.Element {
   }, [workspaceChatFocusRequestId]);
 
   useEffect(() => {
-    setPendingReviewHandoffIds([]);
-  }, [activeProjectId]);
-
-  useEffect(() => {
     if (
       !workspaceChatDraftRequest ||
       workspaceChatDraftRequest.projectId !== activeProjectId ||
@@ -497,6 +506,7 @@ function LegacyChatBox(): JSX.Element {
     consumeWorkspaceChatDraft,
     workspaceChatDraftRequest,
     setMessage,
+    setPendingReviewHandoffIds,
   ]);
 
   useEffect(() => {
@@ -520,9 +530,18 @@ function LegacyChatBox(): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
-  const followUpAdmissionsRef = useRef(new Map<string, symbol>());
+  // Shared across mounts: a composer remounted by a Session switch must still
+  // see an admission that an earlier mount has not finished.
+  const followUpAdmissionsRef = useRef(followUpAdmissionClaims);
   const [followUpAdmissionRevision, setFollowUpAdmissionRevision] = useState(0);
-  const interruptedAdmissionRef = useRef<string | null>(null);
+  useEffect(
+    () =>
+      onFollowUpAdmissionReleased(() =>
+        setFollowUpAdmissionRevision((revision) => revision + 1)
+      ),
+    []
+  );
+  const interruptedAdmissionsRef = useRef(interruptedAdmissionClaims);
   // Admission is monotonic. Late pending-list responses must never restore a
   // request already accepted by HTTP or observed starting in the event stream.
   const acknowledgedQueuedRequests = useRef(new Set<string>());
@@ -1201,7 +1220,7 @@ function LegacyChatBox(): JSX.Element {
       interruptedRun?.project_id === targetProjectId;
     if (
       startsAfterInterruption &&
-      (interruptedAdmissionRef.current === targetProjectId ||
+      (interruptedAdmissionsRef.current.has(targetProjectId) ||
         (!queuedRequestId && queuedDispatchRef.current !== null))
     )
       return;
@@ -1334,7 +1353,7 @@ function LegacyChatBox(): JSX.Element {
       if (startsAfterInterruption && !queuedRequestId) {
         // A new instruction is a new task, never an implicit Resume. Keep the
         // interrupted task and its tool outcomes intact for history/review.
-        interruptedAdmissionRef.current = targetProjectId;
+        interruptedAdmissionsRef.current.add(targetProjectId);
         await waitForPendingStaleRuntimeEviction(targetProjectId);
         const nextTaskId = generateUniqueId();
         const attachesToSend = composerAttachments || [];
@@ -1859,11 +1878,16 @@ function LegacyChatBox(): JSX.Element {
       ) {
         followUpAdmissionsRef.current.delete(targetProjectId);
         // Wake a queued dispatch that yielded to this admission, including
-        // when the lookup failed without producing a Run/store update.
-        setFollowUpAdmissionRevision((revision) => revision + 1);
+        // when the lookup failed without producing a Run/store update, and
+        // in a composer remounted while it was running.
+        notifyFollowUpAdmissionReleased();
       }
-      if (interruptedAdmissionRef.current === targetProjectId)
-        interruptedAdmissionRef.current = null;
+      // Only the submit that took the claim gets here: the guard above
+      // returns synchronously while it is held.
+      if (startsAfterInterruption && !queuedRequestId) {
+        interruptedAdmissionsRef.current.delete(targetProjectId);
+        notifyFollowUpAdmissionReleased();
+      }
       if (messageAccepted && !requiresHumanReply) {
         if (startsAfterInterruption) setInterruptedRun(null);
         acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
@@ -2188,7 +2212,7 @@ function LegacyChatBox(): JSX.Element {
     if (
       queuedDispatchRef.current ||
       followUpAdmissionsRef.current.has(projectId) ||
-      interruptedAdmissionRef.current === projectId ||
+      interruptedAdmissionsRef.current.has(projectId) ||
       queueActionRef.current?.projectId === projectId
     )
       return;
