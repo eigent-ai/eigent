@@ -15,6 +15,10 @@
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  getSessionDisplayName,
+  isPlaceholderProjectName,
+} from '@/lib/spaceLabel';
 import { iconForTriggerType } from '@/lib/triggerIcon';
 import { useSpaceStore } from '@/store/spaceStore';
 import { TriggerStatus } from '@/types';
@@ -294,7 +298,12 @@ function ProjectItemContent({
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
 
-  const title = project.project_name?.trim() || t('layout.new-project');
+  const title = getSessionDisplayName(
+    project.project_name,
+    project.project_id,
+    t,
+    project.nameSource
+  );
   const tokenCount = resolveProjectTokenCount(project);
 
   const handleRename = useCallback(async () => {
@@ -316,7 +325,12 @@ function ProjectItemContent({
       }),
       icon: <Pencil className="h-4 w-4" aria-hidden />,
       onSelect: () => {
-        setRenameValue(project.project_name?.trim() || '');
+        setRenameValue(
+          !project.nameSource &&
+            isPlaceholderProjectName(project.project_name, project.project_id)
+            ? ''
+            : project.project_name?.trim() || ''
+        );
         setRenameDialogOpen(true);
       },
       disabled: !onProjectRename,
@@ -433,8 +447,16 @@ function TaskItemContent({
   const { openTask, loadingProjectId } = useHomeHubNavigation();
   const loading = loadingProjectId === task.project_id;
   const title = task.question?.trim() || t('layout.new-project');
-  const projectName =
+  const storedProjectName =
     project?.project_name?.trim() || task.project_name?.trim() || '';
+  const projectName = storedProjectName
+    ? getSessionDisplayName(
+        storedProjectName,
+        task.project_id,
+        t,
+        project?.project_name?.trim() ? project.nameSource : undefined
+      )
+    : '';
   const menuItems = [
     ...(controlAction && onControl
       ? [

@@ -235,6 +235,7 @@ export function useHomeHubProjects() {
         return {
           ...history,
           project_name: meta.name?.trim() || history.project_name,
+          nameSource: meta.metadata?.nameSource,
           space_id: meta.spaceId ?? history.space_id,
         };
       }
@@ -242,6 +243,7 @@ export function useHomeHubProjects() {
         project_id: meta.id,
         space_id: meta.spaceId,
         project_name: meta.name,
+        nameSource: meta.metadata?.nameSource,
         total_tokens: 0,
         task_count: 0,
         total_triggers: 0,

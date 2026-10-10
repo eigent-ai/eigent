@@ -960,7 +960,7 @@
   "review-rendered-markdown": "Gereiftes Markdown",
   "review-retry": "Versuchen Sie es erneut",
   "review-reviewed": "Genehmigt",
-  "review-reviewed-progress": "{{reviewed}} der {{total}} ist von __PH_2__ genehmigt",
+  "review-reviewed-progress": "{{reviewed}} von {{total}} genehmigt",
   "review-revision-changed": "Diese Bewertung ist veraltet.",
   "review-revision-changed-detail": "Der Git Quell- oder Zielort wurde nach der Öffnung dieser Bewertung geändert. Schließen Sie diese Tab und öffnen Sie eine neue Bewertung, bevor Sie Kommentare hinzufügen oder senden können.",
   "review-send-comments": "{{count}} Kommentare",

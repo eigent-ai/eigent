@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getSessionDisplayName } from '@/lib/spaceLabel';
 import {
   listMemoryEntries,
   listMemoryScopeSummaries,
@@ -42,6 +43,8 @@ interface MemoryDirectoryItem {
   spaceId: string;
   projectId?: string;
   name: string;
+  /** The Session meta's `metadata.nameSource`, for Session items. */
+  nameSource?: unknown;
   parentName?: string;
   projectCount?: number;
   updatedAt: number;
@@ -127,6 +130,7 @@ export function MemoryScopeDirectory({
           spaceId: space.id,
           projectId: project.id,
           name: project.name,
+          nameSource: project.metadata?.nameSource,
           parentName: space.name,
           updatedAt: project.updatedAt,
         })
@@ -184,6 +188,19 @@ export function MemoryScopeDirectory({
   const visibleItems = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     return items
+      .map((item) =>
+        item.projectId
+          ? {
+              ...item,
+              name: getSessionDisplayName(
+                item.name,
+                item.projectId,
+                t,
+                item.nameSource
+              ),
+            }
+          : item
+      )
       .filter(
         (item) =>
           !needle ||
@@ -204,7 +221,7 @@ export function MemoryScopeDirectory({
         }
         return left.name.localeCompare(right.name);
       });
-  }, [items, scopeType, search, summaries]);
+  }, [items, scopeType, search, summaries, t]);
 
   const populatedCount = items.filter(
     (item) =>

@@ -25,6 +25,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { getSessionMetaDisplayName } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import {
   getSessionPreviewSlice,
@@ -47,6 +48,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SessionSidePanel } from './SidePanel';
 
 /** Maximum width the resizable chat column can reclaim while display is open. */
@@ -78,6 +80,7 @@ interface SessionProps {
 }
 
 export default function Session({ isNewProject = false }: SessionProps) {
+  const { t } = useTranslation();
   const shouldReduceMotion = Boolean(useReducedMotion());
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
@@ -576,7 +579,11 @@ export default function Session({ isNewProject = false }: SessionProps) {
             )}
           >
             <HeaderBox
-              projectName={activeProjectMeta?.name}
+              projectName={
+                activeProjectMeta
+                  ? getSessionMetaDisplayName(activeProjectMeta, t)
+                  : undefined
+              }
               totalTokens={activeTask?.tokens ?? 0}
             />
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

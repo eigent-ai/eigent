@@ -37,6 +37,63 @@ export function isPlaceholderProjectName(
 }
 
 /**
+ * Visible Session name for a Project. System default names matched by
+ * `isPlaceholderProjectName` (empty, `new project`, `Project <id>`) show the
+ * localized "New session" label; names the user chose are shown as stored.
+ * A `nameSource` (the Session meta's `metadata.nameSource`) marks a name that
+ * was chosen rather than defaulted, even one that reads like a default.
+ * The stored name is not changed.
+ */
+export function getSessionDisplayName(
+  name: string | null | undefined,
+  projectId: string,
+  t: TFunction,
+  nameSource?: unknown
+): string {
+  const storedName = (name ?? '').trim();
+  if (nameSource && storedName) return storedName;
+  return isPlaceholderProjectName(name, projectId)
+    ? t('layout.new-project')
+    : storedName;
+}
+
+type SessionNameMeta = {
+  id: string;
+  name?: string | null;
+  metadata?: { historyDisplayName?: unknown; nameSource?: unknown } | null;
+};
+
+/**
+ * The restored history title that stands in for a Session's system default
+ * name, as the Session list shows it. Null when the user named the Session or
+ * there is no history title.
+ */
+export function sessionHistoryDisplayName(
+  meta: SessionNameMeta
+): string | null {
+  const historyDisplayName =
+    typeof meta.metadata?.historyDisplayName === 'string'
+      ? meta.metadata.historyDisplayName.trim()
+      : '';
+  return historyDisplayName &&
+    !meta.metadata?.nameSource &&
+    isPlaceholderProjectName(meta.name, meta.id)
+    ? historyDisplayName
+    : null;
+}
+
+/** Visible Session name for a Session meta, matching the Session list. */
+export function getSessionMetaDisplayName(
+  meta: SessionNameMeta,
+  t: TFunction
+): string {
+  return (
+    sessionHistoryDisplayName(meta) ??
+    getSessionDisplayName(meta.name, meta.id, t, meta.metadata?.nameSource)
+  );
+}
+
+/**
  * Static check (no i18n) for default/placeholder Space names. Mirror of
  * `isPlaceholderProjectName` for spaces — used in store-level pruning logic.
  */

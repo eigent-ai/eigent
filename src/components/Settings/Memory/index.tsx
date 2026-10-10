@@ -842,7 +842,6 @@ export default function Memory({
                         })}
                       </span>
                       <span>
-                        {scopeState?.current_token_count ?? 0} /{' '}
                         {t('setting.memory-capacity-token-count', {
                           current: scopeState?.current_token_count ?? 0,
                           count: scopeState?.token_limit ?? 0,

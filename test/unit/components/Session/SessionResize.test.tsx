@@ -40,6 +40,12 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   chatBoxRenderCount: 0,
+  projectMeta: {
+    id: 'project-1',
+    name: 'Project 1',
+    mode: 'single_agent',
+    metadata: {} as Record<string, unknown>,
+  },
   pageState: {
     activeWorkspaceTab: 'project',
     setActiveWorkspaceTab: vi.fn(),
@@ -78,10 +84,17 @@ vi.mock('@/components/Workspace', () => ({
   default: () => <div data-testid="workspace" />,
 }));
 vi.mock('@/components/Session/HeaderBox', () => ({
-  HeaderBox: ({ totalTokens }: { totalTokens?: number }) => (
+  HeaderBox: ({
+    totalTokens,
+    projectName,
+  }: {
+    totalTokens?: number;
+    projectName?: string | null;
+  }) => (
     <div
       data-testid="session-header"
       data-total-tokens={totalTokens ?? 'unset'}
+      data-project-name={projectName ?? 'unset'}
     />
   ),
 }));
@@ -120,16 +133,12 @@ vi.mock('@/store/projectRuntimeStore', () => ({
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: (
     selector: (state: {
-      getProjectMeta: () => { name: string; mode: string; metadata: object };
+      getProjectMeta: () => typeof mocks.projectMeta;
       updateProjectMeta: ReturnType<typeof vi.fn>;
     }) => unknown
   ) =>
     selector({
-      getProjectMeta: () => ({
-        name: 'Project 1',
-        mode: 'single_agent',
-        metadata: {},
-      }),
+      getProjectMeta: () => mocks.projectMeta,
       updateProjectMeta: vi.fn(),
     }),
 }));
@@ -223,6 +232,8 @@ describe('Session preview resize', () => {
   beforeEach(() => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     mocks.chatBoxRenderCount = 0;
+    mocks.projectMeta.name = 'Project 1';
+    mocks.projectMeta.metadata = {};
     mocks.pageState.previewSlice.open = true;
     mocks.pageState.sessionPreviewProjectId = 'project-1';
     mocks.pageState.activeWorkspaceTab = 'project';
@@ -259,6 +270,38 @@ describe('Session preview resize', () => {
       '0'
     );
     expect(screen.getByTestId('chat-box')).toBeInTheDocument();
+  });
+
+  it('shows New session in the header for a system default Session name', () => {
+    mocks.projectMeta.name = 'new project';
+
+    render(<Session />);
+
+    expect(screen.getByTestId('session-header')).toHaveAttribute(
+      'data-project-name',
+      'New session'
+    );
+  });
+
+  it('keeps a Session name the user chose in the header', () => {
+    render(<Session />);
+
+    expect(screen.getByTestId('session-header')).toHaveAttribute(
+      'data-project-name',
+      'Project 1'
+    );
+  });
+
+  it('shows the same history title as the Session list for a default name', () => {
+    mocks.projectMeta.name = 'new project';
+    mocks.projectMeta.metadata = { historyDisplayName: 'Plan the launch' };
+
+    render(<Session />);
+
+    expect(screen.getByTestId('session-header')).toHaveAttribute(
+      'data-project-name',
+      'Plan the launch'
+    );
   });
 
   it('coalesces pointer moves and ends a lost pointerup when no button is pressed', async () => {

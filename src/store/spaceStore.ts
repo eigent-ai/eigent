@@ -26,6 +26,7 @@ import {
   isLocalWorkspaceSpace,
   isPlaceholderProjectName,
   isPlaceholderSpaceNameStatic,
+  sessionHistoryDisplayName,
 } from '@/lib/spaceLabel';
 import { scheduleWorkspaceUnbind } from '@/lib/workspaceUnbind';
 import { fetchGroupedHistoryProjects } from '@/service/historyApi';
@@ -317,21 +318,10 @@ const isAutoCreatedProjectMeta = (project: SpaceProjectMeta) =>
       normalizedProjectName(project.description) === 'auto-created project'));
 
 const projectMetaWithDisplayName = (project: SpaceProjectMeta) => {
-  const historyDisplayName =
-    typeof project.metadata?.historyDisplayName === 'string'
-      ? project.metadata.historyDisplayName.trim()
-      : '';
-  if (
-    historyDisplayName &&
-    !project.metadata?.nameSource &&
-    isPlaceholderProjectName(project.name, project.id)
-  ) {
-    return {
-      ...project,
-      name: historyDisplayName,
-    };
-  }
-  return project;
+  const historyDisplayName = sessionHistoryDisplayName(project);
+  return historyDisplayName
+    ? { ...project, name: historyDisplayName }
+    : project;
 };
 
 export const getVisibleProjectMetasForSpace = (
