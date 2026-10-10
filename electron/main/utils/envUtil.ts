@@ -17,6 +17,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
+import {
+  accountDirName,
+  assertUsableAccountDirName,
+  legacyAccountDirName,
+} from './accountPath';
+
 export const ENV_START = '# === MCP INTEGRATION ENV START ===';
 export const ENV_END = '# === MCP INTEGRATION ENV END ===';
 
@@ -69,11 +75,32 @@ export function writeEnvFile(envPath: string, content: string) {
   }
 }
 
+/**
+ * Move a directory created under the previous naming scheme to the current one.
+ *
+ * The old scheme discarded the email domain, so several accounts shared one
+ * directory. Merging them is the point of the fix, but their contents cannot be
+ * attributed to an account, so the directory is left in place rather than
+ * assigned to whichever account happens to log in next. Deleting it would throw
+ * away MCP configuration that may still be needed by hand.
+ */
+function migrateLegacyAccountDir(legacyDir: string, currentDir: string): void {
+  if (legacyDir === currentDir) return;
+  if (!fs.existsSync(legacyDir)) return;
+  if (fs.existsSync(currentDir)) return;
+  if (path.dirname(legacyDir) !== path.dirname(currentDir)) return;
+
+  try {
+    fs.renameSync(legacyDir, currentDir);
+  } catch {
+    // A leftover legacy directory is harmless: the current path is created
+    // below and keeps working.
+  }
+}
+
 export function getEnvPath(email: string) {
-  const tempEmail = email
-    .split('@')[0]
-    .replace(/[\\/*?:"<>|\s]/g, '_')
-    .replace('.', '_');
+  const tempEmail = accountDirName(email);
+  assertUsableAccountDirName(tempEmail);
   const eigentDir = path.join(os.homedir(), '.eigent');
 
   // Ensure .eigent directory exists
@@ -187,12 +214,14 @@ export function maskProxyUrl(url: string): string {
 }
 
 export function getEmailFolderPath(email: string) {
-  const tempEmail = email
-    .split('@')[0]
-    .replace(/[\\/*?:"<>|\s]/g, '_')
-    .replace('.', '_');
+  const tempEmail = accountDirName(email);
+  assertUsableAccountDirName(tempEmail);
   const MCP_CONFIG_DIR = path.join(os.homedir(), '.eigent');
   const MCP_REMOTE_CONFIG_DIR = path.join(MCP_CONFIG_DIR, tempEmail);
+  migrateLegacyAccountDir(
+    path.join(MCP_CONFIG_DIR, legacyAccountDirName(email)),
+    MCP_REMOTE_CONFIG_DIR
+  );
   if (!fs.existsSync(MCP_REMOTE_CONFIG_DIR)) {
     fs.mkdirSync(MCP_REMOTE_CONFIG_DIR, { recursive: true });
   }
