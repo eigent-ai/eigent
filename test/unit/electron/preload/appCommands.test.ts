@@ -21,6 +21,7 @@ import {
   APP_SHELL_READY_PROBE_CHANNEL,
 } from '@/shared/appCommands';
 import { NATIVE_MENU_LOCALE_CHANNEL } from '@/shared/nativeMenu';
+import { WINDOW_CHROME_THEME_CHANNEL } from '@/shared/windowChrome';
 import {
   WINDOW_CLOSE_REQUEST_CHANNEL,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
@@ -58,6 +59,7 @@ type ExposedElectronAPI = {
     action: 'acknowledge' | 'confirm' | 'cancel';
   }) => void;
   setNativeMenuLocale: (locale: 'en-US' | 'zh-Hans') => void;
+  setWindowChromeTheme: (theme: 'light' | 'dark') => void;
 };
 
 let electronAPI: ExposedElectronAPI;
@@ -71,6 +73,17 @@ beforeAll(async () => {
 });
 
 describe('preload app shell bridge', () => {
+  it('forwards the resolved app theme to the native window chrome', () => {
+    mocks.send.mockClear();
+
+    electronAPI.setWindowChromeTheme('dark');
+
+    expect(mocks.send).toHaveBeenCalledWith(
+      WINDOW_CHROME_THEME_CHANNEL,
+      'dark'
+    );
+  });
+
   it('re-announces READY when the first announcement preceded did-finish-load', async () => {
     mocks.send.mockClear();
     const unsubscribeCommand = electronAPI.onAppCommand(vi.fn());
