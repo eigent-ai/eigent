@@ -13,7 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { FileViewerPanel } from '@/components/Folder';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { HostProvider } from '@/host';
+import type { SubframeLoadFailure } from '@/shared/subframeLoadFailure';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -525,6 +527,123 @@ describe('FileViewerPanel toolbar', () => {
       ).toBeNull();
       unmount();
     }
+  });
+
+  describe('when the PDF frame fails to load', () => {
+    const pdfUrl =
+      'http://localhost:5001/files/stream?path=docs%2Freport.pdf&project_id=p1';
+    const pdfFile = textFile({
+      name: 'report.pdf',
+      type: 'pdf',
+      path: pdfUrl,
+      content: pdfUrl,
+      isRemote: true,
+      preview: { kind: 'range-pdf', size: 647 },
+    });
+
+    function renderWithFrameFailures(
+      file: ViewerFile,
+      overrides: Partial<ComponentProps<typeof FileViewerPanel>> = {}
+    ) {
+      const listeners = new Set<(failure: SubframeLoadFailure) => void>();
+      const unsubscribe = vi.fn();
+      const host = {
+        electronAPI: {
+          onSubframeLoadFailed: (
+            callback: (failure: SubframeLoadFailure) => void
+          ) => {
+            listeners.add(callback);
+            return () => {
+              unsubscribe();
+              listeners.delete(callback);
+            };
+          },
+        },
+        ipcRenderer: null,
+      };
+      const viewer = (selectedFile: ViewerFile) => (
+        <HostProvider host={host}>
+          <FileViewerPanel
+            selectedFile={selectedFile}
+            loading={false}
+            isShowSourceCode={false}
+            breadcrumbSegments={['Workspace', selectedFile.name]}
+            projectFiles={[]}
+            {...callbacks}
+            {...overrides}
+          />
+        </HostProvider>
+      );
+      const result = render(viewer(file));
+      const reportFailure = (failure: SubframeLoadFailure) =>
+        act(() => listeners.forEach((listener) => listener(failure)));
+      return {
+        ...result,
+        listeners,
+        unsubscribe,
+        reportFailure,
+        showFile: (next: ViewerFile) => result.rerender(viewer(next)),
+      };
+    }
+
+    it('replaces the blank frame with a message and the external-open action', async () => {
+      const { container, reportFailure } = renderWithFrameFailures(pdfFile);
+      expect(container.querySelector('iframe')).toHaveAttribute('src', pdfUrl);
+      expect(
+        screen.queryByRole('button', { name: 'Open externally' })
+      ).toBeNull();
+
+      reportFailure({ url: pdfUrl, errorCode: -27 });
+
+      expect(container.querySelector('iframe')).toBeNull();
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('Preview not loaded');
+      expect(alert).toHaveTextContent(
+        'This PDF could not be displayed here. Open it in another app instead.'
+      );
+      await userEvent
+        .setup()
+        .click(screen.getByRole('button', { name: 'Open externally' }));
+      expect(callbacks.onOpenExternalFile).toHaveBeenCalledOnce();
+    });
+
+    it('keeps Show in Finder as the primary action beside the fallback', () => {
+      const { reportFailure } = renderWithFrameFailures(pdfFile, {
+        canRevealFile: true,
+      });
+      reportFailure({ url: pdfUrl, errorCode: -27 });
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Show in folder' })
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Open in' })).toBeEnabled();
+    });
+
+    it('ignores failures reported for other frames', () => {
+      const { container, reportFailure } = renderWithFrameFailures(pdfFile);
+      reportFailure({
+        url: 'http://localhost:5001/files/stream?path=docs%2Fother.pdf',
+        errorCode: -27,
+      });
+      expect(container.querySelector('iframe')).toHaveAttribute('src', pdfUrl);
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('loads the frame again when the PDF is selected again', () => {
+      const { container, reportFailure, showFile, unsubscribe, unmount } =
+        renderWithFrameFailures(pdfFile);
+      reportFailure({ url: pdfUrl, errorCode: -27 });
+      expect(container.querySelector('iframe')).toBeNull();
+
+      showFile(textFile());
+      expect(unsubscribe).toHaveBeenCalledOnce();
+      showFile(pdfFile);
+      expect(container.querySelector('iframe')).toHaveAttribute('src', pdfUrl);
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      unmount();
+      expect(unsubscribe).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('keeps oversized PDFs in recovery instead of mounting the browser viewer', () => {
