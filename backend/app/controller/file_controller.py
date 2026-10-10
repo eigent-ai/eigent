@@ -316,7 +316,10 @@ async def list_task_changed_files(
     }
 
 
-@router.get("/files")
+@router.get(
+    "/files",
+    dependencies=[Depends(require_local_control_principal)],
+)
 async def list_project_files(
     project_id: str = Query(..., description="Project ID"),
     email: str = Query(..., description="User email"),
