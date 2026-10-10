@@ -13,7 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost } from '@/api/http';
-import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
+import {
+  prepareColdAdmission,
+  prepareFollowUpAdmission,
+} from '@/lib/legacyRuntimeAdmission';
 import {
   closeIdleSSEConnectionsForTasks,
   getIdleSSETransportTaskId,
@@ -104,5 +107,60 @@ describe('prepareFollowUpAdmission', () => {
       prepareFollowUpAdmission('project-1', project)
     ).rejects.toThrow();
     expect(closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+  });
+});
+
+describe('prepareColdAdmission', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getIdleSSETransportTaskId).mockReturnValue('run-1');
+    vi.mocked(waitForIdleSSEDisplayTail).mockResolvedValue(undefined);
+    vi.mocked(fetchPost).mockResolvedValue({
+      retired: true,
+      consumer_alive: false,
+    });
+  });
+
+  it('retires an idle consumer even while this renderer holds its stream', async () => {
+    vi.mocked(fetchGet).mockResolvedValue({
+      ...idleConsumer,
+      subscriber_count: 1,
+    });
+
+    await expect(prepareColdAdmission('project-1', project)).resolves.toBe(
+      'cold'
+    );
+    expect(fetchPost).toHaveBeenCalledWith(
+      '/chat/project-1/runtime/retire-idle',
+      { run_id: 'run-1' },
+      undefined,
+      { signal: undefined }
+    );
+    expect(closeIdleSSEConnectionsForTasks).toHaveBeenCalledWith(['run-1']);
+  });
+
+  it('leaves a busy consumer and the renderer streams untouched', async () => {
+    vi.mocked(fetchGet).mockResolvedValue({
+      ...idleConsumer,
+      status: 'processing',
+    });
+
+    await expect(prepareColdAdmission('project-1', project)).resolves.toBe(
+      'busy'
+    );
+    expect(fetchPost).not.toHaveBeenCalled();
+    expect(closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+  });
+
+  it('admits cold without retiring when Brain cannot report its runtime', async () => {
+    vi.mocked(fetchGet).mockRejectedValue(new Error('Brain is starting'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(prepareColdAdmission('project-1', project)).resolves.toBe(
+      'cold'
+    );
+    expect(fetchPost).not.toHaveBeenCalled();
+    expect(closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

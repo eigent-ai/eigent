@@ -58,6 +58,39 @@ export async function retireIdleLegacyRuntime(
   return !retired?.consumer_alive;
 }
 
+const getLegacyRuntimeStatus = async (
+  projectId: string
+): Promise<LegacyChatRuntimeStatus> =>
+  (await fetchGet(`/chat/${encodeURIComponent(projectId)}/status`)) ?? {};
+
+const getProjectTaskIds = (
+  project: Pick<Project, 'chatStores'> | null | undefined
+) =>
+  Object.values(project?.chatStores ?? {}).flatMap((store) =>
+    Object.keys(store.getState().tasks)
+  );
+
+/** Retire an idle consumer and close idle streams before a cold admission. */
+async function clearIdleRuntimeForColdRun(
+  projectId: string,
+  status: LegacyChatRuntimeStatus,
+  taskIds: string[]
+): Promise<void> {
+  // Let a completed Run finish rendering the frames Brain already sent.
+  await waitForIdleSSEDisplayTail(taskIds);
+  if (
+    status.consumer_alive &&
+    !(await retireIdleLegacyRuntime(projectId, status.run_id))
+  ) {
+    throw new Error(
+      i18next.t('chat.task-admission-failed', {
+        defaultValue: 'The task could not be started. Please try again.',
+      })
+    );
+  }
+  closeIdleSSEConnectionsForTasks(taskIds);
+}
+
 /**
  * Decide how a follow-up enters a Project, shared by every follow-up sender.
  *
@@ -74,13 +107,10 @@ export async function prepareFollowUpAdmission(
   projectId: string,
   project: Pick<Project, 'chatStores'> | null | undefined
 ): Promise<FollowUpAdmission> {
-  const status: LegacyChatRuntimeStatus =
-    (await fetchGet(`/chat/${encodeURIComponent(projectId)}/status`)) ?? {};
+  const status = await getLegacyRuntimeStatus(projectId);
   if (isLegacyRuntimeBusy(status)) return 'busy';
 
-  const taskIds = Object.values(project?.chatStores ?? {}).flatMap((store) =>
-    Object.keys(store.getState().tasks)
-  );
+  const taskIds = getProjectTaskIds(project);
   if (
     status.consumer_alive &&
     (status.subscriber_count ?? 0) > 0 &&
@@ -88,18 +118,43 @@ export async function prepareFollowUpAdmission(
   )
     return 'warm';
 
-  // Let a completed Run finish rendering the frames Brain already sent.
-  await waitForIdleSSEDisplayTail(taskIds);
-  if (
-    status.consumer_alive &&
-    !(await retireIdleLegacyRuntime(projectId, status.run_id))
-  ) {
-    throw new Error(
-      i18next.t('chat.task-admission-failed', {
-        defaultValue: 'The task could not be started. Please try again.',
-      })
+  await clearIdleRuntimeForColdRun(projectId, status, taskIds);
+  return 'cold';
+}
+
+/**
+ * Prepare a Project for a message the composer always starts as a new cold
+ * Run: the first task, a Session restored after the window reloaded, or one
+ * whose last task failed.
+ *
+ * Brain keeps a completed Run's idle consumer across a renderer reload and
+ * after a failed admission, and rejects a cold Run while that consumer is
+ * alive. After a reload nothing in this window observes it. Retire the idle
+ * consumer first, as scheduled work does, so the new Run opens its own
+ * stream. A busy consumer is left untouched: the caller must not start a Run.
+ */
+export async function prepareColdAdmission(
+  projectId: string,
+  project: Pick<Project, 'chatStores'> | null | undefined
+): Promise<Exclude<FollowUpAdmission, 'warm'>> {
+  let status: LegacyChatRuntimeStatus;
+  try {
+    status = await getLegacyRuntimeStatus(projectId);
+  } catch (error) {
+    // Brain may still be starting, and then holds no consumer. The cold
+    // admission waits for Brain itself, which still rejects a live consumer.
+    console.warn(
+      '[RuntimeAdmission] Project runtime status unavailable',
+      error
     );
+    return 'cold';
   }
-  closeIdleSSEConnectionsForTasks(taskIds);
+  if (isLegacyRuntimeBusy(status)) return 'busy';
+
+  await clearIdleRuntimeForColdRun(
+    projectId,
+    status,
+    getProjectTaskIds(project)
+  );
   return 'cold';
 }
