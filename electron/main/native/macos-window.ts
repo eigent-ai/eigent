@@ -15,7 +15,7 @@
 import { BrowserWindow } from 'electron';
 import log from 'electron-log';
 import koffi from 'koffi';
-import os from 'os';
+import os from 'node:os';
 
 type SetRoundedCorners = (window: BrowserWindow, radius?: number) => void;
 

@@ -12,12 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { execFileSync, execSync, spawn } from 'child_process';
 import { app } from 'electron';
 import log from 'electron-log';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
+import { execFileSync, execSync, spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 export function getResourcePath() {
   return path.join(app.getAppPath(), 'resources');
