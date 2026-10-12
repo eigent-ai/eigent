@@ -702,8 +702,11 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         </Label>
                         <Select
                           value={formData.webhook_method || RequestType.POST}
-                          onValueChange={(value: RequestType) =>
-                            setFormData({ ...formData, webhook_method: value })
+                          onValueChange={(value) =>
+                            setFormData({
+                              ...formData,
+                              webhook_method: value as RequestType,
+                            })
                           }
                         >
                           <SelectTrigger>
