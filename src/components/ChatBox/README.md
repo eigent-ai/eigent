@@ -208,6 +208,26 @@ holds, the shimmer and status spinners stop, and the header reads
 `usePausedOffsetMs` subtracts the paused span so the timer continues from where
 it stopped rather than jumping forward by the wait.
 
+### Waiting for the user
+
+Time a Run spends waiting for an approval or an answer is not task time. The
+backend leaves it out of `total_attempt_elapsed_ms`, and the projector records
+the waits it observes (`userWaitMs`, `userWaitStartedAt`), so the timer holds
+while the Run is `waiting_for_user` and continues from the same value after the
+answer, also in a Session reopened during the wait. This is independent of
+`paused`, which remains a user action: a pause taken before the wait still
+comes off the held value, and a pause during the wait is not taken off a
+second time after the answer.
+
+The legacy renderer, which ships by default, follows the same rule with the
+chat task's `elapsed` and `taskTime`. `src/service/legacyTaskTimer.ts` stops
+the clock while the projected Run is `waiting_for_user` and restarts it when
+the Run continues; the Run's own event stream updates that status in both
+renderers. Pause and resume keep the clock stopped during an open wait. A
+Session reopened during a wait shows the listed total until the Run continues,
+and a restored Run that ends settles on the time it worked rather than on the
+span of its loaded events.
+
 ### Repeated tool-call presentation
 
 `EventTimeline/activityGrouping.ts` converts consecutive identical tool

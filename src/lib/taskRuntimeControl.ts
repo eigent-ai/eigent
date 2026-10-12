@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchPut } from '@/api/http';
+import { settleTaskElapsedMs } from '@/lib/taskDuration';
+import { isRunWaitingForUser } from '@/service/legacyTaskTimer';
 import type { ChatStore } from '@/store/chatStore';
 import { ChatTaskStatus } from '@/types/constants';
 
@@ -55,11 +57,16 @@ export async function takeControlOfTask({
   };
 
   if (action === 'pause') {
-    chatStore.setElapsed(taskId, task.elapsed + now() - task.taskTime);
+    // The clock is already stopped while the Run waits for the user.
+    chatStore.setElapsed(taskId, settleTaskElapsedMs(task, now()));
     chatStore.setTaskTime(taskId, 0);
     chatStore.setStatus(taskId, ChatTaskStatus.PAUSE);
   } else {
-    chatStore.setTaskTime(taskId, now());
+    // A Run still waiting for the user restarts the clock once it continues.
+    chatStore.setTaskTime(
+      taskId,
+      isRunWaitingForUser(projectId, taskId) ? 0 : now()
+    );
     chatStore.setStatus(taskId, ChatTaskStatus.RUNNING);
   }
 

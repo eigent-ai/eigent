@@ -91,6 +91,10 @@ import {
 import { recoverCompletedRunDisplay } from '@/service/completedRunDisplayRecovery';
 import { executionScope } from '@/service/executionApi';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
+import {
+  createTaskTimerWaitSync,
+  isRunWaitingForUser,
+} from '@/service/legacyTaskTimer';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
 import {
@@ -4139,6 +4143,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               .setElapsed(observedTaskId, run.totalAttemptElapsedMs);
           }
         };
+        // The task timer holds still while the Run waits for the user.
+        const syncTimerWithUserWait = createTaskTimerWaitSync({
+          projectId: project_id,
+          runId: observedTaskId,
+          getState: () => observedChatStore.getState(),
+        });
+        const checkProjectedRun = () => {
+          if (!active) return;
+          syncTimerWithUserWait();
+          settleProjectedTerminal();
+        };
         // Reconciliation GETs update the projection without publishing a
         // domain event. Defer their check by one microtask so a live terminal
         // event (Store first, Hub second) retains its payload and wins once.
@@ -4149,13 +4164,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             projectionCheckScheduled = true;
             queueMicrotask(() => {
               projectionCheckScheduled = false;
-              settleProjectedTerminal();
+              checkProjectedRun();
             });
           }
         );
         // Subscribe first, then read: neither events nor GET snapshots can
         // strand an observer installed just after the terminal transition.
-        settleProjectedTerminal();
+        checkProjectedRun();
 
         if (active) {
           runEventIngressRegistry.ensureLocal(project_id, observedTaskId);
@@ -5592,7 +5607,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // Single-agent tasks have no confirm step, so `taskTime` is never
               // seeded by `handleConfirmTask`. Start the work-log clock here on
               // the first `todo_state`; the `=== 0` guard keeps it idempotent.
-              if (tasks[currentTaskId].taskTime === 0) {
+              // The clock stays stopped while the Run waits for the user,
+              // including in a Session restored during that wait.
+              if (
+                tasks[currentTaskId].taskTime === 0 &&
+                !isRunWaitingForUser(project_id, currentTaskId)
+              ) {
                 setTaskTime(currentTaskId, Date.now());
               }
               setStatus(currentTaskId, ChatTaskStatus.RUNNING);
@@ -6567,9 +6587,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
               // Freeze the clock before switching to FINISHED. The work
               // log only advances taskTime while RUNNING; skipping this step
-              // made every error path render "Worked for 0s".
+              // made every error path render "Worked for 0s". A restored
+              // Run that failed after its history loaded keeps its own clock.
               const playbackElapsed =
                 (type === 'replay' || type === 'share') &&
+                !replayCaughtUp &&
                 playbackFirstStepTimeMs !== null &&
                 playbackLastStepTimeMs !== null
                   ? Math.max(
@@ -6928,8 +6950,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // "Worked for 0s" with no Files changed section.
             const completedTask = tasks[currentTaskId];
             let completedElapsed = completedTask.elapsed;
+            // A restored Run that finishes after its history loaded keeps
+            // counting from its measured total. The span between its loaded
+            // events would count waits for the user and miss earlier work.
             const playbackElapsed =
               type &&
+              !replayCaughtUp &&
               playbackFirstStepTimeMs !== null &&
               playbackLastStepTimeMs !== null
                 ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)

@@ -24,6 +24,7 @@ import pytest
 
 from app.controller.run_controller import (
     _is_terminal,
+    _total_attempt_elapsed_ms,
     get_run,
     get_run_events,
     stream_run_events,
@@ -147,6 +148,115 @@ async def test_run_snapshot_includes_process_liveness():
     await subscription.aclose()
     release.set()
     await subscription.handle.wait()
+
+
+@pytest.mark.parametrize(
+    ("status", "ended_at", "expected_ms"),
+    [
+        ("pending", None, 30_000),
+        ("running", None, 30_000),
+        ("waiting_for_user", None, 30_000),
+        ("completed", 25.0, 15_000),
+        # A legacy row that never recorded its end keeps its heartbeat total.
+        ("interrupted", None, 1_500),
+    ],
+)
+def test_total_attempt_elapsed_counts_wall_time_in_every_live_state(
+    status, ended_at, expected_ms
+):
+    attempt = RunAttemptRecord(
+        attempt_id="attempt-1",
+        run_id="run-1",
+        attempt_number=1,
+        status=status,
+        started_at=10.0,
+        ended_at=ended_at,
+        outcome=None,
+        timeout_reason=None,
+        resume_request_id="start-1",
+        resume_reason="initial_execution",
+        policy_version="v1",
+        elapsed_active_ms=1_500,
+        last_consumer_heartbeat_at=11.5,
+    )
+
+    assert _total_attempt_elapsed_ms([attempt], now=40.0) == expected_ms
+
+
+def _attempt(
+    attempt_id: str,
+    *,
+    status: str,
+    started_at: float,
+    ended_at: float | None = None,
+) -> RunAttemptRecord:
+    return RunAttemptRecord(
+        attempt_id=attempt_id,
+        run_id="run-1",
+        attempt_number=1,
+        status=status,
+        started_at=started_at,
+        ended_at=ended_at,
+        outcome=None,
+        timeout_reason=None,
+        resume_request_id=f"start-{attempt_id}",
+        resume_reason="initial_execution",
+        policy_version="v1",
+        elapsed_active_ms=0,
+        last_consumer_heartbeat_at=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("waits", "expected_ms"),
+    [
+        # Waited 60s for an approval, then worked 3s more.
+        ([(12.0, 72.0)], 5_000),
+        # Two requests asked at once overlap; their union is left out once.
+        ([(12.0, 40.0), (20.0, 72.0)], 5_000),
+        # One request inside another adds nothing.
+        ([(12.0, 72.0), (30.0, 40.0)], 5_000),
+        # Separate waits all count.
+        ([(12.0, 40.0), (41.0, 72.0)], 6_000),
+        # Only the part of a wait inside the Attempt counts.
+        ([(5.0, 12.0), (70.0, 90.0)], 58_000),
+    ],
+)
+def test_total_attempt_elapsed_leaves_out_merged_user_waits(
+    waits, expected_ms
+):
+    attempt = _attempt(
+        "attempt-1", status="completed", started_at=10.0, ended_at=75.0
+    )
+
+    assert (
+        _total_attempt_elapsed_ms(
+            [attempt], now=500.0, user_waits={"attempt-1": waits}
+        )
+        == expected_ms
+    )
+
+
+def test_total_attempt_elapsed_freezes_while_an_attempt_waits_for_the_user():
+    earlier = _attempt(
+        "attempt-1", status="interrupted", started_at=0.0, ended_at=4.0
+    )
+    waiting = _attempt("attempt-2", status="waiting_for_user", started_at=10.0)
+    user_waits = {
+        # A wait of the earlier Attempt never counts against the live one.
+        "attempt-1": [(1.0, 3.0)],
+        "attempt-2": [(12.0, 20.0), (25.0, None)],
+    }
+
+    readings = [
+        _total_attempt_elapsed_ms(
+            [earlier, waiting], now=now, user_waits=user_waits
+        )
+        for now in (30.0, 90.0, 3_600.0)
+    ]
+
+    # 2s of the first Attempt, then 2s + 5s of the live one before it waits.
+    assert readings == [9_000, 9_000, 9_000]
 
 
 @pytest.mark.asyncio

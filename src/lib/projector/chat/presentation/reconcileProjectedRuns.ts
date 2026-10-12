@@ -14,7 +14,7 @@
 
 import { isStoppedRunStatus } from '../../runSummary';
 import type { ProjectedRun } from '../../types';
-import type { TimelineRunView } from './types';
+import type { TimelineElapsedAnchor, TimelineRunView } from './types';
 
 const ACTIVE_RUN_STATUSES = new Set<ProjectedRun['status']>([
   'pending',
@@ -45,6 +45,38 @@ function elapsedBetween(
 }
 
 /**
+ * Live timer baseline for an active Run. It counts from `baselineAt`, leaves
+ * out the finished waits for the user after it, and holds still while the
+ * Run is waiting for the user again.
+ */
+function activeElapsedAnchor(
+  accumulatedMs: number,
+  baselineAt: string | null,
+  userWaitMs: number,
+  userWaitStartedAt: number | null
+): TimelineElapsedAnchor {
+  const baseline = timestampValue(baselineAt);
+  if (baseline === null) return { accumulatedMs, anchoredAt: baselineAt };
+  if (userWaitStartedAt !== null) {
+    return {
+      accumulatedMs,
+      anchoredAt: null,
+      heldDeltaMs: Math.max(
+        0,
+        Math.max(userWaitStartedAt, baseline) - baseline - userWaitMs
+      ),
+    };
+  }
+  return {
+    accumulatedMs,
+    anchoredAt:
+      userWaitMs > 0
+        ? new Date(baseline + userWaitMs).toISOString()
+        : baselineAt,
+  };
+}
+
+/**
  * Overlay the Projector's Run aggregate onto a node-derived presentation.
  * The ProjectedRun is authoritative for lifecycle state and attempt time;
  * semantic nodes remain authoritative for transcript content and ordering.
@@ -62,24 +94,36 @@ export function reconcileTimelineRun(
   const totalAttemptElapsedMs = nonNegativeElapsed(
     projectedRun.totalAttemptElapsedMs
   );
+  // Time spent waiting for an approval or an answer is not task time.
+  const userWaitMs = nonNegativeElapsed(projectedRun.userWaitMs) ?? 0;
+  const userWaitStartedAt =
+    status === 'waiting_for_user'
+      ? timestampValue(projectedRun.userWaitStartedAt ?? null)
+      : null;
   const endedAt = active
     ? null
     : terminal
       ? authoritativeUpdatedAt || run.timestamps.endedAt
       : run.timestamps.endedAt;
+  const wallDurationMs = active
+    ? null
+    : (elapsedBetween(run.timestamps.startedAt, endedAt) ??
+      run.timestamps.durationMs);
   const durationMs = active
     ? null
     : (totalAttemptElapsedMs ??
-      elapsedBetween(run.timestamps.startedAt, endedAt) ??
-      run.timestamps.durationMs);
+      (wallDurationMs === null
+        ? null
+        : Math.max(0, wallDurationMs - userWaitMs)));
   const elapsedAnchor = active
-    ? {
-        accumulatedMs: totalAttemptElapsedMs ?? 0,
-        anchoredAt:
-          (totalAttemptElapsedMs !== null
-            ? projectedRun.totalAttemptElapsedAt || authoritativeUpdatedAt
-            : run.timestamps.startedAt || run.timestamps.createdAt) || null,
-      }
+    ? activeElapsedAnchor(
+        totalAttemptElapsedMs ?? 0,
+        (totalAttemptElapsedMs !== null
+          ? projectedRun.totalAttemptElapsedAt || authoritativeUpdatedAt
+          : run.timestamps.startedAt || run.timestamps.createdAt) || null,
+        userWaitMs,
+        userWaitStartedAt
+      )
     : {
         accumulatedMs: totalAttemptElapsedMs ?? durationMs ?? 0,
         anchoredAt: null,

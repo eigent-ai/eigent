@@ -29,7 +29,7 @@ import {
   reduceProjectedRun,
   reduceProjectView,
 } from './reduce';
-import { TERMINAL_RUN_STATUSES } from './runSummary';
+import { TERMINAL_RUN_STATUSES, withUserWait } from './runSummary';
 import type {
   CanonicalProjectEvent,
   ProjectedRun,
@@ -177,6 +177,17 @@ export function projectSnapshot(
         ? { latestAttempt: previousRun.latestAttempt }
         : {}),
     };
+    if (status === 'waiting_for_user') {
+      // A listed total already leaves out the open wait up to its read;
+      // without one, the Run's last update approximates when the wait began.
+      run = withUserWait(
+        run,
+        0,
+        (run.totalAttemptElapsedMs != null
+          ? run.totalAttemptElapsedAt
+          : null) ?? run.updatedAt
+      );
+    }
     if (aggregateRunVersion !== null) {
       let throughSequence: number | null = null;
       for (const event of acceptedRunEvents.get(aggregate.run_id) ?? []) {
@@ -197,7 +208,15 @@ export function projectSnapshot(
           },
           event
         ).status;
-        const next = reduceProjectedRun(run, event);
+        // `run.lastSequence` already covers the whole retained tail. Reduce
+        // against the proven prefix instead, so an elapsed checkpoint read
+        // while the Run was live continues across appends that follow it.
+        const next = reduceProjectedRun(
+          throughSequence === null
+            ? run
+            : { ...run, lastSequence: throughSequence },
+          event
+        );
         if (
           event.runVersion === aggregateRunVersion ||
           explicitStatus !== 'unknown' ||
@@ -205,7 +224,11 @@ export function projectSnapshot(
             event.runSequence === throughSequence + 1) ||
           TERMINAL_RUN_STATUSES.has(run.status)
         ) {
-          run = { ...next, origin: run.origin };
+          run = {
+            ...next,
+            origin: run.origin,
+            lastSequence: Math.max(run.lastSequence, next.lastSequence),
+          };
           throughSequence = event.runSequence;
         } else {
           // A gap can hide recovery. Keep the last proven state/version so a

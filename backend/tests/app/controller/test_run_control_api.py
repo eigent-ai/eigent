@@ -35,7 +35,7 @@ from app.controller.run_controller import (
     resume_run,
     signal_run,
 )
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
 from app.run_runtime import RunCoordinator
 from app.service.task import TaskLock
@@ -407,6 +407,241 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
     assert result["runs"][0]["total_attempt_elapsed_ms"] == 0
     notify_sync.assert_called_once_with()
     bootstrap_history.assert_not_awaited()
+
+
+def _start_run(journal: SQLiteRunJournal) -> str:
+    journal.ensure_run(run_id="run-1", project_id="project-1", now=100)
+    return journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+        now=100,
+    ).attempt_id
+
+
+async def _listed_and_detailed_elapsed_ms(
+    journal: SQLiteRunJournal, now: float
+) -> tuple[int, int]:
+    """Read the Run listing and the Run details at a controlled time."""
+
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=RunCoordinator(journal),
+        ),
+        patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+        patch(
+            "app.run_sync.runtime.is_default_cloud_history_bootstrap_pending",
+            return_value=False,
+        ),
+        patch("app.controller.run_controller.time.time", return_value=now),
+    ):
+        listed = await list_project_runs(
+            project_id="project-1", status=None, limit=20
+        )
+        summary = await get_run("run-1")
+    return (
+        listed["runs"][0]["total_attempt_elapsed_ms"],
+        summary["total_attempt_elapsed_ms"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_listed_elapsed_time_leaves_out_an_approval_wait(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt_id = _start_run(journal)
+
+        async def elapsed_at(now: float) -> tuple[int, int]:
+            return await _listed_and_detailed_elapsed_ms(journal, now)
+
+        readings = [await elapsed_at(102)]
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt_id,
+            prompt={"question": "Allow the write?"},
+            now=102,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "waiting_for_user"
+        # A Session reopened during the wait reads the time the Attempt had
+        # worked when it started waiting, and that value does not grow.
+        readings += [await elapsed_at(132), await elapsed_at(162)]
+        journal.decide_approval(
+            "approval-1",
+            decision="approved",
+            expected_version=0,
+            continue_active_attempt=True,
+            decision_request_id="approve-once",
+            now=162,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "running"
+        readings.append(await elapsed_at(165))
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id="run-1:completed",
+                event_type="run.completed",
+                payload={},
+                created_at=165,
+            ),
+        )
+        assert journal.get_run_attempt(attempt_id).status == "completed"
+        readings.append(await elapsed_at(400))
+
+    assert readings == [
+        (2_000, 2_000),
+        (2_000, 2_000),
+        (2_000, 2_000),
+        (5_000, 5_000),
+        (5_000, 5_000),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_listed_elapsed_time_leaves_out_overlapping_approvals_once(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt_id = _start_run(journal)
+        # Two workers ask at once: 102-130 and 110-150 overlap into one wait.
+        for approval_id, now in (("approval-1", 102), ("approval-2", 110)):
+            journal.create_approval(
+                approval_id=approval_id,
+                run_id="run-1",
+                attempt_id=attempt_id,
+                prompt={"question": f"Allow {approval_id}?"},
+                now=now,
+            )
+        journal.decide_approval(
+            "approval-1",
+            decision="approved",
+            expected_version=0,
+            continue_active_attempt=True,
+            decision_request_id="approve-1",
+            now=130,
+        )
+        # The other request is still open, so the Attempt keeps waiting.
+        assert journal.get_run_attempt(attempt_id).status == "waiting_for_user"
+        readings = [await _listed_and_detailed_elapsed_ms(journal, 140)]
+        journal.decide_approval(
+            "approval-2",
+            decision="approved",
+            expected_version=0,
+            continue_active_attempt=True,
+            decision_request_id="approve-2",
+            now=150,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "running"
+        readings.append(await _listed_and_detailed_elapsed_ms(journal, 153))
+
+    assert readings == [(2_000, 2_000), (5_000, 5_000)]
+
+
+@pytest.mark.asyncio
+async def test_listed_elapsed_time_leaves_out_waiting_for_an_answer(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt_id = _start_run(journal)
+        journal.create_human_interaction(
+            interaction_id="question-1",
+            run_id="run-1",
+            attempt_id=attempt_id,
+            interaction_type="question",
+            request={"question": "Which region?"},
+            now=102,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "waiting_for_user"
+        readings = [await _listed_and_detailed_elapsed_ms(journal, 130)]
+        journal.resolve_human_interaction(
+            "question-1",
+            decision_request_id="answer-1",
+            decision={"answer": "eu-west"},
+            expected_version=0,
+            continue_active_attempt=True,
+            now=160,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "running"
+        readings.append(await _listed_and_detailed_elapsed_ms(journal, 163))
+
+    assert readings == [(2_000, 2_000), (5_000, 5_000)]
+
+
+@pytest.mark.asyncio
+async def test_run_listing_reads_the_waits_of_every_run_at_once(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        # An earlier Run worked 15s, 9s of which it waited for an approval.
+        journal.ensure_run(run_id="run-0", project_id="project-1", now=10)
+        earlier = journal.create_run_attempt(
+            "run-0",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=10,
+        )
+        journal.create_approval(
+            approval_id="approval-0",
+            run_id="run-0",
+            attempt_id=earlier.attempt_id,
+            prompt={"question": "Allow the write?"},
+            now=11,
+        )
+        journal.decide_approval(
+            "approval-0",
+            decision="approved",
+            expected_version=0,
+            continue_active_attempt=True,
+            decision_request_id="approve-0",
+            now=20,
+        )
+        journal.append_event(
+            "run-0",
+            RunEventDraft(
+                event_id="run-0:completed",
+                event_type="run.completed",
+                payload={},
+                created_at=25,
+            ),
+        )
+        # The current Run has waited since 2s after it started.
+        attempt_id = _start_run(journal)
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt_id,
+            prompt={"question": "Allow the write?"},
+            now=102,
+        )
+
+        with (
+            patch.object(
+                journal,
+                "list_attempt_user_waits",
+                wraps=journal.list_attempt_user_waits,
+            ) as list_waits,
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+            patch(
+                "app.run_sync.runtime.is_default_cloud_history_bootstrap_pending",
+                return_value=False,
+            ),
+            patch("app.controller.run_controller.time.time", return_value=300),
+        ):
+            listed = await list_project_runs(
+                project_id="project-1", status=None, limit=20
+            )
+
+    assert list_waits.call_count == 1
+    assert {
+        run["run_id"]: run["total_attempt_elapsed_ms"]
+        for run in listed["runs"]
+    } == {"run-0": 6_000, "run-1": 2_000}
 
 
 @pytest.mark.asyncio
