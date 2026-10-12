@@ -106,6 +106,8 @@
   "date-required": "Date is required",
   "weekday-required": "At least one weekday is required",
   "schedule-required-fields": "Please fill in all required fields for the schedule",
+  "schedule-whole-number-range": "Enter a whole number from {{min}} to {{max}}",
+  "schedule-preview-invalid": "Fix the highlighted fields to see scheduled times",
   "create-trigger-agent": "Automate this task",
   "trigger-overview": "Automation overview",
   "edit": "Edit",

@@ -106,6 +106,8 @@
   "date-required": "日付は必須です",
   "weekday-required": "少なくとも 1 つの曜日を選択してください",
   "schedule-required-fields": "スケジュールの必須項目をすべて入力してください",
+  "schedule-whole-number-range": "{{min}}〜{{max}} の整数を入力してください",
+  "schedule-preview-invalid": "強調表示された項目を修正すると、スケジュール時間を確認できます",
   "create-trigger-agent": "このタスクを自動化",
   "trigger-overview": "オートメーションの概要",
   "edit": "編集",

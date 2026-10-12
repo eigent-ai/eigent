@@ -676,7 +676,12 @@ function EditorFields({
             })
           }
         />
-        <Select value={editor.item.kind} onValueChange={changeKind}>
+        <Select
+          value={editor.item.kind}
+          onValueChange={(value) =>
+            changeKind(value as WorkspaceContextSource['kind'])
+          }
+        >
           <SelectTrigger
             title={t('layout.workspace-resource-source-type', {
               defaultValue: 'Source type',

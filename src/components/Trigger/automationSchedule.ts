@@ -47,6 +47,24 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 const pad = (n: number) => n.toString().padStart(2, '0');
 
+export type ScheduleNumberRange = { min: number; max: number };
+
+/**
+ * Reads a typed schedule field as a whole number within the given range.
+ * The whole value must be digits, so "25", "60", "-1", "1.5" and "12abc"
+ * return null instead of being truncated or rolled over to the next hour or
+ * day by Date.
+ */
+export function parseScheduleNumber(
+  value: string,
+  { min, max }: ScheduleNumberRange
+): number | null {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return parsed >= min && parsed <= max ? parsed : null;
+}
+
 /** Converts a local-time schedule into the UTC cron the trigger API stores. */
 export function scheduleToCron(
   schedule: LocalSchedule,
