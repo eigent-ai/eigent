@@ -106,6 +106,8 @@
   "date-required": "La date est obligatoire",
   "weekday-required": "Au moins un jour de la semaine est obligatoire",
   "schedule-required-fields": "Remplissez tous les champs obligatoires de la planification",
+  "schedule-whole-number-range": "Saisissez un nombre entier compris entre {{min}} et {{max}}",
+  "schedule-preview-invalid": "Corrigez les champs en surbrillance pour voir les heures planifiées",
   "create-trigger-agent": "Automatiser cette tâche",
   "trigger-overview": "Aperçu de l’automatisation",
   "edit": "Modifier",

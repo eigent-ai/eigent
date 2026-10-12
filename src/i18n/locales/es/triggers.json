@@ -106,6 +106,8 @@
   "date-required": "La fecha es obligatoria",
   "weekday-required": "Se requiere al menos un día de la semana",
   "schedule-required-fields": "Completa todos los campos obligatorios de la programación",
+  "schedule-whole-number-range": "Introduce un número entero entre {{min}} y {{max}}",
+  "schedule-preview-invalid": "Corrige los campos resaltados para ver las horas programadas",
   "create-trigger-agent": "Automatizar esta tarea",
   "trigger-overview": "Resumen de la automatización",
   "edit": "Editar",

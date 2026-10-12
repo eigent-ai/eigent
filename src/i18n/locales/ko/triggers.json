@@ -106,6 +106,8 @@
   "date-required": "날짜는 필수입니다",
   "weekday-required": "요일을 하나 이상 선택해야 합니다",
   "schedule-required-fields": "일정의 필수 필드를 모두 입력하세요",
+  "schedule-whole-number-range": "{{min}}부터 {{max}}까지의 정수를 입력하세요",
+  "schedule-preview-invalid": "강조 표시된 필드를 수정하면 예정된 시간을 볼 수 있습니다",
   "create-trigger-agent": "이 작업 자동화하기",
   "trigger-overview": "자동화 개요",
   "edit": "편집",

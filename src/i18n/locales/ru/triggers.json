@@ -106,6 +106,8 @@
   "date-required": "Дата обязательна",
   "weekday-required": "Необходимо выбрать хотя бы один день недели",
   "schedule-required-fields": "Заполните все обязательные поля расписания",
+  "schedule-whole-number-range": "Введите целое число от {{min}} до {{max}}",
+  "schedule-preview-invalid": "Исправьте выделенные поля, чтобы увидеть расписание",
   "create-trigger-agent": "Автоматизировать эту задачу",
   "trigger-overview": "Обзор автоматизации",
   "edit": "Изменить",

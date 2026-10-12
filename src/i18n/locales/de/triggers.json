@@ -106,6 +106,8 @@
   "date-required": "Datum ist erforderlich",
   "weekday-required": "Mindestens eine Wochefreitags ist erforderlich",
   "schedule-required-fields": "Füllen Sie alle erforderlichen Felder für die Planung",
+  "schedule-whole-number-range": "Geben Sie eine ganze Zahl von {{min}} bis {{max}} ein",
+  "schedule-preview-invalid": "Korrigieren Sie die markierten Felder, um die Ausführungszeiten zu sehen",
   "create-trigger-agent": "Diese Aufgabe automatisieren",
   "trigger-overview": "Übersicht über die Automatisierung",
   "edit": "Bearbeiten",

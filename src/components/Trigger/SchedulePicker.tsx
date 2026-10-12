@@ -38,11 +38,17 @@ import {
   isOneTimeTooFarAhead,
   nextOccurrence,
   parseCron,
+  parseScheduleNumber,
   scheduleToCron,
   type LocalSchedule,
+  type ScheduleNumberRange,
 } from './automationSchedule';
 
 type FrequencyType = 'one-time' | 'daily' | 'weekly' | 'monthly';
+
+const HOUR_RANGE: ScheduleNumberRange = { min: 0, max: 23 };
+const MINUTE_RANGE: ScheduleNumberRange = { min: 0, max: 59 };
+const DAY_OF_MONTH_RANGE: ScheduleNumberRange = { min: 1, max: 31 };
 
 export type ScheduleConfig = {
   date?: string; // YYYY-MM-DD format for one-time schedules
@@ -159,9 +165,32 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     previousCronRef.current = value;
   }, [value, useDefaultTime, initialConfig?.date]);
 
+  // The hour, minute and day fields accept free text, so only these parsed
+  // values may build the schedule; Date would roll 25:54 over to 01:54.
+  const hourNum = parseScheduleNumber(hour, HOUR_RANGE);
+  const minuteNum = parseScheduleNumber(minute, MINUTE_RANGE);
+  const dayOfMonthNum = parseScheduleNumber(dayOfMonth, DAY_OF_MONTH_RANGE);
+  const hasValidScheduleFields =
+    hourNum !== null &&
+    minuteNum !== null &&
+    (frequency !== 'monthly' || dayOfMonthNum !== null);
+
+  // These fields always start with a value, so a committed invalid or cleared
+  // value shows its range error right away.
+  const getRangeError = (
+    parsed: number | null,
+    { min, max }: ScheduleNumberRange
+  ): string | undefined =>
+    parsed === null
+      ? t('triggers.schedule-whole-number-range', { min, max })
+      : undefined;
+  const hourError = getRangeError(hourNum, HOUR_RANGE);
+  const minuteError = getRangeError(minuteNum, MINUTE_RANGE);
+  const dayOfMonthError = getRangeError(dayOfMonthNum, DAY_OF_MONTH_RANGE);
+
   const selectedSchedule = useMemo<LocalSchedule | null>(() => {
-    if (!frequency || !hour || !minute) return null;
-    const time = { hour: Number(hour), minute: Number(minute) };
+    if (!frequency || hourNum === null || minuteNum === null) return null;
+    const time = { hour: hourNum, minute: minuteNum };
     if (frequency === 'one-time')
       return oneTimeDate
         ? { frequency: 'once', ...time, date: oneTimeDate }
@@ -171,11 +200,11 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         ? { frequency, ...time, weekdays: weekdays.map(Number) }
         : null;
     if (frequency === 'monthly')
-      return dayOfMonth
-        ? { frequency, ...time, dayOfMonth: Number(dayOfMonth) }
+      return dayOfMonthNum !== null
+        ? { frequency, ...time, dayOfMonth: dayOfMonthNum }
         : null;
     return { frequency, ...time };
-  }, [frequency, hour, minute, weekdays, dayOfMonth, oneTimeDate]);
+  }, [frequency, hourNum, minuteNum, weekdays, dayOfMonthNum, oneTimeDate]);
 
   let cron: string | null = null;
   if (selectedSchedule) {
@@ -198,6 +227,9 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
 
   // Emit config with YYYY-MM-DD format to match backend
   useEffect(() => {
+    // The UTC date offsets below need a valid time; an invalid one cannot be
+    // saved, and the config is emitted again once it is corrected.
+    if (hourNum === null || minuteNum === null) return;
     const config: ScheduleConfig = {};
 
     if (frequency === null) {
@@ -209,11 +241,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
 
     if (frequency === 'one-time' && oneTimeDate) {
       // Apply UTC dayOffset so config.date matches the UTC date in the cron expression
-      const { dayOffset } = localTimeToUTC(
-        parseInt(hour),
-        parseInt(minute),
-        oneTimeDate
-      );
+      const { dayOffset } = localTimeToUTC(hourNum, minuteNum, oneTimeDate);
       const utcDate = new Date(oneTimeDate);
       utcDate.setDate(utcDate.getDate() + dayOffset);
       config.date = format(utcDate, 'yyyy-MM-dd');
@@ -223,11 +251,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
       // Apply UTC dayOffset so expiration date aligns with the UTC date the cron actually fires on.
       // e.g. if local 23:00 in UTC-5 becomes 04:00 UTC next day (dayOffset=+1),
       // the "last allowed UTC run date" must also shift forward by 1.
-      const { dayOffset } = localTimeToUTC(
-        parseInt(hour),
-        parseInt(minute),
-        expiredAt
-      );
+      const { dayOffset } = localTimeToUTC(hourNum, minuteNum, expiredAt);
       const utcExpiredAt = new Date(expiredAt);
       utcExpiredAt.setDate(utcExpiredAt.getDate() + dayOffset);
       config.expirationDate = format(utcExpiredAt, 'yyyy-MM-dd');
@@ -239,7 +263,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
 
     onConfigChange?.(config);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frequency, oneTimeDate, expiredAt, maxFailureCount, hour, minute]);
+  }, [frequency, oneTimeDate, expiredAt, maxFailureCount, hourNum, minuteNum]);
 
   const oneTimeTooFarAhead =
     selectedSchedule?.frequency === 'once' &&
@@ -265,11 +289,16 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   const firstRun = unsupportedMonthlyTime
     ? null
     : (nextScheduledTimes.at(0) ?? null);
-  const selectedOneTimeDate =
-    selectedSchedule?.frequency === 'once'
-      ? new Date(selectedSchedule.date)
-      : null;
-  selectedOneTimeDate?.setHours(Number(hour), Number(minute), 0, 0);
+  let selectedOneTimeDate: Date | null = null;
+  if (selectedSchedule?.frequency === 'once') {
+    selectedOneTimeDate = new Date(selectedSchedule.date);
+    selectedOneTimeDate.setHours(
+      selectedSchedule.hour,
+      selectedSchedule.minute,
+      0,
+      0
+    );
+  }
   const unchangedPastOneTime =
     !oneTimeTooFarAhead &&
     isEditing &&
@@ -374,7 +403,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 : undefined
             }
           />
-          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+          <div className="grid min-w-0 grid-cols-2 items-start gap-3">
             <div className="min-w-0">
               <InputSelect
                 value={hour}
@@ -384,7 +413,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 placeholder="00"
                 required
                 leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !hour ? 'error' : undefined}
+                state={hourError ? 'error' : undefined}
+                errorNote={hourError}
               />
             </div>
             <div className="min-w-0">
@@ -396,14 +426,15 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 placeholder="00"
                 required
                 leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !minute ? 'error' : undefined}
+                state={minuteError ? 'error' : undefined}
+                errorNote={minuteError}
               />
             </div>
           </div>
         </TabsContent>
 
         <TabsContent value="daily" className="mt-4 space-y-3">
-          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+          <div className="grid min-w-0 grid-cols-2 items-start gap-3">
             <div className="min-w-0">
               <InputSelect
                 value={hour}
@@ -413,7 +444,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 placeholder="00"
                 required
                 leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !hour ? 'error' : undefined}
+                state={hourError ? 'error' : undefined}
+                errorNote={hourError}
               />
             </div>
             <div className="min-w-0">
@@ -425,7 +457,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 placeholder="00"
                 required
                 leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !minute ? 'error' : undefined}
+                state={minuteError ? 'error' : undefined}
+                errorNote={minuteError}
               />
             </div>
           </div>
@@ -446,7 +479,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="weekly" className="mt-4 space-y-3">
-          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+          <div className="grid min-w-0 grid-cols-2 items-start gap-3">
             <div className="min-w-0">
               <InputSelect
                 value={hour}
@@ -456,7 +489,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 placeholder="00"
                 required
                 leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !hour ? 'error' : undefined}
+                state={hourError ? 'error' : undefined}
+                errorNote={hourError}
               />
             </div>
             <div className="min-w-0">
@@ -468,7 +502,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 placeholder="00"
                 required
                 leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !minute ? 'error' : undefined}
+                state={minuteError ? 'error' : undefined}
+                errorNote={minuteError}
               />
             </div>
           </div>
@@ -571,9 +606,10 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             placeholder={t('triggers.select-day')}
             note={t('triggers.schedule-day-of-month-note')}
             required
-            state={showErrors && !dayOfMonth ? 'error' : undefined}
+            state={dayOfMonthError ? 'error' : undefined}
+            errorNote={dayOfMonthError}
           />
-          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+          <div className="grid min-w-0 grid-cols-2 items-start gap-3">
             <div className="min-w-0">
               <InputSelect
                 value={hour}
@@ -583,7 +619,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 required
                 placeholder="00"
                 leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !hour ? 'error' : undefined}
+                state={hourError ? 'error' : undefined}
+                errorNote={hourError}
               />
             </div>
             <div className="min-w-0">
@@ -595,7 +632,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 required
                 placeholder="00"
                 leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !minute ? 'error' : undefined}
+                state={minuteError ? 'error' : undefined}
+                errorNote={minuteError}
               />
             </div>
           </div>
@@ -646,13 +684,15 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
               )
             : keepsStoredSchedule
               ? t('triggers.keeps-stored-schedule')
-              : unsupportedMonthlyTime
-                ? t('triggers.monthly-time-crosses-month')
-                : oneTimeTooFarAhead
-                  ? t('triggers.one-time-within-a-year')
-                  : unchangedPastOneTime
-                    ? t('triggers.no-upcoming-executions')
-                    : t('triggers.pick-future-time')}
+              : !hasValidScheduleFields
+                ? t('triggers.schedule-preview-invalid')
+                : unsupportedMonthlyTime
+                  ? t('triggers.monthly-time-crosses-month')
+                  : oneTimeTooFarAhead
+                    ? t('triggers.one-time-within-a-year')
+                    : unchangedPastOneTime
+                      ? t('triggers.no-upcoming-executions')
+                      : t('triggers.pick-future-time')}
         </DsText>
       </div>
 

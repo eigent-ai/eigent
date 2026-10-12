@@ -106,6 +106,8 @@
   "date-required": "日期為必填項",
   "weekday-required": "至少需要選擇一個工作日",
   "schedule-required-fields": "請填寫計劃的所有必填字段",
+  "schedule-whole-number-range": "請輸入 {{min}} 到 {{max}} 之間的整數",
+  "schedule-preview-invalid": "請修正標示的欄位以查看計劃時間",
   "create-trigger-agent": "自動化此任務",
   "trigger-overview": "自動化概覽",
   "edit": "編輯",
