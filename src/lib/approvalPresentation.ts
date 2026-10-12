@@ -33,10 +33,19 @@ export function interruptedRunDescription(
   reason: RunTerminalReason | null | undefined,
   t: Translate,
   /** Replaces the promise that Resume picks up when it cannot. */
-  resumeUnavailableReason?: string
+  resumeUnavailableReason?: string,
+  /** The Brain's `code: message` detail; only its code is read. */
+  detail?: string | null
 ): string {
+  // A model the provider could not serve also stops the runtime; name the
+  // model instead of a lost process.
+  const modelUnavailable =
+    reason === 'runtime_lost' &&
+    detail?.split(':', 1)[0] === 'model_transport_error';
   return [
-    runTerminalReasonText(reason, t),
+    modelUnavailable
+      ? t('chat.notice-model-unavailable')
+      : runTerminalReasonText(reason, t),
     // Only a Run that can resume asks an expired request again.
     reason === 'approval_expired' && !resumeUnavailableReason
       ? t('chat.run-resume-reevaluates-hint')

@@ -1404,6 +1404,76 @@ describe('ChatBox Component', async () => {
         }
       );
 
+      it.each([
+        {
+          source: 'a Session restored after a window reload',
+          task: { ...finishedTask, type: 'replay' },
+        },
+        {
+          source: 'a Run resumed after an error',
+          task: {
+            ...finishedTask,
+            messages: [
+              finishedTask.messages[0],
+              {
+                id: 'error',
+                role: 'agent',
+                content: '❌ **Error**: Bad Gateway',
+                step: AgentStep.ERROR,
+              },
+              finishedTask.messages[1],
+            ],
+          },
+        },
+      ])(
+        'retires the idle consumer before a follow-up to $source',
+        async ({ task }) => {
+          const user = userEvent.setup();
+          legacyStreamHarness.idleRunId = null;
+          mockIdleConsumer(0);
+          const chatState = {
+            ...defaultChatStoreState,
+            tasks: { 'test-task-id': task },
+          };
+          mockUseChatStoreAdapter.mockReturnValue({
+            projectStore: defaultProjectStoreState as any,
+            chatStore: chatState as any,
+          });
+
+          renderChatBox();
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Continue after reload'
+          );
+          await user.click(screen.getByTestId('send-button'));
+
+          await waitFor(() =>
+            expect(chatState.startTask).toHaveBeenCalledWith(
+              'test-unique-id',
+              undefined,
+              undefined,
+              undefined,
+              'Continue after reload',
+              [],
+              undefined,
+              'test-project-id',
+              'single-agent',
+              expect.objectContaining({
+                preserveTaskId: true,
+                awaitAdmission: true,
+              })
+            )
+          );
+          const retirement = _mockFetchPost.mock.calls.findIndex(
+            ([url]) => url === retireIdleCall[0]
+          );
+          expect(_mockFetchPost.mock.calls[retirement]).toEqual(retireIdleCall);
+          expect(
+            _mockFetchPost.mock.invocationCallOrder[retirement]
+          ).toBeLessThan(chatState.startTask.mock.invocationCallOrder[0]);
+        }
+      );
+
       it('admits a queued follow-up cold through the same decision', async () => {
         legacyStreamHarness.idleRunId = null;
         mockIdleConsumer(0);

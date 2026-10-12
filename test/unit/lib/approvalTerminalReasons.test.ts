@@ -142,6 +142,27 @@ describe('durable approval terminal reasons', () => {
     );
   });
 
+  it('names an unavailable model instead of a lost process', () => {
+    const generic = t('chat.run-interrupted-description');
+    expect(
+      interruptedRunDescription(
+        'runtime_lost',
+        t,
+        undefined,
+        'model_transport_error: Bad Gateway'
+      )
+    ).toBe(`${t('chat.notice-model-unavailable')} ${generic}`);
+    // Any other lost runtime keeps its own cause, whatever its message says.
+    expect(
+      interruptedRunDescription(
+        'runtime_lost',
+        t,
+        undefined,
+        'worker_exited: model_transport_error'
+      )
+    ).toBe(`${runTerminalReasonText('runtime_lost', t)} ${generic}`);
+  });
+
   it('offers the Resume hint for an expired request only while the Run can resume', () => {
     const cause = runTerminalReasonText('approval_expired', t);
     const hint = t('chat.run-resume-reevaluates-hint');

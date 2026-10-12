@@ -17,8 +17,13 @@ import {
   normalizeLocalRunEvent,
   type ProjectSnapshotInput,
 } from '@/lib/projector';
+import {
+  RunEventIngress,
+  runDomainEventHub,
+  runProjectionStore,
+} from '@/lib/runEvents';
 import { ProjectEventStore } from '@/store/projectEventStore';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/http', () => ({
   fetchGet: vi.fn().mockRejectedValue(new Error('Mock offline canonical GET')),
@@ -109,6 +114,11 @@ function unresolvedTransport() {
   return { signals, transport };
 }
 
+beforeEach(() => {
+  runDomainEventHub.clear();
+  runProjectionStore.clear();
+});
+
 afterEach(() => vi.restoreAllMocks());
 
 describe('ProjectRunEventStreamOwner', () => {
@@ -132,7 +142,7 @@ describe('ProjectRunEventStreamOwner', () => {
 
     expect(pending.transport).toHaveBeenCalledTimes(1);
     expect(pending.transport.mock.calls[0][0]).toMatchObject({
-      url: '/runs/run%2F1/stream?after_sequence=7',
+      url: '/runs/run%2F1/stream?after_sequence=0',
       method: 'GET',
       openWhenHidden: true,
       signal: expect.any(AbortSignal),
@@ -149,6 +159,8 @@ describe('ProjectRunEventStreamOwner', () => {
     const transport: EventStreamTransport = vi.fn(async (options) => {
       await options.onmessage(message('heartbeat', { after_sequence: 1 }));
       await options.onmessage(message('runtime_detached', { run_id: 'run-1' }));
+      await options.onmessage(message('run_event', runEvent(1)));
+      await options.onmessage(message('replay_caught_up', { run_id: 'run-1' }));
       await options.onmessage(message('run_event', runEvent(2)));
       await options.onmessage(message('run_event', runEvent(2)));
       await new Promise<void>((resolve) => {
@@ -187,6 +199,10 @@ describe('ProjectRunEventStreamOwner', () => {
     const transport: EventStreamTransport = vi.fn(async (options) => {
       callCount += 1;
       if (callCount === 1) {
+        await options.onmessage(message('run_event', runEvent(1)));
+        await options.onmessage(
+          message('replay_caught_up', { after_sequence: 1 })
+        );
         await options.onmessage(message('run_event', runEvent(2)));
         await options.onmessage(
           message('runtime_detached', { after_sequence: 2 })
@@ -219,6 +235,13 @@ describe('ProjectRunEventStreamOwner', () => {
 
   it('continues when human-reply reconciliation advances the shared Run first', async () => {
     const store = hydratedStore('project-1', [{ runId: 'run-1', sequence: 3 }]);
+    const projectionIngress = new RunEventIngress('project-1', 'run-1');
+    for (const sequence of [1, 2, 3]) {
+      projectionIngress.ingest({
+        ...runEvent(sequence),
+        project_id: 'project-1',
+      });
+    }
     let streamOptions: SSETransportOptions | null = null;
     const transport: EventStreamTransport = vi.fn(
       (options) =>
@@ -253,8 +276,10 @@ describe('ProjectRunEventStreamOwner', () => {
     store.flushAll();
     expect(store.getSnapshot().view.runs['run-1'].lastSequence).toBe(5);
 
-    // A later Todo/tool event must use the shared watermark instead of being
-    // mistaken for a 3 -> 6 gap that kills the companion stream.
+    // The companion replay fills the projection that the POST did not update,
+    // then continues with the first new live event.
+    await streamOptions!.onmessage(message('run_event', runEvent(4)));
+    await streamOptions!.onmessage(message('run_event', runEvent(5)));
     await streamOptions!.onmessage(message('run_event', runEvent(6)));
     expect(streamOptions!.signal?.aborted).toBe(false);
     expect(owner.getActiveRunIds()).toEqual(['run-1']);
@@ -263,6 +288,57 @@ describe('ProjectRunEventStreamOwner', () => {
     expect(store.getSnapshot().view.runs['run-1'].lastSequence).toBe(6);
     expect(store.getSnapshot().view.needsResync).toBe(false);
 
+    owner.dispose();
+  });
+
+  it('fills both projections and publishes a companion terminal event once', async () => {
+    const store = hydratedStore('project-1', [
+      { runId: 'run-1', sequence: 2, status: 'running' },
+    ]);
+    const completed = vi.fn();
+    const unsubscribe = runDomainEventHub.subscribe(
+      {
+        projectId: 'project-1',
+        runId: 'run-1',
+        eventTypes: ['run.completed'],
+      },
+      completed
+    );
+    const transport: EventStreamTransport = vi.fn(async (options) => {
+      await options.onmessage(message('run_event', runEvent(1)));
+      await options.onmessage(message('run_event', runEvent(2)));
+      await options.onmessage(
+        message('replay_caught_up', { after_sequence: 2 })
+      );
+      await options.onmessage(
+        message('run_event', runEvent(3, 'run-1', 'run.completed'))
+      );
+      await options.onmessage(
+        message('run_event', runEvent(3, 'run-1', 'run.completed'))
+      );
+    });
+    const owner = new ProjectRunEventStreamOwner({
+      projectId: 'project-1',
+      store,
+      transport,
+    });
+
+    owner.updateSnapshot(store.getSnapshot());
+    await vi.waitFor(() =>
+      expect(runProjectionStore.getRun('project-1', 'run-1')).toMatchObject({
+        lastSequence: 3,
+        status: 'completed',
+      })
+    );
+    store.flushAll();
+
+    expect(store.getSnapshot().view.runs['run-1']).toMatchObject({
+      lastSequence: 3,
+      status: 'completed',
+    });
+    expect(completed).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
     owner.dispose();
   });
 

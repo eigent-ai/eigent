@@ -3024,6 +3024,163 @@ describe('ChatStore - Core Functionality', () => {
             ).toHaveLength(1);
           });
 
+          it('recovers the finalized artifact manifest and attaches it to the missing END after legacy close', async () => {
+            const previousAuth = vi
+              .mocked(getAuthStore)
+              .getMockImplementation();
+            vi.mocked(getAuthStore).mockReturnValue({
+              email: 'user@example.com',
+              user_id: 42,
+            } as any);
+            injectHost({ ipcRenderer: { invoke: vi.fn() } } as any);
+            try {
+              const { store, streamContaining } = await startObservedLiveTask();
+              const legacy = streamContaining('/chat');
+              const fixture = structuredClone(completedRunDisplay);
+              vi.mocked(fetchGet).mockImplementation((path) =>
+                Promise.resolve(
+                  path === '/runs/live-run/events'
+                    ? fixture
+                    : path === '/files/changes'
+                      ? {
+                          artifacts: [
+                            {
+                              artifact_id: 'artifact-iss-atlas',
+                              filename: 'ISS_Orbital_Atlas.html',
+                              path: '/workspace/ISS_Orbital_Atlas.html',
+                              relativePath: 'ISS_Orbital_Atlas.html',
+                              changeType: 'generated',
+                            },
+                          ],
+                          scan_status: 'complete',
+                          truncated: false,
+                        }
+                      : undefined
+                )
+              );
+
+              legacy.onclose();
+              publish(fixture.events as unknown as ReturnType<typeof journal>);
+
+              await vi.waitFor(() =>
+                expect(
+                  store.getState().tasks['live-run'].artifactManifestFinalized
+                ).toBe(true)
+              );
+              const completed = store.getState().tasks['live-run'];
+              expect(completed).toMatchObject({
+                status: ChatTaskStatus.FINISHED,
+                durableRunStatus: 'completed',
+                artifactManifestScanStatus: 'complete',
+                artifactManifestTruncated: false,
+              });
+              expect(completed.artifactManifestFiles).toEqual([
+                expect.objectContaining({
+                  artifactId: 'artifact-iss-atlas',
+                  name: 'ISS_Orbital_Atlas.html',
+                  path: '/workspace/ISS_Orbital_Atlas.html',
+                  relativePath: 'ISS_Orbital_Atlas.html',
+                }),
+              ]);
+              expect(
+                completed.messages.find(
+                  (message) => message.step === AgentStep.END
+                )?.fileList
+              ).toEqual(completed.artifactManifestFiles);
+              expect(fetchGet).toHaveBeenCalledWith(
+                '/files/changes',
+                {
+                  task_id: 'live-run',
+                  project_id: 'project-1',
+                  email: 'user@example.com',
+                  user_id: 42,
+                },
+                undefined,
+                { signal: expect.any(AbortSignal) }
+              );
+            } finally {
+              injectHost(null);
+              vi.mocked(getAuthStore).mockImplementation(
+                previousAuth || (() => ({}) as any)
+              );
+            }
+          });
+
+          it('does not let a stalled artifact index hold back receipt recovery after legacy close', async () => {
+            const executionId = 'stalled-artifact-index';
+            const previousAuth = vi
+              .mocked(getAuthStore)
+              .getMockImplementation();
+            vi.mocked(getAuthStore).mockReturnValue({
+              email: 'user@example.com',
+              user_id: 42,
+            } as any);
+            injectHost({ ipcRenderer: { invoke: vi.fn() } } as any);
+            try {
+              const { store, streamContaining } = await startObservedLiveTask({
+                executionId,
+              });
+              const legacy = streamContaining('/chat');
+              const fixture = structuredClone(completedRunDisplay);
+              let manifestSignal: AbortSignal | undefined;
+              vi.mocked(fetchGet).mockImplementation(
+                (path, _params, _headers, options) => {
+                  if (path === '/files/changes') {
+                    manifestSignal = options?.signal;
+                    return new Promise(() => {});
+                  }
+                  return Promise.resolve(
+                    path === '/runs/live-run/events' ? fixture : undefined
+                  );
+                }
+              );
+              const endMessage = () =>
+                store
+                  .getState()
+                  .tasks['live-run'].messages.find(
+                    (message) => message.step === AgentStep.END
+                  );
+
+              vi.useFakeTimers();
+              legacy.onclose();
+              publish(fixture.events as unknown as ReturnType<typeof journal>);
+              await vi.advanceTimersByTimeAsync(4_999);
+              expect(manifestSignal?.aborted).toBe(false);
+              expect(endMessage()).toBeUndefined();
+
+              await vi.advanceTimersByTimeAsync(1);
+              vi.useRealTimers();
+              await vi.waitFor(() =>
+                expect(endMessage()).toMatchObject({
+                  id: 'fixture:final',
+                  content: 'The report is ready.',
+                  fileList: [],
+                })
+              );
+              expect(manifestSignal?.aborted).toBe(true);
+              expect(store.getState().tasks['live-run']).toMatchObject({
+                status: ChatTaskStatus.FINISHED,
+                durableRunStatus: 'completed',
+                tokens: 123,
+              });
+              expect(
+                store.getState().tasks['live-run'].artifactManifestFinalized
+              ).not.toBe(true);
+              await vi.waitFor(() =>
+                expect(receipts(executionId).at(-1)).toMatchObject({
+                  status: ExecutionStatus.Completed,
+                  tokens_used: 123,
+                })
+              );
+            } finally {
+              vi.useRealTimers();
+              injectHost(null);
+              vi.mocked(getAuthStore).mockImplementation(
+                previousAuth || (() => ({}) as any)
+              );
+            }
+          });
+
           it.each(['existing full report', 'old journal without report'])(
             'keeps display recovery honest for %s',
             async (caseName) => {
@@ -3538,6 +3695,14 @@ describe('ChatStore - Core Functionality', () => {
               expect(store.getState().tasks['live-run'].durableRunStatus).toBe(
                 'interrupted'
               );
+              // A completed Resume later supersedes exactly this error.
+              expect(
+                store
+                  .getState()
+                  .tasks['live-run'].messages.find(
+                    (message) => message.step === AgentStep.ERROR
+                  )?.resumable
+              ).toBe(true);
               expect(fetchDelete).not.toHaveBeenCalledWith('/chat/project-1');
             }
             runEventIngressRegistry.ingest(

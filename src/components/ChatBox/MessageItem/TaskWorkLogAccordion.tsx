@@ -15,6 +15,7 @@
 import { Badge } from '@/components/ui/badge';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
+import { isSupersededRunError } from '@/lib/taskLifecycleUi';
 import { cn } from '@/lib/utils';
 import type {
   DurableRunDisplayStatus,
@@ -74,16 +75,18 @@ function getTaskElapsedMs(task: {
 
 export function getTaskRunDisplayStatus(task: {
   durableRunStatus?: DurableRunDisplayStatus;
-  messages?: Array<{ step?: string; content?: string }>;
+  messages?: Array<{ step?: string; content?: string; resumable?: boolean }>;
 }): DurableRunDisplayStatus | undefined {
   // Old cloud replicas can still say "interrupted" even though their legacy
   // event stream contains a concrete error. The visible event is stronger
   // evidence for presentation than that compatibility status projection.
+  // An error that a completed Resume superseded is not.
   const hasRecordedError = task.messages?.some(
     (message) =>
-      message.step === AgentStep.ERROR ||
-      (typeof message.content === 'string' &&
-        message.content.trimStart().startsWith('❌ **Error**'))
+      !isSupersededRunError(task, message) &&
+      (message.step === AgentStep.ERROR ||
+        (typeof message.content === 'string' &&
+          message.content.trimStart().startsWith('❌ **Error**')))
   );
   return hasRecordedError ? 'failed' : task.durableRunStatus;
 }

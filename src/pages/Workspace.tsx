@@ -47,10 +47,6 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import {
-  EXECUTION_LOGS_OPEN_STORAGE_KEY,
-  type TriggerSortKey,
-} from '../components/Trigger/Triggers';
 
 import Session from '@/components/Session';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
@@ -91,31 +87,21 @@ export default function WorkspacePage() {
 
   const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
-  const [triggerSortBy, setTriggerSortBy] =
-    useState<TriggerSortKey>('createdAt');
   const [triggerSelectedId, setTriggerSelectedId] = useState<number | null>(
     null
   );
-  const [triggerExecutionLogsOpen, setTriggerExecutionLogsOpen] = useState(
-    () => {
-      if (typeof window === 'undefined') return false;
-      return (
-        window.localStorage.getItem(EXECUTION_LOGS_OPEN_STORAGE_KEY) === 'true'
-      );
-    }
-  );
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      EXECUTION_LOGS_OPEN_STORAGE_KEY,
-      String(triggerExecutionLogsOpen)
-    );
-  }, [triggerExecutionLogsOpen]);
 
   useEffect(() => {
     if (triggerAddDialogRequestId === 0) return;
     setTriggerDialogOpen(true);
   }, [triggerAddDialogRequestId]);
+
+  // The add dialog belongs to the triggers tab. When that tab is left, or
+  // cannot open because the space has no project, drop the request so the
+  // dialog does not pop up the next time the tab opens.
+  useEffect(() => {
+    if (activeWorkspaceTab !== 'triggers') setTriggerDialogOpen(false);
+  }, [activeWorkspaceTab]);
 
   useEffect(() => {
     setTriggerSelectedId(null);
@@ -133,13 +119,15 @@ export default function WorkspacePage() {
   }, []);
 
   // Project-scoped tabs (except new-project shell) require an active project.
-  // When opening files/runs/project from the workspace tab without a selection,
-  // fall back to the last visited (or first) project in the space instead of
-  // bouncing back to workforce.
+  // When opening files/triggers/runs/project from the workspace tab without a
+  // selection, fall back to the last visited (or first) project in the space
+  // instead of bouncing back to workforce. Triggers are listed and created per
+  // project, so the triggers tab needs a project just like files and runs.
   useLayoutEffect(() => {
     const isProjectScopedTab =
       activeWorkspaceTab === 'project' ||
       activeWorkspaceTab === 'files' ||
+      activeWorkspaceTab === 'triggers' ||
       activeWorkspaceTab === 'runs';
 
     if (!isProjectScopedTab || activeProjectId) return;
@@ -446,12 +434,8 @@ export default function WorkspacePage() {
         return (
           <TriggerPanel
             className={mainPanelContentClass}
-            sortBy={triggerSortBy}
-            onSortByChange={setTriggerSortBy}
             selectedTriggerId={triggerSelectedId}
             onSelectedTriggerIdChange={setTriggerSelectedId}
-            isExecutionLogsOpen={triggerExecutionLogsOpen}
-            onExecutionLogsOpenChange={setTriggerExecutionLogsOpen}
             isDialogOpen={triggerDialogOpen}
             onDialogOpenChange={setTriggerDialogOpen}
           />

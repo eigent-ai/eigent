@@ -15,7 +15,11 @@
 import { sseTransport, type SSETransportOptions } from '@/api/http';
 import { normalizeLocalRunEvent } from '@/lib/projector';
 import type { ProjectedRun } from '@/lib/projector/types';
-import { runEventIngressRegistry } from '@/lib/runEvents';
+import {
+  RunEventIngress,
+  runEventIngressRegistry,
+  runProjectionStore,
+} from '@/lib/runEvents';
 import {
   getProjectEventStore,
   type ProjectEventStore,
@@ -57,6 +61,8 @@ type EventStreamTransport = (options: SSETransportOptions) => Promise<void>;
 type LiveRunStream = {
   controller: AbortController;
   cursor: number;
+  ingress: RunEventIngress;
+  replaying: boolean;
   runId: string;
   stopRequested: boolean;
   finalizing: boolean;
@@ -249,7 +255,10 @@ export class ProjectRunEventStreamOwner {
     for (const run of eligibleRuns) {
       const existing = this.streams.get(run.runId);
       if (existing) {
-        existing.cursor = Math.max(existing.cursor, run.lastSequence);
+        existing.cursor = Math.max(
+          existing.cursor,
+          this.sharedCursor(run.runId, run.lastSequence)
+        );
         continue;
       }
       if (this.streams.size >= this.maxStreams) break;
@@ -277,7 +286,9 @@ export class ProjectRunEventStreamOwner {
     );
     const stream: LiveRunStream = {
       controller: new AbortController(),
-      cursor: Math.max(0, cursor),
+      cursor: this.sharedCursor(runId, cursor),
+      ingress: new RunEventIngress(this.projectId, runId),
+      replaying: true,
       runId,
       stopRequested: false,
       finalizing: false,
@@ -301,6 +312,7 @@ export class ProjectRunEventStreamOwner {
       this.streams.get(stream.runId) === stream
     ) {
       if (!stream.reconciler.isCurrent()) break;
+      stream.replaying = true;
       const url = `/runs/${encodeURIComponent(stream.runId)}/stream?after_sequence=${stream.cursor}`;
       const cursorBeforeAttempt = stream.cursor;
       try {
@@ -366,6 +378,12 @@ export class ProjectRunEventStreamOwner {
     message: { event: string; data: string }
   ): void {
     if (!stream.reconciler.isCurrent() || stream.stopRequested) return;
+    if (message.event === 'replay_caught_up') {
+      void stream.reconciler.request();
+      stream.replaying = false;
+      runProjectionStore.completeResync(this.projectId);
+      return;
+    }
     if (RUN_RECONCILIATION_MARKERS.has(message.event)) {
       void stream.reconciler.request();
       return;
@@ -379,28 +397,37 @@ export class ProjectRunEventStreamOwner {
       }
       const event = normalizeLocalRunEvent(raw, this.projectId);
 
-      // A human-control POST is followed by an authoritative replay that can
-      // project the resolution (and immediately-following work) before this
-      // companion stream observes the same sequence. React has not
-      // necessarily delivered that newer snapshot through updateSnapshot yet,
-      // so refresh the connection-local cursor directly from the shared store.
-      // Without this, the first post-reply tool event looks like a sequence gap
-      // and the stream stops, leaving the rest of the Run invisible.
-      const projectedSequence =
+      // Either projection can be ahead after hydration, reconciliation, or a
+      // short primary/companion overlap. Resume from the older watermark so
+      // the stream fills the missing sink while both projections deduplicate
+      // facts they already contain.
+      const timelineSequence =
         this.store.getSnapshot().view.runs[stream.runId]?.lastSequence ?? 0;
-      stream.cursor = Math.max(stream.cursor, projectedSequence);
+      const projectionSequence =
+        runProjectionStore.getRun(this.projectId, stream.runId)?.lastSequence ??
+        0;
+      stream.cursor = Math.max(
+        stream.cursor,
+        Math.min(timelineSequence, projectionSequence)
+      );
       if (event.runSequence <= stream.cursor) return;
 
       const expectedSequence = stream.cursor + 1;
-      const accepted = this.store.enqueue({ ...event, raw: null });
-      if (!accepted) {
-        stream.stopRequested = true;
-        stream.controller.abort();
-        return;
-      }
-      if (event.runSequence !== expectedSequence) {
-        // The queued event makes ProjectEventStore enter its normal gap/resync
-        // path. Do not reconnect past the missing durable sequence.
+      const projectionResult =
+        event.runSequence > projectionSequence
+          ? stream.ingress.ingestCanonical(
+              event,
+              stream.replaying ? 'reconnect_catch_up' : 'live'
+            )
+          : { applied: false, gapDetected: false };
+      const accepted =
+        event.runSequence <= timelineSequence ||
+        this.store.enqueue({ ...event, raw: null });
+      if (
+        !accepted ||
+        projectionResult.gapDetected ||
+        event.runSequence !== expectedSequence
+      ) {
         stream.stopRequested = true;
         stream.controller.abort();
         return;
@@ -427,6 +454,15 @@ export class ProjectRunEventStreamOwner {
         });
       }
     }
+  }
+
+  private sharedCursor(runId: string, timelineSequence: number): number {
+    const projectionSequence =
+      runProjectionStore.getRun(this.projectId, runId)?.lastSequence ?? 0;
+    return Math.min(
+      Math.max(0, timelineSequence),
+      Math.max(0, projectionSequence)
+    );
   }
 
   private stopStream(runId: string, stream: LiveRunStream): void {

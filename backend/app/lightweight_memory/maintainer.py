@@ -43,27 +43,72 @@ _MAX_FAILURE_RETRIES = 5
 _MAX_RETRY_DELAY_SECONDS = 60.0
 _CONTINUATION_DELAY_SECONDS = 0.5
 
+_THIS_SCOPE_PATTERN = re.compile(
+    r"\b(?:for|in)\s+(?:this|the\s+current)\s+"
+    r"(?:project|space|workspace)\s*[:,]?\s*(.+)",
+    re.I | re.S,
+)
+_ALL_SCOPES_PATTERN = re.compile(
+    r"\b(?:for|across)\s+all\s+(?:projects|spaces)\s*[:,]?\s*(.+)",
+    re.I | re.S,
+)
+_THIS_SCOPE_PATTERN_ZH = re.compile(
+    r"(?:这个|当前)(?:项目|空间|工作区)(?:中|里)?[：,:，]?\s*(.+)",
+    re.S,
+)
+_ALL_SCOPES_PATTERN_ZH = re.compile(
+    r"(?:所有项目|所有空间)(?:中|里)?[：,:，]?\s*(.+)", re.S
+)
+# A scope phrase opens rules and one-off requests alike, so it is the only
+# kind of match that is checked for a request.
+_SCOPE_PHRASE_PATTERNS = (
+    _THIS_SCOPE_PATTERN,
+    _ALL_SCOPES_PATTERN,
+    _THIS_SCOPE_PATTERN_ZH,
+    _ALL_SCOPES_PATTERN_ZH,
+)
 _EXPLICIT_MEMORY_PATTERNS = (
     re.compile(r"\b(?:please\s+)?remember(?:\s+that)?\s+(.+)", re.I | re.S),
     re.compile(r"\bI\s+prefer\s+(.+)", re.I | re.S),
     re.compile(r"\bmy\s+(?:preference|default)\s+is\s+(.+)", re.I | re.S),
-    re.compile(
-        r"\b(?:for|in)\s+(?:this|the\s+current)\s+"
-        r"(?:project|space|workspace)\s*[:,]?\s*(.+)",
-        re.I | re.S,
-    ),
-    re.compile(
-        r"\b(?:for|across)\s+all\s+(?:projects|spaces)\s*[:,]?\s*(.+)",
-        re.I | re.S,
-    ),
+    _THIS_SCOPE_PATTERN,
+    _ALL_SCOPES_PATTERN,
     re.compile(r"(?:请)?记住[：,:]?\s*(.+)", re.S),
-    re.compile(
-        r"(?:这个|当前)(?:项目|空间|工作区)(?:中|里)?[：,:，]?\s*(.+)",
-        re.S,
-    ),
-    re.compile(r"(?:所有项目|所有空间)(?:中|里)?[：,:，]?\s*(.+)", re.S),
+    _THIS_SCOPE_PATTERN_ZH,
+    _ALL_SCOPES_PATTERN_ZH,
     re.compile(r"我(?:更)?(?:偏好|喜欢)[：,:，]?\s*(.+)", re.S),
 )
+# A scoped message that states a rule is always kept.
+_RULE_WORDS = re.compile(
+    r"\b(?:always|never|every|each|by default|from now on|going forward|must"
+    r"|should|don'?t|do not|avoid|prefer|conventions?|standards?|rules?"
+    r"|guidelines?|reply in|respond in|answer in|before|after|whenever|when"
+    r"|wherever|where possible|unless|instead of|rather than)\b"
+    r"|总是|始终|每次|每个|默认|一律|以后|今后|从现在|必须|不要|别用|禁止|避免"
+    r"|务必|统一|都用|都要|而不是|回复用|用中文|用英文|之前|前先|之后|每当|的时候"
+    r"|不用|尽量|最好|优先|规范|约定|规则|要求|不能|只用|时(?!间)",
+    re.I,
+)
+# Verbs that open a request for work rather than a convention. Verbs that
+# also open conventions ("write docs in English", "run lint before ...") are
+# left out. The rest open conventions too ("create branches from develop",
+# "新建组件放在 src/components 下"), so they count only when a specific target
+# follows them: "the", "me", a number, a file name, "一个", "一下".
+_FILE_NAME = r"[`'\"]?[A-Za-z0-9_./-]*\.[A-Za-z][A-Za-z0-9]{0,5}\b"
+_REQUEST_LEAD = re.compile(
+    r"^\s*(?:(?:please\s+)?"
+    r"(?:create|implement|fix|refactor|investigate|analy[sz]e|summari[sz]e"
+    r"|rename|scrape|set up|tell|help|research|fetch|plot|delete|download"
+    r"|find|remove|compare)\s+"
+    r"(?:(?:the|a|an|all|any|this|that|these|those|my|our|me|us|it|them"
+    r"|some|out|why|what|how|where|which|whether|if)\b|\d|" + _FILE_NAME + r")"
+    r"|(?:请)?(?:帮我|帮忙|请帮|麻烦|看看|看一下"
+    r"|(?:创建|新建|实现|修复|重构|调研|起草|下载)"
+    r"\s*(?:一|个|份|下|几|两|这|那|" + _FILE_NAME + r")))",
+    re.I,
+)
+_ENDS_AS_QUESTION = re.compile(r"[?？]\s*$")
+_SENTENCE_BREAK = re.compile(r"[.!?;](?:\s|$)|[。！？；\n]")
 _USER_SCOPE_MARKERS = (
     "across all projects",
     "across all spaces",
@@ -96,6 +141,21 @@ _SPACE_SCOPE_MARKERS = (
     "当前工作区",
     "团队",
 )
+
+
+def _reads_as_one_off(raw: str, content: str, lead: str) -> bool:
+    """Whether a scoped message clearly asks for work rather than a rule.
+
+    ``lead`` is the text before the scope phrase. Only clear requests are
+    skipped, so this never saves something that was not saved before.
+    """
+    if _RULE_WORDS.search(content):
+        return False
+    return bool(
+        (_REQUEST_LEAD.search(raw) and not _SENTENCE_BREAK.search(lead))
+        or _REQUEST_LEAD.search(content)
+        or _ENDS_AS_QUESTION.search(content)
+    )
 
 
 @dataclass(frozen=True)
@@ -171,6 +231,12 @@ class ConservativeMemoryExtractor:
                 content = match.group(1).strip().rstrip()
                 if not content or len(content) > 1000:
                     break
+                message = raw.strip()
+                # A later pattern, such as "我喜欢", may still hold a rule.
+                if pattern in _SCOPE_PHRASE_PATTERNS and _reads_as_one_off(
+                    message, content, message[: match.start()]
+                ):
+                    continue
                 normalized = content.casefold()
                 if normalized in known:
                     break

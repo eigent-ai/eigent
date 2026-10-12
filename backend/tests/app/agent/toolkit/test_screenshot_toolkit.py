@@ -15,6 +15,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 
 
@@ -44,3 +46,14 @@ def test_image_review_preserves_unbounded_parent_step_timeout():
         assert toolkit.read_image("/tmp/preview.png") == "image reviewed"
 
     assert chat_agent.call_args.kwargs["step_timeout"] is None
+
+
+def test_missing_image_is_not_reported_as_a_screenshot(tmp_path):
+    toolkit = object.__new__(ScreenshotToolkit)
+    toolkit._agent = SimpleNamespace(model_backend=MagicMock())
+
+    with pytest.raises(RuntimeError) as error:
+        toolkit.read_image(str(tmp_path / "pasted.png"))
+
+    assert str(error.value).startswith("Error reading image: Image file")
+    assert "screenshot" not in str(error.value).lower()

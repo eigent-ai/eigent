@@ -47,6 +47,7 @@ export interface DurableRunSummary {
   origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
   terminalReason?: RunTerminalReason | null;
+  terminalDetail?: string | null;
   /** Local retry authority; the canonical Run remains pending. */
   retry_request_id?: string;
   latest_attempt?: {
@@ -104,6 +105,7 @@ function projectedRunToDurableSummary(
     origin: run.origin ?? undefined,
     resume_blocked_reason: run.resumeBlockedReason,
     terminalReason: run.terminalReason,
+    terminalDetail: run.terminalDetail,
     unsafeResumeBlockers: run.unsafeResumeBlockers,
     latest_attempt: run.latestAttempt
       ? {
