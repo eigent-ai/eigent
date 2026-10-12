@@ -35,6 +35,11 @@ import {
   type NativeMenuLocale,
 } from '../../src/shared/nativeMenu';
 import {
+  isSubframeLoadFailure,
+  SUBFRAME_LOAD_FAILED_CHANNEL,
+  type SubframeLoadFailure,
+} from '../../src/shared/subframeLoadFailure';
+import {
   isWindowCloseRequest,
   WINDOW_CLOSE_REQUEST_CHANNEL,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
@@ -160,6 +165,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   respondToCloseRequest: (response: WindowCloseResponse) =>
     ipcRenderer.send(WINDOW_CLOSE_RESPONSE_CHANNEL, response),
+  onSubframeLoadFailed: (callback: (failure: SubframeLoadFailure) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, failure: unknown) => {
+      if (isSubframeLoadFailure(failure)) callback(failure);
+    };
+    ipcRenderer.on(SUBFRAME_LOAD_FAILED_CHANNEL, listener);
+    return () => {
+      ipcRenderer.off(SUBFRAME_LOAD_FAILED_CHANNEL, listener);
+    };
+  },
   setNativeMenuLocale: (locale: NativeMenuLocale) =>
     ipcRenderer.send(NATIVE_MENU_LOCALE_CHANNEL, locale),
   getPlatform: () => process.platform,

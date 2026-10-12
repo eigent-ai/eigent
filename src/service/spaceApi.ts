@@ -19,6 +19,7 @@ import {
   proxyFetchPatch,
   proxyFetchPost,
 } from '@/api/http';
+import { parseServerTimestamp } from '@/lib/serverTimestamp';
 import type {
   ProjectMode,
   ProjectWorkdirMode,
@@ -161,8 +162,10 @@ export interface ServerProject {
   updated_at?: string | null;
 }
 
-const timestampFromServer = (value?: string | null) =>
-  value ? new Date(value).getTime() : Date.now();
+const timestampFromServer = (value?: string | null) => {
+  const timestamp = parseServerTimestamp(value);
+  return Number.isFinite(timestamp) ? timestamp : Date.now();
+};
 
 export const toLocalSpace = (space: ServerSpace): Space => ({
   id: space.id,

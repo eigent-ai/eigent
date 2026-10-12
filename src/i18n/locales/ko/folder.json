@@ -40,5 +40,6 @@
   "open-in-finder": "Finder에서 열기",
   "open-in-explorer": "파일 탐색기에서 열기",
   "open-in-folder": "파일 관리자에서 열기",
-  "preview-load-failed": "이 파일을 미리 볼 수 없습니다. 다시 시도하거나 외부 앱에서 여세요."
+  "preview-load-failed": "이 파일을 미리 볼 수 없습니다. 다시 시도하거나 외부 앱에서 여세요.",
+  "pdf-preview-failed": "이 PDF를 여기에 표시할 수 없습니다. 대신 다른 앱에서 여세요."
 }

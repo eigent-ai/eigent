@@ -39,6 +39,7 @@ export type ErrorReason =
   | 'request'
   | 'model-restricted'
   | 'model-unavailable'
+  | 'thinking-effort'
   | 'task';
 export interface ErrorContext {
   /** Routing selected for this request, never inferred from provider wording. */
@@ -62,6 +63,7 @@ const copyKeys: Record<ErrorReason, string> = {
   request: 'chat.notice-request',
   'model-restricted': 'chat.notice-model-restricted',
   'model-unavailable': 'chat.notice-model-unavailable',
+  'thinking-effort': 'chat.notice-thinking-effort',
   task: 'chat.notice-task',
 };
 
@@ -167,6 +169,7 @@ export function classifyError(
     return 'model-access';
   if (reason === 'trial_daily_exhausted') return 'trial-daily';
   if (reason === 'trial_total_exhausted') return 'trial-total';
+  if (code === 'unsupported_thinking_effort') return 'thinking-effort';
 
   const providerQuota =
     /insufficient_quota|insufficient[_ ]balance|余额不足|额度已用尽|quota.*exceed|credit.*(exhaust|insufficient)|run out of credit/.test(
@@ -198,6 +201,11 @@ export function classifyError(
   if (status === 400 || /error code: 400\b/.test(text)) return 'request';
   if (status === 403 || /error code: 403\b/.test(text))
     return 'model-unavailable';
+  // A provider's own 5xx reply. A bare status may come from the local backend.
+  if (/error code: 5\d\d\b/.test(text)) return 'model-unavailable';
+  // The backend's code for a provider failure it can retry, such as a gateway
+  // page that carries no status in its text.
+  if (reason === 'model_transport_error') return 'model-unavailable';
   return 'task';
 }
 
@@ -286,7 +294,7 @@ export function errorPresentationReason(
           pending.push({ value: parsed, depth: depth + 1 });
           if (prefix) {
             const statusReason = classifyError(
-              { status: Number(prefix[1] ?? prefix[2]) },
+              { status: Number(prefix[1] ?? prefix[2]), message: prefix[0] },
               context
             );
             if (statusReason !== 'task') fallback = statusReason;
@@ -302,7 +310,7 @@ export function errorPresentationReason(
       reason = classifyError(literal, context);
       if (prefix && reason === 'task')
         reason = classifyError(
-          { status: Number(prefix[1] ?? prefix[2]) },
+          { status: Number(prefix[1] ?? prefix[2]), message: prefix[0] },
           context
         );
     } else if (typeof current === 'object') {

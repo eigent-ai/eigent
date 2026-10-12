@@ -364,6 +364,44 @@ describe('Task failure summary ownership', () => {
     }
   );
 
+  it('drops the error notice of an Attempt that a completed Resume superseded', () => {
+    const withError = (resumable: boolean) => [
+      { id: 'user', role: 'user', content: 'Reply with ok' },
+      {
+        id: 'error',
+        role: 'agent',
+        step: AgentStep.ERROR,
+        content: '❌ **Error**: Bad Gateway',
+        errorReason: 'model-unavailable',
+        resumable,
+      },
+      { id: 'end', role: 'agent', step: AgentStep.END, content: 'ok' },
+    ];
+    const render = (resumable: boolean, durableRunStatus: string) =>
+      renderGroups(withError(resumable), {
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus,
+      });
+
+    const completed = render(true, 'completed');
+    expect(
+      screen.queryByTestId('agent-message-card-error')
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('agent-message-card-end')).toHaveTextContent(
+      'ok'
+    );
+    completed.unmount();
+
+    // Still interrupted: the error is the current outcome.
+    const interrupted = render(true, 'interrupted');
+    expect(screen.getByTestId('agent-message-card-error')).toBeInTheDocument();
+    interrupted.unmount();
+
+    // A Workforce error reported before its end stays visible.
+    render(false, 'completed');
+    expect(screen.getByTestId('agent-message-card-error')).toBeInTheDocument();
+  });
+
   it('renders nothing while the read is pending', () => {
     const { container } = renderGroups(
       [{ id: 'user', role: 'user', content: 'Request' }],

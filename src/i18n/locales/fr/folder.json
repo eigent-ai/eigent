@@ -42,5 +42,6 @@
   "open-in-finder": "Ouvrir dans le Finder",
   "open-in-explorer": "Ouvrir dans l’Explorateur de fichiers",
   "open-in-folder": "Ouvrir dans le gestionnaire de fichiers",
-  "preview-load-failed": "Impossible d’afficher ce fichier. Réessayez ou ouvrez-le dans une application externe."
+  "preview-load-failed": "Impossible d’afficher ce fichier. Réessayez ou ouvrez-le dans une application externe.",
+  "pdf-preview-failed": "Impossible d’afficher ce PDF ici. Ouvrez-le plutôt dans une autre application."
 }

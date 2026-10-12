@@ -18,6 +18,7 @@ import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPrev
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionDraft } from '@/hooks/useSessionDraft';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
 import {
   assertExecutionScope,
@@ -65,7 +66,11 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
   const { scope, state } = useSessionExecution(projectId);
   const { t } = useTranslation();
   const runtime = useProjectEventRuntime();
-  const [message, setMessage] = useState('');
+  // Switching Sessions remounts this composer; keep each Session's draft.
+  const { text: message, setText: setMessage } = useSessionDraft(
+    scope.accountKey,
+    projectId
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [unsupportedInput, setUnsupportedInput] = useState(false);
@@ -145,6 +150,11 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
         // Before submission it is safe to fix an unsupported configuration.
         // Once sent, Retry keeps the exact original body and identity.
         if (!intent.current?.deliveryAttempted) intent.current = null;
+      } else if (intent.current?.deliveryAttempted) {
+        // Leaving the Session stopped the wait for a delivery the Session may
+        // already have accepted. Retry does not survive the switch, so never
+        // offer this text again as a draft that would send it twice.
+        setMessage('');
       }
     } finally {
       lock.current = false;

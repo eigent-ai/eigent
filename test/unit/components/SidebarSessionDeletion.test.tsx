@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => {
     spaceId: 'space-a',
     name: 'Example',
     workdirMode: 'copy',
+    metadata: undefined as { historyId?: string } | undefined,
   };
   const space = {
     activeSpaceId: 'space-a',
@@ -137,7 +138,8 @@ vi.mock('@/lib/projectRuntimeHydration', () => ({
 vi.mock('@/lib/scratchSpaceWorkspace', () => ({
   ensureScratchSpaceWorkspaceBinding: vi.fn(),
 }));
-vi.mock('@/lib/spaceLabel', () => ({
+vi.mock('@/lib/spaceLabel', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/spaceLabel')>()),
   getFilesTabBindingLabel: () => null,
   isUnboundUntitledSpace: () => false,
 }));
@@ -168,10 +170,17 @@ vi.mock('@/components/Layout/AppSidebar', () => {
   };
 });
 vi.mock('@/components/SpaceSidebar/SessionNavList', () => ({
-  SessionNavList: ({ onDeleteSession }: any) => (
-    <button onClick={() => onDeleteSession('session-a')}>
-      Delete selected session
-    </button>
+  SessionNavList: ({ sessions, onDeleteSession }: any) => (
+    <>
+      <ul aria-label="Session titles">
+        {sessions.map((session: any) => (
+          <li key={session.id}>{session.title}</li>
+        ))}
+      </ul>
+      <button onClick={() => onDeleteSession('session-a')}>
+        Delete selected session
+      </button>
+    </>
   ),
 }));
 vi.mock('sonner', () => ({
@@ -192,6 +201,8 @@ async function openDialog() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.auth.user_id = 42;
+  mocks.meta.name = 'Example';
+  mocks.meta.metadata = undefined;
   mocks.meta.workdirMode = 'copy';
   mocks.invoke.mockResolvedValue({ success: true });
   mocks.stop.mockResolvedValue(undefined);
@@ -397,5 +408,38 @@ describe('Sidebar Session deletion', () => {
     await act(async () => {});
     expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
     if (mode === 'direct-write') expect(mocks.workdir).not.toHaveBeenCalled();
+  });
+});
+
+describe('Sidebar Session names', () => {
+  it.each(['new project', 'New Project'])(
+    'labels a Session with the system default name %j as New session',
+    (name) => {
+      mocks.meta.name = name;
+      mocks.meta.metadata = { historyId: 'history-a' };
+      render(
+        <MemoryRouter>
+          <SpaceSidebar chatStore={null} />
+        </MemoryRouter>
+      );
+
+      const titles = screen.getByRole('list', { name: 'Session titles' });
+      expect(within(titles).getByText('New session')).toBeInTheDocument();
+      expect(
+        within(titles).queryByText(/new project/i)
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it('keeps a Session name the user chose', () => {
+    mocks.meta.name = 'Launch plan';
+    render(
+      <MemoryRouter>
+        <SpaceSidebar chatStore={null} />
+      </MemoryRouter>
+    );
+
+    const titles = screen.getByRole('list', { name: 'Session titles' });
+    expect(within(titles).getByText('Launch plan')).toBeInTheDocument();
   });
 });

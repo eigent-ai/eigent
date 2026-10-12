@@ -40,5 +40,6 @@
   "open-in-finder": "Finderで開く",
   "open-in-explorer": "エクスプローラーで開く",
   "open-in-folder": "ファイルマネージャーで開く",
-  "preview-load-failed": "このファイルをプレビューできませんでした。再試行するか、外部アプリで開いてください。"
+  "preview-load-failed": "このファイルをプレビューできませんでした。再試行するか、外部アプリで開いてください。",
+  "pdf-preview-failed": "このPDFはここに表示できませんでした。別のアプリで開いてください。"
 }

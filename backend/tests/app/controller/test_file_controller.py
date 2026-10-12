@@ -22,7 +22,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
-from app import api as brain_api
+from app import SecurityHeadersMiddleware, api as brain_api
 from app.auth.local_control import LOCAL_CONTROL_CAPABILITY_HEADER
 from app.controller import file_controller
 
@@ -442,6 +442,42 @@ def test_stream_file_supports_byte_ranges(monkeypatch, tmp_path):
     assert head.content == b""
     assert head.headers["content-length"] == str(len(payload))
     assert head.headers["accept-ranges"] == "bytes"
+
+
+def test_stream_file_can_be_framed_by_the_app_only(monkeypatch, tmp_path):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "report.pdf").write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(
+        file_controller,
+        "_resolve_file_root",
+        lambda *_args, **_kwargs: project_root,
+    )
+
+    app = FastAPI()
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.include_router(file_controller.router)
+    client = TestClient(app)
+    params = {"project_id": "project-1", "email": "user@example.com"}
+
+    # The Files PDF preview loads this URL in an iframe. X-Frame-Options: DENY
+    # makes Chromium replace the frame with a blank error page.
+    stream = client.get(
+        "/files/stream", params={**params, "path": "report.pdf"}
+    )
+    assert stream.status_code == 200
+    assert "x-frame-options" not in stream.headers
+    policy = stream.headers["content-security-policy"]
+    assert policy.startswith("frame-ancestors ")
+    sources = set(policy.removeprefix("frame-ancestors ").rstrip(";").split())
+    # The dev renderer is served from localhost; the packaged one is file://.
+    assert {"'self'", "http://localhost:*", "file:"} <= sources
+    assert "*" not in sources
+
+    listing = client.get("/files", params=params)
+    assert listing.status_code == 200
+    assert listing.headers["x-frame-options"] == "DENY"
+    assert "content-security-policy" not in listing.headers
 
 
 def test_task_changes_endpoint_requires_local_capability(

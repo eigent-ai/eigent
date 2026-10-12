@@ -24,7 +24,7 @@ import {
 import { useHost } from '@/host';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { Globe, Link2, Loader2, Plus, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -38,6 +38,19 @@ interface CdpBrowser {
   isExternal: boolean;
   name?: string;
   addedAt: number;
+}
+
+/**
+ * Parses a remote debugging port typed by the user. The whole value, ignoring
+ * surrounding whitespace, must be a decimal integer from 1 to 65535, so input
+ * such as "65535abc", "1.5", "1e3" or "+9222" is rejected instead of being
+ * truncated to a different port.
+ */
+function parseCdpPort(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const port = Number(trimmed);
+  return port >= 1 && port <= 65535 ? port : null;
 }
 
 export default function CDP() {
@@ -57,6 +70,8 @@ export default function CDP() {
   const [connectPort, setConnectPort] = useState('');
   const [connectChecking, setConnectChecking] = useState(false);
   const [connectError, setConnectError] = useState('');
+  const connectTriggerRef = useRef<HTMLButtonElement>(null);
+  const connectErrorId = useId();
   const setResourceCount = useSettingsResourceCountsStore(
     (state) => state.setCount
   );
@@ -213,8 +228,8 @@ export default function CDP() {
   };
 
   const handleCheckAndConnect = async () => {
-    const portNum = parseInt(connectPort, 10);
-    if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    const portNum = parseCdpPort(connectPort);
+    if (portNum === null) {
       setConnectError(t('layout.invalid-port'));
       return;
     }
@@ -320,6 +335,7 @@ export default function CDP() {
                 {t('layout.open-new-browser')}
               </Button>
               <Button
+                ref={connectTriggerRef}
                 variant="outline"
                 textWeight="semibold"
                 buttonContent="text"
@@ -452,6 +468,12 @@ export default function CDP() {
           onPointerDownOutside={(event) => {
             if (connectChecking) event.preventDefault();
           }}
+          onCloseAutoFocus={(event) => {
+            // The trigger lives outside this Dialog, so Radix has no trigger
+            // to restore focus to. Return focus to the button that opened it.
+            event.preventDefault();
+            connectTriggerRef.current?.focus();
+          }}
         >
           <DialogTitle asChild>
             <span className="mb-2 block text-ds-text-base font-bold text-ds-ink-default-default">
@@ -471,13 +493,18 @@ export default function CDP() {
               setConnectError('');
             }}
             placeholder={t('layout.enter-port-number')}
+            aria-invalid={connectError ? true : undefined}
+            aria-describedby={connectError ? connectErrorId : undefined}
             className="w-full rounded-lg border border-x border-y border-ds-hairline-muted-disabled bg-ds-neutral-default-default px-4 py-2 text-ds-text-base text-ds-ink-default-default outline-none focus:border-ds-ring-focus"
             onKeyDown={(event) => {
               if (event.key === 'Enter') void handleCheckAndConnect();
             }}
           />
           {connectError && (
-            <span className="mt-2 block text-ds-text-meta text-ds-text-status-error-strong-default">
+            <span
+              id={connectErrorId}
+              className="mt-2 block text-ds-text-meta text-ds-text-status-error-strong-default"
+            >
               {connectError}
             </span>
           )}
