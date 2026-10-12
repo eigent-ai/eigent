@@ -41,5 +41,6 @@
   "open-in-finder": "Open in Finder",
   "open-in-explorer": "Open in File Explorer",
   "open-in-folder": "Open in file manager",
-  "preview-load-failed": "This file could not be previewed. Try again or open it externally."
+  "preview-load-failed": "This file could not be previewed. Try again or open it externally.",
+  "pdf-preview-failed": "This PDF could not be displayed here. Open it in another app instead."
 }

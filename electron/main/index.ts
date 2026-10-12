@@ -54,6 +54,10 @@ import {
   type NativeMenuLocale,
 } from '../../src/shared/nativeMenu';
 import {
+  SUBFRAME_LOAD_FAILED_CHANNEL,
+  subframeLoadFailureFromEvent,
+} from '../../src/shared/subframeLoadFailure';
+import {
   isWindowCloseResponse,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
 } from '../../src/shared/windowClose';
@@ -3317,6 +3321,17 @@ async function createWindowInternal() {
       log.error(
         `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
       );
+      const subframeFailure = subframeLoadFailureFromEvent(
+        errorCode,
+        validatedURL,
+        isMainFrame
+      );
+      if (subframeFailure && !createdWindow.isDestroyed()) {
+        createdWindow.webContents.send(
+          SUBFRAME_LOAD_FAILED_CHANNEL,
+          subframeFailure
+        );
+      }
       // Retry loading after a delay
       if (shouldRetry) {
         setTimeout(() => {

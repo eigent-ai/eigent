@@ -16,6 +16,7 @@
 
 import type { AppCommandId } from '@/shared/appCommands';
 import type { NativeMenuLocale } from '@/shared/nativeMenu';
+import type { SubframeLoadFailure } from '@/shared/subframeLoadFailure';
 import type {
   WindowCloseRequest,
   WindowCloseResponse,
@@ -31,6 +32,9 @@ export interface AppShellElectronAPI {
   ) => () => void;
   respondToCloseRequest?: (response: WindowCloseResponse) => void;
   setNativeMenuLocale?: (locale: NativeMenuLocale) => void;
+  onSubframeLoadFailed?: (
+    callback: (failure: SubframeLoadFailure) => void
+  ) => () => void;
 }
 
 export interface AppHost {
