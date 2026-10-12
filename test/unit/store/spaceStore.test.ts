@@ -21,6 +21,7 @@ import {
   useSpaceStore,
   type Space,
   type SpaceSourceType,
+  type SpaceStatus,
 } from '@/store/spaceStore';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,6 +62,8 @@ vi.mock('@/service/spaceApi', () => ({
 }));
 
 vi.mock('@/service/workspaceApi', () => ({
+  createScratchWorkspaceForSpace: vi.fn(),
+  fetchWorkspaceCurrent: vi.fn(),
   reconcileWorkspaceBindings: vi.fn().mockResolvedValue(undefined),
   unbindWorkspaceFromBrain: vi.fn(),
 }));
@@ -1234,6 +1237,9 @@ describe('spaceStore user scoping', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     backendReadinessMock.waitForBackendReadiness.mockResolvedValue(undefined);
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockReset();
+    vi.mocked(workspaceApi.createScratchWorkspaceForSpace).mockReset();
     const spaceApi = await import('@/service/spaceApi');
     vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([]);
     vi.mocked(spaceApi.proxyFetchSpaceProjects).mockResolvedValue([]);
@@ -1489,6 +1495,293 @@ describe('spaceStore user scoping', () => {
       'space_selected',
     ]);
     expect(state.activeSpaceId).toBe('space_selected');
+  });
+
+  it('keeps a confirmed local scratch root when cloud hydration omits it', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockResolvedValue({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+      bound: true,
+      workspace_root: '/Users/test/eigent/space_selected',
+    });
+    const localSpace: Space = {
+      ...makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+      rootPath: '/Users/test/eigent/space_selected',
+      rootFingerprint: { device: 'local-device' },
+      updatedAt: 10,
+      metadata: {
+        localWorkspaceRoot: '/Users/test/eigent/space_selected',
+        localWorkspaceSource: 'scratch_space',
+        staleCloudValue: true,
+      },
+    };
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
+      {
+        ...makeSpace('space_selected', 'Renamed Space', 'blank', '2', {
+          cloudValue: true,
+        }),
+        updatedAt: 5,
+      },
+    ]);
+    useSpaceStore.setState({
+      activeSpaceId: 'space_selected',
+      spaces: { space_selected: localSpace },
+      projectsSyncedAt: { space_selected: Date.now() },
+    });
+
+    await useSpaceStore.getState().hydrateFromServer(2);
+    await vi.waitFor(() =>
+      expect(workspaceApi.fetchWorkspaceCurrent).toHaveBeenCalledWith(
+        'space_selected',
+        'new@example.com',
+        2
+      )
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(useSpaceStore.getState().spaces.space_selected).toMatchObject({
+      name: 'Renamed Space',
+      rootPath: '/Users/test/eigent/space_selected',
+      rootFingerprint: { device: 'local-device' },
+      updatedAt: 5,
+      metadata: {
+        cloudValue: true,
+        localWorkspaceRoot: '/Users/test/eigent/space_selected',
+        localWorkspaceSource: 'scratch_space',
+      },
+    });
+    expect(
+      useSpaceStore.getState().spaces.space_selected.metadata
+    ).not.toHaveProperty('staleCloudValue');
+  });
+
+  const hydrateKeptScratchRoot = async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
+      makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+    ]);
+    useSpaceStore.setState({
+      activeSpaceId: 'space_selected',
+      spaces: {
+        space_selected: {
+          ...makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+          rootPath: '/Users/test/eigent/space_selected',
+          metadata: {
+            localWorkspaceRoot: '/Users/test/eigent/space_selected',
+            localWorkspaceSource: 'scratch_space',
+          },
+        },
+      },
+      projectsSyncedAt: { space_selected: Date.now() },
+    });
+    await useSpaceStore.getState().hydrateFromServer(2);
+  };
+
+  it('clears a kept scratch root whose folder the backend no longer has, so the binding flow recreates it', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    const { ensureScratchSpaceWorkspaceBinding } =
+      await import('@/lib/scratchSpaceWorkspace');
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockResolvedValue({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+      bound: false,
+      workspace_root: '/Users/test/eigent/space_selected',
+    });
+    vi.mocked(workspaceApi.createScratchWorkspaceForSpace).mockResolvedValue({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+      bound: true,
+      workspace_root: '/Users/test/eigent/space_selected',
+    });
+
+    await hydrateKeptScratchRoot();
+
+    await vi.waitFor(() =>
+      expect(useSpaceStore.getState().spaces.space_selected.rootPath).toBe(null)
+    );
+    await expect(
+      ensureScratchSpaceWorkspaceBinding({
+        email: 'new@example.com',
+        userId: 2,
+        space: useSpaceStore.getState().spaces.space_selected,
+      })
+    ).resolves.toBe('/Users/test/eigent/space_selected');
+    expect(workspaceApi.createScratchWorkspaceForSpace).toHaveBeenCalledWith({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+    });
+    expect(useSpaceStore.getState().spaces.space_selected.rootPath).toBe(
+      '/Users/test/eigent/space_selected'
+    );
+  });
+
+  it('replaces a kept scratch root with the root the backend has bound', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockResolvedValue({
+      space_id: 'space_selected',
+      email: 'new@example.com',
+      user_id: 2,
+      bound: true,
+      workspace_root: '/Users/test/eigent/space_selected_moved',
+    });
+
+    await hydrateKeptScratchRoot();
+
+    await vi.waitFor(() =>
+      expect(useSpaceStore.getState().spaces.space_selected).toMatchObject({
+        rootPath: '/Users/test/eigent/space_selected_moved',
+        metadata: {
+          localWorkspaceRoot: '/Users/test/eigent/space_selected_moved',
+          localWorkspaceSource: 'scratch_space',
+        },
+      })
+    );
+  });
+
+  it('keeps a kept scratch root when the backend check fails', async () => {
+    const workspaceApi = await import('@/service/workspaceApi');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(workspaceApi.fetchWorkspaceCurrent).mockRejectedValue(
+      new Error('backend unavailable')
+    );
+
+    await hydrateKeptScratchRoot();
+
+    await vi.waitFor(() =>
+      expect(workspaceApi.fetchWorkspaceCurrent).toHaveBeenCalled()
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(useSpaceStore.getState().spaces.space_selected.rootPath).toBe(
+      '/Users/test/eigent/space_selected'
+    );
+  });
+
+  it('keeps a confirmed local scratch root across server upserts', () => {
+    const localSpace: Space = {
+      ...makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+      rootPath: '/Users/test/eigent/space_selected',
+      metadata: {
+        localWorkspaceRoot: '/Users/test/eigent/space_selected',
+        localWorkspaceSource: 'scratch_space',
+      },
+    };
+    useSpaceStore.setState({
+      spaces: { space_selected: localSpace },
+    });
+
+    useSpaceStore.getState().upsertSpaces([
+      makeSpace('space_selected', 'Renamed Space', 'blank', '2', {
+        cloudValue: true,
+      }),
+    ]);
+
+    expect(useSpaceStore.getState().spaces.space_selected).toMatchObject({
+      name: 'Renamed Space',
+      rootPath: '/Users/test/eigent/space_selected',
+      metadata: {
+        cloudValue: true,
+        localWorkspaceRoot: '/Users/test/eigent/space_selected',
+        localWorkspaceSource: 'scratch_space',
+      },
+    });
+  });
+
+  it('accepts an explicit folder root instead of a remembered scratch root', () => {
+    const localSpace: Space = {
+      ...makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+      rootPath: '/Users/test/eigent/space_selected',
+      metadata: {
+        localWorkspaceRoot: '/Users/test/eigent/space_selected',
+        localWorkspaceSource: 'scratch_space',
+      },
+    };
+    useSpaceStore.setState({
+      spaces: { space_selected: localSpace },
+    });
+
+    useSpaceStore.getState().upsertSpaces([
+      {
+        ...makeSpace('space_selected', 'Folder Space', 'folder', '2'),
+        rootPath: '/Users/test/eigent/relocated',
+        rootFingerprint: { device: 'relocated-device' },
+      },
+    ]);
+
+    expect(useSpaceStore.getState().spaces.space_selected).toMatchObject({
+      name: 'Folder Space',
+      sourceType: 'folder',
+      rootPath: '/Users/test/eigent/relocated',
+      rootFingerprint: { device: 'relocated-device' },
+    });
+    expect(
+      useSpaceStore.getState().spaces.space_selected.metadata
+    ).toBeUndefined();
+  });
+
+  it.each<SpaceStatus>(['disconnected', 'archived'])(
+    'does not retain a scratch binding when the server marks the Space %s',
+    (status) => {
+      const localSpace: Space = {
+        ...makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+        rootPath: '/Users/test/eigent/space_selected',
+        metadata: {
+          localWorkspaceRoot: '/Users/test/eigent/space_selected',
+          localWorkspaceSource: 'scratch_space',
+        },
+      };
+      useSpaceStore.setState({
+        spaces: { space_selected: localSpace },
+      });
+
+      useSpaceStore.getState().upsertSpaces([
+        {
+          ...makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+          status,
+        },
+      ]);
+
+      expect(useSpaceStore.getState().spaces.space_selected).toMatchObject({
+        status,
+        rootPath: null,
+        rootFingerprint: null,
+      });
+      expect(
+        useSpaceStore.getState().spaces.space_selected.metadata
+      ).toBeUndefined();
+    }
+  );
+
+  it('does not revive a locally archived scratch binding from an active server response', () => {
+    const localSpace: Space = {
+      ...makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+      rootPath: '/Users/test/eigent/space_selected',
+      status: 'archived',
+      metadata: {
+        localWorkspaceRoot: '/Users/test/eigent/space_selected',
+        localWorkspaceSource: 'scratch_space',
+      },
+    };
+    useSpaceStore.setState({
+      spaces: { space_selected: localSpace },
+    });
+
+    useSpaceStore
+      .getState()
+      .upsertSpaces([
+        makeSpace('space_selected', 'Selected Space', 'blank', '2'),
+      ]);
+
+    expect(useSpaceStore.getState().spaces.space_selected).toMatchObject({
+      status: 'active',
+      rootPath: null,
+      rootFingerprint: null,
+    });
   });
 
   it('keeps an existing Legacy Space with projects instead of creating Untitled Space', async () => {
