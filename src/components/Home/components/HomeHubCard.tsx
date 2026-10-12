@@ -35,7 +35,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useHomeHub } from '../context';
 import { useHomeHubNavigation } from '../hooks/useHomeHubNavigation';
-import { formatCompactCount, formatHubCreatedTime } from '../utils';
+import { formatCompactCount, formatHubRelativeAgo } from '../utils';
 import { getProjectCardRuntimeStatus } from '../utils/boardStatus';
 import {
   getSpaceKindLabel,
@@ -234,7 +234,7 @@ function SpaceItemContent({
                 },
                 {
                   id: 'created',
-                  content: formatHubCreatedTime(space.createdAt) || '—',
+                  content: formatHubRelativeAgo(space.createdAt, t) || '—',
                   align: 'right',
                   textSize: 'xs',
                 },
@@ -385,7 +385,8 @@ function ProjectItemContent({
               },
               {
                 id: 'updated',
-                content: formatHubCreatedTime(project.latest_task_date) || '—',
+                content:
+                  formatHubRelativeAgo(project.latest_task_date, t) || '—',
                 align: 'right',
                 textSize: 'xs',
               },
@@ -489,7 +490,8 @@ function TaskItemContent({
             {
               id: 'created',
               content:
-                formatHubCreatedTime(task.created_at || task.updated_at) || '—',
+                formatHubRelativeAgo(task.created_at || task.updated_at, t) ||
+                '—',
               align: 'right',
               textSize: 'xs',
             },
@@ -573,8 +575,9 @@ function TriggerItemContent({
             {
               id: 'created',
               content:
-                formatHubCreatedTime(
-                  trigger.created_at || trigger.last_executed_at
+                formatHubRelativeAgo(
+                  trigger.created_at || trigger.last_executed_at,
+                  t
                 ) || '—',
               align: 'right',
               textSize: 'xs',

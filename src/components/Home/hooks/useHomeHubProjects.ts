@@ -30,6 +30,7 @@ import {
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import type { Dispatch, SetStateAction } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { timestampFromHubValue } from '../utils';
 
 let groupedHistorySnapshot: {
   email: string | null;
@@ -259,11 +260,11 @@ export function useHomeHubProjects() {
       (project) => !metaIds.has(project.project_id)
     );
 
-    return [...fromMetas, ...historyOnly].sort((a, b) => {
-      const aTime = new Date(a.latest_task_date || 0).getTime();
-      const bTime = new Date(b.latest_task_date || 0).getTime();
-      return bTime - aTime;
-    });
+    return [...fromMetas, ...historyOnly].sort(
+      (a, b) =>
+        timestampFromHubValue(b.latest_task_date) -
+        timestampFromHubValue(a.latest_task_date)
+    );
   }, [canonicalMetas, projects]);
 
   return {

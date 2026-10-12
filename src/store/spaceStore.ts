@@ -17,6 +17,7 @@ import {
   getAccountEnvironmentKey,
   getAuthEnvironmentKey,
 } from '@/lib/authEnvironment';
+import { parseServerTimestamp } from '@/lib/serverTimestamp';
 import {
   getSessionNavLeadFromHistoryProject,
   type SessionNavLeadPresentation,
@@ -282,8 +283,7 @@ export const legacySpaceIdForUser = (userId?: string | number | null) =>
   `legacy_${canonicalUserId(userId)}`;
 
 const timestampFromServer = (value?: string | null, fallback = Date.now()) => {
-  if (!value) return fallback;
-  const timestamp = new Date(value).getTime();
+  const timestamp = parseServerTimestamp(value);
   return Number.isFinite(timestamp) ? timestamp : fallback;
 };
 
