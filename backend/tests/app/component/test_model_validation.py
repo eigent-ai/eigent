@@ -97,13 +97,31 @@ def test_validation_consumes_capability_override_and_uses_responses(
     assert metadata["model_type"] == "nebula-2027"
 
 
-def test_unknown_provider_effort_fails_validation_before_model_creation():
+def test_unknown_model_validation_sends_the_configured_effort_as_written():
+    with patch(
+        "app.component.model_validation.ModelFactory.create",
+        side_effect=RuntimeError("fixture-stop-before-dispatch"),
+    ) as factory:
+        result = validate_model_with_details(
+            model_platform="azure",
+            model_type="unknown-deployment",
+            url="https://azure.invalid",
+            model_config_dict={"reasoning_effort": "max"},
+        )
+        assert result.failed_stage == ValidationStage.MODEL_CREATION
+        assert "fixture-stop" in result.raw_error_message
+        params = factory.call_args.kwargs
+        assert params["model_config_dict"] == {"reasoning_effort": "max"}
+
+
+def test_cloud_unknown_provider_effort_fails_before_model_creation():
     with patch(
         "app.component.model_validation.ModelFactory.create"
     ) as factory:
         result = validate_model_with_details(
             model_platform="azure",
             model_type="unknown-deployment",
+            url="https://proxy.eigent.ai",
             model_config_dict={"reasoning_effort": "max"},
         )
         factory.assert_not_called()

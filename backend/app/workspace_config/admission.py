@@ -644,12 +644,6 @@ class EnvironmentAdmissionService:
                 effective_template.thinking_effort_requested
             ),
             permission_profile_revision_override=(permission_profile_revision),
-            allow_provider_default=(
-                # Only the synthetic legacy layer can stand for no choice.
-                # A materialized Bundle's medium is an actual model policy.
-                installed is None
-                and effective_template.thinking_effort_requested is None
-            ),
             runtime_capability_manifest={
                 **effective_template.runtime_capability_manifest,
                 "workspace": {

@@ -114,13 +114,24 @@ def test_registering_a_model_keeps_other_capability_revisions(
     assert capability.capability_revision == revision
 
 
+@pytest.mark.parametrize("remap", [False, True])
 @pytest.mark.parametrize("effort", tuple(ThinkingEffort))
-def test_unknown_never_accepts_explicit_effort(effort):
+def test_unknown_records_requested_effort_but_sends_provider_default(
+    effort, remap
+):
     capability = ModelCapabilityRegistry().resolve(
         model_platform="azure", model_type="unregistered-deployment"
     )
-    with pytest.raises(UnsupportedThinkingEffortError, match="unknown_model"):
-        capability.resolve(effort, allow_dynamic_remap=True)
+    resolved = capability.resolve(effort, allow_dynamic_remap=remap)
+    assert resolved.requested is effort
+    # MEDIUM is the legacy persisted sentinel, not a value that is sent.
+    assert resolved.effective is ThinkingEffort.MEDIUM
+    assert resolved.provider_parameter_name is None
+    assert resolved.provider_value == "provider_default"
+    assert resolved.capability_revision == capability.capability_revision
+    assert resolved.remapped is False
+    assert capability.snapshot()["status"] == "unknown_model"
+    assert capability.snapshot()["supported_efforts"] == []
 
 
 def _metadata(model_type="nebula-2027", platform="azure"):
@@ -256,8 +267,11 @@ def test_unregistered_astra_like_aliases_are_unknown(model):
         model_platform="azure", model_type=model
     )
     assert capability.supported_efforts == ()
-    with pytest.raises(UnsupportedThinkingEffortError):
-        capability.resolve("max")
+    # Not inferred from the alias: max is recorded but never sent.
+    resolved = capability.resolve("max")
+    assert resolved.requested is ThinkingEffort.MAX
+    assert resolved.provider_parameter_name is None
+    assert resolved.provider_value == "provider_default"
 
 
 def test_invalid_catalog_does_not_fall_back_to_prefixes():

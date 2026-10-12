@@ -533,8 +533,6 @@ def test_selected_complete_binding_reaches_factory_and_retains_resume_facts(
 def test_unregistered_local_effort_is_not_reported_as_supported(
     tmp_path, sample_chat_data
 ):
-    from app.workspace_config.models import UnsupportedThinkingEffortError
-
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         _install(journal, ref="provider://local/ollama/unregistered")
         journal.ensure_run(
@@ -551,16 +549,24 @@ def test_unregistered_local_effort_is_not_reported_as_supported(
                 ),
             }
         )
-        with pytest.raises(
-            UnsupportedThinkingEffortError, match="unknown_model"
-        ):
-            EnvironmentAdmissionService(journal).persist_for_run(
-                run_id="run-1",
-                space_id="space-1",
-                working_directory=tmp_path,
-                created_by="fixture",
-                template=chat_controller._legacy_environment_template(options),
-            )
+        # The Run is admitted at the provider default: the requested effort
+        # is recorded, but no effort parameter or supported value is claimed.
+        result = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="run-1",
+            space_id="space-1",
+            working_directory=tmp_path,
+            created_by="fixture",
+            template=chat_controller._legacy_environment_template(options),
+        )
+        assert result.spec.thinking_effort_requested.value == "medium"
+        assert result.spec.provider_parameter_name is None
+        assert result.spec.provider_value == "provider_default"
+        capability = result.spec.semantic_spec["runtime_capability_manifest"][
+            "model_capability"
+        ]
+        assert capability["status"] == "unknown_model"
+        assert capability["supported_efforts"] == []
+        assert capability["provider_parameter_name"] is None
         assert not journal.list_model_invocations("run-1")
 
 

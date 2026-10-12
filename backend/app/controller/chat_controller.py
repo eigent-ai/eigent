@@ -534,9 +534,11 @@ def _admitted_without_effort(
 ) -> bool:
     """Whether a pre-registration Attempt can resume on today's capability.
 
-    It was admitted for a model with no registered efforts and sends none.
-    Resume keeps that, so it may continue after the model is registered,
-    provided nothing else about the model's capability changed.
+    It was admitted for a model with no registered efforts, so it sends none
+    of its own (a requested effort was only recorded; an effort in the user's
+    own provider configuration is sent as written). Resume keeps that, so it
+    may continue after the model is registered, provided nothing else about
+    the model's capability changed.
     """
     current = template.provider_capability
     pinned = spec.semantic_spec.get("runtime_capability_manifest", {}).get(

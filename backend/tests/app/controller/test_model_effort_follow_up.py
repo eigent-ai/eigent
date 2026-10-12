@@ -41,6 +41,7 @@ from app.workspace_config.admission import (
     EnvironmentAdmissionService,
     LegacyEnvironmentImporter,
 )
+from app.workspace_config.models import UnsupportedThinkingEffortError
 
 
 @pytest.fixture
@@ -404,6 +405,73 @@ async def test_follow_up_uses_current_capability_and_preserves_selection(
         assert state.journal.list_events("run-old") == old_events
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("own_effort", [False, True])
+@pytest.mark.parametrize("selection", ["openai", "azure", "cloud_azure"])
+async def test_unknown_model_follow_up_and_resume_run_at_provider_default(
+    tmp_path, monkeypatch, sample_chat_data, selection, own_effort
+):
+    # No catalog fixture: fixture-deployment has no registered efforts.
+    platform = "azure" if selection in {"azure", "cloud_azure"} else "openai"
+    options = chat_options(
+        sample_chat_data, platform, selection == "cloud_azure"
+    )
+    if own_effort:
+        # The user's own advanced parameters, not the composer's effort.
+        options.model_config_dict = {
+            "stream": False,
+            "reasoning": {"effort": "high"},
+        }
+    async with live_follow_up(tmp_path, monkeypatch, options) as state:
+        assert state.initial.spec.provider_value == "provider_default"
+        assert state.initial.binding.thinking_effort_requested == "max"
+        response = await controller.improve(
+            "project-1",
+            SupplementChat(question="next fixture", task_id="run-new"),
+            state.request,
+        )
+        assert response.status_code == 201
+        state.lock.put_queue.assert_awaited_once()
+        [attempt] = state.journal.list_run_attempts("run-new")
+        spec = controller._load_attempt_environment_spec(
+            state.journal, attempt
+        )
+        assert attempt.thinking_effort_requested == "max"
+        assert attempt.thinking_effort_effective == "medium"
+        assert spec.provider_value == "provider_default"
+        assert spec.provider_parameter_name is None
+        assert state.lock.provider_effort_parameter_value == "provider_default"
+        assert state.lock.provider_model_transport == "responses"
+        # Resume keeps the same model and capability revision.
+        for admitted in (spec, state.initial.spec):
+            template = controller._validate_resume_model_capability(
+                options, admitted
+            )
+            assert (
+                template.provider_capability.capability_revision
+                == admitted.provider_capability_revision
+            )
+        if own_effort and selection == "cloud_azure":
+            # Eigent Cloud requests never carry provider JSON effort.
+            with pytest.raises(
+                UnsupportedThinkingEffortError, match="effort_not_admitted"
+            ):
+                await capture_wire(state, options, monkeypatch)
+            return
+        body = await capture_wire(state, options, monkeypatch)
+        assert body["model"] == "fixture-deployment"
+        assert "reasoning_effort" not in body
+        invocation = state.journal.list_model_invocations("run-new")
+        assert len(invocation) == 1
+        if own_effort:
+            assert body["reasoning"] == {"effort": "high"}
+            assert invocation[0].thinking_effort == "high"
+        else:
+            assert "reasoning" not in body
+            assert invocation[0].thinking_effort is None
+
+
+@pytest.mark.parametrize("effort", [None, "high", "max"])
 @pytest.mark.parametrize(
     "platform,cloud,extra_params,auth_source,resumes",
     [
@@ -430,6 +498,7 @@ def test_resume_after_sol_is_registered(
     extra_params,
     auth_source,
     resumes,
+    effort,
 ):
     builtin = json.loads(
         Path(capabilities.__file__)
@@ -455,7 +524,7 @@ def test_resume_after_sol_is_registered(
     ).model_copy(
         update={
             "model_type": "gpt-6-sol",
-            "thinking_effort": None,
+            "thinking_effort": effort,
             "extra_params": extra_params,
         }
     )
@@ -471,6 +540,10 @@ def test_resume_after_sol_is_registered(
             template=controller._legacy_environment_template(admitted_options),
         )
     assert admitted.spec.provider_value == "provider_default"
+    # An effort requested before registration was recorded but not sent.
+    assert admitted.spec.thinking_effort_requested.value == (
+        effort or "medium"
+    )
 
     monkeypatch.delenv("EIGENT_MODEL_CAPABILITY_CATALOG")
     options = admitted_options.model_copy(
@@ -482,6 +555,7 @@ def test_resume_after_sol_is_registered(
         )
         assert template.provider_capability.source == "catalog"
         assert template.provider_capability.supported_efforts
+        assert controller._admitted_without_effort(admitted.spec, template)
     else:
         with pytest.raises(UserException, match="Send a new message"):
             controller._validate_resume_model_capability(
