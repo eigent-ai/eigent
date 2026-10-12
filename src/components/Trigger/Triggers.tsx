@@ -57,6 +57,12 @@ const NEW_ROW_HIGHLIGHT_MS = 6000;
 const byNewestFirst = (a: Trigger, b: Trigger) =>
   new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
 
+type TriggerListLoadState = 'idle' | 'loading' | 'ready' | 'error';
+
+// Shell shared by the loading, error and empty states of the list.
+const LIST_STATE_CARD_CLASS =
+  'm-ds-8 flex flex-col rounded-ds-card border border-x border-y border-dashed border-ds-hairline-default-default px-ds-16 py-ds-24 text-center';
+
 export type OverviewProps = {
   selectedTriggerId: number | null;
   onSelectedTriggerIdChange: (id: number | null) => void;
@@ -94,23 +100,46 @@ export default function Overview({
   const { triggers, deleteTrigger, updateTrigger, setTriggers } =
     useTriggerStore();
   const { projectStore } = useChatStoreAdapter();
+  const activeProjectId = projectStore.activeProjectId;
   const { addLog } = useActivityLogStore();
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
 
+  const [listLoadState, setListLoadState] = useState<TriggerListLoadState>(
+    () => (activeProjectId ? 'loading' : 'idle')
+  );
+  const [listReloadRequest, setListReloadRequest] = useState(0);
+
+  // Load the active project's triggers. Depend on the project id only: the
+  // project store object changes on every store update, so depending on it
+  // refetched the list over and over.
   useEffect(() => {
-    const fetchTriggers = async () => {
-      try {
-        const response = await proxyFetchProjectTriggers(
-          projectStore.activeProjectId
-        );
+    // Never show the previous project's triggers under another project.
+    setTriggers([]);
+
+    // Triggers are listed per project; never call the API without one.
+    if (!activeProjectId) {
+      setListLoadState('idle');
+      return;
+    }
+
+    let cancelled = false;
+    setListLoadState('loading');
+    proxyFetchProjectTriggers(activeProjectId)
+      .then((response) => {
+        if (cancelled) return;
         setTriggers(response.items || []);
-      } catch (error) {
+        setListLoadState('ready');
+      })
+      .catch((error) => {
+        if (cancelled) return;
         console.error('Failed to fetch triggers:', error);
-        toast.error(t('triggers.failed-to-load'));
-      }
+        setListLoadState('error');
+      });
+
+    return () => {
+      cancelled = true;
     };
-    fetchTriggers();
-  }, [projectStore, projectStore.activeProjectId, setTriggers, t]);
+  }, [activeProjectId, listReloadRequest, setTriggers]);
 
   useEffect(() => {
     setHasTriggers(triggers.length > 0);
@@ -323,15 +352,52 @@ export default function Overview({
         </ContentHeader>
 
         <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto pr-0 pb-ds-16 pl-ds-8">
+          {/* Automations created or received while the list could not load
+              are still listed; the states below are for an empty list only. */}
           {sortedTriggers.length === 0 ? (
-            <div className="m-ds-8 flex flex-col gap-ds-4 rounded-ds-card border border-x border-y border-dashed border-ds-hairline-default-default px-ds-16 py-ds-24 text-center">
-              <DsText as="p" role="base" weight="semibold">
-                {t('triggers.no-triggers')}
-              </DsText>
-              <DsText as="p" role="base" className="text-ds-ink-muted-default">
-                {t('triggers.queue-empty-body')}
-              </DsText>
-            </div>
+            listLoadState === 'error' ? (
+              <div
+                role="alert"
+                className={cn(
+                  LIST_STATE_CARD_CLASS,
+                  'items-center gap-ds-stack-related'
+                )}
+              >
+                <DsText as="p" role="base" weight="semibold">
+                  {t('triggers.failed-to-load')}
+                </DsText>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setListReloadRequest((request) => request + 1)}
+                >
+                  {t('layout.retry')}
+                </Button>
+              </div>
+            ) : listLoadState === 'loading' ? (
+              <div role="status" className={LIST_STATE_CARD_CLASS}>
+                <DsText
+                  as="p"
+                  role="base"
+                  className="text-ds-ink-muted-default"
+                >
+                  {t('triggers.loading')}
+                </DsText>
+              </div>
+            ) : listLoadState === 'ready' ? (
+              <div className={cn(LIST_STATE_CARD_CLASS, 'gap-ds-4')}>
+                <DsText as="p" role="base" weight="semibold">
+                  {t('triggers.no-triggers')}
+                </DsText>
+                <DsText
+                  as="p"
+                  role="base"
+                  className="text-ds-ink-muted-default"
+                >
+                  {t('triggers.queue-empty-body')}
+                </DsText>
+              </div>
+            ) : null
           ) : (
             <ul className="m-0 flex list-none flex-col gap-ds-2 p-0">
               {sortedTriggers.map((trigger) => (

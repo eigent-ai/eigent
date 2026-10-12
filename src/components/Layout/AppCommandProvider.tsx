@@ -142,6 +142,19 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     return true;
   }, [activeSpaceId, setActiveWorkspaceTab, t]);
 
+  // Automations are listed per Session, like Files. When the Space has no
+  // Session, say so instead of opening a tab that cannot show anything.
+  const canOpenAutomations = useCallback(() => {
+    if (
+      useProjectRuntimeStore.getState().activeProjectId ||
+      (activeSpaceId &&
+        useSpaceStore.getState().getProjectsForSpace(activeSpaceId).length > 0)
+    )
+      return true;
+    toast.error(t('layout.workspace-select-project'));
+    return false;
+  }, [activeSpaceId, t]);
+
   const executeAppCommand = useCallback<ExecuteAppCommand>(
     (command) => {
       switch (command) {
@@ -214,6 +227,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           return;
         case APP_COMMAND.navigateScheduled:
           void runAfterWorkspaceConfigurationSave(() => {
+            if (!canOpenAutomations()) return;
             closeSettings();
             setActiveWorkspaceTab(WorkspaceTab.Triggers);
             navigate('/');
@@ -242,6 +256,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     },
     [
       activeSpaceId,
+      canOpenAutomations,
       chatTimelineDetailLevel,
       closeSettings,
       isProjectTab,
