@@ -112,7 +112,7 @@
   "delete": "Delete",
   "period": "Period",
   "created-at": "Created At",
-  "execution-history": "Execution History",
+  "execution-history": "Run history",
   "run-time": "Run Time",
   "success": "Success",
   "output-tasks": "Output Tasks",
@@ -364,5 +364,74 @@
   "task-queued": "Queued: {{name}}",
   "task-queued-description": "Task has been added to the session queue",
   "select-method": "Select method",
-  "status-cancelled": "Cancelled"
+  "status-cancelled": "Cancelled",
+  "try-an-example": "Try an example",
+  "examples-heading": "Automate your tasks",
+  "examples-subtitle": "Let Eigent handle routine tasks while you focus on what matters.",
+  "example-card-label": "Set up {{title}}: {{description}} {{schedule}}",
+  "your-automations": "Your automations",
+  "queue-empty-body": "Try an example to set up your first one.",
+  "new-badge": "New",
+  "next-run-at": "Next: {{time}}",
+  "paused": "Paused",
+  "paused-schedule": "Paused · {{schedule}}",
+  "runs-did-not-complete": "{{count}} runs in a row did not complete",
+  "auto-disabled-short": "Turned off after runs did not complete",
+  "consecutive-warning": "{{count}} of {{max}} consecutive runs did not complete. After {{max}}, this automation turns off automatically. Scheduled runs only start while Eigent is open on this computer.",
+  "auto-disabled-notice": "This automation turned off automatically after {{max}} runs in a row did not complete. Turn it back on when Eigent can stay open at the scheduled time.",
+  "first-run-on": "First run: {{time}}",
+  "first-run-notice": "First run: {{time}} (your local time). Eigent needs to be open then.",
+  "next-run-notice": "Next run: {{time}} (your local time). Eigent needs to be open then.",
+  "pick-future-time": "Pick a date and time in the future.",
+  "one-time-within-a-year": "Choose a date less than a year from today.",
+  "monthly-time-crosses-month": "This time can't repeat reliably on this day of the month. Choose another time.",
+  "keeps-stored-schedule": "This schedule can't be edited here. It stays as it is unless you choose a frequency above.",
+  "schedule-label-daily": "Daily at {{time}}",
+  "schedule-label-weekly": "Every {{days}} at {{time}}",
+  "schedule-label-monthly": "Monthly on day {{day}} at {{time}}",
+  "schedule-label-once": "Once on {{date}} at {{time}}",
+  "more-actions-named": "More actions for {{name}}",
+  "examples": {
+    "weekly-feature-usage-recap": {
+      "title": "Weekly feature usage recap",
+      "description": "How a new feature is used.",
+      "prompt": "Summarize last week's usage of the feature I name, with trends."
+    },
+    "campaign-performance-recap": {
+      "title": "Campaign performance recap",
+      "description": "Campaign metrics in plain language.",
+      "prompt": "Summarize last week's campaign metrics and call out what changed."
+    },
+    "meeting-prep-brief": {
+      "title": "Meeting prep brief",
+      "description": "A brief for every call.",
+      "prompt": "For each sales call on today's calendar, write a short prospect brief."
+    },
+    "inbox-triage": {
+      "title": "Inbox triage",
+      "description": "New tickets sorted by urgency.",
+      "prompt": "Sort tickets received since yesterday by urgency and tag the top five."
+    },
+    "hiring-pipeline-digest": {
+      "title": "Hiring pipeline digest",
+      "description": "Candidate movement this week.",
+      "prompt": "Summarize candidate movement between hiring stages this week."
+    },
+    "expense-report-review": {
+      "title": "Expense report review",
+      "description": "Reports that break policy.",
+      "prompt": "Review new expense reports and flag ones that break policy."
+    }
+  },
+  "detail-when": "When it runs",
+  "detail-what": "What it does",
+  "detail-local-time": "Local time",
+  "detail-paused": "Paused until you resume",
+  "detail-on-event": "Runs when an event is received",
+  "detail-not-started": "Not started",
+  "action-run-now": "Run now",
+  "action-pause": "Pause",
+  "action-resume": "Resume",
+  "action-run-queued": "Run requested",
+  "action-run-failed": "Could not start this run. Try again."
 }

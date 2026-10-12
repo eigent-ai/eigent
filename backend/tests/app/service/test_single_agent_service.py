@@ -680,3 +680,42 @@ async def test_stale_runtime_cleanup_failure_blocks_replacement():
 
     assert stale_toolkit in task_lock.registered_toolkits
     assert agent._runtime_cleanup_toolkits == (stale_toolkit,)
+
+
+@pytest.mark.asyncio
+async def test_stale_runtime_sync_cleanup_runs_off_the_event_loop():
+    import threading
+
+    from app.service.single_agent_service import _dispose_stale_agent_runtime
+
+    loop_thread = threading.get_ident()
+    cleanup_threads: list[int] = []
+    disconnect_threads: list[int] = []
+
+    class BlockingCleanupToolkit:
+        def cleanup(self):
+            cleanup_threads.append(threading.get_ident())
+
+    class AsyncDisconnectToolkit:
+        async def disconnect(self):
+            disconnect_threads.append(threading.get_ident())
+
+    blocking = BlockingCleanupToolkit()
+    async_toolkit = AsyncDisconnectToolkit()
+    agent = MagicMock()
+    agent._cdp_release_callback = None
+    agent._runtime_cleanup_toolkits = (blocking, async_toolkit)
+    task_lock = MagicMock()
+    task_lock.registered_toolkits = [blocking, async_toolkit]
+
+    await _dispose_stale_agent_runtime(
+        agent,
+        task_lock,
+        task_id="run-runtime-switch",
+    )
+
+    assert len(cleanup_threads) == 1
+    assert cleanup_threads[0] != loop_thread
+    assert disconnect_threads == [loop_thread]
+    assert task_lock.registered_toolkits == []
+    assert agent._runtime_cleanup_toolkits == ()

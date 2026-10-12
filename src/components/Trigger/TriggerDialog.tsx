@@ -73,6 +73,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { isOneTimeCron } from './automationSchedule';
 import DynamicTriggerConfig, {
   filterExcludedFields,
   getDefaultTriggerConfig,
@@ -82,8 +83,19 @@ import DynamicTriggerConfig, {
 import { SchedulePicker, type ScheduleConfig } from './SchedulePicker';
 import { TriggerTaskInput } from './TriggerTaskInput';
 
+/** Prefills a new schedule automation, e.g. from an example card. */
+export type TriggerDraft = {
+  name: string;
+  taskPrompt: string;
+  /** UTC cron, as the trigger API stores it. */
+  cronExpression: string;
+};
+
+const DEFAULT_CRON = '0 0 * * *';
+
 type TriggerDialogProps = {
   selectedTrigger: Trigger | null;
+  draft?: TriggerDraft | null;
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   onTriggerCreated?: (triggerData: Trigger) => void;
   isOpen: boolean;
@@ -93,6 +105,7 @@ type TriggerDialogProps = {
 
 export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   selectedTrigger,
+  draft = null,
   onTriggerCreating,
   onTriggerCreated,
   isOpen,
@@ -110,15 +123,21 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   const [nameError, setNameError] = useState<string>('');
   const [taskPromptError, setTaskPromptError] = useState<string>('');
   const [formData, setFormData] = useState<TriggerInput>({
-    name: selectedTrigger?.name || '',
+    name: selectedTrigger?.name || draft?.name || '',
     description: selectedTrigger?.description || '',
     trigger_type: selectedTrigger?.trigger_type || TriggerType.Schedule,
     custom_cron_expression:
-      selectedTrigger?.custom_cron_expression || '0 0 * * *',
+      selectedTrigger?.custom_cron_expression ||
+      draft?.cronExpression ||
+      DEFAULT_CRON,
     listener_type: selectedTrigger?.listener_type || ListenerType.Workforce,
     webhook_method: selectedTrigger?.webhook_method || RequestType.POST,
     agent_model: selectedTrigger?.agent_model || '',
-    task_prompt: selectedTrigger?.task_prompt || initialTaskPrompt || '',
+    task_prompt:
+      selectedTrigger?.task_prompt ||
+      draft?.taskPrompt ||
+      initialTaskPrompt ||
+      '',
     max_executions_per_hour: selectedTrigger?.max_executions_per_hour,
     max_executions_per_day: selectedTrigger?.max_executions_per_day,
     webhook_url: selectedTrigger?.webhook_url,
@@ -211,16 +230,16 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           setActiveTab('schedule');
         }
       } else {
-        // Reset form for new trigger, use initialTaskPrompt if provided
+        // Reset form for new trigger, prefilled from a draft or initialTaskPrompt
         setFormData({
-          name: '',
+          name: draft?.name || '',
           description: '',
           trigger_type: TriggerType.Schedule,
-          custom_cron_expression: '0 0 * * *',
+          custom_cron_expression: draft?.cronExpression || DEFAULT_CRON,
           listener_type: ListenerType.Workforce,
           webhook_method: RequestType.POST,
           agent_model: '',
-          task_prompt: initialTaskPrompt || '',
+          task_prompt: draft?.taskPrompt || initialTaskPrompt || '',
           max_executions_per_hour: undefined,
           max_executions_per_day: undefined,
         });
@@ -231,7 +250,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         setActiveTab('schedule');
       }
     }
-  }, [isOpen, selectedTrigger, initialTaskPrompt]); // React to dialog state and trigger changes
+  }, [isOpen, selectedTrigger, draft, initialTaskPrompt]); // React to dialog state and trigger changes
 
   // Update schema when query data changes
   useEffect(() => {
@@ -284,6 +303,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
       return;
     }
 
+    const isSingleExecution =
+      formData.trigger_type === TriggerType.Schedule &&
+      isOneTimeCron(formData.custom_cron_expression);
+
     setIsLoading(true);
     onTriggerCreating?.(formData);
 
@@ -302,6 +325,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           name: formData.name,
           description: formData.description,
           custom_cron_expression: formData.custom_cron_expression,
+          is_single_execution: isSingleExecution,
           listener_type: formData.listener_type,
           webhook_method: formData.webhook_method,
           agent_model: formData.agent_model,
@@ -350,6 +374,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           space_id: activeProjectMeta?.spaceId || activeSpaceId || undefined,
           trigger_type: formData.trigger_type,
           custom_cron_expression: formData.custom_cron_expression,
+          is_single_execution: isSingleExecution,
           listener_type: formData.listener_type,
           webhook_method: formData.webhook_method,
           agent_model: formData.agent_model,
@@ -512,7 +537,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             </TabsList>
             <TabsContent value="schedule" className="px-6 py-4">
               <SchedulePicker
-                value={formData.custom_cron_expression || '0 0 * * *'}
+                isEditing={!!selectedTrigger}
+                useDefaultTime={!selectedTrigger && !draft}
+                value={formData.custom_cron_expression || DEFAULT_CRON}
                 onChange={(cron) =>
                   setFormData({ ...formData, custom_cron_expression: cron })
                 }

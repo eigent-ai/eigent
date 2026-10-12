@@ -74,9 +74,7 @@ class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
         try:
             image_path = str(Path(image_path).absolute())
             if not os.path.exists(image_path):
-                raise FileNotFoundError(
-                    f"Screenshot file not found: {image_path}"
-                )
+                raise FileNotFoundError(f"Image file not found: {image_path}")
 
             with Image.open(image_path) as source:
                 img = source.copy()
@@ -121,7 +119,7 @@ class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
                 return content
             raise RuntimeError("empty image response")
         except Exception as e:
-            raise RuntimeError(f"Error reading screenshot: {e}") from e
+            raise RuntimeError(f"Error reading image: {e}") from e
 
     def take_screenshot_and_read_image(
         self,

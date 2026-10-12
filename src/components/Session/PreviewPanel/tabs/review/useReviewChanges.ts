@@ -14,6 +14,7 @@
 
 import { useHost } from '@/host';
 import { isVisibleAgentFile } from '@/lib/agentFileFilters';
+import { selectProjectSpaceId } from '@/lib/projectWorkspaceRoot';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import {
   proxyFetchSpaceProjectOverlays,
@@ -242,15 +243,17 @@ export function useReviewChanges(
   const pinnedTargetCommit = pinnedIdentity?.targetCommit;
   const hasPinnedIdentity = Boolean(pinnedBaseCommit && pinnedTargetCommit);
   const projectStore = useProjectRuntimeStore();
-  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const projectMeta = useSpaceStore((state) =>
     projectId ? state.getProjectMeta(projectId) : null
   );
   const runtimeProject = projectId
     ? projectStore.getProjectById(projectId)
     : null;
-  const spaceId =
-    projectMeta?.spaceId ?? runtimeProject?.spaceId ?? activeSpaceId ?? null;
+  // Review must stay on the Project's own Space. Never borrow the active
+  // Space while the Project's owner is unresolved or conflicting.
+  const spaceId = useSpaceStore((state) =>
+    selectProjectSpaceId(state, projectId, runtimeProject?.spaceId)
+  );
   const projectSpace = useSpaceStore((state) =>
     spaceId ? state.spaces[spaceId] : null
   );
