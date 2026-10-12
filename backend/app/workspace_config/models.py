@@ -824,7 +824,10 @@ class ProviderModelCapability:
         self,
         requested: str | ThinkingEffort | None,
         *,
-        allow_dynamic_remap: bool = False,
+        # Models recognised by name (dynamic) have an inferred effort list, so
+        # an effort outside it runs at the nearest one instead of failing.
+        # Registered catalog models stay strict.
+        allow_dynamic_remap: bool = True,
     ) -> EffortResolution:
         if not self.supported_efforts:
             # Without registered efforts, a requested effort (composer,

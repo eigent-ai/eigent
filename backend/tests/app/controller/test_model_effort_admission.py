@@ -30,8 +30,6 @@ from app.workspace_config.admission import EnvironmentAdmissionService
 @pytest.mark.parametrize(
     "model,effort",
     [
-        ("gpt-5.5", "xhigh"),
-        ("gpt-5.5", "max"),
         ("gpt-6-sol", "xhigh"),
         ("gpt-6-sol", "max"),
     ],
@@ -313,6 +311,56 @@ async def test_sol_runs_in_a_bundle_space_within_its_efforts(
         [result] = admitted
         assert result.spec.thinking_effort_effective.value == effort
         assert result.spec.provider_value == effort
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", ["azure", "openai"])
+@pytest.mark.parametrize("effort", ["xhigh", "max"])
+async def test_dynamic_openai_reasoning_model_runs_a_higher_effort_at_high(
+    tmp_path, monkeypatch, sample_chat_data, platform, effort
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="pending"
+        )
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_type": "gpt-5.5",
+                "model_platform": platform,
+                "thinking_effort": effort,
+            }
+        )
+        result = await _admit_chat(journal, tmp_path, monkeypatch, options)
+        assert result.spec.thinking_effort_requested.value == effort
+        assert result.spec.thinking_effort_effective.value == "high"
+        assert result.spec.provider_parameter_name == "reasoning_effort"
+        assert result.spec.provider_value == "high"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("effort", ["xhigh", "max"])
+async def test_dynamic_openai_reasoning_model_runs_in_a_bundle_space_at_high(
+    tmp_path, monkeypatch, sample_chat_data, effort
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        _install_bundle(journal, effort)
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="pending"
+        )
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_type": "gpt-5.5",
+                "model_platform": "openai",
+                "thinking_effort": None,
+            }
+        )
+        result = await _admit_chat(journal, tmp_path, monkeypatch, options)
+        assert result.spec.thinking_effort_requested.value == effort
+        assert result.spec.thinking_effort_effective.value == "high"
+        assert result.spec.provider_value == "high"
+        assert result.spec.bundle_revision_id == "bundle-fixture@1"
 
 
 @pytest.mark.asyncio

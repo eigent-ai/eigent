@@ -3,8 +3,8 @@
 The backend resolves thinking effort through a versioned capability declaration
 before admitting a Run. The resolved provider value and transport are recorded in
 the environment specification and used when constructing the model. For a model
-with registered capabilities, an explicitly requested unsupported effort is
-rejected instead of silently becoming `medium`.
+registered in the catalog or an override, an explicitly requested unsupported
+effort is rejected instead of silently becoming `medium`.
 
 ## Capability sources
 
@@ -47,7 +47,10 @@ of every catalog entry's capability digest, so a bump would block Resume for
 every interrupted attempt on an existing entry (see Revisions and resume).
 
 Legacy OpenAI/Azure prefix rules remain compatibility fallbacks. New models should
-use a catalog entry or override. The existing Codex subscription mapping of
+use a catalog entry or override. Because a prefix match only infers the supported
+efforts, such a model runs a requested effort outside them at the nearest
+supported one (for example `xhigh` at `high`) and records both the requested and
+the effective effort, instead of failing admission. The existing Codex subscription mapping of
 `max` to `xhigh` is unchanged. The historical product alias `ultra` normalizes to
 the product effort `max`; `ultra` is not forwarded as a provider value.
 
@@ -112,8 +115,8 @@ Session or Space setting, or a Bundle model profile) does not block the Run and
 is not sent: the requested effort is recorded, while the persisted effective
 `medium` enum remains a compatibility sentinel and `provider_default` with the
 diagnostic indicates that no effort was established or sent. This applies to new
-tasks, follow-ups, Resume, and managed Agent configurations. A model with
-registered capabilities still fails admission with a structured HTTP 422
+tasks, follow-ups, Resume, and managed Agent configurations. A model registered
+in the catalog or an override still fails admission with a structured HTTP 422
 `unsupported_thinking_effort` response for an effort it does not support.
 Invalid capability metadata returns HTTP 422 `invalid_model_capability`.
 

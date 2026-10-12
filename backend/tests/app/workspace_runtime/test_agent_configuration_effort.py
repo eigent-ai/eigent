@@ -126,13 +126,18 @@ def test_cloud_unknown_model_rejects_its_own_effort_parameter():
         )
 
 
+@pytest.mark.parametrize("effort", ["xhigh", "max"])
+def test_name_recognised_model_runs_a_higher_effort_at_high(tmp_path, effort):
+    config = _configuration("gpt-5", effort)
+    binding, spec = _persist(config, tmp_path)
+    assert binding.thinking_effort_requested == effort
+    assert binding.thinking_effort_effective == "high"
+    assert spec["provider_value"] == "high"
+
+
 def test_registered_model_keeps_strict_effort_checks():
     config = _configuration("gpt-5", "high")
     assert config.provider_capability.supported_efforts
-    with pytest.raises(
-        AgentConfigurationUnavailable, match="model_effort_unsupported"
-    ):
-        _configuration("gpt-5", "xhigh")
     with pytest.raises(
         AgentConfigurationUnavailable, match="model_effort_conflict"
     ):

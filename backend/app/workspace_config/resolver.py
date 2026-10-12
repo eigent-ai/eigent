@@ -42,7 +42,7 @@ class EnvironmentConfigResolver:
         model_profile: str = "default",
         thinking_effort_override: str | ThinkingEffort | None = None,
         permission_profile_revision_override: str | None = None,
-        allow_dynamic_effort_remap: bool = False,
+        allow_dynamic_effort_remap: bool = True,
         runtime_capability_manifest: dict[str, Any] | None = None,
     ) -> EffectiveEnvironmentSpec:
         try:
