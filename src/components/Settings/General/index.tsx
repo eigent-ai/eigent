@@ -282,7 +282,10 @@ export default function SettingGeneral({
             })}
             actionClassName="w-[280px]"
             action={
-              <Select value={language} onValueChange={switchLanguage}>
+              <Select
+                value={language}
+                onValueChange={(value) => switchLanguage(value as LocaleEnum)}
+              >
                 <SelectTrigger
                   variant="secondary"
                   className="w-[280px] !bg-ds-neutral-subtle-default hover:!bg-ds-neutral-subtle-default data-[state=open]:!bg-ds-neutral-subtle-default"
