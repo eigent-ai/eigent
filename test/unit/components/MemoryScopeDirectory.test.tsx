@@ -170,6 +170,39 @@ describe('Memory scope directory', () => {
     );
   });
 
+  it('labels a Session with the system default name as New session', async () => {
+    const sessions: Record<string, unknown> =
+      spaceState.projectsBySpaceId['space-1'];
+    sessions['project-default'] = {
+      id: 'project-default',
+      spaceId: 'space-1',
+      name: 'new project',
+      status: 'active' as const,
+      createdAt: 3,
+      updatedAt: 33,
+    };
+    directoryMocks.listMemoryScopeSummaries.mockResolvedValue({ items: [] });
+
+    try {
+      render(
+        <MemoryRouter>
+          <MemoryScopeDirectory scopeType="project" />
+        </MemoryRouter>
+      );
+
+      expect(
+        await screen.findByRole('button', {
+          name: 'Manage Memory for New session',
+        })
+      ).toBeVisible();
+      expect(screen.getByText('New session')).toBeVisible();
+      expect(screen.queryByText(/new project/i)).not.toBeInTheDocument();
+      expect(screen.getByText('Brand refresh')).toBeVisible();
+    } finally {
+      delete sessions['project-default'];
+    }
+  });
+
   it('uses the same searchable directory and Manage action for Spaces', async () => {
     directoryMocks.listMemoryScopeSummaries.mockResolvedValue({
       items: [

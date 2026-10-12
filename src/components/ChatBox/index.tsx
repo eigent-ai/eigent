@@ -25,6 +25,7 @@ import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionDraft } from '@/hooks/useSessionDraft';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
@@ -35,7 +36,10 @@ import {
 } from '@/lib/approvalPresentation';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
-import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
+import {
+  prepareColdAdmission,
+  prepareFollowUpAdmission,
+} from '@/lib/legacyRuntimeAdmission';
 import { notifyError } from '@/lib/notifyError';
 import {
   isProjectAchieved,
@@ -78,6 +82,12 @@ import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
+import {
+  followUpAdmissionClaims,
+  interruptedAdmissionClaims,
+  notifyFollowUpAdmissionReleased,
+  onFollowUpAdmissionReleased,
+} from '@/store/followUpAdmissionClaims';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
@@ -210,19 +220,10 @@ export default function ChatBox(): JSX.Element {
     );
   if (!state.route || state.error)
     return <SessionExecutionStatus projectId={projectId} />;
-  return <LegacyChatBox />;
+  return <LegacyChatBox accountKey={scope.accountKey} />;
 }
 
-function LegacyChatBox(): JSX.Element {
-  const [message, setMessageState] = useState<string>('');
-  const composerRevisionRef = useRef(0);
-  const setMessage = useCallback<typeof setMessageState>((value) => {
-    composerRevisionRef.current += 1;
-    setMessageState(value);
-  }, []);
-  const [pendingReviewHandoffIds, setPendingReviewHandoffIds] = useState<
-    string[]
-  >([]);
+function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const host = useHost();
 
   //Get Chatstore for the active project's task
@@ -250,6 +251,21 @@ function LegacyChatBox(): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
+  // Switching Sessions remounts this composer; keep each Session's draft.
+  const {
+    text: message,
+    setText: setDraftMessage,
+    reviewHandoffIds: pendingReviewHandoffIds,
+    setReviewHandoffIds: setPendingReviewHandoffIds,
+  } = useSessionDraft(accountKey, activeProjectId);
+  const composerRevisionRef = useRef(0);
+  const setMessage = useCallback<typeof setDraftMessage>(
+    (value) => {
+      composerRevisionRef.current += 1;
+      setDraftMessage(value);
+    },
+    [setDraftMessage]
+  );
   const controlOperations = useControlOperations();
   const composerProjectRef = useRef(activeProjectId);
   composerProjectRef.current = activeProjectId;
@@ -467,10 +483,6 @@ function LegacyChatBox(): JSX.Element {
   }, [workspaceChatFocusRequestId]);
 
   useEffect(() => {
-    setPendingReviewHandoffIds([]);
-  }, [activeProjectId]);
-
-  useEffect(() => {
     if (
       !workspaceChatDraftRequest ||
       workspaceChatDraftRequest.projectId !== activeProjectId ||
@@ -497,6 +509,7 @@ function LegacyChatBox(): JSX.Element {
     consumeWorkspaceChatDraft,
     workspaceChatDraftRequest,
     setMessage,
+    setPendingReviewHandoffIds,
   ]);
 
   useEffect(() => {
@@ -520,9 +533,18 @@ function LegacyChatBox(): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
-  const followUpAdmissionsRef = useRef(new Map<string, symbol>());
+  // Shared across mounts: a composer remounted by a Session switch must still
+  // see an admission that an earlier mount has not finished.
+  const followUpAdmissionsRef = useRef(followUpAdmissionClaims);
   const [followUpAdmissionRevision, setFollowUpAdmissionRevision] = useState(0);
-  const interruptedAdmissionRef = useRef<string | null>(null);
+  useEffect(
+    () =>
+      onFollowUpAdmissionReleased(() =>
+        setFollowUpAdmissionRevision((revision) => revision + 1)
+      ),
+    []
+  );
+  const interruptedAdmissionsRef = useRef(interruptedAdmissionClaims);
   // Admission is monotonic. Late pending-list responses must never restore a
   // request already accepted by HTTP or observed starting in the event stream.
   const acknowledgedQueuedRequests = useRef(new Set<string>());
@@ -1201,7 +1223,7 @@ function LegacyChatBox(): JSX.Element {
       interruptedRun?.project_id === targetProjectId;
     if (
       startsAfterInterruption &&
-      (interruptedAdmissionRef.current === targetProjectId ||
+      (interruptedAdmissionsRef.current.has(targetProjectId) ||
         (!queuedRequestId && queuedDispatchRef.current !== null))
     )
       return;
@@ -1330,11 +1352,37 @@ function LegacyChatBox(): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     let messageAccepted = false;
     let followUpAdmission: symbol | undefined;
+    // A direct start below always admits a new cold Run. Brain can still keep
+    // the previous Run's idle consumer, which nothing in this window observes
+    // after a reload, and rejects a cold Run while it lives. Retire it first,
+    // and never start a second Run while that consumer is still busy.
+    const prepareColdStart = async () => {
+      const composerRevision = composerRevisionRef.current;
+      let failure = t('chat.task-admission-failed', {
+        defaultValue: 'The task could not be started. Please try again.',
+      });
+      try {
+        await waitForPendingStaleRuntimeEviction(targetProjectId);
+        const admission = await prepareColdAdmission(
+          targetProjectId,
+          projectStore.getProjectById(targetProjectId)
+        );
+        if (admission === 'cold') return true;
+      } catch (error) {
+        console.error('[handleSend] Could not prepare a new task:', error);
+        if (error instanceof Error && error.message) failure = error.message;
+      }
+      notifyError(failure);
+      // Nothing was submitted. Return the draft unless it was edited since.
+      if (!preserveComposer && composerRevisionRef.current === composerRevision)
+        setMessage(rawMessageContent);
+      return false;
+    };
     try {
       if (startsAfterInterruption && !queuedRequestId) {
         // A new instruction is a new task, never an implicit Resume. Keep the
         // interrupted task and its tool outcomes intact for history/review.
-        interruptedAdmissionRef.current = targetProjectId;
+        interruptedAdmissionsRef.current.add(targetProjectId);
         await waitForPendingStaleRuntimeEviction(targetProjectId);
         const nextTaskId = generateUniqueId();
         const attachesToSend = composerAttachments || [];
@@ -1549,22 +1597,16 @@ function LegacyChatBox(): JSX.Element {
           const hasComplexTask = chatStore.tasks[
             _taskId as string
           ].messages.some((m) => m.step === 'to_sub_tasks');
-          const hasErrorMessage = chatStore.tasks[
-            _taskId as string
-          ].messages.some(
-            (m) => m.role === 'agent' && m.content.startsWith('❌ **Error**:')
-          );
-
-          // Only start a new task if: pending, no messages processed yet
-          // OR while or after replaying a project
+          // Only start a new task if: pending, no messages processed yet.
+          // A finished Run, including one restored after a window reload or
+          // resumed after an error, goes through follow-up admission: Brain
+          // may still hold its idle consumer, which must be retired first.
           if (
-            (chatStore.tasks[_taskId as string].status ===
+            chatStore.tasks[_taskId as string].status ===
               ChatTaskStatus.PENDING &&
-              !hasSimpleResponse &&
-              !hasComplexTask &&
-              !isFinished) ||
-            chatStore.tasks[_taskId].type === 'replay' ||
-            hasErrorMessage
+            !hasSimpleResponse &&
+            !hasComplexTask &&
+            !isFinished
           ) {
             if (!preserveComposer) setMessage('');
             // Pass the message content to startTask instead of adding it to current chatStore
@@ -1573,6 +1615,12 @@ function LegacyChatBox(): JSX.Element {
               JSON.parse(
                 JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
               );
+            followUpAdmission = Symbol(targetProjectId);
+            followUpAdmissionsRef.current.set(
+              targetProjectId,
+              followUpAdmission
+            );
+            if (!(await prepareColdStart())) return;
             try {
               ensureActiveProjectMode();
               await chatStore.startTask(
@@ -1816,6 +1864,9 @@ function LegacyChatBox(): JSX.Element {
               JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
             );
           if (!preserveComposer) setMessage('');
+          followUpAdmission = Symbol(targetProjectId);
+          followUpAdmissionsRef.current.set(targetProjectId, followUpAdmission);
+          if (!(await prepareColdStart())) return;
           try {
             ensureActiveProjectMode();
             await chatStore.startTask(
@@ -1865,11 +1916,16 @@ function LegacyChatBox(): JSX.Element {
       ) {
         followUpAdmissionsRef.current.delete(targetProjectId);
         // Wake a queued dispatch that yielded to this admission, including
-        // when the lookup failed without producing a Run/store update.
-        setFollowUpAdmissionRevision((revision) => revision + 1);
+        // when the lookup failed without producing a Run/store update, and
+        // in a composer remounted while it was running.
+        notifyFollowUpAdmissionReleased();
       }
-      if (interruptedAdmissionRef.current === targetProjectId)
-        interruptedAdmissionRef.current = null;
+      // Only the submit that took the claim gets here: the guard above
+      // returns synchronously while it is held.
+      if (startsAfterInterruption && !queuedRequestId) {
+        interruptedAdmissionsRef.current.delete(targetProjectId);
+        notifyFollowUpAdmissionReleased();
+      }
       if (messageAccepted && !requiresHumanReply) {
         if (startsAfterInterruption) setInterruptedRun(null);
         acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
@@ -2194,7 +2250,7 @@ function LegacyChatBox(): JSX.Element {
     if (
       queuedDispatchRef.current ||
       followUpAdmissionsRef.current.has(projectId) ||
-      interruptedAdmissionRef.current === projectId ||
+      interruptedAdmissionsRef.current.has(projectId) ||
       queueActionRef.current?.projectId === projectId
     )
       return;
@@ -2681,7 +2737,8 @@ function LegacyChatBox(): JSX.Element {
             interruptedRunDescription(
               interruptedRun.terminalReason,
               t,
-              unsafeResumeReason
+              unsafeResumeReason,
+              interruptedRun.terminalDetail
             )),
       },
       runId: interruptedRun.run_id,
@@ -2870,7 +2927,8 @@ function LegacyChatBox(): JSX.Element {
                       : interruptedRunDescription(
                           interruptedRun.terminalReason,
                           t,
-                          unsafeResumeReason
+                          unsafeResumeReason,
+                          interruptedRun.terminalDetail
                         )
                   }
                   disabledReason={cancelRecoveryReason}
@@ -2973,7 +3031,8 @@ function LegacyChatBox(): JSX.Element {
                       : interruptedRunDescription(
                           interruptedRun.terminalReason,
                           t,
-                          unsafeResumeReason
+                          unsafeResumeReason,
+                          interruptedRun.terminalDetail
                         )
                   }
                   attemptNumber={interruptedRun.latest_attempt?.attempt_number}

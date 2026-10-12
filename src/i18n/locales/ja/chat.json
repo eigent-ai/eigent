@@ -429,6 +429,7 @@
   "notice-context": "この会話は選択したモデルには長すぎます。新しいセッションを開始してください。",
   "notice-request": "このモデルはリクエストを処理できませんでした。",
   "notice-model-unavailable": "このモデルは現在利用できません。",
+  "notice-thinking-effort": "このモデルは選択した思考強度に対応していません。思考強度を「デフォルト」にするか、別のモデルを選んで、もう一度お試しください。",
   "notice-task": "タスクを続行できませんでした。再試行するか、サポートにお問い合わせください。",
   "notice-contact-description": "この問題を support@eigent.ai にご報告ください。",
   "notice-refresh-description": "更新して最新の残高を確認してください。",

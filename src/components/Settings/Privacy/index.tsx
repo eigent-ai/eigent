@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { SITE_URL } from '@/lib';
 import { ChevronDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
@@ -25,6 +25,7 @@ export default function SettingPrivacy() {
   const [helpImprove, setHelpImprove] = useState(false);
   const { t } = useTranslation();
   const [isHowWeHandleOpen, setIsHowWeHandleOpen] = useState(false);
+  const howWeHandleTitleId = useId();
 
   useEffect(() => {
     proxyFetchGet('/api/v1/user/privacy')
@@ -45,7 +46,11 @@ export default function SettingPrivacy() {
     <SettingsSectionPage>
       <SettingsRowGroup>
         <SettingsRow
-          title={t('setting.how-we-handle-your-data')}
+          title={
+            <span id={howWeHandleTitleId}>
+              {t('setting.how-we-handle-your-data')}
+            </span>
+          }
           description={
             <>
               {t('setting.data-privacy-description')}{' '}
@@ -66,6 +71,7 @@ export default function SettingPrivacy() {
               size="xs"
               buttonContent="icon-only"
               onClick={() => setIsHowWeHandleOpen((prev) => !prev)}
+              aria-labelledby={howWeHandleTitleId}
               aria-expanded={isHowWeHandleOpen}
               aria-controls="how-we-handle-your-data"
             >

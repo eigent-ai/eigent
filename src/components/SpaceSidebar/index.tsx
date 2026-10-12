@@ -47,6 +47,7 @@ import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getFilesTabBindingLabel,
+  getSessionDisplayName,
   isUnboundUntitledSpace,
 } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON, AUTOMATION_OFF_ICON } from '@/lib/triggerIcon';
@@ -385,10 +386,12 @@ export default function SpaceSidebar({
             : undefined;
           return {
             id: project.id,
-            title:
-              project.name && project.name !== 'new project'
-                ? project.name
-                : t('layout.new-project'),
+            title: getSessionDisplayName(
+              project.name,
+              project.id,
+              t,
+              project.metadata?.nameSource
+            ),
             sessionLead: resolveSessionNavLeadPresentation({
               cachedLead: navLeadByProjectId[project.id],
               isHistoryLoading: Boolean(historyLoadingProjectIds[project.id]),
@@ -496,6 +499,19 @@ export default function SpaceSidebar({
     setActiveWorkspaceTab,
     t,
   ]);
+
+  // Automations are listed per Session, like Files. When the Space has no
+  // Session, say so instead of opening a tab that cannot show anything.
+  const canOpenAutomations = useCallback(() => {
+    if (
+      activeProjectId ||
+      (activeSpaceId &&
+        useSpaceStore.getState().getProjectsForSpace(activeSpaceId).length > 0)
+    )
+      return true;
+    toast.error(t('layout.workspace-select-project'));
+    return false;
+  }, [activeProjectId, activeSpaceId, t]);
 
   const handlePinSession = useCallback((projectId: string) => {
     setPinnedProjectIds((prev) => {
@@ -771,7 +787,9 @@ export default function SpaceSidebar({
               <NavTab
                 layout="split"
                 active={activeWorkspaceTab === 'triggers'}
-                onClick={() => setActiveWorkspaceTab('triggers')}
+                onClick={() => {
+                  if (canOpenAutomations()) setActiveWorkspaceTab('triggers');
+                }}
                 leading={(() => {
                   const ListenerIcon = triggersListenerConnected
                     ? AUTOMATION_ICON
@@ -813,7 +831,7 @@ export default function SpaceSidebar({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        requestOpenTriggerAddDialog();
+                        if (canOpenAutomations()) requestOpenTriggerAddDialog();
                       }}
                     >
                       <Plus

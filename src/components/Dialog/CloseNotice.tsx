@@ -33,8 +33,10 @@ export default function CloseNoticeDialog({
 }: Props) {
   const { t } = useTranslation();
   const isQuit = intent === 'quit-app';
+  // A task started in this version streams live and is also recorded as a
+  // Run, so it reads as mixed. The Run is what decides what happens on quit.
   const message =
-    executionClass === 'canonical-durable'
+    executionClass === 'canonical-durable' || executionClass === 'mixed'
       ? t(
           isQuit
             ? 'layout.close-durable-quit-message'

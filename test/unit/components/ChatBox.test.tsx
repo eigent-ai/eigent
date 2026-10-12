@@ -30,6 +30,8 @@ import { runProjectionStore } from '@/lib/runEvents';
 import { errorCopy } from '@/lib/usageErrors';
 import { createChatStoreInstance } from '@/store/chatStore';
 import { resetConnectionConfig } from '@/store/connectionStore';
+import { resetFollowUpAdmissionClaims } from '@/store/followUpAdmissionClaims';
+import { resetSessionDrafts } from '@/store/sessionDraftStore';
 import {
   acknowledgeUsageNotice,
   reportUsageIncident,
@@ -515,6 +517,8 @@ describe('ChatBox Component', async () => {
 
   beforeEach(() => {
     resetConnectionConfig();
+    resetSessionDrafts();
+    resetFollowUpAdmissionClaims();
     setUsageAccount(null);
     setUsageModelType('cloud');
     modelConfigHarness.cloudUsageLimitReached = false;
@@ -944,6 +948,153 @@ describe('ChatBox Component', async () => {
       await waitFor(() => {
         expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/configs');
       });
+    });
+  });
+
+  describe('Session drafts', () => {
+    // Switching Sessions remounts the chat surface, keyed by the Session id.
+    const sessionView = (projectId: string) => {
+      defaultProjectStoreState.activeProjectId = projectId;
+      return (
+        <BrowserRouter>
+          <ChatBox key={projectId} />
+        </BrowserRouter>
+      );
+    };
+
+    it('keeps each unsent draft when switching Sessions remounts the composer', async () => {
+      const user = userEvent.setup();
+      const view = render(sessionView('session-a'));
+      const sessionAComposer = screen.getByTestId('message-input');
+      await user.type(sessionAComposer, 'Unsent Session A draft');
+      expect(screen.getByTestId('send-button')).toBeEnabled();
+
+      view.rerender(sessionView('session-b'));
+      expect(sessionAComposer).not.toBeInTheDocument();
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      expect(screen.getByTestId('send-button')).toBeDisabled();
+      await user.type(
+        screen.getByTestId('message-input'),
+        'Unsent Session B draft'
+      );
+
+      view.rerender(sessionView('session-a'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Unsent Session A draft'
+      );
+      expect(screen.getByTestId('send-button')).toBeEnabled();
+
+      view.rerender(sessionView('session-b'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Unsent Session B draft'
+      );
+    });
+
+    it('clears only the draft of the Session that sent it', async () => {
+      const user = userEvent.setup();
+      const view = render(sessionView('session-b'));
+      await user.type(
+        screen.getByTestId('message-input'),
+        'Unsent Session B draft'
+      );
+
+      view.rerender(sessionView('session-a'));
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      await user.type(screen.getByTestId('message-input'), 'Send from A');
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+      );
+      expect(defaultChatStoreState.startTask.mock.calls[0][4]).toBe(
+        'Send from A'
+      );
+      expect(defaultChatStoreState.startTask.mock.calls[0][7]).toBe(
+        'session-a'
+      );
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+
+      view.rerender(sessionView('session-b'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Unsent Session B draft'
+      );
+      view.rerender(sessionView('session-a'));
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+    });
+
+    it('keeps review feedback attached to a restored draft', async () => {
+      const user = userEvent.setup();
+      const view = render(sessionView('test-project-id'));
+      act(() => {
+        usePageTabStore.setState({
+          sessionPreviewProjectId: 'test-project-id',
+          sessionPreviewByProject: {
+            'test-project-id': {
+              open: true,
+              activeTabId: 'review-1',
+              tabs: [
+                {
+                  id: 'review-1',
+                  type: 'review',
+                  title: 'Review',
+                  reviewComments: [
+                    {
+                      id: 'comment-1',
+                      fileId: 'src/app.ts',
+                      path: 'src/app.ts',
+                      selection: null,
+                      body: 'Keep this compatible.',
+                      createdAt: 1,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: 'Please address review comment 1.',
+            reviewHandoffIds: ['handoff-1'],
+          },
+          workspaceReviewHandoffs: [
+            {
+              handoffId: 'handoff-1',
+              requestId: 1,
+              projectId: 'test-project-id',
+              reviewTabId: 'review-1',
+              commentIds: ['comment-1'],
+              content: 'Please address review comment 1.',
+            },
+          ],
+        });
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Please address review comment 1.'
+        )
+      );
+
+      view.rerender(sessionView('session-b'));
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      view.rerender(sessionView('test-project-id'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Please address review comment 1.'
+      );
+
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() => {
+        const reviewTab =
+          usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+            .tabs[0];
+        expect(reviewTab).toMatchObject({
+          reviewComments: [
+            expect.objectContaining({ id: 'comment-1', status: 'sent' }),
+          ],
+        });
+      });
+      expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
     });
   });
 
@@ -1404,6 +1555,76 @@ describe('ChatBox Component', async () => {
         }
       );
 
+      it.each([
+        {
+          source: 'a Session restored after a window reload',
+          task: { ...finishedTask, type: 'replay' },
+        },
+        {
+          source: 'a Run resumed after an error',
+          task: {
+            ...finishedTask,
+            messages: [
+              finishedTask.messages[0],
+              {
+                id: 'error',
+                role: 'agent',
+                content: '❌ **Error**: Bad Gateway',
+                step: AgentStep.ERROR,
+              },
+              finishedTask.messages[1],
+            ],
+          },
+        },
+      ])(
+        'retires the idle consumer before a follow-up to $source',
+        async ({ task }) => {
+          const user = userEvent.setup();
+          legacyStreamHarness.idleRunId = null;
+          mockIdleConsumer(0);
+          const chatState = {
+            ...defaultChatStoreState,
+            tasks: { 'test-task-id': task },
+          };
+          mockUseChatStoreAdapter.mockReturnValue({
+            projectStore: defaultProjectStoreState as any,
+            chatStore: chatState as any,
+          });
+
+          renderChatBox();
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Continue after reload'
+          );
+          await user.click(screen.getByTestId('send-button'));
+
+          await waitFor(() =>
+            expect(chatState.startTask).toHaveBeenCalledWith(
+              'test-unique-id',
+              undefined,
+              undefined,
+              undefined,
+              'Continue after reload',
+              [],
+              undefined,
+              'test-project-id',
+              'single-agent',
+              expect.objectContaining({
+                preserveTaskId: true,
+                awaitAdmission: true,
+              })
+            )
+          );
+          const retirement = _mockFetchPost.mock.calls.findIndex(
+            ([url]) => url === retireIdleCall[0]
+          );
+          expect(_mockFetchPost.mock.calls[retirement]).toEqual(retireIdleCall);
+          expect(
+            _mockFetchPost.mock.invocationCallOrder[retirement]
+          ).toBeLessThan(chatState.startTask.mock.invocationCallOrder[0]);
+        }
+      );
+
       it('admits a queued follow-up cold through the same decision', async () => {
         legacyStreamHarness.idleRunId = null;
         mockIdleConsumer(0);
@@ -1458,6 +1679,189 @@ describe('ChatBox Component', async () => {
           '/chat/test-project-id',
           expect.anything()
         );
+      });
+
+      describe('when the message starts a new task directly', () => {
+        // History restored after a window reload replays each task.
+        const restoredTask = { ...finishedTask, type: 'replay' };
+        const failedStartTask = {
+          ...defaultChatStoreState.tasks['test-task-id'],
+          messages: [
+            { id: '1', role: 'user', content: 'Retry task', attaches: [] },
+            {
+              id: '2',
+              role: 'agent',
+              content: '❌ **Error**: The task could not be started.',
+              step: AgentStep.ERROR,
+            },
+          ],
+          hasMessages: true,
+          status: ChatTaskStatus.FINISHED,
+        };
+        const errorAfterAnswerTask = {
+          ...defaultChatStoreState.tasks['test-task-id'],
+          messages: [
+            { id: '1', role: 'user', content: 'Initial task', attaches: [] },
+            {
+              id: '2',
+              role: 'agent',
+              content: 'Answer',
+              step: AgentStep.WAIT_CONFIRM,
+            },
+            {
+              id: '3',
+              role: 'agent',
+              content: '❌ **Error**: The model is unavailable.',
+              step: AgentStep.ERROR,
+            },
+          ],
+          hasMessages: true,
+          hasWaitComfirm: true,
+          status: ChatTaskStatus.PENDING,
+        };
+        const directStartCall = [
+          'test-task-id',
+          undefined,
+          undefined,
+          undefined,
+          'Next task',
+          [],
+          undefined,
+          'test-project-id',
+          'single-agent',
+          undefined,
+        ] as const;
+        const retirements = () =>
+          _mockFetchPost.mock.calls.filter(
+            ([url]) => url === retireIdleCall[0]
+          );
+        const sendFrom = async (task: Record<string, unknown>) => {
+          const user = userEvent.setup();
+          const chatState = {
+            ...defaultChatStoreState,
+            tasks: { 'test-task-id': task },
+          };
+          mockUseChatStoreAdapter.mockReturnValue({
+            projectStore: defaultProjectStoreState as any,
+            chatStore: chatState as any,
+          });
+          renderChatBox();
+          await user.type(screen.getByTestId('message-input'), 'Next task');
+          await user.click(screen.getByTestId('send-button'));
+          return chatState;
+        };
+
+        it.each([
+          {
+            session: 'restored after the window reloaded',
+            task: restoredTask,
+            idleRunId: null,
+            subscriberCount: 0,
+            direct: false,
+          },
+          {
+            session: 'whose last task failed to start',
+            task: failedStartTask,
+            idleRunId: null,
+            subscriberCount: 0,
+            direct: true,
+          },
+          {
+            session: 'whose last answer was followed by an error',
+            task: errorAfterAnswerTask,
+            idleRunId: null,
+            subscriberCount: 0,
+            direct: false,
+          },
+          {
+            session:
+              'whose last task failed while this window holds the stream',
+            task: failedStartTask,
+            idleRunId: 'test-task-id',
+            subscriberCount: 1,
+            direct: true,
+          },
+        ])(
+          'retires the idle consumer before a cold start in a Session $session',
+          async ({ task, idleRunId, subscriberCount, direct }) => {
+            legacyStreamHarness.idleRunId = idleRunId;
+            mockIdleConsumer(subscriberCount);
+
+            const chatState = await sendFrom(task);
+
+            // A restored or errored finished task may also start through the
+            // normal follow-up path. Either way exactly one new task starts,
+            // after the idle consumer is retired.
+            await waitFor(() =>
+              expect(chatState.startTask).toHaveBeenCalledTimes(1)
+            );
+            const [startCall] = chatState.startTask.mock.calls;
+            if (direct) expect(startCall).toEqual([...directStartCall]);
+            expect(startCall[4]).toBe('Next task');
+            expect(startCall[7]).toBe('test-project-id');
+            expect(retirements()).toEqual([retireIdleCall]);
+            const retirement = _mockFetchPost.mock.calls.findIndex(
+              ([url]) => url === retireIdleCall[0]
+            );
+            expect(
+              _mockFetchPost.mock.invocationCallOrder[retirement]
+            ).toBeLessThan(chatState.startTask.mock.invocationCallOrder[0]);
+            expect(_mockFetchPost).not.toHaveBeenCalledWith(
+              '/chat/test-project-id',
+              expect.anything()
+            );
+          }
+        );
+
+        it('keeps the draft and starts nothing while the consumer is busy', async () => {
+          legacyStreamHarness.idleRunId = null;
+          mockIdleConsumer(0);
+          mockFetchGet.mockImplementation((url: string) =>
+            Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? {
+                    has_lock: true,
+                    status: 'processing',
+                    run_id: 'running-task-id',
+                    consumer_alive: true,
+                    subscriber_count: 0,
+                  }
+                : { items: [] }
+            )
+          );
+
+          const chatState = await sendFrom(failedStartTask);
+
+          await waitFor(() =>
+            expect(toast.error).toHaveBeenCalledWith(
+              'The task could not be started. Please try again.',
+              undefined
+            )
+          );
+          expect(screen.getByTestId('message-input')).toHaveValue('Next task');
+          expect(chatState.startTask).not.toHaveBeenCalled();
+          expect(retirements()).toEqual([]);
+          expect(_mockFetchPost).not.toHaveBeenCalledWith(
+            '/chat/test-project-id',
+            expect.anything()
+          );
+        });
+
+        it('still starts the task when Brain cannot report its runtime yet', async () => {
+          mockIdleConsumer(0);
+          mockFetchGet.mockImplementation((url: string) =>
+            url === '/chat/test-project-id/status'
+              ? Promise.reject(new Error('Brain is starting'))
+              : Promise.resolve({ items: [] })
+          );
+
+          const chatState = await sendFrom(failedStartTask);
+
+          await waitFor(() =>
+            expect(chatState.startTask).toHaveBeenCalledWith(...directStartCall)
+          );
+          expect(retirements()).toEqual([]);
+        });
       });
     });
 
@@ -1583,10 +1987,11 @@ describe('ChatBox Component', async () => {
           );
         }
         const view = renderChatBox();
-        const rerender = () =>
+        // A Session key remounts the composer, as switching Sessions does.
+        const rerender = (sessionKey?: string) =>
           view.rerender(
             <BrowserRouter>
-              <ChatBox />
+              <ChatBox key={sessionKey} />
             </BrowserRouter>
           );
         const waitUntilOwnershipPending = () =>
@@ -1981,6 +2386,129 @@ describe('ChatBox Component', async () => {
         expect(screen.getByTestId('message-input')).toHaveValue(
           'Original instruction'
         );
+      });
+
+      describe('when switching Sessions remounts the composer', () => {
+        const remountSession = (
+          setup: ReturnType<typeof setupAdmission>,
+          projectId: string
+        ) => {
+          const secondStore = createFollowUpStore({
+            fileName: 'second-session.pdf',
+            filePath: '/tmp/second-session.pdf',
+          });
+          defaultProjectStoreState.getActiveChatStore.mockImplementation(
+            (requestedProjectId?: string) =>
+              ((requestedProjectId ||
+                defaultProjectStoreState.activeProjectId) === 'test-project-id'
+                ? setup.chatStore
+                : secondStore) as any
+          );
+          defaultProjectStoreState.activeProjectId = projectId;
+          setup.rerender(projectId);
+        };
+
+        it('clears the sent draft when admission finishes after the Session was left', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          remountSession(setup, 'second-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue('');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Session B draft'
+          );
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Session B draft'
+          );
+
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue('');
+          remountSession(setup, 'second-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Session B draft'
+          );
+        });
+
+        it('clears a restored draft sent before the Session was left again', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          remountSession(setup, 'second-project-id');
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Original instruction'
+          );
+
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          remountSession(setup, 'second-project-id');
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue('');
+        });
+
+        it('keeps a draft edited after returning before admission finishes', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          remountSession(setup, 'second-project-id');
+          remountSession(setup, 'test-project-id');
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Newer Session A draft'
+          );
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Newer Session A draft'
+          );
+        });
+
+        it('does not send a restored draft again while its admission is still running', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          remountSession(setup, 'second-project-id');
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(setup.admissionCount()).toBe(1);
+          expect(screen.getByTestId('message-input')).toHaveValue('');
+        });
       });
 
       it.each([
@@ -2560,6 +3088,95 @@ describe('ChatBox Component', async () => {
         }
       }
     );
+
+    it('does not start a second task from a restored draft while the task after interruption is admitting', async () => {
+      eventNativeHarness.enabled = false;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      const user = userEvent.setup();
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.endsWith('/status')
+            ? { has_lock: true, status: 'done', consumer_alive: false }
+            : { runs: [] }
+        )
+      );
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              hasMessages: true,
+              messages: [
+                { id: 'old-prompt', role: 'user', content: 'Old task' },
+              ],
+            },
+          },
+        } as any,
+      });
+      let admit!: () => void;
+      defaultChatStoreState.startTask.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            admit = resolve;
+          })
+      );
+      // Switching Sessions remounts the chat surface, keyed by the Session id.
+      const sessionView = (projectId: string) => {
+        defaultProjectStoreState.activeProjectId = projectId;
+        return (
+          <BrowserRouter>
+            <ChatBox key={projectId} />
+          </BrowserRouter>
+        );
+      };
+      const view = render(sessionView('test-project-id'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        runProjectionStore.upsertRunSummaries('test-project-id', [
+          {
+            run_id: 'test-task-id',
+            project_id: 'test-project-id',
+            status: 'interrupted',
+            updated_at: 100,
+            origin: 'local',
+            latest_attempt: { attempt_number: 1, status: 'interrupted' },
+          },
+        ]);
+      });
+      expect(
+        screen.getByText('chat.run-interrupted-title')
+      ).toBeInTheDocument();
+      await user.type(
+        screen.getByTestId('message-input'),
+        'Create three new notes'
+      );
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+      );
+
+      view.rerender(sessionView('second-project-id'));
+      view.rerender(sessionView('test-project-id'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Create three new notes'
+      );
+      await user.click(screen.getByTestId('send-button'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1);
+
+      await act(async () => admit());
+      await waitFor(() =>
+        expect(screen.getByTestId('message-input')).toHaveValue('')
+      );
+      expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1);
+    });
 
     it.each([
       ['cloud', 'local', false],

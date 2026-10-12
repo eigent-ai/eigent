@@ -66,10 +66,13 @@ const mocks = vi.hoisted(() => {
     setChatTimelineDetailLevel: vi.fn(),
     setNuwFileNum,
     spaceState,
+    toastError: vi.fn(),
     toggleSessionPreview: vi.fn(),
     toggleWorkspaceSidebar: vi.fn(),
   };
 });
+
+vi.mock('sonner', () => ({ toast: { error: mocks.toastError } }));
 
 vi.mock('@/components/Dialog/ReportBugDialog', () => ({
   default: ({ open }: { open: boolean }) => (
@@ -367,6 +370,40 @@ describe('AppCommandProvider', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(
       '/home?section=spaces&spaceId=space-1&spaceTab=workspace-profile'
     );
+  });
+
+  it('asks for a Session instead of opening Automations in a Space without one', () => {
+    mocks.projectRuntimeState.activeProjectId = null;
+    mocks.spaceState.getProjectsForSpace.mockReturnValue([]);
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider({
+      onAppCommand: (callback) => {
+        nativeCommand = callback;
+        return vi.fn();
+      },
+    });
+
+    act(() => nativeCommand?.(APP_COMMAND.navigateScheduled));
+
+    expect(mocks.toastError).toHaveBeenCalledOnce();
+    expect(mocks.setActiveWorkspaceTab).not.toHaveBeenCalled();
+    expect(mocks.closeSettings).not.toHaveBeenCalled();
+  });
+
+  it('opens Automations when the Space has a Session but none is selected', () => {
+    mocks.projectRuntimeState.activeProjectId = null;
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider({
+      onAppCommand: (callback) => {
+        nativeCommand = callback;
+        return vi.fn();
+      },
+    });
+
+    act(() => nativeCommand?.(APP_COMMAND.navigateScheduled));
+
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(mocks.setActiveWorkspaceTab).toHaveBeenCalledWith('triggers');
   });
 
   it('selects the last Project and hydrates it before opening Files', () => {
