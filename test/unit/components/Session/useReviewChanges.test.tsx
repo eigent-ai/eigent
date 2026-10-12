@@ -34,6 +34,7 @@ const {
   mockReviewListBackups,
   mockHost,
   mockProjectRuntime,
+  mockSpaceState,
 } = vi.hoisted(() => {
   const reviewListBackups = vi.fn();
   return {
@@ -52,7 +53,7 @@ const {
       },
     },
     mockProjectRuntime: {
-      getProjectById: () => ({
+      getProjectById: (): Record<string, unknown> => ({
         id: 'project-1',
         spaceId: 'space-1',
         workdirMode: 'copy',
@@ -60,8 +61,28 @@ const {
       }),
       getAllChatStores: () => [],
     },
+    mockSpaceState: {
+      activeSpaceId: 'space-1',
+      projectIdIndex: { 'project-1': 'space-1' } as Record<string, string>,
+      getProjectMeta: (): Record<string, unknown> | null => ({
+        id: 'project-1',
+        spaceId: 'space-1',
+        workdirMode: 'copy',
+        metadata: { serverSynced: true },
+      }),
+      spaces: {
+        'space-1': {
+          id: 'space-1',
+          sourceType: 'folder',
+          rootPath: '/workspace',
+        },
+      } as Record<string, Record<string, unknown>>,
+    },
   };
 });
+
+const defaultGetProjectById = mockProjectRuntime.getProjectById;
+const defaultGetProjectMeta = mockSpaceState.getProjectMeta;
 
 vi.mock('@/host', () => ({
   useHost: () => mockHost,
@@ -95,32 +116,17 @@ vi.mock('@/store/projectRuntimeStore', () => ({
   useProjectRuntimeStore: () => mockProjectRuntime,
 }));
 
-vi.mock('@/store/spaceStore', () => {
-  const state = {
-    activeSpaceId: 'space-1',
-    getProjectMeta: () => ({
-      id: 'project-1',
-      spaceId: 'space-1',
-      workdirMode: 'copy',
-      metadata: { serverSynced: true },
-    }),
-    spaces: {
-      'space-1': {
-        id: 'space-1',
-        sourceType: 'folder',
-        rootPath: '/workspace',
-      },
-    },
-  };
-  return {
-    useSpaceStore: (selector: (store: typeof state) => unknown) =>
-      selector(state),
-  };
-});
+vi.mock('@/store/spaceStore', () => ({
+  useSpaceStore: (selector: (store: typeof mockSpaceState) => unknown) =>
+    selector(mockSpaceState),
+}));
 
 describe('useReviewChanges', () => {
   beforeEach(() => {
     localStorage.removeItem('eigent-review-fixture');
+    mockProjectRuntime.getProjectById = defaultGetProjectById;
+    mockSpaceState.getProjectMeta = defaultGetProjectMeta;
+    mockSpaceState.projectIdIndex = { 'project-1': 'space-1' };
     mockFetchOverlays.mockReset();
     mockFetchGitChanges.mockReset();
     mockFetchGitChangeBlob.mockReset();
@@ -166,6 +172,30 @@ describe('useReviewChanges', () => {
         'run-1'
       )
     ).toEqual(['/workspace/run-one.txt']);
+  });
+
+  it('uses the finalized artifact manifest as a direct-write Review source', () => {
+    expect(
+      collectChangedFilePaths(
+        [
+          {
+            tasks: {
+              'run-1': {
+                artifactManifestFiles: [
+                  {
+                    name: 'ISS_Orbital_Atlas.html',
+                    type: 'html',
+                    path: '/workspace/ISS_Orbital_Atlas.html',
+                    relativePath: 'ISS_Orbital_Atlas.html',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+        'run-1'
+      )
+    ).toEqual(['/workspace/ISS_Orbital_Atlas.html']);
   });
 
   it('selects the newest task across the project chat stores', () => {
@@ -263,6 +293,30 @@ describe('useReviewChanges', () => {
       }
     );
   });
+
+  it.each([
+    ['unresolved', {}, undefined],
+    ['conflicting', { 'project-1': 'space-1' }, 'space-2'],
+  ] as const)(
+    'does not review a Project with %s ownership in the active Space',
+    async (_case, projectIdIndex, runtimeSpaceId) => {
+      mockSpaceState.projectIdIndex = { ...projectIdIndex };
+      mockSpaceState.getProjectMeta = () => null;
+      mockProjectRuntime.getProjectById = () => ({
+        id: 'project-1',
+        spaceId: runtimeSpaceId,
+        workdirMode: 'copy',
+        metadata: { serverSynced: true },
+      });
+
+      const { result } = renderHook(() => useReviewChanges());
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(mockFetchGitChanges).not.toHaveBeenCalled();
+      expect(mockFetchOverlays).not.toHaveBeenCalled();
+      expect(result.current.files).toEqual([]);
+    }
+  );
 
   it('filters runtime changes and recomputes totals without hiding authored logs or deletions', async () => {
     mockFetchGitChanges.mockResolvedValue({

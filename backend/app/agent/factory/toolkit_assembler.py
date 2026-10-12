@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import inspect
 import logging
 import os
@@ -171,7 +172,7 @@ async def _rollback_runtime_assembly(
     options: Chat,
     hands: IHands | None,
 ) -> None:
-    """Best-effort rollback when fail-closed Bundle assembly aborts."""
+    """Best-effort rollback when assembly or Agent creation aborts."""
 
     candidates = list(assembly.cleanup_toolkits)
     if (
@@ -188,7 +189,13 @@ async def _rollback_runtime_assembly(
             if cleanup is None:
                 cleanup = getattr(toolkit, "cleanup", None)
             if cleanup is not None:
-                outcome = cleanup()
+                # Terminal cleanup waits for process groups to stop. Keep that
+                # wait off the event loop shared by every other Session.
+                outcome = (
+                    cleanup()
+                    if inspect.iscoroutinefunction(cleanup)
+                    else await asyncio.to_thread(cleanup)
+                )
                 if inspect.isawaitable(outcome):
                     await outcome
             disposed.append(toolkit)
@@ -387,7 +394,29 @@ def _mcp_config(
 
 async def assemble_single_agent_toolkits(
     options: Chat,
+    **kwargs,
+) -> ToolkitAssembly:
+    assembly = ToolkitAssembly()
+    try:
+        return await _assemble_single_agent_toolkits(
+            options, assembly=assembly, **kwargs
+        )
+    except BaseException:
+        # A failure or cancellation can arrive after the Browser reservation,
+        # Terminal or MCP servers were created. Nothing else owns them yet.
+        await _rollback_runtime_assembly(
+            assembly,
+            project_id=options.project_id,
+            options=options,
+            hands=kwargs.get("hands"),
+        )
+        raise
+
+
+async def _assemble_single_agent_toolkits(
+    options: Chat,
     *,
+    assembly: ToolkitAssembly,
     task_id: str,
     working_directory: str,
     hands: IHands | None,
@@ -397,7 +426,6 @@ async def assemble_single_agent_toolkits(
     runtime_environment: ResolvedRuntimeEnvironment | None = None,
 ) -> ToolkitAssembly:
     config = _merged_config(options)
-    assembly = ToolkitAssembly()
     pinned_skill_sources = (
         runtime_environment.pinned_skill_sources(Agents.single_agent)
         if runtime_environment is not None
@@ -622,15 +650,17 @@ async def assemble_single_agent_toolkits(
                 "owned_target_url": owned_target_url,
                 "stealth": not bool(owned_target_url),
             }
+            # Record the reservation first, so rollback can return it even
+            # if the toolkit cannot be constructed.
+            assembly.browser_port = selected_port
+            assembly.browser_cdp_url = cdp_url
+            assembly.browser_session_id = toolkit_session_id
+            assembly.browser_owned_by_hands = cdp_owned_by_hands
             toolkit = HybridBrowserToolkit(
                 options.project_id, **browser_options
             )
             toolkit.agent_name = Agents.single_agent
             assembly.browser_toolkit = toolkit
-            assembly.browser_port = selected_port
-            assembly.browser_cdp_url = cdp_url
-            assembly.browser_session_id = toolkit_session_id
-            assembly.browser_owned_by_hands = cdp_owned_by_hands
             assembly.toolkits_to_register_agent.append(toolkit)
             registered = message_integration.register_toolkits(toolkit)
             assembly.add_tools(
@@ -723,18 +753,15 @@ async def assemble_single_agent_toolkits(
                         EnvironmentSetupRequiredError,
                     )
 
-                    await _rollback_runtime_assembly(
-                        assembly,
-                        project_id=options.project_id,
-                        options=options,
-                        hands=hands,
-                    )
                     raise EnvironmentSetupRequiredError(
                         ["bundle_mcp_start_failed"]
                     ) from exc
                 assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
             else:
                 toolkit = MCPToolkit(**mcp_options)
+                # Servers that started before connect() failed or was
+                # cancelled must still be stopped by rollback or disposal.
+                assembly.cleanup_toolkits.append(toolkit)
                 try:
                     await toolkit.connect()
                 except Exception:
@@ -743,7 +770,6 @@ async def assemble_single_agent_toolkits(
                         exc_info=True,
                     )
                 else:
-                    assembly.cleanup_toolkits.append(toolkit)
                     assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
 
     if _enabled(config, "agent") and can_delegate:

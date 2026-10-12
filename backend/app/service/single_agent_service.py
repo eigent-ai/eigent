@@ -118,7 +118,13 @@ async def _dispose_stale_agent_runtime(
             if cleanup is None:
                 cleanup = getattr(toolkit, "cleanup", None)
             if cleanup is not None:
-                outcome = cleanup()
+                # Terminal cleanup waits for process groups to stop. Keep that
+                # wait off the event loop shared by every other Session.
+                outcome = (
+                    cleanup()
+                    if inspect.iscoroutinefunction(cleanup)
+                    else await asyncio.to_thread(cleanup)
+                )
                 if inspect.isawaitable(outcome):
                     await outcome
             disposed = True

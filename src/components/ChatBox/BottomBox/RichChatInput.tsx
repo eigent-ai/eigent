@@ -32,25 +32,111 @@ export { tokenizeRichPlainText } from '@/lib/richText';
 
 const PLACEHOLDER_ROTATE_MS = 30_000;
 
-function brToNewlineInTree(container: HTMLElement): void {
-  container.querySelectorAll('br').forEach((br) => {
-    br.replaceWith(document.createTextNode('\n'));
-  });
-}
+/** Elements that render on lines of their own (`display: block` by default). */
+const BLOCK_ELEMENT =
+  /^(?:ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|DD|DIV|DL|DT|FIGCAPTION|FIGURE|FOOTER|H[1-6]|HEADER|HR|LI|MAIN|NAV|OL|P|PRE|SECTION|TABLE|TR|UL)$/;
 
-function innerPlainFromHtmlTree(container: HTMLElement): string {
-  brToNewlineInTree(container);
-  return container.innerText.replace(/\u00a0/g, ' ');
+type PlainTextToken =
+  | { kind: 'text'; text: string }
+  | { kind: 'break' }
+  | { kind: 'block' }
+  | { kind: 'point' };
+
+/**
+ * Reads the plain text the editor shows by walking its DOM, without layout.
+ *
+ * Chromium turns each newline of inserted text (paste) into a new paragraph
+ * (`one<div>two</div>`), while Shift+Enter inserts a `\n` or a `<br>`. A
+ * `<br>`, a `\n` and a block boundary each end a line. A break that is the last
+ * thing in a block only keeps that block's empty last line visible, so it adds
+ * no line of its own (Chromium inserts one after Shift+Enter at the end of a
+ * line and in every empty pasted line; applyHtml adds one after a trailing
+ * newline).
+ *
+ * With `point`, also returns the plain-text offset of that DOM boundary point
+ * under the same rules, so the caret offset always matches the text.
+ */
+function readPlainText(
+  root: HTMLElement,
+  point?: { node: Node; offset: number }
+): { text: string; offset: number } {
+  const tokens: PlainTextToken[] = [];
+  const pushText = (data: string) => {
+    data.split('\n').forEach((line, i) => {
+      if (i > 0) tokens.push({ kind: 'break' });
+      if (line) {
+        tokens.push({ kind: 'text', text: line.replace(/\u00a0/g, ' ') });
+      }
+    });
+  };
+  const visit = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const data = node.textContent ?? '';
+      if (point?.node === node) {
+        pushText(data.slice(0, point.offset));
+        tokens.push({ kind: 'point' });
+        pushText(data.slice(point.offset));
+      } else {
+        pushText(data);
+      }
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node.nodeName === 'BR') {
+      if (point?.node === node) tokens.push({ kind: 'point' });
+      tokens.push({ kind: 'break' });
+      return;
+    }
+    const isBlock = node !== root && BLOCK_ELEMENT.test(node.nodeName);
+    if (isBlock) tokens.push({ kind: 'block' });
+    const children = node.childNodes;
+    for (let i = 0; i <= children.length; i++) {
+      if (point?.node === node && point.offset === i) {
+        tokens.push({ kind: 'point' });
+      }
+      if (i < children.length) visit(children[i]);
+    }
+    if (isBlock) tokens.push({ kind: 'block' });
+  };
+  visit(root);
+
+  /** True when a block boundary or the end follows, with nothing rendered. */
+  const endsBlock = (index: number) => {
+    for (let i = index + 1; i < tokens.length; i++) {
+      if (tokens[i].kind !== 'point') return tokens[i].kind === 'block';
+    }
+    return true;
+  };
+
+  let text = '';
+  let offset = 0;
+  // The current line holds text or was started by a break.
+  let lineOpen = false;
+  // A block boundary separates the current line from whatever follows.
+  let blockBoundary = false;
+  tokens.forEach((token, i) => {
+    if (token.kind === 'block') {
+      blockBoundary = true;
+      return;
+    }
+    if (token.kind === 'point') {
+      offset = text.length + (blockBoundary && lineOpen ? 1 : 0);
+      return;
+    }
+    if (blockBoundary && lineOpen) text += '\n';
+    blockBoundary = false;
+    if (token.kind === 'text') {
+      text += token.text;
+    } else if (!endsBlock(i)) {
+      text += '\n';
+    }
+    lineOpen = true;
+  });
+  return { text, offset: Math.min(offset, text.length) };
 }
 
 function getPlainTextFromRoot(root: HTMLElement): string {
-  const html = root.innerHTML;
-  if (!html || html === '<br>' || html === '<br/>' || html === '<br />') {
-    return '';
-  }
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return innerPlainFromHtmlTree(tmp);
+  return readPlainText(root).text;
 }
 
 /**
@@ -64,12 +150,7 @@ function plainTextLengthBefore(
   endOffset: number
 ): number {
   if (!root.contains(endContainer)) return 0;
-  const pre = document.createRange();
-  pre.selectNodeContents(root);
-  pre.setEnd(endContainer, endOffset);
-  const tmp = document.createElement('div');
-  tmp.appendChild(pre.cloneContents());
-  return innerPlainFromHtmlTree(tmp).length;
+  return readPlainText(root, { node: endContainer, offset: endOffset }).offset;
 }
 
 function getCaretOffset(root: HTMLElement): number {
@@ -235,7 +316,9 @@ export const RichChatInput = React.forwardRef<
     }
     const html =
       plain.length === 0 ? '' : segmentsToHtml(tokenizeRichPlainText(plain));
-    el.innerHTML = html || '<br />';
+    // A trailing newline needs a placeholder <br> after it, or its empty last
+    // line (and the caret on it) does not render. readPlainText skips it.
+    el.innerHTML = plain.endsWith('\n') ? `${html}<br />` : html || '<br />';
     if (restoreOffset !== undefined) {
       // Restore the caret synchronously. Reassigning innerHTML above collapses
       // the selection to offset 0; deferring the restore to requestAnimationFrame
@@ -384,7 +467,8 @@ export const RichChatInput = React.forwardRef<
       // Fall through: some sources put both a file and a text
       // representation on the clipboard; insert the text too if present.
     }
-    const text = e.clipboardData.getData('text/plain');
+    // Windows clipboards use CRLF; the editor and the sent text use LF only.
+    const text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
     if (!text) return;
     const el = rootRef.current;
     if (!el) return;
