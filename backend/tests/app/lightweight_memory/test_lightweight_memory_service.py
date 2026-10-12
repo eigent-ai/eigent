@@ -21,6 +21,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.lightweight_memory import (
+    ConservativeMemoryExtractor,
+    HistoryQueryResult,
     IncrementalMemoryMaintainer,
     LightweightMemoryService,
     maintainer as maintainer_module,
@@ -495,6 +497,162 @@ def test_incremental_maintainer_extracts_explicit_scope_memory_without_review(
     ]
     assert user_entries[0].created_by == "extractor"
     assert user_entries[0].confirmed_by_user is False
+
+
+def _extracted(message: str) -> list[tuple[str, str]]:
+    item = HistoryQueryResult(
+        citation_id="citation-1",
+        journal_cursor=1,
+        event_id="message-1",
+        run_id="run-1",
+        event_type="user.message",
+        content={"content": message},
+        source_trust="user_asserted",
+        created_at=0.0,
+    )
+    return [
+        (scope, proposal.content)
+        for scope in ("project", "space", "user")
+        for proposal in ConservativeMemoryExtractor().extract(
+            active_memory=(), history_delta=(item,), target_scope=scope
+        )
+    ]
+
+
+def _extracted_scope(message: str) -> str | None:
+    found = _extracted(message)
+    return found[0][0] if found else None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "In this Project, Python 3.12 is standard.",
+        "For this Space, use UTC timestamps.",
+        "请在这个项目中统一使用 pnpm",
+        "From now on, in this project use pnpm.",
+        "Hi! In this project, always use pnpm.",
+        "In this project, don't add semicolons.",
+        "For this Space, reply in Chinese.",
+        "In this project, the entry point is main.py.",
+        "In this project, 3.12 is the required Python version.",
+        # Conventions that open with a verb, wherever the scope phrase is.
+        "Write all commit messages in English in this workspace.",
+        "Run `make lint` before you tell me something is done in this space.",
+        "test with pytest -q, not unittest, in this workspace pls",
+        "Add type hints to every new function you write in this project.",
+        "In this project, use uv to install dependencies.",
+        "In this project, run tests with `make test`.",
+        "In this project, when writing tests, use pytest fixtures.",
+        "In this project:\n1. Use pnpm.\n2. Write tests for new code.",
+        "这个项目里用 uv 安装依赖。",
+        "这个项目中，测试用 pytest 写。",
+        "在这个项目里，必须写单元测试",
+        "这个项目里，哪怕很小的改动也要写测试",
+        "我喜欢这个项目里，帮我写的代码都带类型注解",
+        "所有项目都用 UTC 时间",
+        # Facts that open with a noun spelled like a request verb.
+        "In this project, help text goes in docs/help.md.",
+        "In this project, delete operations need a confirmation dialog.",
+        "In this project, find-and-replace is done with ripgrep.",
+        "这个项目里，下载链接 24 小时后失效",
+        "这个项目里，创建时间存的是 UTC",
+        # Conventions that open with a request verb but no specific target.
+        "In this project, create migrations with alembic.",
+        "For this Space, summarize in bullet points.",
+        "In this project, fix lint errors with ruff --fix.",
+        "这个项目里，新建组件放在 src/components 下",
+        "当前项目中，实现新功能先写测试",
+    ],
+)
+def test_extractor_keeps_rules_that_name_a_scope(message):
+    assert _extracted_scope(message) is not None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Create hello.py in this project and run it.",
+        "Fix the failing test in this project.",
+        "In this project, create a REST endpoint for users.",
+        "In this project, summarize the README and list the open TODOs.",
+        "Summarize the launch plan for all projects in the portfolio.",
+        "Can you fix the failing login test in this project?",
+        "In this project, what does main.py do?",
+        "Delete the unused images in public/old in this project.",
+        "Help me write a README for this project.",
+        "在当前项目中创建一个 hello.py 并运行。",
+        "在这个项目里，帮我分析一下 data.csv 并画个图",
+        "帮我在当前项目里加一个登录页面",
+        "这个项目里的 bug 是什么原因？",
+    ],
+)
+def test_extractor_skips_one_off_requests_that_name_a_scope(message):
+    assert _extracted_scope(message) is None
+
+
+def test_extractor_keeps_a_rule_that_follows_a_request():
+    assert (
+        _extracted_scope(
+            "Create hello.py first. In this project, use Python 3.12."
+        )
+        == "project"
+    )
+
+
+@pytest.mark.parametrize(
+    ("message", "saved"),
+    [
+        (
+            "帮我在这个项目里创建 hello.py，我喜欢用 tabs 缩进",
+            ("user", "用 tabs 缩进"),
+        ),
+        (
+            "Create hello.py in this project, 记住：用 pnpm",
+            ("project", "用 pnpm"),
+        ),
+    ],
+)
+def test_extractor_keeps_a_preference_that_follows_a_request(message, saved):
+    assert _extracted(message) == [saved]
+
+
+def test_incremental_maintainer_saves_scoped_rules_but_not_requests(service):
+    journal = service.journal
+    journal.bind_memory_project_scopes(
+        project_id="project-1",
+        space_id="space-1",
+        user_id="user-1",
+    )
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    messages = (
+        "Create hello.py in this project and run it.",
+        "In this Project, Python 3.12 is standard.",
+        "在当前项目中创建一个 hello.py 并运行。",
+        "请在这个项目中统一使用 pnpm",
+        "For this Space, summarize the competitor notes into competitors.md.",
+        "For this Space, reply in Chinese.",
+        "Summarize the launch plan for all projects in the portfolio.",
+    )
+    for index, content in enumerate(messages):
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id=f"message-{index}",
+                event_type="user.message",
+                payload={"content": content},
+            ),
+        )
+
+    IncrementalMemoryMaintainer(service).process_project("project-1")
+
+    assert sorted(
+        entry.content for entry in service.list_entries("project", "project-1")
+    ) == ["Python 3.12 is standard.", "统一使用 pnpm"]
+    assert [
+        entry.content for entry in service.list_entries("space", "space-1")
+    ] == ["reply in Chinese."]
+    assert not service.list_entries("user", "user-1")
 
 
 def test_shared_scope_watermarks_are_independent_per_source_project(service):

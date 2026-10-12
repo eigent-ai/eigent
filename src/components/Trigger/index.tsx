@@ -12,177 +12,44 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import ContentHeader from '@/components/Layout/ContentHeader';
-import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTriggerStore } from '@/store/triggerStore';
-import {
-  ArrowUpDown,
-  Plus,
-  SquareChevronRight,
-  SquareCode,
-} from 'lucide-react';
-import { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import Overview, { sortTriggersList, type TriggerSortKey } from './Triggers';
+import Overview from './Triggers';
 
 type TriggerPanelProps = {
   className?: string;
-  sortBy: TriggerSortKey;
-  onSortByChange: (sortBy: TriggerSortKey) => void;
   selectedTriggerId: number | null;
   onSelectedTriggerIdChange: (id: number | null) => void;
-  isExecutionLogsOpen: boolean;
-  onExecutionLogsOpenChange: (open: boolean) => void;
   isDialogOpen: boolean;
   onDialogOpenChange: (open: boolean) => void;
 };
 
 export default function TriggerPanel({
   className,
-  sortBy,
-  onSortByChange,
   selectedTriggerId,
   onSelectedTriggerIdChange,
-  isExecutionLogsOpen,
-  onExecutionLogsOpenChange,
   isDialogOpen,
   onDialogOpenChange,
 }: TriggerPanelProps) {
-  const { t } = useTranslation();
-  const { wsConnectionStatus, triggers } = useTriggerStore();
-
-  const sortedTriggersForHeader = useMemo(
-    () => sortTriggersList(triggers, sortBy),
-    [triggers, sortBy]
+  const wsConnectionStatus = useTriggerStore(
+    (state) => state.wsConnectionStatus
   );
-
-  const triggerSortLabel = useMemo(() => {
-    switch (sortBy) {
-      case 'createdAt':
-        return t('triggers.created-time');
-      case 'lastExecutionTime':
-        return t('triggers.last-execution-label');
-      case 'tokens':
-        return t('triggers.token-cost');
-      default:
-        return t('triggers.created-time');
-    }
-  }, [sortBy, t]);
 
   return (
     <div
       className={cn(
         'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden',
+        wsConnectionStatus === 'disconnected' &&
+          'pointer-events-none opacity-50 grayscale',
         className
       )}
     >
-      <ContentHeader
-        title={t('layout.scheduled-tab')}
-        actions={
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  buttonContent="text"
-                  size="sm"
-                  className="rounded-lg"
-                >
-                  {triggerSortLabel}
-                  <ArrowUpDown />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onSortByChange('createdAt')}>
-                  {t('triggers.created-time')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => onSortByChange('lastExecutionTime')}
-                >
-                  {t('triggers.last-execution-label')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="primary"
-              size="sm"
-              buttonContent="text"
-              className="items-center justify-center rounded-lg"
-              onClick={() => onDialogOpenChange(true)}
-            >
-              <Plus />
-              {t('triggers.create')}
-            </Button>
-            <TooltipSimple
-              content={
-                isExecutionLogsOpen
-                  ? t('triggers.fold-execution-logs')
-                  : t('triggers.open-execution-logs')
-              }
-              variant="instant"
-              side="bottom"
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                className="rounded-lg opacity-70"
-                disabled={sortedTriggersForHeader.length === 0}
-                onClick={() => {
-                  if (isExecutionLogsOpen) {
-                    onExecutionLogsOpenChange(false);
-                    return;
-                  }
-
-                  if (
-                    !selectedTriggerId &&
-                    sortedTriggersForHeader.length > 0
-                  ) {
-                    onSelectedTriggerIdChange(sortedTriggersForHeader[0].id);
-                  }
-
-                  onExecutionLogsOpenChange(true);
-                }}
-              >
-                {isExecutionLogsOpen ? (
-                  <SquareChevronRight className="h-4 w-4" />
-                ) : (
-                  <SquareCode className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipSimple>
-            <TriggerDialog
-              selectedTrigger={null}
-              isOpen={isDialogOpen}
-              onOpenChange={onDialogOpenChange}
-            />
-          </>
-        }
+      <Overview
+        selectedTriggerId={selectedTriggerId}
+        onSelectedTriggerIdChange={onSelectedTriggerIdChange}
+        isDialogOpen={isDialogOpen}
+        onDialogOpenChange={onDialogOpenChange}
       />
-      <div
-        className={cn(
-          'min-h-0 w-full flex-1',
-          wsConnectionStatus === 'disconnected' &&
-            'pointer-events-none opacity-50 grayscale'
-        )}
-      >
-        <Overview
-          sortBy={sortBy}
-          selectedTriggerId={selectedTriggerId}
-          onSelectedTriggerIdChange={onSelectedTriggerIdChange}
-          isExecutionLogsOpen={isExecutionLogsOpen}
-          onExecutionLogsOpenChange={onExecutionLogsOpenChange}
-        />
-      </div>
     </div>
   );
 }

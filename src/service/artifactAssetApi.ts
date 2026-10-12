@@ -21,7 +21,8 @@ type ArtifactDownloadResponse = {
 
 /** Resolve a Cloud-restored Artifact into the same bounded preview pipeline. */
 export async function resolveArtifactAssetFile(
-  file: FileInfo
+  file: FileInfo,
+  signal?: AbortSignal
 ): Promise<FileInfo> {
   if (file.localPathAvailable !== false) return file;
   if (/^https?:\/\//i.test(file.path)) return file;
@@ -30,7 +31,10 @@ export async function resolveArtifactAssetFile(
     throw new Error('This Artifact has not finished uploading yet.');
   }
   const result = (await proxyFetchGet(
-    `/api/v1/chat/files/${encodeURIComponent(chatFileId)}/download`
+    `/api/v1/chat/files/${encodeURIComponent(chatFileId)}/download`,
+    undefined,
+    undefined,
+    { signal }
   )) as ArtifactDownloadResponse;
   if (!result?.download_url) {
     throw new Error('Artifact download URL is unavailable.');

@@ -189,9 +189,7 @@ export function localTimeToUTC(
 
   const utcHour = date.getUTCHours();
   const utcMinute = date.getUTCMinutes();
-  const localDay = date.getDate();
-  const utcDay = date.getUTCDate();
-  const dayOffset = utcDay - localDay;
+  const dayOffset = calendarDayOffset(date);
 
   return { utcHour, utcMinute, dayOffset };
 }
@@ -213,9 +211,22 @@ export function utcTimeToLocal(
 
   const localHour = date.getHours();
   const localMinute = date.getMinutes();
-  const utcDay = date.getUTCDate();
-  const localDay = date.getDate();
-  const dayOffset = localDay - utcDay;
+  const dayOffset = -calendarDayOffset(date) || 0;
 
   return { localHour, localMinute, dayOffset };
+}
+
+/** Compare complete calendar dates so month/year rollover remains a one-day shift. */
+function calendarDayOffset(date: Date): number {
+  const utcDay = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate()
+  );
+  const localDay = Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate()
+  );
+  return (utcDay - localDay) / (24 * 60 * 60 * 1000);
 }
