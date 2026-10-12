@@ -35,7 +35,10 @@ import {
 } from '@/lib/approvalPresentation';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
-import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
+import {
+  prepareColdAdmission,
+  prepareFollowUpAdmission,
+} from '@/lib/legacyRuntimeAdmission';
 import { notifyError } from '@/lib/notifyError';
 import {
   isProjectAchieved,
@@ -1330,6 +1333,32 @@ function LegacyChatBox(): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     let messageAccepted = false;
     let followUpAdmission: symbol | undefined;
+    // A direct start below always admits a new cold Run. Brain can still keep
+    // the previous Run's idle consumer, which nothing in this window observes
+    // after a reload, and rejects a cold Run while it lives. Retire it first,
+    // and never start a second Run while that consumer is still busy.
+    const prepareColdStart = async () => {
+      const composerRevision = composerRevisionRef.current;
+      let failure = t('chat.task-admission-failed', {
+        defaultValue: 'The task could not be started. Please try again.',
+      });
+      try {
+        await waitForPendingStaleRuntimeEviction(targetProjectId);
+        const admission = await prepareColdAdmission(
+          targetProjectId,
+          projectStore.getProjectById(targetProjectId)
+        );
+        if (admission === 'cold') return true;
+      } catch (error) {
+        console.error('[handleSend] Could not prepare a new task:', error);
+        if (error instanceof Error && error.message) failure = error.message;
+      }
+      notifyError(failure);
+      // Nothing was submitted. Return the draft unless it was edited since.
+      if (!preserveComposer && composerRevisionRef.current === composerRevision)
+        setMessage(rawMessageContent);
+      return false;
+    };
     try {
       if (startsAfterInterruption && !queuedRequestId) {
         // A new instruction is a new task, never an implicit Resume. Keep the
@@ -1567,6 +1596,12 @@ function LegacyChatBox(): JSX.Element {
               JSON.parse(
                 JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
               );
+            followUpAdmission = Symbol(targetProjectId);
+            followUpAdmissionsRef.current.set(
+              targetProjectId,
+              followUpAdmission
+            );
+            if (!(await prepareColdStart())) return;
             try {
               ensureActiveProjectMode();
               await chatStore.startTask(
@@ -1810,6 +1845,9 @@ function LegacyChatBox(): JSX.Element {
               JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
             );
           if (!preserveComposer) setMessage('');
+          followUpAdmission = Symbol(targetProjectId);
+          followUpAdmissionsRef.current.set(targetProjectId, followUpAdmission);
+          if (!(await prepareColdStart())) return;
           try {
             ensureActiveProjectMode();
             await chatStore.startTask(
