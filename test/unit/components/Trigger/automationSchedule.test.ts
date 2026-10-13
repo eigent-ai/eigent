@@ -48,11 +48,21 @@ describe('scheduleToCron / parseCron', () => {
     expect(isOneTimeCron('0 9 14 7 *')).toBe(true);
     expect(isOneTimeCron('0 9 * * *')).toBe(false);
     expect(isOneTimeCron('0 9 2 * *')).toBe(false);
+    // Ranges, lists and steps repeat.
+    expect(isOneTimeCron('0 9 1-5 1 *')).toBe(false);
+    expect(isOneTimeCron('0 9 1,15 1 *')).toBe(false);
+    expect(isOneTimeCron('0 9 14 */2 *')).toBe(false);
   });
 
   it('returns null for crons it cannot describe', () => {
     expect(parseCron('*/5 * * * *', REFERENCE)).toBeNull();
     expect(parseCron('not a cron', REFERENCE)).toBeNull();
+    // Keeping only the plain weekdays would rewrite 1,3-5 as Monday only.
+    expect(parseCron('0 9 * * 1,3-5', REFERENCE)).toBeNull();
+    expect(parseCron('0 9 * * 1-5', REFERENCE)).toBeNull();
+    expect(parseCron('0 9 * * */2', REFERENCE)).toBeNull();
+    expect(parseCron('0 9 1-5 1 *', REFERENCE)).toBeNull();
+    expect(parseCron('0 9 1,15 1 *', REFERENCE)).toBeNull();
   });
 });
 
