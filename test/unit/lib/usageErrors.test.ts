@@ -105,7 +105,7 @@ describe('usage error classification', () => {
         detail: {
           code: 'unsupported_thinking_effort',
           message:
-            "unknown_model: thinking effort capabilities are not registered; cannot honor effort 'medium'.",
+            "effort 'xhigh' is not supported by capability 'modelcap_fixture'; supported: low, medium, high",
         },
       }),
       { status: 422, headers: { 'content-type': 'application/json' } }
@@ -119,7 +119,7 @@ describe('usage error classification', () => {
   });
   it('replaces the diagnostic when a follow-up is refused for its effort', () => {
     const diagnostic =
-      "unknown_model: thinking effort capabilities are not registered; cannot honor effort 'high'.";
+      "effort 'max' is not supported by capability 'modelcap_fixture'; supported: low, medium, high";
     const error = Object.assign(new Error(diagnostic), {
       response: {
         status: 422,

@@ -30,10 +30,9 @@ from app.workspace_config.admission import EnvironmentAdmissionService
 @pytest.mark.parametrize(
     "model,effort",
     [
-        ("unknown-deployment", value)
-        for value in ["low", "medium", "high", "xhigh", "max"]
-    ]
-    + [("gpt-5.5", "xhigh"), ("gpt-5.5", "max")],
+        ("gpt-6-sol", "xhigh"),
+        ("gpt-6-sol", "max"),
+    ],
 )
 async def test_unsupported_effort_returns_422_without_attempt_or_invocation(
     tmp_path, monkeypatch, sample_chat_data, model, effort
@@ -65,11 +64,7 @@ async def test_unsupported_effort_returns_422_without_attempt_or_invocation(
             await chat_controller.post(options, MagicMock())
         assert error.value.status_code == 422
         assert error.value.detail["code"] == "unsupported_thinking_effort"
-        assert (
-            "unknown_model"
-            if model == "unknown-deployment"
-            else "supported: low, medium, high"
-        ) in error.value.detail["message"]
+        assert "supported: low, medium, high" in error.value.detail["message"]
         assert not journal.list_model_invocations("run-1")
         assert not journal.list_run_attempts("run-1")
         assert all(
@@ -102,6 +97,82 @@ async def test_bad_metadata_returns_422_without_echoing_provider_secrets(
     assert error.value.detail["code"] == "invalid_model_capability"
     assert error.value.detail["message"] == "invalid_model_capability_override"
     assert "fixture-secret" not in str(error.value.detail)
+
+
+# Bring-your-own-key models without registered effort capabilities.
+_UNREGISTERED_MODELS = [
+    ("anthropic", "claude-sonnet-4-5"),
+    ("gemini", "gemini-2.5-pro"),
+    ("deepseek", "deepseek-chat"),
+    ("openai-compatible-model", "grok-4"),
+    ("ollama", "qwen3:8b"),
+    ("azure", "unknown-deployment"),
+]
+
+
+async def _admit_chat(journal, tmp_path, monkeypatch, options):
+    admitted = []
+
+    async def admit(data, request):
+        admitted.append(
+            EnvironmentAdmissionService(journal).persist_for_run(
+                run_id="run-1",
+                space_id="space-1",
+                working_directory=tmp_path,
+                created_by="fixture",
+                template=chat_controller._legacy_environment_template(data),
+            )
+        )
+
+    monkeypatch.setattr(chat_controller, "start_chat_stream", admit)
+    await chat_controller.post(options, MagicMock())
+    [result] = admitted
+    return result
+
+
+def _assert_admitted_at_provider_default(journal, result, requested):
+    spec = result.spec
+    assert spec.provider_value == "provider_default"
+    assert spec.provider_parameter_name is None
+    # The request is recorded although no effort is sent.
+    assert spec.thinking_effort_requested.value == requested
+    assert spec.thinking_effort_effective.value == "medium"
+    assert result.binding.thinking_effort_requested == requested
+    capability = spec.semantic_spec["runtime_capability_manifest"][
+        "model_capability"
+    ]
+    assert capability["status"] == "unknown_model"
+    assert capability["supported_efforts"] == []
+    assert any(
+        event.event_type == "run.environment_resolved"
+        for event in journal.list_events("run-1")
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+@pytest.mark.parametrize("platform,model", _UNREGISTERED_MODELS)
+@pytest.mark.parametrize("cloud", [False, True])
+async def test_unknown_model_runs_at_provider_default_with_explicit_effort(
+    tmp_path, monkeypatch, sample_chat_data, platform, model, effort, cloud
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="pending"
+        )
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_type": model,
+                "model_platform": platform,
+                "api_url": "https://proxy.eigent.ai"
+                if cloud
+                else "https://api.example.invalid/v1",
+                "thinking_effort": effort,
+            }
+        )
+        result = await _admit_chat(journal, tmp_path, monkeypatch, options)
+        _assert_admitted_at_provider_default(journal, result, effort)
 
 
 def _install_bundle(journal, effort):
@@ -164,43 +235,33 @@ def _install_bundle(journal, effort):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("composer", [None, "high"])
 @pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
-async def test_unknown_model_rejects_materialized_bundle_effort(
-    tmp_path, monkeypatch, sample_chat_data, effort
+@pytest.mark.parametrize("platform,model", _UNREGISTERED_MODELS)
+async def test_unknown_model_runs_in_a_bundle_space_at_provider_default(
+    tmp_path, monkeypatch, sample_chat_data, platform, model, effort, composer
 ):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         _install_bundle(journal, effort)
         journal.ensure_run(
             run_id="run-1", project_id="project-1", status="pending"
         )
-
-        async def admit(data, request):
-            return EnvironmentAdmissionService(journal).persist_for_run(
-                run_id="run-1",
-                space_id="space-1",
-                working_directory=tmp_path,
-                created_by="fixture",
-                template=chat_controller._legacy_environment_template(data),
-            )
-
-        monkeypatch.setattr(chat_controller, "start_chat_stream", admit)
         options = Chat(
             **{
                 **sample_chat_data,
-                "model_type": "unknown-deployment",
-                "model_platform": "azure",
-                "thinking_effort": None,
+                "model_type": model,
+                "model_platform": platform,
+                "api_url": "https://api.example.invalid/v1",
+                # None is the composer's Default: the Bundle profile applies.
+                "thinking_effort": composer,
             }
         )
-        with pytest.raises(HTTPException) as error:
-            await chat_controller.post(options, MagicMock())
-        assert error.value.status_code == 422
-        assert error.value.detail["code"] == "unsupported_thinking_effort"
-        assert "unknown_model" in error.value.detail["message"]
-        assert effort in error.value.detail["message"]
-        assert journal.list_run_attempts("run-1") == []
+        result = await _admit_chat(journal, tmp_path, monkeypatch, options)
+        _assert_admitted_at_provider_default(
+            journal, result, composer or effort
+        )
+        assert result.spec.bundle_revision_id == "bundle-fixture@1"
         assert not journal.list_model_invocations("run-1")
-        assert not journal.list_events("run-1")
 
 
 @pytest.mark.asyncio
@@ -249,4 +310,78 @@ async def test_sol_runs_in_a_bundle_space_within_its_efforts(
         await chat_controller.post(options, MagicMock())
         [result] = admitted
         assert result.spec.thinking_effort_effective.value == effort
+        assert result.spec.provider_value == effort
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", ["azure", "openai"])
+@pytest.mark.parametrize("effort", ["xhigh", "max"])
+async def test_dynamic_openai_reasoning_model_runs_a_higher_effort_at_high(
+    tmp_path, monkeypatch, sample_chat_data, platform, effort
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="pending"
+        )
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_type": "gpt-5.5",
+                "model_platform": platform,
+                "thinking_effort": effort,
+            }
+        )
+        result = await _admit_chat(journal, tmp_path, monkeypatch, options)
+        assert result.spec.thinking_effort_requested.value == effort
+        assert result.spec.thinking_effort_effective.value == "high"
+        assert result.spec.provider_parameter_name == "reasoning_effort"
+        assert result.spec.provider_value == "high"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("effort", ["xhigh", "max"])
+async def test_dynamic_openai_reasoning_model_runs_in_a_bundle_space_at_high(
+    tmp_path, monkeypatch, sample_chat_data, effort
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        _install_bundle(journal, effort)
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="pending"
+        )
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_type": "gpt-5.5",
+                "model_platform": "openai",
+                "thinking_effort": None,
+            }
+        )
+        result = await _admit_chat(journal, tmp_path, monkeypatch, options)
+        assert result.spec.thinking_effort_requested.value == effort
+        assert result.spec.thinking_effort_effective.value == "high"
+        assert result.spec.provider_value == "high"
+        assert result.spec.bundle_revision_id == "bundle-fixture@1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("effort", ["low", "medium", "high"])
+async def test_dynamic_openai_reasoning_model_still_sends_its_effort(
+    tmp_path, monkeypatch, sample_chat_data, effort
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="pending"
+        )
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_type": "gpt-5.5",
+                "model_platform": "openai",
+                "thinking_effort": effort,
+            }
+        )
+        result = await _admit_chat(journal, tmp_path, monkeypatch, options)
+        assert result.spec.thinking_effort_requested.value == effort
+        assert result.spec.thinking_effort_effective.value == effort
+        assert result.spec.provider_parameter_name == "reasoning_effort"
         assert result.spec.provider_value == effort

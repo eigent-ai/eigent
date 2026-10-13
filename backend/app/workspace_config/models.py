@@ -824,20 +824,25 @@ class ProviderModelCapability:
         self,
         requested: str | ThinkingEffort | None,
         *,
-        allow_dynamic_remap: bool = False,
+        # Models recognised by name (dynamic) have an inferred effort list, so
+        # an effort outside it runs at the nearest one instead of failing.
+        # Registered catalog models stay strict.
+        allow_dynamic_remap: bool = True,
     ) -> EffortResolution:
         if not self.supported_efforts:
-            if requested is not None:
-                raise UnsupportedThinkingEffortError(
-                    f"{self.diagnostic}; cannot honor effort "
-                    f"{str(requested)!r}. Register model capabilities or "
-                    "omit thinking_effort to use the provider default."
-                )
-            # MEDIUM is retained only as the legacy persisted enum sentinel.
-            # The capability advertises no supported choices, no parameter,
-            # and an explicit unknown_model diagnostic in its snapshot.
+            # Without registered efforts, a requested effort (composer,
+            # Session, Space or Bundle profile) never blocks the Run: the
+            # provider keeps its own default and no parameter is sent. The
+            # request is still recorded. MEDIUM is retained only as the
+            # legacy persisted enum sentinel for the effective effort; the
+            # capability advertises no supported choices, no parameter, and
+            # an explicit unknown_model diagnostic in its snapshot.
             return EffortResolution(
-                requested=self.default_effort,
+                requested=(
+                    normalize_thinking_effort(requested)
+                    if requested is not None
+                    else self.default_effort
+                ),
                 effective=self.default_effort,
                 provider_parameter_name=None,
                 provider_value="provider_default",

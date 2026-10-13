@@ -2,8 +2,9 @@
 
 The backend resolves thinking effort through a versioned capability declaration
 before admitting a Run. The resolved provider value and transport are recorded in
-the environment specification and used when constructing the model. An explicitly
-requested unsupported effort is rejected instead of silently becoming `medium`.
+the environment specification and used when constructing the model. For a model
+registered in the catalog or an override, an explicitly requested unsupported
+effort is rejected instead of silently becoming `medium`.
 
 ## Capability sources
 
@@ -46,7 +47,10 @@ of every catalog entry's capability digest, so a bump would block Resume for
 every interrupted attempt on an existing entry (see Revisions and resume).
 
 Legacy OpenAI/Azure prefix rules remain compatibility fallbacks. New models should
-use a catalog entry or override. The existing Codex subscription mapping of
+use a catalog entry or override. Because a prefix match only infers the supported
+efforts, such a model runs a requested effort outside them at the nearest
+supported one (for example `xhigh` at `high`) and records both the requested and
+the effective effort, instead of failing admission. The existing Codex subscription mapping of
 `max` to `xhigh` is unchanged. The historical product alias `ultra` normalizes to
 the product effort `max`; `ultra` is not forwarded as a provider value.
 
@@ -105,17 +109,21 @@ transport. The runtime capability manifest records the capability source,
 revision, supported values, mapping, selected transport, and any unknown-model
 diagnostic. These fields contain no credentials.
 
-When an unknown model has an explicit thinking effort, admission fails with a
-structured HTTP 422 `unsupported_thinking_effort` response. If effort was omitted,
-the model may use its provider default and the snapshot reports `unknown_model`.
-The existing persisted `medium` enum remains a compatibility sentinel in that
-case; `provider_default` and the diagnostic indicate that no specific effort was
-established or sent. Invalid capability metadata returns HTTP 422
-`invalid_model_capability`.
+An unknown model always runs at its provider default, and the snapshot reports
+`unknown_model`. An effort requested by the application (the input box, a
+Session or Space setting, or a Bundle model profile) does not block the Run and
+is not sent: the requested effort is recorded, while the persisted effective
+`medium` enum remains a compatibility sentinel and `provider_default` with the
+diagnostic indicates that no effort was established or sent. This applies to new
+tasks, follow-ups, Resume, and managed Agent configurations. A model registered
+in the catalog or an override still fails admission with a structured HTTP 422
+`unsupported_thinking_effort` response for an effort it does not support.
+Invalid capability metadata returns HTTP 422 `invalid_model_capability`.
 
-At model construction, the admitted effort takes precedence over conflicting
-effort fields in provider configuration, including `extra_body`. The helper
-normalizes the supported effort locations into the selected transport:
+At model construction, a registered model's admitted effort takes precedence
+over conflicting effort fields in provider configuration, including
+`extra_body`. The helper normalizes the supported effort locations into the
+selected transport:
 
 | Transport        | Provider request field |
 | ---------------- | ---------------------- |
@@ -125,8 +133,18 @@ normalizes the supported effort locations into the selected transport:
 Responses-only reasoning options, such as a summary, remain in the Responses
 `reasoning` object. They are rejected for Chat Completions. Responses requests drop
 Chat-specific `stream_options`. An `extra_body.model` override is rejected because
-it would invalidate the capability scope. Conflicting unpinned effort values or
-unregistered raw provider effort values are also rejected.
+it would invalidate the capability scope. Conflicting unpinned effort values are
+also rejected, as are raw provider effort values outside a registered model's
+mapping.
+
+For an unknown model, an effort written into the user's own provider
+configuration (`reasoning_effort`, `thinking_effort`, `reasoning.effort`, or the
+same fields in `extra_body`) is sent as written in the selected transport's
+field, because the user owns that endpoint; it is not checked against a mapping.
+The same applies whenever the admitted value is `provider_default`, which is only
+admitted for an unknown model. The structural checks above still apply. Eigent
+Cloud requests for an unknown model never carry such an effort and are rejected
+instead.
 
 A custom agent model resolves its own effort. It does not inherit the task's
 admitted effort; a provider/model/endpoint change also discards an inherited
@@ -145,8 +163,9 @@ rewrite historical attempts or bypass that check. Start a new Run when an older
 attempt cannot satisfy the current capability contract.
 
 One case may resume across a digest change: an attempt admitted for an
-unregistered model, which sent no effort, after that model gains a catalog
-entry. Resume keeps the pinned provider default, so its requests do not change.
+unregistered model, which sent no effort of its own, after that model gains a
+catalog entry. Resume keeps the pinned provider default, including an effort
+from the user's own provider configuration, so its requests do not change.
 It is allowed only when the current capability comes from the catalog, the
 pinned transport equals the current one, and resolving the current inputs with
 no catalog entries reproduces the pinned digest. A change of authentication
