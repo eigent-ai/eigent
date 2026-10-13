@@ -31,6 +31,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tag } from '@/components/ui/tag';
 import { Textarea } from '@/components/ui/textarea';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
@@ -70,6 +71,7 @@ import {
   Share2,
   Sparkles,
   Star,
+  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -85,6 +87,16 @@ const KINDS: MemoryKind[] = [
   'todo',
   'lesson',
 ];
+
+/**
+ * An Agent-proposed rule the user has not accepted or dismissed. It stays out
+ * of Agent context until accepted; mirrors the backend's pending state.
+ */
+const isPendingSuggestion = (entry: MemoryEntry) =>
+  entry.created_by === 'agent' &&
+  (entry.kind === 'preference' || entry.kind === 'constraint') &&
+  !entry.confirmed_by_user &&
+  !entry.deleted_at;
 
 const TRUST_LABELS: Record<
   MemoryEntry['source_trust'],
@@ -165,6 +177,10 @@ export default function Memory({
   const [draftKind, setDraftKind] = useState<MemoryKind>('fact');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [actingSuggestionId, setActingSuggestionId] = useState<string | null>(
+    null
+  );
+  const [suggestionError, setSuggestionError] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'added-time' | 'type'>('added-time');
@@ -198,6 +214,7 @@ export default function Memory({
     }
     setLoading(true);
     setError('');
+    setSuggestionError('');
     try {
       const response = await listMemoryEntries(
         scopeType,
@@ -231,14 +248,27 @@ export default function Memory({
     void reload();
   }, [reload]);
 
-  const runAndReload = async (operation: () => Promise<unknown>) => {
-    setError('');
+  const runAndReload = async (
+    operation: () => Promise<unknown>,
+    reportError: (message: string) => void = setError
+  ) => {
+    reportError('');
     try {
       await operation();
       await reload();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      reportError(caught instanceof Error ? caught.message : String(caught));
     }
+  };
+
+  const actOnSuggestion = (
+    entry: MemoryEntry,
+    operation: () => Promise<unknown>
+  ) => {
+    setActingSuggestionId(entry.memory_id);
+    void runAndReload(operation, setSuggestionError).finally(() =>
+      setActingSuggestionId(null)
+    );
   };
 
   const updateSettings = (patch: {
@@ -288,16 +318,28 @@ export default function Memory({
         )
       )
     : 0;
+  // Suggestions are listed on their own, never as ordinary saved entries.
+  const suggestions = useMemo(
+    () =>
+      entries
+        .filter(isPendingSuggestion)
+        .sort((left, right) => right.created_at - left.created_at),
+    [entries]
+  );
+  const savedEntries = useMemo(
+    () => entries.filter((entry) => !isPendingSuggestion(entry)),
+    [entries]
+  );
   const visibleEntries = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     const filtered = needle
-      ? entries.filter(
+      ? savedEntries.filter(
           (entry) =>
             entry.content.toLocaleLowerCase().includes(needle) ||
             entry.kind.includes(needle) ||
             trustLabel(entry.source_trust).toLocaleLowerCase().includes(needle)
         )
-      : entries;
+      : savedEntries;
 
     return [...filtered].sort((left, right) => {
       if (left.pinned_by_user !== right.pinned_by_user) {
@@ -309,7 +351,7 @@ export default function Memory({
       }
       return right.created_at - left.created_at;
     });
-  }, [entries, search, sortBy, trustLabel]);
+  }, [savedEntries, search, sortBy, trustLabel]);
 
   const syncStatusLabel =
     syncStatus === 'synced'
@@ -325,6 +367,7 @@ export default function Memory({
             });
   const initialLoading = loading && !scopeState;
   const activeEntryCount = entries.filter((entry) => !entry.deleted_at).length;
+  const savedEntryCount = activeEntryCount - suggestions.length;
   const scopePresentation =
     scopeType === 'space'
       ? {
@@ -484,7 +527,7 @@ export default function Memory({
           };
   const ScopeIcon = scopePresentation.icon;
   const showEntryControls =
-    entries.length > 0 || search.trim().length > 0 || showArchived;
+    savedEntries.length > 0 || search.trim().length > 0 || showArchived;
   const emptyStateCopy = search.trim()
     ? {
         title: t('setting.memory-no-matching-title', {
@@ -617,6 +660,168 @@ export default function Memory({
               </span>
             </div>
           </div>
+          {suggestions.length > 0 ? (
+            <SettingsRowGroup data-memory-suggestions>
+              <SettingsRow
+                title={t('setting.memory-suggested-title', {
+                  defaultValue: 'Suggested',
+                })}
+                description={t('setting.memory-suggested-description', {
+                  defaultValue:
+                    'An Agent suggested these from your messages. They are not used until you accept or edit them.',
+                })}
+              >
+                <div className="flex flex-col gap-3">
+                  {suggestions.map((entry) => {
+                    const editing = editingId === entry.memory_id;
+                    const acting = actingSuggestionId === entry.memory_id;
+                    const excerpts = entry.source_excerpts ?? [];
+                    return (
+                      <article
+                        key={entry.memory_id}
+                        aria-busy={acting}
+                        className="rounded-xl bg-ds-neutral-subtle-default p-3"
+                      >
+                        <Tag
+                          size="xs"
+                          variant="secondary"
+                          emphasis="muted"
+                          text={memoryKindLabel(entry.kind)}
+                        />
+                        {editing ? (
+                          <Textarea
+                            value={editingText}
+                            onChange={(event) =>
+                              setEditingText(event.target.value)
+                            }
+                            aria-label={t('setting.memory-edit', {
+                              defaultValue: 'Edit Memory',
+                            })}
+                            className="mt-2 max-h-20 min-h-20 resize-none"
+                          />
+                        ) : (
+                          <div className="mt-2 text-ds-text-base break-words whitespace-pre-wrap text-ds-ink-default-default">
+                            {entry.content}
+                          </div>
+                        )}
+                        {excerpts.length > 0 ? (
+                          <figure className="mx-0 mt-3 mb-0 flex flex-col gap-1">
+                            <figcaption className="text-ds-text-meta text-ds-ink-muted-default">
+                              {t('setting.memory-suggestion-source', {
+                                defaultValue: 'From your message',
+                              })}
+                            </figcaption>
+                            {excerpts.map((excerpt, index) => (
+                              <blockquote
+                                key={index}
+                                className="m-0 rounded-xl bg-ds-neutral-default-default px-3 py-2 text-ds-text-base break-words whitespace-pre-wrap text-ds-ink-muted-default"
+                              >
+                                {excerpt}
+                              </blockquote>
+                            ))}
+                          </figure>
+                        ) : null}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {editing ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                buttonRadius="full"
+                                disabled={acting || !editingText.trim()}
+                                onClick={() =>
+                                  actOnSuggestion(entry, () =>
+                                    updateMemoryEntry(entry, {
+                                      content: editingText.trim(),
+                                      kind: entry.kind,
+                                      reason: 'Edited in Memory Center',
+                                    }).then(() => setEditingId(null))
+                                  )
+                                }
+                              >
+                                <Save aria-hidden />{' '}
+                                {t('setting.save', { defaultValue: 'Save' })}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                buttonRadius="full"
+                                disabled={acting}
+                                onClick={() => setEditingId(null)}
+                              >
+                                {t('setting.cancel', {
+                                  defaultValue: 'Cancel',
+                                })}
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                buttonRadius="full"
+                                disabled={acting}
+                                onClick={() =>
+                                  actOnSuggestion(entry, () =>
+                                    confirmMemoryEntry(entry)
+                                  )
+                                }
+                              >
+                                <Check aria-hidden />{' '}
+                                {t('setting.memory-suggestion-accept', {
+                                  defaultValue: 'Accept',
+                                })}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                buttonRadius="full"
+                                disabled={acting}
+                                onClick={() => {
+                                  setEditingId(entry.memory_id);
+                                  setEditingText(entry.content);
+                                }}
+                              >
+                                <Pencil aria-hidden />{' '}
+                                {t('setting.edit', { defaultValue: 'Edit' })}
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            buttonRadius="full"
+                            disabled={acting}
+                            onClick={() =>
+                              actOnSuggestion(entry, () =>
+                                archiveMemoryEntry(entry)
+                              )
+                            }
+                          >
+                            <X aria-hidden />{' '}
+                            {t('setting.memory-suggestion-dismiss', {
+                              defaultValue: 'Dismiss',
+                            })}
+                          </Button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+                {suggestionError ? (
+                  <div
+                    role="alert"
+                    className="mt-3 text-ds-text-base text-ds-text-error-default-default"
+                  >
+                    {suggestionError}
+                  </div>
+                ) : null}
+              </SettingsRow>
+            </SettingsRowGroup>
+          ) : null}
           {reconciliationItems.length > 0 && (
             <SettingsRowGroup>
               <SettingsRow
@@ -900,7 +1105,7 @@ export default function Memory({
                   <span>{scopePresentation.collectionTitle}</span>
                   {!initialLoading ? (
                     <span className="rounded-full bg-ds-neutral-subtle-default px-2 py-0.5 text-ds-text-meta font-medium text-ds-ink-muted-default">
-                      {activeEntryCount}
+                      {savedEntryCount}
                     </span>
                   ) : null}
                 </span>
