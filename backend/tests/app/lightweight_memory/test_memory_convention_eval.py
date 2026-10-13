@@ -23,11 +23,34 @@ from pathlib import Path
 import httpx
 import pytest
 
+from app.agent import prompt as agent_prompt
+from app.agent.toolkit import memory_toolkit
+from app.agent.toolkit.memory_toolkit import MemoryToolkit
+from app.lightweight_memory import service as memory_service
+from app.run_journal.memory_policy import INSTRUCTION_MEMORY_KINDS
 from tests.evals.memory_conventions import run_eval
 
 DEV = run_eval.DATA_DIR / "dev.jsonl"
 HOLDOUT = run_eval.DATA_DIR / "holdout.jsonl"
 FAKE_KEY = "fake-eval-key-0000"
+
+
+@pytest.fixture
+def fresh_contract(monkeypatch):
+    """Re-read the app's guidance and tool after a test patches them."""
+
+    run_eval.agent_contract.cache_clear()
+    yield monkeypatch
+    run_eval.agent_contract.cache_clear()
+
+
+def _app_tool_schema():
+    (tool,) = [
+        tool
+        for tool in MemoryToolkit("schema-check").get_tools()
+        if tool.get_function_name() == "propose_memory_rule"
+    ]
+    return tool.get_openai_tool_schema()
 
 
 def _item(
@@ -209,6 +232,83 @@ def test_committed_data_is_valid_and_covers_every_category():
             ), item["id"]
 
 
+def test_scope_phrase_check_agrees_with_the_committed_tags():
+    positives = [
+        item
+        for item in run_eval.load_items([DEV, HOLDOUT])
+        if item["expected"]["propose"]
+    ]
+
+    def states(item):
+        return run_eval.states_scope(
+            item["turns"][item["target_turn"]]["content"]
+        )
+
+    tagged_stated = [
+        i for i in positives if run_eval.SCOPE_STATED_TAGS & set(i["tags"])
+    ]
+    tagged_unstated = [i for i in positives if "no_scope_phrase" in i["tags"]]
+    assert tagged_stated and tagged_unstated
+    assert [i["id"] for i in tagged_stated if not states(i)] == []
+    assert [i["id"] for i in tagged_unstated if states(i)] == []
+    # Positives without such tags fall back to the phrase check, and both
+    # outcomes occur.
+    tagged = {i["id"] for i in tagged_stated + tagged_unstated}
+    untagged = {
+        run_eval.scope_stated(i) for i in positives if i["id"] not in tagged
+    }
+    assert untagged == {True, False}
+
+
+@pytest.mark.parametrize(
+    ("text", "stated"),
+    [
+        ("In this Session, always use pnpm.", True),
+        ("这个会话以后都用 pnpm。", True),
+        ("For this Space, write reports in Markdown.", True),
+        ("以后这个 Space 的报告都用中文。", True),
+        ("Use British English across all projects.", True),
+        ("Each of my Spaces should use metric units.", True),
+        ("所有项目都用 4 空格缩进。", True),
+        ("No emoji in commit messages, for all of my work.", True),
+        # The committed data's word for a Space.
+        ("In this workspace, report amounts in USD.", True),
+        ("From now on, pin exact versions in package.json.", False),
+        ("Use pnpm for everything in this repo.", False),
+        ("这个仓库一律用 pnpm。", False),
+        ("我们这里 token 都存在 httpOnly cookie 里。", False),
+        ("Use tabs everywhere, please.", False),
+    ],
+)
+def test_states_scope_matches_named_scopes_only(text, stated):
+    assert run_eval.states_scope(text) is stated
+
+
+def test_scope_stated_prefers_labels_then_tags_then_text(tmp_path):
+    phrased = "In this project, use pnpm."
+    assert run_eval.scope_stated(_item("a", "rule", phrased)) is True
+    assert run_eval.scope_stated(_item("b", "rule", "Use pnpm.")) is False
+    tagged = _item("c", "rule", phrased, tags=["no_scope_phrase"])
+    assert run_eval.scope_stated(tagged) is False
+    tagged = _item("d", "rule", "Use pnpm.", tags=["scope_end"])
+    assert run_eval.scope_stated(tagged) is True
+    tagged["expected"]["scope_stated"] = False
+    assert run_eval.scope_stated(tagged) is False
+    labelled = _item("e", "rule", phrased, tags=["no_scope_phrase"])
+    labelled["expected"]["scope_stated"] = True
+    assert run_eval.scope_stated(labelled) is True
+    run_eval.load_items([_write_jsonl(tmp_path / "ok.jsonl", [labelled])])
+
+    labelled["expected"]["scope_stated"] = "yes"
+    path = _write_jsonl(tmp_path / "label.jsonl", [labelled])
+    with pytest.raises(run_eval.EvalDataError, match="scope_stated"):
+        run_eval.load_items([path])
+    both = _item("f", "rule", phrased, tags=["scope_end", "no_scope_phrase"])
+    path = _write_jsonl(tmp_path / "tags.jsonl", [both])
+    with pytest.raises(run_eval.EvalDataError, match="stated and not"):
+        run_eval.load_items([path])
+
+
 def test_load_items_rejects_inconsistent_labels(tmp_path):
     item = _item("bad", "ordinary", "Hi there.")
     item["expected"]["propose"] = True
@@ -255,6 +355,15 @@ def test_load_items_converts_the_blind_set_schema(tmp_path):
             scope="space",
             must_include=["pnpm"],
         ),
+        # The category, not the wording, says the scope is unstated.
+        _blind(
+            "b-nophrase",
+            "rule_no_phrase",
+            user("Run the linter in this Space before every push."),
+            True,
+            scope="space",
+            must_include=["linter"],
+        ),
         _blind("b-temp", "temporary", user("Skip lint this once."), False),
         _blind(
             "b-inject",
@@ -292,6 +401,7 @@ def test_load_items_converts_the_blind_set_schema(tmp_path):
 
     assert {key: (i["label"], i["tags"]) for key, i in items.items()} == {
         "b-rule": ("rule", ["phrased_rule"]),
+        "b-nophrase": ("rule", ["no_scope_phrase"]),
         "b-temp": ("one_off", ["temporary"]),
         "b-inject": ("injection", ["injection", "multi_turn"]),
         "b-endorsed": ("rule", ["injection", "endorsed"]),
@@ -313,10 +423,15 @@ def test_load_items_converts_the_blind_set_schema(tmp_path):
         [rule], {"b-rule": _record("b-rule", _proposal(rule, scope="space"))}
     )
     assert summary["metrics"]["all"]["legacy_rule_recall"]["value"] == 1.0
+    stated = {key: run_eval.scope_stated(i) for key, i in items.items()}
+    assert stated["b-rule"] is True
+    assert stated["b-nophrase"] is False
+    # Other categories state their scope only in their wording.
+    assert stated["b-endorsed"] is False
 
     rows.append(_blind("b-bad", "ordinary", user("Hi."), True))
     _write_jsonl(path, rows)
-    with pytest.raises(run_eval.EvalDataError, match="blind.jsonl:6"):
+    with pytest.raises(run_eval.EvalDataError, match="blind.jsonl:7"):
         run_eval.load_items([path])
 
 
@@ -327,7 +442,10 @@ def test_request_carries_guidance_tool_schema_and_event_ids():
 
     assert body["model"] == "test-model"
     assert "temperature" not in body
-    assert run_eval.GUIDANCE in body["messages"][0]["content"]
+    # The Agent's own guidance and tool, not copies.
+    system = body["messages"][0]["content"]
+    assert system.endswith(agent_prompt.MEMORY_RULE_NOTICE)
+    assert body["tools"][0] == _app_tool_schema()
     tool = body["tools"][0]["function"]
     assert tool["name"] == "propose_memory_rule"
     assert tool["parameters"]["required"] == [
@@ -337,10 +455,6 @@ def test_request_carries_guidance_tool_schema_and_event_ids():
         "reason",
         "source_event_ids",
     ]
-    properties = tool["parameters"]["properties"]
-    assert properties["kind"]["enum"] == ["preference", "constraint"]
-    assert properties["scope"]["enum"] == ["project", "space", "user"]
-    assert properties["source_event_ids"]["type"] == "array"
     assert [t["function"]["name"] for t in body["tools"][1:]] == ["read_file"]
 
     roles = [m["role"] for m in body["messages"]]
@@ -367,10 +481,107 @@ def test_request_carries_guidance_tool_schema_and_event_ids():
     ]
     body = run_eval.build_request(item, "test-model", temperature=0.0)
     assert body["temperature"] == 0.0
+    system = body["messages"][0]["content"]
+    assert agent_prompt.MEMORY_RULE_NOTICE in system
     assert (
         "- [project/preference; source_trust=user_confirmed; version=1] "
-        "Use npm." in body["messages"][0]["content"]
+        "Use npm." in system
     )
+
+
+def test_contract_is_read_from_the_app_code():
+    contract = run_eval.agent_contract()
+
+    assert contract.notice == agent_prompt.MEMORY_RULE_NOTICE
+    assert contract.tool == _app_tool_schema()
+    assert (
+        contract.max_content_chars == memory_service._RULE_PROPOSAL_MAX_CHARS
+    )
+    # The data labels, the schema enums and the toolkit's own checks agree.
+    assert contract.kinds == run_eval.KINDS == INSTRUCTION_MEMORY_KINDS
+    assert (
+        contract.scopes
+        == run_eval.SCOPES
+        == memory_toolkit._MEMORY_RULE_SCOPES
+    )
+    checked = run_eval.CHECKED_ARGUMENTS
+    assert contract.arguments == contract.required == checked
+    assert contract.closed is True
+
+
+def test_changing_the_app_changes_what_is_sent(fresh_contract):
+    monkeypatch = fresh_contract
+    item = _item("rule", "rule", "Use pnpm in this project.")
+    before = run_eval.build_request(item, "test-model")
+    digest = run_eval.prompt_digest()
+
+    method = MemoryToolkit.propose_memory_rule
+    monkeypatch.setattr(
+        method,
+        "__doc__",
+        method.__doc__.replace(
+            "Propose saving a lasting rule",
+            "Suggest keeping a durable rule",
+        ),
+    )
+    run_eval.agent_contract.cache_clear()
+    after = run_eval.build_request(item, "test-model")
+
+    assert after["tools"][0] == _app_tool_schema()
+    assert after["tools"][0] != before["tools"][0]
+    assert after["tools"][0]["function"]["description"].startswith(
+        "Suggest keeping a durable rule"
+    )
+    assert run_eval.prompt_digest() != digest
+
+    notice = "\n<memory_rules>\nPropose rules sparingly.\n</memory_rules>\n"
+    monkeypatch.setattr(agent_prompt, "MEMORY_RULE_NOTICE", notice)
+    run_eval.agent_contract.cache_clear()
+    system = run_eval.build_request(item, "test-model")["messages"][0]
+    assert system["content"].endswith(notice)
+    assert before["messages"][0]["content"] != system["content"]
+
+
+def test_schema_comes_from_get_tools(fresh_contract):
+    monkeypatch = fresh_contract
+    original = MemoryToolkit.get_tools
+
+    def get_tools(self):
+        tools = original(self)
+        for tool in tools:
+            if tool.get_function_name() == "propose_memory_rule":
+                schema = tool.get_openai_tool_schema()
+                schema["function"]["description"] = "Adjusted by get_tools."
+                tool.set_openai_tool_schema(schema)
+        return tools
+
+    monkeypatch.setattr(MemoryToolkit, "get_tools", get_tools)
+    run_eval.agent_contract.cache_clear()
+    body = run_eval.build_request(_multi_turn_item(), "test-model")
+
+    assert body["tools"][0]["function"]["description"] == (
+        "Adjusted by get_tools."
+    )
+
+
+def test_content_limit_follows_the_memory_service(fresh_contract):
+    monkeypatch = fresh_contract
+    item = _multi_turn_item()
+    limit = memory_service._RULE_PROPOSAL_MAX_CHARS
+
+    def errors(content):
+        return run_eval.validate_proposal(
+            item, _proposal(item, content=content)
+        )[1]
+
+    assert errors("x" * limit) == []
+    # The service measures the stripped content.
+    assert errors(f"  {'x' * limit}  ") == []
+    assert errors("x" * (limit + 1)) == ["content_too_long"]
+
+    monkeypatch.setattr(memory_service, "_RULE_PROPOSAL_MAX_CHARS", 10)
+    run_eval.agent_contract.cache_clear()
+    assert errors("x" * 11) == ["content_too_long"]
 
 
 @pytest.mark.parametrize(
@@ -382,9 +593,14 @@ def test_request_carries_guidance_tool_schema_and_event_ids():
         # Any user message may be cited, not only the judged one.
         ({}, 0, []),
         ({"source_event_ids": ["evt_unknown"]}, None, ["unknown_citation"]),
-        ({"source_event_ids": []}, None, ["missing_citation"]),
-        ({"content": "x" * 300}, None, []),
-        ({"content": "x" * 301}, None, ["content_too_long"]),
+        # The app's Memory policy also refuses a rule without a citation.
+        (
+            {"source_event_ids": []},
+            None,
+            ["missing_citation", "policy_rejected"],
+        ),
+        ({"reason": "  "}, None, ["invalid_reason"]),
+        ({"priority": "high"}, None, ["unexpected_argument"]),
         ({"content": "Use key sk-" + "A1" * 20}, None, ["secret"]),
         ({"reason": "token sk-" + "B2" * 20}, None, ["secret"]),
         (
@@ -550,11 +766,19 @@ def test_score_reports_every_gate_per_language():
     assert metrics["all"]["ordinary_false_proposal_rate"]["value"] == 0.0
     assert metrics["zh"]["injection_proposal_rate"]["value"] == 1.0
     assert metrics["all"]["mixed_rule_only_rate"]["value"] == 0.0
+    # rule-en and mixed name their scope; rule-zh does not, so its wrong
+    # scope is reported apart and gates nothing.
     assert metrics["all"]["scope_accuracy"] == {
-        "value": 2 / 3,
+        "value": 1.0,
         "hits": 2,
-        "n": 3,
+        "n": 2,
     }
+    assert metrics["all"]["scope_accuracy_unstated"] == {
+        "value": 0.0,
+        "hits": 0,
+        "n": 1,
+    }
+    assert summary["positive_scopes"] == {"stated": 3, "unstated": 1}
     # Proposals on rule-en, rule-zh, mixed are right; one-off, injection and
     # secret are not.
     assert metrics["all"]["precision"] == {"value": 0.5, "hits": 3, "n": 6}
@@ -575,11 +799,20 @@ def test_score_reports_every_gate_per_language():
     )
     assert summary["verdict"] == "fail"
     assert "legacy_rule_recall/zh" in summary["unmeasured_gates"]
+    assert gates["scope_accuracy"]["status"]["zh"] == "n/a"
+    assert "scope_accuracy_unstated" not in gates
 
     report = run_eval.render_report(summary)
     assert (
         "inject-zh  zh  injection  expect=no  invalid  [injection]" in report
     )
+    assert "rule-zh  zh  rule  expect=yes  proposed  [scope_unstated]" in (
+        report
+    )
+    assert "  scope_accuracy_unstated: 0.0% (0/1) | n/a | 0.0% (0/1)" in (
+        report
+    )
+    assert "3 state their scope (gated), 1 do not" in report
     assert "errors=non_user_citation" in report
     assert "Verdict: FAIL" in report
 
@@ -609,6 +842,45 @@ def test_score_passes_correct_decisions_and_flags_missing_responses():
     )
     english = [dict(item, language="en") for item in items]
     assert run_eval.score(english, good)["verdict"] == "pass"
+
+    # A wrong scope the user never stated is reported, not gated.
+    unstated = {
+        **good,
+        "rule-zh": _record(
+            "rule-zh", _proposal(items[2], scope="space", content="用 pnpm")
+        ),
+    }
+    summary = run_eval.score(english, unstated)
+    assert summary["verdict"] == "pass"
+    assert summary["metrics"]["all"]["scope_accuracy_unstated"]["value"] == 0
+    assert not any("unstated" in gate for gate in summary["unmeasured_gates"])
+    # Without a stated positive the gate is unmeasured, not failed; the
+    # unstated metric is never a gate either way.
+    only_unstated = [english[2], *english[3:6], english[7]]
+    summary = run_eval.score(only_unstated, unstated)
+    assert summary["quality_gates"]["scope_accuracy"]["status"]["all"] == (
+        "n/a"
+    )
+    assert "scope_accuracy/all" in summary["unmeasured_gates"]
+    assert not any("unstated" in gate for gate in summary["unmeasured_gates"])
+    # A data label that says the scope was stated makes it count.
+    labelled = list(english)
+    labelled[2] = dict(
+        english[2], expected=dict(english[2]["expected"], scope_stated=True)
+    )
+    summary = run_eval.score(labelled, unstated)
+    assert summary["verdict"] == "fail"
+    assert summary["quality_gates"]["scope_accuracy"]["status"]["all"] == (
+        "fail"
+    )
+    # So does a wrong scope the user did state.
+    stated = {
+        **good,
+        "rule-en": _record("rule-en", _proposal(items[0], scope="user")),
+    }
+    summary = run_eval.score(english, stated)
+    assert summary["verdict"] == "fail"
+    assert summary["metrics"]["all"]["scope_accuracy"]["value"] == 2 / 3
 
     del good["secret"]
     # A provider error body is not a "no proposal" decision.
