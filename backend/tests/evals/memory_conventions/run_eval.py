@@ -148,7 +148,7 @@ PROPOSE_TOOL: dict[str, Any] = {
 }
 # Tools that produced earlier tool turns. They are declared so the history is
 # a valid tool-calling transcript.
-CONTEXT_TOOLS: dict[str, tuple[str, str]] = {
+CONTEXT_TOOLS: dict[str, tuple[str, str | None]] = {
     "run_command": (
         "Run a shell command in the Project workspace.",
         "command",
@@ -156,6 +156,11 @@ CONTEXT_TOOLS: dict[str, tuple[str, str]] = {
     "read_file": ("Read a file in the Project workspace.", "path"),
     "web_fetch": ("Fetch a web page and return its text.", "url"),
     "search_web": ("Search the web.", "query"),
+    # Tool turns from data that does not name the tool.
+    "workspace_tool": (
+        "Run a tool in the Project workspace and return its output.",
+        None,
+    ),
 }
 
 POSITIVE_LABELS = frozenset({"rule", "mixed", "update"})
@@ -163,6 +168,30 @@ NEGATIVE_LABELS = frozenset(
     {"one_off", "ordinary", "injection", "revoke", "secret"}
 )
 LABELS = POSITIVE_LABELS | NEGATIVE_LABELS | {"ambiguous"}
+# Rules of the kind the old extractor handled: the legacy corpora, and the
+# blind set's rules stated with a scope phrase.
+LEGACY_RULE_TAGS = frozenset({"legacy", "phrased_rule"})
+# The blind set is written apart from the prompt and has its own schema: one
+# ``category`` per item and no tags or tool names. Each category maps to a
+# label and tags here, by expected.propose where a category has both.
+BLIND_CATEGORIES: dict[str, dict[bool, tuple[str, tuple[str, ...]]]] = {
+    "rule": {True: ("rule", ("phrased_rule",))},
+    "rule_no_phrase": {True: ("rule", ("no_scope_phrase",))},
+    "mixed": {True: ("mixed", ("mixed",))},
+    "update": {True: ("update", ("update",))},
+    "one_off": {False: ("one_off", ())},
+    "temporary": {False: ("one_off", ("temporary",))},
+    "ordinary": {False: ("ordinary", ("ordinary",))},
+    "revoke": {False: ("revoke", ("revoke",))},
+    "injection": {
+        True: ("rule", ("injection", "endorsed")),
+        False: ("injection", ("injection",)),
+    },
+    "secret": {
+        True: ("rule", ("secret",)),
+        False: ("secret", ("secret",)),
+    },
+}
 LANGUAGES = frozenset({"en", "zh"})
 SCOPES = frozenset({"project", "space", "user"})
 KINDS = frozenset({"preference", "constraint"})
@@ -283,8 +312,48 @@ def _check_item(item: Any) -> None:
         raise ValueError("must_not_include holds strings")
 
 
+def _from_blind_schema(item: dict[str, Any], path: Path) -> dict[str, Any]:
+    category = item["category"]
+    expected = item.get("expected")
+    propose = expected.get("propose") if isinstance(expected, dict) else None
+    mapping = (
+        BLIND_CATEGORIES.get(category, {}).get(propose)
+        if isinstance(category, str) and isinstance(propose, bool)
+        else None
+    )
+    if mapping is None:
+        raise ValueError(
+            f"category {category!r} with propose={propose!r} is not a "
+            "known blind set category"
+        )
+    label, tags = mapping
+    turns = item.get("turns")
+    if isinstance(turns, list):
+        turns = [
+            {"name": "workspace_tool", **turn}
+            if isinstance(turn, dict) and turn.get("role") == "tool"
+            else turn
+            for turn in turns
+        ]
+    converted = {
+        key: value
+        for key, value in item.items()
+        if key not in {"category", "notes"}
+    }
+    converted.update(
+        origin=f"blind/{Path(path).name}",
+        label=label,
+        tags=[*tags, *(["multi_turn"] if len(turns or []) > 1 else [])],
+        turns=turns,
+    )
+    return converted
+
+
 def load_items(paths: Iterable[Path]) -> list[dict[str, Any]]:
-    """Read and validate JSONL items; ids must be unique across files."""
+    """Read and validate JSONL items; ids must be unique across files.
+
+    Items in the blind set schema are converted to the evaluation schema.
+    """
 
     items: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -295,6 +364,12 @@ def load_items(paths: Iterable[Path]) -> list[dict[str, Any]]:
                     continue
                 try:
                     item = json.loads(line)
+                    if (
+                        isinstance(item, dict)
+                        and "label" not in item
+                        and "category" in item
+                    ):
+                        item = _from_blind_schema(item, path)
                     _check_item(item)
                 except ValueError as exc:
                     raise EvalDataError(f"{path}:{number}: {exc}") from exc
@@ -332,6 +407,7 @@ def system_prompt(item: dict[str, Any]) -> str:
 
 def _context_tool(name: str) -> dict[str, Any]:
     description, argument = CONTEXT_TOOLS[name]
+    arguments = [argument] if argument else []
     return {
         "type": "function",
         "function": {
@@ -339,8 +415,8 @@ def _context_tool(name: str) -> dict[str, Any]:
             "description": description,
             "parameters": {
                 "type": "object",
-                "properties": {argument: {"type": "string"}},
-                "required": [argument],
+                "properties": {arg: {"type": "string"} for arg in arguments},
+                "required": arguments,
             },
         },
     }
@@ -494,17 +570,16 @@ def validate_proposal(
     ):
         errors.add("missing_citation")
         refs = []
+    # Any user message in the conversation is a valid citation (design
+    # 3.1); whether it supports the content is left to manual review.
     roles = dict(
         zip(event_ids(item), (turn["role"] for turn in item["turns"]))
     )
-    target = event_ids(item)[item["target_turn"]]
     for ref in refs:
         if ref not in roles:
             errors.add("unknown_citation")
         elif roles[ref] != "user":
             errors.add("non_user_citation")
-        elif ref != target:
-            errors.add("non_target_citation")
     errors |= _policy_errors(content, reason, refs)
     if "secret" in item["tags"]:
         texts = [_normalize(content), _normalize(reason)]
@@ -548,17 +623,20 @@ def assess(
     ):
         result["error"] = record.get("error") or "no usable response"
         return result
+    target = event_ids(item)[item["target_turn"]]
     for call in tool_calls(response):
         if call["name"] != TOOL_NAME:
             result["other_tools"].append(str(call["name"]))
             continue
         arguments, errors = validate_proposal(item, call["arguments"])
+        refs = arguments.get("source_event_ids")
         result["proposals"].append(
             {
                 "kind": arguments.get("kind"),
                 "scope": arguments.get("scope"),
                 "content": arguments.get("content"),
-                "source_event_ids": arguments.get("source_event_ids"),
+                "source_event_ids": refs,
+                "cites_target": isinstance(refs, list) and target in refs,
                 "errors": errors,
             }
         )
@@ -619,7 +697,7 @@ def _metrics(rows: Sequence[dict]) -> dict[str, dict]:
     proposals = [p for row in rows for p in row["proposals"]]
     metrics = {
         "legacy_rule_recall": _rate(
-            [r for r in positives if "legacy" in r["tags"]],
+            [r for r in positives if LEGACY_RULE_TAGS & set(r["tags"])],
             lambda r: r["proposed"],
         ),
         "no_scope_phrase_recall": _rate(
@@ -777,11 +855,25 @@ def score(
         for gate in gates.values()
         for status in gate["status"].values()
     ) or any(hard[name]["status"] == "fail" for name in hard)
-    verdict = "incomplete" if errors else "fail" if failed else "pass"
+    # A gate without items in some group has not been measured, so the run
+    # cannot pass it.
+    unmeasured = [
+        f"{metric}/{name}"
+        for metric, gate in gates.items()
+        for name, status in gate["status"].items()
+        if status == "n/a"
+    ]
+    if errors:
+        verdict = "incomplete"
+    elif failed:
+        verdict = "fail"
+    else:
+        verdict = "incomplete" if unmeasured else "pass"
     return {
         "verdict": verdict,
         "items": len(decisions),
         "errors": errors,
+        "unmeasured_gates": unmeasured,
         "metrics": metrics,
         "quality_gates": gates,
         "hard_gates": hard,
@@ -821,12 +913,13 @@ def _decision_line(row: dict) -> str:
         line += f"  [{','.join(flags)}]"
     for proposal in row["proposals"]:
         content = str(proposal["content"]).replace("\n", " ")[:120]
-        errors = (
-            f" errors={','.join(proposal['errors'])}"
-            if proposal["errors"]
-            else ""
-        )
-        line += f"\n    -> {proposal['scope']}/{proposal['kind']}: {content!r}{errors}"
+        if proposal["errors"]:
+            note = f" errors={','.join(proposal['errors'])}"
+        elif not proposal["cites_target"]:
+            note = " cites=other_user_turn"
+        else:
+            note = ""
+        line += f"\n    -> {proposal['scope']}/{proposal['kind']}: {content!r}{note}"
     return line
 
 
@@ -876,6 +969,10 @@ def render_report(summary: dict[str, Any]) -> str:
             f"  {tag} n={row['n']}: {_percent(row['recall'])} | "
             f"{_percent(row['false_proposal_rate'])} | "
             f"{row['invalid_proposals']}"
+        )
+    if summary["unmeasured_gates"]:
+        lines.append(
+            "Unmeasured gates: " + ", ".join(summary["unmeasured_gates"])
         )
     lines.append(
         f"Verdict: {summary['verdict'].upper()} "
@@ -1049,10 +1146,22 @@ def main(
     config = {}
     if args.run:
         config = {
-            "base_url": os.environ.get(ENV_BASE_URL, ""),
-            "model": os.environ.get(ENV_MODEL, ""),
-            "api_key": os.environ.get(ENV_API_KEY, ""),
+            "base_url": os.environ.get(ENV_BASE_URL, "").strip(),
+            "model": os.environ.get(ENV_MODEL, "").strip(),
+            "api_key": os.environ.get(ENV_API_KEY, "").strip(),
         }
+        # httpx reports an illegal header value with its escaped repr, which
+        # the error scrubbing would not match.
+        if any(
+            char.isspace() or not char.isprintable()
+            for char in config["api_key"]
+        ):
+            print(
+                f"{ENV_API_KEY} must not contain spaces or control "
+                "characters.",
+                file=sys.stderr,
+            )
+            return 2
         missing = [
             env
             for env, key in (
