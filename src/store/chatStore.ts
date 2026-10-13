@@ -4370,6 +4370,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             ),
             resume_request_id: startOptions.resumeRequestId,
             review_handoff_ids: startOptions.reviewHandoffIds ?? [],
+            // Trigger text is not the user's words; Memory must not learn it.
+            ...(triggerExecutionId ? { source: 'scheduled' } : {}),
           }
         : undefined;
 

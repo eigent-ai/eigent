@@ -48,6 +48,8 @@ def service(tmp_path, monkeypatch):
 
 
 def append(service, event_id, content, event_type="user.message", **payload):
+    if event_type == "user.message":
+        payload.setdefault("source", "chat")
     service.journal.append_event(
         "run-1",
         RunEventDraft(
@@ -94,7 +96,10 @@ def test_terminal_flood_is_bounded_and_continues_across_runs(service):
         RunEventDraft(
             event_id="last-user",
             event_type="user.message",
-            payload={"content": "Remember that output is CSV."},
+            payload={
+                "content": "Remember that output is CSV.",
+                "source": "chat",
+            },
         ),
     )
     maintainer = IncrementalMemoryMaintainer(service)
@@ -316,7 +321,7 @@ def test_malicious_extractor_proposal_is_rejected_before_any_write(
         RunEventDraft(
             event_id="foreign",
             event_type="user.message",
-            payload={"content": "unrelated"},
+            payload={"content": "unrelated", "source": "chat"},
         ),
     )
     proposal = ProposedMemoryMutation(
@@ -927,7 +932,10 @@ def test_metadata_scope_bindings_preserve_literal_project_ids(
                 RunEventDraft(
                     event_id=f"scope-event-{index}-{cursor}",
                     event_type="user.message",
-                    payload={"content": f"Remember fact {cursor}."},
+                    payload={
+                        "content": f"Remember fact {cursor}.",
+                        "source": "chat",
+                    },
                 ),
             )
         events[source_id] = service.journal.list_memory_extraction_events(
@@ -1007,7 +1015,10 @@ def test_recoverable_rejection_preserves_extraction_gaps_and_scope_cursors(
         RunEventDraft(
             event_id="other-user",
             event_type="user.message",
-            payload={"content": "Remember that another Project's fact."},
+            payload={
+                "content": "Remember that another Project's fact.",
+                "source": "chat",
+            },
         ),
     )
     tokens = memory_service.count_tokens

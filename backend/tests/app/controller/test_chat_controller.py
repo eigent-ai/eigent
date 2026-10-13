@@ -958,6 +958,103 @@ class TestChatController:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
+        ("declared", "queued", "recorded"),
+        [
+            (None, None, "chat"),
+            (None, "local", "chat"),
+            (None, "remote_control", "chat"),
+            ("scheduled", None, "scheduled"),
+            (None, "scheduled", "scheduled"),
+        ],
+    )
+    async def test_trigger_text_is_recorded_with_its_source(
+        self,
+        sample_chat_data,
+        mock_request,
+        mock_task_lock,
+        tmp_path,
+        declared,
+        queued,
+        recorded,
+    ):
+        """Memory must be able to tell trigger text from the user's words."""
+
+        run_id = "run-trigger-source"
+        chat_data = Chat(
+            **sample_chat_data,
+            run_id=run_id,
+            session_mode="single-agent",
+            **({"source": declared} if declared else {}),
+        )
+        resolver = MagicMock()
+        resolver.freeze_task_directories.return_value = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "output",
+            base_snapshot_id=None,
+            snapshot=MagicMock(),
+            binding_source="test",
+            workdir_mode=None,
+        )
+        resolver.space_root.return_value = tmp_path
+
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            if queued:
+                # A queued follow-up is admitted as the Run named by its id.
+                journal.put_follow_up_request(
+                    request_id=run_id,
+                    project_id=chat_data.project_id,
+                    content=chat_data.question,
+                    source=queued,
+                    source_command_id=(
+                        "command-1" if queued == "remote_control" else None
+                    ),
+                )
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_or_create_task_lock",
+                    return_value=mock_task_lock,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_workspace_resolver",
+                    return_value=resolver,
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "get_default_workspace_git_coordinator",
+                    return_value=MagicMock(),
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "_prepare_browser_for_request_with_timeout",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "app.controller.chat_controller._assemble_runtime_environment",
+                    return_value=None,
+                ),
+                patch(
+                    "app.controller.chat_controller._camel_log_dir",
+                    return_value=tmp_path / "camel-log",
+                ),
+                patch("app.controller.chat_controller.set_current_task_id"),
+                patch("app.controller.chat_controller.load_dotenv"),
+            ):
+                await _prepare_chat_run(chat_data, mock_request)
+
+            sources = [
+                event.payload["source"]
+                for event in journal.list_events(run_id)
+                if event.event_type == "user.message"
+            ]
+
+        assert sources == [recorded]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
         "lease_taken", ["before_admission", "during_preparation"]
     )
     async def test_project_lease_conflict_is_a_typed_409_without_orphan_run(
