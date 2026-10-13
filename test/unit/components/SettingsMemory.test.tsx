@@ -791,6 +791,41 @@ describe('Memory Center', () => {
       ).toBeEnabled();
     });
 
+    it('keeps each suggestion busy until its own action settles', async () => {
+      const second = {
+        ...suggestion,
+        memory_id: 'second',
+        content: 'Write commit messages in English.',
+        created_at: 2,
+      };
+      listWith([suggestion, second]);
+      const settle: Record<string, () => void> = {};
+      api.confirm.mockImplementation(
+        (target: { memory_id: string }) =>
+          new Promise<void>((resolve) => {
+            settle[target.memory_id] = resolve;
+          })
+      );
+      const user = userEvent.setup();
+      render(<Memory />);
+
+      const group = await suggestedGroup();
+      const [firstCard, secondCard] = within(group).getAllByRole('article');
+      const accept = (card: HTMLElement) =>
+        within(card).getByRole('button', { name: 'Accept' });
+      await user.click(accept(firstCard));
+      await user.click(accept(secondCard));
+      expect(accept(firstCard)).toBeDisabled();
+      expect(accept(secondCard)).toBeDisabled();
+
+      settle.suggestion();
+      await waitFor(() => expect(accept(firstCard)).toBeEnabled());
+      expect(accept(secondCard)).toBeDisabled();
+
+      settle.second();
+      await waitFor(() => expect(accept(secondCard)).toBeEnabled());
+    });
+
     it('shows suggestions in the Space Memory view', async () => {
       const spaceSuggestion = {
         ...suggestion,

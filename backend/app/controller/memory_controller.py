@@ -134,7 +134,11 @@ async def list_memory_scope_summaries(body: MemoryScopeSummariesBody):
                 {
                     "scope_type": requested_scope.scope_type,
                     "scope_id": requested_scope.scope_id,
-                    "entry_count": len(entries),
+                    # Suggestions are not saved Memory until adopted.
+                    "entry_count": sum(
+                        not is_pending_rule_proposal(entry)
+                        for entry in entries
+                    ),
                     "scope_state": asdict(state),
                 }
             )

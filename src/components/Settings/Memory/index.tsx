@@ -78,6 +78,7 @@ import { useTranslation } from 'react-i18next';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
 import { MemoryScopeDirectory } from './MemoryScopeNotice';
+import { isPendingMemorySuggestion } from './memorySuggestion';
 
 const KINDS: MemoryKind[] = [
   'fact',
@@ -87,16 +88,6 @@ const KINDS: MemoryKind[] = [
   'todo',
   'lesson',
 ];
-
-/**
- * An Agent-proposed rule the user has not accepted or dismissed. It stays out
- * of Agent context until accepted; mirrors the backend's pending state.
- */
-const isPendingSuggestion = (entry: MemoryEntry) =>
-  entry.created_by === 'agent' &&
-  (entry.kind === 'preference' || entry.kind === 'constraint') &&
-  !entry.confirmed_by_user &&
-  !entry.deleted_at;
 
 const TRUST_LABELS: Record<
   MemoryEntry['source_trust'],
@@ -177,9 +168,9 @@ export default function Memory({
   const [draftKind, setDraftKind] = useState<MemoryKind>('fact');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
-  const [actingSuggestionId, setActingSuggestionId] = useState<string | null>(
-    null
-  );
+  const [actingSuggestionIds, setActingSuggestionIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [suggestionError, setSuggestionError] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState('');
@@ -265,9 +256,15 @@ export default function Memory({
     entry: MemoryEntry,
     operation: () => Promise<unknown>
   ) => {
-    setActingSuggestionId(entry.memory_id);
+    const id = entry.memory_id;
+    // Each card stays busy until its own action settles.
+    setActingSuggestionIds((current) => new Set(current).add(id));
     void runAndReload(operation, setSuggestionError).finally(() =>
-      setActingSuggestionId(null)
+      setActingSuggestionIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      })
     );
   };
 
@@ -322,12 +319,12 @@ export default function Memory({
   const suggestions = useMemo(
     () =>
       entries
-        .filter(isPendingSuggestion)
+        .filter(isPendingMemorySuggestion)
         .sort((left, right) => right.created_at - left.created_at),
     [entries]
   );
   const savedEntries = useMemo(
-    () => entries.filter((entry) => !isPendingSuggestion(entry)),
+    () => entries.filter((entry) => !isPendingMemorySuggestion(entry)),
     [entries]
   );
   const visibleEntries = useMemo(() => {
@@ -674,7 +671,7 @@ export default function Memory({
                 <div className="flex flex-col gap-3">
                   {suggestions.map((entry) => {
                     const editing = editingId === entry.memory_id;
-                    const acting = actingSuggestionId === entry.memory_id;
+                    const acting = actingSuggestionIds.has(entry.memory_id);
                     const excerpts = entry.source_excerpts ?? [];
                     return (
                       <article

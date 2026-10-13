@@ -25,6 +25,7 @@ from camel.toolkits import BaseToolkit, FunctionTool
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.lightweight_memory import get_lightweight_memory_service
 from app.lightweight_memory.service import is_pending_rule_proposal
+from app.run_journal import MemoryEntryRecord
 from app.run_journal.memory_policy import INSTRUCTION_MEMORY_KINDS
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import (
@@ -68,6 +69,25 @@ def _memory_validation_error(
         "allowed_values": sorted(allowed_values),
         "outcome_known": True,
         "retryable": True,
+    }
+
+
+def _pending_suggestion_refusal(entry: MemoryEntryRecord) -> dict:
+    """Only the user adopts, edits or dismisses a rule suggestion.
+
+    Removing it here would also mark it dismissed, so it could never be
+    suggested again; rewriting it would make it take effect unadopted.
+    """
+
+    return {
+        "status": "rejected",
+        "error_code": "MEMORY_SUGGESTION_PENDING",
+        "instruction": (
+            "This rule suggestion is waiting for the user, who adopts, edits "
+            "or dismisses it on the Memory page. Leave it as it is. If the "
+            "user meant another scope, propose the rule for that scope."
+        ),
+        "entry": asdict(entry),
     }
 
 
@@ -206,15 +226,17 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
 
         Returns status proposed, already_saved or previously_dismissed (the
         user dismissed the same rule; do not propose it again) with its
-        memory_id, or too_many_pending when the user should first handle the
-        existing suggestions.
+        memory_id, too_many_pending when the user should first handle the
+        existing suggestions, or capture_disabled when the user turned Auto
+        Memory off for that scope (do not propose rules there).
 
         Args:
             kind: preference for how the user likes work done, or constraint
                 for a rule the work must follow.
-            scope: project for the current Project only, space for every
-                Project in the current Space, or user for all of the user's
-                work. Choose the scope the user meant.
+            scope: project for the current Session only (the user calls a
+                Project a Session), space for every Session in the current
+                Space, or user for all of the user's work. Choose the scope
+                the user meant.
             content: The rule in one sentence of at most 300 characters,
                 keeping the user's meaning without additions.
             reason: Why the rule applies to future work.
@@ -260,6 +282,11 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
                 "Ask the user to adopt or dismiss the existing Memory "
                 "suggestions on the Memory page before proposing another."
             )
+        elif proposal.status == "capture_disabled":
+            result["instruction"] = (
+                "Auto Memory is off for this scope. Do not propose rules for "
+                "it; continue delivering the work."
+            )
         return result
 
     async def update_project_memory(
@@ -288,6 +315,8 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
         )
         if existing is None or existing.scope_id != context.project_id:
             raise ValueError("Memory entry is outside the current Project")
+        if is_pending_rule_proposal(existing):
+            return _pending_suggestion_refusal(existing)
         activity_id, decision_id = self._audit_link()
         actor_type = "agent"
         actor_id: str | None = self.agent_name
@@ -350,6 +379,8 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
         )
         if existing is None or existing.scope_id != context.project_id:
             raise ValueError("Memory entry is outside the current Project")
+        if is_pending_rule_proposal(existing):
+            return _pending_suggestion_refusal(existing)
         activity_id, decision_id = self._audit_link()
         actor_type = "agent"
         actor_id: str | None = self.agent_name
@@ -409,6 +440,8 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             or existing.scope_id != context.project_id
         ):
             raise ValueError("Memory entry is outside the current Project")
+        if is_pending_rule_proposal(existing):
+            return _pending_suggestion_refusal(existing)
         if existing.version != expected_version:
             raise ValueError("Memory entry version changed")
         target_scope_id = (

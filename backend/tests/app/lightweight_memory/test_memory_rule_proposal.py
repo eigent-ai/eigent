@@ -14,6 +14,7 @@
 
 """Agent-proposed Memory rules stay inert until the user adopts them."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -103,6 +104,12 @@ def _propose(service, **overrides):
             **overrides,
         }
     )
+
+
+def _text(length, words="Keep the work tidy. "):
+    """Plain sentences of an exact length, never mistaken for a secret."""
+
+    return (words * (length // len(words) + 1))[: length - 1] + "."
 
 
 def _all_entries(journal):
@@ -270,6 +277,98 @@ def test_pending_rules_are_capped_per_scope(memory):
         _propose(memory.service, content="One rule too many.").status
         == "proposed"
     )
+
+
+def test_suggestions_use_at_most_a_quarter_of_the_scope(memory):
+    # Without tiktoken a token is three characters; User Memory holds 384.
+    budget = memory.service.scope("user", "user-1").token_limit // 4
+    too_long = _text(budget * 3 + 1)
+
+    with pytest.raises(ToolPreWriteValidationError) as rejected:
+        _propose(memory.service, scope_type="user", content=too_long)
+    assert rejected.value.error_code == "MEMORY_CONTENT_REJECTED"
+    # Project Memory has room for the same rule.
+    assert _propose(memory.service, content=too_long).status == "proposed"
+
+    # Each takes just over half of the room.
+    half = budget * 3 // 2 + 3
+    other = _text(half, "Ship on Fridays. ")
+    first = _propose(memory.service, scope_type="user", content=_text(half))
+    assert first.status == "proposed"
+    capped = _propose(memory.service, scope_type="user", content=other)
+    assert capped.status == "too_many_pending"
+    assert capped.entry is None
+    # Dismissing the first suggestion frees its room.
+    memory.service.transition_entry(
+        memory_id=first.entry.memory_id,
+        expected_version=first.entry.version,
+        operation="remove",
+        actor_type="user",
+        reason="Dismissed on the Memory page",
+        request_id="dismiss-first",
+    )
+    assert (
+        _propose(memory.service, scope_type="user", content=other).status
+        == "proposed"
+    )
+
+
+def test_no_suggestion_when_auto_memory_is_off(memory):
+    state = memory.service.scope("space", "space-1")
+    memory.journal.update_memory_scope_settings(
+        "space",
+        "space-1",
+        expected_revision=state.revision,
+        capture_enabled=False,
+    )
+
+    proposal = _propose(memory.service, scope_type="space")
+
+    assert proposal.status == "capture_disabled"
+    assert proposal.entry is None
+    memory.apply.assert_not_called()
+    # Other scopes keep their own setting.
+    assert _propose(memory.service).status == "proposed"
+
+
+def test_consolidation_keeps_saved_memory_over_a_duplicate_suggestion(memory):
+    saved = memory.service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="preference",
+        content=RULE,
+        actor_type="extractor",
+        reason="Explicit request",
+        source_trust="user_asserted",
+        source_refs=("user-1",),
+    ).entry
+    # A newer suggestion with the same words, as beside an entry restored or
+    # synced from another device.
+    suggestion = memory.service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="preference",
+        content=RULE,
+        actor_type="agent",
+        reason="Suggested",
+        source_trust="user_asserted",
+        source_refs=("user-1",),
+        run_id="run-1",
+    ).entry
+    assert is_pending_rule_proposal(suggestion)
+
+    result = memory.service.consolidate_scope(
+        scope_type="project",
+        scope_id="project-1",
+        reason="Exact duplicates",
+        request_id="consolidate-1",
+    )
+
+    assert result.removed_memory_ids == (suggestion.memory_id,)
+    assert [
+        entry.memory_id
+        for entry in memory.service.list_entries("project", "project-1")
+    ] == [saved.memory_id]
 
 
 def test_saved_rule_with_the_same_content_is_not_proposed_again(memory):
@@ -730,6 +829,63 @@ def test_tool_reports_too_many_pending_without_a_write(memory, toolkit):
     assert result["memory_id"] is None
     assert "Memory page" in result["instruction"]
     memory.apply.assert_not_called()
+
+
+def test_tool_reports_auto_memory_off_without_a_write(memory, toolkit):
+    state = memory.service.scope("space", "space-1")
+    memory.journal.update_memory_scope_settings(
+        "space",
+        "space-1",
+        expected_revision=state.revision,
+        capture_enabled=False,
+    )
+
+    result = toolkit.call(
+        "propose_memory_rule", "capture-off-call", **_tool_arguments()
+    )
+
+    assert result["status"] == "capture_disabled"
+    assert result["memory_id"] is None
+    assert "Auto Memory is off" in result["instruction"]
+    memory.apply.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "arguments"),
+    [
+        ("forget_project_memory", {"reason": "Not needed"}),
+        (
+            "update_project_memory",
+            {
+                "kind": "fact",
+                "content": "Branches are optional.",
+                "reason": "x",
+            },
+        ),
+        (
+            "promote_project_memory",
+            {"target_scope": "space", "reason": "Applies to the Space"},
+        ),
+    ],
+)
+def test_agent_leaves_a_pending_suggestion_to_the_user(
+    memory, toolkit, tool_name, arguments
+):
+    rule = _propose(memory.service).entry
+    memory.apply.reset_mock()
+
+    result = asyncio.run(
+        toolkit.tools[tool_name].func(
+            memory_id=rule.memory_id,
+            expected_version=rule.version,
+            **arguments,
+        )
+    )
+
+    assert result["status"] == "rejected"
+    assert result["error_code"] == "MEMORY_SUGGESTION_PENDING"
+    memory.apply.assert_not_called()
+    assert memory.service.list_entries("project", "project-1") == (rule,)
 
 
 def test_agent_search_marks_pending_rules(memory, toolkit):

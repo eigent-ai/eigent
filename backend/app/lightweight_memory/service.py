@@ -51,6 +51,8 @@ except ImportError:  # pragma: no cover - production bundle includes it
 _TOKEN_LIMITS = {"project": 1024, "space": 640, "user": 384}
 _RULE_PROPOSAL_MAX_CHARS = 300
 _MAX_PENDING_RULE_PROPOSALS = 5
+# Pending suggestions may use at most 1/N of a scope's token limit.
+_PENDING_RULE_SHARE = 4
 _SOURCE_EXCERPT_MAX_CHARS = 200
 _QUERY_TOKEN_RE = re.compile(r"[\w.-]+", re.UNICODE)
 _HISTORY_ARTIFACT_FIELDS = frozenset(
@@ -167,6 +169,7 @@ class MemoryRuleProposal:
         "already_saved",
         "previously_dismissed",
         "too_many_pending",
+        "capture_disabled",
     ]
     entry: MemoryEntryRecord | None
 
@@ -517,6 +520,11 @@ class LightweightMemoryService:
                     "and continue delivering the work."
                 ),
             )
+        state = self.scope(scope_type, scope_id)
+        if not state.capture_enabled:
+            # The user turned Auto Memory off for this scope, so Eigent does
+            # not learn rules there, not even as suggestions.
+            return MemoryRuleProposal(status="capture_disabled", entry=None)
         self._assert_agent_provenance(
             scope_type="project",
             scope_id=project_id,
@@ -579,16 +587,33 @@ class LightweightMemoryService:
             return MemoryRuleProposal(
                 status="previously_dismissed", entry=dismissed
             )
+        # Suggestions count toward capacity, since adopting one needs the
+        # room, but they may only take a quarter of it. The rest stays free
+        # for adopted Memory and the user's explicit requests.
+        pending_budget = state.token_limit // _PENDING_RULE_SHARE
+        tokens = count_tokens(content)
+        if tokens > pending_budget:
+            raise _rule_rejection(
+                f"The rule is too long to suggest for {scope_type} Memory",
+                error_code="MEMORY_CONTENT_REJECTED",
+                field="content",
+                instruction=(
+                    "Restate the rule more briefly while keeping the user's "
+                    "meaning, or skip it and continue delivering the work."
+                ),
+            )
+        pending = [
+            entry for entry in entries if is_pending_rule_proposal(entry)
+        ]
         if (
-            sum(is_pending_rule_proposal(entry) for entry in entries)
-            >= _MAX_PENDING_RULE_PROPOSALS
+            len(pending) >= _MAX_PENDING_RULE_PROPOSALS
+            or sum(entry.token_count for entry in pending) + tokens
+            > pending_budget
         ):
             return MemoryRuleProposal(status="too_many_pending", entry=None)
-        state = self.scope(scope_type, scope_id)
         if (
             state.current_token_count >= state.token_limit * 0.9
-            or state.current_token_count + count_tokens(content)
-            > state.token_limit
+            or state.current_token_count + tokens > state.token_limit
         ):
             # Raising later, after dispatch, would leave the outcome unknown.
             raise _rule_rejection(
@@ -673,7 +698,16 @@ class LightweightMemoryService:
         for duplicates in groups.values():
             if len(duplicates) < 2:
                 continue
-            ordered = sorted(duplicates, key=_memory_retention_key)
+            # A suggestion has no effect, so it never outlives saved Memory
+            # with the same words, e.g. a newer suggestion beside an entry
+            # restored or synced from another device.
+            ordered = sorted(
+                duplicates,
+                key=lambda entry: (
+                    is_pending_rule_proposal(entry),
+                    _memory_retention_key(entry),
+                ),
+            )
             keeper = ordered[0]
             retained.append(keeper.memory_id)
             for candidate in ordered[1:]:
