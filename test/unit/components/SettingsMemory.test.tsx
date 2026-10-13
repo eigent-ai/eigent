@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -609,5 +609,243 @@ describe('Memory Center', () => {
     expect(
       screen.queryByRole('menuitem', { name: 'Delete Memory' })
     ).not.toBeInTheDocument();
+  });
+
+  describe('Suggested Memory', () => {
+    const entry = (overrides: Record<string, unknown>) => ({
+      scope_type: 'user',
+      scope_id: 'user-1',
+      kind: 'fact',
+      priority: 'normal',
+      version: 1,
+      token_count: 2,
+      pinned_by_user: false,
+      confirmed_by_user: false,
+      created_by: 'user',
+      source_trust: 'user_asserted',
+      sensitivity: 'normal',
+      source_refs: [],
+      source_excerpts: [],
+      deleted_at: null,
+      created_at: 1,
+      updated_at: 1,
+      ...overrides,
+    });
+    const suggestion = entry({
+      memory_id: 'suggestion',
+      kind: 'preference',
+      content: 'Use pnpm for installs.',
+      created_by: 'agent',
+      source_refs: ['event-1'],
+      source_excerpts: ['From now on, always use pnpm.'],
+      created_at: 3,
+    });
+    const savedEntries = [
+      // Accepted, extractor-written, and Agent facts are ordinary Memory.
+      entry({
+        memory_id: 'accepted',
+        kind: 'constraint',
+        content: 'Accepted rule',
+        created_by: 'agent',
+        confirmed_by_user: true,
+      }),
+      entry({
+        memory_id: 'extracted',
+        kind: 'preference',
+        content: 'Extracted preference',
+        created_by: 'extractor',
+      }),
+      entry({
+        memory_id: 'agent-fact',
+        content: 'Agent fact',
+        created_by: 'agent',
+        source_trust: 'model_inferred',
+      }),
+    ];
+
+    const listWith = (items: unknown[]) =>
+      api.list.mockResolvedValue({
+        scope_state: scopeState,
+        items,
+        sync_status: { state: 'synced' },
+      });
+    const suggestedGroup = async () => {
+      await screen.findByText('Suggested');
+      const group = document.querySelector<HTMLElement>(
+        '[data-memory-suggestions]'
+      );
+      expect(group).not.toBeNull();
+      return group!;
+    };
+
+    it('lists only pending suggestions with the cited message', async () => {
+      listWith([...savedEntries, suggestion]);
+      render(<Memory />);
+
+      const group = await suggestedGroup();
+      expect(within(group).getAllByRole('article')).toHaveLength(1);
+      expect(within(group).getByText('Use pnpm for installs.')).toBeVisible();
+      expect(within(group).getByText('Preference')).toBeVisible();
+      expect(within(group).getByText('From your message')).toBeVisible();
+      expect(
+        within(group).getByText('From now on, always use pnpm.')
+      ).toBeVisible();
+      for (const saved of ['Accepted rule', 'Extracted preference']) {
+        expect(within(group).queryByText(saved)).toBeNull();
+        expect(screen.getByText(saved)).toBeVisible();
+      }
+
+      // A pending suggestion is not also listed as unconfirmed Memory.
+      expect(screen.getAllByText('Use pnpm for installs.')).toHaveLength(1);
+      expect(
+        screen.getByText('Agent fact').closest('[data-settings-row-group]')
+      ).not.toBe(group);
+      expect(
+        screen.getByText('Personal Memory').parentElement
+      ).toHaveTextContent('3');
+    });
+
+    it('hides the group when nothing is pending', async () => {
+      listWith([
+        ...savedEntries,
+        { ...suggestion, memory_id: 'dismissed', deleted_at: 5 },
+      ]);
+      render(<Memory />);
+
+      expect(await screen.findByText('Accepted rule')).toBeVisible();
+      expect(screen.queryByText('Suggested')).toBeNull();
+      expect(document.querySelector('[data-memory-suggestions]')).toBeNull();
+    });
+
+    it('accepts a suggestion with the existing confirm action', async () => {
+      listWith([suggestion]);
+      api.confirm.mockResolvedValue({});
+      const user = userEvent.setup();
+      render(<Memory />);
+
+      const group = await suggestedGroup();
+      const listCalls = api.list.mock.calls.length;
+      await user.click(within(group).getByRole('button', { name: 'Accept' }));
+
+      expect(api.confirm).toHaveBeenCalledWith(suggestion);
+      expect(api.update).not.toHaveBeenCalled();
+      expect(api.remove).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(api.list.mock.calls.length).toBeGreaterThan(listCalls)
+      );
+    });
+
+    it('dismisses a suggestion by archiving it', async () => {
+      listWith([suggestion]);
+      const user = userEvent.setup();
+      render(<Memory />);
+
+      const group = await suggestedGroup();
+      await user.click(within(group).getByRole('button', { name: 'Dismiss' }));
+
+      expect(api.remove).toHaveBeenCalledWith(suggestion);
+      expect(api.confirm).not.toHaveBeenCalled();
+    });
+
+    it('edits a suggestion with the existing edit action', async () => {
+      listWith([suggestion]);
+      api.update.mockResolvedValue({});
+      const user = userEvent.setup();
+      render(<Memory />);
+
+      const group = await suggestedGroup();
+      await user.click(within(group).getByRole('button', { name: 'Edit' }));
+      const editor = within(group).getByRole('textbox', {
+        name: 'Edit Memory',
+      });
+      expect(editor).toHaveValue('Use pnpm for installs.');
+      await user.clear(editor);
+      await user.type(editor, 'Use pnpm 9 for installs.');
+      await user.click(within(group).getByRole('button', { name: 'Save' }));
+
+      expect(api.update).toHaveBeenCalledWith(suggestion, {
+        content: 'Use pnpm 9 for installs.',
+        kind: 'preference',
+        reason: 'Edited in Memory Center',
+      });
+      expect(api.confirm).not.toHaveBeenCalled();
+    });
+
+    it('keeps an edit cancellable and shows a failed action', async () => {
+      listWith([suggestion]);
+      api.confirm.mockRejectedValue(new Error('Memory changed elsewhere'));
+      const user = userEvent.setup();
+      render(<Memory />);
+
+      const group = await suggestedGroup();
+      await user.click(within(group).getByRole('button', { name: 'Edit' }));
+      await user.click(within(group).getByRole('button', { name: 'Cancel' }));
+      expect(within(group).queryByRole('textbox')).toBeNull();
+
+      await user.click(within(group).getByRole('button', { name: 'Accept' }));
+      expect(await within(group).findByRole('alert')).toHaveTextContent(
+        'Memory changed elsewhere'
+      );
+      expect(
+        within(group).getByRole('button', { name: 'Accept' })
+      ).toBeEnabled();
+    });
+
+    it('keeps each suggestion busy until its own action settles', async () => {
+      const second = {
+        ...suggestion,
+        memory_id: 'second',
+        content: 'Write commit messages in English.',
+        created_at: 2,
+      };
+      listWith([suggestion, second]);
+      const settle: Record<string, () => void> = {};
+      api.confirm.mockImplementation(
+        (target: { memory_id: string }) =>
+          new Promise<void>((resolve) => {
+            settle[target.memory_id] = resolve;
+          })
+      );
+      const user = userEvent.setup();
+      render(<Memory />);
+
+      const group = await suggestedGroup();
+      const [firstCard, secondCard] = within(group).getAllByRole('article');
+      const accept = (card: HTMLElement) =>
+        within(card).getByRole('button', { name: 'Accept' });
+      await user.click(accept(firstCard));
+      await user.click(accept(secondCard));
+      expect(accept(firstCard)).toBeDisabled();
+      expect(accept(secondCard)).toBeDisabled();
+
+      settle.suggestion();
+      await waitFor(() => expect(accept(firstCard)).toBeEnabled());
+      expect(accept(secondCard)).toBeDisabled();
+
+      settle.second();
+      await waitFor(() => expect(accept(secondCard)).toBeEnabled());
+    });
+
+    it('shows suggestions in the Space Memory view', async () => {
+      const spaceSuggestion = {
+        ...suggestion,
+        scope_type: 'space',
+        scope_id: 'space-1',
+      };
+      listWith([spaceSuggestion]);
+      render(
+        <Memory
+          fixedScope={{ type: 'space', id: 'space-1' }}
+          showScopeSelector={false}
+        />
+      );
+
+      const group = await suggestedGroup();
+      expect(api.list).toHaveBeenCalledWith('space', 'space-1', false);
+      expect(
+        within(group).getByText('From now on, always use pnpm.')
+      ).toBeVisible();
+      expect(screen.getByText('No shared Memory yet')).toBeVisible();
+    });
   });
 });

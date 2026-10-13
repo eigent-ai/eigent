@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import require_local_control_principal
 from app.lightweight_memory import get_lightweight_memory_service
+from app.lightweight_memory.service import is_pending_rule_proposal
 from app.run_journal import (
     IdempotencyConflictError,
     InvalidRunTransitionError,
@@ -133,7 +134,11 @@ async def list_memory_scope_summaries(body: MemoryScopeSummariesBody):
                 {
                     "scope_type": requested_scope.scope_type,
                     "scope_id": requested_scope.scope_id,
-                    "entry_count": len(entries),
+                    # Suggestions are not saved Memory until adopted.
+                    "entry_count": sum(
+                        not is_pending_rule_proposal(entry)
+                        for entry in entries
+                    ),
                     "scope_state": asdict(state),
                 }
             )
@@ -201,11 +206,21 @@ async def list_memory_entries(
             scope_id,
             include_deleted=include_deleted,
         )
+        # A pending suggestion shows the user's own words it was drawn from.
+        items = [
+            asdict(item)
+            | {
+                "source_excerpts": list(service.source_excerpts(item))
+                if is_pending_rule_proposal(item)
+                else []
+            }
+            for item in entries
+        ]
     except Exception as exc:  # noqa: BLE001
         raise _translate_error(exc) from exc
     return {
         "scope_state": asdict(state),
-        "items": [asdict(item) for item in entries],
+        "items": items,
         "sync_status": service.journal.get_memory_sync_status(
             scope_type, scope_id
         ),

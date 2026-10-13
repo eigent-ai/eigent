@@ -60,6 +60,8 @@ export interface MemoryEntry {
     | 'legacy_unverified';
   sensitivity: 'normal' | 'personal' | 'sensitive';
   source_refs: string[];
+  /** The user's cited words behind a pending suggestion; empty otherwise. */
+  source_excerpts?: string[];
   deleted_at: number | null;
   created_at: number;
   updated_at: number;

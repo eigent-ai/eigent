@@ -80,6 +80,7 @@ async def test_mcp_agent_creation(sample_chat_data):
         assert {tool.get_function_name() for tool in tools_arg[2:]} == {
             "search_memory",
             "remember_project_memory",
+            "propose_memory_rule",
             "update_project_memory",
             "forget_project_memory",
             "promote_project_memory",

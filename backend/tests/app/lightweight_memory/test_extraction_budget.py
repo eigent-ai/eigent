@@ -595,7 +595,7 @@ def test_shared_scope_deferrals_and_recovery_are_per_source_project(
             project_id=project_id, space_id="space-1", user_id="user-1"
         )
     append(service, "deferred", "My preference is deferred fact.")
-    append(service, "space-user", "For this Space, use ISO dates.")
+    append(service, "space-user", "Remember that this Space uses ISO dates.")
     tokens = memory_service.count_tokens
     monkeypatch.setattr(
         memory_service,
@@ -1001,7 +1001,9 @@ def test_recoverable_rejection_preserves_extraction_gaps_and_scope_cursors(
     )
     append(service, "gap", "Remember that deferred evidence.")
     append(service, "safe-project", "Remember that reports use ISO dates.")
-    append(service, "safe-space", "For this Space, use UTC timestamps.")
+    append(
+        service, "safe-space", "Remember that this Space uses UTC timestamps."
+    )
     append(service, "safe-user", "My preference is concise status updates.")
     append(
         service,

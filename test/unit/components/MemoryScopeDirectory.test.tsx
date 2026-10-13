@@ -244,7 +244,19 @@ describe('Memory scope directory', () => {
     directoryMocks.listMemoryEntries.mockImplementation(
       (_scopeType: string, scopeId: string) =>
         Promise.resolve({
-          items: scopeId === 'space-2' ? [{ memory_id: 'memory-1' }] : [],
+          // A pending suggestion is not saved Memory.
+          items:
+            scopeId === 'space-2'
+              ? [{ memory_id: 'memory-1' }]
+              : [
+                  {
+                    memory_id: 'suggestion-1',
+                    kind: 'preference',
+                    created_by: 'agent',
+                    confirmed_by_user: false,
+                    deleted_at: null,
+                  },
+                ],
           scope_state: memoryState(
             'space',
             scopeId,
