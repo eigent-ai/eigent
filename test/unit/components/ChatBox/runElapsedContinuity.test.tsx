@@ -381,6 +381,41 @@ describe('Run elapsed time leaves out waiting for the user', () => {
     }
   );
 
+  it('keeps holding when one of two open approvals is cancelled', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(startedAt);
+    const { requested, answered } = waitEvents.approval;
+    const live = store();
+    deliver(live, events.query());
+    deliver(live, events.started());
+    const timer = watch(live);
+    advance(2_000);
+    deliver(live, requested(3, 2_000, 'approval-1'));
+    deliver(live, requested(4, 2_000, 'approval-2'));
+    const readings = [timer.read()];
+    advance(30_000);
+    // The backend cancels a request whose tool can no longer run; the other
+    // one stays open, so the Run is still waiting.
+    deliver(
+      live,
+      runEvent(5, 'approval.cancelled', 32_000, {
+        approval_id: 'approval-1',
+        interaction_id: 'approval-1',
+        decision: 'rejected',
+        continued_attempt: false,
+        remaining_interaction_count: 1,
+      })
+    );
+    readings.push(timer.read());
+    advance(10_000);
+    deliver(live, answered(6, 42_000, 'approval-2'));
+    readings.push(timer.read());
+    advance(3_000);
+    readings.push(timer.read());
+
+    expect(readings).toEqual([2_000, 2_000, 2_000, 5_000]);
+  });
+
   it('adds nothing for a pause taken while waiting for the user', () => {
     vi.useFakeTimers();
     vi.setSystemTime(startedAt);

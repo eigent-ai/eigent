@@ -4445,6 +4445,45 @@ describe('ChatStore - Core Functionality', () => {
           expect(shownMs(store)).toBe(5_000);
         });
 
+        it('continues after the remaining approval is answered when another one was cancelled', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-2')
+          );
+          advance(10_000);
+          // The other request is still open, so the task is not interrupted.
+          await deliver(streamContaining, 'approval.cancelled', {
+            approval_id: 'approval:call-1',
+            interaction_id: 'approval:call-1',
+            decision: 'rejected',
+            continued_attempt: false,
+            remaining_interaction_count: 1,
+          });
+          expect(
+            runProjectionStore.getRun('project-1', 'live-run')?.status
+          ).toBe('waiting_for_user');
+          expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+          advance(10_000);
+          expect(shownMs(store)).toBe(2_000);
+
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-2')
+          );
+          advance(3_000);
+          expect(shownMs(store)).toBe(5_000);
+          expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+        });
+
         it('holds the time worked while a question waits for an answer', async () => {
           const { store, streamContaining } = await startWorking();
           advance(2_000);

@@ -357,11 +357,12 @@ export function reduceProjectedRun(
     event.eventType === 'approval.decided';
   const interactionDecisionContinued =
     isInteractionDecision && event.payload.continued_attempt === true;
-  // Answering one of several open requests (e.g. parallel workers asking at
-  // once) leaves the Attempt waiting for the others.
+  // Answering or cancelling one of several open requests (e.g. parallel
+  // workers asking at once) leaves the Attempt waiting for the others.
+  // Cancellations written before they reported the count still interrupt.
   const interactionDecisionKeepsWaiting =
-    isInteractionDecision &&
-    !interactionDecisionContinued &&
+    ((isInteractionDecision && !interactionDecisionContinued) ||
+      event.eventType === 'approval.cancelled') &&
     previousRun?.status === 'waiting_for_user' &&
     typeof event.payload.remaining_interaction_count === 'number' &&
     event.payload.remaining_interaction_count > 0;
