@@ -398,11 +398,13 @@ def _question(connection, row):
             row["admitted_run_id"],
         ),
     ).fetchone()
+    expected = {"content": question, "request_id": row["request_id"]}
+    # Input recorded before user.message carried its source has none.
+    sourced = {**expected, "source": row["source"]}
     if (
         not isinstance(question, str)
         or event is None
-        or _decode(event[0])
-        != {"content": question, "request_id": row["request_id"]}
+        or _decode(event[0]) not in (expected, sourced)
     ):
         _fail()
     return question
@@ -413,7 +415,7 @@ def _capture(connection, journal, request, binding, snapshot, destination):
         raise ContextSourceUnavailable("context_destination_not_authorized")
 
     current = connection.execute(
-        """SELECT request_id,project_id,kind,queue_seq,envelope_digest,
+        """SELECT request_id,project_id,kind,queue_seq,envelope_digest,source,
                   source_follow_up_request_id,source_message_digest,admitted_run_id,admitted_attempt_id,
                   CASE WHEN length(CAST(envelope_json AS BLOB))<=? THEN envelope_json END AS envelope_json
            FROM execution_requests WHERE request_id=? AND project_id=? AND status='admitted'""",
@@ -457,7 +459,7 @@ def _capture(connection, journal, request, binding, snapshot, destination):
     runs, omitted, used = [], int(len(candidates) > MAX_RUNS), 0
     for candidate in candidates[:MAX_RUNS]:
         row = connection.execute(
-            """SELECT request_id,project_id,kind,queue_seq,envelope_digest,
+            """SELECT request_id,project_id,kind,queue_seq,envelope_digest,source,
                       source_follow_up_request_id,source_message_digest,admitted_run_id,admitted_attempt_id,
                       CASE WHEN length(CAST(envelope_json AS BLOB))<=? THEN envelope_json END AS envelope_json
                FROM execution_requests WHERE request_id=? AND project_id=? AND status='admitted'""",

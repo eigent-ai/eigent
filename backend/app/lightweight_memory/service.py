@@ -32,7 +32,10 @@ from app.run_journal import (
     SQLiteRunJournal,
     get_default_run_journal,
 )
-from app.run_journal.memory_policy import assert_memory_entry_policy
+from app.run_journal.memory_policy import (
+    assert_memory_entry_policy,
+    is_user_authored_message_source,
+)
 from app.run_journal.models import MemoryExtractionEventRecord
 from app.tool_validation import ToolPreWriteValidationError
 
@@ -681,8 +684,9 @@ class LightweightMemoryService:
     ) -> MemoryExtractionPage:
         """Read at most 100 metadata rows / three explicit-user candidates.
 
-        The current extractor only accepts user.message. Other event types
-        get an explicit exclusion receipt without loading their payloads.
+        The current extractor only accepts user.message written by the user.
+        Other event types and trigger messages get an explicit exclusion
+        receipt without loading their payloads.
         Oversized user events are deferred whole; no truncated statement is
         allowed to become durable Memory. The caller persists these outcomes
         after extraction and maintains a separate contiguous success frontier.
@@ -710,7 +714,12 @@ class LightweightMemoryService:
         for event in events:
             disposition = "excluded"
             error = None
-            if event.event_type == "user.message":
+            if event.event_type == "user.message" and self._written_by_user(
+                event_id=event.event_id,
+                run_id=event.run_id,
+                project_id=project_id,
+                source=event.message_source,
+            ):
                 if len(items) == 3:
                     break
                 if event.payload_bytes > byte_budget:
@@ -752,7 +761,7 @@ class LightweightMemoryService:
                                 event_type=event.event_type,
                                 content=payload,
                                 source_trust=event_source_trust(
-                                    event.event_type
+                                    event.event_type, user_authored=True
                                 ),
                                 created_at=event.created_at,
                             )
@@ -846,7 +855,18 @@ class LightweightMemoryService:
                         run_id=item.event.run_id,
                         event_type=item.event.event_type,
                         content=payload,
-                        source_trust=event_source_trust(item.event.event_type),
+                        source_trust=event_source_trust(
+                            item.event.event_type,
+                            user_authored=(
+                                item.event.event_type == "user.message"
+                                and self._written_by_user(
+                                    event_id=item.event.event_id,
+                                    run_id=item.event.run_id,
+                                    project_id=project_id,
+                                    source=item.event.payload.get("source"),
+                                )
+                            ),
+                        ),
                         created_at=item.event.created_at,
                     )
                 )
@@ -943,7 +963,9 @@ class LightweightMemoryService:
                 "Search current Project History for the user's statement. "
                 "Retry with source_event_ids containing the returned event_id "
                 "of matching user.message events, not citation_id or Run IDs. "
-                "Every event must belong to this Project. Never invent IDs "
+                "Every event must belong to this Project and have "
+                "source_trust user_asserted; trigger messages from schedules, "
+                "webhooks or Slack are not the user's words. Never invent IDs "
                 "or label model/tool text user_asserted. If no matching user "
                 "statement exists, use model_inferred for your inference or "
                 "tool_observed for a tool observation only when accurate, "
@@ -965,21 +987,43 @@ class LightweightMemoryService:
                 event.event_type != "user.message"
                 or run is None
                 or run.project_id != scope_id
+                or not self._written_by_user(
+                    event_id=event.event_id,
+                    run_id=event.run_id,
+                    project_id=scope_id,
+                    source=event.payload.get("source"),
+                )
             ):
                 valid = False
                 break
         if not valid:
             raise ToolPreWriteValidationError(
                 "Agent user_asserted Memory citations must be user.message "
-                "events from the same Project",
+                "events the user wrote in the same Project",
                 error_code="MEMORY_PROVENANCE_REJECTED",
                 field="source_event_ids",
                 recovery=recovery,
             )
 
+    def _written_by_user(
+        self, *, event_id: str, run_id: str, project_id: str, source: object
+    ) -> bool:
+        """Whether a user.message holds the user's own words (fail closed)."""
 
-def event_source_trust(event_type: str) -> str:
-    if event_type == "user.message" or event_type.startswith("legacy.human"):
+        if source is None and event_id.startswith("execution-input:"):
+            # Managed input recorded before user.message carried its source.
+            # Its Run id is the admitting request, which keeps the source.
+            source = self._journal.get_instruction_source(
+                project_id=project_id, request_id=run_id
+            )
+        return is_user_authored_message_source(source)
+
+
+def event_source_trust(event_type: str, *, user_authored: bool = False) -> str:
+    if event_type == "user.message":
+        # Trigger text and messages of unknown authorship are external data.
+        return "user_asserted" if user_authored else "external_untrusted"
+    if event_type.startswith("legacy.human"):
         return "user_asserted"
     if event_type.startswith("tool."):
         return "tool_observed"

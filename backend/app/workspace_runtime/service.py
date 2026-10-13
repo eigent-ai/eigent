@@ -1233,11 +1233,14 @@ class ExecutionService:
                     ],
                 )
                 content = current.envelope.get("prompt")
+                source = current.source
                 if current.kind == "follow_up":
-                    content = connection.execute(
-                        "SELECT content FROM follow_up_requests WHERE request_id=?",
+                    content, source = connection.execute(
+                        "SELECT content, source FROM follow_up_requests WHERE request_id=?",
                         (current.request_id,),
-                    ).fetchone()[0]
+                    ).fetchone()
+                # Memory treats only user sends (local, remote_control) as the
+                # user's words; scheduled trigger text never is.
                 self.journal._append_event_in_transaction(
                     connection,
                     current.request_id,
@@ -1247,6 +1250,7 @@ class ExecutionService:
                         payload={
                             "content": content,
                             "request_id": current.request_id,
+                            "source": source,
                         },
                     ),
                     expected_project_id=current.project_id,
