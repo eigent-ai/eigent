@@ -49,6 +49,22 @@ def is_user_authored_message_source(source: object) -> bool:
     return isinstance(source, str) and source in USER_AUTHORED_MESSAGE_SOURCES
 
 
+def is_pending_memory_proposal(
+    *, created_by: str, kind: str, confirmed_by_user: bool
+) -> bool:
+    """An Agent-proposed rule the user has not adopted yet.
+
+    It never reaches the prompt. Confirming adopts it, editing makes it
+    user-authored, and archiving dismisses it.
+    """
+
+    return (
+        created_by == "agent"
+        and kind in INSTRUCTION_MEMORY_KINDS
+        and not confirmed_by_user
+    )
+
+
 def normalize_memory_provenance_for_cloud(
     *, kind: str, source_trust: str, deleted: bool
 ) -> tuple[str, str]:
@@ -104,6 +120,15 @@ def assert_memory_entry_policy(
         raise PermissionError(
             "Untrusted or inferred content cannot become a preference or "
             "constraint without user-authored adoption"
+        )
+    if (
+        created_by == "agent"
+        and kind in INSTRUCTION_MEMORY_KINDS
+        and not (source_trust == "user_asserted" and source_refs)
+    ):
+        # An Agent may only propose a rule the user stated, citing it.
+        raise PermissionError(
+            "An Agent preference or constraint must cite the user's message"
         )
     if source_trust == "user_confirmed" and not (
         created_by == "user" and confirmed_by_user

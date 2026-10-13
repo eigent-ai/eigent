@@ -33,11 +33,14 @@ from app.run_journal import (
     get_default_run_journal,
 )
 from app.run_journal.memory_policy import (
+    INSTRUCTION_MEMORY_KINDS,
     assert_memory_entry_policy,
+    is_pending_memory_proposal,
     is_user_authored_message_source,
 )
 from app.run_journal.models import MemoryExtractionEventRecord
 from app.tool_validation import ToolPreWriteValidationError
+from app.workspace_config.models import WorkspaceConfigError
 
 try:
     import tiktoken
@@ -46,6 +49,9 @@ except ImportError:  # pragma: no cover - production bundle includes it
 
 
 _TOKEN_LIMITS = {"project": 1024, "space": 640, "user": 384}
+_RULE_PROPOSAL_MAX_CHARS = 300
+_MAX_PENDING_RULE_PROPOSALS = 5
+_SOURCE_EXCERPT_MAX_CHARS = 200
 _QUERY_TOKEN_RE = re.compile(r"[\w.-]+", re.UNICODE)
 _HISTORY_ARTIFACT_FIELDS = frozenset(
     {
@@ -152,6 +158,17 @@ class MemoryConsolidationResult:
     removed_memory_ids: tuple[str, ...]
     retained_memory_ids: tuple[str, ...]
     tokens_released: int
+
+
+@dataclass(frozen=True)
+class MemoryRuleProposal:
+    status: Literal[
+        "proposed",
+        "already_saved",
+        "previously_dismissed",
+        "too_many_pending",
+    ]
+    entry: MemoryEntryRecord | None
 
 
 @dataclass(frozen=True)
@@ -383,15 +400,22 @@ class LightweightMemoryService:
             content=content,
             actor_type=actor_type,
             source_trust=entry_source_trust,
+            source_refs=source_refs,
             confirmed_by_user_action=confirmed_by_user_action,
             entry_created_by=entry_created_by,
         )
         if actor_type == "agent" and not adopted_by_user:
+            pending_proposal = is_pending_memory_proposal(
+                created_by=entry_created_by,
+                kind=kind,
+                confirmed_by_user=confirmed_by_user_action,
+            )
             self._assert_agent_provenance(
                 scope_type=scope_type,
                 scope_id=scope_id,
                 source_trust=entry_source_trust,
                 source_refs=source_refs,
+                proposal_run_id=run_id if pending_proposal else None,
             )
         state = self.scope(scope_type, scope_id)
         if (
@@ -432,6 +456,182 @@ class LightweightMemoryService:
             reviewed_operation="promote" if adopted_by_user else None,
             reviewed_memory_id=reviewed_source_memory_id,
         )
+
+    def propose_rule(
+        self,
+        *,
+        project_id: str,
+        scope_type: str,
+        kind: str,
+        content: str,
+        reason: str,
+        source_refs: tuple[str, ...],
+        run_id: str,
+        actor_id: str | None = None,
+        activity_id: str | None = None,
+        decision_id: str | None = None,
+    ) -> MemoryRuleProposal:
+        """Save a rule the user stated as a pending suggestion.
+
+        The suggestion stays out of the prompt until the user adopts it on
+        the Memory page. Every refusal is a known failure raised before any
+        write.
+        """
+
+        if kind not in INSTRUCTION_MEMORY_KINDS:
+            raise ValueError("A Memory rule is a preference or constraint")
+        if scope_type not in _TOKEN_LIMITS:
+            raise ValueError(f"Unknown Memory scope: {scope_type!r}")
+        content = content.strip()
+        source_refs = tuple(sorted(set(source_refs)))
+        if not content or len(content) > _RULE_PROPOSAL_MAX_CHARS:
+            raise _rule_rejection(
+                "A Memory rule must be one statement of at most "
+                f"{_RULE_PROPOSAL_MAX_CHARS} characters",
+                error_code="MEMORY_CONTENT_REJECTED",
+                field="content",
+                instruction=(
+                    "Restate the rule in one short sentence that keeps the "
+                    "user's meaning, then retry."
+                ),
+            )
+        if not reason.strip():
+            raise _rule_rejection(
+                "A Memory rule proposal needs a reason",
+                error_code="MEMORY_ARGUMENT_VALIDATION_FAILED",
+                field="reason",
+                instruction="Say why the rule applies to future work.",
+            )
+        scope_id = (
+            project_id
+            if scope_type == "project"
+            else self._bound_scope_id(project_id, scope_type)
+        )
+        if scope_id is None:
+            raise _rule_rejection(
+                f"This Project has no {scope_type} Memory",
+                error_code="MEMORY_SCOPE_REJECTED",
+                field="scope",
+                instruction=(
+                    "Propose the rule for project scope instead, or skip it "
+                    "and continue delivering the work."
+                ),
+            )
+        self._assert_agent_provenance(
+            scope_type="project",
+            scope_id=project_id,
+            source_trust="user_asserted",
+            source_refs=source_refs,
+        )
+        try:
+            assert_memory_entry_policy(
+                kind=kind,
+                content=content,
+                created_by="agent",
+                source_trust="user_asserted",
+                confirmed_by_user=False,
+                source_refs=source_refs,
+                cloud_projection=True,
+            )
+        except WorkspaceConfigError as exc:
+            raise _rule_rejection(
+                "A Memory rule must not contain secrets or local home paths",
+                error_code="MEMORY_CONTENT_REJECTED",
+                field="content",
+                instruction=(
+                    "Leave secrets and device paths out of the rule, or skip "
+                    "it and continue delivering the work."
+                ),
+            ) from exc
+
+        normalized = _normalized_memory_content(content)
+        entries = self._journal.list_memory_entries(
+            scope_type, scope_id, include_deleted=True, limit=500
+        )
+        same = [
+            entry
+            for entry in entries
+            if _normalized_memory_content(entry.content) == normalized
+        ]
+        active = next(
+            (entry for entry in same if entry.deleted_at is None), None
+        )
+        if active is not None:
+            # A retry finds its own suggestion, still waiting for the user.
+            return MemoryRuleProposal(
+                status=(
+                    "proposed"
+                    if is_pending_rule_proposal(active)
+                    else "already_saved"
+                ),
+                entry=active,
+            )
+        if same:
+            return MemoryRuleProposal(
+                status="previously_dismissed", entry=same[0]
+            )
+        if (
+            sum(is_pending_rule_proposal(entry) for entry in entries)
+            >= _MAX_PENDING_RULE_PROPOSALS
+        ):
+            return MemoryRuleProposal(status="too_many_pending", entry=None)
+        state = self.scope(scope_type, scope_id)
+        if (
+            state.current_token_count >= state.token_limit * 0.9
+            or state.current_token_count + count_tokens(content)
+            > state.token_limit
+        ):
+            # Raising later, after dispatch, would leave the outcome unknown.
+            raise _rule_rejection(
+                "Memory is too full for another suggestion",
+                error_code="MEMORY_CAPACITY_REJECTED",
+                field="scope",
+                instruction=(
+                    "Skip this proposal and continue delivering the work. "
+                    "The user can free space on the Memory page."
+                ),
+            )
+        digest = hashlib.sha256(
+            json.dumps(
+                [run_id, scope_type, kind, normalized, list(source_refs)],
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        result = self.create_entry(
+            scope_type=scope_type,
+            scope_id=scope_id,
+            kind=kind,
+            content=content,
+            actor_type="agent",
+            reason=reason,
+            source_trust="user_asserted",
+            source_refs=source_refs,
+            request_id=f"memory-propose:{digest}",
+            actor_id=actor_id,
+            run_id=run_id,
+            activity_id=activity_id,
+            decision_id=decision_id,
+        )
+        return MemoryRuleProposal(status="proposed", entry=result.entry)
+
+    def source_excerpts(self, entry: MemoryEntryRecord) -> tuple[str, ...]:
+        """The cited user messages behind a suggestion, for the Memory page."""
+
+        excerpts: list[str] = []
+        for event in self._journal.get_events_by_id(entry.source_refs):
+            if event.event_type != "user.message":
+                continue
+            text = _history_payload_projection(
+                event.event_type, event.payload
+            ).get("content")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            text = text.strip()
+            if len(text) > _SOURCE_EXCERPT_MAX_CHARS:
+                text = text[: _SOURCE_EXCERPT_MAX_CHARS - 1].rstrip() + "…"
+            excerpts.append(text)
+        return tuple(excerpts)
 
     def consolidate_scope(
         self,
@@ -545,6 +745,7 @@ class LightweightMemoryService:
             content=content,
             actor_type=actor_type,
             source_trust=trust,
+            source_refs=source_refs or existing.source_refs,
             confirmed_by_user_action=confirmed_by_user_action,
         )
         return self._journal.apply_memory_mutation(
@@ -627,7 +828,14 @@ class LightweightMemoryService:
         user_id: str | None = None,
         query: str = "",
         token_budget: int = 2048,
+        include_pending: bool = False,
     ) -> tuple[MemoryEntryRecord, ...]:
+        """Select active Memory for the prompt or for an Agent search.
+
+        Pending rule suggestions never reach the prompt. Only the Agent's own
+        search includes them, so it neither follows nor repeats them.
+        """
+
         if token_budget < 1 or token_budget > 2048:
             raise ValueError("Memory token budget must be between 1 and 2048")
         candidates: list[MemoryEntryRecord] = []
@@ -643,7 +851,11 @@ class LightweightMemoryService:
             state = self.scope(scope_type, scope_id)
             if not state.use_enabled:
                 continue
-            candidates.extend(self.list_entries(scope_type, scope_id))
+            candidates.extend(
+                entry
+                for entry in self.list_entries(scope_type, scope_id)
+                if include_pending or not is_pending_rule_proposal(entry)
+            )
         candidates.sort(
             key=lambda entry: (
                 {"project": 0, "space": 1, "user": 2}[entry.scope_type],
@@ -907,22 +1119,31 @@ class LightweightMemoryService:
         content: str,
         actor_type: str,
         source_trust: str,
+        source_refs: tuple[str, ...] = (),
         confirmed_by_user_action: bool = False,
         entry_created_by: str | None = None,
     ) -> None:
+        created_by = entry_created_by or actor_type
+        confirmed_by_user = actor_type == "user" or confirmed_by_user_action
         assert_memory_entry_policy(
             kind=kind,
             content=content,
-            created_by=entry_created_by or actor_type,
+            created_by=created_by,
             source_trust=source_trust,
-            confirmed_by_user=(
-                actor_type == "user" or confirmed_by_user_action
-            ),
+            confirmed_by_user=confirmed_by_user,
+            source_refs=source_refs,
         )
+        # A pending rule suggestion has no effect until the user adopts it on
+        # the Memory page, and that adoption is its Space/User review.
         if (
             actor_type == "agent"
             and scope_type != "project"
             and not confirmed_by_user_action
+            and not is_pending_memory_proposal(
+                created_by=created_by,
+                kind=kind,
+                confirmed_by_user=confirmed_by_user,
+            )
         ):
             raise ToolPreWriteValidationError(
                 "Agent Space/User Memory mutations require HumanInteraction",
@@ -952,8 +1173,14 @@ class LightweightMemoryService:
         scope_id: str,
         source_trust: str,
         source_refs: tuple[str, ...],
+        proposal_run_id: str | None = None,
     ) -> None:
-        """Prevent model-authored Memory from laundering source authority."""
+        """Prevent model-authored Memory from laundering source authority.
+
+        Citations must come from the Project that owns the Memory. A pending
+        rule suggestion may instead target the Space/User Memory that its
+        Run's Project feeds, citing that Project.
+        """
 
         if source_trust != "user_asserted":
             return
@@ -972,7 +1199,21 @@ class LightweightMemoryService:
                 "or skip this Memory write and continue delivering the work."
             ),
         }
-        if scope_type != "project" or not source_refs:
+        project_id: str | None = scope_id
+        if scope_type != "project":
+            source_run = (
+                self._journal.get_run(proposal_run_id)
+                if proposal_run_id
+                else None
+            )
+            project_id = (
+                source_run.project_id
+                if source_run is not None
+                and self._bound_scope_id(source_run.project_id, scope_type)
+                == scope_id
+                else None
+            )
+        if project_id is None or not source_refs:
             raise ToolPreWriteValidationError(
                 "Agent user_asserted Memory requires cited user History events",
                 error_code="MEMORY_PROVENANCE_REJECTED",
@@ -986,11 +1227,11 @@ class LightweightMemoryService:
             if (
                 event.event_type != "user.message"
                 or run is None
-                or run.project_id != scope_id
+                or run.project_id != project_id
                 or not self._written_by_user(
                     event_id=event.event_id,
                     run_id=event.run_id,
-                    project_id=scope_id,
+                    project_id=project_id,
                     source=event.payload.get("source"),
                 )
             ):
@@ -1005,6 +1246,12 @@ class LightweightMemoryService:
                 recovery=recovery,
             )
 
+    def _bound_scope_id(self, project_id: str, scope_type: str) -> str | None:
+        """The Space or User Memory this Project feeds, if bound."""
+
+        space_id, user_id = self._journal.get_memory_project_scopes(project_id)
+        return space_id if scope_type == "space" else user_id
+
     def _written_by_user(
         self, *, event_id: str, run_id: str, project_id: str, source: object
     ) -> bool:
@@ -1017,6 +1264,27 @@ class LightweightMemoryService:
                 project_id=project_id, request_id=run_id
             )
         return is_user_authored_message_source(source)
+
+
+def _rule_rejection(
+    message: str, *, error_code: str, field: str, instruction: str
+) -> ToolPreWriteValidationError:
+    return ToolPreWriteValidationError(
+        message,
+        error_code=error_code,
+        field=field,
+        recovery={"tool": "propose_memory_rule", "instruction": instruction},
+    )
+
+
+def is_pending_rule_proposal(entry: MemoryEntryRecord) -> bool:
+    """An active rule suggestion the user has not adopted or dismissed."""
+
+    return entry.deleted_at is None and is_pending_memory_proposal(
+        created_by=entry.created_by,
+        kind=entry.kind,
+        confirmed_by_user=entry.confirmed_by_user,
+    )
 
 
 def event_source_trust(event_type: str, *, user_authored: bool = False) -> str:

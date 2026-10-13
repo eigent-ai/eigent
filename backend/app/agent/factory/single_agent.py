@@ -21,6 +21,7 @@ from camel.messages import BaseMessage
 
 from app.agent.agent_model import agent_model
 from app.agent.prompt import (
+    MEMORY_RULE_NOTICE,
     SINGLE_AGENT_SYS_PROMPT,
     append_connected_app_mcp_notice,
 )
@@ -94,6 +95,8 @@ async def single_agent(
     )
     if managed_execution is None:
         system_message = append_connected_app_mcp_notice(system_message)
+        # Only the legacy assembly attaches the Memory tools.
+        system_message += MEMORY_RULE_NOTICE
     else:
         system_message += (
             "\nOnly the supplied private-workspace file tools are available."

@@ -13,8 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from app.agent import prompt
 from app.agent.toolkit import memory_toolkit
 from app.agent.toolkit.memory_toolkit import MemoryToolkit
 
@@ -130,3 +133,97 @@ def test_invalid_memory_source_trust_is_known_before_write(
     assert result["field"] == "source_trust"
     assert result["outcome_known"] is True
     service.create_entry.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("kind", "fact"), ("scope", "organization")]
+)
+def test_invalid_rule_arguments_are_known_before_write(
+    monkeypatch, field, value
+) -> None:
+    service = MagicMock()
+    monkeypatch.setattr(
+        memory_toolkit, "get_lightweight_memory_service", lambda: service
+    )
+
+    result = MemoryToolkit("run-1").propose_memory_rule(
+        **{
+            "kind": "preference",
+            "scope": "project",
+            "content": "Reply in English.",
+            "reason": "Exercise argument validation.",
+            "source_event_ids": ["user-1"],
+            field: value,
+        }
+    )
+
+    assert result["error_code"] == "MEMORY_ARGUMENT_VALIDATION_FAILED"
+    assert result["field"] == field
+    service.propose_rule.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "DEVELOPER_SYS_PROMPT",
+        "BROWSER_SYS_PROMPT",
+        "MULTI_MODAL_SYS_PROMPT",
+        "DOCUMENT_SYS_PROMPT",
+        "SOCIAL_MEDIA_SYS_PROMPT",
+        "MCP_SYS_PROMPT",
+    ],
+)
+def test_agents_with_memory_tools_are_told_to_propose_rules(name) -> None:
+    assert prompt.MEMORY_RULE_NOTICE in getattr(prompt, name)
+
+
+class _PromptCaptured(Exception):
+    pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("managed", [False, True])
+async def test_single_agent_mentions_rules_only_with_memory_tools(
+    monkeypatch, tmp_path, managed
+) -> None:
+    from app.agent.factory import single_agent as factory, toolkit_assembler
+
+    assembly = SimpleNamespace(
+        tools=[], tool_names=[], toolkits_to_register_agent=[]
+    )
+    prompts = []
+
+    def capture(_name, message, *_args, **_kwargs):
+        prompts.append(message.content)
+        raise _PromptCaptured
+
+    monkeypatch.setattr(factory, "agent_model", capture)
+    monkeypatch.setattr(
+        factory,
+        "assemble_single_agent_toolkits",
+        AsyncMock(return_value=assembly),
+    )
+    monkeypatch.setattr(
+        factory, "get_working_directory", lambda _options: str(tmp_path)
+    )
+    monkeypatch.setattr(
+        toolkit_assembler, "_rollback_runtime_assembly", AsyncMock()
+    )
+    managed_execution = (
+        SimpleNamespace(
+            working_directory=str(tmp_path),
+            assemble=lambda _options: assembly,
+            model_resources=None,
+        )
+        if managed
+        else None
+    )
+
+    with pytest.raises(_PromptCaptured):
+        await factory.single_agent(
+            SimpleNamespace(task_id="task-1", project_id="project-1"),
+            managed_execution=managed_execution,
+        )
+
+    # Only the legacy assembly attaches the Memory tools.
+    assert ("propose_memory_rule" in prompts[0]) is not managed
