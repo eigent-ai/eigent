@@ -25,11 +25,17 @@ from app.agent.listen_chat_agent import ListenChatAgent
 from app.agent.toolkit import memory_toolkit
 from app.agent.toolkit.memory_toolkit import MemoryToolkit
 from app.lightweight_memory import (
+    IncrementalMemoryMaintainer,
     LightweightMemoryService,
     service as memory_service,
 )
 from app.lightweight_memory.service import is_pending_rule_proposal
 from app.memory.service import build_durable_context_projection_for_task_lock
+from app.permission_policy import (
+    PermissionPolicyService,
+    PolicyEffect,
+    build_tool_action_descriptor,
+)
 from app.run_context import RunContext, run_context_scope
 from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.run_journal.memory_policy import assert_memory_entry_policy
@@ -308,6 +314,46 @@ def test_dismissed_rule_is_not_proposed_again(memory):
     assert memory.service.list_entries("project", "project-1") == ()
 
 
+def test_many_archived_entries_never_hide_a_saved_rule(memory):
+    saved = memory.service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="constraint",
+        content=RULE,
+        actor_type="user",
+        reason="Added on the Memory page",
+        source_trust="user_confirmed",
+    ).entry
+    # Archived after the rule was saved, so they are listed before it.
+    for index in range(500):
+        note = memory.service.create_entry(
+            scope_type="project",
+            scope_id="project-1",
+            kind="fact",
+            content=f"Old note {index}.",
+            actor_type="user",
+            reason="Added on the Memory page",
+            source_trust="user_confirmed",
+        ).entry
+        memory.service.transition_entry(
+            memory_id=note.memory_id,
+            expected_version=note.version,
+            operation="remove",
+            actor_type="user",
+            reason="Archived on the Memory page",
+            request_id=f"archive-{index}",
+        )
+    memory.apply.reset_mock()
+
+    proposal = _propose(memory.service)
+
+    assert (proposal.status, proposal.entry.memory_id) == (
+        "already_saved",
+        saved.memory_id,
+    )
+    memory.apply.assert_not_called()
+
+
 def test_retry_returns_the_same_suggestion(memory, monkeypatch):
     first = _propose(memory.service, source_refs=("user-1", "user-2"))
 
@@ -371,6 +417,32 @@ def test_pending_rule_reaches_the_prompt_only_after_confirmation(
     projection = _projection(memory.service, monkeypatch)
     assert rule.memory_id in projection.source_memory_ids
     assert RULE in projection.text
+
+
+def test_pending_rule_never_stops_an_explicit_remember_request(memory):
+    rule = _propose(memory.service, content="Releases ship on Fridays.").entry
+    memory.journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="remember-1",
+            event_type="user.message",
+            payload={
+                "content": "Remember that releases ship on Fridays.",
+                "source": "chat",
+            },
+        ),
+    )
+
+    IncrementalMemoryMaintainer(memory.service).process_project("project-1")
+
+    # The explicit request takes effect at once, as it did before.
+    assert {
+        (entry.created_by, entry.content, is_pending_rule_proposal(entry))
+        for entry in memory.service.list_entries("project", "project-1")
+    } == {
+        ("agent", rule.content, True),
+        ("extractor", "releases ship on Fridays.", False),
+    }
 
 
 def test_editing_a_pending_rule_adopts_it_as_user_memory(memory, monkeypatch):
@@ -579,6 +651,10 @@ def test_tool_rejection_is_known_and_the_agent_can_correct_it(memory, toolkit):
     )
     assert rejected["error_code"] == "MEMORY_PROVENANCE_REJECTED"
     assert rejected["write_performed"] is False
+    # An unstated rule must not be saved another way, as an inferred note.
+    instruction = rejected["recovery"]["instruction"]
+    assert "do not propose or save it" in instruction
+    assert "model_inferred for" not in instruction
 
     proposed = toolkit.call(
         "propose_memory_rule", "proposal-call", **_tool_arguments()
@@ -597,12 +673,48 @@ def test_tool_rejection_is_known_and_the_agent_can_correct_it(memory, toolkit):
         "completed",
     ]
     assert {record.safety_class for record in records} == {
-        ToolSafetyClass.UNSAFE_WRITE.value
+        ToolSafetyClass.SAFE_READ.value
     }
     assert not any(
         event.event_type in {"tool.outcome_unknown", "run.failed"}
         for event in memory.journal.list_events("run-1")
     )
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "effect"),
+    [
+        # An inert suggestion never blocks the Run on an approval prompt.
+        ("propose_memory_rule", PolicyEffect.ALLOW),
+        # A direct write that reaches the prompt keeps its approval.
+        ("remember_project_memory", PolicyEffect.PROMPT),
+    ],
+)
+def test_rule_proposal_needs_no_permission_prompt(
+    memory, toolkit, tool_name, effect
+):
+    arguments = _tool_arguments()
+    safety_class, idempotency_key = tool_checkpoint.declared_tool_safety(
+        toolkit.tools[tool_name], tool_name, arguments
+    )
+    descriptor = build_tool_action_descriptor(
+        action_id="call-1",
+        tool_name=tool_name,
+        toolkit_name=MemoryToolkit.toolkit_name(),
+        safety_class=safety_class,
+        arguments=arguments,
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="legacy-unbound:run-1",
+        idempotency_key=idempotency_key,
+    )
+
+    # A Space without a profile uses the default, request_approval.
+    decision = PermissionPolicyService(memory.journal).evaluate(
+        descriptor, space_id="space-1"
+    )
+
+    assert decision.effect is effect
 
 
 def test_tool_reports_too_many_pending_without_a_write(memory, toolkit):

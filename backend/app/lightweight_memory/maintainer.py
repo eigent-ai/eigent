@@ -30,6 +30,7 @@ from app.lightweight_memory.service import (
     LightweightMemoryService,
     count_tokens,
     format_project_cursor,
+    is_pending_rule_proposal,
     parse_project_cursor,
 )
 from app.run_journal import MemoryScopeStateRecord
@@ -335,7 +336,13 @@ class IncrementalMemoryMaintainer:
             ):
                 raise RuntimeError("Memory extraction page made no progress")
 
-            active = self._service.list_entries(scope_type, scope_id)
+            # A pending rule suggestion has no effect, so it must not stop
+            # the user's explicit request with the same words being saved.
+            active = tuple(
+                entry
+                for entry in self._service.list_entries(scope_type, scope_id)
+                if not is_pending_rule_proposal(entry)
+            )
             proposals = (
                 self._extractor.extract(
                     active_memory=active,

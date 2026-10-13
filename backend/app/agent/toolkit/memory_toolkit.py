@@ -497,9 +497,13 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             FunctionTool(self.promote_project_memory),
             FunctionTool(self.search_project_history),
         ]
-        for tool in (tools[0], tools[6]):
+        # A rule suggestion has no effect until the user adopts it on the
+        # Memory page, which is its review, and a retry returns the same
+        # entry. A permission prompt would only block the Run for a second,
+        # redundant consent, so it is declared like other internal tools.
+        for tool in (tools[0], tools[2], tools[6]):
             declare_tool_safety(tool, ToolSafetyClass.SAFE_READ)
-        for tool in tools[1:6]:
+        for tool in (tools[1], *tools[3:6]):
             declare_tool_safety(tool, ToolSafetyClass.UNSAFE_WRITE)
         for tool in tools:
             try:
