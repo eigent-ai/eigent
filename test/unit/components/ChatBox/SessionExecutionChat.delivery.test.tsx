@@ -13,7 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { SessionExecutionChat } from '@/components/ChatBox/SessionExecutionChat';
-import { deliverSessionMessage, executionScope } from '@/service/executionApi';
+import {
+  createSessionMessageIntent,
+  deliverSessionMessage,
+  executionScope,
+} from '@/service/executionApi';
 import { resetSessionDrafts } from '@/store/sessionDraftStore';
 import {
   act,
@@ -159,6 +163,36 @@ describe('managed Session delivery', () => {
 
       view.rerender(<SessionExecutionChat key="a" projectId="session-a" />);
       expect(input()).toHaveTextContent('Draft that never reached the server');
+    } finally {
+      network.mockRestore();
+    }
+  });
+
+  // The local capability header is cached after its first lookup, so this
+  // runs after the test that holds that lookup open.
+  it('marks the delivery as attempted by the time the request is sent', async () => {
+    mocks.capability.mockResolvedValue('synthetic-capability');
+    const intent = createSessionMessageIntent(
+      executionScope('session-a'),
+      'hello',
+      'start'
+    );
+    intent.body = Object.freeze({
+      request_id: intent.requestId,
+      kind: intent.kind,
+    }) as any;
+    const markedWhenSent: boolean[] = [];
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => {
+        markedWhenSent.push(intent.deliveryAttempted);
+        throw new TypeError('response lost');
+      });
+    try {
+      await expect(deliverSessionMessage(intent)).rejects.toThrow();
+      // A sent request whose response was lost must not be sent as new.
+      expect(markedWhenSent).toEqual([true]);
+      expect(intent.deliveryAttempted).toBe(true);
     } finally {
       network.mockRestore();
     }
