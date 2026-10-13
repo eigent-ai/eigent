@@ -366,10 +366,18 @@ export function reduceProjectedRun(
     previousRun?.status === 'waiting_for_user' &&
     typeof event.payload.remaining_interaction_count === 'number' &&
     event.payload.remaining_interaction_count > 0;
+  // Requests closed because the Run itself ended carry that reason; the
+  // Run's own terminal event, not this cancellation, decides its status.
+  const cancelledWithTerminalRun =
+    event.eventType === 'approval.cancelled' &&
+    typeof event.payload.reason === 'string' &&
+    /^(run_terminal|terminal_run_recovery):/.test(event.payload.reason);
   let lifecycleStatus: ProjectedRun['status'] | undefined =
     interactionDecisionKeepsWaiting
       ? 'waiting_for_user'
-      : RUN_STATUS_BY_EVENT[event.eventType];
+      : cancelledWithTerminalRun
+        ? undefined
+        : RUN_STATUS_BY_EVENT[event.eventType];
   if (!lifecycleStatus && event.source !== 'canonical') {
     if (event.legacyStep === 'end') lifecycleStatus = 'completed';
     // Failed legacy turns emit ERROR and close without an END frame.

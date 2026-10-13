@@ -1945,6 +1945,32 @@ describe('projector pipeline', () => {
         ).toBe('interrupted');
     });
 
+    it('leaves the status to the Run when a request closes because the Run ended', () => {
+      const requested = projectRawEvents(
+        'project-1',
+        [
+          runEvent(1, 'run.attempt_started', '10:00:00'),
+          runEvent(2, 'approval.requested', '10:00:02'),
+          runEvent(3, 'run.cancel_requested', '10:00:10'),
+        ],
+        'live'
+      ).state;
+      const closed = reduceProjectView(
+        requested,
+        runEvent(4, 'approval.cancelled', '10:00:11', {
+          decision: 'rejected',
+          continued_attempt: false,
+          reason: 'run_terminal:cancelled',
+          source: 'system',
+        })
+      );
+      expect(closed.runs['run-1'].status).toBe('cancelling');
+      expect(
+        reduceProjectView(closed, runEvent(5, 'run.cancelled', '10:00:11'))
+          .runs['run-1'].status
+      ).toBe('cancelled');
+    });
+
     it('restarts the wait record at a measured Run read', () => {
       const approved = reduceProjectView(
         projectRawEvents(

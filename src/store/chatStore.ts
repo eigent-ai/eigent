@@ -91,6 +91,7 @@ import {
 import { recoverCompletedRunDisplay } from '@/service/completedRunDisplayRecovery';
 import { executionScope } from '@/service/executionApi';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
+import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import {
   createTaskTimerWaitSync,
   isRunWaitingForUser,
@@ -4099,9 +4100,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ...Object.keys(CANONICAL_TERMINAL_RUN_STATUSES),
               'run.attempt_created',
               'run.attempt_started',
+              'approval.cancelled',
+              'interaction.cancelled',
             ],
           },
           (event) => {
+            if (
+              event.eventType === 'approval.cancelled' ||
+              event.eventType === 'interaction.cancelled'
+            ) {
+              // The chat stream never reports a request the backend closed
+              // itself, so close its card here and show the next one.
+              const interactionId =
+                event.payload.interaction_id ?? event.payload.approval_id;
+              if (active && typeof interactionId === 'string')
+                completeHumanInteraction(
+                  observedChatStore.getState(),
+                  observedTaskId,
+                  interactionId
+                );
+              return;
+            }
             if (
               ['run.attempt_created', 'run.attempt_started'].includes(
                 event.eventType

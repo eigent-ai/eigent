@@ -34,7 +34,13 @@ export function completeHumanInteraction(
     (message) => message.interaction?.interaction_id !== interactionId
   );
   state.markHumanInteractionResolved(runId, interactionId);
-  if (!advances) return true;
+  if (!advances) {
+    // A queued request that ended elsewhere (for example cancelled because
+    // its tool can no longer run) must not be offered later.
+    if (remaining.length !== task.askList.length)
+      state.setActiveAskList(runId, remaining);
+    return true;
+  }
   const [next, ...queue] = remaining;
   state.setActiveAskList(runId, queue);
   state.setActiveAsk(runId, next?.agent_name || '');
