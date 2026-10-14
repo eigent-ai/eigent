@@ -982,25 +982,6 @@ class LocalMaterialization(_StrictFrozenModel):
         }
 
 
-def bound_model_identity(semantic_spec: Any) -> dict[str, str] | None:
-    """Read the public model identity without exposing runtime auth details."""
-    if not isinstance(semantic_spec, dict):
-        return None
-    manifest = semantic_spec.get("runtime_capability_manifest")
-    if not isinstance(manifest, dict):
-        return None
-    model = manifest.get("model")
-    if not isinstance(model, dict):
-        return None
-    platform, model_type = model.get("platform"), model.get("type")
-    if not all(
-        isinstance(value, str) and value.strip()
-        for value in (platform, model_type)
-    ):
-        return None
-    return {"platform": platform, "type": model_type}
-
-
 class EffectiveEnvironmentSpec(_StrictFrozenModel):
     spec_id: str
     owner_type: Literal["run", "run_attempt"]
@@ -1018,9 +999,6 @@ class EffectiveEnvironmentSpec(_StrictFrozenModel):
     provider_value: str
     provider_capability_revision: str
     redaction_schema_version: int = 1
-
-    def bound_model(self) -> dict[str, str] | None:
-        return bound_model_identity(self.semantic_spec)
 
     @classmethod
     def create(

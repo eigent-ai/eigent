@@ -107,7 +107,13 @@ def accepted_session_model(
             environment = journal.get_effective_environment_spec(
                 attempt.environment_spec_id
             )
-            model = (environment.bound_model() if environment else None) or {}
+            model = (
+                environment.spec.get("semantic_spec", {})
+                .get("runtime_capability_manifest", {})
+                .get("model", {})
+                if environment
+                else {}
+            )
             if (
                 not environment
                 or environment.environment_spec_digest

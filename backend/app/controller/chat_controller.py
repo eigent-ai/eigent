@@ -574,7 +574,9 @@ def _validate_resume_model_capability(
             "The model capability changed after this task started, so it "
             "can't be resumed. Send a new message to continue.",
         )
-    persisted_model = spec.bound_model() or {}
+    persisted_model = spec.semantic_spec.get(
+        "runtime_capability_manifest", {}
+    ).get("model", {})
     if (
         persisted_model.get("platform") != data.model_platform.lower()
         or persisted_model.get("type") != data.model_type

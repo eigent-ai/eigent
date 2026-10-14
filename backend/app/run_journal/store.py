@@ -4717,28 +4717,6 @@ class SQLiteRunJournal:
                 else None
             )
 
-    def get_effective_environment_specs(
-        self, environment_spec_ids: Iterable[str]
-    ) -> dict[str, EffectiveEnvironmentSpecRecord]:
-        """Load immutable specs for a Run page with one journal lock."""
-        identifiers = list(dict.fromkeys(environment_spec_ids))
-        if not identifiers:
-            return {}
-        with self._lock:
-            rows = self._connection.execute(
-                """
-                SELECT * FROM effective_environment_specs
-                WHERE environment_spec_id IN (SELECT value FROM json_each(?))
-                """,
-                (json.dumps(identifiers, separators=(",", ":")),),
-            ).fetchall()
-            return {
-                row["environment_spec_id"]: (
-                    self._effective_environment_spec_from_row(row)
-                )
-                for row in rows
-            }
-
     def put_git_repository(
         self,
         *,
