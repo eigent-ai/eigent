@@ -191,9 +191,9 @@ export function UserMessageCard({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return <Image className="h-4 w-4 text-ds-ink-default-default" />;
+      return <DsIcon icon={Image} />;
     }
-    return <FileText className="h-4 w-4 text-ds-ink-default-default" />;
+    return <DsIcon icon={FileText} />;
   };
 
   return (
@@ -382,15 +382,18 @@ export function UserMessageCard({
           <Button
             onClick={handleCopy}
             variant="ghost"
-            size="sm"
+            size="xs"
             buttonContent="icon-only"
             aria-label={t('chat.message-copy')}
             title={t('chat.message-copy')}
           >
             {copied ? (
-              <Check className="h-4 w-4 text-ds-text-success-default-default" />
+              <DsIcon
+                icon={Check}
+                className="text-ds-text-success-default-default"
+              />
             ) : (
-              <Copy />
+              <DsIcon icon={Copy} />
             )}
           </Button>
           {canClamp ? (
@@ -401,7 +404,7 @@ export function UserMessageCard({
                 setExpanded((value) => !value);
               }}
               variant="ghost"
-              size="sm"
+              size="xs"
               buttonContent="icon-only"
               aria-label={t(
                 expanded
@@ -424,7 +427,7 @@ export function UserMessageCard({
               type="button"
               onClick={onEditAndResend}
               variant="ghost"
-              size="sm"
+              size="xs"
               buttonContent="icon-only"
               aria-label={t('chat.message-edit-and-resend')}
               title={t('chat.message-edit-and-resend')}

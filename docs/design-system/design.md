@@ -362,7 +362,19 @@ recipe bounds the popper to its trigger and Radix collision width and lets
 option text wrap within that space.
 
 Use `Textarea variant="outlined"` for a multiline field with the same visible
-border and validation colors as `Input`.
+border and validation colors as `Input`. Use `Textarea variant="plain"` for a
+borderless response inside an existing surface: it removes field padding and
+chrome while retaining the textarea size, disabled state, and keyboard focus
+ring.
+
+### Switch
+
+Use `Switch` with `size="default"` or `size="sm"`. The `default` variant
+uses Neutral subtle for the off-state track. Use `variant="solid"` on a
+subtle surface: its off-state track uses `bg-ds-neutral-default-default`
+without a visible border or outer shadow. The `outline` variant adds a
+Hairline boundary. All variants share the checked Success treatment, thumb
+geometry, disabled behavior, and keyboard focus ring.
 
 ### Tags, badges, rows, menus, and overlays
 
@@ -394,6 +406,17 @@ Use `ContentHeader` from `src/components/Layout/ContentHeader.tsx`.
 Markdown is scoped. Use the existing profile in `src/style/markdown-styles.css`
 and `src/components/ChatBox/MessageItem/MarkDown.tsx`; never style global
 `p`, headings, lists, tables, or code to change one Markdown surface.
+
+### Chat composition
+
+Narrative content and the composer share the existing conversation frame.
+Trajectory intentionally uses the full available chat width. Within narrative,
+use `space.panel-inset` for prose, work-log leading content, file-list content,
+and composer text. Icon-bearing rows retain their icon/text gap and nested
+details retain their indentation. User-message actions stay below the bubble
+with compact `Button size="xs"` controls and stable space on hover or focus.
+Markdown tables keep normal word boundaries and scroll within the shared
+scrollbar recipe when their intrinsic column widths exceed the content area.
 
 ### App shell and working surfaces
 

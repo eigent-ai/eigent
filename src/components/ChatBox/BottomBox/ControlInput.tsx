@@ -40,6 +40,7 @@ interface InputVariantRouterProps {
   variant: BottomBoxVariant;
   inputProps: InputboxProps;
   borderlessApproval?: boolean;
+  borderlessQuestion?: boolean;
   connectorPanelOpen?: boolean;
   onToggleConnectorPanel?: () => void;
   skillPanelOpen?: boolean;
@@ -321,20 +322,30 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
   );
 }
 
-function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
+function FeedbackInput({
+  variant,
+  borderless,
+}: {
+  variant: BottomBoxFeedbackVariant;
+  borderless?: boolean;
+}) {
   const { t } = useTranslation();
   const enterLabel = getEnterKeyLabel(useDesktopShortcutPlatform());
 
+  const isQuestion = variant.presentation === 'question';
+
   return (
-    <div className={controlSurfaceClassName}>
+    <div
+      className={
+        borderless ? 'flex w-full flex-col gap-ds-12' : controlSurfaceClassName
+      }
+    >
       <Textarea
         aria-label={t('chat.control-feedback-label')}
         value={variant.value}
         placeholder={variant.placeholder}
-        className={cn(
-          variant.presentation === 'question' &&
-            'border-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0'
-        )}
+        variant={isQuestion ? 'plain' : 'none'}
+        size="sm"
         disabled={variant.disabled || variant.submitting}
         onChange={(event) => variant.onChange(event.target.value)}
         onEnter={variant.value.trim() ? variant.onSubmit : undefined}
@@ -551,6 +562,7 @@ export function ControlInputRouter({
   variant,
   inputProps,
   borderlessApproval,
+  borderlessQuestion,
   connectorPanelOpen,
   onToggleConnectorPanel,
   skillPanelOpen,
@@ -583,7 +595,9 @@ export function ControlInputRouter({
       content = <SelectionInput variant={variant} />;
       break;
     case 'feedback':
-      content = <FeedbackInput variant={variant} />;
+      content = (
+        <FeedbackInput variant={variant} borderless={borderlessQuestion} />
+      );
       break;
     case 'form':
       content = <FormInput variant={variant} />;

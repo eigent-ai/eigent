@@ -643,10 +643,11 @@ describe('BottomBox structure', () => {
       name: 'Feedback',
     });
     expect(questionTextarea).toHaveClass(
-      'border-none',
+      'border-0',
+      'p-0',
       'shadow-none',
-      'focus-visible:ring-0',
-      'focus-visible:ring-offset-0'
+      'focus-visible:ring-2',
+      'focus-visible:ring-offset-2'
     );
     fireEvent.change(questionTextarea, {
       target: { value: 'Use a shorter title' },

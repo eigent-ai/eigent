@@ -15,6 +15,21 @@
 import { usePageTabStore } from '@/store/pageTabStore';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+describe('pageTabStore information density default', () => {
+  it('starts new users and older preferences without a density at Moderate while preserving saved choices', async () => {
+    expect(usePageTabStore.getInitialState().narrativeInformationDensity).toBe(
+      'balanced'
+    );
+    const migrate = usePageTabStore.persist.getOptions().migrate!;
+    expect(await migrate({}, 5)).toMatchObject({
+      narrativeInformationDensity: 'balanced',
+    });
+    expect(
+      await migrate({ narrativeInformationDensity: 'compact' }, 5)
+    ).toMatchObject({ narrativeInformationDensity: 'compact' });
+  });
+});
+
 describe('pageTabStore side-panel requests', () => {
   beforeEach(() => {
     usePageTabStore.setState({

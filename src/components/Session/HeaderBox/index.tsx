@@ -21,15 +21,8 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -52,9 +45,6 @@ import { useSkillsStore } from '@/store/skillsStore';
 import {
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
   DEFAULT_NARRATIVE_INFORMATION_DENSITY,
-  narrativeInformationDensities,
-  type ChatTimelineDetailLevel,
-  type NarrativeInformationDensity,
 } from '@/types/chatTimeline';
 import {
   Archive,
@@ -63,32 +53,18 @@ import {
   GalleryThumbnails,
   Pencil,
   Pin,
-  RectangleEllipsis,
   Trash2,
   WandSparkles,
 } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { SessionViewSettings } from './SessionViewSettings';
 import {
   selectEventAutomationSource,
   selectLegacyAutomationSource,
   type SessionAutomationSource,
 } from './sessionAutomationSource';
-
-const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
-  narrative: 'Narrative',
-  trajectory: 'Trajectory',
-};
-
-const NARRATIVE_DENSITY_FALLBACK_LABELS: Record<
-  NarrativeInformationDensity,
-  string
-> = {
-  compact: 'Minimum',
-  balanced: 'Moderate',
-  expanded: 'Full',
-};
 
 /** Match the composer control row when the resizable Session pane is narrow. */
 const COMPACT_WIDTH_THRESHOLD = 460;
@@ -225,14 +201,6 @@ export function HeaderBox({
   const sessionMenuLabel = t('layout.project-settings', {
     defaultValue: 'Session settings',
   });
-  const timelineStyleLabel = (level: ChatTimelineDetailLevel) =>
-    t(`chat.timeline-style-${level}`, {
-      defaultValue: TIMELINE_MODE_FALLBACK_LABELS[level],
-    });
-  const densityLabel = (density: NarrativeInformationDensity) =>
-    t(`chat.timeline-density-${density}`, {
-      defaultValue: NARRATIVE_DENSITY_FALLBACK_LABELS[density],
-    });
   const turnIntoSkill = () => {
     if (!projectId || !automationSource || activePreviewProjectId !== projectId)
       return;
@@ -275,7 +243,7 @@ export function HeaderBox({
       className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
     >
       {/* Left: return to workspace, Session identity, and its controls. */}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-ds-4">
         <TooltipSimple content={backTooltip} variant="instant" side="bottom">
           <Button
             type="button"
@@ -353,77 +321,16 @@ export function HeaderBox({
               <DropdownMenuSeparator />
               {eventNativeTimelineEnabled ? (
                 <>
-                  <DropdownMenuLabel className="text-ds-text-meta font-medium text-ds-ink-muted-default">
-                    {t('chat.timeline-view-settings', {
-                      defaultValue: 'Chat View Style',
-                    })}
-                  </DropdownMenuLabel>
-                  <DropdownMenuGroup
-                    aria-label={t('chat.timeline-view-label')}
-                    className="mx-ds-8 mb-ds-4 flex rounded-lg bg-ds-neutral-strong-default p-ds-2"
-                  >
-                    {(['narrative', 'trajectory'] as const).map((level) => (
-                      <DropdownMenuItem
-                        key={level}
-                        role="menuitemradio"
-                        aria-checked={chatTimelineDetailLevel === level}
-                        onSelect={(event) => {
-                          event.preventDefault();
-                          setChatTimelineDetailLevel(level);
-                        }}
-                        className={cn(
-                          'min-h-ds-control-md min-w-0 flex-1 justify-center rounded-lg text-center font-medium',
-                          chatTimelineDetailLevel === level
-                            ? 'bg-ds-neutral-subtle-default text-ds-ink-default-default shadow-ds-elevation-control'
-                            : 'text-ds-ink-muted-default'
-                        )}
-                      >
-                        {timelineStyleLabel(level)}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                  {chatTimelineDetailLevel === 'narrative' ? (
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger className="min-h-ds-control-lg w-full min-w-0">
-                        <DsIcon icon={RectangleEllipsis} recipe="main" />
-                        <span className="min-w-0 flex-1 truncate">
-                          {timelineStyleLabel('narrative')}:{' '}
-                          <span className="text-ds-text-meta text-ds-ink-muted-default">
-                            {densityLabel(narrativeInformationDensity)}
-                          </span>
-                        </span>
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="w-44">
-                        <DropdownMenuRadioGroup
-                          value={narrativeInformationDensity}
-                          onValueChange={(value) =>
-                            setNarrativeInformationDensity(
-                              value as NarrativeInformationDensity
-                            )
-                          }
-                          aria-label={t(
-                            'chat.timeline-narrative-detail-label',
-                            {
-                              defaultValue: 'Narrative style',
-                            }
-                          )}
-                        >
-                          {narrativeInformationDensities.map((density) => (
-                            <DropdownMenuRadioItem
-                              key={density}
-                              value={density}
-                              onSelect={(event) => {
-                                event.preventDefault();
-                                setNarrativeInformationDensity(density);
-                              }}
-                            >
-                              {densityLabel(density)}
-                            </DropdownMenuRadioItem>
-                          ))}
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  ) : null}
+                  <SessionViewSettings
+                    devMode={chatTimelineDetailLevel === 'trajectory'}
+                    density={narrativeInformationDensity}
+                    onDevModeChange={(enabled) =>
+                      setChatTimelineDetailLevel(
+                        enabled ? 'trajectory' : 'narrative'
+                      )
+                    }
+                    onDensityChange={setNarrativeInformationDensity}
+                  />
                   <DropdownMenuSeparator />
                 </>
               ) : null}

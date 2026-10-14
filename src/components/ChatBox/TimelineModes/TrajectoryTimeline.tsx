@@ -16,6 +16,7 @@ import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/Prepar
 import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { approvalRecordedReason } from '@/lib/approvalPresentation';
@@ -40,6 +41,7 @@ import { normalizeRunReviewPath } from './RunFiles';
 import {
   hasRunExecutionRows,
   isActiveRunStatus,
+  previousRecordedRunModel,
   statusIcon,
   statusLabel,
   type InteractiveTimelinePlan,
@@ -180,9 +182,10 @@ function DetailedStatusInline({
       )}
       data-detailed-status={status}
     >
-      <Icon
-        aria-hidden
-        className={cn('size-3', tone.iconClassName, animated && 'animate-spin')}
+      <DsIcon
+        icon={Icon}
+        recipe="main-compact"
+        className={cn(tone.iconClassName, animated && 'animate-spin')}
       />
       <span className={tone.labelClassName}>{statusLabel(status)}</span>
     </span>
@@ -272,10 +275,11 @@ function TraceRow({
           data-trace-ending
         >
           {status}
-          <ChevronRight
-            aria-hidden
+          <DsIcon
+            icon={ChevronRight}
+            recipe="main-compact"
             className={cn(
-              'size-3.5 shrink-0 text-ds-ink-muted-default transition-[opacity,transform] duration-150 motion-reduce:transition-none',
+              'text-ds-ink-muted-default transition-[opacity,transform] duration-150 motion-reduce:transition-none',
               open
                 ? 'rotate-90 opacity-100'
                 : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
@@ -579,9 +583,10 @@ function NodeTraceDetails({
         }
         className="group flex min-w-0 items-center gap-2 border-0 border-x-0 border-y-0 bg-transparent p-0 text-left disabled:cursor-default"
       >
-        <FileText
-          aria-hidden
-          className="size-3.5 shrink-0 text-ds-ink-subtle-default"
+        <DsIcon
+          icon={FileText}
+          recipe="main-compact"
+          className="text-ds-ink-subtle-default"
         />
         <span className="min-w-0 flex-1 !text-ds-text-meta !font-normal break-all text-ds-ink-default-default group-enabled:group-hover:underline">
           {node.relativePath || node.path}
@@ -733,7 +738,11 @@ export function TrajectoryTimeline({
         <div className="flex flex-col gap-3" key={run.id}>
           {index > 0 ? (
             <ModelChangeDivider
-              previous={resolvedModelsByRun[runs[index - 1].runId]}
+              previous={previousRecordedRunModel(
+                runs,
+                index,
+                resolvedModelsByRun
+              )}
               current={resolvedModelsByRun[run.runId]}
             />
           ) : null}

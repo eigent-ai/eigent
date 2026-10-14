@@ -718,6 +718,42 @@ describe('ChatBox timeline modes', () => {
     }
   );
 
+  it.each(['narrative', 'trajectory'] as const)(
+    'compares with the last recorded model across a Run without one in %s',
+    (detailLevel) => {
+      const runNodes = (runId: string, minute: number) =>
+        nodes('completed').map((node): ChatProjectionNode => ({
+          ...node,
+          id: `${node.id}-${runId}`,
+          eventId: `${node.eventId}-${runId}`,
+          runId,
+          createdAt: `2026-08-20T00:${minute}:00Z`,
+        }));
+      const runs = composeTimelineRuns([
+        ...nodes('completed'),
+        ...runNodes('run-2', 10),
+        ...runNodes('run-3', 20),
+      ]);
+      const { container } = render(
+        <TimelineModeRenderer
+          detailLevel={detailLevel}
+          runs={runs}
+          resolvedModelsByRun={{
+            'run-1': { platform: 'openai', type: 'gpt-4' },
+            'run-2': null,
+            'run-3': { platform: 'openai', type: 'gpt-5' },
+          }}
+        />
+      );
+
+      const dividers = container.querySelectorAll(
+        '[data-model-change-divider]'
+      );
+      expect(dividers).toHaveLength(1);
+      expect(dividers[0]).toHaveTextContent('Model changed to gpt-5');
+    }
+  );
+
   it('records final-message feedback with logical message and Run identities', async () => {
     const finalMessage: ChatProjectionNode = {
       ...base,
@@ -1344,6 +1380,61 @@ describe('ChatBox timeline modes', () => {
     expect(
       container.querySelector('[data-narrative-segment-summary]')
     ).toBeNull();
+  });
+
+  it('indents a sub-step under its parent step', () => {
+    const stepNode = (
+      id: string,
+      runSequence: number,
+      stepId: string,
+      title: string,
+      parentStepId?: string
+    ): ChatProjectionNode => ({
+      ...base,
+      kind: 'step',
+      id,
+      eventId: id,
+      eventType: 'step.started',
+      runSequence,
+      createdAt: `2026-08-19T00:00:0${runSequence}Z`,
+      stepId,
+      title,
+      status: 'running',
+      phase: 'started',
+      source: 'authored',
+      parentStepId,
+    });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([
+          stepNode('parent-step', 1, 'stp-parent', 'Plan the report'),
+          stepNode(
+            'child-step',
+            2,
+            'stp-child',
+            'Review visual references',
+            'stp-parent'
+          ),
+          runningRunStatus(3),
+        ])}
+      />
+    );
+
+    const parent = screen.getByText('Plan the report');
+    const child = screen.getByText('Review visual references');
+    expect(
+      parent.closest(
+        '[data-narrative-event-motion][data-narrative-parent-step-id]'
+      )
+    ).toBeNull();
+    const nested = child.closest(
+      '[data-narrative-event-motion][data-narrative-parent-step-id="stp-parent"]'
+    );
+    expect(nested).toHaveClass('ms-ds-16', 'border-s', 'border-solid');
+    expect(
+      container.querySelector('[data-narrative-timeline]')
+    ).toContainElement(nested as HTMLElement);
   });
 
   it('keeps a correlated notice inside the real tool disclosure', () => {

@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BoxHeaderDisplay } from './BoxHeader';
@@ -44,12 +46,17 @@ export function HumanDecisionCard({
   }, [requestKey, seenKey]);
 
   if (!variant || !requestKey) return null;
+  const isQuestion =
+    variant.kind === 'feedback' && variant.presentation === 'question';
 
   return (
     <section
       data-human-decision-card
       data-request-key={requestKey}
-      className="mb-3 w-full rounded-3xl border border-x border-y border-ds-hairline-default-default bg-ds-neutral-subtle-default p-3 shadow-ds-elevation-popover"
+      className={cn(
+        'mb-ds-12 w-full rounded-ds-card bg-ds-neutral-subtle-default shadow-ds-elevation-popover',
+        isQuestion ? 'px-ds-16 py-ds-12' : 'p-ds-12'
+      )}
       role="region"
       aria-label={t('chat.control-region-label')}
       aria-live={variant.kind === 'approval' ? 'assertive' : 'polite'}
@@ -86,11 +93,15 @@ export function HumanDecisionCard({
               variant.kind === 'feedback' && variant.presentation === 'question'
             }
           />
+          {isQuestion ? (
+            <Separator data-question-divider className="mb-ds-12" />
+          ) : null}
           <ControlInputRouter
             variant={
               variant.kind === 'approval' ? { ...variant, header: {} } : variant
             }
             borderlessApproval={variant.kind === 'approval'}
+            borderlessQuestion={isQuestion}
             inputProps={{}}
           />
         </>

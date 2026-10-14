@@ -175,11 +175,17 @@ export function CallRow({
   // only shimmers, like a legacy event-log row, so the list never jumps.
   const [open, setOpen] = useState(initialOpen ?? pendingHuman);
   const manuallyToggled = useRef(initialOpen !== undefined);
+  const previouslyPendingHuman = useRef(pendingHuman);
 
   useEffect(() => {
+    const wasPending = previouslyPendingHuman.current;
+    previouslyPendingHuman.current = pendingHuman;
     if (pendingHuman) setOpen(true);
-    else if (!manuallyToggled.current) setOpen(false);
-  }, [pendingHuman]);
+    else if (wasPending || !manuallyToggled.current) {
+      setOpen(false);
+      if (wasPending) onOpenChange?.(false);
+    }
+  }, [pendingHuman, onOpenChange]);
   const title = summary ? `${call.title} · ${summary}` : call.title;
 
   return (

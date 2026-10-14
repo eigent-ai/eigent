@@ -14,6 +14,7 @@
 
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import type { EditUserMessageSource } from '@/components/ChatBox/MessageItem/UserMessageCard';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { itemFadeMotion } from '@/components/ui/motion';
 import type { TimelineRunView } from '@/lib/projector/chat/presentation';
 import { isStoppedRunStatus } from '@/lib/projector/runSummary';
@@ -34,6 +35,19 @@ import {
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import type { ResolvedRunModel } from './ModelChangeDivider';
+
+/** Missing model receipts do not erase the last known model in this Session. */
+export function previousRecordedRunModel(
+  runs: readonly TimelineRunView[],
+  index: number,
+  models: Readonly<Record<string, ResolvedRunModel | null>>
+): ResolvedRunModel | undefined {
+  for (let earlier = index - 1; earlier >= 0; earlier -= 1) {
+    const model = models[runs[earlier].runId];
+    if (model) return model;
+  }
+  return undefined;
+}
 
 export function isActiveRunStatus(status: TimelineRunView['status']): boolean {
   return ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
@@ -117,7 +131,11 @@ export function StatusInline({
         className
       )}
     >
-      <Icon aria-hidden className={cn('size-3', animated && 'animate-spin')} />
+      <DsIcon
+        icon={Icon}
+        recipe="main-compact"
+        className={cn(animated && 'animate-spin')}
+      />
       {hideLabel ? null : <span>{statusLabel(status)}</span>}
     </span>
   );

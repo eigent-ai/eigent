@@ -226,7 +226,10 @@ export default function ChatBox(): JSX.Element {
 }
 
 function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
-  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [editingSource, setEditingSource] = useState<{
+    projectId: string;
+    sourceId: string;
+  } | null>(null);
   const host = useHost();
 
   //Get Chatstore for the active project's task
@@ -254,7 +257,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
-  // Switching Sessions remounts this composer; keep each Session's draft.
+  // Each Session owns its composer draft.
   const {
     text: message,
     setText: setDraftMessage,
@@ -262,12 +265,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     setReviewHandoffIds: setPendingReviewHandoffIds,
   } = useSessionDraft(accountKey, activeProjectId);
   const composerRevisionRef = useRef(0);
+  const previousDraft = useRef({ projectId: activeProjectId, text: message });
   useEffect(() => {
-    if (!message) setEditingSourceId(null);
-  }, [message]);
+    const previous = previousDraft.current;
+    previousDraft.current = { projectId: activeProjectId, text: message };
+    if (previous.projectId === activeProjectId && previous.text && !message) {
+      setEditingSource((current) =>
+        current?.projectId === activeProjectId ? null : current
+      );
+    }
+  }, [activeProjectId, message]);
   const setMessage = useCallback<typeof setDraftMessage>(
     (value) => {
       composerRevisionRef.current += 1;
+      if (value === '') setEditingSource(null);
       setDraftMessage(value);
     },
     [setDraftMessage]
@@ -2848,7 +2859,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const bottomBoxVariant =
     bottomBoxControl.source === 'composer' &&
     bottomBoxControl.variant === 'input' &&
-    editingSourceId
+    editingSource?.projectId === activeProjectId
       ? {
           kind: 'input' as const,
           header: {
@@ -2875,7 +2886,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return;
     }
     setMessage(source.content);
-    setEditingSourceId(source.id);
+    if (activeProjectId)
+      setEditingSource({ projectId: activeProjectId, sourceId: source.id });
     if (source.attaches?.length) {
       toast.info(t('chat.message-reattach-files'));
     }

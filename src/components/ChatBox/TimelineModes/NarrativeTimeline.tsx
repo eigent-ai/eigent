@@ -60,6 +60,7 @@ import {
   type InteractiveTimelinePlan,
   isActiveRunStatus,
   isTerminalRunStatus,
+  previousRecordedRunModel,
   type TimelineModeProps,
   useRunElapsedMs,
 } from './shared';
@@ -252,11 +253,12 @@ function repeatedCallKey(call: TimelineCall): string | null {
   ]);
 }
 
-type NarrativeFlowEntry =
+type NarrativeFlowEntry = { parentStepId?: string } & (
   | { kind: 'narration'; id: string; segment: TimelineSegment }
   | { kind: 'call'; id: string; call: TimelineCall }
   | { kind: 'repeat'; id: string; calls: TimelineCall[] }
-  | { kind: 'item'; id: string; item: NarrativeStandaloneItem };
+  | { kind: 'item'; id: string; item: NarrativeStandaloneItem }
+);
 
 type NarrativeStandaloneItem = Exclude<TimelineNarrativeItem, TimelineSegment>;
 
@@ -270,26 +272,35 @@ function buildNarrativeFlow(
   density: NarrativeInformationDensity
 ): NarrativeFlowEntry[] {
   const entries: NarrativeFlowEntry[] = [];
-  const pushCall = (call: TimelineCall) => {
+  const pushCall = (call: TimelineCall, parentStepId?: string) => {
     const key = density === 'expanded' ? null : repeatedCallKey(call);
     const previous = entries.at(-1);
-    if (key && previous?.kind === 'call') {
+    if (
+      key &&
+      previous?.kind === 'call' &&
+      previous.parentStepId === parentStepId
+    ) {
       if (repeatedCallKey(previous.call) === key) {
         entries[entries.length - 1] = {
           kind: 'repeat',
+          parentStepId,
           id: `repeat:${previous.call.id}`,
           calls: [previous.call, call],
         };
         return;
       }
     }
-    if (key && previous?.kind === 'repeat') {
+    if (
+      key &&
+      previous?.kind === 'repeat' &&
+      previous.parentStepId === parentStepId
+    ) {
       if (repeatedCallKey(previous.calls[0]) === key) {
         previous.calls.push(call);
         return;
       }
     }
-    entries.push({ kind: 'call', id: call.id, call });
+    entries.push({ kind: 'call', id: call.id, call, parentStepId });
   };
 
   for (const item of items) {
@@ -302,9 +313,10 @@ function buildNarrativeFlow(
         kind: 'narration',
         id: `narration:${item.id}`,
         segment: item,
+        parentStepId: item.parentStepId,
       });
     }
-    item.calls.forEach(pushCall);
+    item.calls.forEach((call) => pushCall(call, item.parentStepId));
   }
   return entries;
 }
@@ -595,6 +607,11 @@ function NarrativeFlow({
           {...itemFadeMotion(reducedMotion)}
           data-narrative-event-motion
           data-narrative-event-motion-id={entry.id}
+          data-narrative-parent-step-id={entry.parentStepId}
+          className={cn(
+            entry.parentStepId &&
+              'ms-ds-16 border-x-0 border-y-0 border-s border-e-0 border-solid border-ds-hairline-subtle-default ps-ds-12'
+          )}
           key={entry.id}
         >
           {entry.kind === 'narration' ? (
@@ -1137,7 +1154,7 @@ function NarrativeRunWorkLog({
     // rows. Keep its receipt visible even before older work-log pages arrive.
     return isTerminalRunStatus(run.status) ? (
       <div
-        className="w-full border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default py-ds-8"
+        className="w-full border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-ds-panel-inset py-ds-4"
         data-narrative-run-summary
       >
         <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
@@ -1150,18 +1167,21 @@ function NarrativeRunWorkLog({
   return (
     <motion.div
       {...eventEntryMotion(reducedMotion)}
-      className="flex w-full min-w-0 flex-col"
+      className="flex w-full min-w-0 flex-col px-ds-panel-inset"
       data-narrative-run-motion={reducedMotion ? 'reduced' : 'standard'}
       data-narrative-run-motion-id={run.id}
       data-narrative-run-work-log
     >
+      <span role="status" aria-atomic="true" className="sr-only">
+        {live && !paused ? t('chat.timeline-in-progress') : ''}
+      </span>
       <button
         type="button"
         aria-expanded={open}
         onClick={() => {
           setManualOpen(!open);
         }}
-        className="group flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-2 text-left"
+        className="group flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-ds-4 text-left"
       >
         <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
           <NarrativeWorkLogSummary paused={paused} run={run} />
@@ -1256,13 +1276,17 @@ export function NarrativeTimeline({
         const showFiles = isTerminalRunStatus(run.status) && hasFiles;
         return (
           <section
-            className="flex w-full flex-col gap-3"
+            className="flex w-full flex-col gap-ds-stack-related"
             data-run-id={run.runId}
             key={run.id}
           >
             {index > 0 ? (
               <ModelChangeDivider
-                previous={resolvedModelsByRun[runs[index - 1].runId]}
+                previous={previousRecordedRunModel(
+                  runs,
+                  index,
+                  resolvedModelsByRun
+                )}
                 current={resolvedModelsByRun[run.runId]}
               />
             ) : null}

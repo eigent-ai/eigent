@@ -29,6 +29,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
+import { DsIcon } from '../../ui/ds-icon';
 import { TaskErrorNotice } from '../TaskErrorNotice';
 import { MarkDown } from './MarkDown';
 
@@ -227,12 +228,14 @@ export function AgentMessageCard({
       key={id}
       className={`flex w-full flex-col rounded-xl bg-transparent py-3 ${className || ''} overflow-hidden`}
     >
-      <MarkDown
-        content={content}
-        onTyping={handleTypingComplete}
-        onMarkdownRenderComplete={handleMarkdownRenderComplete}
-        enableTypewriter={enableTypewriter && typewriter}
-      />
+      <div className="px-ds-panel-inset" data-agent-message-content>
+        <MarkDown
+          content={content}
+          onTyping={handleTypingComplete}
+          onMarkdownRenderComplete={handleMarkdownRenderComplete}
+          enableTypewriter={enableTypewriter && typewriter}
+        />
+      </div>
       {showDeferredFileUi && attaches && attaches.length > 0 && (
         <div className="mt-2.5 flex flex-wrap gap-2">
           {attaches?.map((file) => {
@@ -247,7 +250,7 @@ export function AgentMessageCard({
                 key={'attache-' + file.fileName}
                 className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default py-1 pl-2"
               >
-                <FileText size={24} className="shrink-0" />
+                <DsIcon icon={FileText} recipe="detailed" />
                 <div className="flex flex-col">
                   <span className="block max-w-48 overflow-hidden text-ds-text-base font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default">
                     {file?.fileName?.split('.')[0]}
@@ -265,7 +268,7 @@ export function AgentMessageCard({
         <div className="mt-2.5 w-full">{deferredFooter}</div>
       )}
       {markdownAndTypingComplete && (
-        <div className="mt-3 flex shrink-0 justify-start gap-1">
+        <div className="mt-ds-12 flex shrink-0 justify-start gap-ds-4 px-ds-8">
           <Button
             onClick={handleCopy}
             variant="ghost"
@@ -274,9 +277,12 @@ export function AgentMessageCard({
             aria-label={t('setting.copy')}
           >
             {copied ? (
-              <Check className="h-4 w-4 text-ds-text-success-default-default" />
+              <DsIcon
+                icon={Check}
+                className="text-ds-text-success-default-default"
+              />
             ) : (
-              <Copy className="h-4 w-4" />
+              <DsIcon icon={Copy} />
             )}
           </Button>
           <Button
@@ -288,8 +294,9 @@ export function AgentMessageCard({
             aria-pressed={feedback === 'up'}
             disabled={feedback === 'down'}
           >
-            <ThumbsUp
-              className={`h-4 w-4 ${feedback === 'up' ? 'text-ds-accent-default-default' : ''}`}
+            <DsIcon
+              icon={ThumbsUp}
+              className={`${feedback === 'up' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
           <Button
@@ -301,8 +308,9 @@ export function AgentMessageCard({
             aria-pressed={feedback === 'down'}
             disabled={feedback === 'up'}
           >
-            <ThumbsDown
-              className={`h-4 w-4 ${feedback === 'down' ? 'text-ds-accent-default-default' : ''}`}
+            <DsIcon
+              icon={ThumbsDown}
+              className={`${feedback === 'down' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
         </div>

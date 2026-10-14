@@ -55,9 +55,10 @@ describe('HumanDecisionCard', () => {
     expect(screen.queryByText('single_agent')).not.toBeInTheDocument();
     expect(screen.queryByText('Review details')).not.toBeInTheDocument();
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
-    expect(container.querySelector('[data-human-decision-card]')).toHaveClass(
-      'border'
-    );
+    const card = container.querySelector('[data-human-decision-card]');
+    // A floating card uses elevation alone, not a boundary as well.
+    expect(card).toHaveClass('rounded-ds-card', 'shadow-ds-elevation-popover');
+    expect(card).not.toHaveClass('border');
     const approvalSurface = container.querySelector('[data-approval-surface]');
     expect(approvalSurface).not.toHaveClass('border');
     expect(approvalSurface).not.toHaveClass('border-x');
@@ -86,6 +87,43 @@ describe('HumanDecisionCard', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Approval could not be submitted.'
     );
+  });
+
+  it('keeps question editing and Enter submission active, with blank answers disabled', () => {
+    const onChange = vi.fn();
+    const onSubmit = vi.fn();
+    const variant = {
+      kind: 'feedback' as const,
+      presentation: 'question' as const,
+      header: {
+        title: 'Question',
+        description: 'Which format would you like?',
+      },
+      value: 'A concise report',
+      onChange,
+      onSubmit,
+    };
+    const { rerender } = render(
+      <HumanDecisionCard requestKey="run:question-1" variant={variant} />
+    );
+    const answer = screen.getByRole('textbox', { name: 'Feedback' });
+    fireEvent.change(answer, { target: { value: 'A detailed report' } });
+    expect(onChange).toHaveBeenCalledWith('A detailed report');
+    fireEvent.keyDown(answer, { key: 'Enter', shiftKey: true });
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.keyDown(answer, { key: 'Enter' });
+    expect(onSubmit).toHaveBeenCalledOnce();
+    rerender(
+      <HumanDecisionCard
+        requestKey="run:question-1"
+        variant={{ ...variant, value: '   ' }}
+      />
+    );
+    expect(
+      screen.getByRole('button', { name: 'Send feedback' })
+    ).toBeDisabled();
+    fireEvent.keyDown(answer, { key: 'Enter' });
+    expect(onSubmit).toHaveBeenCalledOnce();
   });
 
   it('requires a separate review action for a successor after the first request settles', () => {
