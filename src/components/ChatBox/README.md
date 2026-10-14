@@ -202,10 +202,13 @@ choice. Live local toolkit rows come from the canonical Run stream; `/chat`
 toolkit mirrors remain available only for historical playback and the legacy
 renderer.
 
-Calls stay folded by default; narrative exists to show the agent's words, not
-its tool rows. A failed segment is the exception and opens to the failing row.
-While a segment is folded the running shimmer sits on its label; opening it
-hands the shimmer to the call that owns it, so exactly one indicator shows.
+Narrative follows the older event-log structure: the agent's words in place,
+then one `Toolkit · Method` row per call, led by the toolkit's icon. Each row's
+request/response detail stays folded; only a pending human call opens itself.
+Minimum and Moderate density count consecutive repeats of one toolkit method
+on a single `· N events` row, which opens when one of its calls fails. While
+that row is folded the running shimmer sits on its label; opening it hands the
+shimmer to the call that owns it, so exactly one indicator shows.
 
 ### Pause and resume
 

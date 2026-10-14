@@ -56,6 +56,13 @@ export interface UserMessageAttachment {
   filePath?: string;
 }
 
+/** A sent user message offered back to the composer for an edited copy. */
+export interface EditUserMessageSource {
+  id: string;
+  content: string;
+  attaches?: readonly { fileName: string; filePath?: string }[];
+}
+
 interface UserMessageCardProps {
   id: string;
   content: string;
@@ -411,7 +418,8 @@ export function UserMessageCard({
             >
               <DsIcon icon={expanded ? ChevronsDownUp : ChevronsUpDown} />
             </Button>
-          ) : onEditAndResend ? (
+          ) : null}
+          {onEditAndResend ? (
             <Button
               type="button"
               onClick={onEditAndResend}
@@ -421,7 +429,7 @@ export function UserMessageCard({
               aria-label={t('chat.message-edit-and-resend')}
               title={t('chat.message-edit-and-resend')}
             >
-              <Pencil aria-hidden className="size-4" />
+              <DsIcon icon={Pencil} />
             </Button>
           ) : null}
         </div>

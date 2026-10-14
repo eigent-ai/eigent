@@ -26,14 +26,11 @@ import {
   animateChatTimelineAnchor,
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { groupMessagesByQuery, ProjectSection } from './ProjectSection';
 
 interface ProjectChatContainerProps {
-  onEditUserMessage?: (message: {
-    id: string;
-    content: string;
-    attaches?: readonly { fileName: string; filePath?: string }[];
-  }) => void;
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   className?: string;
   /** Scroll viewport lives in ChatBox (full width) so the scrollbar sits on the panel edge. */
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;

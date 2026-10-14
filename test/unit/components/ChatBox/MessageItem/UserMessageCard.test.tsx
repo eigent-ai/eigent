@@ -123,7 +123,7 @@ describe('UserMessageCard', () => {
     expect(onEditAndResend).toHaveBeenCalledOnce();
   });
 
-  it('replaces edit with an expand action for a folded message', () => {
+  it('offers expand beside edit for a folded message', () => {
     scrollHeightSpy = vi
       .spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
       .mockReturnValue(120);
@@ -148,9 +148,9 @@ describe('UserMessageCard', () => {
     );
 
     expect(hoverActions).toContainElement(expand);
-    expect(
-      screen.queryByRole('button', { name: 'Edit and resend' })
-    ).toBeNull();
+    // A long prompt is the one most worth editing, so folding never hides it.
+    const edit = screen.getByRole('button', { name: 'Edit and resend' });
+    expect(hoverActions).toContainElement(edit);
     expect(expand).toHaveAttribute('aria-expanded', 'false');
     expect(content).toHaveStyle({
       maxHeight: 'calc(4 * var(--lineHeight-14, 20px))',
@@ -174,6 +174,9 @@ describe('UserMessageCard', () => {
     );
     expect(content).toHaveClass('overflow-hidden');
     expect(onEditAndResend).not.toHaveBeenCalled();
+
+    fireEvent.click(edit);
+    expect(onEditAndResend).toHaveBeenCalledTimes(1);
   });
 
   it('keeps durable attachment names display-only', () => {

@@ -53,6 +53,7 @@ import {
 import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
 import { partitionLegacyReplyEvidence } from './EventTimeline/legacyReplyEvidence';
 import { presentChatSemanticEntities } from './EventTimeline/presentationPolicy';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { TimelineModeRenderer } from './TimelineModes';
 import type { ResolvedRunModel } from './TimelineModes/ModelChangeDivider';
@@ -185,11 +186,7 @@ interface EventNativeProjectTimelineProps {
   sessionMode?: SessionModeType;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   scrollBottomInsetPx: number;
-  onEditUserMessage?: (message: {
-    id: string;
-    content: string;
-    attaches?: readonly { fileName: string; filePath?: string }[];
-  }) => void;
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
 }
 
 /**

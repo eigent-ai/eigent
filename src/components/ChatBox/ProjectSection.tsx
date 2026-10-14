@@ -18,14 +18,11 @@ import { motion } from 'framer-motion';
 import React from 'react';
 import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
 import { partitionLegacyMessageEvidence } from './EventTimeline/legacyReplyEvidence';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { type QueryGroup, UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
-  onEditUserMessage?: (message: {
-    id: string;
-    content: string;
-    attaches?: readonly { fileName: string; filePath?: string }[];
-  }) => void;
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   chatId: string;
   chatStore: VanillaChatStore;
   taskId?: string;

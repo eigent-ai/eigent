@@ -1998,7 +1998,7 @@ export function TaskWorkLogAccordion({
   const outerOpen =
     manualOuterOpen?.taskId === taskId
       ? manualOuterOpen.open
-      : status !== ChatTaskStatus.FINISHED;
+      : status === ChatTaskStatus.RUNNING || status === ChatTaskStatus.PAUSE;
 
   if (!taskId || !task) return null;
 

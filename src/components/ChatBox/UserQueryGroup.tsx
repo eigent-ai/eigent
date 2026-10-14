@@ -50,6 +50,7 @@ import {
   getTaskRunDisplayStatus,
   TaskWorkLogAccordion,
 } from './MessageItem/TaskWorkLogAccordion';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { isPlanSplittingPhase } from './TaskBox/PlanTaskBox/utils';
@@ -149,11 +150,7 @@ export interface QueryGroup {
 }
 
 interface UserQueryGroupProps {
-  onEditUserMessage?: (message: {
-    id: string;
-    content: string;
-    attaches?: readonly { fileName: string; filePath?: string }[];
-  }) => void;
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   chatId: string;
   chatStore: VanillaChatStore;
   queryGroup: QueryGroup;

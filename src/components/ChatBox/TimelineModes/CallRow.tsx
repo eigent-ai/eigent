@@ -29,7 +29,7 @@ import { ChevronRight } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { actionIcon } from './actionIcon';
+import { callIcon } from './actionIcon';
 import { disclosureMotion } from './shared';
 
 const ERROR_STATUSES = new Set(['failed', 'timed_out', 'outcome_unknown']);
@@ -60,9 +60,9 @@ export function isCallActiveStatus(status: TimelineCall['status']): boolean {
 
 interface CallRowProps {
   call: TimelineCall;
-  /** Narrative Balanced can surface the call's display description at rest. */
-  displayTitle?: string;
-  /** Keep disclosure open if this call becomes a Balanced toolkit group. */
+  /** Short display-safe subject shown after the title at rest. */
+  summary?: string | null;
+  /** Keep disclosure open if this call moves into a repeated-call group. */
   initialOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   runActive: boolean;
@@ -83,7 +83,7 @@ interface CallRowProps {
  */
 export function CallRow({
   call,
-  displayTitle,
+  summary,
   initialOpen,
   onOpenChange,
   runActive,
@@ -171,14 +171,16 @@ export function CallRow({
       Boolean(part) && parts.indexOf(part) === index
   );
   // A pending human call is the one thing the user must act on, so it opens
-  // itself. Everything else follows the shimmer/auto-collapse rule.
-  const autoExpanded = highlighted || pendingHuman;
-  const [open, setOpen] = useState(initialOpen ?? autoExpanded);
+  // itself even after a manual toggle and folds once answered. A running tool
+  // only shimmers, like a legacy event-log row, so the list never jumps.
+  const [open, setOpen] = useState(initialOpen ?? pendingHuman);
   const manuallyToggled = useRef(initialOpen !== undefined);
 
   useEffect(() => {
-    if (!manuallyToggled.current) setOpen(autoExpanded);
-  }, [autoExpanded]);
+    if (pendingHuman) setOpen(true);
+    else if (!manuallyToggled.current) setOpen(false);
+  }, [pendingHuman]);
+  const title = summary ? `${call.title} · ${summary}` : call.title;
 
   return (
     <div
@@ -207,7 +209,7 @@ export function CallRow({
         data-timeline-call-trigger
       >
         <DsIcon
-          icon={actionIcon(call.actionKind)}
+          icon={callIcon(call)}
           recipe="main"
           className={cn(
             failed
@@ -218,7 +220,7 @@ export function CallRow({
         />
         {highlighted ? (
           <ShinyText
-            text={displayTitle || call.title}
+            text={title}
             speed={2.5}
             className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default"
           />
@@ -231,7 +233,7 @@ export function CallRow({
                 : 'text-ds-ink-subtle-default'
             )}
           >
-            {displayTitle || call.title}
+            {title}
           </span>
         )}
         {failed ? (

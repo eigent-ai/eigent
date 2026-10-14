@@ -50,7 +50,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { TaskErrorNotice } from '../TaskErrorNotice';
 import { taskErrorReason } from '../taskErrorPresentation';
 
-import { actionIcon } from './actionIcon';
+import { callIcon } from './actionIcon';
 import { CallRow, isCallActiveStatus, isCallErrorStatus } from './CallRow';
 import { ModelChangeDivider } from './ModelChangeDivider';
 import { RunFilesGroup } from './RunFiles';
@@ -82,7 +82,7 @@ type NarrativeWorkEntry =
       agentName: string;
       items: TimelineNarrativeItem[];
     }
-  | { kind: 'item'; item: TimelineNarrativeItem };
+  | { kind: 'flow'; id: string; items: TimelineNarrativeItem[] };
 
 function narrativeItemAgent(
   item: TimelineNarrativeItem,
@@ -161,14 +161,18 @@ function groupNarrativeWork(
   fallbackAgentName: string
 ): NarrativeWorkEntry[] {
   if (!workforce) {
-    return items.map((item) => ({ kind: 'item', item }));
+    return items.length > 0
+      ? [{ kind: 'flow', id: 'flow', items: [...items] }]
+      : [];
   }
 
   const entries: NarrativeWorkEntry[] = [];
   for (const item of items) {
     const agent = narrativeItemAgent(item, fallbackAgentName);
     if (!agent) {
-      entries.push({ kind: 'item', item });
+      const last = entries.at(-1);
+      if (last?.kind === 'flow') last.items.push(item);
+      else entries.push({ kind: 'flow', id: `flow:${item.id}`, items: [item] });
       continue;
     }
     const last = entries.at(-1);
@@ -229,169 +233,80 @@ function NarrativeWorkLogSummary({
   );
 }
 
-function NarrativeToolGroup({
-  calls,
-  label,
-  initialOpen,
-  initiallyOpenCallIds,
-  onCallOpenChange,
-  runActive,
-  latestRunningCallId,
-  reducedMotion,
-}: {
-  calls: readonly TimelineCall[];
-  label?: string;
-  initialOpen?: boolean;
-  initiallyOpenCallIds?: ReadonlySet<string>;
-  onCallOpenChange?: (callId: string, open: boolean) => void;
-  runActive: boolean;
-  latestRunningCallId: string | null;
-  reducedMotion: boolean;
-}) {
-  const { t } = useTranslation();
-  const autoOpen = calls.some((call) => isCallErrorStatus(call.status));
-  const [open, setOpen] = useState(initialOpen || autoOpen);
-  const wasAutoOpen = useRef(autoOpen);
-
-  useEffect(() => {
-    if (autoOpen) setOpen(true);
-    else if (wasAutoOpen.current) setOpen(false);
-    wasAutoOpen.current = autoOpen;
-  }, [autoOpen]);
-
-  const callCount = calls.length;
-  const actionKinds = useMemo(
-    () => [...new Set(calls.map((call) => call.actionKind))],
-    [calls]
-  );
-  // The group owns only structure. Individual CallRows own invocation titles,
-  // so a one-call group never repeats its child's title in the header.
-  const countLabel = t('chat.timeline-action-count', {
-    defaultValue_one: '{{count}} action',
-    defaultValue_other: '{{count}} actions',
-    count: callCount,
-  });
-  const toolGroupLabel = label ?? countLabel;
-  // A closed segment hides the running call, so the shimmer moves up to the
-  // label. Opening it hands the shimmer back to the call that owns it, which
-  // keeps exactly one live indicator on screen either way.
-  const ownsRunningCall = calls.some((call) => call.id === latestRunningCallId);
-  const shimmerOnLabel = !open && ownsRunningCall;
-
-  return (
-    <div className="flex w-full min-w-0 flex-col items-start">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className={cn(
-          'group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left text-ds-ink-subtle-default transition-colors hover:text-ds-ink-muted-default focus-visible:text-ds-ink-muted-default',
-          DS_FOCUS_RING
-        )}
-        data-narrative-segment-call-count={callCount}
-        data-narrative-segment-trigger
-      >
-        <span
-          aria-hidden
-          className="inline-flex shrink-0 items-center gap-ds-6"
-          data-narrative-segment-action-icons
-        >
-          {actionKinds.map((kind) => (
-            <DsIcon
-              icon={actionIcon(kind)}
-              key={kind}
-              recipe="main"
-              data-narrative-segment-action-icon={kind}
-            />
-          ))}
-        </span>
-        {shimmerOnLabel ? (
-          <ShinyText
-            speed={2.5}
-            text={toolGroupLabel}
-            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap group-hover:!bg-none group-hover:!text-ds-ink-muted-default group-focus-visible:!bg-none group-focus-visible:!text-ds-ink-muted-default"
-          />
-        ) : (
-          <span className="min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap">
-            {toolGroupLabel}
-          </span>
-        )}
-        {label ? (
-          <span className="shrink-0 !text-ds-text-base font-normal whitespace-nowrap">
-            {' · '}
-            {countLabel}
-          </span>
-        ) : null}
-        <DsIcon
-          icon={ChevronRight}
-          className={cn(
-            'transition-[opacity,transform] duration-200',
-            open
-              ? 'rotate-90 opacity-100'
-              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
-          )}
-          data-narrative-segment-chevron
-        />
-      </button>
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            key="narrative-segment-detail"
-            {...disclosureMotion(reducedMotion)}
-            className="w-full min-w-0 overflow-hidden"
-          >
-            <div
-              className="flex min-w-0 flex-col gap-ds-4 pt-ds-4"
-              data-narrative-segment-calls
-            >
-              <AnimatePresence initial={false}>
-                {calls.map((call) => (
-                  <motion.div
-                    {...itemFadeMotion(reducedMotion)}
-                    data-narrative-event-motion
-                    data-narrative-event-motion-id={call.id}
-                    key={call.id}
-                  >
-                    <CallRow
-                      call={call}
-                      initialOpen={
-                        initiallyOpenCallIds?.has(call.id) ? true : undefined
-                      }
-                      onOpenChange={(open) => onCallOpenChange?.(call.id, open)}
-                      latestRunningCallId={latestRunningCallId}
-                      reducedMotion={reducedMotion}
-                      runActive={runActive}
-                    />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
-  );
+/**
+ * Identity for collapsing consecutive repeats of one toolkit method. Human
+ * calls own their question/answer receipt and always stay separate.
+ */
+function repeatedCallKey(call: TimelineCall): string | null {
+  if (call.executor !== 'toolkit') return null;
+  const normalize = (value: string | undefined) =>
+    (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const toolkit = normalize(call.toolkitName);
+  const method = normalize(call.methodName) || normalize(call.title);
+  if (!toolkit || !method) return null;
+  return JSON.stringify([
+    toolkit,
+    toolkit === 'searchtoolkit' && method.startsWith('search')
+      ? 'search'
+      : method,
+  ]);
 }
 
-/** A missing toolkit identity cannot justify folding unrelated calls. */
-function groupCallsByToolkit(calls: readonly TimelineCall[]): TimelineCall[][] {
-  const identity = (call: TimelineCall) =>
-    call.toolkitName
-      ?.normalize('NFKC')
-      .trim()
-      .toLowerCase()
-      .replace(/[\s_-]+/g, '');
-  const groups: TimelineCall[][] = [];
-  for (const call of calls) {
-    const toolkit = identity(call);
-    const previous = groups.at(-1);
-    if (toolkit && previous?.[0] && identity(previous[0]) === toolkit) {
-      previous.push(call);
-    } else {
-      groups.push([call]);
+type NarrativeFlowEntry =
+  | { kind: 'narration'; id: string; segment: TimelineSegment }
+  | { kind: 'call'; id: string; call: TimelineCall }
+  | { kind: 'repeat'; id: string; calls: TimelineCall[] }
+  | { kind: 'item'; id: string; item: NarrativeStandaloneItem };
+
+type NarrativeStandaloneItem = Exclude<TimelineNarrativeItem, TimelineSegment>;
+
+/**
+ * The work log reads like the legacy event log: the agent's words in place,
+ * then one row per call. Minimum and Moderate collapse consecutive repeats of
+ * one toolkit method into a counted row; Full lists every call on its own.
+ */
+function buildNarrativeFlow(
+  items: readonly TimelineNarrativeItem[],
+  density: NarrativeInformationDensity
+): NarrativeFlowEntry[] {
+  const entries: NarrativeFlowEntry[] = [];
+  const pushCall = (call: TimelineCall) => {
+    const key = density === 'expanded' ? null : repeatedCallKey(call);
+    const previous = entries.at(-1);
+    if (key && previous?.kind === 'call') {
+      if (repeatedCallKey(previous.call) === key) {
+        entries[entries.length - 1] = {
+          kind: 'repeat',
+          id: `repeat:${previous.call.id}`,
+          calls: [previous.call, call],
+        };
+        return;
+      }
     }
+    if (key && previous?.kind === 'repeat') {
+      if (repeatedCallKey(previous.calls[0]) === key) {
+        previous.calls.push(call);
+        return;
+      }
+    }
+    entries.push({ kind: 'call', id: call.id, call });
+  };
+
+  for (const item of items) {
+    if (item.kind !== 'segment') {
+      entries.push({ kind: 'item', id: item.id, item });
+      continue;
+    }
+    if (item.narration || item.summary) {
+      entries.push({
+        kind: 'narration',
+        id: `narration:${item.id}`,
+        segment: item,
+      });
+    }
+    item.calls.forEach(pushCall);
   }
-  return groups;
+  return entries;
 }
 
 /** A collapsed row must not promote a long payload or credential-like text. */
@@ -410,8 +325,8 @@ function conciseRowText(value: string | undefined): string | null {
   return text;
 }
 
-/** Only promote short, display-safe request text to a collapsed row. */
-function groupCallSubject(call: TimelineCall): string | null {
+/** Only promote short, display-safe request text to a row. */
+function callSubject(call: TimelineCall): string | null {
   const input = call.input?.trim();
   if (!input || input.length > 1_000) return null;
 
@@ -444,7 +359,7 @@ function groupCallSubject(call: TimelineCall): string | null {
 }
 
 /** The call detail is the human-readable work description, when supplied. */
-function groupCallDescription(call: TimelineCall): string | null {
+function callDescription(call: TimelineCall): string | null {
   for (const candidate of [call.notice?.content, call.detail]) {
     const description = conciseRowText(candidate);
     if (
@@ -459,58 +374,266 @@ function groupCallDescription(call: TimelineCall): string | null {
   return null;
 }
 
-function groupCallTitle(call: TimelineCall): string | null {
-  const title = call.title.trim();
-  const toolkit = call.toolkitName?.trim() || '';
-  if (!title || title === toolkit) return null;
-  const prefix = [`${toolkit} · `, `${toolkit}.`].find((part) =>
-    title.startsWith(part)
-  );
-  const description = prefix ? title.slice(prefix.length).trim() : title;
-  if (
-    !description ||
-    description === call.methodName ||
-    description === call.methodName?.replaceAll('_', ' ')
-  ) {
-    return null;
-  }
-  return description;
+/** Moderate and Full add one short subject: the query, the work, or the target. */
+function callSummary(call: TimelineCall): string | null {
+  const subject = callSubject(call);
+  const description = callDescription(call);
+  return call.actionKind === 'search'
+    ? (subject ?? description)
+    : (description ?? subject);
 }
 
-function toolkitGroupLabel(
-  calls: readonly TimelineCall[],
-  t: ReturnType<typeof useTranslation>['t']
-): string {
-  const latest = calls.at(-1);
-  if (!latest) return '';
-  const subject = groupCallSubject(latest);
-  const description = groupCallDescription(latest);
-  const title = groupCallTitle(latest);
-  if (latest.actionKind === 'search') {
-    return subject
-      ? t('chat.timeline-searched-for', {
-          defaultValue: 'Searched for {{query}}',
-          query: subject,
-        })
-      : title || t('chat.timeline-searched', { defaultValue: 'Searched' });
-  }
-  if (latest.actionKind === 'command') {
-    if (description) return description;
-    if (subject) {
-      return t('chat.timeline-ran-command-name', {
-        defaultValue: 'Ran {{command}}',
-        command: subject,
-      });
-    }
-    return (
-      title || t('chat.timeline-ran-command', { defaultValue: 'Ran command' })
-    );
-  }
+/** Consecutive calls of one toolkit method, counted like the legacy log. */
+function NarrativeRepeatedCalls({
+  calls,
+  summarize,
+  initiallyOpenCallIds,
+  onCallOpenChange,
+  runActive,
+  latestRunningCallId,
+  reducedMotion,
+}: {
+  calls: readonly TimelineCall[];
+  summarize: boolean;
+  initiallyOpenCallIds: ReadonlySet<string>;
+  onCallOpenChange: (callId: string, open: boolean) => void;
+  runActive: boolean;
+  latestRunningCallId: string | null;
+  reducedMotion: boolean;
+}) {
+  const { t } = useTranslation();
+  const first = calls[0];
+  const failed = calls.some((call) => isCallErrorStatus(call.status));
+  const [open, setOpen] = useState(
+    () => failed || calls.some((call) => initiallyOpenCallIds.has(call.id))
+  );
+  const wasFailed = useRef(failed);
+
+  useEffect(() => {
+    if (failed) setOpen(true);
+    else if (wasFailed.current) setOpen(false);
+    wasFailed.current = failed;
+  }, [failed]);
+
+  const countLabel = t('chat.repeated-tool-events', {
+    tool: first.title,
+    count: calls.length,
+  });
+  const summary = summarize ? callSummary(calls[calls.length - 1]) : null;
+  const label = summary ? `${countLabel} · ${summary}` : countLabel;
+  // A closed group hides the running call, so the shimmer moves up to the
+  // label. Opening it hands the shimmer back to the call that owns it, which
+  // keeps exactly one live indicator on screen either way.
+  const shimmerOnLabel =
+    !open && calls.some((call) => call.id === latestRunningCallId);
 
   return (
-    title ||
-    latest.methodName?.trim().replaceAll('_', ' ') ||
-    t('chat.timeline-tool', { defaultValue: 'Tool' })
+    <div
+      className="flex w-full min-w-0 flex-col items-start"
+      data-narrative-repeated-calls
+      data-toolkit={first.toolkitName}
+      data-method={first.methodName}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          'group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left text-ds-ink-subtle-default transition-opacity hover:opacity-80',
+          DS_FOCUS_RING,
+          failed && 'text-ds-text-status-error-default-default'
+        )}
+        data-narrative-segment-call-count={calls.length}
+        data-narrative-segment-trigger
+      >
+        <DsIcon
+          icon={callIcon(first)}
+          recipe="main"
+          data-timeline-action-icon={first.actionKind}
+        />
+        {shimmerOnLabel ? (
+          <ShinyText
+            speed={2.5}
+            text={label}
+            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default"
+          />
+        ) : (
+          <span className="min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap">
+            {label}
+          </span>
+        )}
+        <DsIcon
+          icon={ChevronRight}
+          className={cn(
+            'transition-[opacity,transform] duration-200',
+            open
+              ? 'rotate-90 opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
+          )}
+          data-narrative-segment-chevron
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="narrative-repeated-calls"
+            {...disclosureMotion(reducedMotion)}
+            className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-ds-6 overflow-hidden"
+          >
+            <span aria-hidden className="w-ds-icon-main" />
+            <div
+              className="flex min-w-0 flex-col gap-ds-4 pt-ds-4"
+              data-narrative-segment-calls
+            >
+              <AnimatePresence initial={false}>
+                {calls.map((call) => (
+                  <motion.div
+                    {...itemFadeMotion(reducedMotion)}
+                    data-narrative-event-motion
+                    data-narrative-event-motion-id={call.id}
+                    key={call.id}
+                  >
+                    <CallRow
+                      call={call}
+                      summary={summarize ? callSummary(call) : null}
+                      initialOpen={
+                        initiallyOpenCallIds.has(call.id) ? true : undefined
+                      }
+                      onOpenChange={(callOpen) =>
+                        onCallOpenChange(call.id, callOpen)
+                      }
+                      latestRunningCallId={latestRunningCallId}
+                      reducedMotion={reducedMotion}
+                      runActive={runActive}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** The agent's own words at their place in the work log. */
+function NarrativeNarration({ segment }: { segment: TimelineSegment }) {
+  return (
+    <div
+      className="flex w-full min-w-0 flex-col gap-ds-stack-related"
+      data-narrative-segment-id={segment.id}
+      data-narrative-segment-source={segment.source}
+      data-narrative-segment-status={segment.status}
+      data-narrative-parent-step-id={segment.parentStepId}
+    >
+      {segment.narration ? (
+        <span
+          className={cn('break-words whitespace-pre-wrap', PRIMARY_TEXT_CLASS)}
+          data-narrative-segment-narration
+        >
+          {segment.narration}
+        </span>
+      ) : null}
+      {segment.summary ? (
+        <span
+          className={cn('break-words whitespace-pre-wrap', DERIVED_TEXT_CLASS)}
+          data-narrative-segment-summary
+        >
+          {segment.summary}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * One chronological list of narration, calls, and standalone items. Density
+ * changes only how calls are presented; narration is always shown.
+ */
+function NarrativeFlow({
+  items,
+  density,
+  interactivePlan,
+  runActive,
+  latestRunningCallId,
+  reducedMotion,
+}: {
+  items: readonly TimelineNarrativeItem[];
+  density: NarrativeInformationDensity;
+  interactivePlan?: InteractiveTimelinePlan;
+  runActive: boolean;
+  latestRunningCallId: string | null;
+  reducedMotion: boolean;
+}) {
+  const flow = useMemo(
+    () => buildNarrativeFlow(items, density),
+    [density, items]
+  );
+  const summarize = density !== 'compact';
+  // A call moves into a repeated group when its successor arrives, which
+  // remounts its row. Remember what the user opened so the move keeps it open.
+  const [manuallyOpenCalls, setManuallyOpenCalls] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const rememberCallOpen = (callId: string, open: boolean) => {
+    setManuallyOpenCalls((current) => {
+      if (current.has(callId) === open) return current;
+      const next = new Set(current);
+      if (open) next.add(callId);
+      else next.delete(callId);
+      return next;
+    });
+  };
+
+  // A density change re-presents existing rows; it is not new activity, so the
+  // list swaps in place instead of animating every row out and back in.
+  return (
+    <AnimatePresence initial={false} key={density}>
+      {flow.map((entry) => (
+        <motion.div
+          {...itemFadeMotion(reducedMotion)}
+          data-narrative-event-motion
+          data-narrative-event-motion-id={entry.id}
+          key={entry.id}
+        >
+          {entry.kind === 'narration' ? (
+            <NarrativeNarration segment={entry.segment} />
+          ) : entry.kind === 'call' ? (
+            <CallRow
+              call={entry.call}
+              summary={summarize ? callSummary(entry.call) : null}
+              initialOpen={
+                manuallyOpenCalls.has(entry.call.id) ? true : undefined
+              }
+              onOpenChange={(open) => rememberCallOpen(entry.call.id, open)}
+              latestRunningCallId={latestRunningCallId}
+              reducedMotion={reducedMotion}
+              runActive={runActive}
+            />
+          ) : entry.kind === 'repeat' ? (
+            <NarrativeRepeatedCalls
+              calls={entry.calls}
+              summarize={summarize}
+              initiallyOpenCallIds={manuallyOpenCalls}
+              onCallOpenChange={rememberCallOpen}
+              latestRunningCallId={latestRunningCallId}
+              reducedMotion={reducedMotion}
+              runActive={runActive}
+            />
+          ) : (
+            <NarrativeItem
+              density={density}
+              interactivePlan={interactivePlan}
+              item={entry.item}
+              latestRunningCallId={latestRunningCallId}
+              reducedMotion={reducedMotion}
+              runActive={runActive}
+            />
+          )}
+        </motion.div>
+      ))}
+    </AnimatePresence>
   );
 }
 
@@ -714,151 +837,19 @@ function NarrativeSubagentRow({
                   className="flex min-w-0 flex-col gap-ds-stack-related"
                   data-narrative-subagent-children
                 >
-                  <AnimatePresence initial={false}>
-                    {item.children.map((child) => (
-                      <motion.div
-                        {...itemFadeMotion(reducedMotion)}
-                        data-narrative-event-motion
-                        data-narrative-event-motion-id={child.id}
-                        key={child.id}
-                      >
-                        <NarrativeItem
-                          density={density}
-                          item={child}
-                          latestRunningCallId={latestRunningCallId}
-                          reducedMotion={reducedMotion}
-                          runActive={runActive}
-                        />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
+                  <NarrativeFlow
+                    density={density}
+                    items={item.children}
+                    latestRunningCallId={latestRunningCallId}
+                    reducedMotion={reducedMotion}
+                    runActive={runActive}
+                  />
                 </div>
               ) : null}
             </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </div>
-  );
-}
-
-/** One unit of reasoning followed by calls in their projected order. */
-function NarrativeSegment({
-  segment,
-  density,
-  runActive,
-  latestRunningCallId,
-  reducedMotion,
-}: {
-  segment: TimelineSegment;
-  density: NarrativeInformationDensity;
-  runActive: boolean;
-  latestRunningCallId: string | null;
-  reducedMotion: boolean;
-}) {
-  const { t } = useTranslation();
-  const [manuallyOpenCalls, setManuallyOpenCalls] = useState<
-    ReadonlySet<string>
-  >(() => new Set());
-  const rememberCallOpen = (callId: string, open: boolean) => {
-    setManuallyOpenCalls((current) => {
-      if (current.has(callId) === open) return current;
-      const next = new Set(current);
-      if (open) next.add(callId);
-      else next.delete(callId);
-      return next;
-    });
-  };
-  return (
-    <div
-      className={cn(
-        'flex min-w-0 flex-col gap-ds-stack-related',
-        segment.parentStepId
-          ? 'ml-4 w-[calc(100%-1rem)] border-x-0 border-t-0 border-r-0 border-b-0 border-solid border-ds-border-neutral-subtle-default pl-3'
-          : 'w-full'
-      )}
-      data-narrative-segment-id={segment.id}
-      data-narrative-segment-source={segment.source}
-      data-narrative-segment-status={segment.status}
-      data-narrative-parent-step-id={segment.parentStepId}
-    >
-      {segment.narration || segment.summary ? (
-        <div className="flex min-w-0 flex-col gap-ds-stack-related">
-          {segment.narration ? (
-            <span
-              className={cn(
-                'break-words whitespace-pre-wrap',
-                PRIMARY_TEXT_CLASS
-              )}
-              data-narrative-segment-narration
-            >
-              {segment.narration}
-            </span>
-          ) : null}
-          {segment.summary ? (
-            <span
-              className={cn(
-                'break-words whitespace-pre-wrap',
-                DERIVED_TEXT_CLASS
-              )}
-              data-narrative-segment-summary
-            >
-              {segment.summary}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-      {segment.calls.length > 0 && density === 'compact' ? (
-        <NarrativeToolGroup
-          calls={segment.calls}
-          latestRunningCallId={latestRunningCallId}
-          reducedMotion={reducedMotion}
-          runActive={runActive}
-        />
-      ) : null}
-      {density === 'balanced'
-        ? groupCallsByToolkit(segment.calls).map((calls) =>
-            calls.length === 1 ? (
-              <CallRow
-                call={calls[0]}
-                displayTitle={toolkitGroupLabel(calls, t)}
-                initialOpen={
-                  manuallyOpenCalls.has(calls[0].id) ? true : undefined
-                }
-                onOpenChange={(open) => rememberCallOpen(calls[0].id, open)}
-                key={calls[0].id}
-                latestRunningCallId={latestRunningCallId}
-                reducedMotion={reducedMotion}
-                runActive={runActive}
-              />
-            ) : (
-              <NarrativeToolGroup
-                calls={calls}
-                key={calls[0].id}
-                label={toolkitGroupLabel(calls, t)}
-                initialOpen={calls.some((call) =>
-                  manuallyOpenCalls.has(call.id)
-                )}
-                initiallyOpenCallIds={manuallyOpenCalls}
-                onCallOpenChange={rememberCallOpen}
-                latestRunningCallId={latestRunningCallId}
-                reducedMotion={reducedMotion}
-                runActive={runActive}
-              />
-            )
-          )
-        : null}
-      {density === 'expanded'
-        ? segment.calls.map((call) => (
-            <CallRow
-              call={call}
-              key={call.id}
-              latestRunningCallId={latestRunningCallId}
-              reducedMotion={reducedMotion}
-              runActive={runActive}
-            />
-          ))
-        : null}
     </div>
   );
 }
@@ -925,24 +916,13 @@ function NarrativeItem({
   latestRunningCallId,
   reducedMotion,
 }: {
-  item: TimelineNarrativeItem;
+  item: NarrativeStandaloneItem;
   density: NarrativeInformationDensity;
   interactivePlan?: InteractiveTimelinePlan;
   runActive: boolean;
   latestRunningCallId: string | null;
   reducedMotion: boolean;
 }) {
-  if (item.kind === 'segment') {
-    return (
-      <NarrativeSegment
-        density={density}
-        latestRunningCallId={latestRunningCallId}
-        reducedMotion={reducedMotion}
-        runActive={runActive}
-        segment={item}
-      />
-    );
-  }
   if (item.kind === 'plan') {
     if (item.node.eventId === interactivePlan?.eventId) {
       return (
@@ -1065,24 +1045,13 @@ function NarrativeAgentGroup({
             className="overflow-hidden"
           >
             <div className="flex min-w-0 flex-col gap-ds-stack-related pt-ds-4">
-              <AnimatePresence initial={false}>
-                {items.map((item) => (
-                  <motion.div
-                    {...itemFadeMotion(reducedMotion)}
-                    data-narrative-event-motion
-                    data-narrative-event-motion-id={item.id}
-                    key={item.id}
-                  >
-                    <NarrativeItem
-                      density={density}
-                      item={item}
-                      latestRunningCallId={latestRunningCallId}
-                      reducedMotion={reducedMotion}
-                      runActive={animationsActive}
-                    />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+              <NarrativeFlow
+                density={density}
+                items={items}
+                latestRunningCallId={latestRunningCallId}
+                reducedMotion={reducedMotion}
+                runActive={animationsActive}
+              />
             </div>
           </motion.div>
         ) : null}
@@ -1218,40 +1187,37 @@ function NarrativeRunWorkLog({
               data-narrative-timeline
             >
               <AnimatePresence initial={false}>
-                {entries.map((entry, index) => {
-                  const entryId =
-                    entry.kind === 'agent' ? entry.id : entry.item.id;
-                  return (
+                {entries.map((entry, index) =>
+                  entry.kind === 'agent' ? (
                     <motion.div
                       {...itemFadeMotion(reducedMotion)}
                       data-narrative-event-motion
-                      data-narrative-event-motion-id={entryId}
-                      key={entryId}
+                      data-narrative-event-motion-id={entry.id}
+                      key={entry.id}
                     >
-                      {entry.kind === 'agent' ? (
-                        <NarrativeAgentGroup
-                          agentName={entry.agentName}
-                          density={density}
-                          animationsActive={animationsActive}
-                          isLatest={index === lastAgentIndex}
-                          items={entry.items}
-                          latestRunningCallId={runningCallId}
-                          reducedMotion={reducedMotion}
-                          runLive={live}
-                        />
-                      ) : (
-                        <NarrativeItem
-                          density={density}
-                          interactivePlan={interactivePlan}
-                          item={entry.item}
-                          latestRunningCallId={runningCallId}
-                          reducedMotion={reducedMotion}
-                          runActive={animationsActive}
-                        />
-                      )}
+                      <NarrativeAgentGroup
+                        agentName={entry.agentName}
+                        density={density}
+                        animationsActive={animationsActive}
+                        isLatest={index === lastAgentIndex}
+                        items={entry.items}
+                        latestRunningCallId={runningCallId}
+                        reducedMotion={reducedMotion}
+                        runLive={live}
+                      />
                     </motion.div>
-                  );
-                })}
+                  ) : (
+                    <NarrativeFlow
+                      density={density}
+                      interactivePlan={interactivePlan}
+                      items={entry.items}
+                      key={entry.id}
+                      latestRunningCallId={runningCallId}
+                      reducedMotion={reducedMotion}
+                      runActive={animationsActive}
+                    />
+                  )
+                )}
               </AnimatePresence>
             </div>
           </motion.div>

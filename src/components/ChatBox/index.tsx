@@ -130,6 +130,7 @@ import {
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
 import { FloatingAction } from './MessageItem/FloatingAction';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { ProjectChatContainer } from './ProjectChatContainer';
 import {
   canUseLegacyControlWithoutCanonicalOwner,
@@ -2842,8 +2843,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       ? 'input'
       : legacyHumanInputVariant,
   });
+  // The editing note replaces only the plain composer. A legacy ask header
+  // stays visible so an edited copy is never mistaken for a new request.
   const bottomBoxVariant =
-    bottomBoxControl.source === 'composer' && editingSourceId
+    bottomBoxControl.source === 'composer' &&
+    bottomBoxControl.variant === 'input' &&
+    editingSourceId
       ? {
           kind: 'input' as const,
           header: {
@@ -2864,11 +2869,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       ? `${activeProjectId}:${eventNativeHumanControl.interaction.runId}:${eventNativeHumanControl.interaction.interactionId}:${eventNativeHumanControl.interaction.version ?? 0}`
       : `${activeProjectId}:${activeTaskId}:${activeInteraction?.interaction_id ?? activeAskMessage?.id ?? ''}`
     : null;
-  const handleEditUserMessage = (source: {
-    id: string;
-    content: string;
-    attaches?: readonly { fileName: string; filePath?: string }[];
-  }) => {
+  const handleEditUserMessage = (source: EditUserMessageSource) => {
     if (message.trim() || activeTask?.attaches?.length) {
       toast.info(t('chat.message-draft-exists'));
       return;
@@ -2889,7 +2890,6 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   });
   const showFloatingStop =
     shouldRenderChatTimeline &&
-    !humanDecisionVariant &&
     composerTaskControlState === 'running' &&
     eventNativeActiveProjectedRun?.status !== 'cancelling' &&
     !controlOperations.some(
@@ -3073,6 +3073,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
               <HumanDecisionCard
+                key={activeProjectId ?? 'no-session'}
                 requestKey={humanDecisionKey}
                 variant={humanDecisionVariant}
               />

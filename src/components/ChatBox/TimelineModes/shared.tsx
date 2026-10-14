@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
+import type { EditUserMessageSource } from '@/components/ChatBox/MessageItem/UserMessageCard';
 import { itemFadeMotion } from '@/components/ui/motion';
 import type { TimelineRunView } from '@/lib/projector/chat/presentation';
 import { isStoppedRunStatus } from '@/lib/projector/runSummary';
@@ -262,11 +263,7 @@ export interface TimelineModeProps {
   runs: readonly TimelineRunView[];
   /** Resolved from each Run's immutable attempt, never from composer state. */
   resolvedModelsByRun?: Readonly<Record<string, ResolvedRunModel | null>>;
-  onEditUserMessage?: (message: {
-    id: string;
-    content: string;
-    attaches?: readonly { fileName: string; filePath?: string }[];
-  }) => void;
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   artifactManifestsByRun?: Readonly<Record<string, ProjectedArtifactManifest>>;
   projectedArtifactsByRun?: Readonly<Record<string, ProjectedArtifact[]>>;
   /**

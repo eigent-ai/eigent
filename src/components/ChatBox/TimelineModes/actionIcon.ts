@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { TimelineActionKind } from '@/lib/projector/chat/presentation';
+import type {
+  TimelineActionKind,
+  TimelineCall,
+} from '@/lib/projector/chat/presentation';
+import { toolkitIconComponent } from '@/lib/toolkitIcons';
 import {
   Bot,
   FilePenLine,
@@ -43,4 +47,11 @@ const ACTION_ICONS: Record<TimelineActionKind, LucideIcon> = {
 /** React performs only the final projection-category to icon match. */
 export function actionIcon(kind: TimelineActionKind): LucideIcon {
   return ACTION_ICONS[kind];
+}
+
+/** A call leads with its toolkit's icon; unknown toolkits use the action. */
+export function callIcon(
+  call: Pick<TimelineCall, 'toolkitName' | 'actionKind'>
+): LucideIcon {
+  return toolkitIconComponent(call.toolkitName) ?? actionIcon(call.actionKind);
 }
