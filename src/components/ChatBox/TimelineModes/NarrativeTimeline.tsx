@@ -18,15 +18,14 @@ import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotic
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
-import { DsIcon } from '@/components/ui/ds-icon';
 import { itemFadeMotion } from '@/components/ui/motion';
-import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
-import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import {
   resolveSubagentPresentationIdentity,
   segmentTimelineRun,
   type TimelineCall,
+  timelineCallTitle,
+  type TimelineCallTitle,
   type TimelineNarrativeItem,
   type TimelineRunView,
   type TimelineSegment,
@@ -44,8 +43,7 @@ import {
   type SessionModeType,
 } from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { TaskErrorNotice } from '../TaskErrorNotice';
 import { taskErrorReason } from '../taskErrorPresentation';
@@ -55,7 +53,6 @@ import { CallRow, isCallActiveStatus, isCallErrorStatus } from './CallRow';
 import { ModelChangeDivider } from './ModelChangeDivider';
 import { RunFilesGroup } from './RunFiles';
 import {
-  disclosureMotion,
   eventEntryMotion,
   type InteractiveTimelinePlan,
   isActiveRunStatus,
@@ -64,6 +61,15 @@ import {
   type TimelineModeProps,
   useRunElapsedMs,
 } from './shared';
+import {
+  TaskLogCollapsible,
+  TaskLogContent,
+  TaskLogDescription,
+  TaskLogIcon,
+  TaskLogTitle,
+  TaskLogTrigger,
+  useTaskLogOpenState,
+} from './TaskLog';
 
 /**
  * Primary text is reserved for language the agent produced itself. Anything
@@ -386,13 +392,26 @@ function callDescription(call: TimelineCall): string | null {
   return null;
 }
 
-/** Moderate and Full add one short subject: the query, the work, or the target. */
+/** The subject an authored title carries after it in a repeated group. */
 function callSummary(call: TimelineCall): string | null {
   const subject = callSubject(call);
   const description = callDescription(call);
   return call.actionKind === 'search'
     ? (subject ?? description)
     : (description ?? subject);
+}
+
+/**
+ * Minimum names only the action and its outcome. Moderate and Full add one
+ * short subject: the query, the command, or the toolkit's own description.
+ */
+function callTitle(call: TimelineCall, summarize: boolean): TimelineCallTitle {
+  return summarize
+    ? timelineCallTitle(call, {
+        subject: callSubject(call),
+        description: callDescription(call),
+      })
+    : timelineCallTitle(call);
 }
 
 /** Consecutive calls of one toolkit method, counted like the legacy log. */
@@ -416,22 +435,21 @@ function NarrativeRepeatedCalls({
   const { t } = useTranslation();
   const first = calls[0];
   const failed = calls.some((call) => isCallErrorStatus(call.status));
-  const [open, setOpen] = useState(
-    () => failed || calls.some((call) => initiallyOpenCallIds.has(call.id))
+  const [open, setOpen] = useTaskLogOpenState(
+    failed,
+    calls.some((call) => initiallyOpenCallIds.has(call.id)) ? true : undefined
   );
-  const wasFailed = useRef(failed);
 
-  useEffect(() => {
-    if (failed) setOpen(true);
-    else if (wasFailed.current) setOpen(false);
-    wasFailed.current = failed;
-  }, [failed]);
-
+  // The latest call speaks for the group, so its tense follows the work. An
+  // authored title keeps its words and takes the latest subject after them.
+  const latest = calls[calls.length - 1];
+  const latestTitle = callTitle(latest, summarize);
   const countLabel = t('chat.repeated-tool-events', {
-    tool: first.title,
+    tool: latestTitle.outcomeTense ? latestTitle.text : first.title,
     count: calls.length,
   });
-  const summary = summarize ? callSummary(calls[calls.length - 1]) : null;
+  const summary =
+    summarize && !latestTitle.outcomeTense ? callSummary(latest) : null;
   const label = summary ? `${countLabel} · ${summary}` : countLabel;
   // A closed group hides the running call, so the shimmer moves up to the
   // label. Opening it hands the shimmer back to the call that owns it, which
@@ -440,92 +458,51 @@ function NarrativeRepeatedCalls({
     !open && calls.some((call) => call.id === latestRunningCallId);
 
   return (
-    <div
-      className="flex w-full min-w-0 flex-col items-start"
+    <TaskLogCollapsible
+      open={open}
+      onOpenChange={setOpen}
+      reducedMotion={reducedMotion}
       data-narrative-repeated-calls
       data-toolkit={first.toolkitName}
       data-method={first.methodName}
     >
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className={cn(
-          'group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left text-ds-ink-subtle-default transition-opacity hover:opacity-80',
-          DS_FOCUS_RING,
-          failed && 'text-ds-text-status-error-default-default'
-        )}
+      <TaskLogTrigger
+        status={failed ? 'error' : shimmerOnLabel ? 'running' : undefined}
+        chevronProps={{ 'data-narrative-segment-chevron': true }}
         data-narrative-segment-call-count={calls.length}
         data-narrative-segment-trigger
       >
-        <DsIcon
+        <TaskLogIcon
           icon={callIcon(first)}
-          recipe="main"
           data-timeline-action-icon={first.actionKind}
         />
-        {shimmerOnLabel ? (
-          <ShinyText
-            speed={2.5}
-            text={label}
-            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default"
-          />
-        ) : (
-          <span className="min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap">
-            {label}
-          </span>
-        )}
-        <DsIcon
-          icon={ChevronRight}
-          className={cn(
-            'transition-[opacity,transform] duration-200',
-            open
-              ? 'rotate-90 opacity-100'
-              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
-          )}
-          data-narrative-segment-chevron
-        />
-      </button>
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            key="narrative-repeated-calls"
-            {...disclosureMotion(reducedMotion)}
-            className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-ds-6 overflow-hidden"
-          >
-            <span aria-hidden className="w-ds-icon-main" />
-            <div
-              className="flex min-w-0 flex-col gap-ds-4 pt-ds-4"
-              data-narrative-segment-calls
+        <TaskLogTitle shimmer={shimmerOnLabel}>{label}</TaskLogTitle>
+      </TaskLogTrigger>
+      <TaskLogContent className="gap-ds-4" data-narrative-segment-calls>
+        <AnimatePresence initial={false}>
+          {calls.map((call) => (
+            <motion.div
+              {...itemFadeMotion(reducedMotion)}
+              data-narrative-event-motion
+              data-narrative-event-motion-id={call.id}
+              key={call.id}
             >
-              <AnimatePresence initial={false}>
-                {calls.map((call) => (
-                  <motion.div
-                    {...itemFadeMotion(reducedMotion)}
-                    data-narrative-event-motion
-                    data-narrative-event-motion-id={call.id}
-                    key={call.id}
-                  >
-                    <CallRow
-                      call={call}
-                      summary={summarize ? callSummary(call) : null}
-                      initialOpen={
-                        initiallyOpenCallIds.has(call.id) ? true : undefined
-                      }
-                      onOpenChange={(callOpen) =>
-                        onCallOpenChange(call.id, callOpen)
-                      }
-                      latestRunningCallId={latestRunningCallId}
-                      reducedMotion={reducedMotion}
-                      runActive={runActive}
-                    />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
+              <CallRow
+                call={call}
+                title={callTitle(call, summarize)}
+                initialOpen={
+                  initiallyOpenCallIds.has(call.id) ? true : undefined
+                }
+                onOpenChange={(callOpen) => onCallOpenChange(call.id, callOpen)}
+                latestRunningCallId={latestRunningCallId}
+                reducedMotion={reducedMotion}
+                runActive={runActive}
+              />
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </TaskLogContent>
+    </TaskLogCollapsible>
   );
 }
 
@@ -619,7 +596,7 @@ function NarrativeFlow({
           ) : entry.kind === 'call' ? (
             <CallRow
               call={entry.call}
-              summary={summarize ? callSummary(entry.call) : null}
+              title={callTitle(entry.call, summarize)}
               initialOpen={
                 manuallyOpenCalls.has(entry.call.id) ? true : undefined
               }
@@ -734,15 +711,7 @@ function NarrativeSubagentRow({
   }
   const active = isCallActiveStatus(call.status);
   const failed = isCallErrorStatus(call.status);
-  const autoOpen = active || failed;
-  const [open, setOpen] = useState(autoOpen);
-  const wasAutoOpen = useRef(autoOpen);
-
-  useEffect(() => {
-    if (autoOpen) setOpen(true);
-    else if (wasAutoOpen.current) setOpen(false);
-    wasAutoOpen.current = autoOpen;
-  }, [autoOpen]);
+  const [open, setOpen] = useTaskLogOpenState(active || failed);
 
   const reasoningText =
     item.summary?.trim() || item.authoredStepTitle?.trim() || '';
@@ -761,21 +730,18 @@ function NarrativeSubagentRow({
       : undefined);
 
   return (
-    <div
-      className="flex w-full min-w-0 flex-col items-start"
+    <TaskLogCollapsible
+      open={open}
+      onOpenChange={setOpen}
+      reducedMotion={reducedMotion}
       data-narrative-subagent-row
       data-narrative-subagent-status={call.status}
       data-timeline-call-id={call.toolCallId}
     >
-      <button
-        type="button"
-        aria-expanded={open}
+      <TaskLogTrigger
         aria-label={`${agentName} · ${statusLabel}`}
-        onClick={() => setOpen((value) => !value)}
-        className={cn(
-          'group inline-flex max-w-full min-w-0 items-center justify-start gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-4 text-left transition-opacity hover:opacity-80',
-          DS_FOCUS_RING
-        )}
+        className="py-ds-4"
+        chevronProps={{ 'data-narrative-subagent-chevron': true }}
         data-narrative-subagent-trigger
       >
         <AgentAvatar
@@ -787,87 +753,61 @@ function NarrativeSubagentRow({
           provider={call.agentProvider}
           size="md"
         />
-        <span
-          className="min-w-0 truncate text-ds-text-base font-medium text-ds-ink-default-default"
+        <TaskLogTitle
+          weight="medium"
+          className="text-ds-ink-default-default"
           data-narrative-subagent-name
         >
           {agentName}
-        </span>
-        <span
+        </TaskLogTitle>
+        <TaskLogDescription
           aria-live="polite"
-          className={cn(
-            'shrink-0 text-ds-text-meta font-normal',
-            statusClassName
-          )}
+          className={statusClassName}
           data-narrative-subagent-status-label
         >
           {statusLabel}
-        </span>
-        <DsIcon
-          icon={ChevronRight}
-          className={cn(
-            'text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
-            open
-              ? 'rotate-90 opacity-100'
-              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
-          )}
-          data-narrative-subagent-chevron
-        />
-      </button>
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            key="narrative-subagent-detail"
-            {...disclosureMotion(reducedMotion)}
-            className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-ds-6 overflow-hidden"
+        </TaskLogDescription>
+      </TaskLogTrigger>
+      <TaskLogContent className="gap-ds-10" data-narrative-subagent-content>
+        {reasoning ? (
+          <span
+            className={cn(
+              'break-words whitespace-pre-wrap',
+              DERIVED_TEXT_CLASS
+            )}
+            data-narrative-subagent-reasoning
           >
-            <span aria-hidden className="w-ds-icon-main" />
-            <div
-              className="flex w-full min-w-0 flex-col gap-ds-10 pt-ds-4"
-              data-narrative-subagent-content
-            >
-              {reasoning ? (
-                <span
-                  className={cn(
-                    'break-words whitespace-pre-wrap',
-                    DERIVED_TEXT_CLASS
-                  )}
-                  data-narrative-subagent-reasoning
-                >
-                  {reasoning}
-                </span>
-              ) : null}
-              <ToolInputOutputDetails
-                appearance="code-scroll"
-                description={description}
-                input={call.input}
-                inputLabel={call.inputLabel}
-                output={call.output}
-                outputLabel={call.outputLabel}
-                showEmptyOutput={runActive && active && !call.output}
-                emptyOutputText={t('chat.timeline-waiting-response', {
-                  defaultValue: 'Waiting for a response.',
-                })}
-              />
-              {item.children?.length ? (
-                <div
-                  className="flex min-w-0 flex-col gap-ds-stack-related"
-                  data-narrative-subagent-children
-                >
-                  <NarrativeFlow
-                    density={density}
-                    items={item.children}
-                    latestRunningCallId={latestRunningCallId}
-                    reducedMotion={reducedMotion}
-                    runActive={runActive}
-                  />
-                </div>
-              ) : null}
-            </div>
-          </motion.div>
+            {reasoning}
+          </span>
         ) : null}
-      </AnimatePresence>
-    </div>
+        <ToolInputOutputDetails
+          appearance="code-scroll"
+          description={description}
+          input={call.input}
+          inputLabel={call.inputLabel}
+          output={call.output}
+          outputLabel={call.outputLabel}
+          showEmptyOutput={runActive && active && !call.output}
+          emptyOutputText={t('chat.timeline-waiting-response', {
+            defaultValue: 'Waiting for a response.',
+          })}
+        />
+        {item.children?.length ? (
+          <div
+            className="flex min-w-0 flex-col gap-ds-stack-related"
+            data-narrative-subagent-children
+          >
+            <NarrativeFlow
+              density={density}
+              items={item.children}
+              latestRunningCallId={latestRunningCallId}
+              reducedMotion={reducedMotion}
+              runActive={runActive}
+            />
+          </div>
+        ) : null}
+      </TaskLogContent>
+    </TaskLogCollapsible>
   );
 }
 
@@ -1011,69 +951,36 @@ function NarrativeAgentGroup({
     ownsShimmer ||
     items.some(itemHasActiveCall) ||
     items.some(itemIsFailed);
-  const [open, setOpen] = useState(autoOpen);
-  const wasAutoOpen = useRef(autoOpen);
-
-  useEffect(() => {
-    if (autoOpen) setOpen(true);
-    else if (wasAutoOpen.current) setOpen(false);
-    wasAutoOpen.current = autoOpen;
-  }, [autoOpen]);
+  const [open, setOpen] = useTaskLogOpenState(autoOpen);
 
   const shimmerOnLabel = !open && ownsShimmer;
 
   return (
-    <div
-      className="flex w-full min-w-0 flex-col"
+    <TaskLogCollapsible
+      open={open}
+      onOpenChange={setOpen}
+      reducedMotion={reducedMotion}
       data-narrative-agent-group={agentName}
     >
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="group flex w-full min-w-0 items-center justify-start gap-1 px-0 py-1 text-left"
+      <TaskLogTrigger
+        emphasis="muted"
+        status={shimmerOnLabel ? 'running' : undefined}
         data-narrative-agent-trigger
       >
-        {shimmerOnLabel ? (
-          <ShinyText
-            speed={2.5}
-            text={agentName}
-            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-medium text-ellipsis whitespace-nowrap text-ds-ink-muted-default"
-          />
-        ) : (
-          <span className="min-w-0 shrink overflow-hidden text-ds-text-base font-medium text-ellipsis whitespace-nowrap text-ds-ink-muted-default">
-            {agentName}
-          </span>
-        )}
-        <DsIcon
-          icon={open ? ChevronDown : ChevronRight}
-          className={cn(
-            'text-ds-ink-muted-default transition-opacity duration-200',
-            !open &&
-              'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
-          )}
+        <TaskLogTitle shimmer={shimmerOnLabel} weight="medium">
+          {agentName}
+        </TaskLogTitle>
+      </TaskLogTrigger>
+      <TaskLogContent indent={false} className="gap-ds-stack-related">
+        <NarrativeFlow
+          density={density}
+          items={items}
+          latestRunningCallId={latestRunningCallId}
+          reducedMotion={reducedMotion}
+          runActive={animationsActive}
         />
-      </button>
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            key="narrative-agent-group-body"
-            {...disclosureMotion(reducedMotion)}
-            className="overflow-hidden"
-          >
-            <div className="flex min-w-0 flex-col gap-ds-stack-related pt-ds-4">
-              <NarrativeFlow
-                density={density}
-                items={items}
-                latestRunningCallId={latestRunningCallId}
-                reducedMotion={reducedMotion}
-                runActive={animationsActive}
-              />
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
+      </TaskLogContent>
+    </TaskLogCollapsible>
   );
 }
 
@@ -1143,7 +1050,9 @@ function NarrativeRunWorkLog({
       state.narrativeInformationDensity ?? DEFAULT_NARRATIVE_INFORMATION_DENSITY
   );
   // Density changes only action presentation. It never hides all narration.
-  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  // A Run the reader opened stays open across its terminal receipt; only an
+  // untouched log folds itself away when the Run ends.
+  const [manualOpen, setOpen] = useState<boolean | null>(null);
   const open = manualOpen ?? !isTerminalRunStatus(run.status);
   const lastAgentIndex = entries.findLastIndex(
     (entry) => entry.kind === 'agent'
@@ -1175,74 +1084,60 @@ function NarrativeRunWorkLog({
       <span role="status" aria-atomic="true" className="sr-only">
         {live && !paused ? t('chat.timeline-in-progress') : ''}
       </span>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => {
-          setManualOpen(!open);
-        }}
-        className="group flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-ds-4 text-left"
+      <TaskLogCollapsible
+        open={open}
+        onOpenChange={setOpen}
+        reducedMotion={reducedMotion}
       >
-        <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
-          <NarrativeWorkLogSummary paused={paused} run={run} />
-        </span>
-        <DsIcon
-          icon={open ? ChevronDown : ChevronRight}
-          className={cn(
-            'text-ds-ink-muted-default transition-opacity duration-200',
-            !open &&
-              'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
-          )}
-        />
-      </button>
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            key="narrative-work-log-body"
-            {...disclosureMotion(reducedMotion)}
-            className="overflow-hidden"
-          >
-            <div
-              className="flex min-w-0 flex-col gap-ds-stack-related py-ds-8"
-              data-narrative-timeline
-            >
-              <AnimatePresence initial={false}>
-                {entries.map((entry, index) =>
-                  entry.kind === 'agent' ? (
-                    <motion.div
-                      {...itemFadeMotion(reducedMotion)}
-                      data-narrative-event-motion
-                      data-narrative-event-motion-id={entry.id}
-                      key={entry.id}
-                    >
-                      <NarrativeAgentGroup
-                        agentName={entry.agentName}
-                        density={density}
-                        animationsActive={animationsActive}
-                        isLatest={index === lastAgentIndex}
-                        items={entry.items}
-                        latestRunningCallId={runningCallId}
-                        reducedMotion={reducedMotion}
-                        runLive={live}
-                      />
-                    </motion.div>
-                  ) : (
-                    <NarrativeFlow
-                      density={density}
-                      interactivePlan={interactivePlan}
-                      items={entry.items}
-                      key={entry.id}
-                      latestRunningCallId={runningCallId}
-                      reducedMotion={reducedMotion}
-                      runActive={animationsActive}
-                    />
-                  )
-                )}
-              </AnimatePresence>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+        <TaskLogTrigger
+          variant="section"
+          emphasis="muted"
+          data-narrative-run-trigger
+        >
+          <span className="text-ds-text-base font-medium">
+            <NarrativeWorkLogSummary paused={paused} run={run} />
+          </span>
+        </TaskLogTrigger>
+        <TaskLogContent
+          indent={false}
+          className="gap-ds-stack-related py-ds-8"
+          data-narrative-timeline
+        >
+          <AnimatePresence initial={false}>
+            {entries.map((entry, index) =>
+              entry.kind === 'agent' ? (
+                <motion.div
+                  {...itemFadeMotion(reducedMotion)}
+                  data-narrative-event-motion
+                  data-narrative-event-motion-id={entry.id}
+                  key={entry.id}
+                >
+                  <NarrativeAgentGroup
+                    agentName={entry.agentName}
+                    density={density}
+                    animationsActive={animationsActive}
+                    isLatest={index === lastAgentIndex}
+                    items={entry.items}
+                    latestRunningCallId={runningCallId}
+                    reducedMotion={reducedMotion}
+                    runLive={live}
+                  />
+                </motion.div>
+              ) : (
+                <NarrativeFlow
+                  density={density}
+                  interactivePlan={interactivePlan}
+                  items={entry.items}
+                  key={entry.id}
+                  latestRunningCallId={runningCallId}
+                  reducedMotion={reducedMotion}
+                  runActive={animationsActive}
+                />
+              )
+            )}
+          </AnimatePresence>
+        </TaskLogContent>
+      </TaskLogCollapsible>
     </motion.div>
   );
 }

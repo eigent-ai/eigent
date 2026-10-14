@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 export * from './actionKind';
+export * from './callTitle';
 export * from './chronology';
 export * from './composeTimelineRuns';
 export * from './reconcileProjectedRuns';

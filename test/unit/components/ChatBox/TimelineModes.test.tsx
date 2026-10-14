@@ -373,17 +373,14 @@ describe('ChatBox timeline modes', () => {
     // Minimum mirrors the legacy event log: narration in place, one row per
     // toolkit method, consecutive repeats counted on a single row.
     expect(screen.getByText('I will inspect the files.')).toBeInTheDocument();
-    expect(rowLabels()).toEqual([
-      'File Toolkit · read_file · 2 events',
-      'Search Toolkit · google_search',
-    ]);
+    expect(rowLabels()).toEqual(['Read files · 2 events', 'Searched']);
 
     act(() =>
       usePageTabStore.setState({ narrativeInformationDensity: 'balanced' })
     );
     expect(rowLabels()).toEqual([
-      'File Toolkit · read_file · 2 events · src/b.ts',
-      'Search Toolkit · google_search · timeline docs',
+      'Read src/b.ts · 2 events',
+      'Searched for timeline docs',
     ]);
 
     act(() =>
@@ -393,9 +390,9 @@ describe('ChatBox timeline modes', () => {
       container.querySelectorAll('[data-narrative-repeated-calls]')
     ).toHaveLength(0);
     expect(rowLabels()).toEqual([
-      'File Toolkit · read_file · src/a.ts',
-      'File Toolkit · read_file · src/b.ts',
-      'Search Toolkit · google_search · timeline docs',
+      'Read src/a.ts',
+      'Read src/b.ts',
+      'Searched for timeline docs',
     ]);
     expect(
       [...container.querySelectorAll('[data-timeline-call-trigger]')].map(
@@ -467,9 +464,9 @@ describe('ChatBox timeline modes', () => {
     ];
     expect(groups).toHaveLength(2);
     expect(groups[0]).toHaveTextContent(
-      'Search Toolkit · search_google · 2 events · Eigent event timeline'
+      'Searched for Eigent event timeline · 2 events'
     );
-    expect(groups[1]).toHaveTextContent('Terminal · 3 events · npm run build');
+    expect(groups[1]).toHaveTextContent('Ran npm run build · 3 events');
     // Legacy Terminal receipts share the Terminal Toolkit identity and icon.
     expect(groups[1]!.querySelector('svg.lucide-terminal')).toBeInTheDocument();
     expect(
@@ -478,7 +475,7 @@ describe('ChatBox timeline modes', () => {
           '[data-narrative-timeline] > div > [data-timeline-call-id] [data-timeline-call-trigger]'
         ),
       ].map((node) => node.textContent?.trim())
-    ).toEqual(['Read a file', 'Terminal · pwd']);
+    ).toEqual(['Read a file', 'Ran pwd']);
     fireEvent.click(groups[1] as HTMLElement);
     expect(
       container.querySelectorAll(
@@ -592,16 +589,14 @@ describe('ChatBox timeline modes', () => {
       container.querySelector('[data-narrative-segment-trigger]');
 
     expect(group()).toHaveTextContent(
-      'Search Toolkit · search_google · 2 events · more precise topic'
+      'Searched for more precise topic · 2 events'
     );
     rerender(
       view([first, second, search('search-3', 3, '{"query":"latest topic"}')])
     );
-    expect(group()).toHaveTextContent('3 events · latest topic');
+    expect(group()).toHaveTextContent('Searched for latest topic · 3 events');
     rerender(view([first, second, search('search-3', 3, 'api_key=private')]));
-    expect(group()).toHaveTextContent(
-      'Search Toolkit · search_google · 3 events'
-    );
+    expect(group()).toHaveTextContent('Searched · 3 events');
     expect(group()).not.toHaveTextContent('private');
   });
 
@@ -1489,9 +1484,6 @@ describe('ChatBox timeline modes', () => {
     );
 
     expect(container.querySelector('[data-narrative-notice-id]')).toBeNull();
-    const metadata = call.querySelector(
-      '[data-timeline-call-metadata]'
-    ) as HTMLElement;
     const details = call.querySelector(
       '[data-tool-details-scroll]'
     ) as HTMLElement;
@@ -1503,23 +1495,16 @@ describe('ChatBox timeline modes', () => {
     const content = call.querySelector(
       '[data-timeline-call-content]'
     ) as HTMLElement;
-    const indent = call.querySelector(
-      '[data-timeline-call-indent]'
-    ) as HTMLElement;
+    const indent = call.querySelector('[data-task-log-indent]') as HTMLElement;
     const trigger = call.querySelector(
       '[data-timeline-call-trigger]'
     ) as HTMLElement;
 
-    expect(metadata).toHaveClass('gap-ds-8', '!text-ds-text-meta');
-    expect(within(metadata).getByText('Report completed')).toBeInTheDocument();
-    expect(
-      within(metadata).getByText('Completed in 25 ms')
-    ).toBeInTheDocument();
-    const separator = metadata.querySelector(
-      '[data-timeline-call-separator]'
-    ) as HTMLElement;
-    expect(separator.parentElement).toHaveClass('gap-ds-8');
-    expect(metadata).not.toHaveTextContent('The markdown report is ready.');
+    // The detail is only the request/response box: no repeated title, status,
+    // or duration line above it.
+    expect(content.children).toHaveLength(1);
+    expect(content.firstElementChild).toContainElement(details);
+    expect(call).not.toHaveTextContent('Completed in 25 ms');
     expect(description).toHaveTextContent('The markdown report is ready.');
     expect(description).toHaveClass('!text-ds-text-meta');
     expect(content.parentElement).toHaveClass(
@@ -1570,7 +1555,7 @@ describe('ChatBox timeline modes', () => {
     expect(
       container.querySelector('[data-narrative-segment-trigger]')
     ).toBeNull();
-    expect(trigger).toHaveTextContent('read_file');
+    expect(trigger).toHaveTextContent('Reading files');
     expect(trigger).toHaveClass('group', 'gap-ds-6', 'py-ds-2');
     expect(chevron).toHaveClass(
       'opacity-0',
@@ -1978,23 +1963,13 @@ describe('ChatBox timeline modes', () => {
     expect(first).not.toHaveAttribute('data-timeline-call-highlighted');
     expect(second).toHaveAttribute('data-timeline-call-highlighted', 'true');
     expect(container.querySelectorAll('.shiny-text')).toHaveLength(1);
-    // A running row only shimmers; its detail opens on request.
-    expect(
-      second.querySelector('[data-timeline-call-trigger]')
-    ).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(
-      second.querySelector('[data-timeline-call-trigger]') as HTMLElement
-    );
-    expect(
-      within(second).getByText('Waiting for a response.')
-    ).toBeInTheDocument();
-
-    fireEvent.click(
-      first.querySelector('[data-timeline-call-trigger]') as HTMLElement
-    );
-    expect(
-      within(first).getByText('Waiting for a response.')
-    ).toBeInTheDocument();
+    // A running row with no request yet has nothing to reveal, so it stays a
+    // plain line that only shimmers instead of opening an empty detail.
+    for (const row of [first, second]) {
+      expect(row.querySelector('[data-timeline-call-trigger]')).toBeNull();
+      expect(row.querySelector('[data-timeline-call-line]')).not.toBeNull();
+      expect(row.querySelector('button')).toBeNull();
+    }
 
     rerender(
       <TimelineModeRenderer
