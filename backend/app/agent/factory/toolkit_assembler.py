@@ -774,9 +774,9 @@ async def _assemble_single_agent_toolkits(
                         else "bundle_mcp_start_failed"
                     )
                     raise EnvironmentSetupRequiredError([issue]) from None
-                logger.warning(
-                    "MCP connector %r failed (%s)", connector_name, reason
-                )
+                # The name shares a config with injected credentials; the Task
+                # notice carries it to the user instead of the log.
+                logger.warning("MCP connector failed (%s)", reason)
                 await emit_mcp_notice(
                     options.project_id, connector_name, reason
                 )
