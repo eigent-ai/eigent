@@ -725,50 +725,61 @@ async def _assemble_single_agent_toolkits(
         assembly.add_tools(toolkit.get_tools(), "PlanningWorktreeToolkit")
 
     if _enabled(config, "mcp") or pinned_mcp_config is not None:
-        if runtime_environment is None:
-            mcp_config = _mcp_config(options, hands)
-        else:
-            exact_mcp_config = pinned_mcp_config
-            mcp_config = _mcp_config(
-                options,
-                hands,
-                exact_config=(exact_mcp_config or {"mcpServers": {}}),
-            )
+        from app.service.mcp_oauth import (
+            connect_mcp_toolkit,
+            emit_mcp_notice,
+            is_mcp_auth_failure,
+            prepare_mcp_oauth,
+        )
+
+        mcp_config = _mcp_config(
+            options,
+            hands,
+            exact_config=(pinned_mcp_config or {"mcpServers": {}})
+            if runtime_environment is not None
+            else None,
+        )
         if mcp_config is not None:
-            mcp_options = {
-                "timeout": 180,
-                **_options(config, "mcp"),
-            }
-            mcp_options["config_dict"] = mcp_config
-            mcp_options["skip_failed"] = runtime_environment is None
-            if runtime_environment is not None:
+            resolved = await prepare_mcp_oauth(
+                mcp_config,
+                account=options.email,
+                project_id=options.project_id,
+                strict=runtime_environment is not None,
+            )
+            # Connect separately so a failed connector cannot hide another's
+            # tools, and every failure can be attributed without logging headers.
+            for name, server in resolved["mcpServers"].items():
+                mcp_options = {
+                    "timeout": 180,
+                    **_options(config, "mcp"),
+                    "config_dict": {"mcpServers": {name: server}},
+                    "skip_failed": False,
+                }
                 try:
                     toolkit = MCPToolkit(**mcp_options)
-                    # connect() can partially allocate subprocesses before it
-                    # raises. Include it in rollback before attempting startup.
                     assembly.cleanup_toolkits.append(toolkit)
-                    await toolkit.connect()
+                    await connect_mcp_toolkit(toolkit)
                 except Exception as exc:
-                    from app.workspace_bundle.runtime import (
-                        EnvironmentSetupRequiredError,
+                    reason = (
+                        "mcp_auth_failed"
+                        if is_mcp_auth_failure(exc)
+                        else "connection_failed"
                     )
+                    if runtime_environment is not None:
+                        from urllib.parse import quote
 
-                    raise EnvironmentSetupRequiredError(
-                        ["bundle_mcp_start_failed"]
-                    ) from exc
-                assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
-            else:
-                toolkit = MCPToolkit(**mcp_options)
-                # Servers that started before connect() failed or was
-                # cancelled must still be stopped by rollback or disposal.
-                assembly.cleanup_toolkits.append(toolkit)
-                try:
-                    await toolkit.connect()
-                except Exception:
-                    logger.error(
-                        "Failed to connect MCPToolkit",
-                        exc_info=True,
-                    )
+                        from app.workspace_bundle.runtime import (
+                            EnvironmentSetupRequiredError,
+                        )
+
+                        issue = (
+                            f"mcp_auth_failed:{quote(name, safe='')}"
+                            if reason == "mcp_auth_failed"
+                            else "bundle_mcp_start_failed"
+                        )
+                        raise EnvironmentSetupRequiredError([issue]) from None
+                    logger.warning("MCP connector failed (%s)", reason)
+                    await emit_mcp_notice(options.project_id, name, reason)
                 else:
                     assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
 

@@ -46,6 +46,7 @@ import {
   type WindowCloseRequest,
   type WindowCloseResponse,
 } from '../../src/shared/windowClose';
+import type { McpOAuthIdentity } from '../main/mcpOAuth/types';
 import type {
   WorkspaceSecretLookup,
   WorkspaceSecretPutRequest,
@@ -214,6 +215,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   uploadLog: (email: string, taskId: string, baseUrl: string, token: string) =>
     ipcRenderer.invoke('upload-log', email, taskId, baseUrl, token),
   // mcp
+  mcpOAuthProbe: (url: string) => ipcRenderer.invoke('mcp-oauth-probe', url),
+  mcpOAuthSignIn: (identity: McpOAuthIdentity) =>
+    ipcRenderer.invoke('mcp-oauth-sign-in', identity),
+  mcpOAuthSignOut: (identity: McpOAuthIdentity) =>
+    ipcRenderer.invoke('mcp-oauth-sign-out', identity),
+  mcpOAuthStatus: (identity: McpOAuthIdentity) =>
+    ipcRenderer.invoke('mcp-oauth-status', identity),
+  mcpOAuthCancel: (identity: McpOAuthIdentity) =>
+    ipcRenderer.invoke('mcp-oauth-cancel', identity),
   mcpInstall: (name: string, mcp: any) =>
     ipcRenderer.invoke('mcp-install', name, mcp),
   mcpRemove: (name: string) => ipcRenderer.invoke('mcp-remove', name),
