@@ -249,6 +249,7 @@
   "project-name": "Nom de la session",
   "enter-project-name": "Saisissez le nom de la session",
   "rename-project": "Renommer la session",
+  "failed-to-rename-session": "Impossible de renommer la session. Réessayez.",
   "no-description": "Pas encore de description.",
   "completed": "Terminé",
   "failed": "Échoué",

@@ -149,6 +149,11 @@ export interface QueryGroup {
 }
 
 interface UserQueryGroupProps {
+  onEditUserMessage?: (message: {
+    id: string;
+    content: string;
+    attaches?: readonly { fileName: string; filePath?: string }[];
+  }) => void;
   chatId: string;
   chatStore: VanillaChatStore;
   queryGroup: QueryGroup;
@@ -174,6 +179,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   onQueryActive,
   index,
   taskId: scopedTaskId,
+  onEditUserMessage,
 }) => {
   const { t } = useTranslation();
   const groupRef = useRef<HTMLDivElement>(null);
@@ -437,6 +443,17 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             id={queryGroup.userMessage.id}
             content={queryGroup.userMessage.content}
             attaches={queryGroup.userMessage.attaches}
+            createdAt={queryGroup.userMessage.timestamp}
+            onEditAndResend={
+              onEditUserMessage
+                ? () =>
+                    onEditUserMessage({
+                      id: queryGroup.userMessage.id,
+                      content: queryGroup.userMessage.content,
+                      attaches: queryGroup.userMessage.attaches,
+                    })
+                : undefined
+            }
           />
         </motion.div>
       )}

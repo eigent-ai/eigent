@@ -15,6 +15,7 @@
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
+import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
 import { DsText } from '@/components/ui/ds-text';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { approvalRecordedReason } from '@/lib/approvalPresentation';
@@ -34,11 +35,11 @@ import { useTranslation } from 'react-i18next';
 import { TaskErrorNotice } from '../TaskErrorNotice';
 import { taskErrorReason } from '../taskErrorPresentation';
 
+import { ModelChangeDivider } from './ModelChangeDivider';
 import { normalizeRunReviewPath } from './RunFiles';
 import {
   hasRunExecutionRows,
   isActiveRunStatus,
-  RunActivityIndicator,
   statusIcon,
   statusLabel,
   type InteractiveTimelinePlan,
@@ -245,7 +246,7 @@ function TraceRow({
         aria-controls={detailsId}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full min-w-0 flex-row items-center gap-3 bg-transparent px-1 py-2.5 text-left"
+        className="group flex w-full min-w-0 flex-row items-center gap-3 bg-transparent px-1 py-2.5 text-left"
       >
         <span className="flex w-28 shrink-0 justify-end" data-trace-tag-column>
           <span
@@ -274,8 +275,10 @@ function TraceRow({
           <ChevronRight
             aria-hidden
             className={cn(
-              'size-3.5 shrink-0 text-ds-ink-muted-default transition-transform duration-150 motion-reduce:transition-none',
-              open && 'rotate-90'
+              'size-3.5 shrink-0 text-ds-ink-muted-default transition-[opacity,transform] duration-150 motion-reduce:transition-none',
+              open
+                ? 'rotate-90 opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
             )}
             data-trace-chevron
           />
@@ -468,14 +471,38 @@ function InteractionTraceDetails({
 function NodeTraceDetails({
   row,
   runId,
+  onEditUserMessage,
 }: {
   row: NodeTraceRow;
   runId: string;
+  onEditUserMessage?: TimelineModeProps['onEditUserMessage'];
 }) {
   const { t } = useTranslation();
   const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
   const node = row.node;
   if (node.kind === 'message') {
+    if (node.role === 'user') {
+      return (
+        <UserMessageCard
+          id={node.id}
+          content={node.content}
+          attaches={node.attachments}
+          createdAt={node.createdAt}
+          className="pl-0"
+          embedded
+          onEditAndResend={
+            onEditUserMessage
+              ? () =>
+                  onEditUserMessage({
+                    id: node.id,
+                    content: node.content,
+                    attaches: node.attachments,
+                  })
+              : undefined
+          }
+        />
+      );
+    }
     return (
       <MarkDown
         content={node.content}
@@ -591,10 +618,12 @@ function DetailedRun({
   run,
   paused,
   interactivePlan,
+  onEditUserMessage,
 }: {
   run: TimelineRunView;
   paused: boolean;
   interactivePlan?: InteractiveTimelinePlan;
+  onEditUserMessage?: TimelineModeProps['onEditUserMessage'];
 }) {
   const { t } = useTranslation();
   return (
@@ -646,8 +675,9 @@ function DetailedRun({
                     : undefined
                 }
                 autoExpanded={
-                  row.node.kind === 'interaction' &&
-                  row.node.status === 'requested'
+                  (row.node.kind === 'interaction' &&
+                    row.node.status === 'requested') ||
+                  (row.node.kind === 'message' && row.node.role === 'user')
                 }
                 interactionId={
                   row.node.kind === 'interaction'
@@ -671,7 +701,11 @@ function DetailedRun({
                 status={nodeStatus(row, paused)}
                 summary={nodeSummary(row, t)}
               >
-                <NodeTraceDetails row={row} runId={run.runId} />
+                <NodeTraceDetails
+                  row={row}
+                  runId={run.runId}
+                  onEditUserMessage={onEditUserMessage}
+                />
               </TraceRow>
             );
           })}
@@ -682,29 +716,34 @@ function DetailedRun({
           <PreparingToExecuteTasks />
         </div>
       ) : null}
-      {run.status === 'running' && !paused && hasRunExecutionRows(run) ? (
-        <div className="px-3 py-2">
-          <RunActivityIndicator />
-        </div>
-      ) : null}
     </section>
   );
 }
 
 export function TrajectoryTimeline({
   runs,
+  resolvedModelsByRun = {},
   interactivePlansByRun = {},
   paused = false,
+  onEditUserMessage,
 }: TimelineModeProps) {
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="trajectory">
-      {runs.map((run) => (
-        <DetailedRun
-          interactivePlan={interactivePlansByRun[run.runId]}
-          key={run.id}
-          paused={paused}
-          run={run}
-        />
+      {runs.map((run, index) => (
+        <div className="flex flex-col gap-3" key={run.id}>
+          {index > 0 ? (
+            <ModelChangeDivider
+              previous={resolvedModelsByRun[runs[index - 1].runId]}
+              current={resolvedModelsByRun[run.runId]}
+            />
+          ) : null}
+          <DetailedRun
+            interactivePlan={interactivePlansByRun[run.runId]}
+            paused={paused}
+            run={run}
+            onEditUserMessage={onEditUserMessage}
+          />
+        </div>
       ))}
     </div>
   );

@@ -294,7 +294,7 @@ describe('pageTabStore session preview', () => {
       }
     ).sessionPreviewByProject['project-a'].tabs[0];
 
-    expect(usePageTabStore.persist.getOptions().version).toBe(5);
+    expect(usePageTabStore.persist.getOptions().version).toBe(6);
     expect(restoredReview).toMatchObject({
       type: 'review',
       title: 'Task review',

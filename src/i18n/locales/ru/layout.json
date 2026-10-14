@@ -249,6 +249,7 @@
   "project-name": "Название сессии",
   "enter-project-name": "Введите название сессии",
   "rename-project": "Переименовать сессию",
+  "failed-to-rename-session": "Не удалось переименовать сессию. Повторите попытку.",
   "no-description": "Описания пока нет.",
   "completed": "Завершено",
   "failed": "Неудачно",

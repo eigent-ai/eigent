@@ -55,6 +55,22 @@ describe('pageTabStore side-panel requests', () => {
     expect(usePageTabStore.getState().sessionSidePanelToggleRequestId).toBe(2);
   });
 
+  it('keeps a skill draft bound to its source Session and marks the composer handoff as conditional', () => {
+    usePageTabStore
+      .getState()
+      .requestWorkspaceChatDraft(
+        '#automation-draft Draft this task',
+        undefined,
+        { projectId: 'source-project', ifEmpty: true }
+      );
+
+    expect(usePageTabStore.getState().workspaceChatDraftRequest).toMatchObject({
+      projectId: 'source-project',
+      ifEmpty: true,
+      content: '#automation-draft Draft this task',
+    });
+  });
+
   it('tracks unread project files and clears the active project when Files opens', () => {
     usePageTabStore.getState().markTabAsUnviewed('files', 'project-1');
     usePageTabStore.getState().markTabAsUnviewed('files', 'project-2');

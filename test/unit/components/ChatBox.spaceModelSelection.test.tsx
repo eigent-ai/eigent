@@ -54,6 +54,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   input: null as any,
   variant: null as any,
+  decisionVariant: null as any,
   snapshot: null as any,
   space: null as any,
   interrupted: null as any,
@@ -203,9 +204,24 @@ vi.mock('@/components/ChatBox/ProjectChatContainer', () => ({
 vi.mock('@/components/ChatBox/EventNativeProjectTimeline', () => ({
   EventNativeProjectTimeline: () => null,
 }));
+// The active human decision renders above the composer, which then stays a
+// plain input. Record whichever control currently owns the decision.
+vi.mock('@/components/ChatBox/BottomBox/HumanDecisionCard', () => ({
+  HumanDecisionCard: ({ variant }: any) => {
+    mocks.decisionVariant = variant;
+    return variant?.kind === 'approval' ? (
+      <button
+        disabled={variant.disabled}
+        onClick={() => variant.onApprove('once')}
+      >
+        Approve
+      </button>
+    ) : null;
+  },
+}));
 vi.mock('@/components/ChatBox/BottomBox', () => ({
   default: ({ inputProps, noModelOverlay, variant }: any) => {
-    mocks.variant = variant;
+    mocks.variant = mocks.decisionVariant ?? variant;
     mocks.input = inputProps;
     if (!inputProps) return null;
     return (
@@ -224,14 +240,6 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
         >
           Follow up
         </button>
-        {variant?.kind === 'approval' ? (
-          <button
-            disabled={variant.disabled}
-            onClick={() => variant.onApprove('once')}
-          >
-            Approve
-          </button>
-        ) : null}
       </div>
     );
   },

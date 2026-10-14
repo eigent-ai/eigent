@@ -60,6 +60,11 @@ export function isCallActiveStatus(status: TimelineCall['status']): boolean {
 
 interface CallRowProps {
   call: TimelineCall;
+  /** Narrative Balanced can surface the call's display description at rest. */
+  displayTitle?: string;
+  /** Keep disclosure open if this call becomes a Balanced toolkit group. */
+  initialOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
   runActive: boolean;
   /** Row id that currently owns the single running shimmer, if any. */
   latestRunningCallId?: string | null;
@@ -78,6 +83,9 @@ interface CallRowProps {
  */
 export function CallRow({
   call,
+  displayTitle,
+  initialOpen,
+  onOpenChange,
   runActive,
   latestRunningCallId = null,
   reducedMotion,
@@ -165,13 +173,11 @@ export function CallRow({
   // A pending human call is the one thing the user must act on, so it opens
   // itself. Everything else follows the shimmer/auto-collapse rule.
   const autoExpanded = highlighted || pendingHuman;
-  const [open, setOpen] = useState(autoExpanded);
-  const wasAutoExpanded = useRef(autoExpanded);
+  const [open, setOpen] = useState(initialOpen ?? autoExpanded);
+  const manuallyToggled = useRef(initialOpen !== undefined);
 
   useEffect(() => {
-    if (autoExpanded) setOpen(true);
-    else if (wasAutoExpanded.current) setOpen(false);
-    wasAutoExpanded.current = autoExpanded;
+    if (!manuallyToggled.current) setOpen(autoExpanded);
   }, [autoExpanded]);
 
   return (
@@ -187,9 +193,14 @@ export function CallRow({
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          manuallyToggled.current = true;
+          const nextOpen = !open;
+          setOpen(nextOpen);
+          onOpenChange?.(nextOpen);
+        }}
         className={cn(
-          'inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left transition-opacity hover:opacity-80',
+          'group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left transition-opacity hover:opacity-80',
           DS_FOCUS_RING,
           failed && 'text-ds-text-status-error-default-default'
         )}
@@ -207,7 +218,7 @@ export function CallRow({
         />
         {highlighted ? (
           <ShinyText
-            text={call.title}
+            text={displayTitle || call.title}
             speed={2.5}
             className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default"
           />
@@ -220,7 +231,7 @@ export function CallRow({
                 : 'text-ds-ink-subtle-default'
             )}
           >
-            {call.title}
+            {displayTitle || call.title}
           </span>
         )}
         {failed ? (
@@ -237,11 +248,13 @@ export function CallRow({
         <DsIcon
           icon={ChevronRight}
           className={cn(
-            'transition-transform duration-200',
+            'transition-[opacity,transform] duration-200',
             failed
               ? 'text-ds-text-status-error-default-default'
               : 'text-ds-ink-subtle-default',
-            open && 'rotate-90'
+            open
+              ? 'rotate-90 opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
           )}
           data-timeline-call-chevron
         />
