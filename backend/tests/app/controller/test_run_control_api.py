@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -26,6 +27,7 @@ from app.controller.run_controller import (
     InteractionDecisionBody,
     ResumeRunBody,
     RunSignalBody,
+    _resolved_model_for_attempt,
     cancel_run,
     decide_run_interaction,
     fork_run,
@@ -39,6 +41,7 @@ from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
 from app.run_runtime import RunCoordinator
 from app.service.task import TaskLock
+from app.workspace_config import EnvironmentConfigResolver
 from app.workspace_config.admission import (
     EnvironmentAdmissionService,
     LegacyEnvironmentImporter,
@@ -93,7 +96,10 @@ async def test_run_control_api_creates_attempt_fork_and_cancel_intent(
 
 
 @pytest.mark.asyncio
-async def test_resume_control_inherits_latest_environment_binding(tmp_path):
+@pytest.mark.parametrize("later_unbound", [False, True])
+async def test_resume_control_inherits_latest_environment_binding(
+    tmp_path, later_unbound
+):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
@@ -121,6 +127,16 @@ async def test_resume_control_inherits_latest_environment_binding(tmp_path):
             now=1,
         )
         journal.reconcile_startup(now=2)
+
+        if later_unbound:
+            journal.create_run_attempt(
+                "run-env",
+                request_id="unbound-resume",
+                reason="explicit_resume",
+                activate=True,
+                now=3,
+            )
+            journal.reconcile_startup(now=4)
 
         coordinator = RunCoordinator(journal)
         with patch(
@@ -893,8 +909,8 @@ async def test_cancelled_request_still_delivers_committed_decision(
             await asyncio.gather(*waiters, return_exceptions=True)
 
 
-@pytest.mark.asyncio
-async def test_run_reads_expose_bound_model_without_auth_details(tmp_path):
+@pytest.fixture
+def model_run(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
@@ -913,36 +929,259 @@ async def test_run_reads_expose_bound_model_without_auth_details(tmp_path):
             created_by="test-user",
             template=template,
         )
-        journal.create_run_attempt(
-            "run-env",
-            request_id="initial:run-env",
-            reason="initial_execution",
-            activate=True,
-            environment=environment.binding,
-            now=1,
+        yield journal, template, environment
+
+
+def _bind_model_attempt(
+    model_run,
+    *,
+    owner_type="run",
+    owner_id="run-env",
+    manifest=None,
+    attempt_id="bound-attempt",
+    now=1,
+):
+    journal, template, environment = model_run
+    spec = EnvironmentConfigResolver().resolve(
+        manifest=template.manifest,
+        owner_type=owner_type,
+        owner_id=owner_id,
+        local_materialization=environment.spec.local_materialization,
+        provider_capability=template.provider_capability,
+        thinking_effort_override=template.thinking_effort_requested,
+        runtime_capability_manifest=(
+            template.runtime_capability_manifest
+            if manifest is None
+            else manifest
+        ),
+    )
+    record = journal.put_effective_environment_spec(spec)
+    binding = replace(
+        environment.binding,
+        environment_spec_id=spec.spec_id,
+        environment_spec_digest=spec.digest,
+    )
+    attempt = journal.create_run_attempt(
+        "run-env",
+        attempt_id=attempt_id,
+        request_id=f"initial:{attempt_id}",
+        reason="initial_execution",
+        activate=True,
+        environment=binding,
+        now=now,
+    )
+    return spec, record, attempt
+
+
+async def _read_model_run(journal, run_id="run-env"):
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=RunCoordinator(journal),
+        ),
+        patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+        patch(
+            "app.run_sync.runtime.is_default_cloud_history_bootstrap_pending",
+            return_value=False,
+        ),
+    ):
+        listing = await list_project_runs(
+            project_id="project-1", status=None, limit=100
         )
-        with (
-            patch(
-                "app.controller.run_controller.get_default_run_journal",
-                return_value=journal,
-            ),
-            patch(
-                "app.controller.run_controller.get_default_run_coordinator",
-                return_value=RunCoordinator(journal),
-            ),
-            patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
-            patch(
-                "app.run_sync.runtime."
-                "is_default_cloud_history_bootstrap_pending",
-                return_value=False,
-            ),
-        ):
-            listing = await list_project_runs(
-                project_id="project-1", status=None, limit=20
-            )
-            detail = await get_run("run-env")
+        detail = await get_run(run_id)
+    item = next(item for item in listing["runs"] if item["run_id"] == run_id)
+    return item, detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner_type", ["run", "run_attempt"])
+@pytest.mark.parametrize("later_unbound", [False, True])
+async def test_run_reads_expose_bound_model_without_auth_details(
+    model_run, owner_type, later_unbound
+):
+    journal, _, _ = model_run
+    spec, _, attempt = _bind_model_attempt(
+        model_run,
+        owner_type=owner_type,
+        owner_id="run-env" if owner_type == "run" else "bound-attempt",
+    )
+    if later_unbound:
+        journal.reconcile_startup(now=2)
+        journal.create_run_attempt(
+            "run-env", request_id="unbound", reason="explicit_resume", now=3
+        )
+    item, detail = await _read_model_run(journal)
 
     expected = {"platform": "openai", "type": "gpt-5"}
-    assert listing["runs"][0]["resolved_model"] == expected
-    assert detail["resolved_model"] == expected
-    assert set(listing["runs"][0]["resolved_model"]) == {"platform", "type"}
+    assert item["resolved_model"] == detail["resolved_model"] == expected
+    assert "auth_source" not in item["resolved_model"]
+    assert "auth_source" not in detail["resolved_model"]
+    if later_unbound:
+        assert item["latest_attempt"]["environment_spec_id"] is None
+        assert detail["latest_attempt"]["environment_spec_id"] is None
+        assert detail["latest_attempt"]["attempt_id"] != attempt.attempt_id
+        binding = RunCoordinator._latest_environment_binding(
+            journal.list_run_attempts("run-env")
+        )
+        assert binding.environment_spec_id == spec.spec_id
+
+
+@pytest.mark.asyncio
+async def test_fresh_fork_has_no_admitted_model(model_run):
+    journal, _, _ = model_run
+    _bind_model_attempt(model_run)
+    journal.fork_run(
+        "run-env", new_run_id="forked-run", request_id="fork-request"
+    )
+    item, detail = await _read_model_run(journal, "forked-run")
+    assert item["parent_run_id"] == "run-env"
+    assert detail["latest_attempt"]["outcome"] == "fork_checkpoint"
+    assert item["resolved_model"] is None
+    assert detail["resolved_model"] is None
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"owner_id": "another-run"},
+        {"owner_type": "run_attempt", "owner_id": "another-attempt"},
+        {"owner_type": "unsupported"},
+        {"environment_spec_id": "another-spec"},
+        {"environment_spec_digest": "another-digest"},
+    ],
+)
+def test_resolved_model_rejects_unrelated_specs(model_run, changes):
+    _, record, attempt = _bind_model_attempt(model_run)
+    assert (
+        _resolved_model_for_attempt(replace(record, **changes), attempt)
+        is None
+    )
+    assert _resolved_model_for_attempt(None, attempt) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        {},
+        {"model": None},
+        {"model": "invalid"},
+        {"model": {"platform": "openai"}},
+        {"model": {"platform": "", "type": "gpt-5"}},
+        {"model": {"platform": "openai", "type": "  "}},
+        {"model": {"platform": 42, "type": "gpt-5"}},
+    ],
+)
+async def test_run_reads_leave_invalid_model_identity_unknown(
+    model_run, manifest
+):
+    journal, _, _ = model_run
+    _bind_model_attempt(model_run, manifest=manifest)
+    item, detail = await _read_model_run(journal)
+    assert item["resolved_model"] is None
+    assert detail["resolved_model"] is None
+
+
+def test_model_accessors_use_local_spec_and_exclude_auth(model_run):
+    spec, record, attempt = _bind_model_attempt(model_run)
+    expected = {"platform": "openai", "type": "gpt-5"}
+    assert spec.bound_model() == record.bound_model() == expected
+    # The Cloud projection is independently versioned and can omit this data.
+    assert (
+        _resolved_model_for_attempt(replace(record, redacted_spec={}), attempt)
+        == expected
+    )
+    for semantic in (None, [], {"runtime_capability_manifest": []}):
+        assert (
+            replace(record, spec={"semantic_spec": semantic}).bound_model()
+            is None
+        )
+        assert (
+            spec.model_copy(update={"semantic_spec": semantic}).bound_model()
+            is None
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_list_batch_loads_model_specs(model_run):
+    journal, template, _ = model_run
+    _bind_model_attempt(model_run)
+    journal.reconcile_startup(now=2)
+    journal.ensure_run(run_id="second-run", project_id="project-1")
+    second = EnvironmentAdmissionService(journal).persist_for_run(
+        run_id="second-run",
+        space_id="space-1",
+        working_directory=journal.path.parent,
+        created_by="test-user",
+        template=template,
+    )
+    journal.create_run_attempt(
+        "second-run",
+        request_id="initial:second-run",
+        reason="initial_execution",
+        activate=True,
+        environment=second.binding,
+    )
+    queries = []
+    journal._connection.set_trace_callback(queries.append)
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+        patch(
+            "app.run_sync.runtime.is_default_cloud_history_bootstrap_pending",
+            return_value=False,
+        ),
+    ):
+        listing = await list_project_runs(
+            project_id="project-1", status=None, limit=100
+        )
+    journal._connection.set_trace_callback(None)
+    assert len(listing["runs"]) == 2
+    assert all(item["resolved_model"] for item in listing["runs"])
+    assert (
+        len(
+            [
+                query
+                for query in queries
+                if "FROM effective_environment_specs" in query
+            ]
+        )
+        == 1
+    )
+    assert journal.get_effective_environment_specs([]) == {}
+    specs = journal.get_effective_environment_specs(
+        [second.spec.spec_id, second.spec.spec_id, "missing"]
+    )
+    assert list(specs) == [second.spec.spec_id]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "manifest, expected",
+    [
+        (
+            {"model": {"platform": "openai", "type": "gpt-5.5"}},
+            {"platform": "openai", "type": "gpt-5.5"},
+        ),
+        ({}, None),
+    ],
+)
+async def test_run_reads_use_latest_binding_even_when_identity_is_missing(
+    model_run, manifest, expected
+):
+    journal, _, _ = model_run
+    _bind_model_attempt(model_run)
+    journal.reconcile_startup(now=2)
+    _bind_model_attempt(
+        model_run, manifest=manifest, attempt_id="new-bound-attempt", now=3
+    )
+    item, detail = await _read_model_run(journal)
+    assert item["resolved_model"] == detail["resolved_model"] == expected
+    assert detail["latest_attempt"]["attempt_id"] == "new-bound-attempt"

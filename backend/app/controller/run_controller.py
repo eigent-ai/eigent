@@ -48,6 +48,11 @@ from app.run_journal import (
     UnsafeResumeError,
     get_default_run_journal,
 )
+from app.run_journal.models import (
+    EffectiveEnvironmentSpecRecord,
+    RunAttemptRecord,
+    latest_environment_attempt,
+)
 from app.run_journal.transitions import ATTEMPT_ACTIVE_STATES
 from app.run_policy import (
     RunTimeoutPolicy,
@@ -420,30 +425,29 @@ async def _unsafe_resume_blockers(
     ]
 
 
-def _resolved_model_for_attempt(journal, attempt) -> dict[str, str] | None:
+def _resolved_model_for_attempt(
+    spec: EffectiveEnvironmentSpecRecord | None,
+    attempt: RunAttemptRecord | None,
+) -> dict[str, str] | None:
     """Expose only the model identity from an attempt's immutable binding."""
 
-    if attempt is None or not attempt.environment_spec_id:
+    if spec is None or attempt is None:
         return None
-    spec = journal.get_effective_environment_spec(attempt.environment_spec_id)
-    if spec is None or spec.owner_id != attempt.run_id:
-        return None
-    semantic = spec.redacted_spec.get("semantic_spec")
-    if not isinstance(semantic, dict):
-        return None
-    manifest = semantic.get("runtime_capability_manifest")
-    if not isinstance(manifest, dict):
-        return None
-    model = manifest.get("model")
-    if not isinstance(model, dict):
-        return None
-    platform, model_type = model.get("platform"), model.get("type")
-    if not all(
-        isinstance(value, str) and value.strip()
-        for value in (platform, model_type)
+    expected_owner = (
+        attempt.run_id
+        if spec.owner_type == "run"
+        else attempt.attempt_id
+        if spec.owner_type == "run_attempt"
+        else None
+    )
+    if (
+        expected_owner is None
+        or spec.owner_id != expected_owner
+        or spec.environment_spec_id != attempt.environment_spec_id
+        or spec.environment_spec_digest != attempt.environment_spec_digest
     ):
         return None
-    return {"platform": platform, "type": model_type}
+    return spec.bound_model()
 
 
 @router.get("/runs")
@@ -477,18 +481,35 @@ async def list_project_runs(
         journal.list_attempt_user_waits, [run.run_id for run in runs]
     )
     now = time.time()
+    attempts_by_run: dict[str, list[RunAttemptRecord]] = {}
+    bound_attempts: dict[str, RunAttemptRecord | None] = {}
     for run in runs:
-        attempts = await asyncio.to_thread(
+        attempts_by_run[run.run_id] = await asyncio.to_thread(
             journal.list_run_attempts, run.run_id
         )
+        bound_attempts[run.run_id] = latest_environment_attempt(
+            attempts_by_run[run.run_id]
+        )
+    specs = await asyncio.to_thread(
+        journal.get_effective_environment_specs,
+        [
+            attempt.environment_spec_id
+            for attempt in bound_attempts.values()
+            if attempt is not None and attempt.environment_spec_id is not None
+        ],
+    )
+    for run in runs:
+        attempts = attempts_by_run[run.run_id]
+        bound_attempt = bound_attempts[run.run_id]
         items.append(
             {
                 **asdict(run),
                 "latest_attempt": (asdict(attempts[-1]) if attempts else None),
-                "resolved_model": await asyncio.to_thread(
-                    _resolved_model_for_attempt,
-                    journal,
-                    attempts[-1] if attempts else None,
+                "resolved_model": _resolved_model_for_attempt(
+                    specs.get(bound_attempt.environment_spec_id)
+                    if bound_attempt
+                    else None,
+                    bound_attempt,
                 ),
                 "total_attempt_elapsed_ms": (
                     _total_attempt_elapsed_ms(
@@ -522,15 +543,20 @@ async def get_run(run_id: str):
         asyncio.to_thread(journal.list_human_interactions, run_id),
         asyncio.to_thread(journal.list_tool_calls, run_id),
     )
+    bound_attempt = latest_environment_attempt(attempts)
+    spec = (
+        await asyncio.to_thread(
+            journal.get_effective_environment_spec,
+            bound_attempt.environment_spec_id,
+        )
+        if bound_attempt and bound_attempt.environment_spec_id is not None
+        else None
+    )
     return {
         **asdict(run),
         "attempts": [asdict(attempt) for attempt in attempts],
         "latest_attempt": asdict(attempts[-1]) if attempts else None,
-        "resolved_model": await asyncio.to_thread(
-            _resolved_model_for_attempt,
-            journal,
-            attempts[-1] if attempts else None,
-        ),
+        "resolved_model": _resolved_model_for_attempt(spec, bound_attempt),
         "total_attempt_elapsed_ms": (
             _total_attempt_elapsed_ms(
                 attempts,
