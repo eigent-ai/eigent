@@ -12,11 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { mcpList, mcpUpdate } from '@/api/brain';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { useHost } from '@/host';
-import { resolveMcpIdentity, type McpConnectorIssue } from '@/lib/mcpOAuth';
+import {
+  markMcpOAuth,
+  probeMcpOAuth,
+  resolveMcpIdentity,
+  type McpConnectorIssue,
+} from '@/lib/mcpOAuth';
 import { useAuthStore } from '@/store/authStore';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -55,13 +59,17 @@ export function McpConnectorNotice({ issue }: { issue: McpConnectorIssue }) {
         setError('broker_unavailable');
         return;
       }
-      const config = await mcpList();
-      await mcpUpdate(identity.name, {
-        ...(config.mcpServers[identity.name] as Record<string, unknown>),
-        auth: { type: 'oauth' },
-      });
+      // A 401 can come from a static API key. Offer OAuth only when the
+      // server advertises it, so a failed attempt cannot replace that key.
+      const probe = await probeMcpOAuth(oauth, identity.url, { force: true });
+      if (!probe.requiresAuth || probe.error) {
+        setError(probe.error ?? 'unsupported_provider');
+        return;
+      }
       setPending(identity);
       const result = await oauth.mcpOAuthSignIn(identity);
+      if (result.state === 'connected')
+        await markMcpOAuth(identity.name, identity.url);
       setConnected(result.state === 'connected');
       setError(result.error ?? null);
       window.dispatchEvent(new Event('mcp-oauth-changed'));

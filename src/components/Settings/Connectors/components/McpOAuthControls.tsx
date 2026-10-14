@@ -12,11 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { mcpList, mcpUpdate } from '@/api/brain';
+import { mcpList } from '@/api/brain';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { Tag } from '@/components/ui/tag';
 import { useHost } from '@/host';
+import { markMcpOAuth, probeMcpOAuth } from '@/lib/mcpOAuth';
 import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -41,75 +42,76 @@ export function McpOAuthControls({
   });
   const [pending, setPending] = useState(false);
   const alive = useRef(true);
-  const cancelRequested = useRef(false);
   const identity = { name, url, account };
-  const refresh = useCallback(async () => {
-    if (!oauth?.mcpOAuthProbe || !account || !url) return;
-    try {
-      const config = await mcpList();
-      const server = config.mcpServers[name] as
-        Record<string, unknown> | undefined;
-      const marked =
-        server?.url === url &&
-        server?.auth &&
-        typeof server.auth === 'object' &&
-        'type' in server.auth &&
-        server.auth.type === 'oauth';
-      const probe = marked
-        ? { requiresAuth: true }
-        : await oauth.mcpOAuthProbe(url);
-      if (!alive.current) return;
-      setRequiresAuth(Boolean(probe.requiresAuth || probe.error));
-      setAuthConfirmed(Boolean(probe.requiresAuth));
-      if (probe.requiresAuth) {
-        if (enabled && !marked)
-          await mcpUpdate(name, { ...server, url, auth: { type: 'oauth' } });
-        if (probe.error) {
+  const refresh = useCallback(
+    async ({ force = false }: { force?: boolean } = {}) => {
+      if (!oauth?.mcpOAuthProbe || !account || !url) return;
+      try {
+        const config = await mcpList();
+        const server = config.mcpServers[name] as
+          Record<string, unknown> | undefined;
+        const marked =
+          server?.url === url &&
+          server?.auth &&
+          typeof server.auth === 'object' &&
+          'type' in server.auth &&
+          server.auth.type === 'oauth';
+        const probe = marked
+          ? { requiresAuth: true }
+          : await probeMcpOAuth(oauth, url, { force });
+        if (!alive.current) return;
+        // A 401 without usable OAuth metadata is not a sign-in this app can
+        // complete, so it is reported but never offered or marked as OAuth.
+        const supportsOAuth = Boolean(probe.requiresAuth && !probe.error);
+        setRequiresAuth(Boolean(probe.requiresAuth || probe.error));
+        setAuthConfirmed(supportsOAuth);
+        if (probe.requiresAuth) {
+          if (enabled && supportsOAuth && !marked)
+            await markMcpOAuth(name, url);
+          if (probe.error) {
+            setStatus({ state: 'error', error: probe.error });
+            return;
+          }
+          const result = await oauth.mcpOAuthStatus({
+            name,
+            url,
+            account,
+          });
+          if (alive.current) setStatus(result);
+        } else if (probe.error)
           setStatus({ state: 'error', error: probe.error });
-          return;
+      } catch {
+        if (alive.current) {
+          setRequiresAuth(true);
+          setStatus({ state: 'error', error: 'network' });
         }
-        const result = await oauth.mcpOAuthStatus({
-          name,
-          url,
-          account,
-        });
-        if (alive.current) setStatus(result);
-      } else if (probe.error) setStatus({ state: 'error', error: probe.error });
-    } catch {
-      if (alive.current) {
-        setRequiresAuth(true);
-        setStatus({ state: 'error', error: 'network' });
       }
-    }
-  }, [account, enabled, name, url, oauth]);
+    },
+    [account, enabled, name, url, oauth]
+  );
 
   useEffect(() => {
     alive.current = true;
+    const onChanged = () => void refresh();
     void refresh();
-    window.addEventListener('mcp-oauth-changed', refresh);
+    window.addEventListener('mcp-oauth-changed', onChanged);
     return () => {
       alive.current = false;
-      window.removeEventListener('mcp-oauth-changed', refresh);
+      window.removeEventListener('mcp-oauth-changed', onChanged);
     };
   }, [refresh]);
 
   const signIn = async () => {
     if (!oauth) return;
-    cancelRequested.current = false;
     setPending(true);
     try {
-      // Also repairs remotes installed before OAuth support was available.
-      if (enabled) {
-        const config = await mcpList();
-        const server = config.mcpServers[name] as
-          Record<string, unknown> | undefined;
-        await mcpUpdate(name, { ...server, url, auth: { type: 'oauth' } });
-      }
-      if (cancelRequested.current) return;
       const result = await oauth.mcpOAuthSignIn(identity);
       if (alive.current) setStatus(result);
-      if (result.state === 'connected')
+      if (result.state === 'connected') {
+        // Also repairs remotes installed before OAuth support was available.
+        if (enabled) await markMcpOAuth(name, url);
         window.dispatchEvent(new Event('mcp-oauth-changed'));
+      }
     } catch {
       if (alive.current) setStatus({ state: 'error', error: 'network' });
     } finally {
@@ -147,10 +149,7 @@ export function McpOAuthControls({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => {
-            cancelRequested.current = true;
-            void oauth?.mcpOAuthCancel(identity);
-          }}
+          onClick={() => void oauth?.mcpOAuthCancel(identity)}
         >
           {t('connectors.cancel')}
         </Button>
@@ -177,7 +176,9 @@ export function McpOAuthControls({
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => void (authConfirmed ? signIn() : refresh())}
+          onClick={() =>
+            void (authConfirmed ? signIn() : refresh({ force: true }))
+          }
         >
           {t(
             !authConfirmed

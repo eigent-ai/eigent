@@ -21,6 +21,13 @@ import {
   type McpOAuthStatus,
 } from './types';
 
+// The grant or the dynamically registered client is no longer accepted.
+const REAUTHORIZE_ERRORS = new Set([
+  'invalid_grant',
+  'invalid_client',
+  'unauthorized_client',
+]);
+
 export async function requestToken(
   endpoint: string,
   parameters: URLSearchParams,
@@ -39,11 +46,17 @@ export async function requestToken(
     },
     body: parameters.toString(),
   });
-  const body = await jsonBody(response);
-  if (!response.ok)
+  if (!response.ok) {
+    // Error bodies are often HTML from a proxy. Only RFC 6749 error codes
+    // that no retry can fix require a fresh sign-in.
+    const body = await jsonBody(response).catch(() => null);
     throw new McpOAuthError(
-      body.error === 'invalid_grant' ? 'signin_required' : 'refresh_failed'
+      typeof body?.error === 'string' && REAUTHORIZE_ERRORS.has(body.error)
+        ? 'signin_required'
+        : 'refresh_failed'
     );
+  }
+  const body = await jsonBody(response);
   if (
     typeof body.access_token !== 'string' ||
     !body.access_token ||

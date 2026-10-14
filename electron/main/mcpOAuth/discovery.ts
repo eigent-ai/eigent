@@ -193,10 +193,10 @@ export async function probeMcpOAuth(
     response.headers.get('www-authenticate') ?? ''
   );
   await response.body?.cancel();
-  if (response.status !== 401) {
-    if (!response.ok) throw new McpOAuthError('network');
+  // Only a 401 identifies an OAuth-protected resource. Other statuses, such
+  // as 405 from a legacy SSE endpoint, are left to the MCP transport itself.
+  if (response.status !== 401)
     return { requiresAuth: false, resource, scopes: [] };
-  }
   try {
     return await discoverProtectedResource(resource, challenge, signal);
   } catch (error) {

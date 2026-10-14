@@ -361,3 +361,104 @@ async def test_real_mcp_transport_lists_and_calls_tools_with_runtime_token(
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("Client error '401 Unauthorized' for url 'https://x/mcp'", True),
+        ("HTTP request failed with status code: 401", True),
+        ("status=401", True),
+        ("Connection refused: http://127.0.0.1:4010/mcp", False),
+        ("HTTP 404 for https://example.com/items/401/tools", False),
+    ],
+)
+def test_auth_failure_text_fallback_matches_only_a_401_status(
+    message, expected
+):
+    from app.service.mcp_oauth import is_mcp_auth_failure
+
+    assert is_mcp_auth_failure(RuntimeError(message)) is expected
+
+
+@pytest.mark.asyncio
+async def test_malformed_oauth_entry_is_skipped_with_a_notice(
+    broker, monkeypatch
+):
+    notices = []
+    task_lock = SimpleNamespace(
+        put_queue=AsyncMock(side_effect=notices.append)
+    )
+    monkeypatch.setattr(
+        "app.service.task.get_task_lock_if_exists", lambda _: task_lock
+    )
+    malformed = config()
+    malformed["mcpServers"]["Astrocade"]["headers"] = None
+    malformed["mcpServers"]["Listed"] = {
+        **malformed["mcpServers"]["Astrocade"],
+        "headers": ["not", "a", "mapping"],
+    }
+    malformed["mcpServers"]["broken"] = "not a server"
+    result = await prepare_mcp_oauth(
+        malformed, account="alice", project_id="project", strict=False
+    )
+    assert set(result["mcpServers"]) == {"Astrocade", "public", "local"}
+    assert result["mcpServers"]["Astrocade"]["headers"] == {
+        "Authorization": "Bearer sentinel-access-token"
+    }
+    from app.service.task import notice_event_payload
+
+    reasons = [
+        json.loads(notice_event_payload(n)["notice"].split(":", 1)[1])
+        for n in notices
+    ]
+    assert reasons == [
+        {"name": "Listed", "reason": "invalid_request"},
+        {"name": "broken", "reason": "invalid_request"},
+    ]
+
+
+def test_camel_failures_without_credentials_keep_their_diagnostics(caplog):
+    logger = logging.getLogger("camel.toolkits.mcp_toolkit")
+    with caplog.at_level(logging.DEBUG):
+        try:
+            raise FileNotFoundError("npx: command not found")
+        except FileNotFoundError:
+            logger.error("Failed to connect to server local", exc_info=True)
+    assert "Failed to connect to server local" in caplog.text
+    assert "npx: command not found" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_workers_connect_independent_servers_concurrently(
+    broker, monkeypatch
+):
+    from app.agent.tools import get_mcp_tools
+
+    both_started = asyncio.Event()
+    started = []
+
+    class Toolkit:
+        def __init__(self, *, config_dict, **kwargs):
+            self.name = next(iter(config_dict["mcpServers"]))
+
+        async def connect(self):
+            started.append(self.name)
+            if len(started) == 2:
+                both_started.set()
+            # A sequential loop would never start the second server.
+            await asyncio.wait_for(both_started.wait(), timeout=1)
+            if self.name == "local":
+                raise RuntimeError("local failed")
+
+        async def disconnect(self):
+            pass
+
+        def get_tools(self):
+            return [self.name]
+
+    monkeypatch.setattr("app.agent.tools.MCPToolkit", Toolkit)
+    servers = config()
+    del servers["mcpServers"]["Astrocade"]
+    tools = await get_mcp_tools(servers, account="alice", project_id=None)
+    assert tools == ["public"]
