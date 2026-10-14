@@ -6,15 +6,16 @@ Status: Draft work packages. This branch authorizes Markdown planning only; runt
 
 Use installed Electron 33.4.11 and the actual Eigent window with embedded browser preview. Avoid assuming the newest documentation matches the packaged runtime.
 
-- Prototype both capture routes in the architecture: OS window capture and own frame subscription. Compare consent requirements, embedded-browser composition, frame cadence and CPU, then pick one.
+- Prototype both capture routes in the architecture: OS window capture and own frame subscription. Compare consent requirements, embedded-browser composition, frame cadence and CPU, including the cost of copying subscribed frames from main to the worker, then pick one. Also try `WebFrameMain` capture through `setDisplayMediaRequestHandler`.
 - Resolve the owned source; restrict the dedicated session's media handler to its authorized worker/source.
-- Capture through a hidden main-owned worker with no React timer dependency.
+- Capture through a hidden main-owned worker with no React timer dependency. Configure it with `backgroundThrottling: false` and confirm cadence holds while the worker and main window are hidden or backgrounded.
 - Prove a headless-initiated start after an explicit desktop grant, including the capture API's user-activation requirements. `getDisplayMedia` requires user activation; test `getUserMedia` with `chromeMediaSource: 'desktop'` as the fallback. A React click must not become a permanent prerequisite; do not bypass permission protections to satisfy this test.
 - Probe `video/mp4;codecs=avc1` first, then WebM codecs, on every supported platform. Record real bytes, stop, inspect the container and verify playback and seeking in an external player. For WebM, prove the duration and Cues rewrite at finalization. Decide the native format and whether any separate MP4 export route is still needed.
 - Measure file size at the proposed bitrate and confirm the 60-minute clip roll and per-Space budget values.
 - Exercise resize/high DPI, embedded WebContentsView composition, cursor, moving/minimizing/backgrounding, Mac lock/unlock, sleep/wake, source closure and permission denial/revocation.
 - Run a 60-minute soak alongside an agent task. Measure frame cadence, CPU, memory, spool growth, disk limits and impact on agent execution.
 - Test development and packaged/signed macOS; document Windows and Linux supported capture behavior.
+- Record the H.264 licensing position for MP4 output, including Chromium's native `avc1` MediaRecorder path.
 - If an encoder is needed, specify packaged availability, provenance/version, licensing and failure behavior. A developer's installed `ffmpeg` is not release evidence. Do not add an SDK or upgrade Electron by assumption.
 
 Exit evidence: playable clip, media inspection, resource measurements and a platform matrix recording actual outcomes. Technical implementation choices are Draft until this proof exists.
@@ -31,6 +32,8 @@ Exit checks:
 - Unavailable provider while a normal Task runs.
 - Authorization and ownership checks.
 - Grant issue, expiry on every listed event, revocation during capture, and rejection of OS permission or Full access mode as a substitute.
+- A headless start without a live grant returns `permission_required` and creates no recording; only a desktop start enters `awaiting_permission`.
+- Idle expiry or per-start confirmation for headless starts, if the security review adopts one.
 - `source_busy` on a second start, including a start for a different Run.
 - Resume after pause produces a new clip tagged with the new Attempt; a Run with no Attempt records the clip with `attempt_id` absent.
 - Duplicate requests and callbacks; terminal states and restart reconciliation.
@@ -123,14 +126,14 @@ Electron fixtures must inspect actual media, correct sources, sender ownership, 
 
 ## Decisions requiring technical proof
 
-| Decision         | Proposed direction                                               | Required evidence                                                           |
-| ---------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| First target     | Owned Eigent window only                                         | Correct identity and embedded-browser composition                           |
-| Capture route    | OS window capture or own frame subscription                      | Consent requirements, composition, cadence and CPU for both prototypes      |
-| Worker           | Hidden Electron-owned recorder                                   | Works without React lifecycle; known lock/background outcomes               |
-| Format/export    | Native MediaRecorder MP4 if available; otherwise seekable WebM   | Actual container, playback, seeking, packaged availability and measurements |
-| Command channel  | SSE commands with POST acknowledgments; long polling as fallback | Disconnect detection, reconnect without duplicates, lease expiry            |
-| Managed media    | Catalog-authorized untracked capture paths; tracked content wins | Mutation, checkpoint and upload regression tests                            |
-| Recovery budgets | Independent bounded finalization and renewable leases            | Soak, crash, disconnect and disk-full tests                                 |
+| Decision         | Proposed direction                                               | Required evidence                                                                            |
+| ---------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| First target     | Owned Eigent window only                                         | Correct identity and embedded-browser composition                                            |
+| Capture route    | OS window capture or own frame subscription                      | Consent requirements, composition, cadence and CPU for both prototypes                       |
+| Worker           | Hidden Electron-owned recorder                                   | Works without React lifecycle; known lock/background outcomes                                |
+| Format/export    | Native MediaRecorder MP4 if available; otherwise seekable WebM   | Actual container, playback, seeking, packaged availability, H.264 licensing and measurements |
+| Command channel  | SSE commands with POST acknowledgments; long polling as fallback | Disconnect detection, reconnect without duplicates, lease expiry                             |
+| Managed media    | Catalog-authorized untracked capture paths; tracked content wins | Mutation, checkpoint and upload regression tests                                             |
+| Recovery budgets | Independent bounded finalization and renewable leases            | Soak, crash, disconnect and disk-full tests                                                  |
 
 The headless product boundary and Electron-only adapter scope are decided. These remaining details require technical validation, not a change to that boundary or automatic authorization to install new dependencies.
