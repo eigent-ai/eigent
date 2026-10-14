@@ -14182,6 +14182,29 @@ class SQLiteRunJournal:
             ).fetchall()
             return [self._attempt_from_row(row) for row in rows]
 
+    def list_attempts_for_runs(
+        self, run_ids: Iterable[str]
+    ) -> dict[str, list[RunAttemptRecord]]:
+        """Load the attempts of a Run page with one journal lock."""
+        identifiers = list(dict.fromkeys(run_ids))
+        if not identifiers:
+            return {}
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM run_attempts
+                WHERE run_id IN (SELECT value FROM json_each(?))
+                ORDER BY run_id, attempt_number
+                """,
+                (json.dumps(identifiers, separators=(",", ":")),),
+            ).fetchall()
+            attempts: dict[str, list[RunAttemptRecord]] = {
+                run_id: [] for run_id in identifiers
+            }
+            for row in rows:
+                attempts[row["run_id"]].append(self._attempt_from_row(row))
+            return attempts
+
     def heartbeat_attempt(
         self,
         attempt_id: str,

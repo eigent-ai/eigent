@@ -433,16 +433,14 @@ def _resolved_model_for_attempt(
 
     if spec is None or attempt is None:
         return None
-    expected_owner = (
-        attempt.run_id
-        if spec.owner_type == "run"
-        else attempt.attempt_id
-        if spec.owner_type == "run_attempt"
-        else None
-    )
+    if spec.owner_type == "run":
+        expected_owner = attempt.run_id
+    elif spec.owner_type == "run_attempt":
+        expected_owner = attempt.attempt_id
+    else:
+        return None
     if (
-        expected_owner is None
-        or spec.owner_id != expected_owner
+        spec.owner_id != expected_owner
         or spec.environment_spec_id != attempt.environment_spec_id
         or spec.environment_spec_digest != attempt.environment_spec_digest
     ):
@@ -481,15 +479,13 @@ async def list_project_runs(
         journal.list_attempt_user_waits, [run.run_id for run in runs]
     )
     now = time.time()
-    attempts_by_run: dict[str, list[RunAttemptRecord]] = {}
-    bound_attempts: dict[str, RunAttemptRecord | None] = {}
-    for run in runs:
-        attempts_by_run[run.run_id] = await asyncio.to_thread(
-            journal.list_run_attempts, run.run_id
-        )
-        bound_attempts[run.run_id] = latest_environment_attempt(
-            attempts_by_run[run.run_id]
-        )
+    attempts_by_run = await asyncio.to_thread(
+        journal.list_attempts_for_runs, [run.run_id for run in runs]
+    )
+    bound_attempts = {
+        run_id: latest_environment_attempt(attempts)
+        for run_id, attempts in attempts_by_run.items()
+    }
     specs = await asyncio.to_thread(
         journal.get_effective_environment_specs,
         [

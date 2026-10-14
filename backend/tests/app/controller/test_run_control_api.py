@@ -1107,7 +1107,7 @@ def test_model_accessors_use_local_spec_and_exclude_auth(model_run):
 
 
 @pytest.mark.asyncio
-async def test_run_list_batch_loads_model_specs(model_run):
+async def test_run_list_batch_loads_attempts_and_model_specs(model_run):
     journal, template, _ = model_run
     _bind_model_attempt(model_run)
     journal.reconcile_startup(now=2)
@@ -1145,16 +1145,18 @@ async def test_run_list_batch_loads_model_specs(model_run):
     journal._connection.set_trace_callback(None)
     assert len(listing["runs"]) == 2
     assert all(item["resolved_model"] for item in listing["runs"])
-    assert (
-        len(
-            [
-                query
-                for query in queries
-                if "FROM effective_environment_specs" in query
-            ]
+    assert all(item["latest_attempt"] for item in listing["runs"])
+    for table in ("run_attempts", "effective_environment_specs"):
+        assert (
+            len([query for query in queries if f"FROM {table}" in query]) == 1
         )
-        == 1
+    assert journal.list_attempts_for_runs([]) == {}
+    attempts = journal.list_attempts_for_runs(
+        ["second-run", "run-env", "second-run", "missing"]
     )
+    assert list(attempts) == ["second-run", "run-env", "missing"]
+    assert [a.attempt_id for a in attempts["run-env"]] == ["bound-attempt"]
+    assert attempts["missing"] == []
     assert journal.get_effective_environment_specs([]) == {}
     specs = journal.get_effective_environment_specs(
         [second.spec.spec_id, second.spec.spec_id, "missing"]
