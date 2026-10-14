@@ -26,6 +26,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   projection: null as HumanControlProjectionState | null,
+  auth: { user_id: 42 },
   decide: vi.fn(),
   reconcile: vi.fn(),
 }));
@@ -43,8 +44,9 @@ vi.mock('@/service/humanInteractionEventReconciliation', () => ({
 }));
 
 vi.mock('@/store/authStore', () => ({
+  getAuthStore: () => mocks.auth,
   useAuthStore: (selector: (state: { user_id: number }) => unknown) =>
-    selector({ user_id: 42 }),
+    selector(mocks.auth),
 }));
 
 function interaction(
@@ -98,6 +100,7 @@ function projection(
 describe('useEventNativeHumanControl', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    mocks.auth = { user_id: 42 };
     mocks.decide.mockReset();
     mocks.reconcile.mockReset();
     mocks.decide.mockResolvedValue({ status: 'resolved' });
@@ -163,9 +166,11 @@ describe('useEventNativeHumanControl', () => {
         decisionRequestId: expect.any(String),
         decision: { decision: 'approved', scope: 'once' },
         actorId: 42,
+        projectId: 'project-1',
       }
     );
     expect(mocks.reconcile).toHaveBeenCalledWith({
+      bounded: true,
       projectId: 'project-1',
       runId: 'run-1',
       interactionId: 'approval-1',
@@ -330,6 +335,52 @@ describe('useEventNativeHumanControl', () => {
     consoleError.mockRestore();
   });
 
+  it.each(['decision', 'reconciliation'])(
+    'does not run old callbacks after a Session switch during %s',
+    async (stage) => {
+      mocks.projection = projection([interaction()]);
+      let finish!: (value: unknown) => void;
+      const pending = new Promise((resolve) => {
+        finish = resolve;
+      });
+      if (stage === 'decision') mocks.decide.mockReturnValueOnce(pending);
+      else mocks.reconcile.mockReturnValueOnce(pending);
+      const onDurableResolution = vi.fn();
+      const onSubmissionFailure = vi.fn();
+      const hook = renderHook(
+        ({ runId }) =>
+          useEventNativeHumanControl({
+            projectId: 'project-1',
+            activeRunId: runId,
+            onDurableResolution,
+            onSubmissionFailure,
+          }),
+        { initialProps: { runId: 'run-1' } }
+      );
+      act(() => {
+        if (hook.result.current.variant?.kind === 'approval')
+          hook.result.current.variant.onApprove('once');
+      });
+      await waitFor(() =>
+        expect(
+          stage === 'decision' ? mocks.decide : mocks.reconcile
+        ).toHaveBeenCalledOnce()
+      );
+      mocks.projection = projection([
+        interaction({ runId: 'run-2', interactionId: 'approval-2' }),
+      ]);
+      hook.rerender({ runId: 'run-2' });
+      await act(async () => {
+        finish({ status: 'resolved' });
+      });
+      expect(onDurableResolution).not.toHaveBeenCalled();
+      expect(onSubmissionFailure).not.toHaveBeenCalled();
+      expect(hook.result.current.phase).toBe('idle');
+      expect(hook.result.current.interaction?.runId).toBe('run-2');
+      if (stage === 'decision') expect(mocks.reconcile).not.toHaveBeenCalled();
+    }
+  );
+
   it('maps known controls and fails closed for unknown semantic types', () => {
     const cases = [
       interaction({
@@ -472,6 +523,10 @@ describe('useEventNativeHumanControl', () => {
           : ''
       ).toBe('src/report.ts')
     );
+    // Editing is only a local draft. Neither persistence nor a resolution
+    // receipt is requested until the user explicitly submits.
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(mocks.reconcile).not.toHaveBeenCalled();
     act(() => {
       if (result.current.variant?.kind === 'feedback') {
         result.current.variant.onSubmit();
@@ -489,6 +544,35 @@ describe('useEventNativeHumanControl', () => {
     expect(mocks.reconcile).toHaveBeenCalledWith(
       expect.objectContaining({ interactionId: 'question-1' })
     );
+  });
+
+  it('does not submit an unsubmitted question draft on Session switching or remount', () => {
+    mocks.projection = projection([
+      interaction({
+        interactionId: 'draft-question',
+        interactionType: 'question',
+      }),
+    ]);
+    const { result, rerender, unmount } = renderHook(
+      ({ projectId, runId }) =>
+        useEventNativeHumanControl({ projectId, activeRunId: runId }),
+      { initialProps: { projectId: 'project-1', runId: 'run-1' } }
+    );
+    act(() => {
+      if (result.current.variant?.kind !== 'feedback')
+        throw new Error('Expected question');
+      result.current.variant.onChange('Unsubmitted local draft');
+    });
+    rerender({ projectId: 'other-project', runId: 'other-run' });
+    unmount();
+    renderHook(() =>
+      useEventNativeHumanControl({
+        projectId: 'project-1',
+        activeRunId: 'run-1',
+      })
+    );
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(mocks.reconcile).not.toHaveBeenCalled();
   });
 
   it('blocks option interactions that omit backend-provided options', () => {
@@ -675,4 +759,88 @@ describe('useEventNativeHumanControl', () => {
       firstId
     );
   });
+  it.each(['approval', 'question'] as const)(
+    'review keeps %s completion callback when canonical reconciliation removes this interaction',
+    async (interactionType) => {
+      mocks.projection = projection([interaction({ interactionType })]);
+      let finish!: (value: unknown) => void;
+      mocks.reconcile.mockReturnValue(
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+      );
+      const onDurableResolution = vi.fn();
+      const hook = renderHook(() =>
+        useEventNativeHumanControl({
+          projectId: 'project-1',
+          activeRunId: 'run-1',
+          onDurableResolution,
+        })
+      );
+      if (interactionType === 'question') {
+        act(() => {
+          if (hook.result.current.variant?.kind === 'feedback')
+            hook.result.current.variant.onChange('answer');
+        });
+        act(() => {
+          if (hook.result.current.variant?.kind === 'feedback')
+            hook.result.current.variant.onSubmit();
+        });
+      } else {
+        act(() => {
+          if (hook.result.current.variant?.kind === 'approval')
+            hook.result.current.variant.onApprove('once');
+        });
+      }
+      await waitFor(() => expect(mocks.reconcile).toHaveBeenCalledOnce());
+      mocks.projection = projection([
+        interaction({ interactionType, status: 'resolved', version: 1 }),
+      ]);
+      hook.rerender();
+      await act(async () => {
+        finish({ eventType: 'approval.decided' });
+      });
+      expect(onDurableResolution).toHaveBeenCalledOnce();
+    }
+  );
+
+  it.each(['account', 'Session', 'Run', 'unmount'])(
+    'does not complete after actual %s ownership changes',
+    async (change) => {
+      mocks.projection = projection([interaction()]);
+      let finish!: (value: unknown) => void;
+      mocks.reconcile.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          })
+      );
+      const completed = vi.fn();
+      const hook = renderHook(
+        ({ projectId, runId }) =>
+          useEventNativeHumanControl({
+            projectId,
+            activeRunId: runId,
+            onDurableResolution: completed,
+          }),
+        { initialProps: { projectId: 'project-1', runId: 'run-1' } }
+      );
+      act(() => {
+        if (hook.result.current.variant?.kind === 'approval')
+          hook.result.current.variant.onApprove('once');
+      });
+      await waitFor(() => expect(mocks.reconcile).toHaveBeenCalledOnce());
+      if (change === 'account') mocks.auth = { user_id: 43 };
+      if (change === 'unmount') hook.unmount();
+      else
+        hook.rerender({
+          projectId: change === 'Session' ? 'project-2' : 'project-1',
+          runId: change === 'Run' ? 'run-2' : 'run-1',
+        });
+      await act(async () => {
+        finish({ eventType: 'approval.decided' });
+      });
+      expect(completed).not.toHaveBeenCalled();
+    }
+  );
 });

@@ -72,6 +72,7 @@ type HydrationBudget = {
 
 export type ProjectEventStoreHydrationOptions = {
   projectId: string;
+  expectedAccountKey?: string;
   signal?: AbortSignal;
   store?: ProjectEventStore;
   maxRuns?: number;
@@ -183,7 +184,8 @@ async function fetchProjectRunsWithDeadline(
   projectId: string,
   maxRuns: number,
   timeoutMs: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  expectedAccountKey?: string
 ): Promise<ProjectRunsResponse> {
   throwIfAborted(signal);
   const controller = new AbortController();
@@ -201,7 +203,12 @@ async function fetchProjectRunsWithDeadline(
     timeoutMs
   );
   try {
-    return await fetchProjectRuns(projectId, maxRuns, controller.signal);
+    return await fetchProjectRuns(
+      projectId,
+      maxRuns,
+      controller.signal,
+      expectedAccountKey
+    );
   } finally {
     clearTimeout(deadline);
     signal?.removeEventListener('abort', abortFromCaller);
@@ -213,7 +220,8 @@ async function fetchEventPage(
   afterSequence: number,
   limit: number,
   signal: AbortSignal | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  expectedAccountKey?: string
 ): Promise<RunEventsResponse> {
   throwIfAborted(signal);
   const controller = new AbortController();
@@ -235,7 +243,10 @@ async function fetchEventPage(
         `/runs/${encodeURIComponent(runId)}/events`,
         { after_sequence: afterSequence, limit },
         undefined,
-        { signal: controller.signal }
+        {
+          signal: controller.signal,
+          ...(expectedAccountKey ? { expectedAccountKey } : {}),
+        }
       ),
       controller.signal
     );
@@ -376,6 +387,7 @@ async function readRunEvents(
   descriptor: Pick<RunDescriptor, 'runId'>,
   input: {
     projectId: string;
+    expectedAccountKey?: string;
     signal?: AbortSignal;
     eventPageSize: number;
     maxEventPages: number;
@@ -437,7 +449,8 @@ async function readRunEvents(
       cursor,
       pageSize,
       input.signal,
-      input.eventPageTimeoutMs ?? DEFAULT_EVENT_PAGE_TIMEOUT_MS
+      input.eventPageTimeoutMs ?? DEFAULT_EVENT_PAGE_TIMEOUT_MS,
+      input.expectedAccountKey
     );
     throwIfAborted(input.signal);
     input.assertCurrent?.();
@@ -624,7 +637,7 @@ async function loadProjectSnapshot(
       | 'runListTimeoutMs'
       | 'eventPageTimeoutMs'
     >
-  > & { signal?: AbortSignal }
+  > & { signal?: AbortSignal; expectedAccountKey?: string }
 ): Promise<{
   snapshot: ProjectSnapshotInput;
   budget: HydrationBudget;
@@ -636,7 +649,8 @@ async function loadProjectSnapshot(
     projectId,
     options.maxRuns,
     options.runListTimeoutMs,
-    options.signal
+    options.signal,
+    options.expectedAccountKey
   );
   throwIfAborted(options.signal);
   if (!response || typeof response !== 'object')
@@ -747,6 +761,7 @@ async function loadProjectSnapshot(
 export async function hydrateProjectEventStore({
   projectId,
   signal,
+  expectedAccountKey,
   store = getProjectEventStore(projectId),
   maxRuns: maxRunsInput,
   eventPageSize: eventPageSizeInput,
@@ -835,6 +850,7 @@ export async function hydrateProjectEventStore({
       (limit) =>
         loadProjectSnapshot(projectId, {
           signal: controller.signal,
+          expectedAccountKey,
           maxRuns,
           eventPageSize,
           maxEventPages,
@@ -881,6 +897,7 @@ type OlderHistoryOptions = Pick<
   ProjectEventStoreHydrationOptions,
   | 'projectId'
   | 'signal'
+  | 'expectedAccountKey'
   | 'store'
   | 'maxEvents'
   | 'eventPageSize'
@@ -933,6 +950,7 @@ async function loadControlHistoryBatch(
   {
     projectId,
     signal,
+    expectedAccountKey,
     store = getProjectEventStore(projectId),
     maxEvents,
     eventPageSize,
@@ -990,6 +1008,7 @@ async function loadControlHistoryBatch(
             {
               projectId,
               signal: controller.signal,
+              expectedAccountKey,
               assertCurrent,
               eventPageTimeoutMs: boundedInteger(
                 eventPageTimeoutMs,
@@ -1037,6 +1056,7 @@ async function loadControlHistoryBatch(
 async function loadOlderChatBatch({
   projectId,
   signal,
+  expectedAccountKey,
   store = getProjectEventStore(projectId),
   maxEvents = DEFAULT_MAX_EVENTS,
   eventPageSize = DEFAULT_EVENT_PAGE_SIZE,
@@ -1106,6 +1126,7 @@ async function loadOlderChatBatch({
             {
               projectId,
               signal: controller.signal,
+              expectedAccountKey,
               assertCurrent,
               eventPageTimeoutMs: boundedInteger(
                 eventPageTimeoutMs,

@@ -270,4 +270,59 @@ describe('session nav lead presentation', () => {
     );
     expect(lead.kind).toBe('finished');
   });
+  it.each([
+    ['completed', 'finished'],
+    ['failed', 'error'],
+    ['timed_out', 'error'],
+    ['cancelled', 'idle'],
+    ['interrupted', 'warning'],
+    ['stopped', 'idle'],
+  ] as const)(
+    'canonical %s wins over stale replay flags and subtask outcomes',
+    (durableRunStatus, expected) => {
+      const lead = getSessionNavLeadPresentation(
+        task({
+          type: 'replay',
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus,
+          isContextExceeded: true,
+          activeAsk: 'old ask',
+          taskRunning: [
+            { id: 'old', content: 'old subtask', status: TaskStatus.FAILED },
+          ],
+        })
+      );
+      expect(lead.kind).toBe(expected);
+    }
+  );
+
+  it.each([
+    ['pending', 'idle'],
+    ['running', 'running'],
+    ['waiting_for_user', 'hitl'],
+  ] as const)(
+    'canonical %s remains honest when history hydration marks ChatTask finished',
+    (durableRunStatus, expected) => {
+      expect(
+        getSessionNavLeadPresentation(
+          task({
+            type: 'replay',
+            status: ChatTaskStatus.FINISHED,
+            durableRunStatus,
+          })
+        ).kind
+      ).toBe(expected);
+    }
+  );
+
+  it('keeps an unstarted draft idle', () => {
+    expect(getSessionNavLeadPresentation(task({ type: '' })).kind).toBe('idle');
+  });
+  it('does not infer success from a legacy history/cache FINISHED flag alone', () => {
+    expect(
+      getSessionNavLeadPresentation(
+        task({ type: 'replay', status: ChatTaskStatus.FINISHED })
+      ).kind
+    ).toBe('idle');
+  });
 });

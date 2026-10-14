@@ -16,8 +16,11 @@ import {
   ArtifactChangeList,
   type ArtifactChangeListProps,
 } from '@/components/ChatBox/MessageItem/ArtifactChangeList';
+import { useSessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
+import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
 import {
+  asLocalFile,
   reconcileRunOutputFiles,
   type RunOutputSources,
 } from '@/lib/sessionOutputFiles';
@@ -32,6 +35,7 @@ import {
 } from '@/service/workspaceGitApi';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { FileText } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -56,14 +60,7 @@ export function resolveRunFilePreview(
   // previews keep using Electron's bounded local loader (including the rich
   // HTML renderer) instead of a short-lived, CORS-sensitive signed URL.
   const localPath = resolveWorkspaceFilePath(workspaceRoot, file.relativePath);
-  if (localPath) {
-    return {
-      ...file,
-      path: localPath,
-      localPathAvailable: true,
-      isRemote: false,
-    };
-  }
+  if (localPath) return asLocalFile(file, localPath);
 
   const existingPath = file.path?.trim();
   if (existingPath && !file.isRemote) return file;
@@ -228,15 +225,18 @@ export function useRunFileInfo({
 }
 
 export function RunFilesGroup(props: RunFilesProps) {
+  const managedPreview = useSessionArtifactPreview();
   const files = useRunFileInfo(props);
   const previewProjectId = usePageTabStore(
     (state) => state.sessionPreviewProjectId
   );
   const projectId = props.projectId ?? previewProjectId;
-  const workspaceRoot = useSpaceStore((state) => {
-    const spaceId = projectId ? state.getProjectMeta(projectId)?.spaceId : null;
-    return spaceId ? state.spaces[spaceId]?.rootPath : null;
-  });
+  const runtimeSpaceId = useProjectRuntimeStore((state) =>
+    projectId ? state.projects[projectId]?.spaceId : undefined
+  );
+  const workspaceRoot = useSpaceStore((state) =>
+    selectProjectWorkspaceRoot(state, projectId, runtimeSpaceId)
+  );
   const openFilePreview = usePageTabStore((state) => state.openFilePreview);
   const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
 
@@ -247,13 +247,23 @@ export function RunFilesGroup(props: RunFilesProps) {
       files={files}
       scanStatus={props.artifactManifest?.scanStatus}
       truncated={props.artifactManifest?.truncated}
-      onViewChanges={() => openReviewPreview({ runId: props.runId })}
+      onViewChanges={
+        managedPreview
+          ? undefined
+          : () => openReviewPreview({ runId: props.runId })
+      }
       onOpen={(file) => {
+        if (managedPreview) {
+          managedPreview(props.runId, file);
+          return;
+        }
         const preview = resolveRunFilePreview(file, workspaceRoot);
         if (preview) openFilePreview(preview);
       }}
       canOpenFile={(file) =>
-        resolveRunFilePreview(file, workspaceRoot) !== null
+        managedPreview
+          ? Boolean(file.artifactId)
+          : resolveRunFilePreview(file, workspaceRoot) !== null
       }
     />
   );
@@ -266,6 +276,7 @@ export function RunArtifactChangeList({
   files: sourceFiles,
   ...props
 }: ArtifactChangeListProps & { runId: string; projectId?: string }) {
+  const managedPreview = useSessionArtifactPreview();
   const files = useMemo(
     () => (sourceFiles || []).filter(isDisplayableOutputFile),
     [sourceFiles]
@@ -273,7 +284,11 @@ export function RunArtifactChangeList({
   const { active: loadDiffStats, rootRef } = useRunFileDiffStatsActivation(
     files.length > 0
   );
-  const diffStats = useRunFileDiffStats(runId, projectId, loadDiffStats);
+  const diffStats = useRunFileDiffStats(
+    runId,
+    projectId,
+    loadDiffStats && !managedPreview
+  );
   const lineChangesForFile = useCallback(
     (file: FileInfo) => {
       const path = runFileReviewPath(file);

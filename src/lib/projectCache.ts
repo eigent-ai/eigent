@@ -31,11 +31,11 @@ const STORE_NAME = 'projectCache';
 const DB_VERSION = 1;
 
 /**
- * Bump when CachedProject shape or projection semantics change. Version 10
- * rebuilds legacy failures previously cached with zero elapsed time, so they
- * use persisted playback timestamps even when the history has no END event.
+ * Bump when CachedProject shape or projection semantics change. Version 11
+ * replays input history cached without canonical/legacy receipt provenance,
+ * so old mirrors cannot bypass the repaired history-evidence projection.
  */
-export const PROJECT_CACHE_SCHEMA_VERSION = 10;
+export const PROJECT_CACHE_SCHEMA_VERSION = 11;
 
 export interface CachedTask {
   /** Anything stored on `chatStore.tasks[taskId]` that's safe to serialize. */

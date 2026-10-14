@@ -157,12 +157,17 @@ async def startup_event():
     )
     from app.workspace_git.startup import reconcile_workspace_git_startup
 
+    writer_scheduler = get_default_workspace_writer_scheduler()
     writer_reconciliation = await asyncio.to_thread(
-        get_default_workspace_writer_scheduler().reconcile_orphaned_admissions
+        writer_scheduler.reconcile_orphaned_admissions
     )
     workspace_git_reconciliation = await asyncio.to_thread(
         reconcile_workspace_git_startup,
         journal,
+    )
+    # Git reconciliation settles interrupted writes before holders are judged.
+    writer_reclamation = await asyncio.to_thread(
+        writer_scheduler.reclaim_lost_writers
     )
     from app.lightweight_memory import migrate_legacy_memory_v1_on_startup
     from app.workspace_config.legacy_migration import (
@@ -206,15 +211,20 @@ async def startup_event():
             "interrupted_orphaned_workspace_writers": len(
                 writer_reconciliation.interrupted_request_ids
             ),
+            "reclaimed_workspace_writers": len(
+                writer_reclamation.reclaimed_request_ids
+            ),
             "promoted_workspace_writers": len(
                 writer_reconciliation.promoted_request_ids
-            ),
+            )
+            + len(writer_reclamation.promoted_request_ids),
             "preserved_workspace_writers": len(
                 writer_reconciliation.preserved_request_ids
             ),
             "workspace_writer_reconciliation_failures": len(
                 writer_reconciliation.failed_request_ids
-            ),
+            )
+            + len(writer_reclamation.failed_request_ids),
             "workspace_git_reconciliation_skipped": (
                 workspace_git_reconciliation.skipped
             ),
@@ -267,6 +277,16 @@ async def startup_event():
     initialize_tracer_provider()
     app_logger.info("Telemetry tracer provider initialized")
 
+    # Optional isolated owners start only after durable fact reconciliation.
+    # Deployment registration supplies explicit policies and worker adapters.
+    from app.workspace_runtime.runtime import (
+        initialize_execution_service,
+        start_default_execution_service,
+    )
+
+    initialize_execution_service(env("EIGENT_MANAGED_EXECUTION_MANIFEST", ""))
+    await start_default_execution_service()
+
 
 @api.on_event("shutdown")
 async def shutdown_event_handler():
@@ -277,6 +297,12 @@ async def shutdown_event_handler():
 async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
     app_logger.info("Starting graceful shutdown process")
+
+    from app.workspace_runtime.runtime import close_default_execution_service
+
+    # Stop new claims and drain owned preparation/execution before the shared
+    # coordinator, compatibility resources or journal are closed.
+    await close_default_execution_service()
 
     # Stop detached execution consumers before cleaning their compatibility
     # TaskLocks. RunJournal remains open until all producers have stopped.

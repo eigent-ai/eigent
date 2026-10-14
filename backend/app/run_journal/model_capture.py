@@ -41,6 +41,7 @@ from app.run_context.context import get_current_run_context
 from app.run_journal.models import ModelInvocationRecord
 from app.run_journal.runtime import get_default_run_journal
 from app.run_journal.store import SQLiteRunJournal
+from app.run_runtime.owned_tasks import current_owned_tasks, run_owned_thread
 from app.workload import capture_required
 from app.workspace_config.models import canonical_digest
 
@@ -330,7 +331,7 @@ class _CaptureSession:
                 raise
 
     async def afirst_token(self) -> None:
-        await asyncio.to_thread(self.first_token)
+        await run_owned_thread(self.first_token)
 
     def complete(self, response: dict[str, Any]) -> None:
         with self._lock:
@@ -360,7 +361,7 @@ class _CaptureSession:
                 raise
 
     async def acomplete(self, response: dict[str, Any]) -> None:
-        await asyncio.to_thread(self.complete, response)
+        await run_owned_thread(self.complete, response)
 
     def fail(
         self, exc: BaseException, *, outcome_unknown: bool = False
@@ -391,9 +392,7 @@ class _CaptureSession:
     async def afail(
         self, exc: BaseException, *, outcome_unknown: bool = False
     ) -> None:
-        await asyncio.to_thread(
-            self.fail, exc, outcome_unknown=outcome_unknown
-        )
+        await run_owned_thread(self.fail, exc, outcome_unknown=outcome_unknown)
 
 
 class _RecordedSyncStream:
@@ -956,7 +955,7 @@ def instrument_model_backend(
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        session = await asyncio.to_thread(
+        opening = run_owned_thread(
             _start_capture,
             journal=durable_journal,
             model_backend=self,
@@ -967,6 +966,25 @@ def instrument_model_backend(
             call_args=args,
             call_kwargs=kwargs,
         )
+        owner = current_owned_tasks()
+        if owner is None:
+            session = await opening
+        else:
+            opening_task = owner.create_task(opening)
+            try:
+                session = await asyncio.shield(opening_task)
+            except asyncio.CancelledError as error:
+
+                async def close_unsubmitted(cancellation=error):
+                    abandoned = await asyncio.shield(opening_task)
+                    if abandoned is not None:
+                        await abandoned.afail(cancellation)
+
+                # Cancellation can arrive while the start row is still being
+                # committed. Join that thread, then close the invocation with
+                # known no-dispatch outcome before owner settlement.
+                owner.create_task(close_unsubmitted())
+                raise
         try:
             with provider_invocation_scope(
                 session.record.invocation_id if session else None

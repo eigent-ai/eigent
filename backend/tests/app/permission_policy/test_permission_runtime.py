@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from app.run_journal import SQLiteRunJournal
 from app.run_runtime.active_timeout import ActiveExecutionTimeout
 from app.run_runtime.tool_checkpoint import (
     dispatch_tool_checkpoint,
+    finish_tool_checkpoint,
     prepare_tool_checkpoint,
 )
 from app.service.task import TaskLock
@@ -51,6 +53,16 @@ def _context(tmp_path: Path) -> RunContext:
         workdir_mode="workspace",
         browser_port=9222,
     )
+
+
+class _ManualLoopClock:
+    """Event-loop clock that only moves when the test advances it."""
+
+    def __init__(self, now: float) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
 
 
 @pytest.mark.asyncio
@@ -89,6 +101,7 @@ async def test_unsafe_tool_is_not_dispatched_until_digest_bound_approval(
             ask = await task_lock.get_queue()
             assert journal.list_tool_calls("run-1")[0].status == "prepared"
             approval = journal.list_approvals("run-1")[0]
+            assert ask.data["expires_at"] == approval.expires_at
             assert ask.data["action_digest"] == approval.action_digest
 
             journal.decide_approval(
@@ -111,8 +124,11 @@ async def test_unsafe_tool_is_not_dispatched_until_digest_bound_approval(
 @pytest.mark.asyncio
 async def test_durable_approval_wait_outlives_agent_execution_timeout(
     tmp_path,
+    monkeypatch,
 ):
     task_lock = TaskLock("project-1", asyncio.Queue(), {})
+    agent_budget = 30 * 60
+    human_decision_latency = 60 * 60
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
         journal.create_run_attempt(
@@ -131,36 +147,57 @@ async def test_durable_approval_wait_outlives_agent_execution_timeout(
                 journal=journal,
             )
             assert checkpoint is not None
-            async with ActiveExecutionTimeout(0.02):
-                waiter = asyncio.create_task(
-                    authorize_tool_checkpoint(
-                        checkpoint,
-                        arguments={
-                            "path": "report.md",
-                            "content": "hello",
-                        },
-                        toolkit_name="File Toolkit",
-                        agent_name="worker",
-                        task_lock=task_lock,
-                        journal=journal,
+            # The Agent budget runs on the event-loop clock. Driving that
+            # clock by hand keeps the real time spent writing the Approval
+            # from deciding whether the budget expires before the wait
+            # pauses it.
+            loop = asyncio.get_running_loop()
+            clock = _ManualLoopClock(loop.time())
+            with monkeypatch.context() as patch:
+                patch.setattr(loop, "time", clock)
+                async with ActiveExecutionTimeout(agent_budget) as timeout:
+                    waiter = asyncio.create_task(
+                        authorize_tool_checkpoint(
+                            checkpoint,
+                            arguments={
+                                "path": "report.md",
+                                "content": "hello",
+                            },
+                            toolkit_name="File Toolkit",
+                            agent_name="worker",
+                            task_lock=task_lock,
+                            journal=journal,
+                        )
                     )
-                )
-                ask = await task_lock.get_queue()
-                # This exceeds the active Agent budget but remains below the
-                # durable Approval expiry. It must not cancel the tool loop.
-                await asyncio.sleep(0.04)
-                approval = journal.list_approvals("run-1")[0]
-                journal.decide_approval(
-                    approval.approval_id,
-                    decision="approved",
-                    expected_version=0,
-                    action_digest=ask.data["action_digest"],
-                    decision_request_id="decision-after-long-wait",
-                    continue_active_attempt=True,
-                    now=2,
-                )
-                await task_lock.put_human_input("worker", "approved")
-                await waiter
+                    ask = await task_lock.get_queue()
+                    # The ASK is published only once the wait has paused the
+                    # Agent budget.
+                    assert task_lock.active_execution_budget_paused
+                    # This exceeds the active Agent budget but remains below
+                    # the durable Approval expiry. It must not cancel the
+                    # tool loop.
+                    assert (
+                        human_decision_latency
+                        < ask.data["expires_at"] - time.time()
+                    )
+                    clock.now += human_decision_latency
+                    assert timeout.remaining() == pytest.approx(agent_budget)
+                    approval = journal.list_approvals("run-1")[0]
+                    journal.decide_approval(
+                        approval.approval_id,
+                        decision="approved",
+                        expected_version=0,
+                        action_digest=ask.data["action_digest"],
+                        decision_request_id="decision-after-long-wait",
+                        continue_active_attempt=True,
+                        now=2,
+                    )
+                    await task_lock.put_human_input("worker", "approved")
+                    decision = await waiter
+                    assert decision.action_digest == ask.data["action_digest"]
+                    # Resuming restores the budget the wait did not consume.
+                    assert timeout.remaining() == pytest.approx(agent_budget)
+                assert not timeout.expired
 
 
 @pytest.mark.asyncio
@@ -359,3 +396,123 @@ async def test_missing_approval_expiry_fails_closed_and_cleans_listener(
                 )
 
     assert task_lock.human_input_waiters["worker"] == []
+
+
+@pytest.mark.asyncio
+async def test_expired_tool_is_reevaluated_with_new_approval_identity_on_resume(
+    tmp_path, monkeypatch
+):
+    original = PermissionPolicyService.evaluate_and_request_approval
+    first = True
+
+    def expire_first(self, *args, **kwargs):
+        nonlocal first
+        if first:
+            kwargs["expires_at"] = time.time() + 0.05
+            first = False
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        PermissionPolicyService, "evaluate_and_request_approval", expire_first
+    )
+    task_lock = TaskLock("project-1", asyncio.Queue(), {})
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        with run_context_scope(_context(tmp_path)):
+            arguments = {"path": "report.md", "content": "hello"}
+            old = prepare_tool_checkpoint(
+                raw_tool_call_id="old-call",
+                tool_name="write_file",
+                arguments=arguments,
+                dispatch_immediately=False,
+                journal=journal,
+            )
+            with pytest.raises(ToolPermissionRejectedError) as rejected:
+                await authorize_tool_checkpoint(
+                    old,
+                    arguments=arguments,
+                    toolkit_name="File Toolkit",
+                    agent_name="worker",
+                    task_lock=task_lock,
+                    journal=journal,
+                )
+            old_ask = await task_lock.get_queue()
+            finish_tool_checkpoint(
+                old, error=rejected.value, outcome_known=True, journal=journal
+            )
+            assert journal.get_run("run-1").status == "interrupted"
+            assert journal.list_tool_calls("run-1")[0].dispatched_at is None
+            assert (
+                journal.get_human_interaction(
+                    old_ask.data["interaction_id"]
+                ).status
+                == "expired"
+            )
+            journal.create_run_attempt(
+                "run-1",
+                request_id="resume",
+                reason="explicit_resume",
+                activate=True,
+            )
+            new = prepare_tool_checkpoint(
+                raw_tool_call_id="new-call",
+                tool_name="write_file",
+                arguments=arguments,
+                dispatch_immediately=False,
+                journal=journal,
+            )
+            waiter = asyncio.create_task(
+                authorize_tool_checkpoint(
+                    new,
+                    arguments=arguments,
+                    toolkit_name="File Toolkit",
+                    agent_name="worker",
+                    task_lock=task_lock,
+                    journal=journal,
+                )
+            )
+            try:
+                new_ask = await task_lock.get_queue()
+                assert (
+                    new_ask.data["approval_id"] != old_ask.data["approval_id"]
+                )
+                assert (
+                    new_ask.data["interaction_id"]
+                    != old_ask.data["interaction_id"]
+                )
+                assert (
+                    new_ask.data["action_digest"]
+                    != old_ask.data["action_digest"]
+                )
+                assert new_ask.data["version"] == 0
+                assert not journal.approval_decision_is_trusted(
+                    old_ask.data["approval_id"],
+                    version=old_ask.data["version"],
+                    action_digest=old_ask.data["action_digest"],
+                )
+                journal.decide_approval(
+                    new_ask.data["approval_id"],
+                    decision="approved",
+                    expected_version=new_ask.data["version"],
+                    action_digest=new_ask.data["action_digest"],
+                    decision_request_id="resumed-decision",
+                    continue_active_attempt=True,
+                )
+                await task_lock.put_human_input("worker", "approved")
+                await waiter
+                dispatch_tool_checkpoint(new, journal=journal)
+            finally:
+                waiter.cancel()
+                await asyncio.gather(waiter, return_exceptions=True)
+            tools = {
+                tool.tool_call_id: tool
+                for tool in journal.list_tool_calls("run-1")
+            }
+            assert tools[old.tool_call_id].dispatched_at is None
+            assert tools[new.tool_call_id].status == "dispatched"

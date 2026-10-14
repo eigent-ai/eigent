@@ -12,6 +12,22 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+const sessionExecutionMocks = vi.hoisted(() => ({ routeLoading: false }));
+
+vi.mock('@/hooks/useSessionExecution', () => ({
+  useSessionExecution: (projectId: string) => ({
+    scope: { projectId, accountKey: 'legacy-test' },
+    state: {
+      route: sessionExecutionMocks.routeLoading
+        ? null
+        : { route: 'legacy', project_id: projectId },
+      managed: false,
+      error: null,
+      loading: sessionExecutionMocks.routeLoading,
+    },
+  }),
+}));
+
 import Session from '@/components/Session';
 import {
   act,
@@ -24,6 +40,12 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   chatBoxRenderCount: 0,
+  projectMeta: {
+    id: 'project-1',
+    name: 'Project 1',
+    mode: 'single_agent',
+    metadata: {} as Record<string, unknown>,
+  },
   pageState: {
     activeWorkspaceTab: 'project',
     setActiveWorkspaceTab: vi.fn(),
@@ -34,6 +56,7 @@ const mocks = vi.hoisted(() => ({
     previewSlice: { open: true, tabs: [], activeTabId: null },
   },
   projectState: {
+    chatStoreAvailable: true,
     activeProjectId: 'project-1',
     getAllChatStores: vi.fn(() => []),
   },
@@ -61,7 +84,19 @@ vi.mock('@/components/Workspace', () => ({
   default: () => <div data-testid="workspace" />,
 }));
 vi.mock('@/components/Session/HeaderBox', () => ({
-  HeaderBox: () => <div data-testid="session-header" />,
+  HeaderBox: ({
+    totalTokens,
+    projectName,
+  }: {
+    totalTokens?: number;
+    projectName?: string | null;
+  }) => (
+    <div
+      data-testid="session-header"
+      data-total-tokens={totalTokens ?? 'unset'}
+      data-project-name={projectName ?? 'unset'}
+    />
+  ),
 }));
 vi.mock('@/components/Session/PreviewPanel', () => ({
   PreviewPanel: () => <div data-testid="preview-panel" />,
@@ -71,7 +106,7 @@ vi.mock('@/components/Session/SidePanel', () => ({
 }));
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
   default: () => ({
-    chatStore: mocks.chatState,
+    chatStore: mocks.projectState.chatStoreAvailable ? mocks.chatState : null,
     projectStore: mocks.projectState,
   }),
 }));
@@ -98,16 +133,12 @@ vi.mock('@/store/projectRuntimeStore', () => ({
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: (
     selector: (state: {
-      getProjectMeta: () => { name: string; mode: string; metadata: object };
+      getProjectMeta: () => typeof mocks.projectMeta;
       updateProjectMeta: ReturnType<typeof vi.fn>;
     }) => unknown
   ) =>
     selector({
-      getProjectMeta: () => ({
-        name: 'Project 1',
-        mode: 'single_agent',
-        metadata: {},
-      }),
+      getProjectMeta: () => mocks.projectMeta,
       updateProjectMeta: vi.fn(),
     }),
 }));
@@ -201,9 +232,13 @@ describe('Session preview resize', () => {
   beforeEach(() => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     mocks.chatBoxRenderCount = 0;
+    mocks.projectMeta.name = 'Project 1';
+    mocks.projectMeta.metadata = {};
     mocks.pageState.previewSlice.open = true;
     mocks.pageState.sessionPreviewProjectId = 'project-1';
     mocks.pageState.activeWorkspaceTab = 'project';
+    mocks.projectState.chatStoreAvailable = true;
+    sessionExecutionMocks.routeLoading = false;
     scheduledFrame = null;
 
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
@@ -222,6 +257,51 @@ describe('Session preview resize', () => {
 
   afterAll(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('renders while the active chat store rebuilds during route loading', () => {
+    mocks.projectState.chatStoreAvailable = false;
+    sessionExecutionMocks.routeLoading = true;
+
+    render(<Session />);
+
+    expect(screen.getByTestId('session-header')).toHaveAttribute(
+      'data-total-tokens',
+      '0'
+    );
+    expect(screen.getByTestId('chat-box')).toBeInTheDocument();
+  });
+
+  it('shows New session in the header for a system default Session name', () => {
+    mocks.projectMeta.name = 'new project';
+
+    render(<Session />);
+
+    expect(screen.getByTestId('session-header')).toHaveAttribute(
+      'data-project-name',
+      'New session'
+    );
+  });
+
+  it('keeps a Session name the user chose in the header', () => {
+    render(<Session />);
+
+    expect(screen.getByTestId('session-header')).toHaveAttribute(
+      'data-project-name',
+      'Project 1'
+    );
+  });
+
+  it('shows the same history title as the Session list for a default name', () => {
+    mocks.projectMeta.name = 'new project';
+    mocks.projectMeta.metadata = { historyDisplayName: 'Plan the launch' };
+
+    render(<Session />);
+
+    expect(screen.getByTestId('session-header')).toHaveAttribute(
+      'data-project-name',
+      'Plan the launch'
+    );
   });
 
   it('coalesces pointer moves and ends a lost pointerup when no button is pressed', async () => {

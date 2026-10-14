@@ -64,6 +64,29 @@ describe('InterruptedRunBanner', () => {
     expect(screen.getByRole('button', { name: 'Cancel Run' })).toBeDisabled();
   });
 
+  it('disables only Resume when it cannot safely pick up', () => {
+    const onCancel = vi.fn();
+    const reason = 'A command was interrupted mid-run.';
+    render(
+      <InterruptedRunBanner
+        {...props}
+        action={null}
+        description={`Eigent restarted. ${reason}`}
+        resumeDisabledReason={reason}
+        onCancel={onCancel}
+      />
+    );
+
+    expect(screen.getByText(`Eigent restarted. ${reason}`)).toBeInTheDocument();
+    const resume = screen.getByRole('button', { name: 'Resume' });
+    expect(resume).toBeDisabled();
+    expect(resume).toHaveAttribute('title', reason);
+    const cancel = screen.getByRole('button', { name: 'Cancel Run' });
+    expect(cancel).toBeEnabled();
+    fireEvent.click(cancel);
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
   it('renders cloud-restored history without execution actions', () => {
     render(
       <InterruptedRunBanner

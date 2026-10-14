@@ -30,6 +30,7 @@ import {
 } from '@/store/projectEventStore';
 import { SessionMode } from '@/types/constants';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import i18next from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const motionPreference = vi.hoisted(() => ({ reduced: false }));
@@ -614,6 +615,121 @@ describe('ChatBox timeline modes', () => {
     expect(within(resolvedRow).getByText('Markdown file')).toHaveClass(
       '!text-ds-text-meta'
     );
+  });
+
+  it.each([
+    ['expired', 'approval_expired', 'approval_expired'],
+    ['cancelled', 'tool_terminal_before_dispatch', 'error'],
+  ] as const)(
+    'shows the closed cause and the recorded %s approval reason in expanded Detailed history',
+    (status, reason, terminalReason) => {
+      const { container } = render(
+        <TimelineModeRenderer
+          detailLevel="trajectory"
+          runs={composeTimelineRuns([
+            {
+              ...base,
+              kind: 'interaction',
+              id: 'approval-receipt',
+              eventId: 'approval-receipt',
+              eventType: `interaction.${status}`,
+              runSequence: 1,
+              createdAt: '2026-08-19T00:00:00Z',
+              interactionId: 'approval-1',
+              interactionType: 'approval',
+              prompt: 'Allow this tool?',
+              status,
+              reason,
+              terminalReason,
+            },
+          ])}
+        />
+      );
+      const row = container.querySelector(
+        '[data-trace-category="input-required"]'
+      ) as HTMLElement;
+      const toggle = within(row).getByRole('button');
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      for (const text of [
+        i18next.t(`chat.run-terminal-reason-${terminalReason}`),
+        `Recorded reason: ${reason}`,
+      ]) {
+        expect(within(row).getByText(text)).toHaveClass(
+          '!text-ds-text-meta',
+          'text-ds-ink-muted-default'
+        );
+      }
+      expect(
+        within(row).queryByRole('button', { name: 'Approve once' })
+      ).toBeNull();
+      expect(within(row).queryByText(reason)).toBeNull();
+    }
+  );
+
+  it('shows a timed-out Run cause and its recorded detail verbatim in Detailed mode', () => {
+    const detail = 'persisted_run_deadline_reached: model note "limit hit"';
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="trajectory"
+        runs={composeTimelineRuns([
+          {
+            ...base,
+            kind: 'run_status',
+            id: 'run-timed-out',
+            eventId: 'run-timed-out',
+            eventType: 'run.deadline_reached',
+            runSequence: 1,
+            createdAt: '2026-08-19T00:00:00Z',
+            status: 'timed_out',
+            terminalReason: 'deadline_exceeded',
+            terminalDetail: detail,
+          },
+        ])}
+      />
+    );
+    const view = within(container);
+    const status = container.querySelector(
+      '[data-detailed-status="timed_out"]'
+    ) as HTMLElement;
+    expect(status).toHaveClass('text-ds-text-status-error-default-default');
+    expect(status.querySelector('svg')).toHaveClass(
+      '!text-ds-text-status-error-default-default'
+    );
+    fireEvent.click(view.getByRole('button'));
+    expect(
+      view.getByText(i18next.t('chat.run-terminal-reason-deadline_exceeded'))
+    ).toBeInTheDocument();
+    expect(view.getByText(detail)).toHaveClass('text-ds-ink-muted-default');
+  });
+
+  it('names an earlier expiry of a timed-out Run without a Resume hint', () => {
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="trajectory"
+        runs={composeTimelineRuns([
+          {
+            ...base,
+            kind: 'run_status',
+            id: 'run-timed-out',
+            eventId: 'run-timed-out',
+            eventType: 'run.deadline_reached',
+            runSequence: 1,
+            createdAt: '2026-08-19T00:00:00Z',
+            status: 'timed_out',
+            terminalReason: 'approval_expired',
+            terminalDetail: 'approval_expired',
+          },
+        ])}
+      />
+    );
+    const view = within(container);
+    fireEvent.click(view.getByRole('button'));
+    expect(
+      view.getByText(i18next.t('chat.run-terminal-reason-approval_expired'))
+    ).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/resume/i);
   });
 
   it('uses lightly tinted backgrounds with strong text for agent tags', () => {
@@ -2428,3 +2544,65 @@ describe('ChatBox timeline modes', () => {
     expect(screen.getByText(/Working on tasks for/)).toBeInTheDocument();
   });
 });
+
+it.each(['narrative', 'trajectory'] as const)(
+  'keeps quota presentation safe after event replay and remount in %s',
+  (detailLevel) => {
+    const projectId = 'quota-presentation-replay';
+    const runId = 'quota-run';
+    const raw = {
+      id: 981,
+      task_id: runId,
+      step: 'error',
+      timestamp: 1787000000,
+      data: {
+        message: JSON.stringify({
+          detail: { code: 'trial_daily_exhausted', secret: 'synthetic-secret' },
+        }),
+        request_id: 'diagnostic-request',
+      },
+    };
+    for (const historical of [false, true]) {
+      releaseProjectEventStore(projectId);
+      const store = getProjectEventStore(projectId, {
+        scheduleFlush: () => () => {},
+      });
+      expect(
+        enqueueChatEventProjection(
+          {
+            raw,
+            projectId,
+            runId,
+            sequence: 1,
+            sourceId: 'quota-fixture',
+            transport: 'legacy_chat',
+            historical,
+          },
+          true,
+          true
+        )
+      ).toBe('accepted');
+      store.flushAll();
+      const snapshot = store.getSnapshot();
+      const nodes = selectRenderableChatNodes(snapshot.chat);
+      expect(JSON.stringify(nodes)).toContain('synthetic-secret');
+      const runs = reconcileTimelineRuns(
+        composeTimelineRuns(presentChatSemanticEntities(nodes)),
+        snapshot.view.runs
+      );
+      const view = render(
+        <TimelineModeRenderer detailLevel={detailLevel} runs={runs} />
+      );
+      expect(view.container.textContent).not.toContain('synthetic-secret');
+      expect(view.container.textContent).not.toContain('trial_daily_exhausted');
+      const disclosure = screen.queryByRole('button', { name: /Failed after/ });
+      if (disclosure) fireEvent.click(disclosure);
+      expect(view.container.textContent).toContain(
+        'You’ve used today’s trial credits.'
+      );
+      expect(view.container.textContent).not.toContain('diagnostic-request');
+      view.unmount();
+    }
+    releaseProjectEventStore(projectId);
+  }
+);

@@ -22,6 +22,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.run_journal.context_projection import ResumeContextError
+
 pytestmark = pytest.mark.unit
 
 
@@ -224,20 +226,37 @@ async def test_project_metadata_precedes_single_agent_end():
     )
 
 
+class _ClientClosedRequest(RuntimeError):
+    status_code = 499
+
+
 @pytest.mark.asyncio
-async def test_retryable_model_error_emits_resume_metadata_and_interrupts():
+@pytest.mark.parametrize(
+    "error,retryable,reason",
+    [
+        (
+            _ClientClosedRequest("Client Closed Request"),
+            True,
+            "model_transport_error",
+        ),
+        (
+            ResumeContextError(
+                "Mandatory Resume checkpoint exceeds the context budget",
+                reason="context_budget_exhausted",
+            ),
+            False,
+            "context_budget_exhausted",
+        ),
+    ],
+)
+async def test_turn_error_emits_structured_reason(error, retryable, reason):
     from app.model.chat import Chat
     from app.run_runtime import RunInterruptedError
     from app.service.single_agent_service import single_agent_solve
     from app.service.task import ActionImproveData, ImprovePayload
 
-    class ClientClosedRequest(RuntimeError):
-        status_code = 499
-
     fake_agent = MagicMock()
-    fake_agent.astep = AsyncMock(
-        side_effect=ClientClosedRequest("Client Closed Request")
-    )
+    fake_agent.astep = AsyncMock(side_effect=error)
     fake_agent.agent_id = "fake_single_agent"
     fake_agent._observable_todo_toolkit = None
 
@@ -299,14 +318,16 @@ async def test_retryable_model_error_emits_resume_metadata_and_interrupts():
         event, payload = _parse_sse(error_frame)
         assert event == "error"
         assert payload == {
-            "message": "Client Closed Request",
-            "retryable": True,
-            "reason": "model_transport_error",
+            "message": str(error),
+            "retryable": retryable,
+            "reason": reason,
         }
 
-        with pytest.raises(RunInterruptedError) as error:
+        with pytest.raises(
+            RunInterruptedError if retryable else ResumeContextError
+        ) as raised:
             await agen.__anext__()
-        assert error.value.reason == "model_transport_error"
+        assert raised.value.reason == reason
         delete_task_lock.assert_awaited_once_with("project_retryable")
 
 
@@ -659,3 +680,42 @@ async def test_stale_runtime_cleanup_failure_blocks_replacement():
 
     assert stale_toolkit in task_lock.registered_toolkits
     assert agent._runtime_cleanup_toolkits == (stale_toolkit,)
+
+
+@pytest.mark.asyncio
+async def test_stale_runtime_sync_cleanup_runs_off_the_event_loop():
+    import threading
+
+    from app.service.single_agent_service import _dispose_stale_agent_runtime
+
+    loop_thread = threading.get_ident()
+    cleanup_threads: list[int] = []
+    disconnect_threads: list[int] = []
+
+    class BlockingCleanupToolkit:
+        def cleanup(self):
+            cleanup_threads.append(threading.get_ident())
+
+    class AsyncDisconnectToolkit:
+        async def disconnect(self):
+            disconnect_threads.append(threading.get_ident())
+
+    blocking = BlockingCleanupToolkit()
+    async_toolkit = AsyncDisconnectToolkit()
+    agent = MagicMock()
+    agent._cdp_release_callback = None
+    agent._runtime_cleanup_toolkits = (blocking, async_toolkit)
+    task_lock = MagicMock()
+    task_lock.registered_toolkits = [blocking, async_toolkit]
+
+    await _dispose_stale_agent_runtime(
+        agent,
+        task_lock,
+        task_id="run-runtime-switch",
+    )
+
+    assert len(cleanup_threads) == 1
+    assert cleanup_threads[0] != loop_thread
+    assert disconnect_threads == [loop_thread]
+    assert task_lock.registered_toolkits == []
+    assert agent._runtime_cleanup_toolkits == ()

@@ -50,10 +50,10 @@ export async function reconcileLegacyRunState({
   const state = getState();
   if (!state.tasks[runId] || !run || !TERMINAL_RUN_STATUSES.has(run.status))
     return;
-  // FINISHED closes the transport UI; durableRunStatus retains failed/cancelled.
+  // FINISHED closes the transport UI; durableRunStatus retains the outcome.
   state.setDurableRunStatus(
     runId,
-    run.status as 'completed' | 'failed' | 'cancelled'
+    run.status as 'completed' | 'failed' | 'cancelled' | 'timed_out'
   );
   state.setStatus(runId, ChatTaskStatus.FINISHED);
   state.setIsPending(runId, false);

@@ -14,9 +14,10 @@
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.auth import require_local_control_if_configured
 from app.remote_sub_agent.constants import DEFAULT_REMOTE_SUB_AGENT_PROVIDER
 from app.remote_sub_agent.provider_registry import (
     ProviderBuildOptions,
@@ -25,7 +26,7 @@ from app.remote_sub_agent.provider_registry import (
 
 logger = logging.getLogger("remote_sub_agent_controller")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_local_control_if_configured)])
 
 
 class ValidateRemoteSubAgentRequest(BaseModel):

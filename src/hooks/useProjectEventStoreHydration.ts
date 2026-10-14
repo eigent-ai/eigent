@@ -30,6 +30,7 @@ const MAX_RETRY_DELAY_MS = 30_000;
 export type UseProjectEventStoreHydrationOptions = {
   projectId: string | null | undefined;
   enabled: boolean;
+  expectedAccountKey?: string;
 };
 
 export type ProjectEventStoreHydrationState = {
@@ -94,6 +95,7 @@ function nonRetryableErrorCode(
 export function useProjectEventStoreHydration({
   projectId,
   enabled,
+  expectedAccountKey,
 }: UseProjectEventStoreHydrationOptions): ProjectEventStoreHydrationState {
   const [retryToken, setRetryToken] = useState(0);
   const [hydrationState, setHydrationState] = useState<
@@ -135,6 +137,7 @@ export function useProjectEventStoreHydration({
         const previous = store.getSnapshot().history;
         await loadOlderProjectChatHistory({
           projectId,
+          expectedAccountKey,
           signal: controller.signal,
           store,
         });
@@ -180,7 +183,7 @@ export function useProjectEventStoreHydration({
       if (olderRequestRef.current === controller)
         olderRequestRef.current = null;
     }
-  }, [enabled, projectId]);
+  }, [enabled, projectId, expectedAccountKey]);
 
   const retry = useCallback(() => setRetryToken((token) => token + 1), []);
 
@@ -276,6 +279,7 @@ export function useProjectEventStoreHydration({
       });
       void hydrateProjectEventStore({
         projectId,
+        expectedAccountKey,
         signal: controller.signal,
         store,
       })
@@ -355,7 +359,7 @@ export function useProjectEventStoreHydration({
     };
     // `retryToken` restarts the effect, which clears the non-retryable block
     // and any pending backoff so a manual retry always gets a fresh attempt.
-  }, [enabled, projectId, retryToken]);
+  }, [enabled, projectId, retryToken, expectedAccountKey]);
 
   useEffect(() => {
     if (!enabled || !projectId || hydrationState.status !== 'ready') return;

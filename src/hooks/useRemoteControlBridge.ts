@@ -20,12 +20,14 @@ import {
   proxyFetchGet,
 } from '@/api/http';
 import { isDesktop } from '@/client/platform';
+import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
 import {
   getRemoteControlDesktopInstanceId,
   getRemoteControlWebSocketUrl,
   setRemoteControlBridgeConnected,
   type RemoteControlBridgeError,
 } from '@/lib/remoteControl';
+import { executionScope } from '@/service/executionApi';
 import {
   createFollowUpRequest,
   getRemoteFollowUpByCommandId,
@@ -38,6 +40,7 @@ import { humanInteractionDecisionPath } from '@/service/humanInteractionApi';
 import { toLocalSpace, type ServerProject } from '@/service/spaceApi';
 import { getAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
+import { requireLegacyExecution } from '@/store/sessionExecutionStore';
 import { projectMetaFromServer, useSpaceStore } from '@/store/spaceStore';
 import type { SessionModeType } from '@/types/constants';
 import { useEffect, useRef } from 'react';
@@ -605,7 +608,7 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
   if (!projectId || !nextTaskId) {
     throw new Error('Remote user message requires project_id and next_task_id');
   }
-
+  await requireLegacyExecution(executionScope(projectId));
   ensureRemoteProjectLoaded(command);
 
   const payload = command.payload || {};
@@ -747,19 +750,21 @@ async function dispatchPersistedRemoteFollowUp(
   if (!projectId || !requestId) {
     throw new Error('Remote follow-up requires Project and request ids');
   }
+  await requireLegacyExecution(executionScope(projectId));
   const pending = await listPendingFollowUpRequests(projectId);
   const next = pending[0];
   if (!next || next.request_id !== requestId) {
     return !pending.some((item) => item.request_id === requestId);
   }
-  const status = await fetchGet(
-    `/chat/${encodeURIComponent(projectId)}/status`
+  const admissionMode = await prepareFollowUpAdmission(
+    projectId,
+    useProjectStore.getState().getProjectById(projectId)
   );
-  if (status?.has_lock && status?.status !== 'done') {
+  if (admissionMode === 'busy') {
     return false;
   }
   try {
-    if (status?.has_lock) {
+    if (admissionMode === 'warm') {
       seedRemoteFollowUpPrompt(command);
       await fetchPost(`/chat/${encodeURIComponent(projectId)}`, {
         question: next.content,
@@ -800,6 +805,9 @@ async function executeRemoteCommand(
   token: string,
   scheduleFollowUp?: (command: RemoteCommand) => void
 ): Promise<BridgeAck> {
+  const executionProjectId = getCommandProjectId(command);
+  if (executionProjectId)
+    await requireLegacyExecution(executionScope(executionProjectId));
   if (
     command.type !== 'user_message' &&
     command.type !== 'interaction_decision'
@@ -845,7 +853,9 @@ async function executeRemoteCommand(
       };
     }
     case 'human_reply': {
-      await requestBrain(
+      // The remote command id is the stable decision identity, so a
+      // redelivered command binds to the interaction it already answered.
+      const result = await requestBrain(
         command,
         token,
         'POST',
@@ -853,8 +863,18 @@ async function executeRemoteCommand(
         {
           agent: command.payload.agent,
           reply: command.payload.reply || command.payload.content || '',
+          interaction_id: command.payload.interaction_id || null,
+          decision_request_id: `remote-human-reply:${command.id}`,
         }
       );
+      // Brain reports a rejected reply as HTTP 200 with `code: 1`.
+      if (result?.code === 1) {
+        const error: any = new Error(
+          result.text || 'Remote human reply was rejected'
+        );
+        error.code = result.error_code || 'BRIDGE_HUMAN_REPLY_REJECTED';
+        throw error;
+      }
       break;
     }
     case 'interaction_decision': {

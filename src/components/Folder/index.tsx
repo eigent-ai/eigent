@@ -59,7 +59,7 @@ import {
 import { CsvPreviewTable } from './CsvPreviewTable';
 import { FileOpenActions } from './FileOpenActions';
 import FolderComponent from './FolderComponent';
-import { PdfPreview } from './PdfPreview';
+import { PdfPreview, usePdfFrameLoadFailed } from './PdfPreview';
 import { PreviewFailure } from './PreviewRecovery';
 import { useIdeOpenActions } from './useIdeOpenActions';
 
@@ -1142,7 +1142,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       setIsShowSourceCode(Boolean(isShowSourceCode));
     }
     setLoading(true);
-    void resolveArtifactAssetFile(file)
+    void resolveArtifactAssetFile(file, controller.signal)
       .then((resolvedFile) =>
         loadFilePreview(resolvedFile, {
           ipcRenderer,
@@ -2829,10 +2829,11 @@ export interface FileViewerPanelProps {
   emptyState?: React.ReactNode;
 }
 
-function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
+function TextPreviewNotice({ file }: { file: FileInfo }) {
   const { t } = useTranslation();
-  if (file.preview?.kind !== 'truncated-text') return null;
-  const { bytesRead, totalBytes } = file.preview;
+  if (file.preview?.kind !== 'text' || file.preview.completeness === 'complete')
+    return null;
+  const { bytesRead, totalBytes, completeness } = file.preview;
   const values = {
     bytesRead: formatFileSize(bytesRead),
     totalBytes:
@@ -2847,7 +2848,12 @@ function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
       aria-live="polite"
       className="mb-ds-8 rounded-lg bg-ds-neutral-subtle-default px-ds-12 py-ds-8 text-ds-ink-muted-default"
     >
-      {t('folder.truncated-preview-summary', values)}
+      {t(
+        completeness === 'truncated'
+          ? 'folder.truncated-preview-summary'
+          : 'folder.preview-byte-summary',
+        values
+      )}
     </DsText>
   );
 }
@@ -2863,7 +2869,7 @@ function SourceFilePreview({
   const sourcePath = file.relativePath || file.path || file.name;
   return (
     <div className="flex h-full min-h-0 w-full flex-col p-2">
-      <TruncatedPreviewNotice file={file} />
+      <TextPreviewNotice file={file} />
       <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default">
         <SourceCodeViewer
           value={file.content || ''}
@@ -2928,7 +2934,8 @@ function BlockedPreviewPlaceholder({ file }: { file: FileInfo }) {
  * Presentational file viewer: breadcrumb header + type-aware content body.
  * Shared by the Files tab and the inline project-page preview so both
  * render markdown/PDF/docs/HTML/media identically. All data and callbacks are
- * supplied by the parent — this component owns no loading state.
+ * supplied by the parent — this component owns no loading state. It only
+ * tracks whether the embedded PDF frame failed, which the parent cannot see.
  */
 export function FileViewerPanel({
   selectedFile,
@@ -2958,10 +2965,15 @@ export function FileViewerPanel({
   const appearance = useAuthStore((state) => state.appearance);
   const segmentsClickable = Boolean(onBreadcrumbSegmentClick);
   const selectedType = selectedFile ? getFileType(selectedFile) : '';
+  const pdfFrameFailed = usePdfFrameLoadFailed(
+    selectedType === 'pdf' && typeof selectedFile?.content === 'string'
+      ? selectedFile.content
+      : undefined
+  );
   const supportsRichView =
     Boolean(selectedFile) &&
     ['md', 'markdown', 'html', 'htm'].includes(selectedType) &&
-    selectedFile?.preview?.kind !== 'truncated-text' &&
+    selectedFile?.preview?.kind !== 'text' &&
     selectedFile?.preview?.kind !== 'blocked';
   const previewViewLabel = t('folder.preview-view', {
     defaultValue: 'Preview',
@@ -2973,7 +2985,7 @@ export function FileViewerPanel({
     Boolean(selectedFile) &&
     ['html', 'htm'].includes(selectedType) &&
     !isShowSourceCode &&
-    selectedFile?.preview?.kind !== 'truncated-text';
+    selectedFile?.preview?.kind !== 'text';
   const showsCodeSource =
     Boolean(selectedFile) &&
     !loading &&
@@ -3134,7 +3146,9 @@ export function FileViewerPanel({
                 onReveal={onRevealFile}
                 onOpen={
                   !selectedFile.isFolder &&
-                  (loadFailed || selectedFile.preview?.kind === 'blocked')
+                  (loadFailed ||
+                    pdfFrameFailed ||
+                    selectedFile.preview?.kind === 'blocked')
                     ? onOpenExternalFile
                     : undefined
                 }
@@ -3239,7 +3253,7 @@ export function FileViewerPanel({
               ) : ['md', 'markdown'].includes(selectedType) &&
                 !isShowSourceCode ? (
                 <DocumentContentRail>
-                  <TruncatedPreviewNotice file={selectedFile} />
+                  <TextPreviewNotice file={selectedFile} />
                   <MarkDown
                     content={selectedFile.content || ''}
                     enableTypewriter={false}
@@ -3252,16 +3266,24 @@ export function FileViewerPanel({
                   />
                 </DocumentContentRail>
               ) : selectedType === 'pdf' ? (
-                <PdfPreview
-                  key={`${selectedFile.path}:${selectedFile.modifiedAt ?? ''}`}
-                  url={selectedFile.content as string}
-                  name={selectedFile.name}
-                />
+                pdfFrameFailed ? (
+                  <PreviewFailure
+                    message={t('folder.pdf-preview-failed', {
+                      defaultValue:
+                        'This PDF could not be displayed here. Open it in another app instead.',
+                    })}
+                  />
+                ) : (
+                  <PdfPreview
+                    key={`${selectedFile.path}:${selectedFile.modifiedAt ?? ''}`}
+                    url={selectedFile.content as string}
+                    name={selectedFile.name}
+                  />
+                )
               ) : ['doc', 'docx', 'pptx', 'xlsx'].includes(selectedType) ? (
                 <FolderComponent selectedFile={selectedFile} />
               ) : ['html', 'htm'].includes(selectedType) ? (
-                isShowSourceCode ||
-                selectedFile.preview?.kind === 'truncated-text' ? (
+                isShowSourceCode || selectedFile.preview?.kind === 'text' ? (
                   <SourceFilePreview
                     file={selectedFile}
                     appearance={appearance}

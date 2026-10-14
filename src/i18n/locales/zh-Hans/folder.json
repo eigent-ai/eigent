@@ -40,5 +40,6 @@
   "open-in-finder": "在访达中打开",
   "open-in-explorer": "在文件资源管理器中打开",
   "open-in-folder": "在文件管理器中打开",
-  "preview-load-failed": "无法预览此文件。请重试或使用外部应用打开。"
+  "preview-load-failed": "无法预览此文件。请重试或使用外部应用打开。",
+  "pdf-preview-failed": "无法在此处显示此 PDF。请改用其他应用打开。"
 }

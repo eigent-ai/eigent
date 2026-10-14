@@ -1333,7 +1333,9 @@
       "payload": {
         "artifact_count": 0,
         "artifact_manifest_event_id": "single:manifest",
-        "result_event_id": "single:final"
+        "result_event_id": "single:final",
+        "terminal_detail": null,
+        "terminal_reason": "completed"
       },
       "created_at": 1700000000.0,
       "occurred_at": 1700000000.0,

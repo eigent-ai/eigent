@@ -55,6 +55,10 @@ export interface NewSpaceDialogProps {
   initialPage?: NewSpaceDialogPage;
   initialWorkspaceBundleHandle?: string;
   initialWorkspaceBundleProposalId?: string;
+  onWorkspaceBundleProposalChange?: (
+    proposalId: string | null,
+    handle: string | null
+  ) => void;
   initialAgentPluginTargetSpaceId?: string | null;
   agentPluginTargetMode?: 'existing' | 'create-space';
 }
@@ -118,6 +122,7 @@ export default function NewSpaceDialog({
   initialPage = 'options',
   initialWorkspaceBundleHandle,
   initialWorkspaceBundleProposalId,
+  onWorkspaceBundleProposalChange,
   initialAgentPluginTargetSpaceId,
   agentPluginTargetMode = 'create-space',
 }: NewSpaceDialogProps) {
@@ -317,6 +322,7 @@ export default function NewSpaceDialog({
                 <WorkspaceBundleInstallWizard
                   initialHandle={initialWorkspaceBundleHandle}
                   initialProposalId={initialWorkspaceBundleProposalId}
+                  onProposalChange={onWorkspaceBundleProposalChange}
                   showHeader={false}
                   onWorkspaceOpen={() => handleOpenChange(false)}
                 />

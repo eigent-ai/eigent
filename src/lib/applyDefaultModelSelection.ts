@@ -18,7 +18,10 @@
  */
 
 import { proxyFetchGet, proxyFetchPost } from '@/api/http';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { saveDefaultModelSelection } from '@/lib/defaultModelSelectionState';
 import { isSearchConfigured } from '@/lib/searchConfig';
+import { getAuthStore } from '@/store/authStore';
 import type { Provider } from '@/types';
 import type { TFunction } from 'i18next';
 import type { Dispatch, SetStateAction } from 'react';
@@ -29,6 +32,7 @@ export type DefaultModelCategory = 'cloud' | 'custom' | 'local';
 export type DefaultModelFormRow = {
   provider_id?: number;
   prefer?: boolean;
+  model_type?: string;
 };
 
 export function isDefaultModelConfigured(
@@ -53,8 +57,13 @@ export function isDefaultModelConfigured(
   return false;
 }
 
-async function checkHasSearchKey(): Promise<boolean> {
-  const configsRes = await proxyFetchGet('/api/v1/configs');
+async function checkHasSearchKey(accountKey: string): Promise<boolean> {
+  const configsRes = await proxyFetchGet(
+    '/api/v1/configs',
+    undefined,
+    undefined,
+    { expectedAccountKey: accountKey }
+  );
   const configs = Array.isArray(configsRes) ? configsRes : [];
   return isSearchConfigured(configs);
 }
@@ -71,6 +80,7 @@ export interface ApplyDefaultModelSelectionParams {
   setLocalPlatform: (p: string) => void;
   localProviderIds: Record<string, number | undefined>;
   localPlatform: string;
+  localTypes?: Record<string, string>;
   setModelType: (t: 'cloud' | 'local' | 'custom') => void;
   setCloudModelType: (id: string) => void;
   t: TFunction;
@@ -94,80 +104,123 @@ export async function applyDefaultModelSelection(
     setLocalPlatform,
     localProviderIds,
     localPlatform,
+    localTypes,
     setModelType,
     setCloudModelType,
     t,
   } = params;
 
-  try {
-    if (category === 'cloud') {
-      setForm((f) => (f as object[]).map((fi) => ({ ...fi, prefer: false })));
-      setLocalPrefer(false);
-      setCloudPrefer(true);
-      setModelType('cloud');
-      if (modelId !== 'cloud') {
-        setCloudModelType(modelId);
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  const idx = items.findIndex((item) => item.id === modelId);
+  const providerId =
+    category === 'custom' ? form[idx]?.provider_id : localProviderIds[modelId];
+  if (category !== 'cloud' && providerId === undefined) return false;
+  const assertAccount = () => {
+    if (accountKey !== getAccountEnvironmentKey(getAuthStore()))
+      throw new Error('Model selection account changed');
+  };
+  return saveDefaultModelSelection(
+    accountKey,
+    {
+      modelType: category,
+      ...(category !== 'cloud'
+        ? {
+            provider_id: providerId,
+            model_platform: modelId,
+            model_type:
+              (category === 'custom'
+                ? form[idx]?.model_type
+                : localTypes?.[modelId]) || undefined,
+          }
+        : {}),
+    },
+    async () => {
+      try {
+        assertAccount();
+        if (category === 'cloud') {
+          setForm((f) =>
+            (f as object[]).map((fi) => ({ ...fi, prefer: false }))
+          );
+          setLocalPrefer(false);
+          setCloudPrefer(true);
+          setModelType('cloud');
+          if (modelId !== 'cloud') {
+            setCloudModelType(modelId);
+          }
+          return true;
+        }
+
+        if (category === 'custom') {
+          const hasSearchKey = await checkHasSearchKey(accountKey);
+          assertAccount();
+          if (!hasSearchKey) {
+            toast(t('setting.warning-google-search-not-configured'), {
+              description: t(
+                'setting.search-functionality-may-be-limited-without-google-api'
+              ),
+              closeButton: true,
+            });
+          }
+          await proxyFetchPost(
+            '/api/v1/provider/prefer',
+            {
+              provider_id: providerId,
+            },
+            undefined,
+            { expectedAccountKey: accountKey }
+          );
+          assertAccount();
+          setModelType('custom');
+          setCloudPrefer(false);
+          setLocalPrefer(false);
+          setForm((f) =>
+            (f as object[]).map((fi, i) => ({ ...fi, prefer: i === idx }))
+          );
+          return true;
+        }
+
+        if (category === 'local') {
+          if (localPlatform !== modelId) {
+            setLocalPlatform(modelId);
+          }
+          const targetProviderId = providerId;
+          if (targetProviderId === undefined) return false;
+
+          const hasSearchKey = await checkHasSearchKey(accountKey);
+          assertAccount();
+          if (!hasSearchKey) {
+            toast(t('setting.warning-google-search-not-configured'), {
+              description: t(
+                'setting.search-functionality-may-be-limited-without-google-api'
+              ),
+              closeButton: true,
+            });
+          }
+          await proxyFetchPost(
+            '/api/v1/provider/prefer',
+            {
+              provider_id: targetProviderId,
+            },
+            undefined,
+            { expectedAccountKey: accountKey }
+          );
+          assertAccount();
+          setModelType('local');
+          setForm((f) =>
+            (f as object[]).map((fi) => ({ ...fi, prefer: false }))
+          );
+          setLocalPrefer(true);
+          setCloudPrefer(false);
+          return true;
+        }
+      } catch (e) {
+        console.error('applyDefaultModelSelection failed:', e);
+        if (accountKey === getAccountEnvironmentKey(getAuthStore()))
+          toast.error(t('setting.validate-failed'));
+        return false;
       }
-      return true;
+
+      return false;
     }
-
-    if (category === 'custom') {
-      const idx = items.findIndex((item) => item.id === modelId);
-      if (idx === -1) return false;
-      const providerId = form[idx]?.provider_id;
-      if (providerId === undefined) return false;
-
-      const hasSearchKey = await checkHasSearchKey();
-      if (!hasSearchKey) {
-        toast(t('setting.warning-google-search-not-configured'), {
-          description: t(
-            'setting.search-functionality-may-be-limited-without-google-api'
-          ),
-          closeButton: true,
-        });
-      }
-      await proxyFetchPost('/api/v1/provider/prefer', {
-        provider_id: providerId,
-      });
-      setModelType('custom');
-      setCloudPrefer(false);
-      setLocalPrefer(false);
-      setForm((f) =>
-        (f as object[]).map((fi, i) => ({ ...fi, prefer: i === idx }))
-      );
-      return true;
-    }
-
-    if (category === 'local') {
-      if (localPlatform !== modelId) {
-        setLocalPlatform(modelId);
-      }
-      const targetProviderId = localProviderIds[modelId];
-      if (targetProviderId === undefined) return false;
-
-      const hasSearchKey = await checkHasSearchKey();
-      if (!hasSearchKey) {
-        toast(t('setting.warning-google-search-not-configured'), {
-          description: t(
-            'setting.search-functionality-may-be-limited-without-google-api'
-          ),
-          closeButton: true,
-        });
-      }
-      await proxyFetchPost('/api/v1/provider/prefer', {
-        provider_id: targetProviderId,
-      });
-      setModelType('local');
-      setForm((f) => (f as object[]).map((fi) => ({ ...fi, prefer: false })));
-      setLocalPrefer(true);
-      setCloudPrefer(false);
-      return true;
-    }
-  } catch (e) {
-    console.error('applyDefaultModelSelection failed:', e);
-    toast.error(t('setting.validate-failed'));
-    return false;
-  }
-
-  return false;
+  );
 }

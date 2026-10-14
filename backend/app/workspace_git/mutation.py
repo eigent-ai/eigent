@@ -34,6 +34,7 @@ from app.run_journal import (
     ProjectWorkspaceBindingRecord,
     RunEventDraft,
     SQLiteRunJournal,
+    WorkspaceWriterLeaseRecord,
     configured_run_journal_path,
     get_default_run_journal,
 )
@@ -1075,7 +1076,7 @@ class WorkspaceMutationService:
         actor_id: str,
         trigger: str,
     ) -> PreparedWorkspaceWrite:
-        root = self._require_direct_checkout(
+        root, writer_lease = self._require_direct_checkout(
             context=context,
             run=run,
             repository_root=repository_root,
@@ -1087,6 +1088,7 @@ class WorkspaceMutationService:
             binding=binding,
             root=root,
             operation_request_id=operation_request_id,
+            writer_lease=writer_lease,
         )
         target = root / relative_path
         preimage_digest = self._digest_file(target)
@@ -1119,6 +1121,7 @@ class WorkspaceMutationService:
             actor_id=actor_id,
             trigger=trigger,
             exclusive_worktree=True,
+            writer_lease=writer_lease,
         )
         return PreparedWorkspaceWrite(
             context=context,
@@ -1145,7 +1148,7 @@ class WorkspaceMutationService:
         actor_id: str,
         trigger: str,
     ) -> PreparedWorkspaceExecution:
-        root = self._require_direct_checkout(
+        root, writer_lease = self._require_direct_checkout(
             context=context,
             run=run,
             repository_root=repository_root,
@@ -1160,6 +1163,7 @@ class WorkspaceMutationService:
             binding=binding,
             root=root,
             operation_request_id=operation_request_id,
+            writer_lease=writer_lease,
         )
         change_set = self._ensure_direct_change_set(
             context=context,
@@ -1179,6 +1183,7 @@ class WorkspaceMutationService:
             actor_id=actor_id,
             trigger=trigger,
             exclusive_worktree=True,
+            writer_lease=writer_lease,
         )
         return PreparedWorkspaceExecution(
             context=context,
@@ -1197,7 +1202,7 @@ class WorkspaceMutationService:
         run,
         repository_root: Path,
         binding: ProjectWorkspaceBindingRecord,
-    ) -> Path:
+    ) -> tuple[Path, WorkspaceWriterLeaseRecord]:
         root = Path(binding.worktree_path).expanduser().resolve()
         repository_root = repository_root.expanduser().resolve()
         if binding.checkout_mode == "primary_checkout":
@@ -1224,19 +1229,22 @@ class WorkspaceMutationService:
                 "bound checkout is on another branch; switch it explicitly "
                 "before this Task writes"
             )
-        request = self.journal.get_workspace_writer_request(
-            f"workspace-writer:{context.run_id}"
+        lease = self.journal.get_workspace_writer_lease(
+            repository_id=binding.repository_id,
+            checkout_id=binding.checkout_id,
         )
+        # Admission is fenced on this exact lease. Once an intent is
+        # prepared, its holder can no longer be reclaimed.
         if (
-            request is None
-            or request.status != "acquired"
-            or request.task_id != context.task_id
-            or request.checkout_id != binding.checkout_id
+            lease is None
+            or lease.request_id != f"workspace-writer:{context.run_id}"
+            or lease.task_id != context.task_id
+            or lease.holder_attempt_id != context.attempt_id
         ):
             raise ContentRepositoryError(
                 "Task does not own the bound checkout writer lease"
             )
-        return root
+        return root, lease
 
     def _preserve_direct_preimage(
         self,
@@ -1246,6 +1254,7 @@ class WorkspaceMutationService:
         binding: ProjectWorkspaceBindingRecord,
         root: Path,
         operation_request_id: str,
+        writer_lease: WorkspaceWriterLeaseRecord,
     ):
         # A direct ChangeSet freezes the Run's diff base as soon as the first
         # mutation is prepared, not only after it records its first item. A
@@ -1279,6 +1288,7 @@ class WorkspaceMutationService:
                 "Eigent-Run-ID": context.run_id,
                 "Eigent-Task-ID": context.task_id,
             },
+            writer_lease=writer_lease,
         )
         return self.journal.rebase_unmaterialized_git_run(
             run_id=context.run_id,

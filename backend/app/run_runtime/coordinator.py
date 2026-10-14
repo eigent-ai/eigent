@@ -24,10 +24,12 @@ import asyncio
 import logging
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from app.run_journal.transitions import RUN_TERMINAL_STATES
 
 if TYPE_CHECKING:
     from app.run_journal.models import (
@@ -120,6 +122,25 @@ class RuntimeHandle:
     _subscribers: dict[str, asyncio.Queue[Any]] = field(
         default_factory=dict, init=False, repr=False
     )
+    _dormant: _DormantExecution | None = field(
+        default=None, init=False, repr=False
+    )
+
+    @property
+    def attempt_id(self) -> str | None:
+        return self._dormant.attempt_id if self._dormant else None
+
+    @property
+    def generation(self) -> int | None:
+        return self._dormant.generation if self._dormant else None
+
+    @property
+    def activated(self) -> bool:
+        return self._dormant is not None and self._dormant.activated
+
+    @property
+    def runner_started(self) -> bool:
+        return self._dormant is not None and self._dormant.runner_started
 
     @property
     def subscriber_count(self) -> int:
@@ -197,6 +218,19 @@ class RuntimeHandle:
         task = self.execution_task
         if task is None or task.done():
             return
+        dormant = self._dormant
+        if dormant is not None:
+            if task is asyncio.current_task():
+                raise RunRuntimeError("isolated runner cannot await itself")
+            # Wake an unstarted wrapper without entering the runner. For a
+            # running owner, inject cancellation only once: further requests
+            # must not interrupt its writer settlement/finalizer cleanup.
+            dormant.gate.set()
+            if dormant.runner_started and not dormant.cancel_sent:
+                dormant.cancel_sent = True
+                task.cancel()
+            await asyncio.shield(asyncio.gather(task, return_exceptions=True))
+            return
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
 
@@ -216,11 +250,26 @@ class _AdmissionGate:
     users: int = 0
 
 
+@dataclass
+class _DormantExecution:
+    attempt_id: str
+    generation: int
+    runner: Callable[[RuntimeHandle], Awaitable[None]] | None
+    gate: asyncio.Event = field(default_factory=asyncio.Event)
+    activated: bool = False
+    runner_started: bool = False
+    cancel_sent: bool = False
+
+
 class RunCoordinator:
     """Own live execution tasks separately from transport subscribers."""
 
     def __init__(self, journal: SQLiteRunJournal | None = None) -> None:
         self._handles: dict[str, RuntimeHandle] = {}
+        # Retain completed owner identities until close. An exact retry must
+        # not restart an Attempt whose runner ended before durable settlement.
+        self._dormant_handles: dict[str, RuntimeHandle] = {}
+        self._dormant_closing = False
         self._admission_gates: dict[str, _AdmissionGate] = {}
         self._lock = asyncio.Lock()
         self._journal = journal
@@ -362,6 +411,145 @@ class RunCoordinator:
                     name=f"run-deadline:{run_id}",
                 )
             return subscription
+
+    async def register_dormant(
+        self,
+        *,
+        run_id: str,
+        attempt_id: str,
+        generation: int,
+        runner: Callable[[RuntimeHandle], Awaitable[None]],
+    ) -> RuntimeHandle:
+        """Register a locatable isolated owner without running its adapter."""
+        if (
+            not run_id.strip()
+            or not attempt_id.strip()
+            or type(generation) is not int
+            or generation < 1
+            or not callable(runner)
+        ):
+            raise ValueError("isolated runtime requires an exact owner")
+        async with self._lock:
+            if self._dormant_closing:
+                raise RunRuntimeError("isolated runtime is closing")
+            if self._journal is None:
+                raise RunRuntimeError(
+                    "isolated runtime requires a bound journal"
+                )
+            existing = self._dormant_handles.get(run_id)
+            if existing is not None:
+                self._require_dormant_owner(existing, attempt_id, generation)
+                return existing
+            if run_id in self._handles:
+                raise RunRuntimeError("Run already has another runtime owner")
+            handle = RuntimeHandle(run_id=run_id)
+            handle._dormant = _DormantExecution(attempt_id, generation, runner)
+            self._dormant_handles[run_id] = handle
+            self._handles[run_id] = handle
+            handle.execution_task = asyncio.create_task(
+                self._run_dormant(handle), name=f"isolated-run:{run_id}"
+            )
+            return handle
+
+    @staticmethod
+    def _require_dormant_owner(
+        handle: RuntimeHandle, attempt_id: str, generation: int
+    ) -> _DormantExecution:
+        dormant = handle._dormant
+        if (
+            dormant is None
+            or dormant.attempt_id != attempt_id
+            or type(generation) is not int
+            or dormant.generation != generation
+        ):
+            raise RunRuntimeError("isolated runtime owner changed")
+        return dormant
+
+    async def activate_dormant(
+        self, *, run_id: str, attempt_id: str, generation: int
+    ) -> RuntimeHandle:
+        """Open the execution gate only after fenced durable activation."""
+        async with self.admission_scope(run_id):
+            async with self._lock:
+                handle = self._dormant_handles.get(run_id)
+                if handle is None:
+                    raise RunRuntimeError("isolated runtime is not registered")
+                dormant = self._require_dormant_owner(
+                    handle, attempt_id, generation
+                )
+                if (
+                    self._dormant_closing
+                    or handle.cancel_event.is_set()
+                    or not handle.consumer_alive
+                ):
+                    raise RunRuntimeError("isolated runtime cannot activate")
+            await asyncio.to_thread(
+                self._run_journal().activate_run_attempt,
+                attempt_id,
+                expected_run_id=run_id,
+                expected_generation=generation,
+            )
+            async with self._lock:
+                # Cancel/close can set the event while the SQLite operation
+                # runs. A committed activation never authorizes late startup
+                # after the registered resource was already stopped.
+                if (
+                    self._dormant_closing
+                    or handle.cancel_event.is_set()
+                    or self._handles.get(run_id) is not handle
+                    or not handle.consumer_alive
+                ):
+                    raise RunRuntimeError(
+                        "isolated runtime stopped during activation"
+                    )
+                dormant.activated = True
+                dormant.gate.set()
+                return handle
+
+    async def cancel_dormant(
+        self, *, run_id: str, attempt_id: str, generation: int
+    ) -> RuntimeHandle:
+        """Wait for this runner's cleanup without using legacy finalization.
+
+        The service persists cancel intent first. runner_started=False means
+        the service must finalize the never-started owner itself. Otherwise
+        return only proves the runner exited, never that writers are settled.
+        """
+        async with self._lock:
+            handle = self._dormant_handles.get(run_id)
+            if handle is None:
+                raise RunRuntimeError("isolated runtime is not registered")
+            self._require_dormant_owner(handle, attempt_id, generation)
+        await handle.cancel()
+        return handle
+
+    async def _run_dormant(self, handle: RuntimeHandle) -> None:
+        dormant = handle._dormant
+        assert dormant is not None
+        error: Exception | None = None
+        try:
+            await dormant.gate.wait()
+            if not dormant.activated or handle.cancel_event.is_set():
+                return
+            runner = dormant.runner
+            assert runner is not None
+            dormant.runner_started = True
+            await runner(handle)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            error = RunExecutionError(
+                f"run {handle.run_id!r} isolated execution failed: {exc}"
+            )
+            logger.exception(
+                "Isolated Run runner failed", extra={"run_id": handle.run_id}
+            )
+        finally:
+            dormant.runner = None
+            handle.finish(error)
+            async with self._lock:
+                if self._handles.get(handle.run_id) is handle:
+                    self._handles.pop(handle.run_id, None)
 
     async def subscribe(
         self, run_id: str, *, max_buffer: int = _DEFAULT_SUBSCRIBER_BUFFER
@@ -506,7 +694,7 @@ class RunCoordinator:
         run = await asyncio.to_thread(self._journal.get_run, run_id)
         if run is None:
             return False, None
-        if run.status in {"completed", "failed", "cancelled"}:
+        if run.status in RUN_TERMINAL_STATES:
             # A compatibility END frame may close the renderer stream after a
             # durable cancel/failure. It is transport state, not permission to
             # rewrite the canonical Run outcome as success.
@@ -777,38 +965,42 @@ class RunCoordinator:
         Skip stops the active model/tool turn but deliberately keeps the
         Project's compatibility generator alive for follow-ups. Cancelling
         the RuntimeHandle here would cancel the pump currently executing this
-        method, so the durable cancel transition is committed directly.
+        method. Share the admission gate with canonical cancel so no durable
+        cancel intent or terminal state can overtake a preparatory worker.
         """
 
-        journal = self._run_journal()
-        await asyncio.to_thread(
-            journal.request_cancel,
-            run_id,
-            request_id=request_id,
-            reason=reason,
-        )
-        await self._settle_unsuccessful_run(run_id)
-        await self._finalize_artifacts_before_terminal(run_id)
-        cancelled = await asyncio.to_thread(
-            journal.complete_cancel,
-            run_id,
-            request_id=request_id,
-        )
-        try:
-            from app.workspace_git import get_default_workspace_git_lifecycle
-
+        async with self.admission_scope(run_id):
+            journal = self._run_journal()
             await asyncio.to_thread(
-                get_default_workspace_git_lifecycle().finalize_run, run_id
+                journal.request_cancel,
+                run_id,
+                request_id=request_id,
+                reason=reason,
             )
-        except Exception:
-            logger.exception(
-                "Cancelled turn Git finalization needs attention",
-                extra={"run_id": run_id},
+            await self._settle_unsuccessful_run(run_id)
+            await self._finalize_artifacts_before_terminal(run_id)
+            cancelled = await asyncio.to_thread(
+                journal.complete_cancel,
+                run_id,
+                request_id=request_id,
             )
-        from app.run_sync.runtime import notify_default_cloud_sync_worker
+            try:
+                from app.workspace_git import (
+                    get_default_workspace_git_lifecycle,
+                )
 
-        notify_default_cloud_sync_worker()
-        return cancelled
+                await asyncio.to_thread(
+                    get_default_workspace_git_lifecycle().finalize_run, run_id
+                )
+            except Exception:
+                logger.exception(
+                    "Cancelled turn Git finalization needs attention",
+                    extra={"run_id": run_id},
+                )
+            from app.run_sync.runtime import notify_default_cloud_sync_worker
+
+            notify_default_cloud_sync_worker()
+            return cancelled
 
     async def _settle_unsuccessful_run(self, run_id: str) -> None:
         """Stop writers on every terminal path without rewriting the outcome."""
@@ -848,12 +1040,21 @@ class RunCoordinator:
 
     async def close(self) -> None:
         async with self._lock:
+            self._dormant_closing = True
             handles = list(self._handles.values())
-            self._handles.clear()
+            # Isolated owners remain locatable until their runner cleanup
+            # finishes. Legacy consumers keep their existing disposal order.
+            for handle in handles:
+                if handle._dormant is None:
+                    self._handles.pop(handle.run_id, None)
         await asyncio.gather(
             *(handle.cancel() for handle in handles),
             return_exceptions=True,
         )
+        async with self._lock:
+            for run_id, handle in list(self._dormant_handles.items()):
+                if not handle.consumer_alive:
+                    self._dormant_handles.pop(run_id, None)
 
     async def _pump(
         self, handle: RuntimeHandle, stream_factory: StreamFactory
@@ -885,11 +1086,17 @@ class RunCoordinator:
                 },
             )
         except Exception as exc:
+            from app.run_journal.context_projection import ResumeContextError
+
             await self._commit_execution_terminal(
                 handle,
                 event_type="run.failed",
                 payload={
-                    "reason": "execution_backend_failure",
+                    "reason": (
+                        exc.reason
+                        if isinstance(exc, ResumeContextError)
+                        else "execution_backend_failure"
+                    ),
                     "error_type": type(exc).__name__,
                     "message": str(exc)[:4000],
                 },
@@ -952,7 +1159,7 @@ class RunCoordinator:
         from app.run_journal.models import RunEventDraft
 
         run = await asyncio.to_thread(self._journal.get_run, run_id)
-        if run is None or run.status in {"completed", "failed", "cancelled"}:
+        if run is None or run.status in RUN_TERMINAL_STATES:
             return
         try:
             await self._settle_unsuccessful_run(run_id)
@@ -1052,11 +1259,7 @@ class RunCoordinator:
                 current = await asyncio.to_thread(
                     self._journal.get_run, handle.run_id
                 )
-                if current is None or current.status in {
-                    "completed",
-                    "failed",
-                    "cancelled",
-                }:
+                if current is None or current.status in RUN_TERMINAL_STATES:
                     return
                 if current.deadline_at is None:
                     # No deadline means there is nothing to poll. Policy
@@ -1084,12 +1287,14 @@ class RunCoordinator:
                     if (
                         current is None
                         or current.deadline_at is None
-                        or current.status
-                        in {"completed", "failed", "cancelled"}
+                        or current.status in RUN_TERMINAL_STATES
                     ):
                         return
                     if time.time() < current.deadline_at:
                         continue
+                if current.cancel_request_id is not None:
+                    # A persisted cancel intent wins; cancel ends the Run.
+                    return
                 attempt = (
                     await asyncio.to_thread(
                         self._journal.get_run_attempt,

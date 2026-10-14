@@ -242,6 +242,18 @@ function LegacyWorkflowDialogContent({
       initialPage={workflow}
       initialWorkspaceBundleHandle={initialHandle || undefined}
       initialWorkspaceBundleProposalId={initialProposalId || undefined}
+      onWorkspaceBundleProposalChange={(proposalId, handle) => {
+        const next = new URLSearchParams(searchParams);
+        if (proposalId) next.set('proposal', proposalId);
+        else next.delete('proposal');
+        if (handle) next.set('handle', handle);
+        else next.delete('handle');
+        const state = { ...location.state };
+        delete state.proposal;
+        delete state.proposalId;
+        delete state.handle;
+        setSearchParams(next, { replace: true, state });
+      }}
       initialAgentPluginTargetSpaceId={initialTargetSpaceId}
       agentPluginTargetMode="existing"
     />

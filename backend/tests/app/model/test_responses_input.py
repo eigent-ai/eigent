@@ -26,6 +26,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from camel.models import ModelFactory
+from camel.societies.workforce.utils import TaskAssignResult
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 from PIL import Image
 
@@ -223,6 +224,81 @@ async def invoke(backend, messages, asynchronous):
             [chunk async for chunk in result] if asynchronous else list(result)
         )
     return result
+
+
+@pytest.mark.parametrize("route", ROUTES)
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.asyncio
+async def test_workforce_assignment_schema_reaches_responses_sdk(
+    make_backend, route, asynchronous, stream
+):
+    original_schema = deepcopy(TaskAssignResult.model_json_schema())
+    assignment = {
+        "assignments": [
+            {
+                "task_id": "task-1",
+                "assignee_id": "worker-1",
+                "dependencies": [],
+            }
+        ]
+    }
+
+    def respond(request):
+        body = json.loads(request.content)
+        schema = body["text"]["format"]["schema"]
+        item_schema = schema["$defs"]["TaskAssignment"]
+        assert set(item_schema["required"]) == set(item_schema["properties"])
+        assert item_schema["additionalProperties"] is False
+        assert body["text"]["format"]["strict"] is True
+        payload = completion_payload()
+        payload["output"][0]["content"][0]["text"] = json.dumps(assignment)
+        if body.get("stream"):
+            events = [
+                {
+                    "type": "response.created",
+                    "response": {**payload, "output": []},
+                },
+                {
+                    "type": "response.output_text.delta",
+                    "item_id": "msg_fixture",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": json.dumps(assignment),
+                },
+                {"type": "response.completed", "response": payload},
+            ]
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                text="".join(
+                    f"data: {json.dumps(event)}\n\n" for event in events
+                ),
+            )
+        return httpx.Response(200, json=payload)
+
+    backend, requests = make_backend(route, stream=stream, handler=respond)
+    configure_responses_input(backend)
+    configure_responses_input(backend)
+    messages = [{"role": "user", "content": "Assign task-1 to worker-1"}]
+    if asynchronous:
+        result = await backend.arun(messages, response_format=TaskAssignResult)
+    else:
+        result = backend.run(messages, response_format=TaskAssignResult)
+    if backend.model_config_dict.get("stream"):
+        chunks = (
+            [chunk async for chunk in result] if asynchronous else list(result)
+        )
+        content = "".join(
+            chunk.choices[0].delta.content or ""
+            for chunk in chunks
+            if chunk.choices
+        )
+    else:
+        content = result.choices[0].message.content
+    assert json.loads(content) == assignment
+    assert len(requests) == 1
+    assert TaskAssignResult.model_json_schema() == original_schema
 
 
 @pytest.mark.parametrize("route", ["openai", "openai-compatible-model"])

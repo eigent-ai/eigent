@@ -12,6 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import hashlib
+import json
 import logging
 from datetime import datetime
 from uuid import uuid4
@@ -33,6 +35,7 @@ from app.model.project import (
     ProjectUpdate,
     ProjectWorkdirMode,
 )
+from app.model.project.project import PROJECT_CREATION_INTENT_KEY
 from app.model.space import Space, SpaceIn, SpaceOut, SpaceSourceType, SpaceStatus, SpaceUpdate
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,9 +45,11 @@ class SpaceHasProjectsError(ValueError):
     def __init__(self, project_count: int, projects: list[dict[str, str]]) -> None:
         self.project_count = project_count
         self.projects = projects
-        super().__init__(
-            f"Space has {project_count} project(s); archive or delete them first"
-        )
+        super().__init__(f"Space has {project_count} project(s); archive or delete them first")
+
+
+class ProjectModelAdmissionConflictError(ValueError):
+    pass
 
 
 class SpaceService:
@@ -106,7 +111,8 @@ class SpaceService:
         placeholder_projects = [
             project
             for project in projects
-            if not (project.metadata_json or {}).get("nameSource") and SpaceService._project_name_is_placeholder(
+            if not (project.metadata_json or {}).get("nameSource")
+            and SpaceService._project_name_is_placeholder(
                 project.name,
                 project.id,
             )
@@ -219,9 +225,7 @@ class SpaceService:
             raise ValueError("Invalid Space status")
 
     @staticmethod
-    def _prepare_space_root(
-        data: SpaceIn, user_id: str, s: Session
-    ) -> tuple[str | None, dict | None]:
+    def _prepare_space_root(data: SpaceIn, user_id: str, s: Session) -> tuple[str | None, dict | None]:
         if data.source_type == SpaceSourceType.FOLDER:
             root_ref = normalize_folder_root_reference(data.root_path or "")
             existing_spaces = s.exec(
@@ -267,9 +271,7 @@ class SpaceService:
                 raise ValueError("Folder is already bound to another Space")
 
     @staticmethod
-    def _folder_identity_matches(
-        previous: dict | None, current: dict
-    ) -> bool:
+    def _folder_identity_matches(previous: dict | None, current: dict) -> bool:
         if not previous:
             return True
         if previous.get("kind") != current.get("kind"):
@@ -331,10 +333,7 @@ class SpaceService:
         if projects:
             raise SpaceHasProjectsError(
                 len(projects),
-                [
-                    {"id": project.id, "name": project.name}
-                    for project in projects[:10]
-                ],
+                [{"id": project.id, "name": project.name} for project in projects[:10]],
             )
         s.delete(space)
         s.commit()
@@ -388,20 +387,13 @@ class SpaceService:
         root_ref = normalize_folder_root_reference(root_path)
         if not force:
             if root_fingerprint and space.root_fingerprint:
-                if not SpaceService._folder_identity_matches(
-                    space.root_fingerprint, root_fingerprint
-                ):
-                    raise ValueError(
-                        "Relocated folder identity does not match this Space"
-                    )
-            elif space.root_path and not same_folder_reference(
-                space.root_path, root_ref
-            ):
+                if not SpaceService._folder_identity_matches(space.root_fingerprint, root_fingerprint):
+                    raise ValueError("Relocated folder identity does not match this Space")
+            elif space.root_path and not same_folder_reference(space.root_path, root_ref):
                 # No fingerprint available on either side: require the caller
                 # to acknowledge the change with force=True.
                 raise ValueError(
-                    "Relocated folder identity cannot be verified; "
-                    "supply root_fingerprint or use force=True"
+                    "Relocated folder identity cannot be verified; supply root_fingerprint or use force=True"
                 )
         SpaceService._assert_folder_not_bound_to_other_space(
             user_id=canonical_user_id,
@@ -494,8 +486,7 @@ class SpaceService:
             name=display_name[:255] or f"Project {project_id}",
             description=description,
             mode=mode,
-            workdir_mode=workdir_mode
-            or SpaceService._default_project_workdir_mode(space),
+            workdir_mode=workdir_mode or SpaceService._default_project_workdir_mode(space),
             metadata_json=metadata,
         )
         try:
@@ -531,16 +522,8 @@ class SpaceService:
     @staticmethod
     def list_spaces(user_id: int | str, s: Session) -> list[SpaceOut]:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
-        spaces = s.exec(
-            select(Space)
-            .where(Space.user_id == canonical_user_id)
-            .order_by(Space.updated_at.desc())
-        ).all()
-        legacy_space_ids = [
-            space.id
-            for space in spaces
-            if space.source_type == SpaceSourceType.LEGACY
-        ]
+        spaces = s.exec(select(Space).where(Space.user_id == canonical_user_id).order_by(Space.updated_at.desc())).all()
+        legacy_space_ids = [space.id for space in spaces if space.source_type == SpaceSourceType.LEGACY]
         if legacy_space_ids:
             legacy_space_ids_with_projects = set(
                 s.exec(
@@ -553,8 +536,7 @@ class SpaceService:
             spaces = [
                 space
                 for space in spaces
-                if space.source_type != SpaceSourceType.LEGACY
-                or space.id in legacy_space_ids_with_projects
+                if space.source_type != SpaceSourceType.LEGACY or space.id in legacy_space_ids_with_projects
             ]
         return [SpaceOut.from_model(space) for space in spaces]
 
@@ -596,6 +578,11 @@ class SpaceService:
         space = SpaceService._get_owned_space(space_id, canonical_user_id, s)
         SpaceService._validate_project_payload(data.mode, data.status, data.workdir_mode)
 
+        if PROJECT_CREATION_INTENT_KEY in (data.metadata or {}):
+            raise ValueError("Project creation receipt is server-owned")
+        if data.space_id is not None and data.space_id != space_id:
+            raise ValueError("Project Space differs from the creation target")
+
         project_id = data.id or f"project_{uuid4().hex}"
         project = Project(
             id=project_id,
@@ -605,12 +592,70 @@ class SpaceService:
             description=data.description,
             mode=data.mode,
             status=data.status,
-            workdir_mode=data.workdir_mode
-            or SpaceService._default_project_workdir_mode(space),
+            workdir_mode=data.workdir_mode or SpaceService._default_project_workdir_mode(space),
             metadata_json=data.metadata,
         )
+        # Compare the original creation intent, not mutable name/settings/status.
+        # The receipt lives in the existing JSON column and is never client-writable.
+        creation_intent = hashlib.sha256(
+            json.dumps(
+                {
+                    **data.model_dump(exclude={"id", "space_id"}),
+                    "id": project_id,
+                    "user_id": canonical_user_id,
+                    "space_id": space_id,
+                    "name": project.name,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+
+        def recover(existing: Project) -> Project:
+            if existing.user_id != canonical_user_id or existing.space_id != space_id:
+                raise ValueError("Project id already belongs to another creation target")
+            receipt = (existing.metadata_json or {}).get(PROJECT_CREATION_INTENT_KEY)
+            if receipt is not None:
+                matches = receipt == creation_intent
+            else:
+                # Pre-receipt rows retain the strict old collision check. There is
+                # no evidence permitting reconstruction from subsequently edited data.
+                fields = ("name", "description", "mode", "status", "workdir_mode", "metadata_json")
+                matches = all(getattr(existing, field) == getattr(project, field) for field in fields)
+            if not matches:
+                raise ValueError("Project id already exists with a different creation intent")
+            return existing
+
+        existing = s.get(Project, project_id)
+        if existing is not None:
+            return recover(existing)
+        project.metadata_json = {**(data.metadata or {}), PROJECT_CREATION_INTENT_KEY: creation_intent}
         s.add(project)
-        s.commit()
+        try:
+            s.commit()
+        except IntegrityError as error:
+            s.rollback()
+            # Only the Project identity constraints may be recovered. Foreign
+            # key, other unique/check constraints and unrelated failures still fail.
+            original = error.orig
+            sqlite_duplicate = getattr(original, "sqlite_errorcode", None) in {1555, 2067} and str(original) in {
+                f"UNIQUE constraint failed: {Project.__tablename__}.id",
+                f"UNIQUE constraint failed: {Project.__tablename__}.user_id, {Project.__tablename__}.id",
+            }
+            postgres_duplicate = (
+                getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+            ) == "23505" and getattr(getattr(original, "diag", None), "constraint_name", None) in {
+                Project.__table__.primary_key.name or f"{Project.__tablename__}_pkey",
+                "uix_project_user_id_id",
+            }
+            if not (sqlite_duplicate or postgres_duplicate):
+                raise
+            winner = s.get(Project, project_id)
+            if winner is None:
+                raise
+            return recover(winner)
         s.refresh(project)
         return project
 
@@ -642,19 +687,69 @@ class SpaceService:
     ) -> Project:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
         SpaceService._get_owned_space(space_id, canonical_user_id, s)
-        SpaceService._validate_project_payload(status=data.status, workdir_mode=data.workdir_mode)
-        project = s.exec(
-            select(Project).where(
-                Project.id == project_id,
-                Project.user_id == canonical_user_id,
-                Project.space_id == space_id,
-            )
-        ).first()
+        SpaceService._validate_project_payload(mode=data.mode, status=data.status, workdir_mode=data.workdir_mode)
+        project_scope = (
+            Project.id == project_id,
+            Project.user_id == canonical_user_id,
+            Project.space_id == space_id,
+        )
+        # Lock before reading/merging metadata. A no-op UPDATE takes a database
+        # write lock on SQLite too, where SELECT FOR UPDATE is ignored. Every
+        # PATCH participates, so an already-dispatched cleanup cannot overwrite
+        # a newer receipt, model pin, or unrelated metadata from another PATCH.
+        s.execute(
+            update(Project)
+            .where(*project_scope)
+            .values(updated_at=Project.updated_at)
+            .execution_options(synchronize_session=False)
+        )
+        project = s.exec(select(Project).where(*project_scope).execution_options(populate_existing=True)).first()
         if not project:
             raise ValueError("Project not found")
 
         update_data = data.model_dump(exclude_unset=True)
+        expected_run_id = update_data.pop("expected_model_admission_run_id", None)
+        expected_revision = update_data.pop("expected_model_admission_revision", None)
+        revision = update_data.pop("model_admission_revision", None)
+        current_metadata = project.metadata_json or {}
+        current_revision = current_metadata.get("spaceModelAdmissionRevision")
         metadata = update_data.pop("metadata", None)
+        if PROJECT_CREATION_INTENT_KEY in (metadata or {}):
+            raise ValueError("Project creation receipt is server-owned")
+        if revision is not None:
+            # Both assignment and cleanup compare the entire receipt generation.
+            # Keep the revision after null so an old request cannot exploit ABA.
+            if (
+                current_metadata.get("modelSelection")
+                or current_revision != expected_revision
+                or current_metadata.get("spaceModelAdmissionRunId") != expected_run_id
+            ):
+                s.commit()
+                s.refresh(project)
+                return project
+            metadata = {**metadata, "spaceModelAdmissionRevision": revision}
+        elif expected_run_id is not None and (
+            current_revision is not None
+            or current_metadata.get("spaceModelAdmissionRunId") != expected_run_id
+            or current_metadata.get("modelSelection")
+        ):
+            # A stale cleanup is an idempotent no-op, including a retry whose
+            # first response was lost. Never clear another Run's recovery hint.
+            s.commit()
+            s.refresh(project)
+            return project
+        elif metadata is not None:
+            metadata = dict(metadata)
+            metadata.pop("spaceModelAdmissionRevision", None)
+            if "modelSelection" in metadata:
+                # Pin/unpin also invalidates every older in-flight transition.
+                metadata["spaceModelAdmissionRevision"] = uuid4().hex
+            elif (
+                current_revision is not None
+                and "spaceModelAdmissionRunId" in metadata
+                and metadata["spaceModelAdmissionRunId"] != current_metadata.get("spaceModelAdmissionRunId")
+            ):
+                raise ProjectModelAdmissionConflictError("Model admission requires a versioned transition")
         for key, value in update_data.items():
             if key == "name" and isinstance(value, str):
                 value = value.strip() or project.name
@@ -701,8 +796,7 @@ class SpaceService:
         project.workdir_mode = ProjectWorkdirMode.COPY
         project.metadata_json = {
             **previous_metadata,
-            "promotedFromSpaceId": previous_metadata.get("promotedFromSpaceId")
-            or previous_space_id,
+            "promotedFromSpaceId": previous_metadata.get("promotedFromSpaceId") or previous_space_id,
         }
         s.add(project)
         s.commit()

@@ -50,12 +50,14 @@ const ContentHeaderFrameContext = createContext<{
 
 /** Focus a page heading when its DOM node or represented page changes. */
 export function useFocusContentHeading(pageKey?: unknown) {
+  const isPresent = useIsPresent();
   const previousNode = useRef<HTMLHeadingElement | null>(null);
   const previousPageKey = useRef<unknown>();
   return useCallback(
     (node: HTMLHeadingElement | null) => {
       if (
         node &&
+        isPresent &&
         (node !== previousNode.current || pageKey !== previousPageKey.current)
       ) {
         node.focus({ preventScroll: true });
@@ -63,7 +65,7 @@ export function useFocusContentHeading(pageKey?: unknown) {
       previousNode.current = node;
       previousPageKey.current = pageKey;
     },
-    [pageKey]
+    [isPresent, pageKey]
   );
 }
 

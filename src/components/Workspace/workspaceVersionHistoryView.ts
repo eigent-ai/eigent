@@ -17,6 +17,8 @@ import type { WorkspaceGitBranch } from '@/service/workspaceGitApi';
 const PROJECT_REF_PREFIX = 'refs/heads/eigent/project/';
 const ACTIVE_RUN_REF = /^refs\/heads\/eigent\/(run|agent)\/([^/]+)/;
 const ARCHIVED_RUN_REF = /^refs\/eigent\/archive\/runs\/([^/]+)\//;
+const DIRECT_TASK_REF =
+  /^refs\/eigent\/tasks\/[0-9a-f]{32}\/(completed|recovery-failed|recovery-cancelled)$/;
 
 export interface WorkspaceTaskVersion {
   id: string;
@@ -34,9 +36,14 @@ export interface WorkspaceVersionHistoryView {
 }
 
 const newestFirst = (left: WorkspaceGitBranch, right: WorkspaceGitBranch) =>
-  right.committed_at - left.committed_at;
+  right.committed_at - left.committed_at || left.ref.localeCompare(right.ref);
 
-const runGroupId = (ref: string) => {
+const isDirectTaskVersion = (branch: WorkspaceGitBranch) =>
+  DIRECT_TASK_REF.test(branch.ref) && !!branch.project_id && !!branch.run_id;
+
+const runGroupId = (branch: WorkspaceGitBranch) => {
+  const { ref } = branch;
+  if (isDirectTaskVersion(branch)) return `direct:${branch.run_id}`;
   const archived = ref.match(ARCHIVED_RUN_REF);
   if (archived) return `archived:${archived[1]}`;
   const active = ref.match(ACTIVE_RUN_REF);
@@ -55,6 +62,19 @@ export const buildWorkspaceVersionHistoryView = (
   const projectVersions = branches
     .filter((branch) => branch.ref.startsWith(PROJECT_REF_PREFIX))
     .sort(newestFirst);
+  // Direct Tasks have no Session integration branch. Use the newest retained
+  // Task boundary for that Session, merging with any existing managed version.
+  for (const branch of branches.filter(isDirectTaskVersion).sort(newestFirst)) {
+    const index = projectVersions.findIndex(
+      (version) => version.project_id === branch.project_id
+    );
+    if (index === -1) {
+      projectVersions.push(branch);
+    } else if (branch.committed_at > projectVersions[index].committed_at) {
+      projectVersions[index] = branch;
+    }
+  }
+  projectVersions.sort(newestFirst);
   const currentSpace =
     branches.find((branch) => branch.ref === 'refs/heads/main') ??
     branches.find(
@@ -66,7 +86,7 @@ export const buildWorkspaceVersionHistoryView = (
 
   const groupedRuns = new Map<string, WorkspaceGitBranch[]>();
   for (const branch of branches) {
-    const id = runGroupId(branch.ref);
+    const id = runGroupId(branch);
     if (!id) continue;
     const references = groupedRuns.get(id) ?? [];
     references.push(branch);
@@ -84,7 +104,10 @@ export const buildWorkspaceVersionHistoryView = (
       references,
       agentCount: references.filter((candidate) => isAgentRef(candidate.ref))
         .length,
-      archived: references.every((candidate) => candidate.archived),
+      // Direct refs retain terminal boundaries; they are not active branches.
+      archived: references.every(
+        (candidate) => candidate.archived || isDirectTaskVersion(candidate)
+      ),
     };
   }).sort((left, right) => newestFirst(left.branch, right.branch));
 

@@ -253,7 +253,7 @@ function fallbackModels(): CloudModel[] {
   return LEGACY_CLOUD_MODELS.map((model) => ({ ...model }));
 }
 
-function normalizeModel(raw: unknown): CloudModel | null {
+export function normalizeModel(raw: unknown): CloudModel | null {
   if (!raw || typeof raw !== 'object') return null;
   const model = raw as Partial<CloudModel>;
   if (
@@ -377,6 +377,55 @@ function etagHeaderForVersion(version: string): Record<string, string> {
   return normalized ? { 'If-None-Match': `"${normalized}"` } : {};
 }
 
+export function resolveCloudModelFromCatalog(
+  {
+    models,
+    retired,
+    defaultModelId,
+  }: Pick<CloudModelState, 'models' | 'retired' | 'defaultModelId'>,
+  modelId?: string | null
+): ResolvedCloudModel | null {
+  const requestedModelId =
+    typeof modelId === 'string' && modelId.length > 0 ? modelId : undefined;
+  const selected = requestedModelId
+    ? models.find((model) => model.id === requestedModelId)
+    : undefined;
+  if (selected) {
+    return {
+      model: selected,
+      source: 'selected',
+      requestedModelId,
+    };
+  }
+
+  const retiredModel = requestedModelId
+    ? retired.find((model) => model.id === requestedModelId)
+    : undefined;
+  const replacement = retiredModel?.replaced_by_model_id
+    ? models.find((model) => model.id === retiredModel.replaced_by_model_id)
+    : undefined;
+  if (replacement) {
+    return {
+      model: replacement,
+      source: 'replaced',
+      requestedModelId,
+    };
+  }
+
+  const defaultModel =
+    models.find((model) => model.id === defaultModelId) ||
+    models.find((model) => model.is_default) ||
+    models[0] ||
+    null;
+  return defaultModel
+    ? {
+        model: defaultModel,
+        source: 'default',
+        requestedModelId,
+      }
+    : null;
+}
+
 export const useCloudModelStore = create<CloudModelState>()(
   persist(
     (set, get) => ({
@@ -490,52 +539,8 @@ export const useCloudModelStore = create<CloudModelState>()(
         return cloudModelsRefreshPromise;
       },
 
-      resolveCloudModel: (modelId) => {
-        const { models, retired, defaultModelId } = get();
-        const requestedModelId =
-          typeof modelId === 'string' && modelId.length > 0
-            ? modelId
-            : undefined;
-        const selected = requestedModelId
-          ? models.find((model) => model.id === requestedModelId)
-          : undefined;
-        if (selected) {
-          return {
-            model: selected,
-            source: 'selected',
-            requestedModelId,
-          };
-        }
-
-        const retiredModel = requestedModelId
-          ? retired.find((model) => model.id === requestedModelId)
-          : undefined;
-        const replacement = retiredModel?.replaced_by_model_id
-          ? models.find(
-              (model) => model.id === retiredModel.replaced_by_model_id
-            )
-          : undefined;
-        if (replacement) {
-          return {
-            model: replacement,
-            source: 'replaced',
-            requestedModelId,
-          };
-        }
-
-        const defaultModel =
-          models.find((model) => model.id === defaultModelId) ||
-          models.find((model) => model.is_default) ||
-          models[0] ||
-          null;
-        return defaultModel
-          ? {
-              model: defaultModel,
-              source: 'default',
-              requestedModelId,
-            }
-          : null;
-      },
+      resolveCloudModel: (modelId) =>
+        resolveCloudModelFromCatalog(get(), modelId),
 
       getModelDisplayName: (modelId) => {
         const resolved = get().resolveCloudModel(modelId);

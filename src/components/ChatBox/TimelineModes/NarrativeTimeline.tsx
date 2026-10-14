@@ -14,6 +14,7 @@
 
 import { AgentMessageCard } from '@/components/ChatBox/MessageItem/AgentMessageCard';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
+import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
@@ -184,6 +185,7 @@ function groupNarrativeWork(
 function workLogSummaryI18nKey(run: TimelineRunView): string {
   if (isActiveRunStatus(run.status)) return 'chat.working-on-tasks-for';
   if (run.status === 'failed') return 'chat.failed-after';
+  if (run.status === 'timed_out') return 'chat.timed-out-after';
   if (run.status === 'interrupted') return 'chat.interrupted-after';
   if (run.status === 'cancelled') return 'chat.stopped-after';
   return 'chat.worked-for';
@@ -667,6 +669,7 @@ function NarrativeNotice({
   const { node } = item;
   const reason = taskErrorReason(node);
   if (reason) return <TaskErrorNotice reason={reason} />;
+  if (node.writerWait) return <SpaceWaitNotice wait={node.writerWait} />;
   return (
     <span
       className={cn(

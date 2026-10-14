@@ -357,6 +357,10 @@ are:
 The primitive owns label, placeholder, validation, disabled, focus, radius,
 and inset behavior. Validation tone is independent from interaction state.
 
+Use `SelectContent fitTrigger` for menus with long option labels. This shared
+recipe bounds the popper to its trigger and Radix collision width and lets
+option text wrap within that space.
+
 Use `Textarea variant="outlined"` for a multiline field with the same visible
 border and validation colors as `Input`.
 

@@ -434,7 +434,82 @@ def test_approval_with_explicit_pending_child_step_blocks_that_child(tmp_path):
         assert snapshots[child_step_id].status == "blocked"
 
 
-def test_generic_interaction_blocks_resume_after_restart(tmp_path):
+@pytest.mark.parametrize("requested_by", ["agent:worker", "agent"])
+@pytest.mark.parametrize("kept_waiting_by_earlier_startup", [False, True])
+def test_restart_interrupts_an_unanswered_agent_question_and_resume_asks_again(
+    tmp_path, requested_by, kept_waiting_by_earlier_startup
+):
+    path = tmp_path / "journal.sqlite3"
+    question = dict(
+        run_id="run-1",
+        interaction_type="question",
+        request={"question": "Which file?", "agent": "worker"},
+        requested_by=requested_by,
+    )
+    with SQLiteRunJournal(path) as journal:
+        attempt = _running_attempt(journal)
+        journal.create_human_interaction(
+            interaction_id="question-1",
+            attempt_id=attempt.attempt_id,
+            now=3,
+            **question,
+        )
+    if kept_waiting_by_earlier_startup:
+        # Earlier versions detached only the Attempt and kept the Run waiting
+        # on its Project execution lease.
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                """
+                UPDATE run_attempts
+                SET status = 'interrupted', ended_at = 3,
+                    outcome = 'runtime.interrupted'
+                WHERE attempt_id = ?
+                """,
+                (attempt.attempt_id,),
+            )
+            connection.execute(
+                "UPDATE runs SET active_attempt_id = NULL WHERE run_id = 'run-1'"
+            )
+
+    with SQLiteRunJournal(path) as reopened:
+        result = reopened.reconcile_startup(now=4)
+
+        assert reopened.get_human_interaction("question-1").status == (
+            "cancelled"
+        )
+        decisions = reopened.list_human_interaction_decisions("question-1")
+        assert [decision.decision for decision in decisions] == [
+            {"decision": "cancelled", "reason": "brain_restart"}
+        ]
+        run = reopened.get_run("run-1")
+        assert (run.status, run.terminal_reason) == (
+            "interrupted",
+            "brain_restart",
+        )
+        assert result.interrupted_run_ids == ("run-1",)
+        assert reopened.get_active_project_run("project-1") is None
+
+        resumed = reopened.create_run_attempt(
+            "run-1",
+            request_id="resume-1",
+            reason="explicit_resume",
+            activate=True,
+            now=5,
+        )
+        asked_again = reopened.create_human_interaction(
+            interaction_id="question-2",
+            attempt_id=resumed.attempt_id,
+            now=6,
+            **question,
+        )
+        assert asked_again.status == "requested"
+        assert reopened.get_run("run-1").status == "waiting_for_user"
+
+
+@pytest.mark.parametrize("durable_request", ["merge_conflict", "approval"])
+def test_restart_keeps_system_requests_and_approvals_waiting(
+    tmp_path, durable_request
+):
     path = tmp_path / "journal.sqlite3"
     with SQLiteRunJournal(path) as journal:
         attempt = _running_attempt(journal)
@@ -443,20 +518,47 @@ def test_generic_interaction_blocks_resume_after_restart(tmp_path):
             run_id="run-1",
             attempt_id=attempt.attempt_id,
             interaction_type="question",
-            request={"question": "Continue?"},
+            request={"question": "Which file?", "agent": "worker"},
+            requested_by="agent:worker",
             now=3,
         )
+        if durable_request == "merge_conflict":
+            journal.create_human_interaction(
+                interaction_id="durable-1",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                interaction_type="merge_conflict",
+                request={"title": "Agent changes need conflict resolution"},
+                options=[{"id": "keep_run", "label": "Keep Run version"}],
+                requested_by="workspace_git",
+                now=4,
+            )
+        else:
+            journal.create_approval(
+                approval_id="durable-1",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                prompt={"question": "Allow write?"},
+                now=4,
+            )
 
     with SQLiteRunJournal(path) as reopened:
-        reopened.reconcile_startup(now=4)
-        with pytest.raises(
-            InvalidRunTransitionError, match="pending human interactions"
-        ):
+        reopened.reconcile_startup(now=5)
+
+        assert reopened.get_human_interaction("question-1").status == (
+            "cancelled"
+        )
+        assert reopened.get_human_interaction("durable-1").status == (
+            "requested"
+        )
+        assert reopened.get_run("run-1").status == "waiting_for_user"
+        assert reopened.get_active_project_run("project-1").run_id == "run-1"
+        with pytest.raises(InvalidRunTransitionError, match="durable-1"):
             reopened.create_run_attempt(
                 "run-1",
                 request_id="resume-1",
                 reason="explicit_resume",
-                now=5,
+                now=6,
             )
 
 

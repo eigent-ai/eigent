@@ -13,7 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { FileViewerPanel } from '@/components/Folder';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { HostProvider } from '@/host';
+import type { SubframeLoadFailure } from '@/shared/subframeLoadFailure';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -247,21 +249,83 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
 
-  it.each([386, 1000])(
+  it.each([1000, 1024 * 1024 + 1])(
     'keeps the complete-file warning visibly beside the preview for a %s byte file',
     (totalBytes) => {
       renderViewer(
         textFile({
-          preview: { kind: 'truncated-text', bytesRead: 386, totalBytes },
+          preview: {
+            kind: 'text',
+            completeness: 'truncated',
+            bytesRead: 386,
+            totalBytes,
+          },
         })
       );
       const notice = screen.getByText(
-        `Previewing 386 B of ${totalBytes} B. The complete file was not loaded.`
+        /Previewing 386 B of .+\. The complete file was not loaded\./
       );
       expect(notice.closest('header')).toBeNull();
       expect(notice).toHaveAttribute('aria-live', 'polite');
     }
   );
+
+  it.each([0, 10])(
+    'does not warn for complete %i B unknown-extension text',
+    (bytes) => {
+      renderViewer(
+        textFile({
+          name: 'unsupported.xyz',
+          type: 'xyz',
+          content: bytes ? 'weird ext\n' : '',
+          preview: {
+            kind: 'text',
+            completeness: 'complete',
+            bytesRead: bytes,
+            totalBytes: bytes,
+          },
+        })
+      );
+      expect(screen.queryByText(/Previewing/)).toBeNull();
+      expect(screen.getByTestId('source-code-viewer')).toBeInTheDocument();
+    }
+  );
+
+  it('shows a neutral byte summary when completeness is unknown', () => {
+    renderViewer(
+      textFile({
+        preview: {
+          kind: 'text',
+          completeness: 'unknown',
+          bytesRead: 10,
+          totalBytes: null,
+        },
+      })
+    );
+    expect(screen.getByText('Previewing 10 B')).toHaveAttribute(
+      'aria-live',
+      'polite'
+    );
+    expect(screen.queryByText(/complete file was not loaded/)).toBeNull();
+  });
+
+  it('warns when distinct byte counts round to the same formatted size', () => {
+    renderViewer(
+      textFile({
+        preview: {
+          kind: 'text',
+          completeness: 'truncated',
+          bytesRead: 1048576,
+          totalBytes: 1048577,
+        },
+      })
+    );
+    expect(
+      screen.getByText(
+        'Previewing 1.00 MiB of 1.00 MiB. The complete file was not loaded.'
+      )
+    ).toBeInTheDocument();
+  });
 
   it('renders ordinary text through the shared source viewer', () => {
     renderViewer(textFile());
@@ -463,6 +527,123 @@ describe('FileViewerPanel toolbar', () => {
       ).toBeNull();
       unmount();
     }
+  });
+
+  describe('when the PDF frame fails to load', () => {
+    const pdfUrl =
+      'http://localhost:5001/files/stream?path=docs%2Freport.pdf&project_id=p1';
+    const pdfFile = textFile({
+      name: 'report.pdf',
+      type: 'pdf',
+      path: pdfUrl,
+      content: pdfUrl,
+      isRemote: true,
+      preview: { kind: 'range-pdf', size: 647 },
+    });
+
+    function renderWithFrameFailures(
+      file: ViewerFile,
+      overrides: Partial<ComponentProps<typeof FileViewerPanel>> = {}
+    ) {
+      const listeners = new Set<(failure: SubframeLoadFailure) => void>();
+      const unsubscribe = vi.fn();
+      const host = {
+        electronAPI: {
+          onSubframeLoadFailed: (
+            callback: (failure: SubframeLoadFailure) => void
+          ) => {
+            listeners.add(callback);
+            return () => {
+              unsubscribe();
+              listeners.delete(callback);
+            };
+          },
+        },
+        ipcRenderer: null,
+      };
+      const viewer = (selectedFile: ViewerFile) => (
+        <HostProvider host={host}>
+          <FileViewerPanel
+            selectedFile={selectedFile}
+            loading={false}
+            isShowSourceCode={false}
+            breadcrumbSegments={['Workspace', selectedFile.name]}
+            projectFiles={[]}
+            {...callbacks}
+            {...overrides}
+          />
+        </HostProvider>
+      );
+      const result = render(viewer(file));
+      const reportFailure = (failure: SubframeLoadFailure) =>
+        act(() => listeners.forEach((listener) => listener(failure)));
+      return {
+        ...result,
+        listeners,
+        unsubscribe,
+        reportFailure,
+        showFile: (next: ViewerFile) => result.rerender(viewer(next)),
+      };
+    }
+
+    it('replaces the blank frame with a message and the external-open action', async () => {
+      const { container, reportFailure } = renderWithFrameFailures(pdfFile);
+      expect(container.querySelector('iframe')).toHaveAttribute('src', pdfUrl);
+      expect(
+        screen.queryByRole('button', { name: 'Open externally' })
+      ).toBeNull();
+
+      reportFailure({ url: pdfUrl, errorCode: -27 });
+
+      expect(container.querySelector('iframe')).toBeNull();
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('Preview not loaded');
+      expect(alert).toHaveTextContent(
+        'This PDF could not be displayed here. Open it in another app instead.'
+      );
+      await userEvent
+        .setup()
+        .click(screen.getByRole('button', { name: 'Open externally' }));
+      expect(callbacks.onOpenExternalFile).toHaveBeenCalledOnce();
+    });
+
+    it('keeps Show in Finder as the primary action beside the fallback', () => {
+      const { reportFailure } = renderWithFrameFailures(pdfFile, {
+        canRevealFile: true,
+      });
+      reportFailure({ url: pdfUrl, errorCode: -27 });
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Show in folder' })
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Open in' })).toBeEnabled();
+    });
+
+    it('ignores failures reported for other frames', () => {
+      const { container, reportFailure } = renderWithFrameFailures(pdfFile);
+      reportFailure({
+        url: 'http://localhost:5001/files/stream?path=docs%2Fother.pdf',
+        errorCode: -27,
+      });
+      expect(container.querySelector('iframe')).toHaveAttribute('src', pdfUrl);
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('loads the frame again when the PDF is selected again', () => {
+      const { container, reportFailure, showFile, unsubscribe, unmount } =
+        renderWithFrameFailures(pdfFile);
+      reportFailure({ url: pdfUrl, errorCode: -27 });
+      expect(container.querySelector('iframe')).toBeNull();
+
+      showFile(textFile());
+      expect(unsubscribe).toHaveBeenCalledOnce();
+      showFile(pdfFile);
+      expect(container.querySelector('iframe')).toHaveAttribute('src', pdfUrl);
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      unmount();
+      expect(unsubscribe).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('keeps oversized PDFs in recovery instead of mounting the browser viewer', () => {

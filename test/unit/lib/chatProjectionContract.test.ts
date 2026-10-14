@@ -232,6 +232,46 @@ describe('chat projection presentation contract', () => {
 
     expect(
       adaptChatProjectionEvent(
+        event(
+          'workspace.writer.queued',
+          {
+            reason: 'holder_requires_attention',
+            blocker_task_id: 'task-private',
+            semantic_schema_version: 1,
+            display_schema_version: 1,
+            semantic: {
+              kind: 'workspace_writer',
+              subject: { type: 'writer_request', id: 'workspace-writer:run-1' },
+              lifecycle: { phase: 'requested', status: 'pending' },
+              completeness: { state: 'complete', missing_fields: [] },
+              correlation: {
+                blocker_run_id: 'run-blocker',
+                blocker_project_id: 'session-blocker',
+                blocker_reason: 'unknown_tool_outcome',
+              },
+            },
+          },
+          1
+        )
+      )
+    ).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'notice',
+        severity: 'warning',
+        title: 'Waiting for Space',
+        content: expect.stringContaining(
+          'stopped while it was changing files and needs your attention'
+        ),
+        writerWait: {
+          holderNeedsAttention: true,
+          blockerProjectId: 'session-blocker',
+        },
+      },
+    });
+
+    expect(
+      adaptChatProjectionEvent(
         event('workspace.writer.acquired', { waited: false }, 2)
       )
     ).toEqual({

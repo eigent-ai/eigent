@@ -28,8 +28,10 @@ import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { getAuthStore } from '@/store/authStore';
 import {
   ExecutionStatus,
+  ExecutionType,
   SkipReason,
   Trigger,
+  TriggerExecution,
   TriggerInput,
   TriggerStatus,
   TriggerType,
@@ -227,6 +229,17 @@ export const proxyDeactivateTrigger = async (
   }
 };
 
+/** Create a tracked manual run; the existing execution subscription admits it. */
+export const proxyRunTriggerNow = (
+  triggerId: number
+): Promise<TriggerExecution> =>
+  proxyFetchPost('/api/v1/execution/', {
+    trigger_id: triggerId,
+    execution_id: crypto.randomUUID(),
+    execution_type: ExecutionType.Manual,
+    input_data: {},
+  });
+
 // Trigger Executions
 export const proxyFetchTriggerExecutions = async (
   triggerId: number,
@@ -422,18 +435,19 @@ export function trackTriggerExecutionRun(
   return previous === undefined;
 }
 
-/** Only used for a typed rejection which proves this candidate was not admitted. */
+/** Only used when this exact candidate is known not to have been admitted. */
 export function forgetRejectedTriggerRun(
   executionId: string,
   projectId: string,
-  runId: string
+  runId: string,
+  expectedAccountKey = currentAccountKey()
 ): void {
   loadTriggerRunBindings();
   const record = triggerRunBindings.get(executionId);
   if (
     record?.projectId === projectId &&
     record.runId === runId &&
-    record.accountKey === currentAccountKey()
+    record.accountKey === expectedAccountKey
   ) {
     triggerRunBindings.delete(executionId);
     try {
@@ -489,7 +503,7 @@ async function reconcileTrackedTriggerRuns(): Promise<void> {
         const status =
           summary.status === 'completed'
             ? ExecutionStatus.Completed
-            : summary.status === 'failed'
+            : summary.status === 'failed' || summary.status === 'timed_out'
               ? ExecutionStatus.Failed
               : summary.status === 'cancelled'
                 ? ExecutionStatus.Cancelled
@@ -507,8 +521,8 @@ async function reconcileTrackedTriggerRuns(): Promise<void> {
               projectId: record.projectId,
               runId: record.runId,
               terminalEventTypes:
-                summary.status === 'failed'
-                  ? ['run.failed', 'run.deadline_reached']
+                summary.status === 'timed_out'
+                  ? ['run.deadline_reached']
                   : [`run.${summary.status}`],
               signal: controller.signal,
               expectedAccountKey: record.accountKey,

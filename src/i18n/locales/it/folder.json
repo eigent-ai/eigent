@@ -20,7 +20,7 @@
   "preview-not-loaded": "Prevedimento non caricato",
   "preview-too-large": "Il file supera il limite di prevedibilità sicura all'interno dell'applicazione",
   "preview-total-size": " di {{size}}",
-  "preview-type-unsupported": "__PH_0__",
+  "preview-type-unsupported": "Questo tipo di file non può essere visualizzato in anteprima in modo sicuro in questo ambiente.",
   "preview-view": "Anteprima",
   "review-comment-count_one": "{{count}} commento di revisione",
   "review-comment-count_other": "{{count}} commenti di revisione",
@@ -42,5 +42,6 @@
   "open-in-finder": "Apri nel Finder",
   "open-in-explorer": "Apri in Esplora file",
   "open-in-folder": "Apri nel file manager",
-  "preview-load-failed": "Impossibile visualizzare questo file. Riprova o aprilo in un’applicazione esterna."
+  "preview-load-failed": "Impossibile visualizzare questo file. Riprova o aprilo in un’applicazione esterna.",
+  "pdf-preview-failed": "Impossibile visualizzare questo PDF qui. Aprilo in un’altra applicazione."
 }

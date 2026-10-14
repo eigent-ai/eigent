@@ -126,6 +126,7 @@ async def authorize_tool_checkpoint(
                     "interaction_type": "approval",
                     "run_id": checkpoint.run_id,
                     "version": result.approval.version,
+                    "expires_at": result.approval.expires_at,
                     "approval_id": result.approval.approval_id,
                     "question": result.approval.prompt.get("question", ""),
                     "title": result.approval.prompt.get(

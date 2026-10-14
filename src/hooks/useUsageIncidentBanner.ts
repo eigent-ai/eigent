@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { UsageLimitBannerProps } from '@/components/ChatBox/BottomBox/UsageLimitBanner';
-import { errorCopy } from '@/lib/usageErrors';
+import { usageNoticeCopy } from '@/lib/trialQuotaCopy';
 import {
   activeUsageIncident,
   contactSupport,
@@ -32,7 +32,7 @@ export function useUsageIncidentBanner(
   if (modelType !== 'cloud' || !incident) return null;
   const serviceUnavailable = incident.reason === 'service';
   return {
-    message: errorCopy(incident.reason),
+    message: usageNoticeCopy(incident.reason, usage.subscription),
     description: t(
       serviceUnavailable
         ? 'chat.notice-contact-description'

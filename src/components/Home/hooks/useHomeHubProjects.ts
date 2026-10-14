@@ -12,8 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchDelete, proxyFetchPut } from '@/api/http';
+import { proxyFetchPut } from '@/api/http';
 import { useHost } from '@/host';
+import {
+  assertSessionCleanupIdentity,
+  deleteSessionTaskData,
+} from '@/lib/sessionFileCleanup';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
@@ -26,11 +30,16 @@ import {
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import type { Dispatch, SetStateAction } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { timestampFromHubValue } from '../utils';
 
 let groupedHistorySnapshot: {
   email: string | null;
   projects: ProjectGroupType[];
 } | null = null;
+
+export type SessionDeleteCallback = (options: {
+  deleteWorkdir: boolean;
+}) => Promise<void>;
 
 export function useHomeHubProjects() {
   const email = useAuthStore((s) => s.email);
@@ -149,57 +158,51 @@ export function useHomeHubProjects() {
   const handleProjectDelete = useCallback(
     (
       projectId: string,
-      onConfirm?: (callback: () => Promise<void>) => void
+      onConfirm?: (callback: SessionDeleteCallback) => void
     ) => {
-      const deleteCallback = async () => {
+      const { email: authEmail, user_id: userId } = getAuthStore();
+      const identity = { email: authEmail, userId };
+      const deleteCallback: SessionDeleteCallback = async ({
+        deleteWorkdir,
+      }) => {
         const targetProject = projects.find(
           (project) => project.project_id === projectId
         );
-
-        if (
-          targetProject &&
-          targetProject.tasks &&
-          targetProject.tasks.length > 0
-        ) {
-          for (const history of targetProject.tasks) {
-            try {
-              await proxyFetchDelete(`/api/v1/chat/history/${history.id}`);
-              const { email: authEmail } = getAuthStore();
-              if (history.task_id && ipcRenderer) {
-                try {
-                  await ipcRenderer.invoke(
-                    'delete-task-files',
-                    authEmail,
-                    history.task_id,
-                    history.project_id ?? undefined
-                  );
-                } catch (error) {
-                  console.warn(
-                    `Local file cleanup failed for task ${history.task_id}:`,
-                    error
-                  );
-                }
-              }
-            } catch (error) {
-              console.error(`Failed to delete task ${history.task_id}:`, error);
-            }
-          }
-          projectStore.removeProject(projectId);
-          setProjects((prevProjects) =>
-            prevProjects.filter((project) => project.project_id !== projectId)
+        const chatState = projectStore
+          .peekActiveChatStore(projectId)
+          ?.getState();
+        await deleteSessionTaskData({
+          projectId,
+          spaceId:
+            useSpaceStore.getState().getProjectMeta(projectId)?.spaceId ??
+            targetProject?.space_id ??
+            undefined,
+          ...identity,
+          knownTasks: [
+            ...(targetProject?.tasks ?? []),
+            ...Object.keys(chatState?.tasks ?? {}).map((taskId) => ({
+              task_id: taskId,
+              project_id: projectId,
+            })),
+          ],
+          deleteWorkdir,
+          ipcRenderer,
+        });
+        assertSessionCleanupIdentity(identity);
+        projectStore.removeProject(projectId);
+        setProjects((prevProjects) => {
+          const next = prevProjects.filter(
+            (project) => project.project_id !== projectId
           );
-        } else if (targetProject) {
-          projectStore.removeProject(projectId);
-          setProjects((prevProjects) =>
-            prevProjects.filter((project) => project.project_id !== projectId)
-          );
-        }
+          groupedHistorySnapshot = { email: authEmail, projects: next };
+          return next;
+        });
       };
 
       if (onConfirm) {
         onConfirm(deleteCallback);
       } else {
-        void deleteCallback();
+        return deleteCallback({ deleteWorkdir: false });
       }
     },
     [ipcRenderer, projectStore, projects]
@@ -233,6 +236,7 @@ export function useHomeHubProjects() {
         return {
           ...history,
           project_name: meta.name?.trim() || history.project_name,
+          nameSource: meta.metadata?.nameSource,
           space_id: meta.spaceId ?? history.space_id,
         };
       }
@@ -240,6 +244,7 @@ export function useHomeHubProjects() {
         project_id: meta.id,
         space_id: meta.spaceId,
         project_name: meta.name,
+        nameSource: meta.metadata?.nameSource,
         total_tokens: 0,
         task_count: 0,
         total_triggers: 0,
@@ -257,11 +262,11 @@ export function useHomeHubProjects() {
       (project) => !metaIds.has(project.project_id)
     );
 
-    return [...fromMetas, ...historyOnly].sort((a, b) => {
-      const aTime = new Date(a.latest_task_date || 0).getTime();
-      const bTime = new Date(b.latest_task_date || 0).getTime();
-      return bTime - aTime;
-    });
+    return [...fromMetas, ...historyOnly].sort(
+      (a, b) =>
+        timestampFromHubValue(b.latest_task_date) -
+        timestampFromHubValue(a.latest_task_date)
+    );
   }, [canonicalMetas, projects]);
 
   return {

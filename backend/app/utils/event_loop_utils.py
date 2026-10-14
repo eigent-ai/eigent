@@ -61,6 +61,11 @@ def _schedule_async_task(coro):
     This function handles scheduling from both the main event loop thread
     and from worker threads (e.g., when using asyncio.to_thread).
     """
+    from app.run_runtime.owned_tasks import current_owned_tasks
+
+    owner = current_owned_tasks()
+    if owner is not None:
+        return owner.schedule(coro)
     main_loop = _get_registered_main_loop()
     try:
         # Try to get the running loop. If this is a secondary loop, schedule

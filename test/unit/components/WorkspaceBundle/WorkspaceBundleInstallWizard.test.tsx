@@ -12,8 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -88,9 +95,11 @@ vi.mock('@/lib/scratchSpaceWorkspace', () => ({
   ensureScratchSpaceWorkspaceBinding: mocks.ensureScratch,
 }));
 
+const auth = vi.hoisted(() => ({ actorId: 'user-1' }));
+
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: (state: object) => unknown) =>
-    selector({ email: 'owner@example.com', user_id: 'user-1' }),
+    selector({ email: 'owner@example.com', user_id: auth.actorId }),
 }));
 
 vi.mock('@/store/spaceStore', () => {
@@ -273,6 +282,7 @@ function renderWizard(props: {
 describe('WorkspaceBundleInstallWizard', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    auth.actorId = 'user-1';
     Object.values(mocks).forEach((mock) => mock.mockReset());
     mocks.fetchConnected.mockResolvedValue([]);
     mocks.digest.mockResolvedValue('b'.repeat(64));
@@ -286,6 +296,645 @@ describe('WorkspaceBundleInstallWizard', () => {
     const spaceStore = useSpaceStore.getState();
     spaceStore.spaces = {};
     spaceStore.projectsBySpaceId = {};
+  });
+
+  it('restores a failed import, rejects it, and starts a different Bundle after reload', async () => {
+    const activeKey = 'eigent:workspace-bundle-active-install:v1:user-1';
+    const otherKey = 'eigent:workspace-bundle-active-install:v1:user-2';
+    const active = JSON.stringify({
+      proposalId: 'proposal-1',
+      handle: '@verified-publisher/research@1',
+    });
+    localStorage.setItem(activeKey, active);
+    localStorage.setItem(otherKey, active);
+    const failed = snapshot(true);
+    failed.proposal.state = 'needs_attention';
+    failed.proposal.error_code = 'bundle_materialization_failed';
+    mocks.fetchProposal.mockResolvedValue(failed);
+    mocks.decide.mockResolvedValue({
+      ...failed,
+      proposal: { ...failed.proposal, state: 'rejected', version: 4 },
+    });
+    const user = userEvent.setup();
+    const first = renderWizard({});
+
+    expect(
+      await screen.findByText(/bundle_materialization_failed/)
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel import' }));
+    expect(mocks.decide).toHaveBeenCalledWith({
+      proposalId: 'proposal-1',
+      expectedVersion: 3,
+      approved: false,
+      actorId: 'user-1',
+    });
+    expect(
+      await screen.findByText('Installation cancelled')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/bundle_materialization_failed/)
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'Import another Bundle' })
+    );
+    expect(localStorage.getItem(activeKey)).toBeNull();
+    expect(localStorage.getItem(otherKey)).toBe(active);
+    expect(mocks.deleteSpace).not.toHaveBeenCalled();
+    first.unmount();
+    mocks.fetchProposal.mockClear();
+    mocks.fetchReview.mockResolvedValue(review);
+    renderWizard({});
+    await user.type(
+      screen.getByRole('textbox', { name: 'Workspace Bundle share handle' }),
+      '@verified-publisher/another@2'
+    );
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(
+      await screen.findByRole('button', { name: /confirm and create/i })
+    );
+    expect(mocks.createProposal).toHaveBeenCalledWith(
+      expect.objectContaining({ slug: 'another', version: 2 })
+    );
+    expect(mocks.fetchProposal).not.toHaveBeenCalled();
+  });
+
+  it('retries the persisted proposal identity when restoration fails', async () => {
+    localStorage.setItem(
+      'eigent:workspace-bundle-active-install:v1:user-1',
+      JSON.stringify({
+        proposalId: 'proposal-1',
+        handle: '@verified-publisher/research@1',
+      })
+    );
+    mocks.fetchProposal
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockResolvedValueOnce(snapshot());
+    const user = userEvent.setup();
+    renderWizard({});
+    await screen.findByText('Offline');
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('1. Local values');
+    expect(mocks.fetchProposal).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['materializing', 'materialized'] as const)(
+    'does not cancel or reset %s imports',
+    async (state) => {
+      const current = snapshot(true);
+      current.proposal.state = state;
+      mocks.fetchProposal.mockResolvedValue(current);
+      renderWizard({ initialProposalId: 'proposal-1' });
+      await waitFor(() => expect(mocks.fetchProposal).toHaveBeenCalled());
+      expect(
+        screen.queryByRole('button', { name: 'Cancel import' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Import another Bundle' })
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it('keeps recovery and error evidence when rejection fails, then reconciles a lost response', async () => {
+    const activeKey = 'eigent:workspace-bundle-active-install:v1:user-1';
+    const active = JSON.stringify({
+      proposalId: 'proposal-1',
+      handle: '@verified-publisher/research@1',
+    });
+    localStorage.setItem(activeKey, active);
+    const failed = snapshot(true);
+    failed.proposal.state = 'needs_attention';
+    failed.proposal.error_code = 'bundle_materialization_failed';
+    mocks.fetchProposal.mockResolvedValue(failed);
+    mocks.decide.mockRejectedValue(new Error('Rejection response lost'));
+    const user = userEvent.setup();
+    renderWizard({});
+    await user.click(
+      await screen.findByRole('button', { name: 'Cancel import' })
+    );
+    expect(
+      await screen.findByText('Rejection response lost')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/bundle_materialization_failed/)
+    ).toBeInTheDocument();
+    expect(localStorage.getItem(activeKey)).toBe(active);
+    mocks.fetchProposal.mockResolvedValue({
+      ...failed,
+      proposal: { ...failed.proposal, state: 'rejected', version: 4 },
+    });
+    await user.click(screen.getByRole('button', { name: 'Cancel import' }));
+    expect(
+      await screen.findByText('Installation cancelled')
+    ).toBeInTheDocument();
+  });
+
+  it('abandons an active import whose proposal no longer exists', async () => {
+    const activeKey = 'eigent:workspace-bundle-active-install:v1:user-1';
+    localStorage.setItem(
+      activeKey,
+      JSON.stringify({
+        proposalId: 'gone',
+        handle: '@verified-publisher/research@1',
+      })
+    );
+    mocks.fetchProposal.mockRejectedValue(
+      Object.assign(new Error('Not found'), { status: 404 })
+    );
+    const user = userEvent.setup();
+    renderWizard({});
+    await user.click(
+      await screen.findByRole('button', { name: 'Cancel import' })
+    );
+    const handleInput = screen.getByRole('textbox', {
+      name: 'Workspace Bundle share handle',
+    });
+    expect(handleInput).toHaveValue('');
+    expect(localStorage.getItem(activeKey)).toBeNull();
+    expect(mocks.decide).not.toHaveBeenCalled();
+    await user.type(handleInput, '@verified-publisher/another@2');
+    expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled();
+  });
+
+  it('clears a reviewed handle without reviving unchanged initial props', async () => {
+    mocks.fetchReview.mockResolvedValue(review);
+    const user = userEvent.setup();
+    renderWizard({ initialHandle: '@verified-publisher/research@1' });
+    await user.click(
+      await screen.findByRole('button', { name: 'Cancel import' })
+    );
+    expect(
+      screen.getByRole('textbox', { name: 'Workspace Bundle share handle' })
+    ).toHaveValue('');
+    expect(mocks.fetchReview).toHaveBeenCalledTimes(1);
+    expect(
+      localStorage.getItem('eigent:workspace-bundle-active-install:v1:user-1')
+    ).toBeNull();
+  });
+
+  it.each(['proposed', 'approved'] as const)(
+    'cancels %s with one decision despite repeated clicks',
+    async (state) => {
+      const pending = snapshot();
+      pending.proposal.state = state;
+      mocks.fetchProposal.mockResolvedValue(pending);
+      let resolve!: (value: WorkspaceBundleInstallSnapshot) => void;
+      mocks.decide.mockImplementation(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          })
+      );
+      renderWizard({ initialProposalId: 'proposal-1' });
+      const cancel = await screen.findByRole('button', {
+        name: 'Cancel import',
+      });
+      fireEvent.click(cancel);
+      fireEvent.click(cancel);
+      expect(cancel).toBeDisabled();
+      expect(mocks.decide).toHaveBeenCalledTimes(1);
+      await act(async () =>
+        resolve({
+          ...pending,
+          proposal: { ...pending.proposal, state: 'rejected' },
+        })
+      );
+      expect(screen.getByText('Installation cancelled')).toBeInTheDocument();
+    }
+  );
+
+  it('reconciles a CAS conflict to materializing without discarding the import', async () => {
+    const activeKey = 'eigent:workspace-bundle-active-install:v1:user-1';
+    localStorage.setItem(
+      activeKey,
+      JSON.stringify({
+        proposalId: 'proposal-1',
+        handle: '@verified-publisher/research@1',
+      })
+    );
+    const running = snapshot(true);
+    running.proposal.state = 'materializing';
+    mocks.fetchProposal
+      .mockResolvedValueOnce(snapshot(true))
+      .mockResolvedValue(running);
+    mocks.decide.mockRejectedValue(
+      new Error('Bundle install proposal changed')
+    );
+    const user = userEvent.setup();
+    renderWizard({});
+    await user.click(
+      await screen.findByRole('button', { name: 'Cancel import' })
+    );
+    await screen.findByText('Checking installation progress');
+    expect(screen.queryByRole('button', { name: 'Cancel import' })).toBeNull();
+    expect(localStorage.getItem(activeKey)).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(mocks.fetchProposal).toHaveBeenCalledTimes(3);
+    expect(mocks.decide).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not expose cancellation while materialization or local setup is in flight', async () => {
+    mocks.fetchProposal.mockResolvedValue(snapshot(true));
+    let resolve!: (value: WorkspaceBundleInstallSnapshot) => void;
+    mocks.materialize.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    const user = userEvent.setup();
+    renderWizard({ initialProposalId: 'proposal-1' });
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Install Workspace files and configuration',
+      })
+    );
+    expect(
+      screen.getByRole('button', { name: 'Cancel import' })
+    ).toBeDisabled();
+    await act(async () =>
+      resolve({
+        ...snapshot(true),
+        proposal: { ...snapshot(true).proposal, state: 'materialized' },
+      })
+    );
+    expect(screen.queryByRole('button', { name: 'Cancel import' })).toBeNull();
+  });
+
+  it('keeps a rejected receipt reachable when local storage cleanup fails', async () => {
+    const activeKey = 'eigent:workspace-bundle-active-install:v1:user-1';
+    localStorage.setItem(
+      activeKey,
+      JSON.stringify({
+        proposalId: 'proposal-1',
+        handle: '@verified-publisher/research@1',
+      })
+    );
+    const rejected = snapshot();
+    rejected.proposal.state = 'rejected';
+    mocks.fetchProposal.mockResolvedValue(rejected);
+    const user = userEvent.setup();
+    renderWizard({});
+    const reset = await screen.findByRole('button', {
+      name: 'Import another Bundle',
+    });
+    const remove = vi
+      .spyOn(window.localStorage, 'removeItem')
+      .mockImplementationOnce(() => {
+        throw new Error('Storage unavailable');
+      });
+    await user.click(reset);
+    expect(screen.getByText('Storage unavailable')).toBeInTheDocument();
+    expect(localStorage.getItem(activeKey)).not.toBeNull();
+    remove.mockRestore();
+    await user.click(reset);
+    expect(
+      screen.getByRole('textbox', { name: 'Workspace Bundle share handle' })
+    ).toHaveValue('');
+    expect(localStorage.getItem(activeKey)).toBeNull();
+  });
+
+  it('does not clear a newer import pointer or seed from the same actor', async () => {
+    const key = 'eigent:workspace-bundle-active-install:v1:user-1';
+    const seedKey =
+      'eigent:workspace-bundle-install-seed:v1:user-1:@verified-publisher/research@1';
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        proposalId: 'proposal-1',
+        handle: '@verified-publisher/research@1',
+      })
+    );
+    const rejected = snapshot();
+    rejected.proposal.state = 'rejected';
+    mocks.fetchProposal.mockResolvedValue(rejected);
+    const user = userEvent.setup();
+    renderWizard({});
+    const reset = await screen.findByRole('button', {
+      name: 'Import another Bundle',
+    });
+    const newer = JSON.stringify({
+      proposalId: 'proposal-2',
+      handle: '@verified-publisher/other@1',
+    });
+    const seed = JSON.stringify({
+      proposalId: 'bundleinstall_' + '2'.repeat(32),
+      requestId: 'bundlerequest_' + '2'.repeat(32),
+      spaceId: 'space-2',
+    });
+    localStorage.setItem(key, newer);
+    localStorage.setItem(seedKey, seed);
+    await user.click(reset);
+    expect(localStorage.getItem(key)).toBe(newer);
+    expect(localStorage.getItem(seedKey)).toBe(seed);
+  });
+
+  it.each([false, true])(
+    'reconciles a failed start before abandoning its exact seed (committed: %s)',
+    async (committed) => {
+      mocks.fetchReview.mockResolvedValue(review);
+      mocks.createProposal.mockRejectedValue(new Error('Start response lost'));
+      const user = userEvent.setup();
+      const first = renderWizard({
+        initialHandle: '@verified-publisher/research@1',
+      });
+      await user.click(
+        await screen.findByRole('button', { name: /confirm and create/i })
+      );
+      await screen.findByText('Start response lost');
+      const seedKey =
+        'eigent:workspace-bundle-install-seed:v1:user-1:@verified-publisher/research@1';
+      const seed = JSON.parse(localStorage.getItem(seedKey)!);
+      first.unmount();
+      const pending = snapshot();
+      pending.proposal.proposal_id = seed.proposalId;
+      pending.proposal.state = 'proposed';
+      if (committed) {
+        mocks.fetchProposal.mockResolvedValue(pending);
+        mocks.decide.mockResolvedValue({
+          ...pending,
+          proposal: { ...pending.proposal, state: 'rejected' },
+        });
+      } else {
+        mocks.fetchProposal.mockRejectedValue(
+          Object.assign(new Error('Not found'), { status: 404 })
+        );
+      }
+      renderWizard({});
+      await user.click(
+        await screen.findByRole('button', { name: 'Cancel import' })
+      );
+      if (committed) {
+        await user.click(
+          await screen.findByRole('button', { name: 'Import another Bundle' })
+        );
+        expect(mocks.decide).toHaveBeenCalledWith(
+          expect.objectContaining({
+            proposalId: seed.proposalId,
+            approved: false,
+          })
+        );
+      }
+      expect(
+        screen.getByRole('textbox', { name: 'Workspace Bundle share handle' })
+      ).toHaveValue('');
+      expect(localStorage.getItem(seedKey)).toBeNull();
+      expect(mocks.deleteSpace).not.toHaveBeenCalled();
+    }
+  );
+
+  it('ignores a late rejection response after the actor changes', async () => {
+    mocks.fetchProposal.mockResolvedValue(snapshot());
+    let resolve!: (value: WorkspaceBundleInstallSnapshot) => void;
+    mocks.decide.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    const view = renderWizard({ initialProposalId: 'proposal-1' });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Cancel import' })
+    );
+    auth.actorId = 'user-2';
+    view.rerender(
+      <MemoryRouter>
+        <WorkspaceBundleInstallWizard initialProposalId="proposal-1" />
+      </MemoryRouter>
+    );
+    const newer = JSON.stringify({
+      proposalId: 'proposal-2',
+      handle: '@verified-publisher/other@1',
+    });
+    localStorage.setItem(
+      'eigent:workspace-bundle-active-install:v1:user-2',
+      newer
+    );
+    await act(async () =>
+      resolve({
+        ...snapshot(),
+        proposal: { ...snapshot().proposal, state: 'rejected' },
+      })
+    );
+    expect(screen.queryByText('Installation cancelled')).toBeNull();
+    expect(
+      screen.getByRole('textbox', { name: 'Workspace Bundle share handle' })
+    ).toHaveValue('');
+    expect(
+      localStorage.getItem('eigent:workspace-bundle-active-install:v1:user-2')
+    ).toBe(newer);
+  });
+
+  it.each([
+    { initialProposalId: 'proposal-1' },
+    {
+      initialProposalId: 'proposal-1',
+      initialHandle: '@verified-publisher/research@1',
+    },
+    { initialHandle: '@verified-publisher/research@1' },
+  ])(
+    'retires unchanged recovery inputs on an actor change: %j',
+    async (props) => {
+      mocks.fetchProposal.mockResolvedValue(snapshot());
+      mocks.fetchReview.mockResolvedValue(review);
+      const view = renderWizard(props);
+      await screen.findByRole('button', { name: 'Cancel import' });
+      const previousPointer = localStorage.getItem(
+        'eigent:workspace-bundle-active-install:v1:user-1'
+      );
+      mocks.fetchProposal.mockClear();
+      mocks.fetchReview.mockClear();
+
+      auth.actorId = 'user-2';
+      await act(async () =>
+        view.rerender(
+          <MemoryRouter>
+            <WorkspaceBundleInstallWizard {...props} />
+          </MemoryRouter>
+        )
+      );
+
+      expect(mocks.fetchProposal).not.toHaveBeenCalled();
+      expect(mocks.fetchReview).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('button', { name: 'Cancel import' })
+      ).toBeNull();
+      expect(
+        screen.getByRole('textbox', { name: 'Workspace Bundle share handle' })
+      ).toHaveValue('');
+      expect(mocks.decide).not.toHaveBeenCalled();
+      expect(
+        localStorage.getItem('eigent:workspace-bundle-active-install:v1:user-2')
+      ).toBeNull();
+      expect(
+        localStorage.getItem('eigent:workspace-bundle-active-install:v1:user-1')
+      ).toBe(previousPointer);
+
+      // Returning to the original account must not resurrect retired props either.
+      localStorage.removeItem(
+        'eigent:workspace-bundle-active-install:v1:user-1'
+      );
+      auth.actorId = 'user-1';
+      await act(async () =>
+        view.rerender(
+          <MemoryRouter>
+            <WorkspaceBundleInstallWizard {...props} />
+          </MemoryRouter>
+        )
+      );
+      expect(mocks.fetchProposal).not.toHaveBeenCalled();
+      expect(mocks.fetchReview).not.toHaveBeenCalled();
+    }
+  );
+
+  it('restores only the new actor pointer when legacy recovery props stay unchanged', async () => {
+    const props = {
+      initialProposalId: 'proposal-1',
+      initialHandle: '@verified-publisher/research@1',
+    };
+    const next = snapshot();
+    next.proposal.proposal_id = 'proposal-2';
+    next.proposal.state = 'needs_attention';
+    next.proposal.error_code = 'new_actor_import_failure';
+    mocks.fetchProposal.mockImplementation(async (id: string) =>
+      id === 'proposal-2' ? next : snapshot()
+    );
+    const previousPointer = JSON.stringify({
+      proposalId: 'proposal-1',
+      handle: props.initialHandle,
+    });
+    const nextPointer = JSON.stringify({
+      proposalId: 'proposal-2',
+      handle: '@verified-publisher/other@1',
+    });
+    localStorage.setItem(
+      'eigent:workspace-bundle-active-install:v1:user-1',
+      previousPointer
+    );
+    localStorage.setItem(
+      'eigent:workspace-bundle-active-install:v1:user-2',
+      nextPointer
+    );
+    const view = renderWizard(props);
+    await screen.findByRole('button', { name: 'Cancel import' });
+    mocks.fetchProposal.mockClear();
+    auth.actorId = 'user-2';
+    view.rerender(
+      <MemoryRouter>
+        <WorkspaceBundleInstallWizard {...props} />
+      </MemoryRouter>
+    );
+
+    await screen.findByText('new_actor_import_failure');
+    expect(mocks.fetchProposal.mock.calls).toEqual([['proposal-2']]);
+    mocks.decide.mockResolvedValue({
+      ...next,
+      proposal: { ...next.proposal, state: 'rejected' },
+    });
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Cancel import' })
+    );
+    expect(mocks.decide.mock.calls).toEqual([
+      [
+        {
+          proposalId: 'proposal-2',
+          expectedVersion: next.proposal.version,
+          approved: false,
+          actorId: 'user-2',
+        },
+      ],
+    ]);
+    expect(
+      localStorage.getItem('eigent:workspace-bundle-active-install:v1:user-1')
+    ).toBe(previousPointer);
+    expect(
+      localStorage.getItem('eigent:workspace-bundle-active-install:v1:user-2')
+    ).toBe(nextPointer);
+  });
+
+  it.each(['proposal', 'handle'] as const)(
+    'accepts a new %s after the actor change without reviving the other retired input',
+    async (input) => {
+      const props = {
+        initialProposalId: 'proposal-1',
+        initialHandle: '@verified-publisher/research@1',
+      };
+      mocks.fetchProposal.mockResolvedValue(snapshot());
+      mocks.fetchReview.mockResolvedValue(review);
+      const view = renderWizard(props);
+      await screen.findByRole('button', { name: 'Cancel import' });
+      auth.actorId = 'user-2';
+      await act(async () =>
+        view.rerender(
+          <MemoryRouter>
+            <WorkspaceBundleInstallWizard {...props} />
+          </MemoryRouter>
+        )
+      );
+      mocks.fetchProposal.mockClear();
+      const next = snapshot();
+      next.proposal.proposal_id = 'proposal-2';
+      next.proposal.state = 'rejected';
+      mocks.fetchProposal.mockResolvedValue(next);
+      view.rerender(
+        <MemoryRouter>
+          <WorkspaceBundleInstallWizard
+            {...props}
+            {...(input === 'proposal'
+              ? { initialProposalId: 'proposal-2' }
+              : { initialHandle: '@verified-publisher/other@1' })}
+          />
+        </MemoryRouter>
+      );
+      if (input === 'proposal') {
+        await screen.findByText('Installation cancelled');
+        expect(mocks.fetchProposal.mock.calls).toEqual([['proposal-2']]);
+        expect(mocks.fetchReview).not.toHaveBeenCalled();
+      } else {
+        await screen.findByRole('button', { name: /confirm and create/i });
+        expect(mocks.fetchProposal).not.toHaveBeenCalled();
+        expect(mocks.fetchReview).toHaveBeenCalledWith(
+          expect.objectContaining({ coordinate: '@verified-publisher/other@1' })
+        );
+      }
+    }
+  );
+
+  it('ignores a late restoration response for a superseded proposal', async () => {
+    let resolve!: (value: WorkspaceBundleInstallSnapshot) => void;
+    mocks.fetchProposal.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    const next = snapshot();
+    next.proposal.proposal_id = 'proposal-2';
+    next.proposal.state = 'rejected';
+    mocks.fetchProposal.mockResolvedValue(next);
+    const view = renderWizard({ initialProposalId: 'proposal-1' });
+    view.rerender(
+      <MemoryRouter>
+        <WorkspaceBundleInstallWizard initialProposalId="proposal-2" />
+      </MemoryRouter>
+    );
+    await screen.findByText('Installation cancelled');
+    await act(async () => resolve(snapshot()));
+    expect(screen.getByText('Installation cancelled')).toBeInTheDocument();
+    expect(screen.queryByText('1. Local values')).toBeNull();
+  });
+
+  it('restores after StrictMode effect replay', async () => {
+    mocks.fetchProposal.mockResolvedValue(snapshot());
+    render(
+      <StrictMode>
+        <MemoryRouter>
+          <WorkspaceBundleInstallWizard initialProposalId="proposal-1" />
+        </MemoryRouter>
+      </StrictMode>
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Cancel import' })
+    ).toBeEnabled();
   });
 
   it('renders without standalone page navigation', () => {

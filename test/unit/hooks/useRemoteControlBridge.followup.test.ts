@@ -12,6 +12,23 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+// These cases exercise the existing legacy lane. C6 ownership/transport is
+// covered separately by sessionExecution and real ASGI IPC integration tests.
+const sessionEntryGuard = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined)
+);
+vi.mock('@/store/sessionExecutionStore', () => ({
+  requireLegacyExecution: sessionEntryGuard,
+  readSessionExecutionRoute: async (scope: { projectId: string }) => ({
+    project_id: scope.projectId,
+    route: 'legacy',
+  }),
+  getSessionExecutionState: (scope: { projectId: string }) => ({
+    route: { project_id: scope.projectId, route: 'legacy' },
+    managed: false,
+  }),
+}));
+
 import { fetchGet, fetchPost } from '@/api/http';
 import { __remoteControlBridgeTestHooks } from '@/hooks/useRemoteControlBridge';
 import {
@@ -24,6 +41,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const restoreQueuedMessage = vi.fn();
 const removeQueuedMessage = vi.fn();
 const startTask = vi.fn();
+const legacyStream = vi.hoisted(() => ({
+  closeIdleSSEConnectionsForTasks: vi.fn(),
+  getIdleSSETransportTaskId: vi.fn(),
+  waitForIdleSSEDisplayTail: vi.fn(),
+}));
+
+vi.mock('@/store/chatStore', () => legacyStream);
 
 vi.mock('@/api/http', () => ({
   fetchGet: vi.fn(),
@@ -52,8 +76,14 @@ vi.mock('@/store/projectStore', () => ({
   useProjectStore: {
     getState: () => ({
       projects: { 'project-1': { chatStores: {} } },
-      getProjectById: () => ({ mode: 'single-agent' }),
+      getProjectById: () => ({
+        mode: 'single-agent',
+        chatStores: {
+          primary: { getState: () => ({ tasks: { 'run-1': {} } }) },
+        },
+      }),
       getChatStore: () => ({ getState: () => ({ startTask }) }),
+      appendInitChatStore: () => null,
       restoreQueuedMessage,
       removeQueuedMessage,
     }),
@@ -109,9 +139,40 @@ describe('Remote Control durable follow-up admission', () => {
     vi.mocked(fetchGet).mockResolvedValue({
       has_lock: true,
       status: 'processing',
+      consumer_alive: true,
+    });
+    vi.mocked(fetchPost).mockResolvedValue({
+      retired: true,
+      consumer_alive: false,
     });
     vi.mocked(markFollowUpRequestAdmitted).mockResolvedValue({} as never);
     startTask.mockResolvedValue(undefined);
+    legacyStream.getIdleSSETransportTaskId.mockReturnValue(null);
+  });
+
+  it('rejects managed ownership before remote legacy submission', async () => {
+    sessionEntryGuard.mockRejectedValueOnce(
+      new Error('managed_execution_required')
+    );
+    await expect(
+      __remoteControlBridgeTestHooks.executeRemoteCommand(
+        {
+          id: 'blocked',
+          session_id: 'session-1',
+          user_id: 1,
+          source_channel: 'remote_control',
+          type: 'user_message',
+          target_project_id: 'project-1',
+          next_task_id: 'run-2',
+          payload: { content: 'blocked' },
+        },
+        'token',
+        vi.fn()
+      )
+    ).rejects.toThrow('managed_execution_required');
+    expect(createFollowUpRequest).not.toHaveBeenCalled();
+    expect(fetchPost).not.toHaveBeenCalled();
+    expect(startTask).not.toHaveBeenCalled();
   });
 
   it('persists an active-Run phone message instead of calling /chat directly', async () => {
@@ -261,5 +322,87 @@ describe('Remote Control durable follow-up admission', () => {
     ).rejects.toThrow('Say what should continue');
     expect(markFollowUpRequestAdmitted).not.toHaveBeenCalled();
     expect(removeQueuedMessage).toHaveBeenCalledWith('project-1', 'run-2');
+  });
+
+  describe('after the previous Run finished', () => {
+    const command = {
+      id: 'command-1',
+      session_id: 'session-1',
+      user_id: 1,
+      source_channel: 'remote_control',
+      type: 'user_message',
+      target_project_id: 'project-1',
+      next_task_id: 'run-2',
+      payload: { content: 'continue the report' },
+    };
+    const mockIdleConsumer = (subscriberCount: number) =>
+      vi.mocked(fetchGet).mockResolvedValue({
+        has_lock: true,
+        status: 'done',
+        run_id: 'run-1',
+        consumer_alive: true,
+        subscriber_count: subscriberCount,
+      });
+
+    it('starts cold when the desktop no longer holds that Run stream', async () => {
+      mockIdleConsumer(0);
+
+      await __remoteControlBridgeTestHooks.executeRemoteCommand(
+        command,
+        'token'
+      );
+
+      expect(fetchPost).toHaveBeenCalledWith(
+        '/chat/project-1/runtime/retire-idle',
+        { run_id: 'run-1' },
+        undefined,
+        { signal: undefined }
+      );
+      expect(legacyStream.closeIdleSSEConnectionsForTasks).toHaveBeenCalledWith(
+        ['run-1']
+      );
+      expect(startTask).toHaveBeenCalledWith(
+        'run-2',
+        undefined,
+        undefined,
+        undefined,
+        'continue the report',
+        [],
+        undefined,
+        'project-1',
+        'single-agent',
+        expect.objectContaining({ preserveTaskId: true, awaitAdmission: true })
+      );
+      expect(fetchPost).not.toHaveBeenCalledWith(
+        '/chat/project-1',
+        expect.anything()
+      );
+    });
+
+    it('stays warm while the desktop still holds that Run stream', async () => {
+      mockIdleConsumer(1);
+      legacyStream.getIdleSSETransportTaskId.mockImplementation(
+        (taskIds: string[]) => (taskIds.includes('run-1') ? 'run-1' : null)
+      );
+
+      await __remoteControlBridgeTestHooks.executeRemoteCommand(
+        command,
+        'token'
+      );
+
+      expect(fetchPost).toHaveBeenCalledWith('/chat/project-1', {
+        question: 'continue the report',
+        task_id: 'run-2',
+        attaches: [],
+        target: undefined,
+      });
+      expect(fetchPost).not.toHaveBeenCalledWith(
+        '/chat/project-1/runtime/retire-idle',
+        expect.anything(),
+        undefined,
+        expect.anything()
+      );
+      expect(startTask).not.toHaveBeenCalled();
+    });
   });
 });

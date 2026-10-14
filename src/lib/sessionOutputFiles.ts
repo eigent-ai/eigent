@@ -20,6 +20,11 @@ import type {
 } from '@/lib/projector/types';
 import { normalizeWorkspaceRelativePath } from '@/lib/workspaceRelativePath';
 
+/** A file found on disk is the local copy, whatever its projected Artifact recorded. */
+export function asLocalFile(file: FileInfo, path: string): FileInfo {
+  return { ...file, path, localPathAvailable: true, isRemote: false };
+}
+
 export interface RunOutputSources {
   artifactNodes?: readonly ChatArtifactNode[];
   /** Undefined means absent; an empty array can be an authoritative manifest. */

@@ -39,13 +39,99 @@ def test_astra_preserves_all_efforts(effort):
     assert not resolution.remapped
 
 
+@pytest.mark.parametrize("platform", ["openai", "azure"])
+@pytest.mark.parametrize("is_cloud", [False, True])
 @pytest.mark.parametrize("effort", tuple(ThinkingEffort))
-def test_unknown_never_accepts_explicit_effort(effort):
+def test_luna_tools_preserve_effort_and_require_responses(
+    platform, is_cloud, effort
+):
+    capability = ModelCapabilityRegistry().resolve(
+        model_platform=platform,
+        model_type="gpt-6-luna",
+        api_mode="chat_completions",
+        has_function_tools=True,
+        is_cloud=is_cloud,
+    )
+    resolution = capability.resolve(effort)
+    assert capability.source == "catalog"
+    assert capability.transport == "responses"
+    assert resolution.provider_parameter_name == "reasoning.effort"
+    assert resolution.provider_value == effort.value
+    assert not resolution.remapped
+
+
+@pytest.mark.parametrize("platform", ["openai", "azure"])
+def test_sol_accepts_low_medium_and_high_only(platform):
+    capability = ModelCapabilityRegistry().resolve(
+        model_platform=platform, model_type="gpt-6-sol"
+    )
+    assert capability.source == "catalog"
+    assert capability.supported_efforts == (
+        ThinkingEffort.LOW,
+        ThinkingEffort.MEDIUM,
+        ThinkingEffort.HIGH,
+    )
+    assert capability.resolve(None).provider_value == "medium"
+    for effort in (ThinkingEffort.XHIGH, ThinkingEffort.MAX):
+        with pytest.raises(
+            UnsupportedThinkingEffortError, match="low, medium, high"
+        ):
+            capability.resolve(effort, allow_dynamic_remap=True)
+
+
+@pytest.mark.parametrize(
+    "platform,model,revision",
+    [
+        (
+            "openai",
+            "gpt-6-astra",
+            "modelcap_771b7c57cf6ad8af6b71de109c8d64846869f2d749366713dcf1effa8427e0c2",
+        ),
+        (
+            "azure",
+            "gpt-6-astra",
+            "modelcap_7b279ce664615947033118b66c4787dbc40a961ae5713f63489cd643dd691d8e",
+        ),
+        (
+            "openai",
+            "gpt-6-luna",
+            "modelcap_d5d22d79638549ce3b8ad67c63bd1d6eb784b1d9e1d6eec1c98fa373c84afc86",
+        ),
+        (
+            "azure",
+            "gpt-6-luna",
+            "modelcap_e417cbf8c459285e7200b85416d634e87c8ce0ca2aeae92fe542df6216a9f29c",
+        ),
+    ],
+)
+def test_registering_a_model_keeps_other_capability_revisions(
+    platform, model, revision
+):
+    # Attempts pin these revisions, and Resume refuses a changed one.
+    capability = ModelCapabilityRegistry().resolve(
+        model_platform=platform, model_type=model
+    )
+    assert capability.capability_revision == revision
+
+
+@pytest.mark.parametrize("remap", [False, True])
+@pytest.mark.parametrize("effort", tuple(ThinkingEffort))
+def test_unknown_records_requested_effort_but_sends_provider_default(
+    effort, remap
+):
     capability = ModelCapabilityRegistry().resolve(
         model_platform="azure", model_type="unregistered-deployment"
     )
-    with pytest.raises(UnsupportedThinkingEffortError, match="unknown_model"):
-        capability.resolve(effort, allow_dynamic_remap=True)
+    resolved = capability.resolve(effort, allow_dynamic_remap=remap)
+    assert resolved.requested is effort
+    # MEDIUM is the legacy persisted sentinel, not a value that is sent.
+    assert resolved.effective is ThinkingEffort.MEDIUM
+    assert resolved.provider_parameter_name is None
+    assert resolved.provider_value == "provider_default"
+    assert resolved.capability_revision == capability.capability_revision
+    assert resolved.remapped is False
+    assert capability.snapshot()["status"] == "unknown_model"
+    assert capability.snapshot()["supported_efforts"] == []
 
 
 def _metadata(model_type="nebula-2027", platform="azure"):
@@ -173,15 +259,19 @@ def test_revision_pins_mapping_transport_and_metadata():
 
 
 @pytest.mark.parametrize(
-    "model", ["gpt-6-astra-future", "gpt-6-astra-alias", "gpt-7"]
+    "model",
+    ["gpt-6-astra-future", "gpt-6-astra-alias", "gpt-6-luna-alias", "gpt-7"],
 )
 def test_unregistered_astra_like_aliases_are_unknown(model):
     capability = ModelCapabilityRegistry().resolve(
         model_platform="azure", model_type=model
     )
     assert capability.supported_efforts == ()
-    with pytest.raises(UnsupportedThinkingEffortError):
-        capability.resolve("max")
+    # Not inferred from the alias: max is recorded but never sent.
+    resolved = capability.resolve("max")
+    assert resolved.requested is ThinkingEffort.MAX
+    assert resolved.provider_parameter_name is None
+    assert resolved.provider_value == "provider_default"
 
 
 def test_invalid_catalog_does_not_fall_back_to_prefixes():

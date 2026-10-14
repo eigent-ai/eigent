@@ -673,6 +673,10 @@ class CloudSyncWorker:
         self._bootstrap_lock = asyncio.Lock()
         self._bootstrap_attempt_count = 0
         self._bootstrap_next_attempt_at = 0.0
+        # Projects that have Cloud history, once the list has been read,
+        # and those whose history this restore has already imported.
+        self._bootstrap_listed: frozenset[str] | None = None
+        self._bootstrap_restored: set[str] = set()
         self._auth_paused_configuration: CloudSyncConfiguration | None = None
         self._auth_pause_code: str | None = None
         self._auth_retry_at = 0.0
@@ -694,9 +698,28 @@ class CloudSyncWorker:
 
         return self._bootstrap_pending
 
+    def bootstrap_pending_for(self, project_id: str) -> bool:
+        """Whether Cloud history for one project may still be restoring.
+
+        Until the project list is read, any project may have history. After
+        that, only listed projects that are not imported yet are pending; a
+        project without Cloud history has nothing to wait for.
+        """
+
+        if not self._bootstrap_pending:
+            return False
+        listed = self._bootstrap_listed
+        if listed is None:
+            return True
+        return (
+            project_id in listed and project_id not in self._bootstrap_restored
+        )
+
     def configure(self, configuration: CloudSyncConfiguration) -> None:
         if configuration != self._configuration:
             self._bootstrap_pending = True
+            self._bootstrap_listed = None
+            self._bootstrap_restored = set()
             self._bootstrap_attempt_count = 0
             self._bootstrap_next_attempt_at = 0.0
             self._auth_paused_configuration = None
@@ -1042,6 +1065,11 @@ class CloudSyncWorker:
                 raise RunEventSyncProtocolError(
                     "invalid Run sync project descriptor"
                 )
+        if self._configuration == configuration:
+            self._bootstrap_listed = frozenset(
+                str(item["project_id"]) for item in project_items
+            )
+        for item in project_items:
             project_id = str(item["project_id"])
             # Snapshot and event paging may race a new ingest. Repeat until the
             # snapshot watermark matches the locally imported cursor.
@@ -1114,6 +1142,8 @@ class CloudSyncWorker:
                     if target_cursor != int(snapshot.get("current_cursor", 0)):
                         continue
                     raise
+                if self._configuration == configuration:
+                    self._bootstrap_restored.add(project_id)
                 break
             else:
                 raise RunEventSyncProtocolError(

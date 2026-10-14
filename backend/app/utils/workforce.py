@@ -46,6 +46,12 @@ from app.component import code
 from app.exception.exception import UserException
 from app.run_context import get_current_run_context
 from app.run_journal.runtime import get_default_run_journal
+from app.run_runtime.owned_tasks import (
+    current_owned_tasks,
+    get_task_lock,
+    get_task_lock_if_exists,
+    run_owned_thread,
+)
 from app.run_runtime.step_coordinator import stable_step_id
 from app.run_runtime.timeout_config import (
     normalize_optional_timeout_seconds,
@@ -58,8 +64,6 @@ from app.service.task import (
     ActionTaskStateData,
     ActionTimeoutData,
     get_camel_task,
-    get_task_lock,
-    get_task_lock_if_exists,
 )
 from app.utils.event_loop_utils import _schedule_async_task
 from app.utils.single_agent_worker import SingleAgentWorker
@@ -107,20 +111,39 @@ async def _persist_workforce_subtask_step(
         return None
     step_id = stable_step_id(run_id, f"subtask:{task_id}")
 
-    def persist() -> None:
+    def persist(persist_phase=phase) -> None:
         get_default_run_journal().persist_workforce_subtask_step(
             run_id=run_id,
             expected_project_id=project_id,
             task_id=task_id,
             title=title,
             agent_id=agent_id,
-            phase=phase,
+            phase=persist_phase,
             summary=summary,
         )
 
     try:
-        await asyncio.to_thread(persist)
+        owner = current_owned_tasks()
+        if owner is None:
+            await run_owned_thread(persist)
+        else:
+            pending = owner.create_task(run_owned_thread(persist))
+            try:
+                await asyncio.shield(pending)
+            except asyncio.CancelledError:
+                if phase in {"queued", "running"}:
+                    # Cancellation here precedes posting the task to CAMEL's
+                    # channel. The SQLite thread can still commit afterwards;
+                    # close that authored Step only after the commit returns.
+                    async def close_unposted_step():
+                        await asyncio.shield(pending)
+                        await run_owned_thread(persist, "cancelled")
+
+                    owner.create_task(close_unposted_step())
+                raise
     except Exception as exc:
+        if current_owned_tasks() is not None:
+            raise
         task_lock.mark_local_history_degraded(
             f"workforce Step {phase} persistence failed: {exc}"
         )
@@ -596,11 +619,14 @@ class Workforce(BaseWorkforce):
         mt = getattr(model_obj, "model_type", None)
         return str(mt.value if hasattr(mt, "value") else mt) if mt else None
 
+    async def _assign_tasks(self, tasks: list[Task]) -> TaskAssignResult:
+        return await super()._find_assignee(tasks)
+
     async def _find_assignee(self, tasks: list[Task]) -> TaskAssignResult:
         # Task assignment phase: send "waiting for execution" notification
         # to the frontend, and send "start execution" notification when the
         # task actually begins execution
-        assigned = await super()._find_assignee(tasks)
+        assigned = await self._assign_tasks(tasks)
 
         task_lock = get_task_lock(self.api_task_id)
         for item in assigned.assignments:
@@ -663,7 +689,9 @@ class Workforce(BaseWorkforce):
                 phase="queued",
             )
             # Asynchronously send waiting notification
-            task = asyncio.create_task(
+            owner = current_owned_tasks()
+            create_task = owner.create_task if owner else asyncio.create_task
+            task = create_task(
                 task_lock.put_queue(
                     ActionAssignTaskData(
                         action=Action.assign_task,

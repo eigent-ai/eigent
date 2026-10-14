@@ -477,6 +477,67 @@ def test_finalized_direct_run_replays_its_persisted_commit_after_head_moves(
     ) == 1
 
 
+def test_timed_out_shared_checkout_run_finalizes_and_releases_its_writer(
+    tmp_path,
+    journal,
+):
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir()
+    git = GitBackend(hooks_path=hooks)
+    state_root = tmp_path / "state"
+    content = ContentRepositoryService(
+        journal,
+        state_root=state_root,
+        git_backend=git,
+    )
+    coordinator = WorkspaceGitCoordinator(
+        journal,
+        state_root=state_root,
+        git_backend=git,
+    )
+    lifecycle = WorkspaceGitLifecycle(
+        journal,
+        state_root=state_root,
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+        task_id="run-1",
+        session_mode="single-agent",
+    )
+    assert admission is not None
+    target = space / "result.txt"
+    target.write_text("partial work\n", encoding="utf-8")
+    git.commit_paths(space, (target,), message="partial work")
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="run-1-deadline",
+            event_type="run.deadline_reached",
+            payload={"reason": "persisted_run_deadline_reached"},
+        ),
+    )
+    assert journal.get_run("run-1").status == "timed_out"
+
+    startup = lifecycle.finalize_terminal_runs()
+
+    assert [value.run_id for value in startup.finalizations] == ["run-1"]
+    assert startup.failed_run_ids == ()
+    assert startup.finalizations[0].outcome == "preserved_primary_timed_out"
+    writer = journal.get_workspace_writer_request("workspace-writer:run-1")
+    assert writer is not None and writer.status == "released"
+
+
 def test_noop_agent_archive_recovers_after_git_before_sqlite_crash(
     tmp_path,
     journal,

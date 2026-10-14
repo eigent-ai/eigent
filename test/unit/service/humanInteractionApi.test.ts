@@ -26,6 +26,7 @@ vi.mock('@/api/http', () => ({
 
 import {
   decideHumanInteraction,
+  getHumanInteractionReceipt,
   humanInteractionDecisionPath,
   invalidatePendingHumanInteractions,
   isHumanInteractionStillPending,
@@ -39,8 +40,105 @@ describe('local HumanInteraction API', () => {
     invalidatePendingHumanInteractions();
   });
 
+  it('reads only the matching durable receipt and never classifies cancellation as expiry', async () => {
+    const interaction: HumanInteractionPayload = {
+      interaction_id: 'old',
+      run_id: 'run-1',
+      interaction_type: 'approval',
+    };
+    fetchGetMock.mockResolvedValue({
+      run_id: 'run-1',
+      interactions: [
+        { interaction_id: 'old', status: 'cancelled', attempt_id: 'a-1' },
+        { interaction_id: 'new', status: 'expired', attempt_id: 'a-2' },
+      ],
+      approvals: [
+        {
+          approval_id: 'old',
+          decision: { reason: 'tool_terminal_before_dispatch' },
+        },
+        { approval_id: 'new', decision: { reason: 'approval_expired' } },
+      ],
+      attempts: [
+        { attempt_id: 'a-1', terminal_reason: 'error' },
+        { attempt_id: 'a-2', terminal_reason: 'approval_expired' },
+      ],
+    });
+    // The card names why the owning Attempt stopped, never the raw reason.
+    await expect(getHumanInteractionReceipt(interaction)).resolves.toEqual({
+      status: 'cancelled',
+      reason: 'tool_terminal_before_dispatch',
+      terminal_reason: 'error',
+    });
+    fetchGetMock.mockResolvedValue({
+      run_id: 'other',
+      interactions: [{ interaction_id: 'old', status: 'expired' }],
+    });
+    await expect(getHumanInteractionReceipt(interaction)).resolves.toBeNull();
+  });
+
+  it('shares concurrent receipt reads without caching later recovery state', async () => {
+    const interaction: HumanInteractionPayload = {
+      interaction_id: 'old',
+      run_id: 'run-1',
+      interaction_type: 'approval',
+    };
+    fetchGetMock.mockResolvedValue({
+      run_id: 'run-1',
+      interactions: [{ interaction_id: 'old', status: 'cancelled' }],
+    });
+    await Promise.all([
+      getHumanInteractionReceipt(interaction),
+      getHumanInteractionReceipt(interaction),
+    ]);
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    await getHumanInteractionReceipt(interaction);
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('cannot revalidate a retired approval or a passed journal deadline', async () => {
+    const interaction: HumanInteractionPayload = {
+      interaction_id: 'old',
+      run_id: 'run-1',
+      interaction_type: 'approval',
+      version: 0,
+    };
+    fetchGetMock.mockResolvedValue({
+      interactions: [
+        {
+          interaction_id: 'old',
+          status: 'requested',
+          version: 0,
+          expires_at: 1,
+        },
+      ],
+    });
+    await expect(isHumanInteractionStillPending(interaction)).resolves.toBe(
+      false
+    );
+    await expect(
+      isHumanInteractionStillPending({
+        ...interaction,
+        receipt: { runStatus: 'interrupted' },
+      })
+    ).resolves.toBe(false);
+    await expect(
+      isHumanInteractionStillPending({ ...interaction, status: 'cancelled' })
+    ).resolves.toBe(false);
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the unprefixed FastAPI Run decision route', async () => {
-    fetchPostMock.mockResolvedValue({ status: 'approved' });
+    fetchPostMock.mockImplementation((url, body) =>
+      Promise.resolve({
+        run_id: decodeURIComponent(url.split('/')[2]),
+        interaction_id: decodeURIComponent(url.split('/')[4]),
+        status: 'resolved',
+        version: body.expected_version + 1,
+        response: body.decision,
+        action_digest: body.action_digest,
+      })
+    );
 
     await decideHumanInteraction(
       {
@@ -52,7 +150,7 @@ describe('local HumanInteraction API', () => {
       },
       {
         decisionRequestId: 'decision-1',
-        decision: { approved: true },
+        decision: { decision: 'approved', scope: 'once' },
         actorId: 'user-1',
       }
     );
@@ -63,7 +161,9 @@ describe('local HumanInteraction API', () => {
         decision_request_id: 'decision-1',
         expected_version: 2,
         source: 'desktop',
-      })
+      }),
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 
@@ -95,7 +195,10 @@ describe('local HumanInteraction API', () => {
       })
     ).resolves.toBe(true);
     expect(fetchGetMock).toHaveBeenCalledWith(
-      '/runs/run%20%2F%201/interactions?status=pending'
+      '/runs/run%20%2F%201/interactions?status=pending',
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 
@@ -163,7 +266,16 @@ describe('local HumanInteraction API', () => {
   });
 
   it('posts a decision to the local durable Run route', async () => {
-    fetchPostMock.mockResolvedValue({ status: 'resolved' });
+    fetchPostMock.mockImplementation((url, body) =>
+      Promise.resolve({
+        run_id: decodeURIComponent(url.split('/')[2]),
+        interaction_id: decodeURIComponent(url.split('/')[4]),
+        status: 'resolved',
+        version: body.expected_version + 1,
+        response: body.decision,
+        action_digest: body.action_digest,
+      })
+    );
     const interaction: HumanInteractionPayload = {
       interaction_id: 'approval:todo/write',
       interaction_type: 'approval',
@@ -189,7 +301,9 @@ describe('local HumanInteraction API', () => {
         actor_id: '42',
         source: 'desktop',
         continue_active_attempt: true,
-      }
+      },
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 

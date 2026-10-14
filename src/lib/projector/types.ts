@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { RunTerminalReason } from '@/lib/runTerminalReason';
+
 export type ProjectorMode = 'live' | 'rehydrate' | 'playback';
 
 export type CanonicalSemanticStatus =
@@ -155,6 +157,21 @@ export type ProjectedLegacyStep = {
   crossLaneEventIds?: string[];
 };
 
+/** A Tool call whose unknown outcome makes an explicit Resume unsafe. */
+export type ProjectedUnsafeResumeBlocker = {
+  toolCallId: string;
+  toolName: string | null;
+  displayTitle: string | null;
+};
+
+/** A Run queued behind the single writer of its Space. */
+export type ProjectedWriterWait = {
+  /** The writer stopped mid-change and keeps the Space until the user acts. */
+  holderNeedsAttention: boolean;
+  /** Session that owns that writer, when the Brain recorded it. */
+  blockerProjectId?: string;
+};
+
 export type ProjectedRun = {
   runId: string;
   status:
@@ -166,19 +183,41 @@ export type ProjectedRun = {
     | 'completed'
     | 'failed'
     | 'cancelled'
+    | 'timed_out'
     | 'interrupted';
   lastSequence: number;
   runVersion: number;
   updatedAt: string;
   origin?: 'local' | 'cloud_restore' | 'remote' | null;
   resumeBlockedReason?: string | null;
+  /** Why the Run last stopped, as recorded by the Brain. */
+  terminalReason?: RunTerminalReason | null;
+  /** Free-form diagnostic for Detailed mode; shown verbatim. */
+  terminalDetail?: string | null;
   latestAttempt?: {
     attemptNumber: number;
     status: string;
+    resumeRequestId?: string;
   } | null;
+  /**
+   * Attempt time measured at `totalAttemptElapsedAt`, leaving out time spent
+   * waiting for an approval or an answer.
+   */
   totalAttemptElapsedMs?: number | null;
   /** Renderer receipt time for a canonical elapsed checkpoint; never persisted. */
   totalAttemptElapsedAt?: string | null;
+  /**
+   * Finished waits for an approval or an answer that the task timer leaves
+   * out, counted after the timer's baseline: the elapsed checkpoint when one
+   * is present, otherwise the start of the Run. Omitted when zero.
+   */
+  userWaitMs?: number;
+  /** When the current wait for the user began; present only while waiting. */
+  userWaitStartedAt?: string;
+  /** Derived by the Brain; Resume is refused while any remain. */
+  unsafeResumeBlockers?: ProjectedUnsafeResumeBlocker[];
+  /** Present while the Run waits for its Space writer. */
+  writerWait?: ProjectedWriterWait | null;
 };
 
 export type ProjectedArtifact = {

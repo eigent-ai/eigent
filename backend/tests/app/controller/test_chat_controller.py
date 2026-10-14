@@ -53,6 +53,7 @@ from app.run_context import RunContext
 from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
 from app.run_runtime import RunCoordinator
 from app.workspace_bundle.runtime import EnvironmentSetupRequiredError
+from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
 
 
 @pytest.fixture(autouse=True)
@@ -67,9 +68,23 @@ def controller_run_journal():
         attempt_id="attempt-1",
         status="pending",
     )
-    with patch(
-        "app.controller.chat_controller.get_default_run_journal",
-        return_value=journal,
+
+    async def unit_admission_guard(candidate, **owner):
+        # This fixture deliberately supplies a non-durable unit double. Real
+        # SQLite fixtures still execute the production guard; its managed lane
+        # and unavailable-Journal cases have dedicated entry-guard tests.
+        if candidate is not journal:
+            await guard_legacy_execution_entry(candidate, **owner)
+
+    with (
+        patch(
+            "app.controller.chat_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.chat_controller.guard_legacy_execution_entry",
+            side_effect=unit_admission_guard,
+        ),
     ):
         yield journal
 
@@ -468,12 +483,14 @@ class TestChatController:
         assert "already finished" in chunks[0]
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("preadmitted", [False, True])
     async def test_explicit_resume_creates_new_attempt_on_same_run(
         self,
         sample_chat_data,
         mock_request,
         mock_task_lock,
         tmp_path,
+        preadmitted,
     ):
         run_id = sample_chat_data["task_id"]
         chat_data = Chat(
@@ -505,6 +522,10 @@ class TestChatController:
 
         async def source():
             await release.wait()
+            journal.activate_run_attempt(
+                journal.list_run_attempts(run_id)[-1].attempt_id,
+                expected_run_id=run_id,
+            )
             yield "data: resumed\n\n"
 
         with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
@@ -517,6 +538,18 @@ class TestChatController:
                 now=1,
             )
             journal.reconcile_startup(now=2)
+            if preadmitted:
+                coordinator.bind_journal(journal)
+                admitted = await coordinator.resume(
+                    run_id, request_id="resume-request-1"
+                )
+                # A lost control ACK / stale frontend preflight must retry the
+                # same identity before /chat, without reserving another Attempt.
+                recovered = await coordinator.resume(
+                    run_id, request_id="resume-request-1"
+                )
+                assert recovered.attempt_id == admitted.attempt_id
+                assert recovered.status == "pending"
             prepare = AsyncMock(
                 return_value=_PreparedChatRun(
                     task_lock=mock_task_lock,
@@ -550,6 +583,8 @@ class TestChatController:
                 assert attempts[1].attempt_number == 2
                 assert attempts[1].resume_reason == "explicit_resume"
                 assert attempts[1].resume_request_id == "resume-request-1"
+                if preadmitted:
+                    assert attempts[1].attempt_id == admitted.attempt_id
                 prepare.assert_awaited_once()
                 assert prepare.await_args.kwargs[
                     "resume_attempt"
@@ -557,7 +592,77 @@ class TestChatController:
 
                 release.set()
                 assert await stream.__anext__() == "data: resumed\n\n"
+                assert journal.get_run(run_id).status == "running"
+                assert len(journal.list_run_attempts(run_id)) == 2
                 await stream.aclose()
+        await coordinator.close()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "boundary", ["cancelled", "newer_attempt", "other_project"]
+    )
+    async def test_pending_resume_retry_cannot_reopen_or_replace_other_work(
+        self, sample_chat_data, mock_request, tmp_path, boundary
+    ):
+        run_id = sample_chat_data["task_id"]
+        coordinator = RunCoordinator()
+        with SQLiteRunJournal(tmp_path / "retry.sqlite3") as journal:
+            journal.ensure_run(
+                run_id=run_id,
+                project_id=sample_chat_data["project_id"],
+                status="interrupted",
+            )
+            coordinator.bind_journal(journal)
+            admitted = await coordinator.resume(
+                run_id, request_id="retained-request"
+            )
+            if boundary == "cancelled":
+                journal.request_cancel(
+                    run_id, request_id="cancel-1", reason="explicit_cancel"
+                )
+                journal.complete_cancel(run_id, request_id="cancel-1")
+            elif boundary == "newer_attempt":
+                journal.reconcile_startup()
+                newer = await coordinator.resume(
+                    run_id, request_id="newer-request"
+                )
+            data = {
+                **sample_chat_data,
+                "run_id": run_id,
+                "resume_request_id": "retained-request",
+            }
+            if boundary == "other_project":
+                data["project_id"] = "another-project"
+            before = journal.get_run(run_id)
+            before_attempts = journal.list_run_attempts(run_id)
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_default_run_coordinator",
+                    return_value=coordinator,
+                ),
+                patch(
+                    "app.controller.chat_controller._prepare_chat_run",
+                    new=AsyncMock(),
+                ) as prepare,
+            ):
+                with pytest.raises(UserException):
+                    await start_chat_stream(Chat(**data), mock_request)
+                prepare.assert_not_awaited()
+            assert journal.get_run(run_id) == before
+            assert journal.list_run_attempts(run_id) == before_attempts
+            if boundary == "newer_attempt":
+                assert (
+                    journal.get_run(run_id).active_attempt_id
+                    == newer.attempt_id
+                )
+                assert (
+                    journal.get_run_attempt(admitted.attempt_id).status
+                    == "interrupted"
+                )
         await coordinator.close()
 
     @pytest.mark.asyncio
@@ -620,19 +725,23 @@ class TestChatController:
         await coordinator.close()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("session_mode", ["single-agent", "workforce"])
     async def test_resume_silently_backfills_legacy_environment_spec(
         self,
         sample_chat_data,
         mock_request,
         mock_task_lock,
         tmp_path,
+        session_mode,
     ):
+        from app.run_journal.models import RunEventDraft
+
         run_id = sample_chat_data["task_id"]
         chat_data = Chat(
             **sample_chat_data,
             run_id=run_id,
             resume_request_id="resume-with-current-environment",
-            session_mode="single-agent",
+            session_mode=session_mode,
         )
         resolver = MagicMock()
         resolver.freeze_task_directories.return_value = SimpleNamespace(
@@ -645,12 +754,22 @@ class TestChatController:
         )
         resolver.space_root.return_value = tmp_path
         git_coordinator = MagicMock()
+        mock_task_lock.conversation_history = []
+        mock_task_lock.agent_memory_history = []
+        mock_task_lock.memory_summary = ""
 
         with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
             journal.ensure_run(
                 run_id=run_id,
                 project_id=chat_data.project_id,
                 status="interrupted",
+            )
+            journal.append_event(
+                run_id,
+                RunEventDraft(
+                    event_type="user.message",
+                    payload={"content": "Original durable objective"},
+                ),
             )
             resume_attempt = journal.create_run_attempt(
                 run_id,
@@ -716,6 +835,48 @@ class TestChatController:
                 "legacy_environment_backfill"
             )
             git_coordinator.admit_run.assert_called_once()
+
+            # Preparation binds the durable Attempt consumed by either builder.
+            # Renderer fallback text must not carry a second ledger projection.
+            assert (
+                prepared.initial_action.data.project_context
+                == chat_data.project_context
+            )
+            from app.service import chat_service, single_agent_service
+
+            service = (
+                single_agent_service
+                if session_mode == "single-agent"
+                else chat_service
+            )
+            with (
+                patch.object(
+                    service, "get_default_run_journal", return_value=journal
+                ),
+                patch.object(
+                    service,
+                    "build_durable_context_projection_for_task_lock",
+                    return_value=SimpleNamespace(
+                        text="Reference Memory", source_memory_ids=()
+                    ),
+                ),
+            ):
+                if session_mode == "single-agent":
+                    prompt = service._build_single_agent_prompt(
+                        mock_task_lock,
+                        prepared.initial_action.data.question,
+                        [],
+                        prepared.initial_action.data.project_context,
+                    )
+                else:
+                    prompt = service.build_context_for_workforce(
+                        mock_task_lock, chat_data
+                    )
+                assert prompt.count("Original durable objective") == 1
+                assert (
+                    prompt.count("Canonical Project Recovery Context ===") == 2
+                )
+                assert "Reference Memory" in prompt
 
     @pytest.mark.asyncio
     async def test_initial_attempt_precedes_workspace_writer_admission(
@@ -794,6 +955,100 @@ class TestChatController:
                     await _prepare_chat_run(chat_data, mock_request)
 
         git_coordinator.admit_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "lease_taken", ["before_admission", "during_preparation"]
+    )
+    async def test_project_lease_conflict_is_a_typed_409_without_orphan_run(
+        self,
+        sample_chat_data,
+        mock_request,
+        mock_task_lock,
+        tmp_path,
+        lease_taken,
+    ):
+        chat_data = Chat(
+            **sample_chat_data,
+            run_id="run-rejected",
+            session_mode="single-agent",
+        )
+        resolver = MagicMock()
+        resolver.freeze_task_directories.return_value = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "output",
+            base_snapshot_id=None,
+            snapshot=MagicMock(),
+            binding_source="test",
+            workdir_mode=None,
+        )
+        resolver.space_root.return_value = tmp_path
+
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            journal.ensure_run(
+                run_id="run-blocker", project_id=chat_data.project_id
+            )
+
+            def take_project_lease(*_args):
+                if not journal.list_run_attempts("run-blocker"):
+                    journal.create_run_attempt(
+                        "run-blocker",
+                        request_id="initial:run-blocker",
+                        reason="initial_execution",
+                        activate=True,
+                    )
+
+            if lease_taken == "before_admission":
+                take_project_lease()
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_default_run_coordinator",
+                    return_value=RunCoordinator(),
+                ),
+                patch(
+                    "app.controller.chat_controller.get_or_create_task_lock",
+                    return_value=mock_task_lock,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_workspace_resolver",
+                    return_value=resolver,
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "get_default_workspace_git_coordinator",
+                    return_value=MagicMock(),
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "_prepare_browser_for_request_with_timeout",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "app.controller.chat_controller._assemble_runtime_environment",
+                    side_effect=take_project_lease,
+                ),
+                patch(
+                    "app.controller.chat_controller._camel_log_dir",
+                    return_value=tmp_path / "camel-log",
+                ),
+                patch("app.controller.chat_controller.set_current_task_id"),
+                patch("app.controller.chat_controller.load_dotenv"),
+                patch("app.controller.chat_controller.step_solve") as solve,
+            ):
+                with pytest.raises(HTTPException) as error:
+                    await post(chat_data, mock_request)
+
+            assert error.value.status_code == 409
+            assert error.value.detail["code"] == "project_run_active"
+            assert error.value.detail["run_id"] == "run-blocker"
+            solve.assert_not_called()
+            assert journal.list_run_attempts("run-rejected") == []
+            if lease_taken == "before_admission":
+                assert journal.get_run("run-rejected") is None
 
     def test_bundle_runtime_rejects_legacy_workforce_session_mode(self):
         with pytest.raises(EnvironmentSetupRequiredError) as error:
@@ -1169,6 +1424,9 @@ class TestChatController:
         mock_task_lock.status = Status.processing
         mock_task_lock.runtime_session_mode = "single-agent"
         mock_task_lock.environment_admission_template = MagicMock()
+        refreshed_template = mock_task_lock.environment_admission_template.refresh_model_capability.return_value
+        refreshed_template.workspace_model_selection = None
+        refreshed_template.workspace_model_selection_checked = False
         mock_task_lock.email = "u@example.com"
         mock_task_lock.user_id = "42"
         mock_task_lock.space_id = "space-1"
@@ -1686,6 +1944,10 @@ class TestChatController:
         mock_request,
         controller_run_journal,
     ):
+        controller_run_journal.resolve_human_interaction.return_value = (
+            SimpleNamespace(status="resolved"),
+            True,
+        )
         task_id = "test_task_stale_approval"
         mock_task_lock.run_context = RunContext(
             space_id="space-1",
@@ -2148,3 +2410,62 @@ def test_queued_stop_carries_expected_task_to_the_consumer():
             == 201
         )
         assert enqueue.call_args.args[1].expected_task_id == "run-original"
+
+
+class _PastSessionModelCheck(Exception):
+    pass
+
+
+def _chat_with_session_model(
+    sample_chat_data, run_platform, session_platform, session_type="gpt-4"
+):
+    return Chat(
+        **{**sample_chat_data, "model_platform": run_platform},
+        session_model_selection={
+            "modelType": "custom",
+            "provider_id": 7,
+            "model_platform": session_platform,
+            "model_type": session_type,
+        },
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "platform", ["grok", "ModelArk", "z.ai", "ernie", "llama.cpp", "openai"]
+)
+async def test_session_model_matches_its_own_provider_alias(
+    sample_chat_data, platform
+):
+    chat_data = _chat_with_session_model(sample_chat_data, platform, platform)
+    with patch(
+        "app.controller.chat_controller.get_or_create_task_lock",
+        side_effect=_PastSessionModelCheck,
+    ):
+        with pytest.raises(_PastSessionModelCheck):
+            await _prepare_chat_run(chat_data, MagicMock())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "run_platform,session_platform,session_type",
+    [
+        ("openai", "grok", "gpt-4"),
+        ("grok", "openai", "gpt-4"),
+        ("z.ai", "grok", "gpt-4"),
+        ("grok", "grok", "another-model"),
+    ],
+)
+async def test_session_model_still_rejects_a_different_model(
+    sample_chat_data, run_platform, session_platform, session_type
+):
+    chat_data = _chat_with_session_model(
+        sample_chat_data, run_platform, session_platform, session_type
+    )
+    with patch(
+        "app.controller.chat_controller.get_or_create_task_lock",
+        side_effect=_PastSessionModelCheck,
+    ):
+        with pytest.raises(HTTPException) as error:
+            await _prepare_chat_run(chat_data, MagicMock())
+    assert error.value.status_code == 422

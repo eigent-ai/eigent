@@ -24,9 +24,21 @@ import {
   type AppCommandId,
 } from '../../src/shared/appCommands';
 import {
+  BRAIN_STREAM_RELAY_CANCEL_CHANNEL,
+  BRAIN_STREAM_RELAY_OPEN_CHANNEL,
+  BRAIN_STREAM_RELAY_READ_CHANNEL,
+  BRAIN_STREAM_RELAY_TARGET_CHANNEL,
+  type BrainStreamRelayRequest,
+} from '../../src/shared/brainStreamRelay';
+import {
   NATIVE_MENU_LOCALE_CHANNEL,
   type NativeMenuLocale,
 } from '../../src/shared/nativeMenu';
+import {
+  isSubframeLoadFailure,
+  SUBFRAME_LOAD_FAILED_CHANNEL,
+  type SubframeLoadFailure,
+} from '../../src/shared/subframeLoadFailure';
 import {
   WINDOW_CHROME_THEME_CHANNEL,
   type WindowChromeTheme,
@@ -159,6 +171,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   respondToCloseRequest: (response: WindowCloseResponse) =>
     ipcRenderer.send(WINDOW_CLOSE_RESPONSE_CHANNEL, response),
+  onSubframeLoadFailed: (callback: (failure: SubframeLoadFailure) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, failure: unknown) => {
+      if (isSubframeLoadFailure(failure)) callback(failure);
+    };
+    ipcRenderer.on(SUBFRAME_LOAD_FAILED_CHANNEL, listener);
+    return () => {
+      ipcRenderer.off(SUBFRAME_LOAD_FAILED_CHANNEL, listener);
+    };
+  },
   setNativeMenuLocale: (locale: NativeMenuLocale) =>
     ipcRenderer.send(NATIVE_MENU_LOCALE_CHANNEL, locale),
   getPlatform: () => process.platform,
@@ -235,6 +256,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
   getLocalControlCapability: () =>
     ipcRenderer.invoke('get-local-control-capability'),
+  // Brain event streams relayed by the main process (see brainStreamRelay).
+  brainStreamRelayTarget: () =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_TARGET_CHANNEL),
+  brainStreamRelayOpen: (request: BrainStreamRelayRequest) =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_OPEN_CHANNEL, request),
+  brainStreamRelayRead: (streamId: string) =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_READ_CHANNEL, streamId),
+  brainStreamRelayCancel: (streamId: string) =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_CANCEL_CHANNEL, streamId),
   getDesktopInstanceId: (legacyRendererId?: string) =>
     ipcRenderer.invoke('get-desktop-instance-id', legacyRendererId),
   restartBackend: () => ipcRenderer.invoke('restart-backend'),

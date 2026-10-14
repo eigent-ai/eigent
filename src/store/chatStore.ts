@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isRelayedEventStreamResponse } from '@/api/brainStreamRelay';
 import {
   fetchDelete,
   fetchGet,
@@ -31,6 +32,7 @@ import { generateUniqueId, uploadLog } from '@/lib';
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { createBrowserPreviewHandoff } from '@/lib/browserPreviewHandoff';
+import { fetchConfiguredProviders } from '@/lib/configuredModels';
 import {
   classifyError,
   classifyTaskCategory,
@@ -42,48 +44,74 @@ import {
   recordTaskStopped,
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
-import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
+import {
+  notifyDurableRunStatusChanged,
+  notifyRunStreamReopened,
+} from '@/lib/events/durableRunEvents';
+import { createLocalError } from '@/lib/localError';
 import {
   resolveSourceEventId,
   resolveSourceMessageId,
 } from '@/lib/messageIdentity';
-import {
-  buildAgentModelConfigFromProvider,
-  splitProviderConfig,
-} from '@/lib/modelConfig';
+import { buildAgentModelConfigFromProvider } from '@/lib/modelConfig';
 import { reportError } from '@/lib/notifyError';
+import { isTerminalHumanControlEvent } from '@/lib/projector/control/adapter';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
+import { createSSEAdmissionError } from '@/lib/responseError';
 import {
   runDomainEventHub,
   runEventIngressRegistry,
   runProjectionStore,
   type RunDomainEvent,
 } from '@/lib/runEvents';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
 import {
   isLocalWorkspaceSpace,
   isPlaceholderProjectName,
 } from '@/lib/spaceLabel';
+import {
+  fetchSpaceModelSelection,
+  recoverSpaceSessionModel,
+  resolveSpaceModelBinding,
+  spaceModelError,
+  type ResolvedSpaceModel,
+  type SpaceModelSelection,
+} from '@/lib/spaceModelBinding';
 import { settleTaskElapsedMs } from '@/lib/taskDuration';
 import {
   classifyError as classifyUsageError,
   errorCopy,
 } from '@/lib/usageErrors';
 import { recoverCompletedRunDisplay } from '@/service/completedRunDisplayRecovery';
+import { executionScope } from '@/service/executionApi';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
+import {
+  createTaskTimerWaitSync,
+  isRunWaitingForUser,
+} from '@/service/legacyTaskTimer';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
-import { readTerminalRunResult } from '@/service/runUsageReconciliation';
+import {
+  readTerminalRunResult,
+  unverifiedTaskFailureFacts,
+  type TaskFailureFacts,
+} from '@/service/runUsageReconciliation';
 import {
   forgetRejectedTriggerRun,
   proxyUpdateTriggerExecution,
   trackTriggerExecutionRun,
 } from '@/service/triggerApi';
-import { confirmCloudRecovery } from '@/store/usageNoticeStore';
+import { requireLegacyExecution } from '@/store/sessionExecutionStore';
+import {
+  confirmCloudRecovery,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
 import { ExecutionStatus } from '@/types';
 import {
   AgentMessageStatus,
@@ -99,7 +127,7 @@ import i18next from 'i18next';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
-import { getAuthStore, getWorkerList } from './authStore';
+import { getAuthStore, getWorkerList, useAuthStore } from './authStore';
 import { enqueueChatEventProjection } from './chatEventProjectionBridge';
 import {
   cloudModelRequestExtraParams,
@@ -121,20 +149,51 @@ const PROJECT_CONTEXT_MAX_RUNS = 8;
 // end step.
 const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
 
+/** Resume admission refuses to replay a write whose outcome is unknown. */
+function isUnsafeResumeBlocked(error: unknown): boolean {
+  const failure = error as {
+    status?: unknown;
+    response?: { data?: { detail?: { code?: unknown } } };
+  } | null;
+  return (
+    failure?.status === 409 &&
+    failure.response?.data?.detail?.code === 'unsafe_resume_blocked'
+  );
+}
+
 export async function admitDurableRunResume(
   runId: string,
   requestId: string,
   post: typeof fetchPost = fetchPost
 ): Promise<number> {
-  const response = await post(`/runs/${encodeURIComponent(runId)}/resume`, {
-    request_id: requestId,
-    reason: 'explicit_resume',
-  });
+  let response;
+  try {
+    response = await post(`/runs/${encodeURIComponent(runId)}/resume`, {
+      request_id: requestId,
+      reason: 'explicit_resume',
+    });
+  } catch (error) {
+    // Retrying cannot help; explain the refusal instead of a generic failure.
+    throw isUnsafeResumeBlocked(error)
+      ? createLocalError(i18next.t('chat.run-resume-unsafe-blocked'), {
+          cause: error,
+        })
+      : error;
+  }
   const attemptNumber = response?.attempt?.attempt_number;
   if (!Number.isSafeInteger(attemptNumber) || attemptNumber < 1) {
     throw new Error(
       'Run Resume response did not identify the admitted attempt.'
     );
+  }
+  if (
+    (response.run_id != null && response.run_id !== runId) ||
+    (response.attempt.resume_request_id != null &&
+      response.attempt.resume_request_id !== requestId) ||
+    (response.attempt.status != null &&
+      !['pending', 'running'].includes(response.attempt.status))
+  ) {
+    throw new Error('Run Resume response does not identify an active request.');
   }
   return attemptNumber;
 }
@@ -151,22 +210,27 @@ export const canonicalRunEventToLegacyMessage = (
     payload?: unknown;
     created_at?: unknown;
   };
-  // Approval decisions are canonical-only events. Project their durable
+  // Interaction outcomes are canonical-only events: a decision, a system
+  // cancellation (for example at restart) or an expiry. Project the durable
   // interaction id into the legacy reducer so reconnect/replay closes the
-  // corresponding ASK card instead of resurrecting an already-decided card.
+  // corresponding ASK card instead of resurrecting it or queueing the next
+  // request (such as the one asked again after Resume) behind it.
   if (
-    event.event_type === 'approval.decided' ||
-    event.event_type === 'interaction.resolved'
+    typeof event.event_type === 'string' &&
+    isTerminalHumanControlEvent(event.event_type)
   ) {
     const payload =
       event.payload && typeof event.payload === 'object'
         ? (event.payload as Record<string, unknown>)
         : null;
-    if (typeof payload?.interaction_id !== 'string') return null;
+    // An approval expiry identifies its request by approval id only.
+    const interactionId = payload?.interaction_id ?? payload?.approval_id;
+    if (typeof interactionId !== 'string' || !interactionId) return null;
     return {
       step: AgentStep.HUMAN_REPLY,
       data: {
         ...payload,
+        interaction_id: interactionId,
         __durable_interaction_resolution: true,
       },
       timestamp:
@@ -758,14 +822,22 @@ export type DurableRunDisplayStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'timed_out'
   | 'interrupted'
   | 'stopped';
+
+/** Ended without a result: failure evidence and error presentation apply. */
+export const UNSUCCESSFUL_RUN_STATUSES = new Set<DurableRunDisplayStatus>([
+  'failed',
+  'timed_out',
+]);
 
 interface Task {
   source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
   messages: Message[];
-  type: string;
+  /** Playback kind such as `replay` or `share`; absent for a live task. */
+  type?: string;
   summaryTask: string;
   taskInfo: TaskInfo[];
   attaches: File[];
@@ -1254,10 +1326,20 @@ export interface ChatStore {
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
+  observeTaskFailureFacts: (
+    taskId: string,
+    onFacts: (facts: TaskFailureFacts | undefined) => void
+  ) => () => void;
   setDurableRunStatus: (
     taskId: string,
     status: DurableRunDisplayStatus | undefined
   ) => void;
+  /**
+   * Resume admitted a new Attempt for this task's Run. Drop the playback
+   * identity, interrupted outcome and waiters restored from history so the
+   * new Attempt's requests are live. Retired receipts stay read-only.
+   */
+  markRunResumed: (taskId: string) => void;
   setActiveTaskId: (taskId: string) => void;
   setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
   replay: (
@@ -1296,6 +1378,15 @@ export interface ChatStore {
   setTaskAssigning: (taskId: string, taskAssigning: Agent[]) => void;
   setTaskInfo: (taskId: string, taskInfo: TaskInfo[]) => void;
   setTaskRunning: (taskId: string, taskRunning: TaskInfo[]) => void;
+  setArtifactManifest: (
+    taskId: string,
+    manifest: {
+      files: FileInfo[];
+      finalized: boolean;
+      scanStatus: string;
+      truncated: boolean;
+    }
+  ) => void;
   setActiveAsk: (taskId: string, agentName: string) => void;
   setActiveAskList: (taskId: string, message: Message[]) => void;
   addWebViewUrl: (
@@ -1397,9 +1488,20 @@ type ActiveSSEConnection = {
   taskId: string;
   recoverClosedUsage?: () => void;
   displayTail?: { taskId: string; promise: Promise<void>; release: () => void };
+  /** Opened through the main-process relay: it holds no renderer connection. */
+  relayed?: boolean;
 };
 
 const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
+
+// A failed first delivery may outlive its active account/Space. Remember only
+// proven-unsent receipts so that their owner can release them on a later retry.
+// Unknown ACKs never enter this map; after renderer restart canonical recovery
+// remains authoritative rather than inferring that a request was not sent.
+const unsentSpaceModelAdmissions = new Map<
+  string,
+  { runId: string; revision: string | null }
+>();
 
 // Journal reads outlive the terminal observer/transport, but never a new
 // admission of the same Run. Each read is also bounded by its own deadline.
@@ -1540,6 +1642,20 @@ function markSSEConnectionIdleForTask(
   }
 }
 
+/**
+ * A Run that finishes while its Session is in the background has nothing more
+ * to render on its idle stream. Release it now instead of at the next Session
+ * switch, so finished background Runs do not hold the renderer's connections.
+ */
+function reclaimIdleStreamInBackground(projectId: string): void {
+  const projectState = useProjectStore.getState();
+  if (projectState.activeProjectId === projectId) return;
+  // Partial Project store doubles may omit this action.
+  projectState.reclaimIdleStreams?.(projectState.activeProjectId ?? null, [
+    projectId,
+  ]);
+}
+
 function cleanupTaskSSEResources(
   taskId: string,
   { abort = true }: { abort?: boolean } = {}
@@ -1556,7 +1672,7 @@ const CANONICAL_TERMINAL_RUN_STATUSES: Partial<
 > = {
   'run.completed': 'completed',
   'run.failed': 'failed',
-  'run.deadline_reached': 'failed',
+  'run.deadline_reached': 'timed_out',
   'run.cancelled': 'cancelled',
   'run.interrupted': 'interrupted',
   'runtime.interrupted': 'interrupted',
@@ -1567,6 +1683,7 @@ const CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS: Partial<Record<string, string>> =
     completed: 'run.completed',
     failed: 'run.failed',
     cancelled: 'run.cancelled',
+    timed_out: 'run.deadline_reached',
     interrupted: 'run.interrupted',
   };
 
@@ -1599,7 +1716,7 @@ export function settleLegacyTaskFromCanonicalTerminal(
   state.setIsPending(taskId, false);
   state.setStatus(taskId, ChatTaskStatus.FINISHED);
 
-  if (durableRunStatus === 'failed') {
+  if (UNSUCCESSFUL_RUN_STATUSES.has(durableRunStatus)) {
     state.setTaskRunning(
       taskId,
       task.taskRunning.map((item) =>
@@ -1625,10 +1742,12 @@ export function settleLegacyTaskFromCanonicalTerminal(
     const message =
       typeof rawMessage === 'string' && rawMessage.trim()
         ? rawMessage.trim()
-        : i18next.t('chat.run-no-final-response', {
-            defaultValue:
-              'This task failed before it produced a final response.',
-          });
+        : durableRunStatus === 'timed_out'
+          ? runTerminalReasonText('deadline_exceeded', i18next.t)
+          : i18next.t('chat.run-no-final-response', {
+              defaultValue:
+                'This task failed before it produced a final response.',
+            });
     const content = i18next.t('chat.error-message', {
       defaultValue: '❌ **Error**: {{message}}',
       message,
@@ -1890,6 +2009,9 @@ export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
   return files;
 }
 
+/** Matches the terminal receipt read deadline in runUsageReconciliation. */
+const TERMINAL_ARTIFACT_MANIFEST_TIMEOUT_MS = 5_000;
+
 type TaskArtifactFileListResult = {
   canonical: boolean;
   files: FileInfo[];
@@ -1902,11 +2024,13 @@ async function loadTaskArtifactFileList({
   projectId,
   email,
   userId,
+  signal,
 }: {
   taskId: string;
   projectId?: string;
   email?: string;
   userId?: string | number | null;
+  signal?: AbortSignal;
 }): Promise<TaskArtifactFileListResult> {
   // The index contains absolute local paths and is intentionally Desktop-only.
   if (!getHostIpcRenderer()?.invoke || !projectId || !email) {
@@ -1919,12 +2043,15 @@ async function loadTaskArtifactFileList({
   }
 
   try {
-    const response = await fetchGet('/files/changes', {
+    const params = {
       task_id: taskId,
       project_id: projectId,
       email,
       ...(userId ? { user_id: userId } : {}),
-    });
+    };
+    const response = signal
+      ? await fetchGet('/files/changes', params, undefined, { signal })
+      : await fetchGet('/files/changes', params);
     const envelope =
       response && !Array.isArray(response) && typeof response === 'object'
         ? (response as Record<string, unknown>)
@@ -1950,6 +2077,42 @@ async function loadTaskArtifactFileList({
       truncated: false,
     };
   }
+}
+
+/**
+ * Read the artifact index for receipt recovery without letting it hold the
+ * receipts back. A failed, slow or abandoned read resolves as non-canonical,
+ * so tokens, the END display and trigger status still recover on time.
+ */
+function loadRecoveredTaskArtifactFileList(
+  input: Omit<Parameters<typeof loadTaskArtifactFileList>[0], 'signal'>,
+  signal: AbortSignal
+): Promise<TaskArtifactFileListResult> {
+  const notCanonical: TaskArtifactFileListResult = {
+    canonical: false,
+    files: [],
+    scanStatus: null,
+    truncated: false,
+  };
+  const controller = new AbortController();
+  const stopped = new Promise<TaskArtifactFileListResult>((resolve) => {
+    controller.signal.addEventListener('abort', () => resolve(notCanonical), {
+      once: true,
+    });
+  });
+  const abort = () => controller.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  if (signal.aborted) abort();
+  const deadline = setTimeout(abort, TERMINAL_ARTIFACT_MANIFEST_TIMEOUT_MS);
+  return Promise.race([
+    loadTaskArtifactFileList({ ...input, signal: controller.signal }).catch(
+      () => notCanonical
+    ),
+    stopped,
+  ]).finally(() => {
+    clearTimeout(deadline);
+    signal.removeEventListener('abort', abort);
+  });
 }
 
 function normalizedFileIdentity(value: string | undefined): string {
@@ -2286,6 +2449,80 @@ const updateTriggerExecutionStatus = async (
   }
 };
 
+/** Hydrate mount-scoped failure presentation, without changing history or execution. */
+export async function readTaskFailureFacts(
+  owner: VanillaChatStore,
+  projectId: string,
+  taskId: string,
+  signal: AbortSignal
+): Promise<TaskFailureFacts | null> {
+  const task = owner.getState().tasks[taskId];
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  const controller = new AbortController();
+  const isCurrent = () => {
+    const current = owner.getState().tasks[taskId];
+    const projects = useProjectStore.getState();
+    return (
+      !signal.aborted &&
+      !controller.signal.aborted &&
+      getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+      projects.activeProjectId === projectId &&
+      projects
+        .getAllChatStores(projectId)
+        .some((entry) => entry.chatStore === owner) &&
+      Boolean(
+        task &&
+        current &&
+        current.executionId === task.executionId &&
+        UNSUCCESSFUL_RUN_STATUSES.has(current.durableRunStatus!) &&
+        current.status === ChatTaskStatus.FINISHED
+      )
+    );
+  };
+  if (!isCurrent()) return null;
+  // Stop events written before the Brain recorded causes carry none; the Run
+  // summary holds the backfilled cause.
+  const withRunTerminalReason = (facts: TaskFailureFacts) => ({
+    ...facts,
+    terminalReason:
+      facts.terminalReason ??
+      runProjectionStore.getRun(projectId, taskId)?.terminalReason ??
+      null,
+  });
+  const invalidate = () => {
+    if (!isCurrent()) controller.abort();
+  };
+  const abort = () => controller.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  const unsubscribe = [
+    owner.subscribe(invalidate),
+    useProjectStore.subscribe(invalidate),
+    useAuthStore.subscribe(invalidate),
+  ];
+  try {
+    const result = await readTerminalRunResult({
+      projectId,
+      runId: taskId,
+      terminalEventTypes: ['run.failed', 'run.deadline_reached'],
+      signal: controller.signal,
+      expectedAccountKey: accountKey,
+      includeFailureFacts: true,
+    });
+    return isCurrent()
+      ? withRunTerminalReason(
+          result.failureFacts ?? unverifiedTaskFailureFacts()
+        )
+      : null;
+  } catch {
+    return isCurrent()
+      ? withRunTerminalReason(unverifiedTaskFailureFacts())
+      : null;
+  } finally {
+    signal.removeEventListener('abort', abort);
+    unsubscribe.forEach((dispose) => dispose());
+  }
+}
+
 /** Recover terminal receipts and missing display without replaying execution. */
 function recoverClosedTerminalResult(
   owner: Pick<VanillaChatStore, 'getState'>,
@@ -2300,25 +2537,45 @@ function recoverClosedTerminalResult(
     !task ||
     task.status !== ChatTaskStatus.FINISHED ||
     task.isPending ||
-    !['failed', 'cancelled', 'completed'].includes(outcome || '') ||
+    !['completed', 'failed', 'cancelled', 'timed_out'].includes(
+      outcome || ''
+    ) ||
     terminalUsageRecoveries.has(taskId)
   )
     return;
   const executionId = task.executionId;
   const controller = new AbortController();
   terminalUsageRecoveries.set(taskId, controller);
-  const terminalEventTypes =
-    outcome === 'failed'
-      ? ['run.failed', 'run.deadline_reached']
-      : [`run.${outcome}`];
-  void readTerminalRunResult({
-    projectId,
-    runId: taskId,
-    throughSequence,
-    terminalEventTypes,
-    signal: controller.signal,
-  })
-    .then(({ tokens, displayEvents, assistantFinal }) => {
+  const terminalEventTypes = [
+    CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS[outcome!]!,
+  ];
+  const auth = getAuthStore();
+  void Promise.all([
+    readTerminalRunResult({
+      projectId,
+      runId: taskId,
+      throughSequence,
+      terminalEventTypes,
+      signal: controller.signal,
+    }),
+    outcome === 'completed' && !task.artifactManifestFinalized
+      ? loadRecoveredTaskArtifactFileList(
+          {
+            taskId,
+            projectId,
+            email: auth.email || undefined,
+            userId: auth.user_id,
+          },
+          controller.signal
+        )
+      : Promise.resolve<TaskArtifactFileListResult>({
+          canonical: false,
+          files: [],
+          scanStatus: null,
+          truncated: false,
+        }),
+  ])
+    .then(([{ tokens, displayEvents, assistantFinal }, artifactManifest]) => {
       const state = owner.getState();
       let current = state.tasks[taskId];
       if (
@@ -2331,6 +2588,19 @@ function recoverClosedTerminalResult(
         current.isPending
       )
         return;
+      if (
+        outcome === 'completed' &&
+        artifactManifest.canonical &&
+        !current.artifactManifestFinalized
+      ) {
+        state.setArtifactManifest(taskId, {
+          files: artifactManifest.files,
+          finalized: true,
+          scanStatus: artifactManifest.scanStatus || 'complete',
+          truncated: artifactManifest.truncated,
+        });
+        current = owner.getState().tasks[taskId];
+      }
       if (outcome === 'completed' && displayEvents.length) {
         const recovered = recoverCompletedRunDisplay(
           current,
@@ -2409,7 +2679,7 @@ function recoverClosedTerminalResult(
 }
 
 const chatStore = (initial?: Partial<ChatStore>) =>
-  createStore<ChatStore>()((set, get) => ({
+  createStore<ChatStore>()((set, get, store) => ({
     activeTaskId: null,
     nextTaskId: null,
     tasks: initial?.tasks ?? {},
@@ -2638,11 +2908,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         ? projectId
         : projectId || projectStore.activeProjectId;
       if (isLiveTask && !project_id) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.no-active-session', {
             defaultValue: 'No active session selected.',
           })
         );
+      }
+      // Routing can yield. Keep attachment ownership at the user's gesture,
+      // so a draft edited while ownership is checked cannot be cleared later.
+      const draftAttachmentsBeforeRouting = new Map(
+        Object.entries(get().tasks).map(([id, task]) => [id, task.attaches])
+      );
+      if (isLiveTask && project_id) {
+        for (const { chatStore } of projectStore.getAllChatStores?.(
+          project_id
+        ) ?? []) {
+          for (const [id, task] of Object.entries(chatStore.getState().tasks))
+            draftAttachmentsBeforeRouting.set(id, task.attaches);
+        }
+        await requireLegacyExecution(executionScope(project_id));
       }
       const startOptions = options || {};
       const project =
@@ -2650,7 +2934,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? projectStore.getProjectById(project_id)
           : null;
       if (isLiveTask && !project) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.selected-session-unavailable', {
             defaultValue: 'The selected session is not available.',
           })
@@ -2769,7 +3053,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? {
               store: targetChatStore,
               taskId: newTaskId,
-              attaches: targetChatStore.getState().tasks[newTaskId]?.attaches,
+              attaches: draftAttachmentsBeforeRouting.has(newTaskId)
+                ? draftAttachmentsBeforeRouting.get(newTaskId)
+                : targetChatStore.getState().tasks[newTaskId]?.attaches,
             }
           : null;
 
@@ -2789,7 +3075,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           triggerExecutionId &&
           project_id
         ) {
-          forgetRejectedTriggerRun(triggerExecutionId, project_id, newTaskId);
+          try {
+            forgetRejectedTriggerRun(
+              triggerExecutionId,
+              project_id,
+              newTaskId,
+              triggerAccountKey
+            );
+          } catch (error) {
+            // A storage failure must not strand the never-submitted task in
+            // Preparing or replace its original admission error.
+            console.warn(
+              'Failed to release an unsubmitted Trigger binding:',
+              error
+            );
+          }
         }
         const targetState = targetChatStore.getState();
         const task = targetState.tasks[newTaskId];
@@ -2902,9 +3202,231 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Reuse the model captured on this Project (if any) so follow-up runs
       // keep the conversation's model even when the global default changed.
-      const pinnedModelSelection =
+      const spaceId = resolveSpaceIdForProject(project_id);
+      const projectSpaceId = project?.spaceId;
+      let pinnedModelSelection =
         !type && project_id ? projectStore.getProjectModel(project_id) : null;
+      // Server sync can omit the local new-Session marker while retaining a
+      // delivery receipt. That receipt still requires accepted-model recovery.
+      let pendingModelAdmission = project?.metadata?.spaceModelAdmissionRunId;
+      const needsModelRecovery = Boolean(
+        project?.metadata?.spaceModelDefaultPending || pendingModelAdmission
+      );
+      let expectedModelSelection = JSON.stringify(pinnedModelSelection);
+      const assertModelSelectionCurrent = () => {
+        const currentAuth = getAuthStore();
+        if (
+          currentAuth.token !== token ||
+          currentAuth.email !== email ||
+          currentAuth.user_id !== user_id ||
+          (project_id &&
+            (projectStore.getProjectById(project_id)?.spaceId !==
+              projectSpaceId ||
+              resolveSpaceIdForProject(project_id) !== spaceId ||
+              JSON.stringify(projectStore.getProjectModel(project_id)) !==
+                expectedModelSelection))
+        ) {
+          throw spaceModelError('changed');
+        }
+      };
+      const modelAdmissionOwnerKey = JSON.stringify([
+        getAccountEnvironmentKey({ email, user_id }),
+        project_id,
+        projectSpaceId,
+        spaceId,
+        expectedModelSelection,
+      ]);
+      const clearOwnedModelAdmission = (
+        runId: string,
+        revision: string | null
+      ) => {
+        if (!project_id) return;
+        try {
+          assertModelSelectionCurrent();
+          const current = projectStore.getProjectById(project_id)?.metadata;
+          if (
+            current?.spaceModelAdmissionRunId === runId &&
+            (current.spaceModelAdmissionRevision ?? null) === revision
+          ) {
+            // The Store clears locally before its first await. Observe remote
+            // persistence without holding the composer in Preparing for it.
+            void projectStore
+              .setProjectModelAdmission(
+                project_id,
+                null,
+                assertModelSelectionCurrent
+              )
+              .then(
+                () => {
+                  const proof = unsentSpaceModelAdmissions.get(
+                    modelAdmissionOwnerKey
+                  );
+                  if (proof?.runId === runId && proof.revision === revision)
+                    unsentSpaceModelAdmissions.delete(modelAdmissionOwnerKey);
+                },
+                (error) => {
+                  console.warn(
+                    'Failed to persist Session receipt cleanup:',
+                    error
+                  );
+                }
+              );
+          }
+        } catch (error) {
+          // Local clearing is optimistic. Do not roll it back after a failed
+          // persistence, or write through another account/Space/model owner.
+          console.warn('Failed to release a Session model receipt:', error);
+        }
+      };
+      let spaceModelSelection: SpaceModelSelection | null = null;
+      let adoptingSpaceDefault = false;
+      // Only the actual Session model owns this gate. A global Cloud choice
+      // must not block custom/local recovery, nor may another account's cached
+      // incidents be consumed during an account transition.
+      const assertCloudQuota = (candidateModelType: string | undefined) => {
+        if (
+          (!adoptingSpaceDefault && !startOptions.resumeRequestId) ||
+          candidateModelType !== 'cloud'
+        )
+          return;
+        assertModelSelectionCurrent();
+        const usage = useUsageNoticeStore.getState();
+        const usageBlock =
+          token && user_id != null && usage.account === String(user_id)
+            ? usage.incidents.find((item) =>
+                [
+                  'credits',
+                  'trial-daily',
+                  'trial-total',
+                  'free-credits',
+                ].includes(item.reason)
+              )
+            : undefined;
+        if (usageBlock) {
+          finishStartupFailure();
+          throw Object.assign(new Error(errorCopy(usageBlock.reason)), {
+            usageReason: usageBlock.reason,
+          });
+        }
+      };
+      let initialSessionModel: ReturnType<typeof projectStore.getProjectModel> =
+        null;
+      let spaceModelBinding: ResolvedSpaceModel | undefined;
+      let commitSpaceModelPin: (() => void) | undefined;
+      try {
+        const unsentProof = unsentSpaceModelAdmissions.get(
+          modelAdmissionOwnerKey
+        );
+        if (
+          !type &&
+          pendingModelAdmission &&
+          unsentProof?.runId === pendingModelAdmission &&
+          unsentProof.revision ===
+            (project?.metadata?.spaceModelAdmissionRevision ?? null)
+        ) {
+          clearOwnedModelAdmission(pendingModelAdmission, unsentProof.revision);
+          assertModelSelectionCurrent();
+          pendingModelAdmission = project_id
+            ? projectStore.getProjectById(project_id)?.metadata
+                ?.spaceModelAdmissionRunId
+            : undefined;
+        }
+        if (
+          !type &&
+          !pinnedModelSelection &&
+          ((pendingModelAdmission &&
+            (!projectSpaceId || spaceId !== projectSpaceId)) ||
+            (needsModelRecovery &&
+              project?.spaceId &&
+              !project.spaceId.startsWith('legacy_') &&
+              !spaceId))
+        ) {
+          throw spaceModelError('unavailable');
+        }
+        if (
+          !type &&
+          project_id &&
+          spaceId &&
+          !pinnedModelSelection &&
+          needsModelRecovery
+        ) {
+          const identity = { email: email || '', userId: user_id };
+          const recovered = await recoverSpaceSessionModel(
+            spaceId,
+            project_id,
+            identity,
+            assertModelSelectionCurrent
+          );
+          if (recovered) {
+            projectStore.setProjectModel(project_id, recovered);
+            pinnedModelSelection = recovered;
+            expectedModelSelection = JSON.stringify(
+              projectStore.getProjectModel(project_id)
+            );
+            // Before recovery the UI cannot infer this model's category from
+            // the unrelated global preference. Preserve its Cloud quota gate
+            // before a cold Resume can create another durable Attempt.
+            assertCloudQuota(recovered.modelType);
+          } else {
+            if (
+              startOptions.resumeRequestId ||
+              pendingModelAdmission ||
+              !projectStore.getProjectById(project_id)?.metadata
+                ?.spaceModelDefaultPending ||
+              projectStore.getProjectById(project_id)?.metadata
+                ?.spaceModelAdmissionRunId
+            )
+              throw spaceModelError('unconfirmed');
+            adoptingSpaceDefault = true;
+            spaceModelSelection = await fetchSpaceModelSelection(
+              spaceId,
+              identity,
+              assertModelSelectionCurrent
+            );
+          }
+        }
+        const ref =
+          pinnedModelSelection?.model_ref ?? spaceModelSelection?.model_ref;
+        if (!type && ref && ref !== 'provider://default') {
+          spaceModelBinding = await resolveSpaceModelBinding(
+            ref,
+            assertModelSelectionCurrent
+          );
+          if (
+            pinnedModelSelection &&
+            (pinnedModelSelection.provider_id !==
+              spaceModelBinding.selection.provider_id ||
+              pinnedModelSelection.model_platform !==
+                spaceModelBinding.selection.model_platform ||
+              pinnedModelSelection.model_type !==
+                spaceModelBinding.selection.model_type)
+          )
+            throw spaceModelError('unavailable');
+          pinnedModelSelection = {
+            ...spaceModelBinding.selection,
+            thinking_effort:
+              pinnedModelSelection?.thinking_effort ??
+              spaceModelSelection?.thinking_effort,
+          };
+        }
+      } catch (error) {
+        finishStartupFailure();
+        throw error;
+      }
       const effectiveModelType = pinnedModelSelection?.modelType ?? modelType;
+      // Workspace's category preview is not an accepted binding. Re-check a
+      // fresh adoption after resolution, before any Cloud key or admission.
+      const assertAdmissionCurrent = () => {
+        if (type) return;
+        try {
+          assertModelSelectionCurrent();
+          assertCloudQuota(effectiveModelType);
+        } catch (error) {
+          finishStartupFailure();
+          throw error;
+        }
+      };
+      assertAdmissionCurrent();
       const requestAccount =
         getAuthStore().user_id != null ? String(getAuthStore().user_id) : null;
       let resolvedProviderId: number | undefined;
@@ -2925,24 +3447,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         !type &&
         (effectiveModelType === 'custom' || effectiveModelType === 'local')
       ) {
-        let provider: any = null;
-        if (pinnedModelSelection?.provider_id !== undefined) {
+        let provider: any = spaceModelBinding?.provider ?? null;
+        if (!provider && pinnedModelSelection?.provider_id !== undefined) {
           try {
-            const res = await proxyFetchGet('/api/v1/providers');
-            const providerList = Array.isArray(res) ? res : res.items || [];
+            const providerList = await fetchConfiguredProviders();
             provider =
               providerList.find(
                 (p: { id: number }) => p.id === pinnedModelSelection.provider_id
               ) || null;
           } catch (error) {
             console.error('Failed to load pinned model provider:', error);
+            finishStartupFailure();
+            throw new Error(i18next.t('setting.model-list.pinned-load-failed'));
           }
           if (!provider) {
-            toast.warning(
-              i18next.t('chat.model-fallback-warning', {
-                defaultValue:
-                  'The model used earlier in this conversation is no longer available. Falling back to the default model.',
-              })
+            finishStartupFailure();
+            throw new Error(
+              i18next.t('setting.model-list.missing-configuration')
             );
           }
         }
@@ -2950,30 +3471,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const res = await proxyFetchGet('/api/v1/providers', {
             prefer: true,
           });
-          const providerList = res.items || [];
+          const providerList = Array.isArray(res) ? res : res.items || [];
           provider = providerList[0];
         }
 
         if (!provider) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.no-model-provider', {
               defaultValue:
-                'No model provider is configured. Go to Agents > Models and configure at least one default model provider.',
+                'No model provider is configured. Go to Settings > Models and configure at least one default model provider.',
             })
           );
         }
 
-        const { modelConfigDict, extraParams } = splitProviderConfig(
-          provider.encrypted_config
-        );
+        const providerModel = buildAgentModelConfigFromProvider(provider);
         apiModel = {
-          api_key: provider.api_key,
-          model_type: provider.model_type,
-          model_platform: provider.provider_name,
-          api_url: provider.endpoint_url || provider.api_url,
-          model_config_dict: modelConfigDict,
-          extra_params: extraParams,
+          api_key: providerModel.api_key ?? '',
+          model_type: providerModel.model_type ?? '',
+          model_platform: providerModel.model_platform,
+          api_url: providerModel.api_url ?? '',
+          model_config_dict: providerModel.model_config_dict ?? {},
+          extra_params: providerModel.extra_params ?? {},
           auth_source: undefined,
         };
         resolvedProviderId = provider.id;
@@ -2981,9 +3500,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const requestedCloudModelId =
           pinnedModelSelection?.cloud_model_type || cloud_model_type;
         const cloudModelStore = getCloudModelStore();
-        let resolvedCloudModel = cloudModelStore.resolveCloudModel(
-          requestedCloudModelId
-        );
+        let resolvedCloudModel =
+          spaceModelBinding?.cloudModel ??
+          cloudModelStore.resolveCloudModel(requestedCloudModelId);
         if (!resolvedCloudModel || resolvedCloudModel.source !== 'selected') {
           await cloudModelStore.fetchCloudModels(true);
           resolvedCloudModel = getCloudModelStore().resolveCloudModel(
@@ -2992,10 +3511,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
         if (!resolvedCloudModel) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.cloud-model-unavailable', {
               defaultValue:
-                'The cloud model is unavailable. Try again or choose another model in Agents > Models.',
+                'The cloud model is unavailable. Try again or choose another model in Settings > Models.',
             })
           );
         }
@@ -3021,6 +3540,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         let res: any;
         try {
+          assertAdmissionCurrent();
           res = await proxyFetchGet('/api/v1/user/key');
         } catch (error: any) {
           finishStartupFailure();
@@ -3087,7 +3607,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // Capture the resolved model on the Project so later runs (including
       // conversations reloaded from history) keep using it.
       if (!type && project_id && apiModel.model_platform) {
-        projectStore.setProjectModel(project_id, {
+        try {
+          assertModelSelectionCurrent();
+        } catch (error) {
+          finishStartupFailure();
+          throw error;
+        }
+        const modelSelection = {
           modelType: effectiveModelType,
           ...(resolvedCloudModelId
             ? { cloud_model_type: resolvedCloudModelId }
@@ -3100,7 +3626,31 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : {}),
           model_platform: apiModel.model_platform,
           model_type: apiModel.model_type,
-        });
+          ...(pinnedModelSelection?.model_ref
+            ? { model_ref: pinnedModelSelection.model_ref }
+            : {}),
+          ...((pinnedModelSelection?.thinking_effort ??
+          spaceModelSelection?.thinking_effort)
+            ? {
+                thinking_effort:
+                  pinnedModelSelection?.thinking_effort ??
+                  spaceModelSelection?.thinking_effort,
+              }
+            : {}),
+        };
+        const commitModel = () => {
+          assertModelSelectionCurrent();
+          projectStore.setProjectModel(project_id, modelSelection);
+          expectedModelSelection = JSON.stringify(
+            projectStore.getProjectModel(project_id)
+          );
+        };
+        // An admission failure (including a stale materialization) must not
+        // turn an unaccepted Space default into an existing Session pin.
+        if (adoptingSpaceDefault) {
+          initialSessionModel = modelSelection;
+          commitSpaceModelPin = commitModel;
+        } else commitModel();
       }
 
       // Resolve the user-selected search path for this Run. Querit may use
@@ -3156,13 +3706,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (workerProviderIds.length > 0) {
         let workerProviderList: any[];
         try {
-          const providersRes = await proxyFetchGet('/api/v1/providers');
-          workerProviderList = Array.isArray(providersRes)
-            ? providersRes
-            : providersRes.items || [];
+          workerProviderList = await fetchConfiguredProviders();
         } catch (error) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-load-failed', {
               defaultValue:
                 'Could not load the model provider configured for a worker.',
@@ -3184,7 +3731,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
         if (missingWorker) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-unavailable', {
               defaultValue:
                 'The model provider configured for worker "{{worker}}" is no longer available. Edit the worker and select another model.',
@@ -3229,7 +3776,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
 
       // create history
-      const spaceId = resolveSpaceIdForProject(project_id);
       if (spaceId && project_id && project?.spaceId !== spaceId) {
         projectStore.setProjectSpace(project_id, spaceId);
       }
@@ -3321,14 +3867,30 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let resumedAttemptNumber: number | undefined;
       if (startOptions.resumeRequestId) {
         try {
+          assertAdmissionCurrent();
           resumedAttemptNumber = await admitDurableRunResume(
             newTaskId,
-            startOptions.resumeRequestId
+            startOptions.resumeRequestId,
+            (url, data) =>
+              fetchPost(url, data, undefined, {
+                expectedAccountKey: getAccountEnvironmentKey({
+                  user_id,
+                  email,
+                }),
+                beforeRequest: assertAdmissionCurrent,
+              })
           );
+          // An admitted but unstarted Attempt is recovered with this same
+          // request ID by ChatBox; never cancel the Run or rotate a lost ACK.
+          assertAdmissionCurrent();
         } catch (error) {
           finishStartupFailure();
           throw error;
         }
+        // The admitted Attempt continues this Run in the same task, which may
+        // still be the playback restored at startup. Only now that the Run is
+        // no longer interrupted is that history state retired.
+        targetChatStore.getState().markRunResumed(newTaskId);
       }
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
@@ -3336,6 +3898,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let lockedChatStore: VanillaChatStore =
         targetChatStore as VanillaChatStore;
       let lockedTaskId = newTaskId;
+      const createRunBrowserPreviewHandoff = () =>
+        createBrowserPreviewHandoff(
+          !isLiveTask || !getHostIpcRenderer() ? null : project_id,
+          (url, ownerProjectId) =>
+            usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
+        );
+      let handoffBrowserPreview = createRunBrowserPreviewHandoff();
       // Resume keeps its Run ID. Until this admitted Attempt reaches either
       // the stream or a GET snapshot, older terminal receipts are history only.
       let resumedAttemptObserved = false;
@@ -3433,7 +4002,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             observedChatStore.getState().tasks[observedTaskId];
           const failureReason =
             observedTask &&
-            CANONICAL_TERMINAL_RUN_STATUSES[event.eventType] === 'failed'
+            UNSUCCESSFUL_RUN_STATUSES.has(
+              CANONICAL_TERMINAL_RUN_STATUSES[event.eventType]!
+            )
               ? reportError(
                   event.payload,
                   {
@@ -3513,6 +4084,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // ownership, in which case the guarded idle transition is a
             // no-op but this terminal observer is still finished.
             binding.dispose();
+            reclaimIdleStreamInBackground(project_id);
           } else {
             binding.dispose();
             cleanupSSEConnection(sseConnection);
@@ -3571,6 +4143,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               .setElapsed(observedTaskId, run.totalAttemptElapsedMs);
           }
         };
+        // The task timer holds still while the Run waits for the user.
+        const syncTimerWithUserWait = createTaskTimerWaitSync({
+          projectId: project_id,
+          runId: observedTaskId,
+          getState: () => observedChatStore.getState(),
+        });
+        const checkProjectedRun = () => {
+          if (!active) return;
+          syncTimerWithUserWait();
+          settleProjectedTerminal();
+        };
         // Reconciliation GETs update the projection without publishing a
         // domain event. Defer their check by one microtask so a live terminal
         // event (Store first, Hub second) retains its payload and wins once.
@@ -3581,13 +4164,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             projectionCheckScheduled = true;
             queueMicrotask(() => {
               projectionCheckScheduled = false;
-              settleProjectedTerminal();
+              checkProjectedRun();
             });
           }
         );
         // Subscribe first, then read: neither events nor GET snapshots can
         // strand an observer installed just after the terminal transition.
-        settleProjectedTerminal();
+        checkProjectedRun();
 
         if (active) {
           runEventIngressRegistry.ensureLocal(project_id, observedTaskId);
@@ -3642,6 +4225,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         newChatStore: VanillaChatStore,
         newTaskId: string
       ) => {
+        if (lockedTaskId !== newTaskId) {
+          // Follow-up Runs reuse this SSE transport, but each owns its one
+          // preview reveal and pending tool receipts. Never carry either
+          // across the same ownership boundary as the reducer lock.
+          handoffBrowserPreview = createRunBrowserPreviewHandoff();
+        }
         lockedChatStore = newChatStore;
         lockedTaskId = newTaskId;
         bindSSEConnectionToTask(sseConnection, newTaskId);
@@ -3714,6 +4303,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         return true;
       };
 
+      if (!type) {
+        try {
+          assertModelSelectionCurrent();
+          if (startOptions.resumeRequestId)
+            assertCloudQuota(effectiveModelType);
+        } catch (error) {
+          finishStartupFailure();
+          throw error;
+        }
+      }
       const requestBody = !type
         ? {
             space_id: spaceId,
@@ -3737,9 +4336,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             api_url: apiModel.api_url,
             model_config_dict: apiModel.model_config_dict,
             extra_params: apiModel.extra_params,
-            thinking_effort: projectStore.getProjectThinkingEffortOverride(
-              project_id ?? null
-            ),
+            thinking_effort:
+              projectStore.getProjectThinkingEffortOverride(
+                project_id ?? null
+              ) ??
+              pinnedModelSelection?.thinking_effort ??
+              spaceModelSelection?.thinking_effort,
+            workspace_model_selection: adoptingSpaceDefault
+              ? spaceModelSelection
+              : undefined,
+            session_model_selection: initialSessionModel ?? undefined,
             auth_source: apiModel.auth_source,
             installed_mcp: connectorGatewayMcpConfig || { mcpServers: {} },
             language: systemLanguage,
@@ -3767,11 +4373,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         : undefined;
 
-      const handoffBrowserPreview = createBrowserPreviewHandoff(
-        !isLiveTask || !getHostIpcRenderer() ? null : project_id,
-        (url, ownerProjectId) =>
-          usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
-      );
       let resumeStreamOpened = false;
       let resolveResumeStreamOpen: (() => void) | undefined;
       let rejectResumeStreamOpen: ((error: unknown) => void) | undefined;
@@ -3793,6 +4394,59 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             })
           : null;
 
+      let modelAdmissionRevision: string | null | undefined;
+      const releaseUnsentModelAdmission = () => {
+        if (
+          !adoptingSpaceDefault ||
+          admissionRequested ||
+          modelAdmissionRevision === undefined
+        )
+          return;
+        const current = project_id
+          ? projectStore.getProjectById(project_id)?.metadata
+          : undefined;
+        if (
+          !unsentSpaceModelAdmissions.has(modelAdmissionOwnerKey) ||
+          (current?.spaceModelAdmissionRunId === newTaskId &&
+            (current.spaceModelAdmissionRevision ?? null) ===
+              modelAdmissionRevision)
+        )
+          unsentSpaceModelAdmissions.set(modelAdmissionOwnerKey, {
+            runId: newTaskId,
+            revision: modelAdmissionRevision,
+          });
+        clearOwnedModelAdmission(newTaskId, modelAdmissionRevision);
+      };
+      if (adoptingSpaceDefault && project_id) {
+        try {
+          const before = projectStore.getProjectById(project_id)?.metadata;
+          const beforeRunId = before?.spaceModelAdmissionRunId ?? null;
+          const beforeRevision = before?.spaceModelAdmissionRevision ?? null;
+          const assignment = projectStore.setProjectModelAdmission(
+            project_id,
+            newTaskId,
+            assertModelSelectionCurrent
+          );
+          // The Store publishes its receipt synchronously before transport.
+          // Compare receipt values: getProjectById may return a new merged
+          // object even when the setter rejected before publishing anything.
+          const assigned = projectStore.getProjectById(project_id)?.metadata;
+          if (
+            assigned?.spaceModelAdmissionRunId === newTaskId &&
+            (beforeRunId !== newTaskId ||
+              (assigned.spaceModelAdmissionRevision ?? null) !== beforeRevision)
+          )
+            modelAdmissionRevision =
+              assigned.spaceModelAdmissionRevision ?? null;
+          await assignment;
+          assertAdmissionCurrent();
+        } catch (error) {
+          releaseUnsentModelAdmission();
+          finishStartupFailure();
+          throw error;
+        }
+      }
+
       // A canonical completion can precede the final compatibility result and
       // usage frames. END closes that Run's display-only tail, independently
       // of the physical transport being reused for a following Run.
@@ -3812,9 +4466,100 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       ]);
       let legacyEndRunId: string | null = null;
 
-      admissionRequested = true;
+      // Admission failed before the event stream existed. Unlike an execution
+      // error, no later END frame can clear the optimistic pending state, so
+      // close it here and surface the typed Brain reason instead of leaving
+      // the composer stuck on "Preparing".
+      const failAdmission = (err: any) => {
+        if (
+          err?.code === 'project_consumer_active' &&
+          createdTriggerBinding &&
+          !startOptions.resumeRequestId &&
+          triggerExecutionId &&
+          project_id
+        ) {
+          forgetRejectedTriggerRun(triggerExecutionId, project_id, newTaskId);
+        }
+        finishStartupFailure();
+        const failureState = targetChatStore.getState();
+        const failureTask = failureState.tasks[newTaskId];
+        const userMessage =
+          typeof err?.userMessage === 'string' && err.userMessage.trim()
+            ? err.userMessage.trim()
+            : typeof err?.message === 'string' && err.message.trim()
+              ? err.message.trim()
+              : i18next.t('chat.task-admission-failed', {
+                  defaultValue:
+                    'The task could not be started. Please try again.',
+                });
+        const isContinuationClarification =
+          typeof err?.code === 'string' && err.code.startsWith('continuation_');
+        const content = isContinuationClarification
+          ? i18next.t('chat.control-input-required-message', {
+              defaultValue: 'Input required: {{message}}',
+              message: userMessage,
+            })
+          : i18next.t('chat.error-message', {
+              defaultValue: '❌ **Error**: {{message}}',
+              message: userMessage,
+            });
+        const alreadyRendered = failureTask?.messages.some(
+          (message) => message.role === 'agent' && message.content === content
+        );
+        if (failureTask && !alreadyRendered) {
+          failureState.addMessages(newTaskId, {
+            id: generateUniqueId(),
+            role: 'agent',
+            content,
+            ...(!isContinuationClarification
+              ? {
+                  step: AgentStep.ERROR,
+                  errorReason: reportError(
+                    err,
+                    {
+                      modelType: effectiveModelType,
+                      modelId: resolvedCloudModelId,
+                      executionId,
+                    },
+                    requestAccount
+                  ),
+                }
+              : {}),
+          });
+        }
+      };
+
+      const guardDelivery =
+        adoptingSpaceDefault || startOptions.resumeRequestId;
+      if (!guardDelivery) admissionRequested = true;
       const ssePromise = sseTransport({
         url: api,
+        beforeRequest: guardDelivery
+          ? () => {
+              // Resume retains its scoped admission ticket until stream ACK.
+              // Fresh starts become uncertain once fetch begins: subsequent
+              // reconnects keep that Run's frozen body/headers and receipt.
+              if (
+                !admissionRequested ||
+                (startOptions.resumeRequestId && !resumeStreamOpened)
+              )
+                assertAdmissionCurrent();
+              if (
+                adoptingSpaceDefault &&
+                !admissionRequested &&
+                project_id &&
+                (projectStore.getProjectById(project_id)?.metadata
+                  ?.spaceModelAdmissionRunId !== newTaskId ||
+                  (projectStore.getProjectById(project_id)?.metadata
+                    ?.spaceModelAdmissionRevision ?? null) !==
+                    modelAdmissionRevision)
+              ) {
+                finishStartupFailure();
+                throw spaceModelError('changed');
+              }
+              admissionRequested = true;
+            }
+          : undefined,
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
         signal: abortController.signal,
@@ -3837,16 +4582,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           try {
             const parsed = JSON.parse(event.data);
-            if (!type && completionTailSteps.has(parsed?.step)) {
+            if (
+              isLiveTask &&
+              (completionTailSteps.has(parsed?.step) ||
+                parsed?.step === AgentStep.ACTIVATE_TOOLKIT)
+            ) {
               const ownerRunId = getCurrentTaskId();
-              const explicitRunId = parsed?.run_id ?? parsed?.data?.run_id;
+              // Activation can replace an unkeyed pending browser visit.
+              // Validate it before projection or URL recording, just like
+              // its completion. Legacy frames without ids use this transport's
+              // captured ownership; every explicit id must agree with it.
               if (
                 abortController.signal.aborted ||
                 sseConnection.taskId !== ownerRunId ||
                 activeSSEControllers[ownerRunId] !== sseConnection ||
                 legacyEndRunId === ownerRunId ||
-                (typeof explicitRunId === 'string' &&
-                  explicitRunId !== ownerRunId)
+                [parsed?.run_id, parsed?.data?.run_id].some(
+                  (id) => typeof id === 'string' && id !== ownerRunId
+                ) ||
+                [parsed?.project_id, parsed?.data?.project_id].some(
+                  (id) => typeof id === 'string' && id !== project_id
+                )
               ) {
                 return;
               }
@@ -4016,6 +4772,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             agentMessages.step === AgentStep.WAIT_CONFIRM;
 
           const isPostCompletionProjectionEvent =
+            agentMessages.step === AgentStep.HUMAN_REPLY ||
             agentMessages.step === AgentStep.ARTIFACT_MANIFEST ||
             agentMessages.step === AgentStep.ARTIFACT_UPLOADED ||
             agentMessages.step === AgentStep.PROJECT_METADATA;
@@ -4037,7 +4794,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (
             currentTask.status === ChatTaskStatus.FINISHED &&
-            currentTask.durableRunStatus === 'failed' &&
+            UNSUCCESSFUL_RUN_STATUSES.has(currentTask.durableRunStatus!) &&
             agentMessages.step === AgentStep.ERROR
           ) {
             // A status GET can settle the Run before error details arrive.
@@ -4850,7 +5607,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // Single-agent tasks have no confirm step, so `taskTime` is never
               // seeded by `handleConfirmTask`. Start the work-log clock here on
               // the first `todo_state`; the `=== 0` guard keeps it idempotent.
-              if (tasks[currentTaskId].taskTime === 0) {
+              // The clock stays stopped while the Run waits for the user,
+              // including in a Session restored during that wait.
+              if (
+                tasks[currentTaskId].taskTime === 0 &&
+                !isRunWaitingForUser(project_id, currentTaskId)
+              ) {
                 setTaskTime(currentTaskId, Date.now());
               }
               setStatus(currentTaskId, ChatTaskStatus.RUNNING);
@@ -5665,23 +6427,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (agentMessages.step === AgentStep.ARTIFACT_MANIFEST) {
             const lockedTaskId = getCurrentTaskId();
-            const lockedTask = getCurrentChatStore().tasks[lockedTaskId];
+            const lockedState = getCurrentChatStore();
+            const lockedTask = lockedState.tasks[lockedTaskId];
             if (!lockedTask) return;
-            lockedTask.artifactManifestFiles = normalizeTaskArtifactFileList(
-              agentMessages.data.artifacts
-            );
-            lockedTask.artifactManifestScanStatus =
-              typeof agentMessages.data.scan_status === 'string'
-                ? agentMessages.data.scan_status
-                : 'complete';
-            lockedTask.artifactManifestTruncated =
-              agentMessages.data.truncated === true;
             // A finalized manifest is the durable barrier even when discovery
             // explicitly records workspace_unavailable. Re-querying the live
             // filesystem during replay would invent a second, non-canonical
             // history and produces noisy 404s after Cloud restore.
-            lockedTask.artifactManifestFinalized = true;
-            setUpdateCount();
+            lockedState.setArtifactManifest(lockedTaskId, {
+              files: normalizeTaskArtifactFileList(
+                agentMessages.data.artifacts
+              ),
+              finalized: true,
+              scanStatus:
+                typeof agentMessages.data.scan_status === 'string'
+                  ? agentMessages.data.scan_status
+                  : 'complete',
+              truncated: agentMessages.data.truncated === true,
+            });
             return;
           }
 
@@ -5816,7 +6579,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const failedTask = tasks[currentTaskId];
               const wasAlreadySettledByCanonical =
                 failedTask?.status === ChatTaskStatus.FINISHED &&
-                failedTask?.durableRunStatus === 'failed';
+                UNSUCCESSFUL_RUN_STATUSES.has(failedTask.durableRunStatus!);
               const errorContent = i18next.t('chat.error-message', {
                 defaultValue: '❌ **Error**: {{message}}',
                 message: errorMessage,
@@ -5824,9 +6587,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
               // Freeze the clock before switching to FINISHED. The work
               // log only advances taskTime while RUNNING; skipping this step
-              // made every error path render "Worked for 0s".
+              // made every error path render "Worked for 0s". A restored
+              // Run that failed after its history loaded keeps its own clock.
               const playbackElapsed =
                 (type === 'replay' || type === 'share') &&
+                !replayCaughtUp &&
                 playbackFirstStepTimeMs !== null &&
                 playbackLastStepTimeMs !== null
                   ? Math.max(
@@ -5891,13 +6656,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (existingError) {
                 if (
                   existingError.content !== errorContent ||
-                  existingError.errorReason !== errorReason
+                  existingError.errorReason !== errorReason ||
+                  Boolean(existingError.resumable) !== isRetryableRunError
                 ) {
                   updateMessage(currentTaskId, existingError.id, {
                     ...existingError,
                     content: errorContent,
                     step: AgentStep.ERROR,
                     errorReason,
+                    resumable: isRetryableRunError,
                   });
                 }
               } else {
@@ -5907,6 +6674,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   content: errorContent,
                   step: AgentStep.ERROR,
                   errorReason,
+                  resumable: isRetryableRunError,
                 });
               }
               // Record the tokens consumed before the failure so the run's
@@ -6173,6 +6941,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // await below. A following NEW_TASK_STATE can then reactivate and
             // transfer ownership without a resumed END handler undoing it.
             markSSEConnectionIdleForTask(sseConnection, currentTaskId);
+            if (!type && project_id) reclaimIdleStreamInBackground(project_id);
 
             // Finish the local UI projection before any cloud upload or
             // history request. Camel-log and generated-file uploads can take
@@ -6181,8 +6950,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // "Worked for 0s" with no Files changed section.
             const completedTask = tasks[currentTaskId];
             let completedElapsed = completedTask.elapsed;
+            // A restored Run that finishes after its history loaded keeps
+            // counting from its measured total. The span between its loaded
+            // events would count waits for the user and miss earlier work.
             const playbackElapsed =
               type &&
+              !replayCaughtUp &&
               playbackFirstStepTimeMs !== null &&
               playbackLastStepTimeMs !== null
                 ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
@@ -6471,6 +7244,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           if (agentMessages.step === AgentStep.SYNC) return;
           if (agentMessages.step === AgentStep.HUMAN_REPLY) {
+            // canonicalRunEventToLegacyMessage carries these migration-only
+            // fields alongside the legacy reply payload.
+            const resolution = agentMessages.data as AgentMessage['data'] & {
+              __durable_interaction_resolution?: boolean;
+              decision?: { reply?: unknown };
+            };
             const resolvedInteractionId =
               typeof agentMessages.data?.interaction_id === 'string'
                 ? agentMessages.data.interaction_id
@@ -6488,25 +7267,63 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 resolvedInteractionId
               );
             }
-            // A local decision closes and advances the queue immediately.
-            // When the canonical decision later arrives, it is confirmation,
-            // not a second signal to consume another queued interaction.
-            if (interactionWasAlreadyResolved) return;
+            // A canonical question decision is persisted under decision.reply;
+            // legacy human_reply frames carry the same answer at the top level.
+            // Project the receipt even if control cleanup already closed ASK.
             const reply =
+              (resolution?.__durable_interaction_resolution === true &&
+              typeof resolution.decision?.reply === 'string'
+                ? resolution.decision.reply
+                : '') ||
               agentMessages.data?.reply ||
               agentMessages.data?.content ||
               (typeof agentMessages.data === 'string'
                 ? agentMessages.data
                 : '');
-            if (reply) {
+            const existingReply = resolvedInteractionId
+              ? getCurrentChatStore().tasks[currentTaskId]?.messages.find(
+                  (message) =>
+                    message.role === 'user' &&
+                    message.interactionResponseTo === resolvedInteractionId
+                )
+              : undefined;
+            if (reply && !existingReply) {
               addMessages(currentTaskId, {
-                id: generateUniqueId(),
+                id: resolvedInteractionId
+                  ? `interaction-response:${resolvedInteractionId}`
+                  : generateUniqueId(),
                 role: 'user',
                 content: reply,
                 interactionResponseTo:
                   agentMessages.data?.interaction_id || undefined,
+                interactionResponseSource:
+                  resolution?.__durable_interaction_resolution === true
+                    ? 'canonical'
+                    : 'legacy',
+              });
+            } else if (
+              reply &&
+              existingReply &&
+              resolution?.__durable_interaction_resolution === true &&
+              (existingReply.content !== reply ||
+                existingReply.interactionResponseSource !== 'canonical')
+            ) {
+              // A competing client may have resolved the interaction. Only
+              // the journal's answer can replace an optimistic local reply.
+              updateMessage(currentTaskId, existingReply.id, {
+                ...existingReply,
+                content: reply,
+                interactionResponseSource: 'canonical',
               });
             }
+
+            // Receipt deduplication is separate from control idempotency. A
+            // repeated resolution must never consume the next queued ASK.
+            if (
+              interactionWasAlreadyResolved ||
+              tasks[currentTaskId].status === ChatTaskStatus.FINISHED
+            )
+              return;
 
             const latestTask =
               getCurrentChatStore().tasks[currentTaskId] ||
@@ -6577,46 +7394,50 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           addMessages(currentTaskId, newMessage);
         },
         async onopen(respond) {
+          admissionRequested = true;
           console.log('open', respond);
           const contentType = respond.headers.get('content-type') || '';
           if (!respond.ok || !contentType.startsWith('text/event-stream')) {
-            let detail = `HTTP ${respond.status}`;
-            let errorCode: string | undefined;
-            let userMessage: string | undefined;
-            try {
-              const body = await respond.clone().json();
-              const bodyDetail = body?.detail ?? body?.message ?? body?.text;
-              if (typeof body?.error_code === 'string') {
-                errorCode = body.error_code;
-              }
-              if (typeof bodyDetail === 'string') {
-                detail = bodyDetail;
-                userMessage = bodyDetail;
-              } else if (bodyDetail) {
-                detail = JSON.stringify(bodyDetail);
-                if (typeof bodyDetail?.code === 'string') {
-                  errorCode = bodyDetail.code;
-                }
-                if (typeof bodyDetail?.message === 'string') {
-                  userMessage = bodyDetail.message;
-                }
-              }
-            } catch {
-              // Preserve the HTTP fallback for non-JSON error responses.
+            if (
+              adoptingSpaceDefault &&
+              project_id &&
+              modelAdmissionRevision !== undefined &&
+              respond.status >= 400 &&
+              respond.status < 500
+            ) {
+              // A definitive admission rejection is distinct from lost delivery.
+              clearOwnedModelAdmission(newTaskId, modelAdmissionRevision);
             }
-            const error: any = new Error(
-              contentType.startsWith('text/event-stream')
-                ? `Run stream returned ${detail}`
-                : `Run admission did not return an event stream: ${detail}`
-            );
-            error.status = respond.status;
-            error.code = errorCode;
-            error.userMessage = userMessage;
+            const error = await createSSEAdmissionError(respond, {
+              modelType: effectiveModelType,
+              modelId: resolvedCloudModelId,
+            });
+            // An awaited admission settles on this rejection and aborts the
+            // transport, which then never reaches onerror. Settle the new task
+            // here so it keeps its error receipt. A Resume keeps its
+            // interrupted task, whose controls ChatBox restores.
+            if (startOptions.awaitAdmission && !startOptions.resumeRequestId)
+              failAdmission(error);
             rejectResumeStreamOpen?.(error);
             throw error;
           }
+          // A reconnect may fall back to the window's own fetch.
+          sseConnection.relayed = isRelayedEventStreamResponse(respond);
           const firstOpen = !resumeStreamOpened;
-          if (resumeStreamOpened) reconcileStreamRun();
+          if (resumeStreamOpened) {
+            reconcileStreamRun();
+            // Let waiting cards re-check Brain now instead of at their backoff.
+            notifyRunStreamReopened(lockedTaskId);
+          }
+          if (commitSpaceModelPin) {
+            try {
+              commitSpaceModelPin();
+            } catch {
+              // A newer manual choice/account wins after this request was sent.
+              // The accepted Run already owns its original request snapshot.
+            }
+            commitSpaceModelPin = undefined;
+          }
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
           if (!type && project_id) {
@@ -6660,13 +7481,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           // Allow automatic retry for connection errors only when task is not finished
+          // Sanitized admission copy must not change the transport's existing
+          // retry decision; its original message is retained as the cause.
+          const transportMessage =
+            err?.response && typeof err?.cause === 'string'
+              ? err.cause
+              : err?.message;
           const isConnectionError =
             err instanceof TypeError ||
-            err?.message?.includes('Failed to fetch') ||
-            err?.message?.includes('ECONNREFUSED') ||
-            err?.message?.includes('NetworkError') ||
-            err?.message?.includes('ERR_NETWORK_CHANGED') ||
-            err?.message?.includes('ERR_INTERNET_DISCONNECTED');
+            transportMessage?.includes('Failed to fetch') ||
+            transportMessage?.includes('ECONNREFUSED') ||
+            transportMessage?.includes('NetworkError') ||
+            transportMessage?.includes('ERR_NETWORK_CHANGED') ||
+            transportMessage?.includes('ERR_INTERNET_DISCONNECTED');
           if (isConnectionError) {
             console.warn(
               '[fetchEventSource] Connection error detected, will retry automatically...'
@@ -6674,75 +7501,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
-          if (!resumeStreamOpened) rejectResumeStreamOpen?.(err);
-
           if (!resumeStreamOpened) {
-            if (
-              err?.code === 'project_consumer_active' &&
-              createdTriggerBinding &&
-              !startOptions.resumeRequestId &&
-              triggerExecutionId &&
-              project_id
-            ) {
-              forgetRejectedTriggerRun(
-                triggerExecutionId,
-                project_id,
-                newTaskId
-              );
-            }
-            // Admission failed before the event stream existed. Unlike an
-            // execution error, no later END frame can clear the optimistic
-            // pending state, so close it here and surface the typed Brain
-            // reason instead of leaving the composer stuck on "Preparing".
-            finishStartupFailure();
-            const failureState = targetChatStore.getState();
-            const failureTask = failureState.tasks[newTaskId];
-            const userMessage =
-              typeof err?.userMessage === 'string' && err.userMessage.trim()
-                ? err.userMessage.trim()
-                : typeof err?.message === 'string' && err.message.trim()
-                  ? err.message.trim()
-                  : i18next.t('chat.task-admission-failed', {
-                      defaultValue:
-                        'The task could not be started. Please try again.',
-                    });
-            const isContinuationClarification =
-              typeof err?.code === 'string' &&
-              err.code.startsWith('continuation_');
-            const content = isContinuationClarification
-              ? i18next.t('chat.control-input-required-message', {
-                  defaultValue: 'Input required: {{message}}',
-                  message: userMessage,
-                })
-              : i18next.t('chat.error-message', {
-                  defaultValue: '❌ **Error**: {{message}}',
-                  message: userMessage,
-                });
-            const alreadyRendered = failureTask?.messages.some(
-              (message) =>
-                message.role === 'agent' && message.content === content
-            );
-            if (failureTask && !alreadyRendered) {
-              failureState.addMessages(newTaskId, {
-                id: generateUniqueId(),
-                role: 'agent',
-                content,
-                ...(!isContinuationClarification
-                  ? {
-                      step: AgentStep.ERROR,
-                      errorReason: reportError(
-                        err,
-                        {
-                          modelType: effectiveModelType,
-                          modelId: resolvedCloudModelId,
-                          executionId,
-                        },
-                        requestAccount
-                      ),
-                    }
-                  : {}),
-              });
-            }
+            rejectResumeStreamOpen?.(err);
+            failAdmission(err);
           }
 
           // A transport error does not establish a cancelled execution outcome.
@@ -6811,6 +7572,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
           }
         },
+      }).catch((error) => {
+        if (!admissionRequested) {
+          releaseUnsentModelAdmission();
+          finishStartupFailure();
+        }
+        throw error;
       });
       if (resumeStreamOpenPromise) {
         try {
@@ -7203,6 +7970,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }));
       computedProgressValue(taskId);
     },
+    setArtifactManifest(taskId, manifest) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              artifactManifestFiles: [...manifest.files],
+              artifactManifestFinalized: manifest.finalized,
+              artifactManifestScanStatus: manifest.scanStatus,
+              artifactManifestTruncated: manifest.truncated,
+            },
+          },
+        };
+      });
+    },
     addWebViewUrl(taskId: string, webViewUrl: string, processTaskId: string) {
       set((state) => ({
         ...state,
@@ -7275,10 +8061,71 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
+    observeTaskFailureFacts(taskId, onFacts) {
+      const projectId = useProjectStore.getState().activeProjectId;
+      if (!projectId) return () => {};
+      const executionId = get().tasks[taskId]?.executionId;
+      const accountKey = getAccountEnvironmentKey(getAuthStore());
+      const controller = new AbortController();
+      const invalidate = () => {
+        if (controller.signal.aborted) return;
+        if (
+          getAccountEnvironmentKey(getAuthStore()) !== accountKey ||
+          useProjectStore.getState().activeProjectId !== projectId ||
+          !useProjectStore
+            .getState()
+            .getAllChatStores(projectId)
+            .some((entry) => entry.chatStore === store) ||
+          !UNSUCCESSFUL_RUN_STATUSES.has(
+            get().tasks[taskId]?.durableRunStatus!
+          ) ||
+          get().tasks[taskId]?.status !== ChatTaskStatus.FINISHED ||
+          get().tasks[taskId]?.executionId !== executionId
+        ) {
+          controller.abort();
+          onFacts(undefined);
+        }
+      };
+      const unsubscribe = [
+        useAuthStore.subscribe(invalidate),
+        useProjectStore.subscribe(invalidate),
+        store.subscribe(invalidate),
+      ];
+      void readTaskFailureFacts(
+        store,
+        projectId,
+        taskId,
+        controller.signal
+      ).then((facts) => {
+        if (!controller.signal.aborted && facts) onFacts(facts);
+      });
+      return () => {
+        controller.abort();
+        unsubscribe.forEach((dispose) => dispose());
+      };
+    },
     setDurableRunStatus(
       taskId: string,
       durableRunStatus: DurableRunDisplayStatus | undefined
     ) {
+      // Retired requests stay attached to history even when Resume starts a
+      // new Attempt in this same Run. This receipt never asserts a decision.
+      const retireApproval = (message: Message): Message => {
+        if (
+          !durableRunStatus ||
+          !isStoppedRunStatus(durableRunStatus) ||
+          message.interaction?.interaction_type !== 'approval' ||
+          message.interaction.receipt
+        )
+          return message;
+        return {
+          ...message,
+          interaction: {
+            ...message.interaction,
+            receipt: { runStatus: durableRunStatus },
+          },
+        };
+      };
       set((state) => {
         const task = state.tasks[taskId];
         if (!task) return state;
@@ -7289,6 +8136,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             [taskId]: {
               ...task,
               durableRunStatus,
+              messages: task.messages.map(retireApproval),
+              askList: task.askList.map(retireApproval),
+            },
+          },
+        };
+      });
+    },
+    markRunResumed(taskId: string) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              type: undefined,
+              durableRunStatus: undefined,
+              activeAsk: '',
+              askList: [],
             },
           },
         };
@@ -8053,9 +8921,29 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
   );
 }
 
+type IdleStreamReclaimOptions = {
+  /** Leave relayed transports open; they hold no renderer connection. */
+  keepRelayed?: boolean;
+};
+
 /** Returns true if any task still owns a physical SSE transport. */
-export function hasSSETransportForTasks(taskIds: string[]): boolean {
-  return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
+export function hasSSETransportForTasks(
+  taskIds: string[],
+  { keepRelayed = false }: IdleStreamReclaimOptions = {}
+): boolean {
+  return taskIds.some((taskId) => {
+    const connection = activeSSEControllers[taskId];
+    return !!connection && !(keepRelayed && connection.relayed);
+  });
+}
+
+/** Idle relayed transports, each physical connection counted once. */
+export function countIdleRelayedSSEConnections(): number {
+  return new Set(
+    Object.values(activeSSEControllers).filter(
+      (connection) => connection.relayed && !connection.logicalActive
+    )
+  ).size;
 }
 
 /** Return the Run id that owns an idle reusable legacy `/chat` transport. */
@@ -8093,10 +8981,18 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
 }
 
 /** Close only reusable transports that no longer have a logically active Run. */
-export function closeIdleSSEConnectionsForTasks(taskIds: string[]): void {
+export function closeIdleSSEConnectionsForTasks(
+  taskIds: string[],
+  { keepRelayed = false }: IdleStreamReclaimOptions = {}
+): void {
   for (const taskId of taskIds) {
     const connection = activeSSEControllers[taskId];
-    if (connection && !connection.logicalActive && !connection.displayTail) {
+    if (
+      connection &&
+      !connection.logicalActive &&
+      !connection.displayTail &&
+      !(keepRelayed && connection.relayed)
+    ) {
       console.log(
         '[closeIdleSSEConnectionsForTasks] Closing idle SSE for task:',
         taskId

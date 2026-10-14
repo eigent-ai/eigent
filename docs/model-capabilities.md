@@ -2,8 +2,9 @@
 
 The backend resolves thinking effort through a versioned capability declaration
 before admitting a Run. The resolved provider value and transport are recorded in
-the environment specification and used when constructing the model. An explicitly
-requested unsupported effort is rejected instead of silently becoming `medium`.
+the environment specification and used when constructing the model. For a model
+registered in the catalog or an override, an explicitly requested unsupported
+effort is rejected instead of silently becoming `medium`.
 
 ## Capability sources
 
@@ -25,14 +26,31 @@ Catalog entries match `model_platform` and `model_type` after trimming whitespac
 and normalizing case. Azure deployment aliases need their own exact entry or
 scoped override; their capabilities are not inferred from the alias.
 
-The built-in `gpt-6-astra` entries for OpenAI and Azure preserve all five effort
-values, including `max`. They select Responses when tools are present. These are
+The built-in `gpt-6-astra` and `gpt-6-luna` entries for OpenAI and Azure preserve
+all five selectable effort values, including `max`. They select Responses when
+tools are present, including when effort is omitted or Cloud metadata still
+selects Chat Completions. Luna's provider default enables reasoning, so omitting
+the effort parameter does not make Chat Completions with tools compatible. See
+the [Luna API contract](https://developers.openai.com/api/docs/models/gpt-6-luna).
+This does not add `none` to the application's persisted effort enum or silently
+disable reasoning. Deployment aliases still need scoped declarations. These are
 application declarations; the mocked tests do not establish support for a
 particular live Azure deployment. Consult the provider's model/deployment contract
 before registering a deployment.
 
+The built-in `gpt-6-sol` entries for OpenAI and Azure declare `low`, `medium`,
+and `high` only, with `medium` as the default and the same Responses selection
+for tools. `xhigh` and `max` stay unsupported until confirmed for this model.
+
+Do not bump the catalog's top-level `revision` when adding an entry. It is part
+of every catalog entry's capability digest, so a bump would block Resume for
+every interrupted attempt on an existing entry (see Revisions and resume).
+
 Legacy OpenAI/Azure prefix rules remain compatibility fallbacks. New models should
-use a catalog entry or override. The existing Codex subscription mapping of
+use a catalog entry or override. Because a prefix match only infers the supported
+efforts, such a model runs a requested effort outside them at the nearest
+supported one (for example `xhigh` at `high`) and records both the requested and
+the effective effort, instead of failing admission. The existing Codex subscription mapping of
 `max` to `xhigh` is unchanged. The historical product alias `ultra` normalizes to
 the product effort `max`; `ultra` is not forwarded as a provider value.
 
@@ -91,17 +109,21 @@ transport. The runtime capability manifest records the capability source,
 revision, supported values, mapping, selected transport, and any unknown-model
 diagnostic. These fields contain no credentials.
 
-When an unknown model has an explicit thinking effort, admission fails with a
-structured HTTP 422 `unsupported_thinking_effort` response. If effort was omitted,
-the model may use its provider default and the snapshot reports `unknown_model`.
-The existing persisted `medium` enum remains a compatibility sentinel in that
-case; `provider_default` and the diagnostic indicate that no specific effort was
-established or sent. Invalid capability metadata returns HTTP 422
-`invalid_model_capability`.
+An unknown model always runs at its provider default, and the snapshot reports
+`unknown_model`. An effort requested by the application (the input box, a
+Session or Space setting, or a Bundle model profile) does not block the Run and
+is not sent: the requested effort is recorded, while the persisted effective
+`medium` enum remains a compatibility sentinel and `provider_default` with the
+diagnostic indicates that no effort was established or sent. This applies to new
+tasks, follow-ups, Resume, and managed Agent configurations. A model registered
+in the catalog or an override still fails admission with a structured HTTP 422
+`unsupported_thinking_effort` response for an effort it does not support.
+Invalid capability metadata returns HTTP 422 `invalid_model_capability`.
 
-At model construction, the admitted effort takes precedence over conflicting
-effort fields in provider configuration, including `extra_body`. The helper
-normalizes the supported effort locations into the selected transport:
+At model construction, a registered model's admitted effort takes precedence
+over conflicting effort fields in provider configuration, including
+`extra_body`. The helper normalizes the supported effort locations into the
+selected transport:
 
 | Transport        | Provider request field |
 | ---------------- | ---------------------- |
@@ -111,8 +133,18 @@ normalizes the supported effort locations into the selected transport:
 Responses-only reasoning options, such as a summary, remain in the Responses
 `reasoning` object. They are rejected for Chat Completions. Responses requests drop
 Chat-specific `stream_options`. An `extra_body.model` override is rejected because
-it would invalidate the capability scope. Conflicting unpinned effort values or
-unregistered raw provider effort values are also rejected.
+it would invalidate the capability scope. Conflicting unpinned effort values are
+also rejected, as are raw provider effort values outside a registered model's
+mapping.
+
+For an unknown model, an effort written into the user's own provider
+configuration (`reasoning_effort`, `thinking_effort`, `reasoning.effort`, or the
+same fields in `extra_body`) is sent as written in the selected transport's
+field, because the user owns that endpoint; it is not checked against a mapping.
+The same applies whenever the admitted value is `provider_default`, which is only
+admitted for an unknown model. The structural checks above still apply. Eigent
+Cloud requests for an unknown model never carry such an effort and are rejected
+instead.
 
 A custom agent model resolves its own effort. It does not inherit the task's
 admitted effort; a provider/model/endpoint change also discards an inherited
@@ -130,6 +162,42 @@ attempts created with an older capability digest format. This change does not
 rewrite historical attempts or bypass that check. Start a new Run when an older
 attempt cannot satisfy the current capability contract.
 
+One case may resume across a digest change: an attempt admitted for an
+unregistered model, which sent no effort of its own, after that model gains a
+catalog entry. Resume keeps the pinned provider default, including an effort
+from the user's own provider configuration, so its requests do not change.
+It is allowed only when the current capability comes from the catalog, the
+pinned transport equals the current one, and resolving the current inputs with
+no catalog entries reproduces the pinned digest. A change of authentication
+source, override, or transport is still refused.
+
+## Anthropic tool compatibility
+
+CAMEL emits tool-level `strict` flags. The native Anthropic API supports them,
+but some Anthropic Messages-compatible routes reject the field, even when its
+value is `false`. The shared model and validation factories install a narrow
+compatibility adapter for CAMEL's Anthropic backend:
+
+- Send the original request first, preserving strict tools on supporting routes.
+- Only when HTTP 400 explicitly rejects `tools.N.custom.strict` (or
+  `tools.N.strict`) as an extra input, retry that request once with the custom
+  tools' top-level `strict` fields omitted.
+- Preserve tool definitions, argument schemas, messages, thinking parameters,
+  and structured-output configuration. A parameter named `strict` inside a
+  tool's `input_schema` is not removed.
+- Remember the omission only after a successful retry, on that model instance.
+  Do not modify shared SDK clients or maintain a global model-name override.
+- Do not retry unrelated errors, a failed compatibility retry, or errors raised
+  while consuming a response stream. Tools that were already executed are not
+  replayed by this adapter.
+
+The retry logs that strict tool constraints are unavailable. It does not supply
+grammar-constrained tool arguments on the incompatible route. Structured-output
+errors remain errors; this adapter does not disable output schemas. If a gateway
+injects `strict` after the client's request, that gateway must be fixed: the
+adapter only retries when the rejected field was present in the outgoing tool.
+OpenAI-compatible and Bedrock Converse backends retain their existing adapters.
+
 ## Mock verification
 
 Use the backend's installed Python environment and run from `backend`:
@@ -138,6 +206,7 @@ Use the backend's installed Python environment and run from `backend`:
 python -B tests/run_isolated.py --fast-test-mode \
   tests/app/workspace_config \
   tests/app/model/test_effort.py \
+  tests/app/model/test_anthropic_tools.py \
   tests/app/model/test_model_platform.py \
   tests/app/model/test_codex_subscription_runtime.py \
   tests/app/agent/test_agent_model.py \

@@ -16,6 +16,10 @@
 import { fetchGet, sseTransport } from '@/api/http';
 import { normalizeLocalRunEvent } from '@/lib/projector';
 import {
+  isStoppedRunStatus,
+  TERMINAL_RUN_STATUSES,
+} from '@/lib/projector/runSummary';
+import {
   RUN_RECONCILIATION_MARKERS,
   RunStateReconciler,
   TERMINAL_RUN_EVENTS,
@@ -35,7 +39,15 @@ type ActiveIngress = {
   ingress: RunEventIngress;
   promise: Promise<void>;
   reconciler: RunStateReconciler;
+  /** Set while a stopped Run's stream finishes its last read before closing. */
+  closing: symbol | null;
 };
+
+/** Events that start another Attempt of the same Run, e.g. after Resume. */
+const NEW_ATTEMPT_EVENTS = new Set([
+  'run.attempt_created',
+  'run.attempt_started',
+]);
 
 class RunEventStreamError extends Error {
   constructor(
@@ -46,7 +58,16 @@ class RunEventStreamError extends Error {
   }
 }
 
-/** Application-level connection owner: at most one local SSE per Run. */
+/**
+ * Application-level connection owner: at most one local SSE per Run.
+ *
+ * A Run's stream is held only while the Run can still produce lifecycle
+ * facts. Once a caught-up stream observes the Run stopped, it closes after one
+ * final reconciliation read; Brain keeps a finished Run's stream open while
+ * its consumer stays warm, which would otherwise pin one of the renderer's
+ * few connections per finished Run. A later Resume calls `ensureLocal` again,
+ * which opens a fresh stream from the last projected sequence.
+ */
 export class RunEventIngressRegistry {
   private readonly active = new Map<string, ActiveIngress>();
   private readonly reconciliations = new Map<string, Promise<void>>();
@@ -62,7 +83,13 @@ export class RunEventIngressRegistry {
     options: { reconnect?: boolean } = {}
   ): ActiveIngress {
     const current = this.active.get(runId);
-    if (current?.projectId === projectId && current.reconciler.isCurrent())
+    // A closing stream belongs to the stopped Attempt. A caller that needs
+    // the Run again (Resume) gets a fresh stream instead of one about to end.
+    if (
+      current?.projectId === projectId &&
+      current.reconciler.isCurrent() &&
+      !current.closing
+    )
       return current;
     if (current) this.disconnect(runId);
 
@@ -96,13 +123,39 @@ export class RunEventIngressRegistry {
     let replaying = Boolean(options.reconnect || lastSequence > 0);
     let openCount = 0;
     let failures = 0;
-    const entry = {
+    // Brain sends `replay_caught_up` once per connection, after replaying the
+    // durable prefix. Only a caught-up stream knows that no later Attempt is
+    // still waiting in that prefix.
+    let caughtUp = false;
+    // The latest lifecycle fact on this stream stopped the Run.
+    let stopped = false;
+    const entry: ActiveIngress = {
       projectId,
       runId,
       controller,
       ingress,
       reconciler,
       promise: Promise.resolve(),
+      closing: null,
+    };
+    const closeAfterFinalRead = () => {
+      if (entry.closing || !isCurrent()) return;
+      const closing = Symbol(runId);
+      entry.closing = closing;
+      // Subscribers already received the terminal event from the ingress;
+      // publish it to the Project timeline before the stream goes away.
+      projectEventStore.flushAll();
+      // The final read records elapsed time and Attempt facts. It also keeps
+      // the stream if Brain reports the Run active again, e.g. resumed.
+      void reconciler.request().finally(() => {
+        if (entry.closing !== closing || !isCurrent()) return;
+        const status = runProjectionStore.getRun(projectId, runId)?.status;
+        if (!status || !isStoppedRunStatus(status)) {
+          entry.closing = null;
+          return;
+        }
+        this.disconnect(runId);
+      });
     };
     this.active.set(runId, entry);
     const promise = sseTransport({
@@ -120,6 +173,7 @@ export class RunEventIngressRegistry {
           );
         }
         openCount += 1;
+        caughtUp = false;
         if (openCount > 1) {
           replaying = true;
           void reconciler.request();
@@ -131,7 +185,13 @@ export class RunEventIngressRegistry {
           void reconciler.request();
         if (message.event === 'replay_caught_up') {
           replaying = false;
+          caughtUp = true;
           runProjectionStore.completeResync(projectId);
+          // A stream (re)opened after its Run had already stopped, e.g. by an
+          // observer attaching late, has nothing left to deliver.
+          const status = runProjectionStore.getRun(projectId, runId)?.status;
+          if (stopped || (status && TERMINAL_RUN_STATUSES.has(status)))
+            closeAfterFinalRead();
           return;
         }
         if (message.event !== 'run_event') return;
@@ -149,8 +209,15 @@ export class RunEventIngressRegistry {
           ...projectEvent,
           raw: null,
         });
-        if (TERMINAL_RUN_EVENTS.has(projectEvent.eventType))
+        if (TERMINAL_RUN_EVENTS.has(projectEvent.eventType)) {
+          stopped = true;
           void reconciler.request();
+          if (caughtUp) closeAfterFinalRead();
+        } else if (NEW_ATTEMPT_EVENTS.has(projectEvent.eventType)) {
+          // Another Attempt of this Run started on this stream; keep it.
+          stopped = false;
+          entry.closing = null;
+        }
       },
       onerror(error) {
         if (controller.signal.aborted) throw error;

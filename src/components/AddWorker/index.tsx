@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { mcpList as fetchMcpConfig } from '@/api/brain';
-import { fetchPost, proxyFetchGet } from '@/api/http';
+import { fetchPost } from '@/api/http';
 import githubIcon from '@/assets/icon/github.svg';
 import {
   getLocalPlatformName,
@@ -39,14 +39,16 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useConfiguredModels } from '@/hooks/useConfiguredModels';
+import { selectableConfiguredModels } from '@/lib/configuredModels';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { buildAgentModelConfig } from '@/lib/modelConfig';
 import {
-  type AgentModelConfigSource,
-  buildAgentModelConfig,
-  buildAgentModelConfigFromProvider,
-} from '@/lib/modelConfig';
+  workerModelOption,
+  type WorkerModelOption,
+} from '@/lib/workerModelOptions';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
-import { useCloudModelStore } from '@/store/cloudModelStore';
+import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { Bot, Edit, Eye, EyeOff } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -75,12 +77,6 @@ interface McpItem {
 }
 
 type WorkerModelMode = 'eigent' | 'custom' | 'local';
-
-interface WorkerModelOption extends AgentModelConfigSource {
-  value: string;
-  label: string;
-  provider_id?: number;
-}
 
 export function AddWorker({
   edit = false,
@@ -130,26 +126,60 @@ export function AddWorker({
     useState<WorkerModelMode>('eigent');
   const [workerModelName, setWorkerModelName] = useState('');
   const [modelSelectionTouched, setModelSelectionTouched] = useState(false);
-  const [customModelOptions, setCustomModelOptions] = useState<
-    WorkerModelOption[]
-  >([]);
-  const [localModelOptions, setLocalModelOptions] = useState<
-    WorkerModelOption[]
-  >([]);
-  const cloudModels = useCloudModelStore((state) => state.models);
-  const fetchCloudModels = useCloudModelStore(
-    (state) => state.fetchCloudModels
-  );
+  const inventory = useConfiguredModels();
+  const { records, cloudModels, hidden, cloudAvailable } = inventory;
+  const planKey = useUsageNoticeStore((state) => state.subscription?.plan_key);
   const eigentModelOptions = useMemo<WorkerModelOption[]>(
     () =>
-      cloudModels.map((model) => ({
-        value: model.id,
-        label: model.display_name,
-        model_platform: model.model_platform,
-        model_type: model.model_type,
-      })),
-    [cloudModels]
+      selectableConfiguredModels({
+        records,
+        cloudModels,
+        hidden,
+        cloudAvailable,
+        codexConnected: false,
+        codexModelType: '',
+        planKey,
+      }).flatMap((choice) =>
+        'cloudModel' in choice
+          ? [
+              {
+                value: choice.cloudModel.id,
+                label: choice.name,
+                model_platform: choice.cloudModel.model_platform,
+                model_type: choice.cloudModel.model_type,
+              },
+            ]
+          : []
+      ),
+    [records, cloudModels, hidden, cloudAvailable, planKey]
   );
+
+  const { customModelOptions, localModelOptions } = useMemo(() => {
+    const customProviderIds = new Set(
+      INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => p.id)
+    );
+    const localProviderIds = new Set(LOCAL_MODEL_OPTIONS.map((m) => m.id));
+
+    const nextCustomOptions = records
+      .filter((provider) => customProviderIds.has(provider.provider_name))
+      .map((provider) =>
+        workerModelOption(provider, provider.provider_name, records)
+      );
+    const nextLocalOptions = records
+      .filter((provider) => localProviderIds.has(provider.provider_name))
+      .map((provider) =>
+        workerModelOption(
+          provider,
+          getLocalPlatformName(provider.provider_name),
+          records
+        )
+      );
+
+    return {
+      customModelOptions: nextCustomOptions,
+      localModelOptions: nextLocalOptions,
+    };
+  }, [records]);
 
   const activeProjectId = projectStore?.activeProjectId;
   const activeTaskId = chatStore?.activeTaskId ?? null;
@@ -306,8 +336,6 @@ export function AddWorker({
     setWorkerModelMode('eigent');
     setWorkerModelName('');
     setModelSelectionTouched(false);
-    setCustomModelOptions([]);
-    setLocalModelOptions([]);
   };
 
   const workerModelOptions = useMemo<
@@ -402,80 +430,6 @@ export function AddWorker({
     workerInfo,
     workerModelName,
   ]);
-
-  useEffect(() => {
-    if (!showModelConfig) return;
-    if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
-      void fetchCloudModels();
-    }
-    (async () => {
-      try {
-        const res = await proxyFetchGet('/api/v1/providers');
-        const providerList = Array.isArray(res) ? res : res?.items || [];
-
-        const customProviderIds = new Set(
-          INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => p.id)
-        );
-        const localProviderIds = new Set(LOCAL_MODEL_OPTIONS.map((m) => m.id));
-
-        const nextCustomOptions: WorkerModelOption[] = providerList
-          .filter((provider: any) =>
-            customProviderIds.has(provider.provider_name)
-          )
-          .map((provider: any) => {
-            const modelType = String(provider.model_type || '');
-            const providerName = String(provider.provider_name || '');
-            const agentModelConfig =
-              buildAgentModelConfigFromProvider(provider);
-            return {
-              value: `${providerName}::${modelType}`,
-              label: modelType
-                ? `${providerName} (${modelType})`
-                : providerName,
-              model_platform: providerName,
-              model_type: modelType,
-              provider_id: Number(provider.id),
-              api_key: agentModelConfig.api_key,
-              api_url: agentModelConfig.api_url,
-              model_config_dict: agentModelConfig.model_config_dict,
-              extra_params: agentModelConfig.extra_params,
-            };
-          });
-
-        const nextLocalOptions: WorkerModelOption[] = providerList
-          .filter((provider: any) =>
-            localProviderIds.has(provider.provider_name)
-          )
-          .map((provider: any) => {
-            const agentModelConfig =
-              buildAgentModelConfigFromProvider(provider);
-            const modelPlatform = agentModelConfig.model_platform;
-            const modelType = agentModelConfig.model_type || '';
-            const platformName = getLocalPlatformName(modelPlatform);
-            return {
-              value: `${modelPlatform}::${modelType}`,
-              label: modelType
-                ? `${platformName} (${modelType})`
-                : platformName,
-              model_platform: modelPlatform,
-              model_type: modelType,
-              provider_id: Number(provider.id),
-              api_key: agentModelConfig.api_key,
-              api_url: agentModelConfig.api_url,
-              model_config_dict: agentModelConfig.model_config_dict,
-              extra_params: agentModelConfig.extra_params,
-            };
-          });
-
-        setCustomModelOptions(nextCustomOptions);
-        setLocalModelOptions(nextLocalOptions);
-      } catch (error) {
-        console.error('Error fetching model providers for Add Worker:', error);
-        setCustomModelOptions([]);
-        setLocalModelOptions([]);
-      }
-    })();
-  }, [fetchCloudModels, showModelConfig]);
 
   // tool function
   const getCategoryIcon = (categoryName?: string) => {

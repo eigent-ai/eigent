@@ -34,6 +34,7 @@ from app.run_context import get_current_run_context
 from app.run_journal.models import CommittedRunEvent, RunEventDraft, RunRecord
 from app.run_journal.semantic_events import semantic_event_fields
 from app.run_journal.store import SQLiteRunJournal
+from app.run_journal.transitions import RUN_ACTIVE_STATES, RUN_TERMINAL_STATES
 from app.utils.file_utils import list_files
 from app.utils.workspace_paths import (
     get_eigent_root,
@@ -47,6 +48,7 @@ from app.workspace_git.backend import (
     GitBackendError,
 )
 from app.workspace_git.path_policy import WorkspacePathPolicy
+from app.workspace_runtime.entry_guard import has_isolated_workspace_binding
 
 logger = logging.getLogger("artifacts")
 
@@ -57,7 +59,6 @@ MAX_ARTIFACT_SCAN_ENTRIES = 100_000
 # ProjectEventStore rejects a single event above 256 KiB. Leave room for the
 # canonical event envelope while retaining hundreds of ordinary output rows.
 MAX_ARTIFACT_MANIFEST_BYTES = 244 * 1024
-_ACTIVE_RUN_STATUSES = {"pending", "running", "waiting_for_user"}
 _AGENT_GENERATED_UPLOAD_POLICY = "agent_generated"
 _METADATA_ONLY_UPLOAD_POLICY = "metadata_only"
 _SPACE_INTERNAL_ARTIFACT_NAMES = {"todo.md"}
@@ -69,6 +70,19 @@ class ArtifactScanResult:
     artifacts: list[dict[str, Any]]
     scan_status: str
     truncated: bool
+
+
+class IsolatedArtifactFinalizationRequired(RuntimeError):
+    """The isolated finalizer owns immutable checkpoint/artifact publication."""
+
+
+def _require_legacy_artifact_run(
+    journal: SQLiteRunJournal, run_id: str
+) -> None:
+    if has_isolated_workspace_binding(journal, run_id):
+        raise IsolatedArtifactFinalizationRequired(
+            "isolated Run artifacts require the workspace finalization barrier"
+        )
 
 
 def _canonical_digest(value: Any) -> str:
@@ -288,6 +302,7 @@ def _git_run_changed_artifacts(
 ) -> ArtifactScanResult | None:
     """Project exact committed Run changes from Git into Artifact metadata."""
 
+    _require_legacy_artifact_run(journal, run.run_id)
     materialization = journal.get_run_git_materialization(run.run_id)
     if (
         materialization is None
@@ -602,17 +617,15 @@ def task_modification_windows(
     windows: list[tuple[float, float | None]] = []
     for attempt in attempts:
         end = attempt.ended_at
-        if end is None and run.status not in _ACTIVE_RUN_STATUSES:
+        if end is None and run.status not in RUN_ACTIVE_STATES:
             end = run.updated_at
         windows.append((attempt.started_at - 1.0, end))
 
     if not windows:
-        end = (
-            run.updated_at if run.status not in _ACTIVE_RUN_STATUSES else None
-        )
+        end = run.updated_at if run.status not in RUN_ACTIVE_STATES else None
         windows.append((run.created_at - 1.0, end))
 
-    return tuple(windows), run.status in {"completed", "failed", "cancelled"}
+    return tuple(windows), run.status in RUN_TERMINAL_STATES
 
 
 def _artifact_projection(
@@ -640,6 +653,7 @@ def record_artifact_manifest(
 ) -> CommittedRunEvent:
     """Commit Artifact lifecycle events followed by one manifest barrier."""
 
+    _require_legacy_artifact_run(journal, run_id)
     step_by_path: dict[str, str] = {}
     for event in journal.list_events(run_id):
         relative_path = str(
@@ -784,13 +798,12 @@ def finalize_run_artifacts(
 ) -> CommittedRunEvent:
     """Discover and commit a Run manifest exactly before its terminal event."""
 
+    # Even an existing terminal/manifest is insufficient evidence for a newer
+    # isolated Attempt. Its runtime must first prove all writers have stopped.
+    _require_legacy_artifact_run(journal, run.run_id)
     current_run = journal.get_run(run.run_id) or run
     existing = journal.get_run_artifact_manifest_event(run.run_id)
-    if existing is not None and current_run.status in {
-        "completed",
-        "failed",
-        "cancelled",
-    }:
+    if existing is not None and current_run.status in RUN_TERMINAL_STATES:
         return existing
 
     if existing is not None and current_run.status in {
@@ -923,6 +936,11 @@ def finalize_recoverable_run_artifacts(
     finalized: list[str] = []
     for run in journal.list_recoverable_runs():
         try:
+            # Startup must not scan a crash-surviving writable isolated root.
+            # Its owning service validates immutable facts and reconciles the
+            # writer barrier before checkpointing under the current generation.
+            if has_isolated_workspace_binding(journal, run.run_id):
+                continue
             finalize_run_artifacts(journal, run)
         except Exception:  # noqa: BLE001 - isolate one damaged workspace
             logger.exception(

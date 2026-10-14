@@ -14,19 +14,42 @@
 
 import { fetchGet, fetchPost, proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
   deleteCachedProject,
   getCachedProject,
   putCachedProject,
   type CachedTask,
 } from '@/lib/projectCache';
+import { selectPendingHumanControlCount } from '@/lib/projector/control';
+import { runProjectionStore } from '@/lib/runEvents/projectionStore';
+import { parseServerTimestamp } from '@/lib/serverTimestamp';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
-import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import {
+  getSessionNavLeadFromRunStatus,
+  getSessionNavLeadPresentation,
+  selectSessionNavRun,
+  SESSION_NAV_IDLE_LEAD,
+} from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
+import {
+  recoverSpaceSessionModel,
+  spaceModelError,
+} from '@/lib/spaceModelBinding';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
-import { fetchProjectRuns } from '@/service/projectRunsApi';
+import { executionScope } from '@/service/executionApi';
+import { followRestoredTaskTimer } from '@/service/legacyTaskTimer';
+import {
+  fetchProjectRuns,
+  projectRunSummaries,
+} from '@/service/projectRunsApi';
 import type { ServerProject } from '@/service/spaceApi';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
+import {
+  getSessionExecutionState,
+  readSessionExecutionRoute,
+  requireLegacyExecution,
+} from '@/store/sessionExecutionStore';
 import {
   ChatTaskStatus,
   normalizeThinkingEffort,
@@ -39,18 +62,24 @@ import { create } from 'zustand';
 import { getAuthStore } from './authStore';
 import {
   closeIdleSSEConnectionsForTasks,
+  countIdleRelayedSSEConnections,
   createChatStoreInstance,
   hasActiveSSEConnection,
+  hasSSETransportForTasks,
+  UNSUCCESSFUL_RUN_STATUSES,
   VanillaChatStore,
   waitForIdleSSEDisplayTail,
   type DurableRunDisplayStatus,
 } from './chatStore';
 import { usePageTabStore } from './pageTabStore';
 import {
+  peekProjectEventStore,
   releaseProjectEventStore,
   resetProjectEventStore,
+  subscribeProjectEventStores,
 } from './projectEventStore';
 import {
+  getVisibleProjectMetasForSpace,
   projectMetaFromServer,
   useSpaceStore,
   type SpaceProjectMeta,
@@ -58,6 +87,15 @@ import {
 
 const staleRuntimeEvictionsInFlight = new Map<string, Promise<void>>();
 const staleRuntimeEvictionRetriesAfterFlight = new Set<string>();
+
+type ReceiptWrite = {
+  revision: string;
+  bases: Set<string | null>;
+  abandoned: boolean;
+};
+// Only failed/explicitly released assignments are safe to supersede. This is
+// renderer-local proof, scoped to account, environment and Space/Project.
+const receiptWrites = new Map<string, Map<string, ReceiptWrite>>();
 
 /**
  * Wait until an older Project transition has finished inspecting or retiring
@@ -72,6 +110,63 @@ export async function waitForPendingStaleRuntimeEviction(
     if (!eviction) return;
     await eviction;
   }
+}
+
+// Projects whose idle streams are being released; one release at a time each.
+const idleStreamReclaimsInFlight = new Set<string>();
+
+// Idle streams relayed by the main process hold no renderer connection, and
+// keeping one lets the next follow-up reach its warm runtime. They stay open
+// up to this many; beyond that they are released like any other idle stream.
+const MAX_KEPT_IDLE_RELAYED_STREAMS = 16;
+
+const ACTIVE_RUN_STATUSES = new Set<string>([
+  'pending',
+  'running',
+  'waiting_for_user',
+  'cancelling',
+]);
+
+/**
+ * Task ids of a Project once none of its work can use a legacy `/chat`
+ * stream any more, or null while some of it might: a running, admitting or
+ * queued Run, or an approval or question waiting for the user.
+ */
+function getIdleStreamTaskIds(project: Project): string[] | null {
+  if (project.queuedMessages?.length) return null;
+  const states = Object.values(project.chatStores).map((store) =>
+    store.getState()
+  );
+  const tasks = new Map(states.flatMap((state) => Object.entries(state.tasks)));
+  for (const task of tasks.values()) {
+    if (
+      task.isPending ||
+      task.isTakeControl ||
+      task.activeAsk ||
+      (task.status !== ChatTaskStatus.FINISHED && task.messages.length > 0)
+    )
+      return null;
+  }
+  const isFinished = (runId: string) =>
+    tasks.get(runId)?.status === ChatTaskStatus.FINISHED;
+  // A warm follow-up names its Run before Brain confirms it on the stream.
+  if (states.some((state) => state.nextTaskId && !isFinished(state.nextTaskId)))
+    return null;
+  // The legacy END may precede the canonical terminal of a Run this window
+  // finished; any other active Run may still need the Project's stream.
+  const runs = Object.values(
+    runProjectionStore.getProject(project.id)?.runs ?? {}
+  );
+  if (
+    runs.some(
+      (run) => ACTIVE_RUN_STATUSES.has(run.status) && !isFinished(run.runId)
+    )
+  )
+    return null;
+  const control = peekProjectEventStore(project.id)?.getSnapshot().control;
+  if (control && selectPendingHumanControlCount(control) > 0) return null;
+  const taskIds = [...tasks.keys()];
+  return hasActiveSSEConnection(taskIds) ? null : taskIds;
 }
 
 /**
@@ -108,6 +203,7 @@ const DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);
@@ -115,6 +211,7 @@ const TERMINAL_DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
+  'timed_out',
   'interrupted',
   'stopped',
 ]);
@@ -132,8 +229,7 @@ const promoteSubtaskStatus = (
     : TaskStatus.COMPLETED;
 
 const timestampFromServer = (value?: string | null, fallback = Date.now()) => {
-  if (!value) return fallback;
-  const timestamp = new Date(value).getTime();
+  const timestamp = parseServerTimestamp(value);
   return Number.isFinite(timestamp) ? timestamp : fallback;
 };
 
@@ -162,7 +258,10 @@ const cachedTaskProjectionIsIncomplete = (
   // seeded user prompt; its freshness anchors still matched SQLite, so it
   // suppressed authoritative replay forever. Treat that shape as a partial
   // projection for both successful and failed Runs.
-  if (localRunStatus === 'completed' || localRunStatus === 'failed') {
+  if (
+    localRunStatus === 'completed' ||
+    UNSUCCESSFUL_RUN_STATUSES.has(localRunStatus!)
+  ) {
     return !messages.some(
       (message) =>
         message !== null &&
@@ -244,6 +343,9 @@ interface ProjectModelSelection {
   provider_id?: number;
   model_platform?: string;
   model_type?: string;
+  /** Portable origin only; credentials are resolved transiently at launch. */
+  model_ref?: string;
+  thinking_effort?: ThinkingEffortType;
 }
 
 interface ProjectMetadata {
@@ -269,6 +371,12 @@ interface ProjectMetadata {
   historyDisplayName?: string;
   /** Per-Project model pin; reused by startTask for follow-up runs. */
   modelSelection?: ProjectModelSelection;
+  /** Only containers created locally as new Sessions may adopt a Space default. */
+  spaceModelDefaultPending?: boolean;
+  /** A dispatched initial request whose delivery has not been reconciled. */
+  spaceModelAdmissionRunId?: string | null;
+  /** Kept after cleanup so old requests cannot reuse an earlier empty state. */
+  spaceModelAdmissionRevision?: string | null;
   /** Requested effort for new Runs; null clears a persisted override. */
   thinkingEffort?: ThinkingEffortType | null;
   serverSynced?: boolean;
@@ -401,6 +509,20 @@ const thinkingEffortPersistenceByProject = new Map<
   ThinkingEffortPersistenceState
 >();
 
+const modelPersistenceByProject = new Map<string, Promise<unknown>>();
+
+/** Managed submission confirms its complete captured configuration afterwards. */
+export async function waitForPendingProjectConfigurationWrites(
+  projectId: string
+): Promise<void> {
+  while (true) {
+    const model = modelPersistenceByProject.get(projectId);
+    const effort = thinkingEffortPersistenceByProject.get(projectId);
+    if (!model && !effort?.pendingCount) return;
+    await Promise.allSettled([model, effort?.tail]);
+  }
+}
+
 interface CreateProjectOptions {
   spaceId?: string;
   mode?: ProjectMode | null;
@@ -460,11 +582,27 @@ interface ProjectStore {
    * On an active-project transition, retry eviction for every stale runtime
    * except the Project being activated. This includes older entries whose
    * backend status/retirement request failed during an earlier transition.
+   * It also releases the idle streams of every other Project
+   * (`reclaimIdleStreams`).
    * Call this immediately before any direct write to `activeProjectId` so all
    * transition paths (`setActiveProject`, `createProject`, `replayProject`,
    * `loadProjectFromHistory`) honour the stale-eviction contract.
    */
   _evictStaleOnTransition: (nextProjectId: string | null) => void;
+  /**
+   * Close the idle legacy `/chat` streams of Projects other than
+   * `keepProjectId` (all loaded Projects, or only `projectIds`) once their
+   * displayed frames have drained. A Project keeps its streams while any Run
+   * is running, being admitted or queued, or waits for an approval or answer.
+   * The runtime state stays loaded; Brain's idle consumer is retired by the
+   * next follow-up admission, which then starts cold with its own stream.
+   * Streams relayed by the main process are kept, up to a small budget,
+   * because they do not occupy the renderer's connections.
+   */
+  reclaimIdleStreams: (
+    keepProjectId: string | null,
+    projectIds?: readonly string[]
+  ) => void;
 
   // Project management
   /**
@@ -614,6 +752,11 @@ interface ProjectStore {
     modelSelection: ProjectModelSelection
   ) => void;
   getProjectModel: (projectId: string | null) => ProjectModelSelection | null;
+  setProjectModelAdmission: (
+    projectId: string,
+    runId: string | null,
+    beforeRequest?: () => void
+  ) => Promise<void>;
   setProjectThinkingEffort: (
     projectId: string,
     effort: ThinkingEffortType | undefined
@@ -701,7 +844,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     set((state) => ({
       navLeadByProjectId: {
         ...state.navLeadByProjectId,
-        [projectId]: lead,
+        [projectId]: resolveProjectNavLead(state, projectId, lead),
       },
     })),
 
@@ -721,7 +864,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             : Object.keys(project.chatStores ?? {}).length > 0)
         );
         if (!hasLiveStore) {
-          next[projectId] = lead;
+          next[projectId] = resolveProjectNavLead(state, projectId, lead);
         }
       }
       return { navLeadByProjectId: next };
@@ -808,6 +951,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       queuedMessages: [], // Initialize empty queued messages array
       metadata: {
         status: 'active',
+        ...(!historyId &&
+        type !== ProjectType.REPLAY &&
+        options?.createdAt === undefined &&
+        !useSpaceStore.getState().getProjectMeta(targetProjectId)
+          ? { spaceModelDefaultPending: true }
+          : {}),
         historyId: historyId,
         tags: type === ProjectType.REPLAY ? ['replay'] : [],
         ...(description === 'Auto-created project'
@@ -1422,6 +1571,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             );
             return hasActiveSSEConnection(taskIds) ? null : taskIds;
           };
+          await requireLegacyExecution(executionScope(staleProjectId));
           const runtimeStatus = await fetchGet(
             `/chat/${encodeURIComponent(staleProjectId)}/status`
           );
@@ -1471,6 +1621,56 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           staleRuntimeEvictionsInFlight.delete(staleProjectId);
         }
       });
+    }
+
+    get().reclaimIdleStreams(nextProjectId);
+  },
+
+  reclaimIdleStreams: (keepProjectId, projectIds) => {
+    const state = get();
+    const keepRelayed =
+      countIdleRelayedSSEConnections() < MAX_KEPT_IDLE_RELAYED_STREAMS;
+    for (const projectId of projectIds ?? Object.keys(state.projects)) {
+      // Stale runtimes are released together with their consumer by
+      // `_evictStaleOnTransition`.
+      if (
+        projectId === keepProjectId ||
+        state.staleProjectIds.has(projectId) ||
+        idleStreamReclaimsInFlight.has(projectId)
+      )
+        continue;
+      const project = state.projects[projectId];
+      const taskIds = project ? getIdleStreamTaskIds(project) : null;
+      if (!taskIds || !hasSSETransportForTasks(taskIds, { keepRelayed }))
+        continue;
+
+      idleStreamReclaimsInFlight.add(projectId);
+      void (async () => {
+        try {
+          // Let frames this window already received finish rendering.
+          await waitForIdleSSEDisplayTail(taskIds);
+          const latest = get();
+          const latestProject = latest.projects[projectId];
+          const latestTaskIds =
+            latestProject && latest.activeProjectId !== projectId
+              ? getIdleStreamTaskIds(latestProject)
+              : null;
+          if (
+            latestTaskIds === null ||
+            latestTaskIds.length !== taskIds.length ||
+            latestTaskIds.some((taskId) => !taskIds.includes(taskId))
+          )
+            return;
+          closeIdleSSEConnectionsForTasks(latestTaskIds, { keepRelayed });
+        } catch (error) {
+          console.warn(
+            '[ProjectStore] Kept idle Session streams after a failed check',
+            error
+          );
+        } finally {
+          idleStreamReclaimsInFlight.delete(projectId);
+        }
+      })();
     }
   },
 
@@ -1674,6 +1874,18 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     serverUpdatedAt?: number | null,
     options?: LoadProjectFromHistoryOptions
   ) => {
+    const scope = executionScope(projectId);
+    const route =
+      getSessionExecutionState(scope).route ??
+      (await readSessionExecutionRoute(scope));
+    if (route.route === 'managed') {
+      if (
+        !options?.requireActiveSelection ||
+        get().activeProjectId === projectId
+      )
+        get().setActiveProject(projectId);
+      return projectId;
+    }
     if (
       options?.requireActiveSelection &&
       get().activeProjectId !== projectId
@@ -1748,6 +1960,39 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     );
 
     const cacheUserId = getAuthStore().user_id;
+    const hydrationAccountKey = getAccountEnvironmentKey(getAuthStore());
+    const restored = get().projects[loadProjectId];
+    if (
+      (restored?.metadata?.spaceModelDefaultPending ||
+        restored?.metadata?.spaceModelAdmissionRunId) &&
+      !get().getProjectModel(loadProjectId) &&
+      restored.spaceId &&
+      !restored.spaceId.startsWith('legacy_')
+    ) {
+      const identity = getAuthStore();
+      try {
+        const selection = await recoverSpaceSessionModel(
+          restored.spaceId,
+          loadProjectId,
+          { email: identity.email || '', userId: identity.user_id },
+          () => {
+            const current = getAuthStore();
+            if (
+              current.token !== identity.token ||
+              current.user_id !== identity.user_id ||
+              current.email !== identity.email ||
+              get().projects[loadProjectId]?.spaceId !== restored.spaceId ||
+              get().getProjectModel(loadProjectId)
+            )
+              throw new Error('Session model recovery changed');
+          }
+        );
+        if (selection) get().setProjectModel(loadProjectId, selection);
+      } catch {
+        // Preserve pending delivery/eligibility. A live start must reconcile it
+        // before choosing a model; history can still be viewed while offline.
+      }
+    }
     // Cache usage requires both an authenticated user (to scope per-account)
     // AND a non-null server freshness anchor. Without the latter we cannot
     // detect staleness, so we neither read from nor write to the cache —
@@ -1774,6 +2019,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       >();
       let localCanonicalUpdatedAt: number | null = null;
       try {
+        const hydrationProject = get().projects[loadProjectId];
+        const hydrationChatId = hydrationProject.activeChatId;
+        if (!hydrationChatId) return loadProjectId;
+        const hydrationChatStore = hydrationProject.chatStores[hydrationChatId];
         const localRunController = new AbortController();
         const localRunDeadline = setTimeout(
           () => localRunController.abort(),
@@ -1782,8 +2031,21 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         const localRuns = await fetchProjectRuns(
           loadProjectId,
           100,
-          localRunController.signal
+          localRunController.signal,
+          hydrationAccountKey
         ).finally(() => clearTimeout(localRunDeadline));
+        if (
+          getAccountEnvironmentKey(getAuthStore()) !== hydrationAccountKey ||
+          get().projects[loadProjectId]?.chatStores[hydrationChatId] !==
+            hydrationChatStore
+        )
+          return loadProjectId;
+        // Hydration and sidebar GETs share version arbitration. Preserve the
+        // checkpoint before projecting its status into the unversioned Task.
+        runProjectionStore.upsertRunSummaries(
+          loadProjectId,
+          projectRunSummaries(loadProjectId, localRuns)
+        );
         for (const run of localRuns?.runs ?? []) {
           if (run?.run_id) {
             if (
@@ -1903,6 +2165,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               if (localRun) {
                 const canonicalElapsed =
                   localRun.status === 'running' ||
+                  localRun.status === 'waiting_for_user' ||
                   (localRun.status &&
                     TERMINAL_DURABLE_RUN_DISPLAY_STATUSES.has(localRun.status))
                     ? resolveHistoricalRunElapsedMs({
@@ -1914,11 +2177,23 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                 const chatState = chatStore.getState();
                 chatState.setDurableRunStatus(cachedTaskId, localRun.status);
                 if (canonicalElapsed !== undefined) {
+                  // A Run waiting for the user holds the time it worked
+                  // before the wait until it continues.
                   chatState.setElapsed(cachedTaskId, canonicalElapsed);
                   chatState.setTaskTime(
                     cachedTaskId,
                     localRun.status === 'running' ? Date.now() : 0
                   );
+                }
+                if (
+                  localRun.status &&
+                  ACTIVE_RUN_STATUSES.has(localRun.status)
+                ) {
+                  followRestoredTaskTimer({
+                    projectId: loadProjectId,
+                    runId: cachedTaskId,
+                    chatStore,
+                  });
                 }
 
                 const cachedTaskState =
@@ -2044,18 +2319,37 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                   .getState()
                   .setDurableRunStatus(taskId, localRun?.status);
                 if (
-                  localRun?.status === 'running' &&
+                  (localRun?.status === 'running' ||
+                    localRun?.status === 'waiting_for_user') &&
                   localRun.totalAttemptElapsedMs !== undefined &&
                   chatStore.getState().tasks[taskId]
                 ) {
                   // `/runs` measures the active Attempt up to the history
                   // request. Continue from that canonical baseline while the
                   // attached stream is still open; otherwise replay's first
-                  // TODO event restarts the visible clock at Date.now().
+                  // TODO event restarts the visible clock at Date.now(). A
+                  // Run waiting for the user reports the time it worked
+                  // before the wait; that value holds until the Run continues.
                   chatStore
                     .getState()
                     .setElapsed(taskId, localRun.totalAttemptElapsedMs);
-                  chatStore.getState().setTaskTime(taskId, Date.now());
+                  chatStore
+                    .getState()
+                    .setTaskTime(
+                      taskId,
+                      localRun.status === 'running' ? Date.now() : 0
+                    );
+                }
+                if (
+                  localRun?.status &&
+                  ACTIVE_RUN_STATUSES.has(localRun.status) &&
+                  chatStore.getState().tasks[taskId]
+                ) {
+                  followRestoredTaskTimer({
+                    projectId: loadProjectId,
+                    runId: taskId,
+                    chatStore,
+                  });
                 }
                 await replayPromise;
                 const canonicalElapsed =
@@ -2877,7 +3171,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       previous.codex_model_type === modelSelection.codex_model_type &&
       previous.provider_id === modelSelection.provider_id &&
       previous.model_platform === modelSelection.model_platform &&
-      previous.model_type === modelSelection.model_type
+      previous.model_type === modelSelection.model_type &&
+      previous.model_ref === modelSelection.model_ref &&
+      previous.thinking_effort === modelSelection.thinking_effort &&
+      projects[projectId].metadata?.spaceModelDefaultPending !== true &&
+      !projects[projectId].metadata?.spaceModelAdmissionRunId
     ) {
       return;
     }
@@ -2890,6 +3188,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           metadata: {
             ...state.projects[projectId].metadata,
             modelSelection,
+            spaceModelDefaultPending: false,
+            spaceModelAdmissionRunId: null,
           },
           updatedAt: Date.now(),
         },
@@ -2906,14 +3206,190 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       updatedProject?.spaceId ??
       useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
     if (spaceId) {
-      void proxyUpdateSpaceProject(spaceId, projectId, {
-        metadata: { modelSelection },
-      }).catch((error) => {
-        console.warn(
-          `Failed to persist model selection for project ${projectId}:`,
-          error
+      const expectedAccountKey = getAccountEnvironmentKey(getAuthStore());
+      const prior = modelPersistenceByProject.get(projectId);
+      const persist = () =>
+        proxyUpdateSpaceProject(
+          spaceId,
+          projectId,
+          {
+            metadata: {
+              modelSelection,
+              spaceModelDefaultPending: false,
+              spaceModelAdmissionRunId: null,
+            },
+          },
+          { expectedAccountKey }
         );
-      });
+      const write = prior
+        ? prior.catch(() => undefined).then(persist)
+        : persist();
+      modelPersistenceByProject.set(projectId, write);
+      void write
+        .catch((error) => {
+          console.warn(
+            `Failed to persist model selection for project ${projectId}:`,
+            error
+          );
+        })
+        .finally(() => {
+          if (modelPersistenceByProject.get(projectId) === write)
+            modelPersistenceByProject.delete(projectId);
+        });
+    }
+  },
+
+  setProjectModelAdmission: async (projectId, runId, beforeRequest) => {
+    beforeRequest?.();
+    const project = get().projects[projectId];
+    if (!project || get().getProjectModel(projectId)) return;
+    const previousRunId = project.metadata?.spaceModelAdmissionRunId ?? null;
+    if (runId === null && !previousRunId) return;
+    const auth = getAuthStore();
+    const { token, email } = auth;
+    const accountKey = getAccountEnvironmentKey(auth);
+    const ownerKey = JSON.stringify([accountKey, project.spaceId, projectId]);
+    let writes = receiptWrites.get(ownerKey);
+    if (!writes) receiptWrites.set(ownerKey, (writes = new Map()));
+    const previousRevision =
+      project.metadata?.spaceModelAdmissionRevision ?? null;
+    const candidate = previousRunId ? writes.get(previousRunId) : undefined;
+    // A reused Run ID does not transfer the old generation's unsent proof.
+    // Match before publishing locally, including same-Run assignments/clears.
+    const released =
+      candidate?.revision === previousRevision ? candidate : undefined;
+    if (runId !== null && previousRunId && !released?.abandoned)
+      throw spaceModelError('changed');
+    if (runId === null && released) released.abandoned = true;
+    const revision = Array.from(
+      crypto.getRandomValues(new Uint8Array(16)),
+      (value) => value.toString(16).padStart(2, '0')
+    ).join('');
+    let expectedRunId = previousRunId;
+    let expectedRevision = previousRevision;
+    const write: ReceiptWrite = {
+      revision,
+      bases: new Set(),
+      abandoned: false,
+    };
+    if (runId !== null) writes.set(runId, write);
+    let updatedProject: Project & { metadata: ProjectMetadata } = {
+      ...project,
+      metadata: {
+        ...project.metadata,
+        spaceModelAdmissionRunId: runId,
+        spaceModelAdmissionRevision: revision,
+      },
+    };
+    const publishLocal = () => {
+      set((state) => ({
+        projects: { ...state.projects, [projectId]: updatedProject },
+      }));
+      upsertSpaceProjectMetaFromProject(updatedProject);
+    };
+    publishLocal();
+    if (!project.spaceId) return;
+    const assertCurrent = () => {
+      beforeRequest?.();
+      const currentAuth = getAuthStore();
+      if (
+        getAccountEnvironmentKey(currentAuth) !== accountKey ||
+        currentAuth.token !== token ||
+        currentAuth.email !== email ||
+        get().projects[projectId] !== updatedProject ||
+        updatedProject.metadata.spaceModelAdmissionRunId !== runId ||
+        updatedProject.metadata.spaceModelAdmissionRevision !== revision ||
+        get().getProjectModel(projectId)
+      )
+        throw spaceModelError('changed');
+    };
+    try {
+      // Conflicts return the locked server snapshot. Retry only an empty state
+      // or an exact assignment proven never sent; never replace an unknown ACK.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        assertCurrent();
+        write.bases.add(expectedRevision);
+        const remote = await proxyUpdateSpaceProject(
+          project.spaceId,
+          projectId,
+          {
+            metadata: { spaceModelAdmissionRunId: runId },
+            expected_model_admission_run_id: expectedRunId,
+            expected_model_admission_revision: expectedRevision,
+            model_admission_revision: revision,
+          },
+          { beforeRequest: assertCurrent }
+        );
+        assertCurrent();
+        if (remote.id !== projectId || remote.space_id !== project.spaceId)
+          throw spaceModelError('changed');
+        const metadata = remote.metadata ?? {};
+        const remoteRun =
+          typeof metadata.spaceModelAdmissionRunId === 'string'
+            ? metadata.spaceModelAdmissionRunId
+            : null;
+        const remoteRevision =
+          typeof metadata.spaceModelAdmissionRevision === 'string'
+            ? metadata.spaceModelAdmissionRevision
+            : null;
+        if (
+          remoteRevision === revision &&
+          remoteRun === runId &&
+          !metadata.modelSelection
+        ) {
+          for (const [id, candidate] of writes)
+            if (candidate.abandoned) writes.delete(id);
+          if (!writes.size) receiptWrites.delete(ownerKey);
+          return;
+        }
+        const remoteWrite = remoteRun ? writes.get(remoteRun) : undefined;
+        const knownUnsent =
+          remoteWrite?.abandoned && remoteWrite.revision === remoteRevision;
+        // A clear loaded from synced legacy metadata still owns that exact
+        // snapshot. An empty base of its failed assignment must be fenced too.
+        const originalReceipt =
+          remoteRun === previousRunId &&
+          remoteRevision ===
+            (project.metadata?.spaceModelAdmissionRevision ?? null);
+        const mayTransition =
+          !metadata.modelSelection &&
+          (runId !== null
+            ? remoteRun === null || knownUnsent
+            : knownUnsent ||
+              originalReceipt ||
+              (remoteRun === null && !!released?.bases.has(remoteRevision)));
+        if (mayTransition && remoteRevision !== revision && attempt < 2) {
+          expectedRunId = remoteRun;
+          expectedRevision = remoteRevision;
+          continue;
+        }
+        if (mayTransition) throw spaceModelError('changed');
+        // Keep another owner's recovery receipt/model locally, without applying
+        // late responses across a replaced container or account. Null revisions
+        // remain explicit: the next valid retry must compare the real snapshot.
+        updatedProject = {
+          ...updatedProject,
+          metadata: {
+            ...updatedProject.metadata,
+            spaceModelAdmissionRunId: remoteRun,
+            spaceModelAdmissionRevision: remoteRevision,
+            ...(metadata.modelSelection
+              ? {
+                  modelSelection:
+                    metadata.modelSelection as ProjectModelSelection,
+                }
+              : {}),
+          },
+        };
+        publishLocal();
+        if (runId === null) return;
+        throw spaceModelError('changed');
+      }
+    } catch (error) {
+      // The caller awaits this assignment before starting /chat. A failure is
+      // proof only that /chat has not begun, never that this PATCH was canceled.
+      if (runId !== null) write.abandoned = true;
+      throw error;
     }
   },
 
@@ -2957,7 +3433,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     const capturedSpaceId =
       project.spaceId ??
       useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
+    const expectedAccountKey = getAccountEnvironmentKey(getAuthStore());
     const applyLocalEffort = (localEffort: ThinkingEffortType | null) => {
+      if (getAccountEnvironmentKey(getAuthStore()) !== expectedAccountKey)
+        return null;
       const currentPersistence =
         thinkingEffortPersistenceByProject.get(projectId);
       const currentProject = get().projects[projectId];
@@ -3039,7 +3518,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           projectId,
           {
             metadata: { thinkingEffort: nextEffort },
-          }
+          },
+          { expectedAccountKey }
         );
         if (persistedProject.updated_at) {
           const confirmedAt = timestampFromServer(
@@ -3126,21 +3606,14 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
 export const useProjectStore = projectStore;
 
-/**
- * Centralized live nav-lead subscription registry.
- *
- * For every Project that has an active chat store, subscribe to that chat
- * store and push the derived `SessionNavLeadPresentation` into
- * `navLeadByProjectId`. This makes the sidebar row icons react to live task
- * status changes (running → finished, etc.) without requiring each consumer
- * to subscribe to chat-store internals.
- *
- * The registry is reconciled whenever `projectStore.projects` changes (chat
- * store swap, project add/remove). Stale subscriptions are torn down.
- */
+/** Navigation is a read-only consumer of both canonical projections and ChatTask. */
 const navLeadSubscriptions = new Map<
   string,
-  { chatStore: VanillaChatStore; unsubscribe: () => void }
+  {
+    chatStore?: VanillaChatStore;
+    eventStore: ReturnType<typeof peekProjectEventStore>;
+    unsubscribe: () => void;
+  }
 >();
 
 const navLeadsEqual = (
@@ -3148,46 +3621,132 @@ const navLeadsEqual = (
   b: SessionNavLeadPresentation
 ) => !!a && a.kind === b.kind && a.Icon === b.Icon && a.spin === b.spin;
 
-const pushLiveNavLead = (projectId: string, chatStore: VanillaChatStore) => {
-  const chatState = chatStore.getState();
-  const activeTask = chatState.activeTaskId
-    ? chatState.tasks[chatState.activeTaskId]
-    : undefined;
-  if (!activeTask) return;
-  const lead = getSessionNavLeadPresentation(activeTask);
-  const current = projectStore.getState().navLeadByProjectId[projectId];
+function resolveProjectNavLead(
+  state: ProjectStore,
+  projectId: string,
+  fallback: SessionNavLeadPresentation
+): SessionNavLeadPresentation {
+  const project = state.projects[projectId];
+  const chatStore = project?.activeChatId
+    ? project.chatStores[project.activeChatId]
+    : Object.values(project?.chatStores ?? {})[0];
+  const chatState = chatStore?.getState();
+  const taskId = chatState?.activeTaskId;
+  const task = taskId ? chatState?.tasks[taskId] : undefined;
+  const loading = state.historyLoadingProjectIds[projectId];
+  const run = selectSessionNavRun(
+    projectId,
+    [
+      runProjectionStore.getProject(projectId),
+      peekProjectEventStore(projectId)?.getSnapshot().view,
+    ],
+    task && !loading ? taskId : undefined
+  );
+  if (run) {
+    if (
+      task &&
+      taskId === run.runId &&
+      !loading &&
+      durableRunDisplayStatus(run.status)
+    ) {
+      return getSessionNavLeadPresentation({
+        ...task,
+        durableRunStatus: durableRunDisplayStatus(run.status),
+      });
+    }
+    const lead = getSessionNavLeadFromRunStatus(run.status);
+    if (lead) return lead;
+  }
+  if (task && !loading) return getSessionNavLeadPresentation(task);
+  return fallback;
+}
+
+const pushLiveNavLead = (projectId: string) => {
+  const state = projectStore.getState();
+  if (!navLeadSubscriptions.has(projectId)) return;
+  const current = state.navLeadByProjectId[projectId];
+  const lead = resolveProjectNavLead(
+    state,
+    projectId,
+    current ?? SESSION_NAV_IDLE_LEAD
+  );
   if (navLeadsEqual(current, lead)) return;
-  projectStore.getState().setProjectNavLead(projectId, lead);
+  state.setProjectNavLead(projectId, lead);
 };
 
-const reconcileNavLeadSubscriptions = (state: ProjectStore) => {
-  const seen = new Set<string>();
-  for (const [projectId, project] of Object.entries(state.projects)) {
-    const activeChatId = project.activeChatId;
-    const chatStore = activeChatId
-      ? project.chatStores[activeChatId]
-      : Object.values(project.chatStores ?? {})[0];
-    if (!chatStore) continue;
-    seen.add(projectId);
-
-    const existing = navLeadSubscriptions.get(projectId);
-    if (existing?.chatStore === chatStore) continue;
+// Navigation only peeks at event stores, so cold or evicted Sessions never
+// allocate one; the registry subscription below rebinds as stores come and go.
+const syncNavLeadSubscription = (state: ProjectStore, projectId: string) => {
+  const project = state.projects[projectId];
+  const chatStore = project?.activeChatId
+    ? project.chatStores[project.activeChatId]
+    : Object.values(project?.chatStores ?? {})[0];
+  const eventStore = peekProjectEventStore(projectId);
+  const existing = navLeadSubscriptions.get(projectId);
+  if (
+    !existing ||
+    existing.chatStore !== chatStore ||
+    existing.eventStore !== eventStore
+  ) {
     existing?.unsubscribe();
-
-    pushLiveNavLead(projectId, chatStore);
-    const unsubscribe = chatStore.subscribe(() =>
-      pushLiveNavLead(projectId, chatStore)
-    );
-    navLeadSubscriptions.set(projectId, { chatStore, unsubscribe });
+    const push = () => pushLiveNavLead(projectId);
+    const unsubscribers = [
+      chatStore?.subscribe(push),
+      eventStore?.subscribe(push),
+      runProjectionStore.subscribeProject(projectId, push),
+    ];
+    navLeadSubscriptions.set(projectId, {
+      chatStore,
+      eventStore,
+      unsubscribe: () =>
+        unsubscribers.forEach((unsubscribe) => unsubscribe?.()),
+    });
   }
+  pushLiveNavLead(projectId);
+};
+
+const reconcileNavLeadSubscriptions = (
+  state: ProjectStore,
+  previous?: ProjectStore
+) => {
+  if (
+    previous &&
+    state.projects === previous.projects &&
+    state.historyLoadingProjectIds === previous.historyLoadingProjectIds
+  )
+    return;
+  const spaces = useSpaceStore.getState();
+  // Persisted Session rows remain visible even when Cloud Project sync fails.
+  const projectIds = new Set([
+    ...Object.keys(state.projects),
+    ...getVisibleProjectMetasForSpace(
+      spaces.projectsBySpaceId,
+      spaces.activeSpaceId
+    ).map((meta) => meta.id),
+  ]);
   for (const [projectId, entry] of navLeadSubscriptions) {
-    if (seen.has(projectId)) continue;
+    if (projectIds.has(projectId)) continue;
     entry.unsubscribe();
     navLeadSubscriptions.delete(projectId);
+  }
+  for (const projectId of projectIds) {
+    syncNavLeadSubscription(state, projectId);
   }
 };
 
 projectStore.subscribe(reconcileNavLeadSubscriptions);
+useSpaceStore.subscribe((state, previous) => {
+  if (
+    state.projectsBySpaceId !== previous.projectsBySpaceId ||
+    state.activeSpaceId !== previous.activeSpaceId
+  ) {
+    reconcileNavLeadSubscriptions(projectStore.getState());
+  }
+});
+subscribeProjectEventStores((projectId) => {
+  if (navLeadSubscriptions.has(projectId))
+    syncNavLeadSubscription(projectStore.getState(), projectId);
+});
 reconcileNavLeadSubscriptions(projectStore.getState());
 
 if (typeof queueMicrotask === 'function') {

@@ -548,6 +548,7 @@ def test_finalize_shares_one_deadline_across_direct_and_git_scans(
         user_id="user-1",
     )
     journal = MagicMock()
+    journal._connection.execute.return_value.fetchone.return_value = None
     journal.get_run_artifact_manifest_event.return_value = None
     journal.get_run.return_value = run
     resolver = MagicMock()
@@ -590,6 +591,7 @@ def test_git_artifacts_keep_every_change_and_classify_in_batches(
         (tmp_path / name).write_text("frame", encoding="utf-8")
         changes.append(SimpleNamespace(relative_path=name, status="A"))
     journal = MagicMock()
+    journal._connection.execute.return_value.fetchone.return_value = None
     journal.get_run_git_materialization.return_value = SimpleNamespace(
         workspace_base_commit="base",
         promoted_commit="target",

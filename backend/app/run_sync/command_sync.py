@@ -261,6 +261,11 @@ class CommandControlWorker:
         self._configuration = configuration
         self.notify()
 
+    @property
+    def current_configuration(self) -> CloudSyncConfiguration | None:
+        """Existing in-memory credential handoff; never serialize this value."""
+        return None if self._closed else self._configuration
+
     def start(self) -> None:
         if self._closed:
             raise RuntimeError("CommandControlWorker is closed")

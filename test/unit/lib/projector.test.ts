@@ -26,6 +26,7 @@ import {
   selectPendingLegacyAsk,
   selectRunArtifacts,
 } from '@/lib/projector';
+import { mergeRunSummary } from '@/lib/projector/runSummary';
 import { describe, expect, it } from 'vitest';
 
 function event(overrides: Record<string, unknown> = {}) {
@@ -282,6 +283,64 @@ describe('projector pipeline', () => {
       });
     }
   );
+
+  it('tracks why a Run waits for its Space writer until it gets it', () => {
+    const writer = (
+      sequence: number,
+      eventType: string,
+      payload: Record<string, unknown>
+    ) =>
+      normalizeEvent(
+        event({
+          event_id: `writer-${sequence}`,
+          event_type: eventType,
+          legacy_step: null,
+          run_sequence: sequence,
+          run_version: sequence,
+          cloud_cursor: sequence,
+          payload,
+        })
+      );
+    const queued = reduceProjectView(
+      createProjectViewState('project-1', 'live'),
+      writer(1, 'workspace.writer.queued', { reason: 'task.mutating_default' })
+    );
+    expect(queued.runs['run-1'].writerWait).toEqual({
+      holderNeedsAttention: false,
+    });
+
+    const blocked = reduceProjectView(
+      queued,
+      writer(2, 'workspace.writer.queued', {
+        reason: 'holder_requires_attention',
+        semantic: {
+          correlation: {
+            blocker_run_id: 'run-0',
+            blocker_project_id: 'project-0',
+            blocker_reason: 'unknown_tool_outcome',
+          },
+        },
+      })
+    );
+    expect(blocked.runs['run-1'].writerWait).toEqual({
+      holderNeedsAttention: true,
+      blockerProjectId: 'project-0',
+    });
+
+    const attempt = reduceProjectView(
+      blocked,
+      writer(3, 'run.attempt_created', {})
+    );
+    expect(attempt.runs['run-1'].writerWait).toBe(
+      blocked.runs['run-1'].writerWait
+    );
+
+    const acquired = reduceProjectView(
+      attempt,
+      writer(4, 'workspace.writer.acquired', { waited: true })
+    );
+    expect(acquired.runs['run-1'].writerWait).toBeNull();
+  });
 
   it('continues updating canonical lifecycle timestamps after legacy replay', () => {
     const running = normalizeEvent(
@@ -1568,6 +1627,333 @@ describe('projector pipeline', () => {
     expect(live.runs['run-1'].totalAttemptElapsedMs).toBeNull();
   });
 
+  it('keeps a live elapsed checkpoint while the same execution continues', () => {
+    const waiting = {
+      run_id: 'run-1',
+      status: 'waiting_for_user',
+      run_version: 1,
+      expected_next_run_sequence: 2,
+      updated_at: '2026-08-05T10:00:00Z',
+      total_attempt_elapsed_ms: 62_000,
+      totalAttemptElapsedAt: '2026-08-05T10:01:00.000Z',
+    };
+    const approved = (sequence: number) =>
+      normalizeEvent(
+        event({
+          event_id: `approved-${sequence}`,
+          run_sequence: sequence,
+          run_version: sequence,
+          cloud_cursor: sequence,
+          event_type: 'approval.decided',
+          legacy_step: null,
+          payload: { continued_attempt: true },
+          created_at: '2026-08-05T10:01:00Z',
+        })
+      );
+    const snapshot = projectSnapshot({
+      project_id: 'project-1',
+      current_cursor: 1,
+      runs: [waiting],
+      recent_events: [event({ legacy_step: null })],
+    });
+
+    const continued = reduceProjectView(snapshot, approved(2));
+    expect(continued.runs['run-1']).toMatchObject({
+      status: 'running',
+      totalAttemptElapsedMs: 62_000,
+      totalAttemptElapsedAt: '2026-08-05T10:01:00.000Z',
+    });
+
+    // Skipped events can hide an interruption and Resume; settle on a later
+    // read instead of counting through them.
+    const afterGap = projectSnapshot({
+      project_id: 'project-1',
+      current_cursor: 0,
+      runs: [waiting],
+      recent_events: [approved(5)],
+      events_truncated: true,
+    });
+    expect(afterGap.runs['run-1'].totalAttemptElapsedMs).toBeNull();
+  });
+
+  it('keeps a live elapsed checkpoint across events appended after the Run listing', () => {
+    // Reopening a Session lists Runs before it reads their events, so the
+    // event tail can extend past the listed version while the Run continues.
+    const appended = (sequence: number, eventType: string) =>
+      event({
+        event_id: `event-${sequence}`,
+        run_sequence: sequence,
+        run_version: sequence,
+        cloud_cursor: null,
+        event_type: eventType,
+        legacy_step: null,
+        payload: {},
+        created_at: '2026-08-05T10:01:00Z',
+      });
+    const reopened = (eventTypes: string[]) =>
+      projectSnapshot({
+        project_id: 'project-1',
+        current_cursor: 0,
+        runs: [
+          {
+            run_id: 'run-1',
+            status: 'running',
+            run_version: 3,
+            expected_next_run_sequence: 3 + eventTypes.length,
+            updated_at: '2026-08-05T10:00:00Z',
+            total_attempt_elapsed_ms: 62_000,
+            totalAttemptElapsedAt: '2026-08-05T10:01:00.000Z',
+          },
+        ],
+        recent_events: eventTypes.map((eventType, index) =>
+          appended(3 + index, eventType)
+        ),
+        events_truncated: true,
+      }).runs['run-1'];
+
+    expect(
+      reopened(['step.created', 'tool.completed', 'approval.requested'])
+    ).toMatchObject({
+      status: 'waiting_for_user',
+      lastSequence: 5,
+      totalAttemptElapsedMs: 62_000,
+      totalAttemptElapsedAt: '2026-08-05T10:01:00.000Z',
+    });
+    // An interruption among the appends ends that measurement.
+    expect(
+      reopened([
+        'step.created',
+        'runtime.interrupted',
+        'run.attempt_created',
+        'run.attempt_started',
+      ])
+    ).toMatchObject({
+      status: 'running',
+      lastSequence: 6,
+      totalAttemptElapsedMs: null,
+    });
+  });
+
+  describe('waiting for the user', () => {
+    const at = (time: string) => `2026-08-05T${time}.000Z`;
+    const runEvent = (
+      sequence: number,
+      eventType: string,
+      time: string,
+      payload: Record<string, unknown> = {}
+    ) =>
+      normalizeEvent(
+        event({
+          event_id: `event-${sequence}`,
+          run_sequence: sequence,
+          run_version: sequence,
+          cloud_cursor: null,
+          event_type: eventType,
+          legacy_step: null,
+          payload,
+          created_at: at(time),
+        })
+      );
+    const decided = (
+      sequence: number,
+      time: string,
+      payload: Record<string, unknown> = {}
+    ) =>
+      runEvent(sequence, 'approval.decided', time, {
+        continued_attempt: true,
+        remaining_interaction_count: 0,
+        ...payload,
+      });
+    const listed = (
+      status: string,
+      elapsedMs: number,
+      measuredAt: string,
+      recentEvents: ReturnType<typeof runEvent>[]
+    ) =>
+      projectSnapshot({
+        project_id: 'project-1',
+        current_cursor: 0,
+        runs: [
+          {
+            run_id: 'run-1',
+            status,
+            run_version: 3,
+            expected_next_run_sequence: 4,
+            updated_at: at('10:00:02'),
+            total_attempt_elapsed_ms: elapsedMs,
+            totalAttemptElapsedAt: at(measuredAt),
+          },
+        ],
+        recent_events: recentEvents,
+        events_truncated: true,
+      });
+
+    it('records each wait from its request to its answer', () => {
+      const requested = projectRawEvents(
+        'project-1',
+        [
+          runEvent(1, 'run.attempt_started', '10:00:00'),
+          runEvent(2, 'approval.requested', '10:00:02'),
+        ],
+        'live'
+      ).state;
+      expect(requested.runs['run-1']).toMatchObject({
+        status: 'waiting_for_user',
+        userWaitStartedAt: at('10:00:02'),
+      });
+      expect(requested.runs['run-1'].userWaitMs).toBeUndefined();
+
+      const approved = reduceProjectView(requested, decided(3, '10:01:02'));
+      expect(approved.runs['run-1']).toMatchObject({
+        status: 'running',
+        userWaitMs: 60_000,
+      });
+      expect(approved.runs['run-1'].userWaitStartedAt).toBeUndefined();
+    });
+
+    it('starts an open wait at a listing read during that wait', () => {
+      // The listed total already leaves out the wait up to its read.
+      const reopened = listed('waiting_for_user', 2_000, '10:01:02', [
+        runEvent(3, 'approval.requested', '10:00:02'),
+      ]);
+      expect(reopened.runs['run-1']).toMatchObject({
+        status: 'waiting_for_user',
+        totalAttemptElapsedMs: 2_000,
+        userWaitStartedAt: at('10:01:02'),
+      });
+
+      const approved = reduceProjectView(reopened, decided(4, '10:01:32'));
+      expect(approved.runs['run-1']).toMatchObject({
+        status: 'running',
+        totalAttemptElapsedMs: 2_000,
+        totalAttemptElapsedAt: at('10:01:02'),
+        userWaitMs: 30_000,
+      });
+    });
+
+    it('never starts a wait before a listing read while running', () => {
+      const reopened = listed('running', 5_000, '10:01:00', [
+        runEvent(3, 'step.created', '10:00:02'),
+      ]);
+      expect(
+        reduceProjectView(
+          reopened,
+          runEvent(4, 'approval.requested', '10:01:10')
+        ).runs['run-1'].userWaitStartedAt
+      ).toBe(at('10:01:10'));
+      // A request written just before the read is already counted by it.
+      expect(
+        reduceProjectView(
+          reopened,
+          runEvent(4, 'approval.requested', '10:00:59')
+        ).runs['run-1'].userWaitStartedAt
+      ).toBe(at('10:01:00'));
+    });
+
+    it('settles a listing read on the active time when the Run stops', () => {
+      let state = listed('running', 5_000, '10:01:00', [
+        runEvent(3, 'step.created', '10:00:02'),
+      ]);
+      for (const next of [
+        runEvent(4, 'approval.requested', '10:01:10'),
+        decided(5, '10:02:10'),
+        runEvent(6, 'run.completed', '10:02:13'),
+      ]) {
+        state = reduceProjectView(state, next);
+      }
+
+      // 5s at the read, 10s before the request and 3s after the answer.
+      expect(state.runs['run-1']).toMatchObject({
+        status: 'completed',
+        totalAttemptElapsedMs: 18_000,
+        totalAttemptElapsedAt: at('10:02:13'),
+      });
+      expect(state.runs['run-1'].userWaitMs).toBeUndefined();
+    });
+
+    it('keeps waiting while another request is still open', () => {
+      const requested = projectRawEvents(
+        'project-1',
+        [
+          runEvent(1, 'run.attempt_started', '10:00:00'),
+          runEvent(2, 'approval.requested', '10:00:02'),
+          runEvent(3, 'approval.requested', '10:00:10'),
+        ],
+        'live'
+      ).state;
+      const firstAnswered = reduceProjectView(
+        requested,
+        decided(4, '10:00:30', {
+          continued_attempt: false,
+          remaining_interaction_count: 1,
+        })
+      );
+      expect(firstAnswered.runs['run-1']).toMatchObject({
+        status: 'waiting_for_user',
+        userWaitStartedAt: at('10:00:02'),
+      });
+
+      const bothAnswered = reduceProjectView(
+        firstAnswered,
+        decided(5, '10:00:50')
+      );
+      expect(bothAnswered.runs['run-1']).toMatchObject({
+        status: 'running',
+        userWaitMs: 48_000,
+      });
+      // A rejection that leaves nothing open still interrupts the Attempt.
+      expect(
+        reduceProjectView(
+          requested,
+          decided(4, '10:00:30', { continued_attempt: false })
+        ).runs['run-1'].status
+      ).toBe('interrupted');
+    });
+
+    it('restarts the wait record at a measured Run read', () => {
+      const approved = reduceProjectView(
+        projectRawEvents(
+          'project-1',
+          [
+            runEvent(1, 'run.attempt_started', '10:00:00'),
+            runEvent(2, 'approval.requested', '10:00:02'),
+          ],
+          'live'
+        ).state,
+        decided(3, '10:01:02')
+      ).runs['run-1'];
+      const summary = {
+        run_id: 'run-1',
+        project_id: 'project-1',
+        version: 4,
+        updated_at: at('10:01:02'),
+      };
+
+      const running = mergeRunSummary(
+        approved,
+        { ...summary, status: 'running', total_attempt_elapsed_ms: 2_000 },
+        at('10:01:05')
+      );
+      expect(running).toMatchObject({
+        totalAttemptElapsedMs: 2_000,
+        totalAttemptElapsedAt: at('10:01:05'),
+      });
+      expect(running?.userWaitMs).toBeUndefined();
+
+      const waiting = mergeRunSummary(
+        approved,
+        {
+          ...summary,
+          status: 'waiting_for_user',
+          total_attempt_elapsed_ms: 2_000,
+        },
+        at('10:01:05')
+      );
+      expect(waiting).toMatchObject({ userWaitStartedAt: at('10:01:05') });
+      expect(waiting?.userWaitMs).toBeUndefined();
+    });
+  });
+
   it('preserves legacy raw payload across all V1 importers', () => {
     const legacy = {
       step_id: 9,
@@ -1602,7 +1988,7 @@ describe('projector pipeline', () => {
   });
 
   it.each([
-    ['run.deadline_reached', 'failed'],
+    ['run.deadline_reached', 'timed_out'],
     ['runtime.interrupted', 'interrupted'],
     ['approval.cancelled', 'interrupted'],
   ] as const)('projects %s as the terminal status %s', (eventType, status) => {

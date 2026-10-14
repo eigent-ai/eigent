@@ -14,25 +14,42 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import stat
 import subprocess
+from pathlib import Path
 
 import pytest
 
-from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
+from app.run_journal import (
+    IdempotencyConflictError,
+    InvalidRunTransitionError,
+    OptimisticConcurrencyError,
+    SQLiteRunJournal,
+)
+from app.service import skill_config_service, skill_service
 from app.workspace_bundle import (
     WorkspaceBundleBindingsIncomplete,
     WorkspaceBundleInstaller,
     WorkspaceBundleInstallError,
     WorkspaceSecretVerification,
 )
+from app.workspace_bundle.runtime import (
+    EnvironmentSetupRequiredError,
+    RuntimeEnvironmentAssembler,
+    bundle_runtime_binding_digest,
+)
 from app.workspace_config import (
     ConfigPlacement,
+    EnvironmentConfigResolver,
+    LocalMaterialization,
     WorkspaceBundleManifest,
     canonical_digest,
 )
+from app.workspace_config.admission import LegacyEnvironmentImporter
+from app.workspace_config.global_resources import global_resource_ref
 from app.workspace_git import ConfigurationRepositoryService, GitBackend
 
 
@@ -303,6 +320,243 @@ def installer(tmp_path):
         yield value, journal, cloud, tmp_path
     finally:
         journal.close()
+
+
+@pytest.fixture
+def configured_global_skill(tmp_path, monkeypatch):
+    root = tmp_path / "global"
+    skill = root / "skills" / "research" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        "---\nname: Research\ndescription: Research safely\n---\nUse sources."
+    )
+    account = root / "user_7" / "skills-config.json"
+    account.parent.mkdir()
+    account.write_text(json.dumps({"skills": {"Research": {"enabled": True}}}))
+    monkeypatch.setattr(skill_service, "SKILLS_ROOT", root / "skills")
+    monkeypatch.setattr(skill_config_service, "EIGENT_ROOT", root)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    return skill, account
+
+
+async def _propose_skill_only(installer, monkeypatch, ref):
+    service, _, cloud, _ = installer
+    document = _manifest()
+    document["spec"].update(
+        instructions={},
+        context=[],
+        connectors=[],
+        agents=[],
+        skills=[{"ref": ref}],
+    )
+    manifest = WorkspaceBundleManifest.model_validate(document)
+    cloud.contents["asset-skill"] = (
+        b"---\nname: Research\ndescription: Research safely\n---\nUse sources."
+    )
+
+    async def revision(publisher_namespace, slug, version):
+        return {
+            "id": manifest.revision_id,
+            "bundle_id": manifest.metadata.id,
+            "revision_id": manifest.revision_id,
+            "publisher_namespace": publisher_namespace,
+            "slug": slug,
+            "version": version,
+            "status": "published",
+            "manifest": manifest.canonical_payload(),
+            "manifest_digest": manifest.digest,
+            "assets": (
+                [cloud._asset("asset-skill", ref.removeprefix("bundle://"))]
+                if ref.startswith("bundle://")
+                else []
+            ),
+        }
+
+    monkeypatch.setattr(cloud, "get_catalog_revision", revision)
+    proposal = await service.propose(
+        proposal_id="skill-proposal",
+        request_id="skill-request",
+        space_id="space-1",
+        publisher_namespace="user-7",
+        slug=manifest.metadata.id,
+        version=manifest.metadata.revision,
+        config_placement=ConfigPlacement.SIDECAR,
+    )
+    proposal = service.decide(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        approved=True,
+        decided_by="user-7",
+    )
+    return proposal, manifest
+
+
+def _assemble_installed_skill(installer, proposal, manifest):
+    service, journal, _, tmp_path = installer
+    state_root = service.configuration_repository.state_root
+    bindings = journal.list_workspace_bundle_local_bindings(
+        proposal.proposal_id
+    )
+    capability = (
+        LegacyEnvironmentImporter()
+        .build_template(
+            model_platform="openai",
+            model_type="gpt-5.5-codex",
+            auth_source="codex_subscription",
+            requested_effort="medium",
+            allow_local_system=False,
+        )
+        .provider_capability
+    )
+    spec = EnvironmentConfigResolver().resolve(
+        manifest=manifest,
+        owner_type="run",
+        owner_id="skill-run",
+        local_materialization=LocalMaterialization(
+            bundle_proposal_id=proposal.proposal_id,
+            bundle_proposal_version=proposal.version,
+            bundle_binding_digest=bundle_runtime_binding_digest(
+                proposal, bindings, ()
+            ),
+            configuration_root=str(
+                state_root / "spaces/space-1/configuration"
+            ),
+        ),
+        provider_capability=capability,
+        runtime_capability_manifest={
+            "workspace_bundle": {"revision_id": manifest.revision_id}
+        },
+    )
+    return RuntimeEnvironmentAssembler(
+        journal, state_root=state_root
+    ).assemble(
+        spec, space_id="space-1", space_root=tmp_path, user_id="7", email=""
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["global", "bundle"])
+async def test_skill_install_requires_offered_approval_before_runtime(
+    installer, configured_global_skill, monkeypatch, source
+):
+    service, journal, _, tmp_path = installer
+    ref = (
+        global_resource_ref("skill", "research")
+        if source == "global"
+        else "bundle://skills/research/SKILL.md"
+    )
+    proposal, manifest = await _propose_skill_only(installer, monkeypatch, ref)
+    action = f"skill.script.execute:{ref}"
+    assert proposal.install_plan["script_actions"] == [action]
+    assert proposal.install_plan["automatic_grants"] == []
+    assert (
+        journal.list_workspace_bundle_local_bindings(proposal.proposal_id)
+        == ()
+    )
+    with pytest.raises(WorkspaceBundleBindingsIncomplete) as missing:
+        await service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-7",
+        )
+    assert missing.value.missing_slots == (action,)
+    assert (
+        journal.get_latest_workspace_config_materialization("space-1") is None
+    )
+    with pytest.raises(WorkspaceBundleInstallError, match="not declared"):
+        service.approve_script_action(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            action_id=f"skill.script.execute:{global_resource_ref('skill', 'other')}",
+            authorized_by="user-7",
+        )
+    binding, proposal = service.approve_script_action(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        action_id=proposal.install_plan["script_actions"][0],
+        authorized_by="user-7",
+    )
+    assert binding.binding_kind == "script_approval"
+    proposal = await service.materialize(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        space_root=tmp_path,
+        actor_id="user-7",
+    )
+    assert proposal.state == "materialized"
+    assert journal.list_workspace_bundle_local_bindings(
+        proposal.proposal_id
+    ) == (binding,)
+    runtime = _assemble_installed_skill(installer, proposal, manifest)
+    assert runtime is not None
+    assert [skill.ref for skill in runtime.skills] == [ref]
+    assert list(runtime.pinned_skill_sources().values()) == [
+        configured_global_skill[0].read_text()
+    ]
+    assert Path(next(iter(runtime.pinned_skill_sources()))).is_file()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ("disabled", "global_resource_disabled"),
+        ("removed", "global_skill_unavailable"),
+        ("invalid", "global_skill_invalid"),
+        ("unknown", "global_skill_unavailable"),
+    ],
+)
+async def test_approved_global_skill_install_still_checks_current_resource(
+    installer, configured_global_skill, monkeypatch, change, reason
+):
+    service, _, _, tmp_path = installer
+    skill, account = configured_global_skill
+    ref = global_resource_ref(
+        "skill", "unknown" if change == "unknown" else "research"
+    )
+    proposal, manifest = await _propose_skill_only(installer, monkeypatch, ref)
+    _, proposal = service.approve_script_action(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        action_id=proposal.install_plan["script_actions"][0],
+        authorized_by="user-7",
+    )
+    proposal = await service.materialize(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        space_root=tmp_path,
+        actor_id="user-7",
+    )
+    if change == "disabled":
+        account.write_text(
+            json.dumps({"skills": {"Research": {"enabled": False}}})
+        )
+    elif change == "removed":
+        skill.unlink()
+        skill.parent.rmdir()
+    elif change == "invalid":
+        skill.write_text("Invalid Skill without frontmatter")
+    with pytest.raises(EnvironmentSetupRequiredError, match=reason):
+        _assemble_installed_skill(installer, proposal, manifest)
+
+
+@pytest.mark.asyncio
+async def test_unknown_registry_skill_is_not_offered_or_authorized(
+    installer, configured_global_skill, monkeypatch
+):
+    service, _, _, _ = installer
+    ref = "registry://unrecognized/skills/research@1"
+    proposal, _ = await _propose_skill_only(installer, monkeypatch, ref)
+    assert proposal.install_plan["script_actions"] == []
+    with pytest.raises(WorkspaceBundleInstallError, match="not declared"):
+        service.approve_script_action(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            action_id=f"skill.script.execute:{ref}",
+            authorized_by="user-7",
+        )
 
 
 def test_local_review_decision_does_not_require_cloud(tmp_path):
@@ -1266,3 +1520,164 @@ def test_startup_reconciliation_exposes_interrupted_materialization(tmp_path):
         assert proposal.error_code == (
             "desktop_restarted_during_materialization"
         )
+        rejected = reopened.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state="rejected",
+            decided_by="user-1",
+        )
+        assert rejected.error_code == proposal.error_code
+        assert (
+            reopened.reconcile_startup(now=11).reconcilable_bundle_install_ids
+            == ()
+        )
+        assert (
+            reopened.get_workspace_bundle_install_proposal(
+                proposal.proposal_id
+            )
+            == rejected
+        )
+
+
+@pytest.mark.asyncio
+async def test_failed_import_rejection_retains_error_and_partial_assets(
+    installer,
+):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+    cloud.lose_projection_response_once = True
+    with pytest.raises(Exception):
+        await service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+    path = tmp_path / "state/spaces/space-1/configuration/skills/research.py"
+    original = path.read_bytes()
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as reopened:
+        recovered = WorkspaceBundleInstaller(
+            reopened, service.configuration_repository, cloud
+        )
+        failed = reopened.get_workspace_bundle_install_proposal(
+            proposal.proposal_id
+        )
+        assert failed.state == "needs_attention"
+        assert failed.error_code == "bundle_materialization_failed"
+        rejected = recovered.decide(
+            failed.proposal_id,
+            expected_version=failed.version,
+            approved=False,
+            decided_by="user-1",
+        )
+        assert rejected.state == "rejected"
+        assert rejected.error_code == failed.error_code
+        assert (
+            recovered.decide(
+                failed.proposal_id,
+                expected_version=failed.version,
+                approved=False,
+                decided_by="user-1",
+            )
+            == rejected
+        )
+        with pytest.raises(IdempotencyConflictError):
+            recovered.decide(
+                failed.proposal_id,
+                expected_version=failed.version,
+                approved=False,
+                decided_by="user-2",
+            )
+        assert path.read_bytes() == original
+        assert reopened.list_workspace_bundle_local_bindings(
+            failed.proposal_id
+        )
+        next_manifest = _manifest()
+        next_manifest["metadata"]["id"] = "different-bundle"
+        fresh = reopened.put_workspace_bundle_install_proposal(
+            proposal_id="proposal-2",
+            request_id="request-2",
+            space_id="space-2",
+            bundle_id="different-bundle",
+            revision_id="different-bundle@1",
+            config_placement="sidecar",
+            manifest=next_manifest,
+            assets=[],
+            install_plan=failed.install_plan,
+        )
+        assert fresh.state == "proposed"
+        assert (
+            reopened.get_workspace_bundle_install_proposal(failed.proposal_id)
+            == rejected
+        )
+
+
+@pytest.mark.asyncio
+async def test_materializing_import_has_one_worker_and_cannot_be_rejected(
+    installer,
+):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+    entered, release = asyncio.Event(), asyncio.Event()
+    get_environment = cloud.get_environment
+    calls = 0
+
+    async def paused_environment(space_id):
+        nonlocal calls
+        calls += 1
+        entered.set()
+        await release.wait()
+        return await get_environment(space_id)
+
+    cloud.get_environment = paused_environment
+    running = asyncio.create_task(
+        service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+    )
+    await entered.wait()
+    try:
+        current = journal.get_workspace_bundle_install_proposal(
+            proposal.proposal_id
+        )
+        with pytest.raises(InvalidRunTransitionError):
+            service.decide(
+                current.proposal_id,
+                expected_version=current.version,
+                approved=False,
+                decided_by="user-1",
+            )
+        with pytest.raises(OptimisticConcurrencyError):
+            service.decide(
+                current.proposal_id,
+                expected_version=proposal.version,
+                approved=False,
+                decided_by="user-1",
+            )
+        # A replay must not obtain the existing worker's write authority.
+        with pytest.raises(InvalidRunTransitionError):
+            journal.transition_workspace_bundle_install_proposal(
+                current.proposal_id,
+                expected_version=current.version,
+                state="materializing",
+            )
+        with pytest.raises(InvalidRunTransitionError):
+            await service.materialize(
+                current.proposal_id,
+                expected_version=current.version,
+                space_root=tmp_path,
+                actor_id="user-1",
+            )
+        assert calls == 1
+    finally:
+        release.set()
+        await running
+    assert (
+        journal.get_workspace_bundle_install_proposal(
+            proposal.proposal_id
+        ).state
+        == "materialized"
+    )

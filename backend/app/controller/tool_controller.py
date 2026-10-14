@@ -21,12 +21,13 @@ import threading
 import time
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.agent.toolkit.notion_mcp_toolkit import NotionMCPToolkit
+from app.auth import require_local_control_if_configured
 from app.utils.browser_launcher import (
     DEFAULT_CDP_PORT,
     _is_cdp_available,
@@ -55,7 +56,7 @@ class LinkedInTokenRequest(BaseModel):
 
 
 logger = logging.getLogger("tool_controller")
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_local_control_if_configured)])
 DEFAULT_LOGIN_BROWSER_CDP_PORT = 9323
 
 

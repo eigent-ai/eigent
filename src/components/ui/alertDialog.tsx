@@ -42,6 +42,7 @@ interface ConfirmModalProps {
   confirmTone?: ButtonTone;
   hideCancel?: boolean;
   confirmDisabled?: boolean;
+  closeOnConfirm?: boolean;
   children?: ReactNode;
 }
 
@@ -57,6 +58,7 @@ export default function ConfirmModal({
   confirmTone,
   hideCancel = false,
   confirmDisabled = false,
+  closeOnConfirm = true,
   children,
 }: ConfirmModalProps) {
   const { t } = useTranslation();
@@ -147,7 +149,7 @@ export default function ConfirmModal({
                     onClick={() => {
                       if (confirmDisabled) return;
                       onConfirm();
-                      onClose();
+                      if (closeOnConfirm) onClose();
                     }}
                   >
                     {confirmText}

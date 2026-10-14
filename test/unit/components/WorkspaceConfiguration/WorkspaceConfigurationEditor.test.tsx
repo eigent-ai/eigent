@@ -17,14 +17,16 @@ import {
   hasPendingWorkspaceConfigurationChanges,
 } from '@/lib/workspaceConfigurationNavigationGuard';
 import { WorkspaceConfigurationEditor } from '@/pages/WorkspaceConfiguration';
+import type { SpaceSkillCandidate } from '@/service/spaceSettingsDiscovery';
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const document = {
@@ -61,6 +63,7 @@ const mocks = vi.hoisted(() => {
   return {
     document,
     reducedMotion: false,
+    identity: { email: 'user@example.com', user_id: 7 },
     saveState: 'saved' as
       'idle' | 'loading' | 'saving' | 'saved' | 'needs_attention',
     setDocument: vi.fn(),
@@ -68,6 +71,15 @@ const mocks = vi.hoisted(() => {
     flushSave: vi.fn(),
     reload: vi.fn(),
     retrySave: vi.fn(),
+    skillItems: [] as SpaceSkillCandidate[],
+    modelItems: [] as Array<{
+      value: string;
+      label: string;
+      source: string;
+      availability: string;
+      disabled?: boolean;
+      reason?: string;
+    }>,
   };
 });
 
@@ -93,18 +105,42 @@ vi.mock('@/store/authStore', () => ({
   getAuthStore: () => ({
     appearance: 'light',
     language: 'en',
-    email: 'user@example.com',
-    user_id: 7,
+    ...mocks.identity,
   }),
   useAuthStore: (selector: (state: object) => unknown) =>
     selector({
       appearance: 'light',
       language: 'en',
-      email: 'user@example.com',
-      user_id: 7,
+      ...mocks.identity,
     }),
   useWorkerList: () => [],
 }));
+
+vi.mock('@/hooks/useSpaceSettingsDiscovery', () => {
+  const empty = { items: [], status: 'empty', error: null, retry: vi.fn() };
+  const connectors = {
+    ...empty,
+    query: '',
+    hasMore: false,
+    loadingMore: false,
+    loadMore: vi.fn(),
+    fetchDetails: vi.fn(),
+    detailError: null,
+  };
+  return {
+    useSpaceSettingsDiscovery: () => ({
+      models: { ...empty, status: 'ready', items: mocks.modelItems },
+      skills: {
+        ...empty,
+        status: mocks.skillItems.length ? 'ready' : 'empty',
+        items: mocks.skillItems,
+      },
+      mcpServers: empty,
+      connectors,
+      setConnectorQuery: vi.fn(),
+    }),
+  };
+});
 
 vi.mock('@/hooks/useWorkspaceConfiguration', () => ({
   useWorkspaceConfiguration: () => ({
@@ -134,8 +170,17 @@ vi.mock(
 );
 
 describe('WorkspaceConfigurationEditor', () => {
+  let restoreRectangle: (() => void) | undefined;
+  afterEach(() => {
+    restoreRectangle?.();
+    restoreRectangle = undefined;
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
     mocks.reducedMotion = false;
+    mocks.identity = { email: 'user@example.com', user_id: 7 };
     mocks.saveState = 'saved';
     mocks.hasPendingChanges = false;
     mocks.setDocument.mockClear();
@@ -143,7 +188,248 @@ describe('WorkspaceConfigurationEditor', () => {
     mocks.flushSave.mockResolvedValue(true);
     mocks.reload.mockClear();
     mocks.retrySave.mockClear();
+    mocks.modelItems = [];
+    mocks.skillItems = [];
     mocks.document.spec.environment.variables.splice(0);
+  });
+
+  it.each([false, true])(
+    'lets Select handle Escape before the editor, reduced motion=%s',
+    async (reduced) => {
+      mocks.reducedMotion = reduced;
+      mocks.skillItems = [
+        {
+          value: `registry://global/skills/${'a'.repeat(64)}`,
+          label: 'Fixture research',
+          source: 'global_configuration',
+          availability: 'available',
+        },
+      ];
+      render(
+        <WorkspaceConfigurationEditor
+          presentation="settings"
+          spaceId="space-1"
+        />
+      );
+      const opener = screen.getByRole('button', { name: 'Add skill' });
+      opener.focus();
+      fireEvent.click(opener);
+      const panel = screen.getByRole('complementary', { name: 'Add skill' });
+      const field = within(panel).getByRole('combobox', {
+        name: 'Skill reference',
+      });
+      expect(field).toHaveFocus();
+      fireEvent.keyDown(field, { key: 'ArrowDown' });
+      const option = await screen.findByRole('option', {
+        name: /Fixture research/,
+      });
+      fireEvent.keyDown(option, { key: 'Escape' });
+      await waitFor(() =>
+        expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+      );
+      expect(panel).not.toHaveAttribute('aria-hidden');
+      await waitFor(() => expect(field).toHaveFocus());
+      fireEvent.keyDown(field, { key: 'Escape' });
+      expect(opener).toHaveFocus();
+      expect(panel).toHaveAttribute('inert');
+      expect(panel).toHaveAttribute('aria-hidden', 'true');
+      expect(mocks.setDocument).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not restore an old account opener when identity changes', () => {
+    const view = render(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+    const opener = screen.getByRole('button', { name: 'Add skill' });
+    opener.focus();
+    fireEvent.click(opener);
+    const panel = screen.getByRole('complementary', { name: 'Add skill' });
+    expect(panel).toContainElement(document.activeElement as HTMLElement);
+    mocks.identity = { email: 'other@example.com', user_id: 8 };
+    view.rerender(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+    expect(opener).not.toHaveFocus();
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('restores the section Add button after deleting the edited resource', () => {
+    render(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+    const opener = screen.getByRole('button', {
+      name: 'Edit coordinator instructions',
+    });
+    opener.focus();
+    fireEvent.click(opener);
+    const panel = screen.getByRole('complementary', {
+      name: 'Edit instruction',
+    });
+    fireEvent.click(
+      within(panel).getByRole('button', { name: 'Delete instruction' })
+    );
+    expect(
+      screen.getByRole('button', { name: 'Add instruction' })
+    ).toHaveFocus();
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('restores the opener when a new resource is saved', () => {
+    render(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+    const opener = screen.getByRole('button', { name: 'Add instruction' });
+    opener.focus();
+    fireEvent.click(opener);
+    const panel = screen.getByRole('complementary', {
+      name: 'Add instruction',
+    });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(mocks.setDocument).toHaveBeenCalledOnce();
+    expect(opener).toHaveFocus();
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('keeps panel height within its anchor and scroll clip when the window or layout changes', () => {
+    vi.stubGlobal('innerHeight', 500);
+    vi.stubGlobal('visualViewport', undefined);
+    let anchorTop = 144;
+    let clipBottom = 450;
+    let resizePanel = () => {};
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      vi.fn().mockImplementation((callback: () => void) => ({
+        observe: (element: HTMLElement) => {
+          if (element.hasAttribute('data-workspace-resource-panel-anchor')) {
+            resizePanel = callback;
+          }
+        },
+        unobserve: vi.fn(),
+        disconnect,
+      }))
+    );
+    const rectangle = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.hasAttribute('data-workspace-resource-panel-anchor')) {
+          return new DOMRect(0, anchorTop, 720, 0);
+        }
+        if (this.hasAttribute('data-test-scroll-clip')) {
+          return new DOMRect(0, 0, 720, clipBottom);
+        }
+        // An animated panel can report a different rectangle from its anchor.
+        return new DOMRect(0, 200, 720, 900);
+      });
+    restoreRectangle = () => rectangle.mockRestore();
+    const view = render(
+      <div data-test-scroll-clip style={{ overflowY: 'auto' }}>
+        <WorkspaceConfigurationEditor
+          presentation="settings"
+          spaceId="space-1"
+        />
+      </div>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add connector' }));
+    const panel = screen.getByRole('complementary', { name: 'Add connector' });
+    const availableHeight = () =>
+      panel.style.getPropertyValue('--ds-resource-editor-available-height');
+    expect(availableHeight()).toBe('306px');
+    expect(panel.style.maxHeight).toContain('--ds-space-panel-inset');
+    expect(panel.style.minHeight).toBe(`min(80dvh, ${panel.style.maxHeight})`);
+    expect(panel.querySelector('footer')).toHaveClass('shrink-0');
+
+    vi.stubGlobal('innerHeight', 400);
+    fireEvent.resize(window);
+    expect(availableHeight()).toBe('256px');
+    anchorTop = 96;
+    fireEvent.scroll(view.container.firstElementChild!);
+    expect(availableHeight()).toBe('304px');
+    clipBottom = 350;
+    act(() => resizePanel());
+    expect(availableHeight()).toBe('254px');
+    view.unmount();
+    expect(disconnect).toHaveBeenCalled();
+    vi.stubGlobal('innerHeight', 300);
+    fireEvent.resize(window);
+    expect(availableHeight()).toBe('254px');
+  });
+
+  it('tracks a smaller visual viewport without refocusing the editor', () => {
+    const viewport = Object.assign(new EventTarget(), {
+      offsetTop: 0,
+      height: 500,
+    });
+    vi.stubGlobal('visualViewport', viewport);
+    const rectangle = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue(new DOMRect(0, 144, 720, 0));
+    restoreRectangle = () => rectangle.mockRestore();
+    render(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add connector' }));
+    const panel = screen.getByRole('complementary', { name: 'Add connector' });
+    const close = within(panel).getByRole('button', { name: 'Close editor' });
+    close.focus();
+    viewport.height = 400;
+    viewport.dispatchEvent(new Event('resize'));
+    expect(
+      panel.style.getPropertyValue('--ds-resource-editor-available-height')
+    ).toBe('256px');
+    viewport.offsetTop = 30;
+    viewport.dispatchEvent(new Event('scroll'));
+    expect(
+      panel.style.getPropertyValue('--ds-resource-editor-available-height')
+    ).toBe('286px');
+    expect(close).toHaveFocus();
+  });
+
+  it('selects a concrete model reference through the model dropdown without changing thinking effort', async () => {
+    mocks.modelItems = [
+      {
+        value: 'provider://cloud/fixture',
+        label: 'Fixture Cloud',
+        source: 'cloud_catalog',
+        availability: 'available',
+      },
+      {
+        value: 'provider://custom/azure/missing',
+        label: 'Missing custom model',
+        source: 'custom_catalog',
+        availability: 'requires_setup',
+        disabled: true,
+        reason: 'model_unavailable',
+      },
+    ];
+    const { container } = render(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+    const section = within(
+      container.querySelector('#space-settings-model') as HTMLElement
+    );
+    const trigger = section.getByRole('combobox', {
+      name: 'default model reference',
+    });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const missing = await screen.findByRole('option', {
+      name: /Missing custom model/,
+    });
+    expect(missing).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByRole('option', { name: /Fixture Cloud/ }));
+    expect(
+      mocks.setDocument.mock.calls.at(-1)?.[0](mocks.document).spec.models
+        .default.modelRef
+    ).toBe('provider://cloud/fixture');
+    expect(
+      mocks.setDocument.mock.calls.at(-1)?.[0](mocks.document).spec.models
+        .default.thinkingEffort
+    ).toBe('medium');
+    expect(
+      section.getByText(/Multiple bundle agents are not supported/)
+    ).toBeInTheDocument();
   });
 
   it('registers pending changes with the shared navigation guard', async () => {
@@ -237,7 +523,7 @@ describe('WorkspaceConfigurationEditor', () => {
       within(modelSection as HTMLElement).getByLabelText(
         'default model reference'
       )
-    ).toHaveValue('provider://default');
+    ).toHaveTextContent('provider://default');
     expect(container.querySelector('select')).toBeNull();
     expect(
       container.querySelector('[data-workspace-configuration-width]')
@@ -501,7 +787,6 @@ describe('WorkspaceConfigurationEditor', () => {
     expect(editorPanel).toHaveClass(
       'rounded-2xl',
       'shadow-xl',
-      'min-h-[80dvh]',
       'md:w-1/2',
       'md:min-w-[420px]'
     );
@@ -603,7 +888,9 @@ describe('WorkspaceConfigurationEditor', () => {
     panel = screen.getByRole('complementary', {
       name: 'Add environment variable',
     });
-    expect(within(panel).getByDisplayValue('ENV_VAR_1')).toBeVisible();
+    await waitFor(() =>
+      expect(within(panel).getByDisplayValue('ENV_VAR_1')).toBeVisible()
+    );
     expect(
       within(panel).getByRole('switch', { name: 'Required ENV_VAR_1' })
     ).toBeChecked();
@@ -651,9 +938,8 @@ describe('WorkspaceConfigurationEditor', () => {
     fireEvent.click(
       within(panel).getByRole('button', { name: 'Close editor' })
     );
-    expect(
-      screen.getByRole('complementary', { name: 'Edit instruction' })
-    ).toBeInTheDocument();
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
     await waitFor(() =>
       expect(
         screen.queryByRole('complementary', { name: 'Edit instruction' })
@@ -666,20 +952,18 @@ describe('WorkspaceConfigurationEditor', () => {
     const { container } = render(
       <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
     );
-    const skillsSection = container.querySelector(
-      '#space-settings-skills'
+    const contextSection = container.querySelector(
+      '#space-settings-context'
     ) as HTMLElement;
     fireEvent.click(
-      within(skillsSection).getByRole('button', { name: 'Add skill' })
+      within(contextSection).getByRole('button', { name: 'Add context' })
     );
 
-    const panel = screen.getByRole('complementary', { name: 'Add skill' });
+    const panel = screen.getByRole('complementary', { name: 'Add context' });
     expect(panel).toHaveAttribute('data-motion-reduced', 'true');
     expect(panel).toHaveStyle({ transform: 'translate3d(0, 0, 0)' });
 
-    fireEvent.click(
-      within(panel).getByRole('button', { name: 'Browse registry' })
-    );
+    fireEvent.click(within(panel).getByRole('button', { name: 'Inline text' }));
     expect(
       panel.querySelector('[data-workspace-resource-content-step="editor"]')
     ).toHaveAttribute('data-workspace-resource-content-direction', 'forward');
@@ -737,7 +1021,7 @@ describe('WorkspaceConfigurationEditor', () => {
     );
   });
 
-  it('uses picker-first creation for external resources and commits new items from the panel', async () => {
+  it('opens direct resource dropdowns, cancels without writing, and commits the selected global skill', async () => {
     const { container } = render(
       <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
     );
@@ -748,28 +1032,32 @@ describe('WorkspaceConfigurationEditor', () => {
         addLabel: 'Add context',
         panelLabel: 'Add context',
         picker: 'context',
+        field: null,
       },
       {
         section: 'space-settings-skills',
         addLabel: 'Add skill',
         panelLabel: 'Add skill',
         picker: 'skill',
+        field: 'Skill reference',
       },
       {
         section: 'space-settings-connectors',
         addLabel: 'Add connector',
         panelLabel: 'Add connector',
         picker: 'connector',
+        field: 'Connector',
       },
       {
         section: 'space-settings-mcp-servers',
         addLabel: 'Add MCP server',
         panelLabel: 'Add MCP server',
         picker: 'mcp',
+        field: 'Definition',
       },
     ];
 
-    pickerFlows.forEach(({ section, addLabel, panelLabel, picker }) => {
+    pickerFlows.forEach(({ section, addLabel, panelLabel, picker, field }) => {
       const sectionElement = container.querySelector(`#${section}`)!;
       fireEvent.click(
         within(sectionElement as HTMLElement).getByRole('button', {
@@ -780,6 +1068,22 @@ describe('WorkspaceConfigurationEditor', () => {
       expect(
         panel.querySelector(`[data-workspace-resource-picker="${picker}"]`)
       ).toBeInTheDocument();
+      if (field) {
+        expect(
+          within(panel).getByRole('combobox', { name: field })
+        ).toBeInTheDocument();
+        expect(
+          within(panel).queryByRole('button', { name: 'Enter manually' })
+        ).toBeNull();
+        expect(
+          within(panel).queryByRole('button', {
+            name: 'Browse available options',
+          })
+        ).toBeNull();
+        expect(
+          within(panel).queryByRole('button', { name: 'Back' })
+        ).toBeNull();
+      }
       fireEvent.click(
         within(panel).getByRole('button', { name: 'Close editor' })
       );
@@ -793,21 +1097,58 @@ describe('WorkspaceConfigurationEditor', () => {
       within(skillsSection).getByRole('button', { name: 'Add skill' })
     );
     let panel = screen.getByRole('complementary', { name: 'Add skill' });
+    const fixtureRef = `registry://global/skills/${'a'.repeat(64)}`;
+    mocks.skillItems = [
+      {
+        value: fixtureRef,
+        label: 'Fixture global skill',
+        source: 'global_configuration',
+        availability: 'available',
+      },
+      {
+        value: `registry://global/skills/${'b'.repeat(64)}`,
+        label: 'Other global skill',
+        source: 'global_configuration',
+        availability: 'available',
+      },
+    ];
+    // Reopen to observe the current catalog; selecting remains a local draft.
     fireEvent.click(
-      within(panel).getByRole('button', { name: 'Browse registry' })
+      within(panel).getByRole('button', { name: 'Close editor' })
     );
-    await waitFor(() =>
-      expect(
-        within(panel).getByDisplayValue('registry://skills/new-skill@1.0.0')
-      ).toBeVisible()
+    fireEvent.click(
+      within(skillsSection).getByRole('button', { name: 'Add skill' })
     );
-    fireEvent.click(within(panel).getByRole('button', { name: 'Back' }));
+    panel = screen.getByRole('complementary', { name: 'Add skill' });
+    const trigger = within(panel).getByRole('combobox', {
+      name: 'Skill reference',
+    });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    fireEvent.click(
+      await screen.findByRole('option', { name: /Fixture global skill/ })
+    );
     expect(
-      panel.querySelector('[data-workspace-resource-picker="skill"]')
-    ).toBeInTheDocument();
+      within(panel).getByRole('combobox', { name: 'Skill reference' })
+    ).toHaveTextContent('Fixture global skill');
     expect(within(panel).queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(mocks.setDocument).not.toHaveBeenCalled();
     fireEvent.click(
-      within(panel).getByRole('button', { name: 'Browse registry' })
+      within(panel).getByRole('button', { name: 'Close editor' })
+    );
+    expect(mocks.setDocument).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(skillsSection).getByRole('button', { name: 'Add skill' })
+    );
+    panel = screen.getByRole('complementary', { name: 'Add skill' });
+    const reopenedTrigger = within(panel).getByRole('combobox', {
+      name: 'Skill reference',
+    });
+    expect(reopenedTrigger).not.toHaveTextContent('Fixture global skill');
+    reopenedTrigger.focus();
+    fireEvent.keyDown(reopenedTrigger, { key: 'ArrowDown' });
+    fireEvent.click(
+      await screen.findByRole('option', { name: /Fixture global skill/ })
     );
     fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
     const addSkillUpdater = mocks.setDocument.mock.calls.at(-1)?.[0] as (
@@ -815,7 +1156,7 @@ describe('WorkspaceConfigurationEditor', () => {
     ) => typeof mocks.document;
     expect(addSkillUpdater(mocks.document).spec.skills).toEqual([
       {
-        ref: 'registry://skills/new-skill@1.0.0',
+        ref: fixtureRef,
         assignTo: [],
       },
     ]);

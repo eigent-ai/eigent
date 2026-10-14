@@ -129,6 +129,8 @@ declare global {
     feedbackMessageId?: string;
     role: 'user' | 'agent';
     errorReason?: import('@/lib/usageErrors').ErrorReason;
+    /** This error stopped an Attempt that Resume can continue. */
+    resumable?: boolean;
     content: string;
     step?: AgentStepType;
     agent_id?: string;
@@ -148,6 +150,8 @@ declare global {
     interaction?: import('@/service/humanInteractionApi').HumanInteractionPayload;
     /** Explicit ASK identity for a user response retained in legacy history. */
     interactionResponseTo?: string;
+    /** Receipt provenance for display; unlinked legacy evidence is retained. */
+    interactionResponseSource?: 'canonical' | 'legacy';
   }
 
   interface AgentMessage {

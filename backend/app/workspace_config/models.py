@@ -52,6 +52,15 @@ class ModelCapabilityConfigError(WorkspaceConfigError):
     """Raised for invalid capability metadata or transport configuration."""
 
 
+class WorkspaceModelSelectionChangedError(WorkspaceConfigError):
+    """The initial Session selection no longer matches the installed generation."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The Space model changed while loading. Send your message again or choose a session model."
+        )
+
+
 class UnsafeCloudProjectionError(WorkspaceConfigError):
     """Raised when a Cloud projection contains device-local identity."""
 
@@ -588,6 +597,18 @@ class ModelProfile(_StrictFrozenModel):
         return value
 
 
+class WorkspaceModelSelection(_StrictFrozenModel):
+    """Logical launch snapshot; provider credentials remain in the Chat binding."""
+
+    materialization_id: str = Field(min_length=1, max_length=256)
+    revision_id: str = Field(min_length=1, max_length=256)
+    model_profile: str = Field(min_length=1, max_length=200)
+    model_ref: str = Field(
+        min_length=1, max_length=1024, pattern=r"^provider://"
+    )
+    thinking_effort: ThinkingEffort
+
+
 class PermissionRule(_StrictFrozenModel):
     action: str = Field(min_length=1)
     effect: Literal["allow", "prompt", "deny"]
@@ -803,20 +824,25 @@ class ProviderModelCapability:
         self,
         requested: str | ThinkingEffort | None,
         *,
-        allow_dynamic_remap: bool = False,
+        # Models recognised by name (dynamic) have an inferred effort list, so
+        # an effort outside it runs at the nearest one instead of failing.
+        # Registered catalog models stay strict.
+        allow_dynamic_remap: bool = True,
     ) -> EffortResolution:
         if not self.supported_efforts:
-            if requested is not None:
-                raise UnsupportedThinkingEffortError(
-                    f"{self.diagnostic}; cannot honor effort "
-                    f"{str(requested)!r}. Register model capabilities or "
-                    "omit thinking_effort to use the provider default."
-                )
-            # MEDIUM is retained only as the legacy persisted enum sentinel.
-            # The capability advertises no supported choices, no parameter,
-            # and an explicit unknown_model diagnostic in its snapshot.
+            # Without registered efforts, a requested effort (composer,
+            # Session, Space or Bundle profile) never blocks the Run: the
+            # provider keeps its own default and no parameter is sent. The
+            # request is still recorded. MEDIUM is retained only as the
+            # legacy persisted enum sentinel for the effective effort; the
+            # capability advertises no supported choices, no parameter, and
+            # an explicit unknown_model diagnostic in its snapshot.
             return EffortResolution(
-                requested=self.default_effort,
+                requested=(
+                    normalize_thinking_effort(requested)
+                    if requested is not None
+                    else self.default_effort
+                ),
                 effective=self.default_effort,
                 provider_parameter_name=None,
                 provider_value="provider_default",

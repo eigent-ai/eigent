@@ -88,6 +88,11 @@ interface ElectronAPI {
   respondToCloseRequest: (
     response: import('@/shared/windowClose').WindowCloseResponse
   ) => void;
+  onSubframeLoadFailed: (
+    callback: (
+      failure: import('@/shared/subframeLoadFailure').SubframeLoadFailure
+    ) => void
+  ) => () => void;
   getPlatform: () => string;
   getHomeDir: () => Promise<string>;
   createWebView: (id: string, url: string) => Promise<any>;
@@ -235,6 +240,17 @@ interface ElectronAPI {
   }>;
   getBackendPort: () => Promise<number | null>;
   getLocalControlCapability: () => Promise<string>;
+  /** Origins the main process relays event streams for, or null. */
+  brainStreamRelayTarget?: () => Promise<
+    import('@/shared/brainStreamRelay').BrainStreamRelayTarget | null
+  >;
+  brainStreamRelayOpen?: (
+    request: import('@/shared/brainStreamRelay').BrainStreamRelayRequest
+  ) => Promise<import('@/shared/brainStreamRelay').BrainStreamRelayOpenResult>;
+  brainStreamRelayRead?: (
+    streamId: string
+  ) => Promise<import('@/shared/brainStreamRelay').BrainStreamRelayReadResult>;
+  brainStreamRelayCancel?: (streamId: string) => Promise<boolean>;
   getDesktopInstanceId: (legacyRendererId?: string) => Promise<string>;
   restartBackend: () => Promise<{ success: boolean; error?: string }>;
   onInstallDependenciesStart: (callback: () => void) => void;

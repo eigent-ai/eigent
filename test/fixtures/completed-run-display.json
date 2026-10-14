@@ -471,7 +471,9 @@
       "payload": {
         "artifact_count": 0,
         "artifact_manifest_event_id": "fixture:manifest",
-        "result_event_id": "fixture:final"
+        "result_event_id": "fixture:final",
+        "terminal_detail": null,
+        "terminal_reason": "completed"
       },
       "created_at": 1700000000.0,
       "occurred_at": 1700000000.0,

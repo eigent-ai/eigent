@@ -54,6 +54,10 @@ import {
   type NativeMenuLocale,
 } from '../../src/shared/nativeMenu';
 import {
+  SUBFRAME_LOAD_FAILED_CHANNEL,
+  subframeLoadFailureFromEvent,
+} from '../../src/shared/subframeLoadFailure';
+import {
   getWindowsTitleBarOverlay,
   isWindowChromeTheme,
   WINDOW_CHROME_THEME_CHANNEL,
@@ -63,6 +67,11 @@ import {
   WINDOW_CLOSE_RESPONSE_CHANNEL,
 } from '../../src/shared/windowClose';
 import { AppShellReadinessGate } from './appShellReadinessGate';
+import {
+  isBrainStreamRelayDisabled,
+  registerBrainStreamRelay,
+  type BrainStreamRelay,
+} from './brainStreamRelay';
 import { CloseCoordinator } from './closeCoordinator';
 import { installApplicationMenu } from './commands/applicationMenu';
 import {
@@ -158,6 +167,7 @@ let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let backendStartPromise: Promise<BackendStartResult> | null = null;
+let brainStreamRelay: BrainStreamRelay | null = null;
 const localControlCapability = crypto.randomBytes(32).toString('base64url');
 let desktopInstanceId: string | null = null;
 let browser_port = 9222;
@@ -341,13 +351,19 @@ const isHttpOrHttpsUrl = (url: unknown): url is string => {
   }
 };
 
+function isMainRendererFrame(
+  event: Pick<Electron.IpcMainInvokeEvent, 'sender' | 'senderFrame'>
+): boolean {
+  return Boolean(
+    win &&
+    !win.isDestroyed() &&
+    isMainRendererSender(event.sender.id, win.webContents.id) &&
+    event.senderFrame === event.sender.mainFrame
+  );
+}
+
 function assertMainRendererSender(event: Electron.IpcMainInvokeEvent): void {
-  if (
-    !win ||
-    win.isDestroyed() ||
-    !isMainRendererSender(event.sender.id, win.webContents.id) ||
-    event.senderFrame !== event.sender.mainFrame
-  ) {
+  if (!isMainRendererFrame(event)) {
     throw new Error('This operation is restricted to the main renderer');
   }
 }
@@ -1054,6 +1070,21 @@ function registerIpcHandlers() {
     getDefaultWorkspaceSecretVault(),
     assertMainRendererSender
   );
+  // Event streams to the Brain this process runs bypass the renderer's
+  // per-host connection limit. Only the main renderer frame may use it.
+  const streamRelayDisabled = isBrainStreamRelayDisabled();
+  if (streamRelayDisabled) {
+    log.info('[StreamRelay] Disabled by EIGENT_DISABLE_STREAM_RELAY');
+  }
+  brainStreamRelay = registerBrainStreamRelay({
+    ipcMain,
+    enabled: !streamRelayDisabled,
+    getManagedBackendPort: () =>
+      isPythonProcessRunning() ? backendPort : null,
+    isTrustedSender: (event) =>
+      isMainRendererFrame(event as Electron.IpcMainInvokeEvent),
+    log,
+  });
 
   // ==================== auth callback ====================
   ipcMain.handle('get-auth-callback-url', async () => {
@@ -2659,9 +2690,16 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'delete-task-files',
-    async (_, email: string, taskId: string, projectId?: string) => {
+    async (
+      _,
+      email: string,
+      taskId: string,
+      projectId?: string,
+      userId?: string | number | null,
+      spaceId?: string
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.deleteTaskFiles(email, taskId, projectId);
+      return manager.deleteTaskFiles(email, taskId, projectId, userId, spaceId);
     }
   );
 
@@ -3275,6 +3313,17 @@ async function createWindowInternal() {
       log.error(
         `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
       );
+      const subframeFailure = subframeLoadFailureFromEvent(
+        errorCode,
+        validatedURL,
+        isMainFrame
+      );
+      if (subframeFailure && !createdWindow.isDestroyed()) {
+        createdWindow.webContents.send(
+          SUBFRAME_LOAD_FAILED_CHANNEL,
+          subframeFailure
+        );
+      }
       // Retry loading after a delay
       if (shouldRetry) {
         setTimeout(() => {
@@ -4064,6 +4113,7 @@ app.on('before-quit', async (event) => {
 
     // Clean up resources
     await disposeAllTerminals();
+    brainStreamRelay?.closeAll();
 
     if (webViewManager) {
       webViewManager.destroy();

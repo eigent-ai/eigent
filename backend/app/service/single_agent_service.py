@@ -32,11 +32,16 @@ from app.memory import (
 from app.model.chat import Chat, sse_json
 from app.model.enums import Status
 from app.run_journal.context_projection import (
+    ResumeContextError,
     build_project_execution_context_projection,
     persist_context_projection_diagnostic,
 )
 from app.run_journal.runtime import get_default_run_journal
-from app.run_runtime.admission import activate_improve_admission
+from app.run_runtime.admission import (
+    abort_pending_warm_admission,
+    activate_improve_admission,
+    skip_targets_current_turn,
+)
 from app.run_runtime.coordinator import RunInterruptedError
 from app.service.task import (
     Action,
@@ -113,7 +118,13 @@ async def _dispose_stale_agent_runtime(
             if cleanup is None:
                 cleanup = getattr(toolkit, "cleanup", None)
             if cleanup is not None:
-                outcome = cleanup()
+                # Terminal cleanup waits for process groups to stop. Keep that
+                # wait off the event loop shared by every other Session.
+                outcome = (
+                    cleanup()
+                    if inspect.iscoroutinefunction(cleanup)
+                    else await asyncio.to_thread(cleanup)
+                )
                 if inspect.isawaitable(outcome):
                     await outcome
             disposed = True
@@ -187,9 +198,12 @@ def _build_single_agent_context(
                 get_default_run_journal(),
                 project_id=project_id,
                 current_run_id=run_id,
+                current_attempt_id=getattr(run_context, "attempt_id", None),
             )
             canonical_execution = execution_projection.text
             execution_event_ids = execution_projection.source_event_ids
+        except ResumeContextError:
+            raise
         except Exception:
             logger.warning(
                 "Canonical execution context unavailable; using Memory fallback",
@@ -301,6 +315,23 @@ def _build_single_agent_prompt(
         )
         attachment_context += "\n\n"
     return f"{context}{attachment_context}User task:\n{question}"
+
+
+async def managed_single_agent_turn(options: Chat, execution) -> str:
+    """Execute one admitted, private-workspace turn through the real factory.
+
+    Lifecycle, cancellation and finalization belong to ExecutionService.
+    Rebuild for each immutable binding; this function never reuses a warm agent.
+    """
+    agent = await single_agent(
+        options, task_id=options.task_id, managed_execution=execution
+    )
+    agent.process_task_id = options.task_id
+    response = await agent.astep(options.question)
+    if response is None or getattr(response, "terminated", False):
+        raise RuntimeError("managed agent did not finish its turn")
+    content, _tokens = await _response_content(response)
+    return content
 
 
 async def _response_content(
@@ -593,10 +624,15 @@ async def single_agent_solve(
                     continue
 
                 if item.action == Action.skip_task:
-                    if (
-                        item.expected_task_id
-                        and item.expected_task_id != task_lock.current_task_id
-                    ):
+                    if not skip_targets_current_turn(task_lock, item):
+                        continue
+                    if await abort_pending_warm_admission(task_lock):
+                        yield sse_json(
+                            "end",
+                            "<summary>Task stopped</summary>Task stopped by user",
+                        )
+                        continue
+                    if task_lock.status == Status.done:
                         continue
                     pause_event.clear()
                     cancel_running_summary()
@@ -646,6 +682,9 @@ async def single_agent_solve(
                     continue
 
                 if item.action == Action.stop:
+                    if await abort_pending_warm_admission(task_lock):
+                        await delete_task_lock(task_lock.id)
+                        break
                     pause_event.clear()
                     cancel_running_summary()
                     pending_turn_result = None
@@ -711,6 +750,12 @@ async def single_agent_solve(
                     total_tokens = 0
                 except Exception as e:
                     retryable = _is_retryable_turn_error(e)
+                    if retryable:
+                        reason = "model_transport_error"
+                    elif isinstance(e, ResumeContextError):
+                        reason = e.reason
+                    else:
+                        reason = None
                     logger.error(
                         "Single Agent turn failed",
                         extra={
@@ -731,9 +776,7 @@ async def single_agent_solve(
                         {
                             "message": str(e),
                             "retryable": retryable,
-                            "reason": (
-                                "model_transport_error" if retryable else None
-                            ),
+                            "reason": reason,
                         },
                     )
                     running_turn = None

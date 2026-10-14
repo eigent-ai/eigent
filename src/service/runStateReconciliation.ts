@@ -61,6 +61,7 @@ export function parseSummary(
       'completed',
       'failed',
       'cancelled',
+      'timed_out',
       'interrupted',
     ].includes(String(value.status)) ||
     !['local', 'cloud_restore', 'remote'].includes(String(value.origin)) ||

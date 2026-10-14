@@ -84,7 +84,7 @@ export function FilePreview({
       previewRequestRef.current = controller;
       setSelectedFile(target);
       setLoading(true);
-      void resolveArtifactAssetFile(target)
+      void resolveArtifactAssetFile(target, controller.signal)
         .then((resolved) =>
           loadFilePreview(resolved, {
             ipcRenderer,
@@ -133,6 +133,7 @@ export function FilePreview({
     file?.relativePath,
     file?.artifactId,
     file?.isRemote,
+    file?.localPathAvailable,
     file?.assetRef?.chatFileId,
     loadFileContent,
   ]);

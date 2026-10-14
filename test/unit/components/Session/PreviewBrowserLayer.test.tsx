@@ -133,6 +133,39 @@ describe('PreviewBrowserLayer', () => {
     expect(guestContainer(tabA.webviewId)!.style.visibility).not.toBe('hidden');
   });
 
+  it('remounts a handed-off preview under its owner after renderer hydration', async () => {
+    const url = 'http://localhost:8080/index.html';
+    usePageTabStore.getState().openBrowserPreview(url, 'project-a');
+    const tab = getBrowserTab();
+    const layer = renderLayer();
+    const originalGuest = getPreviewWebview(tab.webviewId);
+    expect(originalGuest).toBeDefined();
+    const saved = window.localStorage.getItem('eigent-page-tab')!;
+
+    layer.unmount();
+    expect(getPreviewWebview(tab.webviewId)).toBeUndefined();
+    usePageTabStore.setState({ sessionPreviewByProject: {} });
+    window.localStorage.setItem('eigent-page-tab', saved);
+    await usePageTabStore.persist.rehydrate();
+    usePageTabStore.getState().setSessionPreviewProject('project-b');
+    renderLayer();
+    // Cold background tabs mount lazily when their owning Session is selected.
+    expect(guestContainer(tab.webviewId)).toBeNull();
+
+    act(() => {
+      usePageTabStore.getState().setSessionPreviewProject('project-a');
+      usePageTabStore
+        .getState()
+        .setPreviewBrowserViewport({ x: 0, y: 0, width: 800, height: 600 });
+    });
+    const restoredGuest = getPreviewWebview(tab.webviewId);
+    expect(restoredGuest).toBeDefined();
+    expect(restoredGuest).not.toBe(originalGuest);
+    expect(restoredGuest?.getAttribute('src')).toBe(url);
+    expect(getBrowserTab().webviewId).toBe(tab.webviewId);
+    expect(guestContainer(tab.webviewId)?.style.visibility).not.toBe('hidden');
+  });
+
   it('feeds guest navigation events back into the per-project store slice', () => {
     renderLayer();
     const tab = getBrowserTab();
