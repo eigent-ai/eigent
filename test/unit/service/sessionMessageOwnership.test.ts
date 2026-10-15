@@ -279,7 +279,11 @@ it('retains the exact attempted request and body across retries despite composer
         thinking_effort: 'high',
       },
     }))
-    .mockRejectedValueOnce(new Error('execution ACK lost'));
+    .mockImplementationOnce(async (_url, _body, _headers, options) => {
+      // The request was sent; only its acknowledgement was lost.
+      options?.beforeRequest?.();
+      throw new Error('execution ACK lost');
+    });
   await expect(submitWorkspaceSessionDraft(draft)).rejects.toThrow('ACK lost');
   const intent = draft.intent,
     body = intent.body;

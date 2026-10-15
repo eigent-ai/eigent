@@ -159,6 +159,27 @@ describe('schedule initialization', () => {
 });
 
 describe('stored schedules the editor cannot show', () => {
+  it.each(['0 9 * * 1,3-5', '0 9 * * 1-5', '0 9 1-5 1 *', '0 9 1,15 1 *'])(
+    'keeps the range or list cron %s as stored',
+    async (cron) => {
+      const change = vi.fn();
+      const valid = vi.fn();
+      render(
+        <SchedulePicker
+          value={cron}
+          isEditing
+          onChange={change}
+          onValidationChange={valid}
+        />
+      );
+      await waitFor(() => expect(valid).toHaveBeenLastCalledWith(true));
+      expect(change).not.toHaveBeenCalled();
+      expect(
+        screen.getByText(/This schedule can't be edited here/)
+      ).toBeInTheDocument();
+    }
+  );
+
   it('keeps the stored cron and dates until a frequency is chosen', async () => {
     const change = vi.fn();
     const valid = vi.fn();

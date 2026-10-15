@@ -73,7 +73,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { isOneTimeCron } from './automationSchedule';
+import { isOneTimeCron, parseCron } from './automationSchedule';
 import DynamicTriggerConfig, {
   filterExcludedFields,
   getDefaultTriggerConfig,
@@ -303,9 +303,18 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
       return;
     }
 
+    // A stored schedule the editor cannot show is saved exactly as it was,
+    // including whether it runs only once.
+    const keepsStoredSchedule =
+      !!selectedTrigger &&
+      formData.custom_cron_expression ===
+        selectedTrigger.custom_cron_expression &&
+      parseCron(formData.custom_cron_expression) === null;
     const isSingleExecution =
       formData.trigger_type === TriggerType.Schedule &&
-      isOneTimeCron(formData.custom_cron_expression);
+      (keepsStoredSchedule
+        ? Boolean(selectedTrigger?.is_single_execution)
+        : isOneTimeCron(formData.custom_cron_expression));
 
     setIsLoading(true);
     onTriggerCreating?.(formData);

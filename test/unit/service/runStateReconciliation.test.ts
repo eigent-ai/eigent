@@ -70,6 +70,32 @@ function summary(status: string, version = 3) {
   };
 }
 
+function seededEvents() {
+  return [
+    event(1, 'run.attempt_started'),
+    event(2, 'interaction.requested', {
+      interaction_id: 'question-fixture',
+      interaction_type: 'question',
+      prompt: 'Continue?',
+    }),
+  ];
+}
+
+/**
+ * A companion stream resumes from the older of the timeline and the Run
+ * projection. The seeded Run projection comes from a summary without event
+ * sequences, so the stream starts at 0 and the server replays 1 and 2 first.
+ */
+async function replaySeededEvents(stream: SSETransportOptions) {
+  expect(stream.url).toContain('after_sequence=0');
+  for (const seeded of seededEvents())
+    await stream.onmessage?.({
+      id: '',
+      event: 'run_event',
+      data: JSON.stringify(seeded),
+    });
+}
+
 function seed() {
   const store = getProjectEventStore(projectId);
   store.replaceSnapshot({
@@ -86,14 +112,7 @@ function seed() {
         resume_blocked_reason: null,
       },
     ],
-    recent_events: [
-      event(1, 'run.attempt_started'),
-      event(2, 'interaction.requested', {
-        interaction_id: 'question-fixture',
-        interaction_type: 'question',
-        prompt: 'Continue?',
-      }),
-    ],
+    recent_events: seededEvents(),
   });
   runProjectionStore.upsertRunSummaries(projectId, [
     summary('waiting_for_user', 2),
@@ -348,6 +367,7 @@ describe('stream to canonical state reconciliation', () => {
     });
     owners.push(owner);
     owner.updateSnapshot(store.getSnapshot());
+    await replaySeededEvents(streams[0]);
     await streams[0].onmessage({
       id: '',
       event: 'run_event',
@@ -684,6 +704,7 @@ describe('stream to canonical state reconciliation', () => {
     });
     owners.push(owner);
     owner.updateSnapshot(store.getSnapshot());
+    await replaySeededEvents(streams[0]);
     await streams[0].onmessage({
       id: '',
       event: 'run_event',
