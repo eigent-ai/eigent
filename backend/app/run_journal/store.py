@@ -14970,20 +14970,21 @@ class SQLiteRunJournal:
                 timestamp,
             ),
         )
-        remaining_interaction = connection.execute(
-            """
-            SELECT 1 FROM human_interactions
-            WHERE run_id = ? AND status IN ('requested', 'presented')
-            LIMIT 1
-            """,
-            (tool["run_id"],),
-        ).fetchone()
+        remaining_interaction_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*) FROM human_interactions
+                WHERE run_id = ? AND status IN ('requested', 'presented')
+                """,
+                (tool["run_id"],),
+            ).fetchone()[0]
+        )
         run = connection.execute(
             "SELECT status FROM runs WHERE run_id = ?",
             (tool["run_id"],),
         ).fetchone()
         interrupt_run = bool(
-            remaining_interaction is None
+            remaining_interaction_count == 0
             and run is not None
             and run["status"] not in RUN_TERMINAL_STATES
         )
@@ -15011,6 +15012,9 @@ class SQLiteRunJournal:
             "reason": reason,
             "source": source,
             "continued_attempt": False,
+            # Other open requests keep the Run waiting for the user, as with
+            # a decision; clients must not read this cancellation as the end.
+            "remaining_interaction_count": remaining_interaction_count,
         }
         if step_id:
             cancellation_payload["step_id"] = step_id

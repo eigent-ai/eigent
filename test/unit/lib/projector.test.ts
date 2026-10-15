@@ -1910,6 +1910,67 @@ describe('projector pipeline', () => {
       ).toBe('interrupted');
     });
 
+    it('keeps waiting when one of two open requests is cancelled', () => {
+      const requested = projectRawEvents(
+        'project-1',
+        [
+          runEvent(1, 'run.attempt_started', '10:00:00'),
+          runEvent(2, 'approval.requested', '10:00:02'),
+          runEvent(3, 'approval.requested', '10:00:10'),
+        ],
+        'live'
+      ).state;
+      const cancelled = (payload: Record<string, unknown> = {}) =>
+        runEvent(4, 'approval.cancelled', '10:00:30', {
+          decision: 'rejected',
+          continued_attempt: false,
+          ...payload,
+        });
+      const firstCancelled = reduceProjectView(
+        requested,
+        cancelled({ remaining_interaction_count: 1 })
+      );
+      expect(firstCancelled.runs['run-1']).toMatchObject({
+        status: 'waiting_for_user',
+        userWaitStartedAt: at('10:00:02'),
+      });
+      expect(
+        reduceProjectView(firstCancelled, decided(5, '10:00:50')).runs['run-1']
+      ).toMatchObject({ status: 'running', userWaitMs: 48_000 });
+      // A cancellation that leaves nothing open, or one recorded before the
+      // count was reported, still interrupts the Attempt.
+      for (const payload of [{ remaining_interaction_count: 0 }, {}])
+        expect(
+          reduceProjectView(requested, cancelled(payload)).runs['run-1'].status
+        ).toBe('interrupted');
+    });
+
+    it('leaves the status to the Run when a request closes because the Run ended', () => {
+      const requested = projectRawEvents(
+        'project-1',
+        [
+          runEvent(1, 'run.attempt_started', '10:00:00'),
+          runEvent(2, 'approval.requested', '10:00:02'),
+          runEvent(3, 'run.cancel_requested', '10:00:10'),
+        ],
+        'live'
+      ).state;
+      const closed = reduceProjectView(
+        requested,
+        runEvent(4, 'approval.cancelled', '10:00:11', {
+          decision: 'rejected',
+          continued_attempt: false,
+          reason: 'run_terminal:cancelled',
+          source: 'system',
+        })
+      );
+      expect(closed.runs['run-1'].status).toBe('cancelling');
+      expect(
+        reduceProjectView(closed, runEvent(5, 'run.cancelled', '10:00:11'))
+          .runs['run-1'].status
+      ).toBe('cancelled');
+    });
+
     it('restarts the wait record at a measured Run read', () => {
       const approved = reduceProjectView(
         projectRawEvents(
