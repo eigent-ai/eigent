@@ -132,6 +132,9 @@ async def get_toolkits(
 async def get_mcp_tools(
     mcp_server: McpServers,
     hands: IHands | None = None,
+    *,
+    account: str = "",
+    project_id: str | None = None,
 ):
     logger.info(
         f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers"
@@ -154,42 +157,76 @@ async def get_mcp_tools(
             return []
         mcp_server = {**mcp_server, "mcpServers": filtered}
 
-    # Ensure unified auth directory for all mcp-remote servers to avoid
-    # re-authentication on each task
-    config_dict = {**mcp_server}
-    for server_config in config_dict["mcpServers"].values():
-        if "env" not in server_config:
-            server_config["env"] = {}
-        # Set global auth directory to persist authentication across tasks
-        if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
-            server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env(
-                "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")
-            )
+    from app.service.mcp_oauth import (
+        connect_mcp_toolkits,
+        emit_mcp_notice,
+        is_mcp_auth_failure,
+        prepare_mcp_oauth,
+    )
+    from app.service.task import get_task_lock_if_exists
 
-    mcp_toolkit = None
-    try:
-        mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=180)
-        await mcp_toolkit.connect()
+    config_dict = await prepare_mcp_oauth(
+        mcp_server,
+        account=account,
+        project_id=project_id,
+        strict=False,
+    )
+    task_lock = get_task_lock_if_exists(project_id) if project_id else None
 
-        logger.info(
-            f"Successfully connected to MCP toolkit with "
-            f"{len(mcp_server['mcpServers'])} servers"
+    async def connector_failed(name: str, exc: BaseException) -> None:
+        reason = (
+            "mcp_auth_failed"
+            if is_mcp_auth_failure(exc)
+            else "connection_failed"
         )
-        tools = mcp_toolkit.get_tools()
-        if tools:
-            tool_names = [
-                (
-                    tool.get_function_name()
-                    if hasattr(tool, "get_function_name")
-                    else str(tool)
-                )
-                for tool in tools
-            ]
-            logging.debug(f"MCP tool names: {tool_names}")
-        return tools
+        # The name shares a config with injected credentials; the Task notice
+        # carries it to the user instead of the log.
+        logger.warning("MCP connector failed (%s)", reason)
+        await emit_mcp_notice(project_id, name, reason)
+
+    async def disconnect(toolkit) -> None:
+        try:
+            await toolkit.disconnect()
+        except Exception:
+            logger.warning("Failed to disconnect unavailable MCP connector")
+
+    started = []
+    for name, server_config in config_dict["mcpServers"].items():
+        if server_config.get("command"):
+            server_config.setdefault("env", {}).setdefault(
+                "MCP_REMOTE_CONFIG_DIR",
+                env(
+                    "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")
+                ),
+            )
+        try:
+            toolkit = MCPToolkit(
+                config_dict={"mcpServers": {name: server_config}},
+                timeout=180,
+                skip_failed=False,
+            )
+        except Exception as exc:
+            await connector_failed(name, exc)
+            continue
+        if task_lock is not None:
+            task_lock.register_toolkit(toolkit)
+        started.append((name, toolkit))
+
+    # Each connector connects separately so one failure cannot hide another's
+    # tools, but independent connectors still start concurrently.
+    try:
+        failures = await connect_mcp_toolkits(
+            [toolkit for _, toolkit in started]
+        )
     except asyncio.CancelledError:
-        logger.info("MCP connection cancelled during get_mcp_tools")
-        return []
-    except Exception as e:
-        logger.error(f"Failed to connect MCP toolkit: {e}", exc_info=True)
-        return []
+        for _, toolkit in started:
+            await disconnect(toolkit)
+        raise
+    tools = []
+    for (name, toolkit), failure in zip(started, failures):
+        if failure is None:
+            tools.extend(toolkit.get_tools())
+            continue
+        await connector_failed(name, failure)
+        await disconnect(toolkit)
+    return tools

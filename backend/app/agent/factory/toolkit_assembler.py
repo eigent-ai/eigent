@@ -725,50 +725,89 @@ async def _assemble_single_agent_toolkits(
         assembly.add_tools(toolkit.get_tools(), "PlanningWorktreeToolkit")
 
     if _enabled(config, "mcp") or pinned_mcp_config is not None:
-        if runtime_environment is None:
-            mcp_config = _mcp_config(options, hands)
-        else:
-            exact_mcp_config = pinned_mcp_config
-            mcp_config = _mcp_config(
-                options,
-                hands,
-                exact_config=(exact_mcp_config or {"mcpServers": {}}),
-            )
+        from app.service.mcp_oauth import (
+            connect_mcp_toolkits,
+            emit_mcp_notice,
+            is_mcp_auth_failure,
+            mcp_connector_name,
+            prepare_mcp_oauth,
+        )
+
+        mcp_config = _mcp_config(
+            options,
+            hands,
+            exact_config=(pinned_mcp_config or {"mcpServers": {}})
+            if runtime_environment is not None
+            else None,
+        )
         if mcp_config is not None:
-            mcp_options = {
-                "timeout": 180,
-                **_options(config, "mcp"),
+            # A Bundle alias must still report the global connector identity,
+            # which prepare_mcp_oauth removes from the resolved config.
+            connector_names = {
+                name: mcp_connector_name(name, server)
+                for name, server in mcp_config.get("mcpServers", {}).items()
             }
-            mcp_options["config_dict"] = mcp_config
-            mcp_options["skip_failed"] = runtime_environment is None
-            if runtime_environment is not None:
-                try:
-                    toolkit = MCPToolkit(**mcp_options)
-                    # connect() can partially allocate subprocesses before it
-                    # raises. Include it in rollback before attempting startup.
-                    assembly.cleanup_toolkits.append(toolkit)
-                    await toolkit.connect()
-                except Exception as exc:
+            resolved = await prepare_mcp_oauth(
+                mcp_config,
+                account=options.email,
+                project_id=options.project_id,
+                strict=runtime_environment is not None,
+            )
+
+            async def connector_failed(name: str, exc: BaseException) -> None:
+                connector_name = connector_names.get(name, name)
+                reason = (
+                    "mcp_auth_failed"
+                    if is_mcp_auth_failure(exc)
+                    else "connection_failed"
+                )
+                if runtime_environment is not None:
+                    from urllib.parse import quote
+
                     from app.workspace_bundle.runtime import (
                         EnvironmentSetupRequiredError,
                     )
 
-                    raise EnvironmentSetupRequiredError(
-                        ["bundle_mcp_start_failed"]
-                    ) from exc
-                assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
-            else:
-                toolkit = MCPToolkit(**mcp_options)
-                # Servers that started before connect() failed or was
-                # cancelled must still be stopped by rollback or disposal.
-                assembly.cleanup_toolkits.append(toolkit)
-                try:
-                    await toolkit.connect()
-                except Exception:
-                    logger.error(
-                        "Failed to connect MCPToolkit",
-                        exc_info=True,
+                    issue = (
+                        f"mcp_auth_failed:{quote(connector_name, safe='')}"
+                        if reason == "mcp_auth_failed"
+                        else "bundle_mcp_start_failed"
                     )
+                    raise EnvironmentSetupRequiredError([issue]) from None
+                # The name shares a config with injected credentials; the Task
+                # notice carries it to the user instead of the log.
+                logger.warning("MCP connector failed (%s)", reason)
+                await emit_mcp_notice(
+                    options.project_id, connector_name, reason
+                )
+
+            # Connect separately so a failed connector cannot hide another's
+            # tools, and every failure can be attributed without logging
+            # headers. Independent connectors still start concurrently.
+            started = []
+            for name, server in resolved["mcpServers"].items():
+                try:
+                    toolkit = MCPToolkit(
+                        **{
+                            "timeout": 180,
+                            **_options(config, "mcp"),
+                            "config_dict": {"mcpServers": {name: server}},
+                            "skip_failed": False,
+                        }
+                    )
+                except Exception as exc:
+                    await connector_failed(name, exc)
+                    continue
+                # connect() can partially allocate subprocesses before it
+                # raises. Include it in rollback before attempting startup.
+                assembly.cleanup_toolkits.append(toolkit)
+                started.append((name, toolkit))
+            failures = await connect_mcp_toolkits(
+                [toolkit for _, toolkit in started]
+            )
+            for (name, toolkit), failure in zip(started, failures):
+                if failure is not None:
+                    await connector_failed(name, failure)
                 else:
                     assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
 

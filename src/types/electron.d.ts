@@ -141,6 +141,22 @@ interface ElectronAPI {
     success: boolean;
     error?: string;
   }>;
+  mcpOAuthProbe: (url: string) => Promise<{
+    requiresAuth?: boolean;
+    error?: import('../../electron/main/mcpOAuth/types').McpOAuthErrorCode;
+  }>;
+  mcpOAuthSignIn: (
+    identity: import('../../electron/main/mcpOAuth/types').McpOAuthIdentity
+  ) => Promise<import('../../electron/main/mcpOAuth/types').McpOAuthStatus>;
+  mcpOAuthSignOut: (
+    identity: import('../../electron/main/mcpOAuth/types').McpOAuthIdentity
+  ) => Promise<import('../../electron/main/mcpOAuth/types').McpOAuthStatus>;
+  mcpOAuthStatus: (
+    identity: import('../../electron/main/mcpOAuth/types').McpOAuthIdentity
+  ) => Promise<import('../../electron/main/mcpOAuth/types').McpOAuthStatus>;
+  mcpOAuthCancel: (
+    identity: import('../../electron/main/mcpOAuth/types').McpOAuthIdentity
+  ) => Promise<import('../../electron/main/mcpOAuth/types').McpOAuthStatus>;
   mcpInstall: (name: string, mcp: any) => Promise<any>;
   mcpRemove: (name: string) => Promise<any>;
   mcpUpdate: (name: string, mcp: any) => Promise<any>;

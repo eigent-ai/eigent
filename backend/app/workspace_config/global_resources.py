@@ -169,6 +169,12 @@ def _mcp_entries():
             isinstance(server.get("url"), str) and server["url"].strip()
         ):
             reason = "global_mcp_invalid"
+        if "auth" in server and (
+            server["auth"] != {"type": "oauth"}
+            or not server.get("url")
+            or server.get("command")
+        ):
+            reason = "global_mcp_invalid"
         for category in ("env", "headers"):
             values = server.get(category, {})
             if not isinstance(values, dict) or any(
@@ -188,6 +194,7 @@ def _mcp_entries():
                 "unavailableReason": reason,
                 # Credentials are already configured globally. They are neither
                 # exported nor silently replaced with Bundle secret bindings.
+                "requiresSignIn": server.get("auth") == {"type": "oauth"},
                 "secretSlots": [],
                 "assignTo": [],
             },
@@ -222,5 +229,10 @@ def resolve_global_mcp(ref: str, *, secret_slots=()) -> dict[str, Any]:
         if item["definition"] == ref:
             if not item["enabled"]:
                 raise GlobalResourceUnavailable(item["unavailableReason"])
-            return copy.deepcopy(server)
+            resolved = copy.deepcopy(server)
+            if resolved.get("auth") == {"type": "oauth"}:
+                # A Bundle can assign a different server.id to this reference.
+                # Token identity still belongs to the original global connector.
+                resolved["_oauth_connector_name"] = item["id"]
+            return resolved
     raise GlobalResourceUnavailable("global_mcp_unavailable")
