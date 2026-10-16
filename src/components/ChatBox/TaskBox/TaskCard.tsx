@@ -20,7 +20,10 @@ import { TaskItem } from './TaskItem';
 
 import { TaskState, TaskStateType } from '@/components/TaskState';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { useSessionProjectId } from '@/hooks/useSessionProjectId';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
 import { ChatTaskStatus, TaskStatus } from '@/types/constants';
 import {
   ChevronDown,
@@ -103,6 +106,7 @@ export function TaskCard({
   //Get Chatstore and ProjectStore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
 
   // Extract values for dependency arrays (must be before any conditional returns)
   const activeTaskId = taskId ?? (chatStore?.activeTaskId as string);
@@ -138,12 +142,14 @@ export function TaskCard({
   );
   const lastSeenFocusRef = useRef(taskBoxFocusRequestId);
   useEffect(() => {
+    if (taskBoxFocusRequestId === lastSeenFocusRef.current) return;
+    lastSeenFocusRef.current = taskBoxFocusRequestId;
     if (
-      taskBoxFocusRequestId !== lastSeenFocusRef.current &&
-      (!taskBoxFocusProjectId || taskBoxFocusProjectId === sessionProjectId) &&
+      (taskBoxFocusProjectId
+        ? taskBoxFocusProjectId === sessionProjectId
+        : isFocusedPane) &&
       (!taskBoxFocusTaskId || taskBoxFocusTaskId === activeTaskId)
     ) {
-      lastSeenFocusRef.current = taskBoxFocusRequestId;
       setIsExpanded(true);
     }
   }, [
@@ -152,6 +158,7 @@ export function TaskCard({
     taskBoxFocusTaskId,
     taskBoxFocusProjectId,
     sessionProjectId,
+    isFocusedPane,
   ]);
 
   useEffect(() => {

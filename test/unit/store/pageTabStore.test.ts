@@ -46,16 +46,22 @@ describe('pageTabStore side-panel requests', () => {
     const store = usePageTabStore.getState();
     store.requestTaskBoxFocus(undefined, 'task-1');
     store.requestWorkspaceChatFocus();
+    store.requestToggleSessionSidePanel();
     store.setScrollToQueryId('query-1');
 
     expect(usePageTabStore.getState()).toMatchObject({
       taskBoxFocusProjectId: null,
       workspaceChatFocusProjectId: null,
       scrollToQueryProjectId: null,
+      sessionSidePanelToggleProjectId: null,
     });
 
     usePageTabStore.getState().requestWorkspaceChatFocus('project-1');
     expect(usePageTabStore.getState().workspaceChatFocusProjectId).toBe(
+      'project-1'
+    );
+    store.requestToggleSessionSidePanel('project-1');
+    expect(usePageTabStore.getState().sessionSidePanelToggleProjectId).toBe(
       'project-1'
     );
   });

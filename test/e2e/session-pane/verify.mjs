@@ -106,8 +106,51 @@ try {
     .toBe('a');
   await inputB.focus();
   await page.evaluate(() =>
-    window.paneTest.tabs.getState().requestToggleSessionSidePanel()
+    window.paneTest.tabs.getState().requestWorkspaceChatFocus('a')
   );
+  await expect(inputA).toBeFocused();
+  await inputB.focus();
+  // Let the old focus timer expire while the user works in the other pane.
+  await page.waitForTimeout(300);
+  await expect(inputB).toBeFocused();
+  await page.evaluate(() => {
+    window.paneTest.tabs.getState().requestWorkspaceChatFocus();
+  });
+  await page.waitForTimeout(300);
+  await expect(inputB).toBeFocused();
+  await a.getByRole('button', { name: 'Open preview', exact: true }).focus();
+  await page.waitForTimeout(300);
+  await expect(
+    a.getByRole('button', { name: 'Open preview', exact: true })
+  ).toBeFocused();
+  await inputB.focus();
+  await page.evaluate(() => {
+    window.paneTest.scrolls = [];
+    for (const id of ['a', 'b']) {
+      const pane = document.querySelector(`[data-session-pane="${id}"]`);
+      const timeline = pane.querySelector('[data-query-id]');
+      if (!timeline) throw new Error(`Missing timeline in ${id}`);
+      let scroll = timeline.parentElement;
+      while (scroll && !scroll.classList.contains('overflow-y-auto'))
+        scroll = scroll.parentElement;
+      if (!scroll) throw new Error(`Missing scroll container in ${id}`);
+      scroll.scrollTo = () => window.paneTest.scrolls.push(id);
+    }
+    const query = document
+      .querySelector('[data-session-pane="b"] [data-query-id]')
+      .getAttribute('data-query-id');
+    window.paneTest.tabs.getState().setScrollToQueryId(query);
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.paneTest.scrolls))
+    .toEqual(['b']);
+  console.log('One-shot chat focus and focused query routing passed');
+  await inputA.focus();
+  await page.evaluate(() => {
+    // Preview scope still points at A until React processes this selection.
+    window.paneTest.projects.getState().setActiveProject('b');
+    window.paneTest.tabs.getState().requestToggleSessionSidePanel();
+  });
   await expect
     .poll(() =>
       page.evaluate(

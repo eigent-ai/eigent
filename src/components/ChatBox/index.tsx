@@ -247,6 +247,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const workspaceChatFocusRequestId = useSessionPageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
+  const handledChatFocusRequestRef = useRef(0);
   const workspaceChatDraftRequest = useSessionPageTabStore(
     (s) => s.workspaceChatDraftRequest
   );
@@ -487,6 +488,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     }
   }, [modelType]);
   useEffect(() => {
+    if (handledChatFocusRequestRef.current === workspaceChatFocusRequestId)
+      return;
+    handledChatFocusRequestRef.current = workspaceChatFocusRequestId;
     if (
       workspaceChatFocusRequestId === 0 ||
       (workspaceChatFocusProjectId

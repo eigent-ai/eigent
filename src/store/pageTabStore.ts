@@ -520,7 +520,7 @@ export interface PageTabState {
   /** One-shot request consumed by the active Project session panel. */
   sessionSidePanelToggleRequestId: number;
   sessionSidePanelToggleProjectId: string | null;
-  requestToggleSessionSidePanel: () => void;
+  requestToggleSessionSidePanel: (projectId?: string | null) => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -854,11 +854,11 @@ export const usePageTabStore = create<PageTabState>()(
         }),
       sessionSidePanelToggleRequestId: 0,
       sessionSidePanelToggleProjectId: null,
-      requestToggleSessionSidePanel: () =>
+      requestToggleSessionSidePanel: (projectId) =>
         set((state) => ({
           sessionSidePanelToggleRequestId:
             state.sessionSidePanelToggleRequestId + 1,
-          sessionSidePanelToggleProjectId: state.sessionPreviewProjectId,
+          sessionSidePanelToggleProjectId: projectId ?? null,
         })),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),

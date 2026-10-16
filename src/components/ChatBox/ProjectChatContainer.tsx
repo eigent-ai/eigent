@@ -14,7 +14,10 @@
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
-import { useSessionProjectId } from '@/hooks/useSessionProjectId';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
 import { AnimatePresence } from 'framer-motion';
 import React, {
   useCallback,
@@ -44,6 +47,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
 }) => {
   const { projectStore } = useChatStoreAdapter();
   const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
   const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
   const [, setChatRevision] = useState(0);
   const anchorFrameRef = useRef<number | null>(null);
@@ -265,7 +269,9 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     if (
       !scrollToQueryId ||
       !scrollContainerRef.current ||
-      (scrollToQueryProjectId && scrollToQueryProjectId !== activeProjectId)
+      (scrollToQueryProjectId
+        ? scrollToQueryProjectId !== activeProjectId
+        : !isFocusedPane)
     )
       return;
 
@@ -284,6 +290,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   }, [
     scrollToQueryId,
     scrollToQueryProjectId,
+    isFocusedPane,
     activeProjectId,
     setScrollToQueryId,
     scrollContainerRef,
@@ -338,10 +345,15 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   const taskBoxFocusTaskId = useSessionPageTabStore(
     (s) => s.taskBoxFocusTaskId
   );
+  const handledTaskBoxFocusRef = useRef(taskBoxFocusRequestId);
   useEffect(() => {
+    if (handledTaskBoxFocusRef.current === taskBoxFocusRequestId) return;
+    handledTaskBoxFocusRef.current = taskBoxFocusRequestId;
     if (
       !taskBoxFocusRequestId ||
-      (taskBoxFocusProjectId && taskBoxFocusProjectId !== activeProjectId)
+      (taskBoxFocusProjectId
+        ? taskBoxFocusProjectId !== activeProjectId
+        : !isFocusedPane)
     ) {
       return;
     }
@@ -364,6 +376,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
   }, [
     activeProjectId,
+    isFocusedPane,
     taskBoxFocusProjectId,
     taskBoxFocusRequestId,
     taskBoxFocusTaskId,

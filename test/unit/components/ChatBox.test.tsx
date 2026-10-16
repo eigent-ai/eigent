@@ -257,6 +257,7 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
           ))}
           <input
             data-testid="message-input"
+            ref={inputProps.textareaRef}
             placeholder={inputProps.placeholder}
             value={inputProps.value}
             disabled={inputProps.disabled}
@@ -651,6 +652,46 @@ describe('ChatBox Component', async () => {
     expect(a.getByTestId('message-input')).toHaveValue('Keep A draft');
     expect(b.getByTestId('message-input')).toHaveValue('');
     expect(defaultProjectStoreState.activeProjectId).toBe('test-project-id');
+  });
+
+  it('focuses the composer once per chat-focus request, not again when pane focus returns', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const paneTree = () => (
+        <BrowserRouter>
+          <SessionPaneProvider projectId="test-project-id">
+            <ChatBox />
+          </SessionPaneProvider>
+        </BrowserRouter>
+      );
+      const view = render(paneTree());
+      const focus = vi.spyOn(screen.getByTestId('message-input'), 'focus');
+
+      act(() => {
+        usePageTabStore.setState({
+          workspaceChatFocusRequestId: 1,
+          workspaceChatFocusProjectId: null,
+        });
+      });
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(1);
+
+      // Focus moves to another Session and back without a new request.
+      defaultProjectStoreState.activeProjectId = 'other-session';
+      view.rerender(paneTree());
+      defaultProjectStoreState.activeProjectId = 'test-project-id';
+      view.rerender(paneTree());
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        usePageTabStore.setState({ workspaceChatFocusRequestId: 2 });
+      });
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   describe('subscription quota copy', () => {
