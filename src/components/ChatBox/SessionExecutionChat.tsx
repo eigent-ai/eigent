@@ -20,6 +20,7 @@ import { DsText } from '@/components/ui/ds-text';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useSessionDraft } from '@/hooks/useSessionDraft';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import {
   assertExecutionScope,
   cancelSessionExecution,
@@ -31,7 +32,6 @@ import {
   sessionMessageConfiguration,
   submitSessionMessage,
 } from '@/service/sessionMessage';
-import { usePageTabStore } from '@/store/pageTabStore';
 import {
   loadMoreSessionExecutions,
   refreshSessionExecution,
@@ -77,7 +77,7 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
   const [controls, setControls] = useState<Set<string>>(new Set());
   const intent = useRef<SessionMessageIntent | null>(null);
   const accepted = useRef(false);
-  const externalDraft = usePageTabStore(
+  const externalDraft = useSessionPageTabStore(
     (store) => store.workspaceChatDraftRequest
   );
   const unsupportedHandoff = externalDraft?.projectId === projectId;

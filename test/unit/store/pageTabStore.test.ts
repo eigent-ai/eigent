@@ -39,6 +39,27 @@ describe('pageTabStore side-panel requests', () => {
     });
   });
 
+  it('leaves unscoped focus requests unbound to the preview scope', () => {
+    // The draft sentinel (or a scope lagging setActiveProject) must never
+    // become the target of a request the caller did not scope.
+    usePageTabStore.setState({ sessionPreviewProjectId: 'new-session-draft' });
+    const store = usePageTabStore.getState();
+    store.requestTaskBoxFocus(undefined, 'task-1');
+    store.requestWorkspaceChatFocus();
+    store.setScrollToQueryId('query-1');
+
+    expect(usePageTabStore.getState()).toMatchObject({
+      taskBoxFocusProjectId: null,
+      workspaceChatFocusProjectId: null,
+      scrollToQueryProjectId: null,
+    });
+
+    usePageTabStore.getState().requestWorkspaceChatFocus('project-1');
+    expect(usePageTabStore.getState().workspaceChatFocusProjectId).toBe(
+      'project-1'
+    );
+  });
+
   it('stores a one-shot historical Run scroll request', () => {
     const request = { projectId: 'project-1', taskId: 'task-1' };
     usePageTabStore.getState().setScrollToTurnRequest(request);

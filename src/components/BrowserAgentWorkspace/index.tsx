@@ -14,6 +14,7 @@
 
 import { fetchPut } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { useHost } from '@/host';
 import { TaskStatus } from '@/types/constants';
 import {
@@ -36,7 +37,8 @@ import { Button } from '../ui/button';
 export default function BrowserAgentWorkspace() {
   const { t } = useTranslation();
   //Get Chatstore for the active project's task
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { chatStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const host = useHost();
 
   const [isSingleMode, setIsSingleMode] = useState(false);
@@ -120,7 +122,7 @@ export default function BrowserAgentWorkspace() {
 
   const handleTakeControl = (id: string) => {
     console.log('handleTakeControl', id);
-    fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+    fetchPut(`/task/${sessionProjectId}/take-control`, {
       action: 'pause',
     });
 
@@ -170,7 +172,7 @@ export default function BrowserAgentWorkspace() {
         <div className="rounded-full border border-x border-y border-solid border-ds-hairline-strong-default bg-transparent p-1">
           <Button
             onClick={() => {
-              fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+              fetchPut(`/task/${sessionProjectId}/take-control`, {
                 action: 'resume',
               });
               setIsTakeControl(false);

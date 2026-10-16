@@ -13,12 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { fileInfoFromPath } from '@/lib/fileInfo';
 import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import { escapeHtml } from '@/lib/richText';
 import { cn } from '@/lib/utils';
-import { usePageTabStore } from '@/store/pageTabStore';
 import '@/style/markdown-styles.css';
 import DOMPurify from 'dompurify';
 import { Marked, type Tokens } from 'marked';
@@ -190,8 +190,10 @@ export const MarkDown = memo(
     const host = useHost();
     const electronAPI = host?.electronAPI;
     const appearance = useDocumentAppearance();
-    const openFilePreview = usePageTabStore((s) => s.openFilePreview);
-    const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
+    const openFilePreview = useSessionPageTabStore((s) => s.openFilePreview);
+    const openBrowserPreview = useSessionPageTabStore(
+      (s) => s.openBrowserPreview
+    );
     const [displayedContent, setDisplayedContent] = useState('');
     const [html, setHtml] = useState('');
     const [previewImage, setPreviewImage] = useState<string | null>(null);

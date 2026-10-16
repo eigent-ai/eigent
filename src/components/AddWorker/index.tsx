@@ -40,6 +40,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { selectableConfiguredModels } from '@/lib/configuredModels';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { buildAgentModelConfig } from '@/lib/modelConfig';
@@ -99,7 +100,8 @@ export function AddWorker({
     typeof isOpen !== 'undefined' && typeof onOpenChange !== 'undefined';
   const dialogOpen = isControlled ? isOpen : internalOpen;
   const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { chatStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const [showEnvConfig, setShowEnvConfig] = useState(false);
   const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
   const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
@@ -181,7 +183,7 @@ export function AddWorker({
     };
   }, [records]);
 
-  const activeProjectId = projectStore?.activeProjectId;
+  const activeProjectId = sessionProjectId;
   const activeTaskId = chatStore?.activeTaskId ?? null;
   const tasks = chatStore?.tasks ?? {};
 

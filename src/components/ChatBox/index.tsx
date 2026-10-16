@@ -27,6 +27,12 @@ import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useSessionDraft } from '@/hooks/useSessionDraft';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { useSessionPane } from '@/hooks/useSessionPane';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
@@ -207,8 +213,8 @@ function getCurrentTimestamp() {
 }
 
 export default function ChatBox(): JSX.Element {
-  const { projectStore } = useChatStoreAdapter();
-  const projectId = projectStore.activeProjectId;
+  const sessionProjectId = useSessionProjectId();
+  const projectId = sessionProjectId;
   const { scope, state } = useSessionExecution(projectId);
   if (!projectId) return <></>;
   if (state.managed)
@@ -225,32 +231,38 @@ export default function ChatBox(): JSX.Element {
 
 function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const host = useHost();
+  const overlaySlotId = useSessionPane()?.overlaySlotId ?? PLAN_OVERLAY_SLOT_ID;
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLDivElement>(null);
   const handledChatDraftRequestRef = useRef<number | null>(null);
-  const workspaceChatFocusRequestId = usePageTabStore(
+  const workspaceChatFocusProjectId = useSessionPageTabStore(
+    (s) => s.workspaceChatFocusProjectId
+  );
+  const workspaceChatFocusRequestId = useSessionPageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
-  const workspaceChatDraftRequest = usePageTabStore(
+  const workspaceChatDraftRequest = useSessionPageTabStore(
     (s) => s.workspaceChatDraftRequest
   );
-  const consumeWorkspaceChatDraft = usePageTabStore(
+  const consumeWorkspaceChatDraft = useSessionPageTabStore(
     (s) => s.consumeWorkspaceChatDraft
   );
-  const acknowledgeWorkspaceReviewHandoffs = usePageTabStore(
+  const acknowledgeWorkspaceReviewHandoffs = useSessionPageTabStore(
     (s) => s.acknowledgeWorkspaceReviewHandoffs
   );
-  const discardWorkspaceReviewHandoffs = usePageTabStore(
+  const discardWorkspaceReviewHandoffs = useSessionPageTabStore(
     (s) => s.discardWorkspaceReviewHandoffs
   );
-  const chatTimelineDetailLevel = usePageTabStore(
+  const chatTimelineDetailLevel = useSessionPageTabStore(
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
-  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectId = sessionProjectId;
   // Switching Sessions remounts this composer; keep each Session's draft.
   const {
     text: message,
@@ -325,13 +337,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const displaySessionMode =
     activeProjectMode ?? inferredSessionMode ?? undefined;
   const ensureActiveProjectMode = useCallback(() => {
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     if (!projectId || activeProjectMode) return;
     updateProjectMeta(projectId, { mode: effectiveSessionMode });
   }, [
     activeProjectMode,
     effectiveSessionMode,
-    projectStore,
+    sessionProjectId,
     updateProjectMeta,
   ]);
   const { hasModel, isConfigLoaded, cloudUsageLimitReached } =
@@ -475,12 +487,23 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     }
   }, [modelType]);
   useEffect(() => {
-    if (workspaceChatFocusRequestId === 0) return;
+    if (
+      workspaceChatFocusRequestId === 0 ||
+      (workspaceChatFocusProjectId
+        ? workspaceChatFocusProjectId !== activeProjectId
+        : !isFocusedPane)
+    )
+      return;
     const focusTimer = window.setTimeout(() => {
       textareaRef.current?.focus();
     }, 180);
     return () => clearTimeout(focusTimer);
-  }, [workspaceChatFocusRequestId]);
+  }, [
+    workspaceChatFocusRequestId,
+    workspaceChatFocusProjectId,
+    activeProjectId,
+    isFocusedPane,
+  ]);
 
   useEffect(() => {
     if (
@@ -773,9 +796,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         await refreshInterruptedRun();
         return;
       }
-      const currentTask = projectStore.getActiveChatStore()?.getState().tasks[
-        taskId
-      ];
+      const currentTask = projectStore
+        .getActiveChatStore(sessionProjectId ?? undefined)
+        ?.getState().tasks[taskId];
       if (
         !currentTask ||
         isHumanInteractionReadOnly({
@@ -785,8 +808,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                 message.interaction?.interaction_id ===
                 interaction.interaction_id
             )?.interaction || interaction,
-          activeTaskId: projectStore.getActiveChatStore()?.getState()
-            .activeTaskId,
+          activeTaskId: projectStore
+            .getActiveChatStore(sessionProjectId ?? undefined)
+            ?.getState().activeTaskId,
           taskType: currentTask.type,
           taskStatus: currentTask.status,
           durableRunStatus: readOnlyRunStatus(
@@ -887,9 +911,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   });
 
   const getAllChatStoresMemoized = useMemo(() => {
-    if (!projectStore.activeProjectId) return [];
-    return projectStore.getAllChatStores(projectStore.activeProjectId);
-  }, [projectStore]);
+    if (!sessionProjectId) return [];
+    return projectStore.getAllChatStores(sessionProjectId);
+  }, [projectStore, sessionProjectId]);
 
   // Check if any chat store in the project has messages
   const hasAnyMessages = useMemo(() => {
@@ -1028,7 +1052,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     async (token: string) => {
       if (!chatStore) return;
       if (!token) return;
-      if (!projectStore.activeProjectId) {
+      if (!sessionProjectId) {
         console.warn("Can't send share due to no active projectId");
         return;
       }
@@ -1062,11 +1086,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         try {
           await chatStore.startTask(taskId, 'share', _token, 0.1);
           chatStore.setActiveTaskId(taskId);
-          chatStore.handleConfirmTask(
-            projectStore.activeProjectId,
-            taskId,
-            'share'
-          );
+          chatStore.handleConfirmTask(sessionProjectId, taskId, 'share');
         } catch (err: any) {
           console.error('Failed to start shared task:', err);
           notifyError(
@@ -1078,7 +1098,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     },
     [
       chatStore,
-      projectStore.activeProjectId,
+      sessionProjectId,
       hasModel,
       isCloudUsageLimited,
       cloudUsageLimitMessage,
@@ -1148,7 +1168,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     const replyingToHuman = Boolean(
       _taskId &&
       chatStore.tasks[_taskId]?.activeAsk &&
-      interruptedRun?.project_id !== projectStore.activeProjectId
+      interruptedRun?.project_id !== sessionProjectId
     );
     if ((isCloudUsageLimited && !replyingToHuman) || !canUseSessionModel) {
       if (isCloudUsageLimited) {
@@ -1164,7 +1184,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return;
     }
 
-    const targetProjectId = projectStore.activeProjectId;
+    const targetProjectId = sessionProjectId;
     if (!targetProjectId) {
       notifyError(
         t('chat.no-active-session', {
@@ -1413,7 +1433,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         }
       } else if (queuedRequestId) {
         const queuedFiles = queuedAttaches || [];
-        const draftStore = projectStore.getActiveChatStore();
+        const draftStore = projectStore.getActiveChatStore(
+          sessionProjectId ?? undefined
+        );
         await waitForPendingStaleRuntimeEviction(targetProjectId);
         const admissionMode = startsAfterInterruption
           ? 'cold'
@@ -1662,7 +1684,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               followUpAdmission
             );
             const composerRevision = composerRevisionRef.current;
-            const sourceStore = projectStore.getActiveChatStore();
+            const sourceStore = projectStore.getActiveChatStore(
+              sessionProjectId ?? undefined
+            );
             const sourceAttaches =
               sourceStore?.getState().tasks[_taskId]?.attaches;
             const attachesForThisTurn =
@@ -2105,7 +2129,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   // Hide a started row in the same render as its timeline event. Waiting for
   // the admission HTTP response can leave "Starting" visible behind the chat.
   const queuedMessages = useMemo(() => {
-    const pid = projectStore.activeProjectId;
+    const pid = sessionProjectId;
     if (!pid) return [];
     const project = projectStore.getProjectById(pid);
     return (project?.queuedMessages || [])
@@ -2128,7 +2152,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           m.source !== 'remote_control' &&
           !interruptedRun,
       }));
-  }, [interruptedRun, projectStore, queueAction, startedQueueRunIds]);
+  }, [
+    interruptedRun,
+    projectStore,
+    sessionProjectId,
+    queueAction,
+    startedQueueRunIds,
+  ]);
 
   useEffect(() => {
     if (!activeProjectId) return;
@@ -2145,7 +2175,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   ]);
 
   useEffect(() => {
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     if (!projectId) return;
     let cancelled = false;
     void listPendingFollowUpRequests(projectId)
@@ -2192,12 +2222,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [projectStore, projectStore.activeProjectId]);
+  }, [projectStore, sessionProjectId]);
 
   useEffect(() => {
     if (
       !admittedQueuedRun ||
-      admittedQueuedRun.projectId !== projectStore.activeProjectId
+      admittedQueuedRun.projectId !== sessionProjectId
     ) {
       return;
     }
@@ -2227,11 +2257,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     eventNativeProjectSnapshot?.revision,
     eventNativeProjectSnapshot?.view.runs,
     projectStore,
-    projectStore.activeProjectId,
+    sessionProjectId,
   ]);
 
   useEffect(() => {
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     const activeId = chatStore?.activeTaskId;
     if (
       !projectId ||
@@ -2318,6 +2348,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     queuedMessages,
     queueAction,
     followUpAdmissionRevision,
+    sessionProjectId,
   ]);
 
   useEffect(() => {
@@ -2332,11 +2363,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
 
   const handleConfirmTask = async (taskId?: string) => {
     const _taskId = taskId || chatStore.activeTaskId;
-    if (!_taskId || !projectStore.activeProjectId) {
+    if (!_taskId || !sessionProjectId) {
       return;
     }
     setLoading(true);
-    await chatStore.handleConfirmTask(projectStore.activeProjectId, _taskId);
+    await chatStore.handleConfirmTask(sessionProjectId, _taskId);
     setLoading(false);
   };
 
@@ -2424,7 +2455,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
 
   const handleTaskControl = async (action: 'pause' | 'resume') => {
     const taskId = chatStore.activeTaskId;
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     if (!taskId || !projectId || isPauseResumeLoading) return;
     setIsPauseResumeLoading(true);
     try {
@@ -2451,7 +2482,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     expectedTaskId?: string
   ) => {
     const state = projectStore;
-    const projectId = state.activeProjectId;
+    const projectId = sessionProjectId;
     if (!projectId || queueActionRef.current || queueWaitingReason) return;
     const queued = state
       .getProjectById(projectId)
@@ -2529,7 +2560,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   // Edit query handler
   const handleEditQuery = async () => {
     const taskId = chatStore.activeTaskId as string;
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
 
     // Early validation
     if (!projectId) {
@@ -2626,14 +2657,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   };
 
   const handleReorderTaskQueue = (id: string, targetId: string) => {
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     if (!projectId || queueActionRef.current || queuedDispatchRef.current)
       return;
     projectStore.reorderQueuedMessage(projectId, id, targetId);
   };
 
   const handleRemoveTaskQueue = async (task_id: string) => {
-    const project_id = projectStore.activeProjectId;
+    const project_id = sessionProjectId;
     if (queueActionRef.current?.projectId === project_id) return;
     if (!project_id) {
       console.error('No active project ID found');
@@ -2897,7 +2928,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           shouldRenderEventNativeTimeline &&
           activeProjectId ? (
             <EventNativeProjectTimeline
-              chatStore={projectStore.getActiveChatStore() ?? undefined}
+              chatStore={
+                projectStore.getActiveChatStore(
+                  sessionProjectId ?? undefined
+                ) ?? undefined
+              }
               detailLevel={chatTimelineDetailLevel}
               paused={composerTaskControlState === 'paused'}
               projectId={activeProjectId}
@@ -3008,7 +3043,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         )}
 
         {chatStore.activeTaskId && hasAnyMessages ? (
-          <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />
+          <div id={overlaySlotId} className="contents" />
         ) : null}
         {shouldRenderBottomBoxOverlay && (
           <div
@@ -3083,7 +3118,10 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                 onSavePlan={async () => {
                   if (chatStore.activeTaskId) {
                     setLoading(true);
-                    await chatStore.savePlan(chatStore.activeTaskId);
+                    await chatStore.savePlan(
+                      chatStore.activeTaskId,
+                      activeProjectId
+                    );
                     setLoading(false);
                   }
                 }}

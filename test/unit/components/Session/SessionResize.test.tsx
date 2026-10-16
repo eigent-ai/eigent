@@ -142,6 +142,11 @@ vi.mock('@/components/Session/PreviewPanel', () => ({
 vi.mock('@/components/Session/SidePanel', () => ({
   SessionSidePanel: () => <div data-testid="session-side-panel-content" />,
 }));
+vi.mock('@/hooks/useSessionPageTabStore', () => ({
+  useSessionPageTabStore: (
+    selector: (state: typeof mocks.pageState) => unknown
+  ) => selector(mocks.pageState),
+}));
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
   default: () => ({
     chatStore: mocks.projectState.chatStoreAvailable ? mocks.chatState : null,
@@ -158,16 +163,22 @@ vi.mock('@/lib/sessionMode', () => ({
 vi.mock('@/store/pageTabStore', () => ({
   getSessionPreviewSlice: (state: typeof mocks.pageState) => state.previewSlice,
   NEW_SESSION_DRAFT_SCOPE: 'new-session-draft',
-  usePageTabStore: (selector: (state: typeof mocks.pageState) => unknown) =>
-    selector(mocks.pageState),
+  usePageTabStore: Object.assign(
+    (selector: (state: typeof mocks.pageState) => unknown) =>
+      selector(mocks.pageState),
+    { getState: () => mocks.pageState }
+  ),
   WorkspaceTab: { Project: 'project', NewProject: 'new-project' },
 }));
 vi.mock('@/store/projectRuntimeStore', () => ({
-  useProjectRuntimeStore: (
-    selector: (state: {
-      historyLoadingProjectIds: Record<string, boolean>;
-    }) => unknown
-  ) => selector({ historyLoadingProjectIds: {} }),
+  useProjectRuntimeStore: Object.assign(
+    (
+      selector: (state: {
+        historyLoadingProjectIds: Record<string, boolean>;
+      }) => unknown
+    ) => selector({ ...mocks.projectState, historyLoadingProjectIds: {} }),
+    { getState: () => mocks.projectState }
+  ),
 }));
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: (
@@ -309,7 +320,7 @@ describe('Session preview resize', () => {
 
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
       function () {
-        return rect(this.id === 'session-side-panel' ? 0 : 1200);
+        return rect(this.hasAttribute('data-session-side-panel') ? 0 : 1200);
       }
     );
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {

@@ -20,6 +20,12 @@ import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { getSessionMetaDisplayName } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
@@ -64,22 +70,63 @@ import { SessionSidePanel } from './SidePanel';
 interface SessionProps {
   /** New session page: no Project until the first task creates one. */
   isNewProject?: boolean;
+  /** Pane-owned Session; omitted for the existing active-Session route. */
+  projectId?: string | null;
 }
 
-export default function Session({ isNewProject = false }: SessionProps) {
+export default function Session({
+  projectId,
+  isNewProject = false,
+}: SessionProps) {
+  const inheritedProjectId = useSessionProjectId();
+  const id = projectId === undefined ? inheritedProjectId : projectId;
+  const focus = () => {
+    if (id !== useProjectRuntimeStore.getState().activeProjectId)
+      useProjectRuntimeStore.getState().setActiveProject(id);
+    usePageTabStore
+      .getState()
+      .setSessionPreviewProject(isNewProject ? NEW_SESSION_DRAFT_SCOPE : id);
+  };
+  return (
+    <SessionPaneProvider
+      projectId={id}
+      previewScopeId={isNewProject ? NEW_SESSION_DRAFT_SCOPE : id}
+      retain={projectId !== undefined}
+    >
+      <div
+        data-session-pane={id ?? ''}
+        className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
+        onPointerDownCapture={focus}
+        onFocusCapture={focus}
+      >
+        <SessionContent isNewProject={isNewProject} />
+      </div>
+    </SessionPaneProvider>
+  );
+}
+
+function SessionContent({ isNewProject = false }: SessionProps) {
   const { t } = useTranslation();
   const shouldReduceMotion = Boolean(useReducedMotion());
   const { chatStore, projectStore } = useChatStoreAdapter();
-  const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const closeSessionPreview = usePageTabStore((s) => s.closeSessionPreview);
-  const setSessionPreviewProject = usePageTabStore(
+  const sessionProjectId = useSessionProjectId();
+  const isFocused = useIsFocusedSessionPane();
+  const activeWorkspaceTab = useSessionPageTabStore(
+    (s) => s.activeWorkspaceTab
+  );
+  const setActiveWorkspaceTab = useSessionPageTabStore(
+    (s) => s.setActiveWorkspaceTab
+  );
+  const closeSessionPreview = useSessionPageTabStore(
+    (s) => s.closeSessionPreview
+  );
+  const setSessionPreviewProject = useSessionPageTabStore(
     (s) => s.setSessionPreviewProject
   );
-  const sessionPreviewProjectId = usePageTabStore(
+  const sessionPreviewProjectId = useSessionPageTabStore(
     (s) => s.sessionPreviewProjectId
   );
-  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectId = sessionProjectId;
   // The New session page keeps the last active Project selected until its
   // first task creates a replacement, so its columns use a draft scope.
   const scopeId = isNewProject
@@ -89,9 +136,9 @@ export default function Session({ isNewProject = false }: SessionProps) {
   // switch the scope effect below lags the first render by one frame, and
   // rendering the stale slice would flash the previous Session's browser.
   const previewOpen =
-    usePageTabStore((s) => getSessionPreviewSlice(s).open) &&
+    useSessionPageTabStore((s) => getSessionPreviewSlice(s).open) &&
     sessionPreviewProjectId === scopeId;
-  const previewOpening = usePageTabStore((s) => s.sessionPreviewOpening);
+  const previewOpening = useSessionPageTabStore((s) => s.sessionPreviewOpening);
   const sessionExecution = useSessionExecution(activeProjectId);
   const isHistoryLoadingActiveProject = useProjectRuntimeStore((s) =>
     activeProjectId
@@ -112,15 +159,17 @@ export default function Session({ isNewProject = false }: SessionProps) {
   const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
 
   // `undefined` = no saved choice yet; the first task start may open it.
-  const summaryPreference = usePageTabStore((s) =>
+  const summaryPreference = useSessionPageTabStore((s) =>
     scopeId ? s.sessionSummaryOpenByProject[scopeId] : undefined
   );
   const summaryOpen = summaryPreference ?? false;
-  const setSessionSummaryOpen = usePageTabStore((s) => s.setSessionSummaryOpen);
-  const taskStarted = usePageTabStore((s) =>
+  const setSessionSummaryOpen = useSessionPageTabStore(
+    (s) => s.setSessionSummaryOpen
+  );
+  const taskStarted = useSessionPageTabStore((s) =>
     scopeId ? Boolean(s.sessionTaskStartedProjectIds[scopeId]) : false
   );
-  const clearSessionTaskStarted = usePageTabStore(
+  const clearSessionTaskStarted = useSessionPageTabStore(
     (s) => s.clearSessionTaskStarted
   );
   const [summaryPopoverOpen, setSummaryPopoverOpen] = useState(false);
@@ -128,8 +177,11 @@ export default function Session({ isNewProject = false }: SessionProps) {
     null
   );
   const [isExpandedOverlayOpen, setIsExpandedOverlayOpen] = useState(false);
-  const sessionSidePanelToggleRequestId = usePageTabStore(
+  const sessionSidePanelToggleRequestId = useSessionPageTabStore(
     (s) => s.sessionSidePanelToggleRequestId
+  );
+  const sessionSidePanelToggleProjectId = useSessionPageTabStore(
+    (s) => s.sessionSidePanelToggleProjectId
   );
   const handledSidePanelToggleRequestId = useRef(
     sessionSidePanelToggleRequestId
@@ -140,9 +192,9 @@ export default function Session({ isNewProject = false }: SessionProps) {
   }, [isNewProject, activeProjectId]);
 
   const getAllChatStoresMemoized = useMemo(() => {
-    if (!projectStore.activeProjectId) return [];
-    return projectStore.getAllChatStores(projectStore.activeProjectId);
-  }, [projectStore]);
+    if (!sessionProjectId) return [];
+    return projectStore.getAllChatStores(sessionProjectId);
+  }, [projectStore, sessionProjectId]);
 
   const workforcePanelKey = chatStore?.activeTaskId ?? '';
 
@@ -192,7 +244,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
   useEffect(() => {
     // The New Project shell stays selected on its own tab — never redirect
     // away from it (it is empty until the user sends the first message).
-    if (isNewProject) return;
+    if (isNewProject || !isFocused) return;
     // Only redirect while the live project tab is active; ignore files/triggers/etc.
     if (activeWorkspaceTab !== 'project') return;
     // Wait until the project chat store is ready (selectSession still loading).
@@ -217,6 +269,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
       setActiveWorkspaceTab('workforce');
     }
   }, [
+    isFocused,
     activeIsReplayProject,
     activeWorkspaceTab,
     chatStore,
@@ -254,7 +307,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
 
   useEffect(() => {
     setIsExpandedOverlayOpen(false);
-  }, [projectStore.activeProjectId]);
+  }, [sessionProjectId]);
 
   const isSessionTab =
     activeWorkspaceTab === WorkspaceTab.Project ||
@@ -304,8 +357,21 @@ export default function Session({ isNewProject = false }: SessionProps) {
     )
       return;
     handledSidePanelToggleRequestId.current = sessionSidePanelToggleRequestId;
-    if (isSessionTab) toggleSidePanel();
-  }, [isSessionTab, sessionSidePanelToggleRequestId, toggleSidePanel]);
+    if (
+      isSessionTab &&
+      (sessionSidePanelToggleProjectId
+        ? sessionSidePanelToggleProjectId === scopeId
+        : isFocused)
+    )
+      toggleSidePanel();
+  }, [
+    isSessionTab,
+    isFocused,
+    sessionSidePanelToggleRequestId,
+    sessionSidePanelToggleProjectId,
+    scopeId,
+    toggleSidePanel,
+  ]);
 
   useEffect(() => {
     setSummaryPopoverOpen(false);
@@ -375,8 +441,8 @@ export default function Session({ isNewProject = false }: SessionProps) {
   // effect leaves a window where their mutations are silently dropped because
   // setSessionPreviewSlice has no project to own them yet.
   useLayoutEffect(() => {
-    setSessionPreviewProject(scopeId);
-  }, [scopeId, setSessionPreviewProject]);
+    if (isFocused) setSessionPreviewProject(scopeId);
+  }, [scopeId, isFocused, setSessionPreviewProject]);
 
   const previewResize = usePreviewResize({
     rowRef: chatRowRef,
@@ -510,7 +576,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
           </div>
           {showSummary ? (
             <div
-              id="session-side-panel"
+              data-session-side-panel
               style={{ width: SUMMARY_WIDTH }}
               className="flex min-h-0 shrink-0 flex-col overflow-hidden"
             >

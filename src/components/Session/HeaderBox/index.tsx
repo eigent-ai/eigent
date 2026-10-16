@@ -21,10 +21,11 @@ import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { getSessionPreviewSlice } from '@/store/pageTabStore';
 import {
   chatTimelineDetailLevels,
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
@@ -95,15 +96,19 @@ export function HeaderBox({
     COMPACT_WIDTH_THRESHOLD
   );
   const { appearance } = useAuthStore();
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const sessionPreviewOpen = usePageTabStore(
+  const setActiveWorkspaceTab = useSessionPageTabStore(
+    (s) => s.setActiveWorkspaceTab
+  );
+  const sessionPreviewOpen = useSessionPageTabStore(
     (s) => getSessionPreviewSlice(s).open
   );
-  const toggleSessionPreview = usePageTabStore((s) => s.toggleSessionPreview);
-  const chatTimelineDetailLevel = usePageTabStore(
+  const toggleSessionPreview = useSessionPageTabStore(
+    (s) => s.toggleSessionPreview
+  );
+  const chatTimelineDetailLevel = useSessionPageTabStore(
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
-  const setChatTimelineDetailLevel = usePageTabStore(
+  const setChatTimelineDetailLevel = useSessionPageTabStore(
     (s) => s.setChatTimelineDetailLevel
   );
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();

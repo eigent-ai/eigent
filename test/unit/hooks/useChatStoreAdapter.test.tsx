@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
 import { createChatStoreInstance } from '@/store/chatStore';
 import { useProjectStore } from '@/store/projectStore';
 import { act, renderHook } from '@testing-library/react';
@@ -93,5 +94,56 @@ describe('useChatStoreAdapter', () => {
     expect(
       observedFrames.filter(({ projectId }) => projectId === secondProjectId)
     ).toEqual([{ projectId: secondProjectId, taskId: secondTaskId }]);
+  });
+  it('keeps two mounted pane subscriptions on their own Session as focus moves', () => {
+    const a = createChatStoreInstance();
+    const b = createChatStoreInstance();
+    a.getState().create('task-a');
+    b.getState().create('task-b');
+    const project = (id: string, store: typeof a) => ({
+      id,
+      name: id,
+      createdAt: 1,
+      updatedAt: 1,
+      mode: null,
+      workdirMode: null,
+      chatStores: { chat: store },
+      chatStoreTimestamps: { chat: 1 },
+      activeChatId: 'chat',
+      queuedMessages: [],
+      metadata: {},
+    });
+    useProjectStore.setState({
+      activeProjectId: 'a',
+      projects: { a: project('a', a), b: project('b', b) },
+    });
+    const first = renderHook(() => useChatStoreAdapter(), {
+      wrapper: ({ children }) => (
+        <SessionPaneProvider projectId="a">{children}</SessionPaneProvider>
+      ),
+    });
+    const second = renderHook(() => useChatStoreAdapter(), {
+      wrapper: ({ children }) => (
+        <SessionPaneProvider projectId="b">{children}</SessionPaneProvider>
+      ),
+    });
+    expect(first.result.current.chatStore.activeTaskId).toBe('task-a');
+    expect(second.result.current.chatStore.activeTaskId).toBe('task-b');
+    act(() => useProjectStore.getState().setActiveProject('b'));
+    act(() => a.getState().create('task-a-next'));
+    expect(first.result.current.chatStore.activeTaskId).toBe('task-a-next');
+    expect(second.result.current.chatStore.activeTaskId).toBe('task-b');
+    expect(first.result.current.projectStore.activeProjectId).toBe('b');
+    expect(first.result.current.projectId).toBe('a');
+  });
+
+  it('never falls back to the active Session for an explicit empty pane', () => {
+    const { result } = renderHook(() => useChatStoreAdapter(), {
+      wrapper: ({ children }) => (
+        <SessionPaneProvider projectId={null}>{children}</SessionPaneProvider>
+      ),
+    });
+    expect(result.current.projectId).toBeNull();
+    expect(result.current.chatStore).toBeNull();
   });
 });

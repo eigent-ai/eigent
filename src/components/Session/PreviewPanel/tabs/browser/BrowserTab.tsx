@@ -15,11 +15,12 @@
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { isLocalPreviewUrl } from '@/lib/browserPreviewHandoff';
 import { normalizeBrowserUrl } from '@/lib/browserUrl';
 import { cn } from '@/lib/utils';
-import { type SessionBrowserTab, usePageTabStore } from '@/store/pageTabStore';
+import { type SessionBrowserTab } from '@/store/pageTabStore';
 import { ArrowLeft, ArrowRight, ExternalLink, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -53,10 +54,10 @@ export function BrowserTab({
 }: BrowserTabProps) {
   const { t } = useTranslation();
   const host = useHost();
-  const updateBrowserPreviewTab = usePageTabStore(
+  const updateBrowserPreviewTab = useSessionPageTabStore(
     (state) => state.updateBrowserPreviewTab
   );
-  const setPreviewBrowserViewport = usePageTabStore(
+  const setPreviewBrowserViewport = useSessionPageTabStore(
     (state) => state.setPreviewBrowserViewport
   );
 

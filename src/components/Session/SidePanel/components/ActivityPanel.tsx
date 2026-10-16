@@ -59,9 +59,9 @@ import {
   isProjectSessionRunActive,
   useProjectSessionOverview,
 } from '@/hooks/useProjectSessionOverview';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
-import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -602,12 +602,12 @@ export function SessionActivityPanel({
   const managedPreview = useSessionArtifactPreview();
   const { t } = useTranslation();
   const host = useHost();
-  const { chatStore } = useChatStoreAdapter();
+  const { chatStore, projectId: chatProjectId } = useChatStoreAdapter();
   const projectStore = useProjectRuntimeStore();
   const { projectId } = useProjectEventRuntime();
   const overview = useProjectSessionOverview(projectId);
   const scopedChatStore =
-    !managedPreview && projectId && projectStore.activeProjectId === projectId
+    !managedPreview && projectId && chatProjectId === projectId
       ? chatStore
       : null;
   const activeTaskId = scopedChatStore?.activeTaskId ?? null;
@@ -627,14 +627,16 @@ export function SessionActivityPanel({
   );
   const skills = useSkillsStore((state) => state.skills);
   const [connectors, setConnectors] = useState<ConnectorProvider[]>([]);
-  const requestTaskBoxFocus = usePageTabStore(
+  const requestTaskBoxFocus = useSessionPageTabStore(
     (state) => state.requestTaskBoxFocus
   );
-  const setScrollToTurnRequest = usePageTabStore(
+  const setScrollToTurnRequest = useSessionPageTabStore(
     (state) => state.setScrollToTurnRequest
   );
-  const openFilePreview = usePageTabStore((state) => state.openFilePreview);
-  const openBrowserPreview = usePageTabStore(
+  const openFilePreview = useSessionPageTabStore(
+    (state) => state.openFilePreview
+  );
+  const openBrowserPreview = useSessionPageTabStore(
     (state) => state.openBrowserPreview
   );
   const [selectedAgent, setSelectedAgent] = useState<SessionAgentItem | null>(

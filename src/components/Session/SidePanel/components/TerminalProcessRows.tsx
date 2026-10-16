@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import {
   getShellRegistryRevision,
@@ -40,7 +41,7 @@ export function useTerminalProcessRows(projectId: string | null) {
   const processes = useTerminalProcesses(projectId);
   const legacySources = useSessionTerminalSources({ trackOutput: false });
   useSyncExternalStore(subscribeShellRegistry, getShellRegistryRevision);
-  const tabs = usePageTabStore((state) =>
+  const tabs = useSessionPageTabStore((state) =>
     projectId
       ? (state.sessionPreviewByProject[projectId]?.tabs ?? EMPTY_TABS)
       : EMPTY_TABS
@@ -60,8 +61,12 @@ export function useTerminalProcessRows(projectId: string | null) {
         error: null,
         open: () => {
           const store = usePageTabStore.getState();
-          if (store.sessionPreviewProjectId === projectId)
-            store.openAgentTerminalPreview(source.id, source.agentName);
+          store.openAgentTerminalPreview(
+            source.id,
+            source.agentName,
+            undefined,
+            projectId
+          );
         },
         stop: async () => {},
       })),
@@ -95,12 +100,12 @@ export function useTerminalProcessRows(projectId: string | null) {
           error: state.stopError ?? state.error,
           open: () => {
             const store = usePageTabStore.getState();
-            if (store.sessionPreviewProjectId !== projectId) return;
-            if (state.url && !state.exited) store.openBrowserPreview(state.url);
+            if (state.url && !state.exited)
+              store.openBrowserPreview(state.url, projectId);
             else {
               if (!store.sessionPreviewByProject[projectId!]?.open)
-                store.toggleSessionPreview();
-              store.selectSessionPreviewTab(tab.id);
+                store.toggleSessionPreview(undefined, projectId);
+              store.selectSessionPreviewTab(tab.id, projectId);
             }
           },
           stop: async () => {

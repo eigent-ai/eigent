@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import {
   isConversationAnchor,
   selectRenderableChatNodes,
@@ -28,7 +29,6 @@ import {
 } from '@/lib/projector/chat/presentation';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
-import { usePageTabStore } from '@/store/pageTabStore';
 import type { ChatTimelineDetailLevel } from '@/types/chatTimeline';
 import {
   AgentStep,
@@ -450,10 +450,10 @@ export function EventNativeProjectTimeline({
   const ignoreAnchorScrollRef = useRef(false);
   const anchorAnimationRef = useRef<ChatTimelineScrollAnimation | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const scrollToTurnRequest = usePageTabStore(
+  const scrollToTurnRequest = useSessionPageTabStore(
     (state) => state.scrollToTurnRequest
   );
-  const setScrollToTurnRequest = usePageTabStore(
+  const setScrollToTurnRequest = useSessionPageTabStore(
     (state) => state.setScrollToTurnRequest
   );
   const latestNode = visibleNodes.at(-1);

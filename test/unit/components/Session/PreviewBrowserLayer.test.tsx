@@ -61,6 +61,37 @@ describe('PreviewBrowserLayer', () => {
     usePageTabStore.getState().choosePreviewTabType(chooserId, 'browser');
   });
 
+  it('shows two pane browsers with independent bounds and parks only the removed viewport', async () => {
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://a.example', 'project-a');
+    store.openBrowserPreview('https://b.example', 'project-b');
+    store.setPreviewBrowserViewport(
+      { x: 0, y: 0, width: 600, height: 500 },
+      'project-a'
+    );
+    store.setPreviewBrowserViewport(
+      { x: 600, y: 0, width: 600, height: 500 },
+      'project-b'
+    );
+    const tabA = getBrowserTab();
+    const tabB = usePageTabStore
+      .getState()
+      .sessionPreviewByProject['project-b'].tabs.find(
+        (t) => t.type === 'browser'
+      )!;
+    renderLayer();
+    await waitFor(() =>
+      expect(guestContainer(tabA.webviewId)!.style.opacity).toBe('1')
+    );
+    expect(guestContainer(tabB.webviewId)!.style.left).toBe('600px');
+    act(() => store.setPreviewBrowserViewport(null, 'project-a'));
+    await waitFor(() =>
+      expect(guestContainer(tabA.webviewId)!.style.visibility).toBe('hidden')
+    );
+    expect(guestContainer(tabB.webviewId)!.style.visibility).not.toBe('hidden');
+    store.setPreviewBrowserViewport(null, 'project-b');
+  });
+
   it('mounts a <webview> guest once a browser tab has a URL', () => {
     renderLayer();
     const tab = getBrowserTab();

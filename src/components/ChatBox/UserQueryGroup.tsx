@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 import { useProjectedRunStatus, useRunWriterWait } from '@/lib/runEvents';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
@@ -23,8 +25,6 @@ import {
   UNSUCCESSFUL_RUN_STATUSES,
   type VanillaChatStore,
 } from '@/store/chatStore';
-import { usePageTabStore } from '@/store/pageTabStore';
-import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
@@ -184,10 +184,12 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const workspaceRoot = useSpaceStore((s) =>
     activeSpaceId ? s.spaces[activeSpaceId]?.rootPath : undefined
   );
-  const openFilePreviewInPanel = usePageTabStore(
+  const openFilePreviewInPanel = useSessionPageTabStore(
     (state) => state.openFilePreview
   );
-  const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
+  const openReviewPreview = useSessionPageTabStore(
+    (state) => state.openReviewPreview
+  );
   const openFilePreview = useCallback(
     (file: FileInfo) => {
       const resolvedPath =
@@ -206,9 +208,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     : undefined;
   // The canonical Run says when a start is queued behind another task's
   // writes; the legacy stream has no event for it.
-  const activeProjectId = useProjectRuntimeStore(
-    (state) => state.activeProjectId
-  );
+  const activeProjectId = useSessionProjectId();
   const writerWait = useRunWriterWait(activeProjectId, activeTaskId);
   const projectedRunStatus = useProjectedRunStatus(
     activeProjectId,
@@ -261,12 +261,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   useEffect(() => {
     setFailureEvidence(null);
     if (!ownsFailureSummary || !activeTaskId) return;
-    return chatStore
-      .getState()
-      .observeTaskFailureFacts(activeTaskId, (facts) => {
+    return chatStore.getState().observeTaskFailureFacts(
+      activeTaskId,
+      (facts) => {
         setFailureEvidence({ taskId: activeTaskId, owner: chatStore, facts });
-      });
-  }, [ownsFailureSummary, activeTaskId, chatStore]);
+      },
+      activeProjectId
+    );
+  }, [ownsFailureSummary, activeTaskId, chatStore, activeProjectId]);
   const failureFacts =
     failureEvidence?.taskId === activeTaskId &&
     failureEvidence?.owner === chatStore

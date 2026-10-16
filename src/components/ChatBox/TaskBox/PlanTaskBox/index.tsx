@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useSessionPane } from '@/hooks/useSessionPane';
 import type { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { AnimatePresence } from 'framer-motion';
@@ -43,6 +44,7 @@ export function PlanTaskBox({
   userPrompt,
   allowOverlay = true,
 }: PlanTaskBoxProps) {
+  const slotId = useSessionPane()?.overlaySlotId ?? PLAN_OVERLAY_SLOT_ID;
   const [expanded, setExpanded] = useState(false);
   const [overlayRoot, setOverlayRoot] = useState<HTMLElement | null>(null);
   const [bottomOffsetPx, setBottomOffsetPx] = useState(160);
@@ -55,19 +57,19 @@ export function PlanTaskBox({
     }
 
     const syncOverlayRoot = () => {
-      setOverlayRoot(document.getElementById(PLAN_OVERLAY_SLOT_ID));
+      setOverlayRoot(document.getElementById(slotId));
     };
 
     syncOverlayRoot();
     const id = window.requestAnimationFrame(syncOverlayRoot);
     return () => window.cancelAnimationFrame(id);
-  }, [allowOverlay]);
+  }, [allowOverlay, slotId]);
 
   // Track the current BottomBox height so the overlay sits just above it.
   useEffect(() => {
     if (!expanded || !allowOverlay) return;
     const measure = () => {
-      const slot = document.getElementById(PLAN_OVERLAY_SLOT_ID);
+      const slot = document.getElementById(slotId);
       const bottomBoxEl =
         slot?.parentElement?.querySelector<HTMLElement>(
           '[data-bottom-box-overlay]'
@@ -76,7 +78,7 @@ export function PlanTaskBox({
       setBottomOffsetPx(h);
     };
     measure();
-    const slot = document.getElementById(PLAN_OVERLAY_SLOT_ID);
+    const slot = document.getElementById(slotId);
     const bottomBoxEl =
       slot?.parentElement?.querySelector<HTMLElement>(
         '[data-bottom-box-overlay]'
@@ -85,7 +87,7 @@ export function PlanTaskBox({
     const observer = new ResizeObserver(measure);
     observer.observe(bottomBoxEl);
     return () => observer.disconnect();
-  }, [allowOverlay, expanded]);
+  }, [allowOverlay, expanded, slotId]);
 
   const task = useSyncExternalStore(
     (cb) => chatStore.subscribe(cb),

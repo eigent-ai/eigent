@@ -14,8 +14,8 @@
 
 import { useTerminalProcesses } from '@/components/Session/PreviewPanel/tabs/terminal/useTerminalProcesses';
 import { Button } from '@/components/ui/button';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { openTerminalProcessPreview } from '@/lib/terminalPreview';
-import { usePageTabStore } from '@/store/pageTabStore';
 
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
@@ -83,7 +83,9 @@ export function CallRow({
   reducedMotion,
 }: CallRowProps) {
   const { t } = useTranslation();
-  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const projectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
   const processes = useTerminalProcesses(
     call.actionKind === 'command' ? projectId : null
   );

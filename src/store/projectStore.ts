@@ -31,6 +31,7 @@ import {
   selectSessionNavRun,
   SESSION_NAV_IDLE_LEAD,
 } from '@/lib/sessionNavLead';
+import { hasSessionPane } from '@/lib/sessionPaneLifetime';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import {
   recoverSpaceSessionModel,
@@ -1506,7 +1507,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     for (const staleProjectId of staleProjectIds) {
       // The destination is either already active or about to become active.
       // Never let an older asynchronous retirement evict its fresh runtime.
-      if (staleProjectId === nextProjectId) continue;
+      if (staleProjectId === nextProjectId || hasSessionPane(staleProjectId))
+        continue;
 
       // Never evict a project that still has a live run. Eviction drops the
       // runtime chat stores, so returning to the project rebuilds it from
@@ -1551,7 +1553,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             if (
               !project ||
               !latest.staleProjectIds.has(staleProjectId) ||
-              latest.activeProjectId === staleProjectId
+              latest.activeProjectId === staleProjectId ||
+              hasSessionPane(staleProjectId)
             )
               return null;
             const tasks = Object.values(project.chatStores).flatMap((store) =>

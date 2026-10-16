@@ -3,7 +3,9 @@
 > **Status: proposal.** This plan simplifies the Session layout, lets a Space
 > show two or three pieces of content side by side, and rebuilds model
 > comparison on top of that split view. It is delivered as six pull requests
-> (§9). Nothing here is implemented yet.
+> (§9). PR 2 is implemented locally on `refactor/session-pane-scope`; see
+> [its verification notes](session-pane-scope-verification.md). The other PRs
+> remain separate deliverables.
 
 ## 1. Goal
 
@@ -110,6 +112,15 @@ highlight, keyboard shortcuts and global commands keep working.
 Code outside a pane keeps its current behavior. Request-style commands in
 `pageTabStore` (for example scroll-to-turn and side-panel toggles) target the
 focused pane.
+
+PR 2 implementation: `<Session projectId={projectId} />` establishes a
+`SessionPaneProvider`. `useSessionProjectId` and `useChatStoreAdapter` read
+that identity; callers outside a provider retain the active-Session fallback.
+`useSessionPageTabStore` binds preview reads and mutations to the pane,
+including callbacks that settle after focus moves. Pointer and keyboard focus
+update `activeProjectId` and the default command target. Mounted panes retain
+their history runtime, plan overlay destination, and failure evidence while
+another pane is focused.
 
 ### 5.3 Opening, closing and focus
 

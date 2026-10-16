@@ -113,7 +113,10 @@ vi.mock('@/store/authStore', () => ({
   useWorkerList: () => [],
 }));
 vi.mock('@/store/projectStore', () => ({
-  useProjectStore: { getState: () => mocks.projectStore },
+  useProjectStore: Object.assign(
+    (selector: any) => selector(mocks.projectStore),
+    { getState: () => mocks.projectStore }
+  ),
   useProjectRuntimeStore: { getState: () => mocks.projectStore },
   waitForPendingStaleRuntimeEviction: vi.fn(async () => undefined),
 }));

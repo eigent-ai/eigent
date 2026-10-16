@@ -17,6 +17,7 @@ import {
   type ArtifactChangeListProps,
 } from '@/components/ChatBox/MessageItem/ArtifactChangeList';
 import { useSessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
 import {
@@ -34,7 +35,6 @@ import {
   type WorkspaceGitIdentity,
 } from '@/service/workspaceGitApi';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { FileText } from 'lucide-react';
@@ -167,7 +167,7 @@ export function useRunFileDiffStats(
   projectId?: string,
   active = true
 ): RunFileDiffStats | null {
-  const previewProjectId = usePageTabStore(
+  const previewProjectId = useSessionPageTabStore(
     (state) => state.sessionPreviewProjectId
   );
   const resolvedProjectId = projectId ?? previewProjectId;
@@ -227,7 +227,7 @@ export function useRunFileInfo({
 export function RunFilesGroup(props: RunFilesProps) {
   const managedPreview = useSessionArtifactPreview();
   const files = useRunFileInfo(props);
-  const previewProjectId = usePageTabStore(
+  const previewProjectId = useSessionPageTabStore(
     (state) => state.sessionPreviewProjectId
   );
   const projectId = props.projectId ?? previewProjectId;
@@ -237,8 +237,12 @@ export function RunFilesGroup(props: RunFilesProps) {
   const workspaceRoot = useSpaceStore((state) =>
     selectProjectWorkspaceRoot(state, projectId, runtimeSpaceId)
   );
-  const openFilePreview = usePageTabStore((state) => state.openFilePreview);
-  const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
+  const openFilePreview = useSessionPageTabStore(
+    (state) => state.openFilePreview
+  );
+  const openReviewPreview = useSessionPageTabStore(
+    (state) => state.openReviewPreview
+  );
 
   return (
     <RunArtifactChangeList

@@ -13,7 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { AnimatePresence } from 'framer-motion';
 import React, {
   useCallback,
@@ -42,6 +43,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   scrollBottomInsetPx,
 }) => {
   const { projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
   const [, setChatRevision] = useState(0);
   const anchorFrameRef = useRef<number | null>(null);
@@ -49,7 +51,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Get all chat stores for the active project
-  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectId = sessionProjectId;
   const chatStores = useMemo(
     () =>
       activeProjectId ? projectStore.getAllChatStores(activeProjectId) : [],
@@ -251,11 +253,21 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   }, [chatStores, scrollContainerRef]);
 
   // Scroll to a specific query group when triggered from the sidebar
-  const scrollToQueryId = usePageTabStore((s) => s.scrollToQueryId);
-  const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
+  const scrollToQueryProjectId = useSessionPageTabStore(
+    (s) => s.scrollToQueryProjectId
+  );
+  const scrollToQueryId = useSessionPageTabStore((s) => s.scrollToQueryId);
+  const setScrollToQueryId = useSessionPageTabStore(
+    (s) => s.setScrollToQueryId
+  );
 
   useEffect(() => {
-    if (!scrollToQueryId || !scrollContainerRef.current) return;
+    if (
+      !scrollToQueryId ||
+      !scrollContainerRef.current ||
+      (scrollToQueryProjectId && scrollToQueryProjectId !== activeProjectId)
+    )
+      return;
 
     const el = scrollContainerRef.current.querySelector(
       `[data-query-id="${scrollToQueryId}"]`
@@ -269,11 +281,19 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     }
 
     setScrollToQueryId(null);
-  }, [scrollToQueryId, setScrollToQueryId, scrollContainerRef]);
+  }, [
+    scrollToQueryId,
+    scrollToQueryProjectId,
+    activeProjectId,
+    setScrollToQueryId,
+    scrollContainerRef,
+  ]);
 
   // Scroll to a historical Run when requested by the Session side panel.
-  const scrollToTurnRequest = usePageTabStore((s) => s.scrollToTurnRequest);
-  const setScrollToTurnRequest = usePageTabStore(
+  const scrollToTurnRequest = useSessionPageTabStore(
+    (s) => s.scrollToTurnRequest
+  );
+  const setScrollToTurnRequest = useSessionPageTabStore(
     (s) => s.setScrollToTurnRequest
   );
 
@@ -309,9 +329,15 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   // TaskCard listens to the same counter to expand itself; we own the
   // scroll. The `data-task-card="true"` attribute is set on a query
   // group's outer wrapper only when its TaskCard is currently visible.
-  const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
-  const taskBoxFocusProjectId = usePageTabStore((s) => s.taskBoxFocusProjectId);
-  const taskBoxFocusTaskId = usePageTabStore((s) => s.taskBoxFocusTaskId);
+  const taskBoxFocusRequestId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusRequestId
+  );
+  const taskBoxFocusProjectId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusProjectId
+  );
+  const taskBoxFocusTaskId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusTaskId
+  );
   useEffect(() => {
     if (
       !taskBoxFocusRequestId ||
