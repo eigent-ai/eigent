@@ -4717,6 +4717,28 @@ class SQLiteRunJournal:
                 else None
             )
 
+    def get_effective_environment_specs(
+        self, environment_spec_ids: Iterable[str]
+    ) -> dict[str, EffectiveEnvironmentSpecRecord]:
+        """Load immutable specs for a Run page with one journal lock."""
+        identifiers = list(dict.fromkeys(environment_spec_ids))
+        if not identifiers:
+            return {}
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM effective_environment_specs
+                WHERE environment_spec_id IN (SELECT value FROM json_each(?))
+                """,
+                (json.dumps(identifiers, separators=(",", ":")),),
+            ).fetchall()
+            return {
+                row["environment_spec_id"]: (
+                    self._effective_environment_spec_from_row(row)
+                )
+                for row in rows
+            }
+
     def put_git_repository(
         self,
         *,
@@ -14159,6 +14181,29 @@ class SQLiteRunJournal:
                 (run_id,),
             ).fetchall()
             return [self._attempt_from_row(row) for row in rows]
+
+    def list_attempts_for_runs(
+        self, run_ids: Iterable[str]
+    ) -> dict[str, list[RunAttemptRecord]]:
+        """Load the attempts of a Run page with one journal lock."""
+        identifiers = list(dict.fromkeys(run_ids))
+        if not identifiers:
+            return {}
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM run_attempts
+                WHERE run_id IN (SELECT value FROM json_each(?))
+                ORDER BY run_id, attempt_number
+                """,
+                (json.dumps(identifiers, separators=(",", ":")),),
+            ).fetchall()
+            attempts: dict[str, list[RunAttemptRecord]] = {
+                run_id: [] for run_id in identifiers
+            }
+            for row in rows:
+                attempts[row["run_id"]].append(self._attempt_from_row(row))
+            return attempts
 
     def heartbeat_attempt(
         self,
