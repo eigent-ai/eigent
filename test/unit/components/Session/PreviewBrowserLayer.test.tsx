@@ -21,6 +21,7 @@ import {
   NEW_SESSION_DRAFT_SCOPE,
   usePageTabStore,
 } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -52,6 +53,7 @@ describe('PreviewBrowserLayer', () => {
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
       previewBrowserViewport: null,
+      previewBrowserViewportByProject: {},
     });
     usePageTabStore.getState().setSessionPreviewProject('project-a');
     usePageTabStore.getState().toggleSessionPreview();
@@ -110,6 +112,55 @@ describe('PreviewBrowserLayer', () => {
     expect(webview!.getAttribute('src')).toBe('https://example.com/');
     expect(webview!.getAttribute('partition')).toBe('persist:session-preview');
     expect(getPreviewWebview(tab.webviewId)).toBe(webview);
+  });
+
+  it('does not reuse another pane viewport when focus moves to a browser without bounds', async () => {
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://a.example', 'project-a');
+    store.openBrowserPreview('https://b.example', 'project-b');
+    store.setPreviewBrowserViewport(
+      { x: 40, y: 0, width: 600, height: 500 },
+      'project-a'
+    );
+    const tabA = getBrowserTab();
+    const tabB = getSessionPreviewSlice(
+      usePageTabStore.getState(),
+      'project-b'
+    ).tabs.find((tab) => tab.type === 'browser')!;
+    renderLayer();
+    act(() => store.setSessionPreviewProject('project-b'));
+    await waitFor(() =>
+      expect(guestContainer(tabA.webviewId)!.style.opacity).toBe('1')
+    );
+    expect(guestContainer(tabB.webviewId)!.style.visibility).toBe('hidden');
+    expect(guestContainer(tabA.webviewId)!.style.left).toBe('40px');
+  });
+
+  it('focuses the owning Session when its guest gains focus and cleans up on unmount', async () => {
+    const runtime = useProjectRuntimeStore.getState();
+    runtime.createProject('A', undefined, 'project-a');
+    runtime.createProject('B', undefined, 'project-b');
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://a.example', 'project-a');
+    store.setPreviewBrowserViewport(
+      { x: 0, y: 0, width: 600, height: 500 },
+      'project-a'
+    );
+    const tab = getBrowserTab();
+    const layer = renderLayer();
+    await waitFor(() =>
+      expect(guestContainer(tab.webviewId)!.style.opacity).toBe('1')
+    );
+    const guest = getPreviewWebview(tab.webviewId)!;
+    act(() => guest.dispatchEvent(new FocusEvent('focus')));
+    expect(useProjectRuntimeStore.getState().activeProjectId).toBe('project-a');
+    expect(usePageTabStore.getState().sessionPreviewProjectId).toBe(
+      'project-a'
+    );
+    layer.unmount();
+    act(() => runtime.setActiveProject('project-b'));
+    guest.dispatchEvent(new FocusEvent('focus'));
+    expect(useProjectRuntimeStore.getState().activeProjectId).toBe('project-b');
   });
 
   it('positions the active guest over the published viewport and parks it when closed', async () => {

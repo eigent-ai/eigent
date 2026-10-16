@@ -1140,9 +1140,6 @@ export const usePageTabStore = create<PageTabState>()(
           else delete viewports[id];
           return {
             previewBrowserViewportByProject: viewports,
-            ...(id === state.sessionPreviewProjectId
-              ? { previewBrowserViewport: rect }
-              : {}),
           };
         }),
       setSessionPreviewProject: (projectId) =>

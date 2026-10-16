@@ -21,7 +21,7 @@ import {
   usePageTabStore,
 } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getPreviewWebview,
   type PreviewWebviewElement,
@@ -136,6 +136,14 @@ function PreviewGuest({
   useEffect(() => {
     projectIdRef.current = projectId;
   }, [projectId]);
+  const focusOwner = useCallback(() => {
+    const ownerId = projectIdRef.current;
+    const projects = useProjectRuntimeStore.getState();
+    if (!projects.projects[ownerId]) return;
+    if (projects.activeProjectId !== ownerId)
+      projects.setActiveProject(ownerId);
+    usePageTabStore.getState().setSessionPreviewProject(ownerId);
+  }, []);
 
   // Show/park with a short opacity fade instead of an instant hop:
   // 'parked' → offscreen, 'faded' → over the viewport at opacity 0,
@@ -242,6 +250,8 @@ function PreviewGuest({
     element.addEventListener('did-start-loading', onStart);
     element.addEventListener('did-finish-load', onSuccess);
     element.addEventListener('did-fail-load', onFailure);
+    // Guest focus reaches the host during capture; guest pointer events do not bubble.
+    element.addEventListener('focus', focusOwner, true);
     const notifyLanguageChanged = () => notify();
 
     GUEST_EVENTS.forEach((event) => element.addEventListener(event, notify));
@@ -256,11 +266,12 @@ function PreviewGuest({
       element.removeEventListener('did-start-loading', onStart);
       element.removeEventListener('did-finish-load', onSuccess);
       element.removeEventListener('did-fail-load', onFailure);
+      element.removeEventListener('focus', focusOwner, true);
       i18n.off('languageChanged', notifyLanguageChanged);
       unregisterPreviewWebview(tab.webviewId);
       element.remove();
     };
-  }, [tab.webviewId]);
+  }, [tab.webviewId, focusOwner]);
 
   const handledRetryRequest = useRef(tab.navigation.retryRequestId ?? 0);
   useEffect(() => {
@@ -283,12 +294,7 @@ function PreviewGuest({
     <div
       ref={containerRef}
       data-preview-webview-id={tab.webviewId}
-      onPointerDownCapture={() => {
-        if (useProjectRuntimeStore.getState().projects[projectId]) {
-          useProjectRuntimeStore.getState().setActiveProject(projectId);
-          usePageTabStore.getState().setSessionPreviewProject(projectId);
-        }
-      }}
+      onPointerDownCapture={focusOwner}
       style={
         tab.navigation.loadError || phase === 'parked' || !rect
           ? PARKED_STYLE
