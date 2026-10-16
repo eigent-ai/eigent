@@ -211,6 +211,30 @@ export interface SessionPreviewSlice {
   activeTabId: string | null;
 }
 
+/**
+ * Preview and Summary scope for the New session page before its Session
+ * exists. Never a Project id; `handOffNewSessionDraft` moves its state to the
+ * Session created by the first task.
+ */
+export const NEW_SESSION_DRAFT_SCOPE = 'new-session-draft';
+
+export function isNewSessionDraftScope(scopeId: string | null | undefined) {
+  return scopeId === NEW_SESSION_DRAFT_SCOPE;
+}
+
+/** Transient Preview entrance intent; never persisted with a preview slice. */
+export interface SessionPreviewOpening {
+  projectId: string;
+  requestId: number;
+  /** Keyboard and shortcut openings skip the entrance animation. */
+  immediate: boolean;
+}
+
+/** How a preview mutation was requested. */
+export interface SessionPreviewOpenOptions {
+  immediate?: boolean;
+}
+
 const EMPTY_SESSION_PREVIEW: SessionPreviewSlice = {
   open: false,
   tabs: [],
@@ -580,11 +604,24 @@ interface PageTabState {
    * mutations are dropped (there is nowhere durable to record them).
    */
   sessionPreviewProjectId: string | null;
+  /** Transient entrance intent; never persisted with a Session's preview slice. */
+  sessionPreviewOpening: SessionPreviewOpening | null;
   /**
    * Preview panel state per project — the single source of truth, persisted
    * so sessions restore. Read the scoped slice via `getSessionPreviewSlice`.
    */
   sessionPreviewByProject: Record<string, SessionPreviewSlice>;
+  /**
+   * Optional Summary column, remembered per Session. A missing entry means no
+   * choice yet: the column stays closed until a task starts with room for it.
+   * Narrow widths hide the column without changing the saved choice.
+   */
+  sessionSummaryOpenByProject: Record<string, boolean>;
+  setSessionSummaryOpen: (projectId: string, open: boolean) => void;
+  /** Transient: Sessions with a user-started task not yet seen by the layout. */
+  sessionTaskStartedProjectIds: Record<string, true>;
+  markSessionTaskStarted: (projectId: string) => void;
+  clearSessionTaskStarted: (projectId: string) => void;
   /** Point the preview scope at a project; its saved slice becomes current. */
   setSessionPreviewProject: (projectId: string | null) => void;
   /**
@@ -596,9 +633,12 @@ interface PageTabState {
   previewBrowserViewport: PreviewBrowserViewport | null;
   setPreviewBrowserViewport: (rect: PreviewBrowserViewport | null) => void;
   /** Toggle the unified preview panel (opens onto the chooser tab). */
-  toggleSessionPreview: () => void;
+  toggleSessionPreview: (options?: SessionPreviewOpenOptions) => void;
   /** Open and select a preview tab of the requested kind. */
-  openPreviewTab: (kind: PreviewTabKind) => void;
+  openPreviewTab: (
+    kind: PreviewTabKind,
+    options?: SessionPreviewOpenOptions
+  ) => void;
   /** Add and activate a blank chooser tab (the "+" button). */
   addChooserPreviewTab: () => void;
   /**
@@ -660,6 +700,11 @@ interface PageTabState {
    * interactive shell it owned, even when no preview component is mounted.
    */
   removeSessionPreviewProject: (projectId: string) => void;
+  /**
+   * Move the New session draft's Preview tabs and Summary choice to the
+   * Session created by its first task, keeping live tabs running.
+   */
+  handOffNewSessionDraft: (projectId: string) => void;
 }
 
 type SetPageTabState = (
@@ -679,15 +724,30 @@ function setSessionPreviewSlice(
     slice: SessionPreviewSlice,
     state: PageTabState
   ) => SessionPreviewSlice | null,
-  targetProjectId?: string
+  {
+    projectId: targetProjectId,
+    immediate = false,
+  }: SessionPreviewOpenOptions & { projectId?: string } = {}
 ) {
   set((state) => {
     const projectId = targetProjectId ?? state.sessionPreviewProjectId;
     if (!projectId) return state;
     const scopedState = { ...state, sessionPreviewProjectId: projectId };
-    const slice = updater(getSessionPreviewSlice(scopedState), scopedState);
+    const previousSlice = getSessionPreviewSlice(scopedState);
+    const slice = updater(previousSlice, scopedState);
     if (!slice) return state;
     return {
+      ...(!previousSlice.open &&
+      slice.open &&
+      projectId === state.sessionPreviewProjectId
+        ? {
+            sessionPreviewOpening: {
+              projectId,
+              requestId: (state.sessionPreviewOpening?.requestId ?? 0) + 1,
+              immediate,
+            },
+          }
+        : {}),
       sessionPreviewByProject: {
         ...state.sessionPreviewByProject,
         [projectId]: slice,
@@ -969,7 +1029,37 @@ export const usePageTabStore = create<PageTabState>()(
         set({ scrollToTurnRequest: request }),
 
       sessionPreviewProjectId: null,
+      sessionPreviewOpening: null,
       sessionPreviewByProject: {},
+      sessionSummaryOpenByProject: {},
+      setSessionSummaryOpen: (projectId, open) =>
+        set((state) => ({
+          sessionSummaryOpenByProject: {
+            ...state.sessionSummaryOpenByProject,
+            [projectId]: open,
+          },
+        })),
+      sessionTaskStartedProjectIds: {},
+      markSessionTaskStarted: (projectId) =>
+        set((state) =>
+          state.sessionTaskStartedProjectIds[projectId]
+            ? state
+            : {
+                sessionTaskStartedProjectIds: {
+                  ...state.sessionTaskStartedProjectIds,
+                  [projectId]: true,
+                },
+              }
+        ),
+      clearSessionTaskStarted: (projectId) =>
+        set((state) => {
+          if (!state.sessionTaskStartedProjectIds[projectId]) return state;
+          const sessionTaskStartedProjectIds = {
+            ...state.sessionTaskStartedProjectIds,
+          };
+          delete sessionTaskStartedProjectIds[projectId];
+          return { sessionTaskStartedProjectIds };
+        }),
       previewBrowserViewport: null,
       setPreviewBrowserViewport: (rect) =>
         set({ previewBrowserViewport: rect }),
@@ -977,43 +1067,54 @@ export const usePageTabStore = create<PageTabState>()(
         set((state) =>
           state.sessionPreviewProjectId === projectId
             ? state
-            : { sessionPreviewProjectId: projectId }
+            : {
+                sessionPreviewProjectId: projectId,
+                sessionPreviewOpening: null,
+              }
         ),
-      toggleSessionPreview: () =>
-        setSessionPreviewSlice(set, (slice) => {
-          if (slice.open) return { ...slice, open: false };
-          if (slice.tabs.length > 0) return { ...slice, open: true };
-          const initial = createInitialSessionPreviewTabs();
-          return {
-            open: true,
-            tabs: initial.tabs,
-            activeTabId: initial.activeTabId,
-          };
-        }),
-      openPreviewTab: (kind) =>
-        setSessionPreviewSlice(set, (slice, state) => {
-          const existing = slice.tabs.find(
-            (tab) =>
-              tab.type === kind &&
-              (kind !== 'terminal' ||
-                (tab.type === 'terminal' && !tab.agentSourceId))
-          );
-          if (existing) {
-            return { ...slice, open: true, activeTabId: existing.id };
-          }
+      toggleSessionPreview: (options) =>
+        setSessionPreviewSlice(
+          set,
+          (slice) => {
+            if (slice.open) return { ...slice, open: false };
+            if (slice.tabs.length > 0) return { ...slice, open: true };
+            const initial = createInitialSessionPreviewTabs();
+            return {
+              open: true,
+              tabs: initial.tabs,
+              activeTabId: initial.activeTabId,
+            };
+          },
+          options
+        ),
+      openPreviewTab: (kind, options) =>
+        setSessionPreviewSlice(
+          set,
+          (slice, state) => {
+            const existing = slice.tabs.find(
+              (tab) =>
+                tab.type === kind &&
+                (kind !== 'terminal' ||
+                  (tab.type === 'terminal' && !tab.agentSourceId))
+            );
+            if (existing) {
+              return { ...slice, open: true, activeTabId: existing.id };
+            }
 
-          const reusableIndex = slice.tabs.findIndex(
-            (tab) => tab.type === 'chooser'
-          );
-          const tab = createPreviewTabOfKind(
-            kind,
-            state.sessionPreviewProjectId
-          );
-          const tabs = [...slice.tabs];
-          if (reusableIndex >= 0) tabs[reusableIndex] = tab;
-          else tabs.push(tab);
-          return { open: true, tabs, activeTabId: tab.id };
-        }),
+            const reusableIndex = slice.tabs.findIndex(
+              (tab) => tab.type === 'chooser'
+            );
+            const tab = createPreviewTabOfKind(
+              kind,
+              state.sessionPreviewProjectId
+            );
+            const tabs = [...slice.tabs];
+            if (reusableIndex >= 0) tabs[reusableIndex] = tab;
+            else tabs.push(tab);
+            return { open: true, tabs, activeTabId: tab.id };
+          },
+          options
+        ),
       addChooserPreviewTab: () =>
         setSessionPreviewSlice(set, (slice) => {
           const tab = createChooserPreviewTab();
@@ -1271,7 +1372,7 @@ export const usePageTabStore = create<PageTabState>()(
               activeTabId: tab.id,
             };
           },
-          projectId
+          { projectId }
         ),
       openAgentTerminalPreview: (sourceId, title, fromTabId) =>
         setSessionPreviewSlice(set, (slice) => {
@@ -1363,17 +1464,62 @@ export const usePageTabStore = create<PageTabState>()(
           activeTabId: null,
         }));
       },
+      handOffNewSessionDraft: (projectId) =>
+        set((state) => {
+          const draft = NEW_SESSION_DRAFT_SCOPE;
+          const slice = state.sessionPreviewByProject[draft];
+          const summaryOpen = state.sessionSummaryOpenByProject[draft];
+          if (!slice && summaryOpen === undefined) return state;
+          const sessionPreviewByProject = { ...state.sessionPreviewByProject };
+          delete sessionPreviewByProject[draft];
+          if (slice) sessionPreviewByProject[projectId] = slice;
+          const sessionSummaryOpenByProject = {
+            ...state.sessionSummaryOpenByProject,
+          };
+          delete sessionSummaryOpenByProject[draft];
+          if (summaryOpen !== undefined) {
+            sessionSummaryOpenByProject[projectId] = summaryOpen;
+          }
+          const scoped = state.sessionPreviewProjectId === draft;
+          return {
+            sessionPreviewByProject,
+            sessionSummaryOpenByProject,
+            ...(scoped
+              ? {
+                  sessionPreviewProjectId: projectId,
+                  // Already open: continue in place without a second entrance.
+                  sessionPreviewOpening: slice?.open
+                    ? {
+                        projectId,
+                        requestId:
+                          (state.sessionPreviewOpening?.requestId ?? 0) + 1,
+                        immediate: true,
+                      }
+                    : null,
+                }
+              : {}),
+          };
+        }),
       removeSessionPreviewProject: (projectId) => {
         const slice = get().sessionPreviewByProject[projectId];
         if (slice) disposePreviewShellTabs(slice.tabs);
         set((state) => {
-          if (!state.sessionPreviewByProject[projectId]) return state;
+          const sessionSummaryOpenByProject = {
+            ...state.sessionSummaryOpenByProject,
+          };
+          delete sessionSummaryOpenByProject[projectId];
+          const sessionTaskStartedProjectIds = {
+            ...state.sessionTaskStartedProjectIds,
+          };
+          delete sessionTaskStartedProjectIds[projectId];
           const sessionPreviewByProject = {
             ...state.sessionPreviewByProject,
           };
           delete sessionPreviewByProject[projectId];
           return {
             sessionPreviewByProject,
+            sessionSummaryOpenByProject,
+            sessionTaskStartedProjectIds,
             ...(state.sessionPreviewProjectId === projectId
               ? {
                   sessionPreviewProjectId: null,
@@ -1428,6 +1574,7 @@ export const usePageTabStore = create<PageTabState>()(
         return persistedState as PageTabState;
       },
       partialize: (state) => ({
+        sessionSummaryOpenByProject: state.sessionSummaryOpenByProject,
         workspaceSidebarHidden: state.workspaceSidebarHidden,
         chatTimelineDetailLevel: state.chatTimelineDetailLevel,
         customAgentFolderPathByProjectId:

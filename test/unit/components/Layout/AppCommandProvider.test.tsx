@@ -69,6 +69,7 @@ const mocks = vi.hoisted(() => {
     toastError: vi.fn(),
     toggleSessionPreview: vi.fn(),
     toggleWorkspaceSidebar: vi.fn(),
+    activeWorkspaceTab: 'project',
   };
 });
 
@@ -128,7 +129,7 @@ vi.mock('@/store/pageTabStore', () => ({
     }) => unknown
   ) =>
     selector({
-      activeWorkspaceTab: 'project',
+      activeWorkspaceTab: mocks.activeWorkspaceTab,
       chatTimelineDetailLevel: 'narrative',
       openPreviewTab: mocks.openPreviewTab,
       requestToggleSessionSidePanel: mocks.requestToggleSessionSidePanel,
@@ -203,6 +204,7 @@ function renderProvider(
 describe('AppCommandProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.activeWorkspaceTab = 'project';
     mocks.projectRuntimeState.activeProjectId = 'project-1';
     mocks.projectRuntimeState.historyLoadIncompleteProjectIds = {};
     mocks.projectRuntimeState.getProjectById.mockReturnValue({ metadata: {} });
@@ -310,13 +312,45 @@ describe('AppCommandProvider', () => {
     });
 
     expect(mocks.setChatTimelineDetailLevel).toHaveBeenCalledWith('trajectory');
-    expect(mocks.toggleSessionPreview).toHaveBeenCalledOnce();
+    expect(mocks.toggleSessionPreview).toHaveBeenCalledWith({
+      immediate: true,
+    });
     expect(mocks.openPreviewTab.mock.calls).toEqual([
-      ['browser'],
-      ['terminal'],
+      ['browser', { immediate: true }],
+      ['terminal', { immediate: true }],
     ]);
     expect(mocks.toggleWorkspaceSidebar).toHaveBeenCalledOnce();
     expect(mocks.requestToggleSessionSidePanel).toHaveBeenCalledOnce();
+  });
+
+  it('routes Preview and Summary shortcuts on the New session page', () => {
+    mocks.activeWorkspaceTab = 'new-project';
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider(
+      {
+        onAppCommand: (callback) => {
+          nativeCommand = callback;
+          return vi.fn();
+        },
+      },
+      '/'
+    );
+
+    act(() => {
+      nativeCommand?.(APP_COMMAND.togglePreviewPanel);
+      nativeCommand?.(APP_COMMAND.openPreviewBrowser);
+      nativeCommand?.(APP_COMMAND.openPreviewTerminal);
+      nativeCommand?.(APP_COMMAND.toggleSessionSidePanel);
+      nativeCommand?.(APP_COMMAND.toggleTimelineView);
+    });
+
+    expect(mocks.toggleSessionPreview).toHaveBeenCalledWith({
+      immediate: true,
+    });
+    expect(mocks.openPreviewTab).toHaveBeenCalledTimes(2);
+    expect(mocks.requestToggleSessionSidePanel).toHaveBeenCalledOnce();
+    // There is no chat timeline before the Session starts.
+    expect(mocks.setChatTimelineDetailLevel).not.toHaveBeenCalled();
   });
 
   it('ignores scoped shortcuts outside the workspace and matches topbar Home', () => {

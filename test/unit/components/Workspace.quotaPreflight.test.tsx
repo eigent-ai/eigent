@@ -288,6 +288,8 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       activeWorkspaceTab: 'workforce',
       workspaceChatFocusRequestId: 0,
       setActiveWorkspaceTab: vi.fn(),
+      markSessionTaskStarted: vi.fn(),
+      handOffNewSessionDraft: vi.fn(),
     };
     chat = useChatStore();
     mocks.projectStore = {

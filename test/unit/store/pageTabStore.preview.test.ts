@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import {
+  getSessionPreviewSlice,
+  NEW_SESSION_DRAFT_SCOPE,
+  usePageTabStore,
+} from '@/store/pageTabStore';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** The preview slice for the currently scoped project. */
@@ -28,12 +32,159 @@ describe('pageTabStore session preview', () => {
     };
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
+      sessionPreviewOpening: null,
       sessionPreviewByProject: {},
+      sessionSummaryOpenByProject: {},
+      sessionTaskStartedProjectIds: {},
       workspaceChatDraftRequest: null,
       workspaceChatDraftRequestSequence: 0,
       workspaceReviewHandoffs: [],
     });
     usePageTabStore.getState().setSessionPreviewProject('project-a');
+  });
+
+  it('persists independent Summary and Preview state per Session and removes both on deletion', async () => {
+    const store = usePageTabStore.getState();
+    expect(store.sessionSummaryOpenByProject['project-a'] ?? false).toBe(false);
+    store.setSessionSummaryOpen('project-a', true);
+    store.toggleSessionPreview();
+    store.setSessionPreviewProject('project-b');
+    expect(slice().open).toBe(false);
+    expect(
+      usePageTabStore.getState().sessionSummaryOpenByProject['project-b'] ??
+        false
+    ).toBe(false);
+    store.toggleSessionPreview();
+    store.setSessionPreviewProject('project-a');
+    expect(slice().open).toBe(true);
+    store.closeSessionPreview();
+    expect(
+      usePageTabStore.getState().sessionSummaryOpenByProject['project-a']
+    ).toBe(true);
+    const saved = localStorage.getItem('eigent-page-tab')!;
+    usePageTabStore.setState({ sessionSummaryOpenByProject: {} });
+    localStorage.setItem('eigent-page-tab', saved);
+    await usePageTabStore.persist.rehydrate();
+    expect(
+      usePageTabStore.getState().sessionSummaryOpenByProject['project-a']
+    ).toBe(true);
+    store.removeSessionPreviewProject('project-a');
+    expect(
+      usePageTabStore.getState().sessionSummaryOpenByProject['project-a']
+    ).toBeUndefined();
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject['project-a']
+    ).toBeUndefined();
+    store.setSessionSummaryOpen('summary-only', true);
+    store.removeSessionPreviewProject('summary-only');
+    expect(
+      usePageTabStore.getState().sessionSummaryOpenByProject['summary-only']
+    ).toBeUndefined();
+  });
+
+  it('keeps task-start signals per Session, transient, and removed with the Session', async () => {
+    const store = usePageTabStore.getState();
+    store.markSessionTaskStarted('project-a');
+    store.markSessionTaskStarted('project-b');
+    expect(usePageTabStore.getState().sessionTaskStartedProjectIds).toEqual({
+      'project-a': true,
+      'project-b': true,
+    });
+    store.clearSessionTaskStarted('project-a');
+    expect(
+      usePageTabStore.getState().sessionTaskStartedProjectIds['project-a']
+    ).toBeUndefined();
+    expect(
+      JSON.parse(localStorage.getItem('eigent-page-tab')!).state
+    ).not.toHaveProperty('sessionTaskStartedProjectIds');
+    store.removeSessionPreviewProject('project-b');
+    expect(usePageTabStore.getState().sessionTaskStartedProjectIds).toEqual({});
+  });
+
+  it('hands New session draft tabs and Summary to the started Session without stopping shells', () => {
+    const store = usePageTabStore.getState();
+    store.setSessionPreviewProject(NEW_SESSION_DRAFT_SCOPE);
+    store.openPreviewTab('terminal');
+    store.openPreviewTab('browser');
+    store.setSessionSummaryOpen(NEW_SESSION_DRAFT_SCOPE, true);
+    const draft = slice();
+    const requestId =
+      usePageTabStore.getState().sessionPreviewOpening?.requestId ?? 0;
+
+    store.handOffNewSessionDraft('started');
+
+    const state = usePageTabStore.getState();
+    expect(state.sessionPreviewByProject.started).toEqual(draft);
+    expect(
+      state.sessionPreviewByProject[NEW_SESSION_DRAFT_SCOPE]
+    ).toBeUndefined();
+    expect(state.sessionSummaryOpenByProject).toMatchObject({ started: true });
+    expect(
+      state.sessionSummaryOpenByProject[NEW_SESSION_DRAFT_SCOPE]
+    ).toBeUndefined();
+    expect(state.sessionPreviewProjectId).toBe('started');
+    // Already open: the Session continues in place without a second entrance.
+    expect(state.sessionPreviewOpening).toEqual({
+      projectId: 'started',
+      requestId: requestId + 1,
+      immediate: true,
+    });
+    expect(window.electronAPI.terminalDispose).not.toHaveBeenCalled();
+  });
+
+  it('leaves Sessions alone when the New session draft has nothing to hand over', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const before = usePageTabStore.getState();
+    store.handOffNewSessionDraft('started');
+    expect(usePageTabStore.getState()).toBe(before);
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject.started
+    ).toBeUndefined();
+  });
+
+  it.each(['toggle', 'browser', 'terminal'] as const)(
+    'uses transient shortcut intent for %s, then restores ordinary opening motion',
+    (kind) => {
+      const store = usePageTabStore.getState();
+      if (kind === 'toggle') store.toggleSessionPreview({ immediate: true });
+      else store.openPreviewTab(kind, { immediate: true });
+      const shortcutOpening = usePageTabStore.getState().sessionPreviewOpening;
+      expect(shortcutOpening).toMatchObject({
+        projectId: 'project-a',
+        immediate: true,
+      });
+      expect(
+        JSON.parse(localStorage.getItem('eigent-page-tab')!).state
+      ).not.toHaveProperty('sessionPreviewOpening');
+      store.closeSessionPreview();
+      store.toggleSessionPreview();
+      expect(usePageTabStore.getState().sessionPreviewOpening).toMatchObject({
+        immediate: false,
+        requestId: shortcutOpening!.requestId + 1,
+      });
+      store.setSessionPreviewProject('project-b');
+      expect(usePageTabStore.getState().sessionPreviewOpening).toBeNull();
+      store.setSessionPreviewProject('project-a');
+      expect(slice().open).toBe(true);
+      expect(usePageTabStore.getState().sessionPreviewOpening).toBeNull();
+    }
+  );
+
+  it('keeps active entrance identity when a background Session opens a browser', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview({ immediate: true });
+    const activeEntrance = usePageTabStore.getState().sessionPreviewOpening;
+    store.openBrowserPreview('https://example.com', 'project-b');
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject['project-b'].open
+    ).toBe(true);
+    expect(usePageTabStore.getState().sessionPreviewOpening).toBe(
+      activeEntrance
+    );
+    expect(usePageTabStore.getState().sessionPreviewProjectId).toBe(
+      'project-a'
+    );
   });
 
   it('opens onto a single chooser tab', () => {

@@ -3,7 +3,9 @@
 > **Status: proposal.** This plan simplifies the Session layout, lets a Space
 > show two or three pieces of content side by side, and rebuilds model
 > comparison on top of that split view. It is delivered as six pull requests
-> (§9). Nothing here is implemented yet.
+> (§9). PR 1 (§4) and the New Session layout (§7, planned as PR 5) are
+> implemented locally on `feat/session-summary-column`; the remaining parts are
+> proposals. See [validation](session-summary-column-validation.md).
 
 ## 1. Goal
 
@@ -62,24 +64,31 @@ code never confuse them with panes.
 A Session pane has three columns, left to right:
 
 ```
-┌ Session header ───────────────────────────── [Summary] [Preview] ┐
-│ Chat timeline        │ Summary (optional) │ Preview (optional)   │
-│ …                    │                    │                      │
-│ [ composer ]         │                    │                      │
-└──────────────────────┴────────────────────┴──────────────────────┘
+┌ Chat header ───────── [Summary] [Preview] ┬ Preview tab header ──┐
+│ Chat timeline        │ Activity          │ Preview content      │
+│ …                    │ (optional)        │ (optional)           │
+│ [ composer ]         │                   │                      │
+└──────────────────────┴───────────────────┴──────────────────────┘
 ```
 
 - **Chat timeline** always shows.
 - **Summary** is an optional column with a fixed width. It is **closed by
-  default**.
+  default** and opens automatically when the user starts a task, if the
+  Session has room and the user has not opened or closed it in that Session.
+  After that the user's choice is kept.
 - **Preview** is an optional, resizable column that takes the remaining width.
+  Its tab header aligns beside the chat header, which spans chat and Activity.
 - The **Summary** and **Preview** toggles sit next to each other in the Session
   header, as `Button variant="ghost" size="sm" buttonContent="icon-only"` with
   accessible names and pressed state.
 - Both toggles are stored per Session, so each pane in a split view keeps its
   own columns.
-- When a pane is too narrow for all three columns, the summary closes first,
-  then the preview, and the chat timeline keeps a minimum width.
+- The persistent divider resizes the full chat/Activity side in either direction.
+  Activity hides below 720px on that side without forgetting the saved choice,
+  and docks again when there is room; while hidden, the same icon opens it as a
+  popover over chat. Preview closes if the whole pane cannot retain the 360px
+  chat and 320px Preview minimums plus the divider.
+- Header controls, divider insets, and Preview tabs share a 4px gap.
 
 ## 5. Split view
 
@@ -223,6 +232,11 @@ moves to the bottom and the view continues as that Session.
 
 This removes the separate new-Session layout branch in
 `src/components/Session/index.tsx`.
+
+The draft context is the reserved `new-session-draft` scope in the page-tab
+store's per-Session Preview and Summary maps. Before a Session exists, the
+draft Preview chooser offers Browser and Terminal; File and Review need a
+Session. A failed first send keeps the draft on the New session page.
 
 ## 8. Windows and tabs
 

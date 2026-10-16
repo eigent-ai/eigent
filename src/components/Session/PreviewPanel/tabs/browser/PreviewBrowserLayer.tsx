@@ -45,8 +45,6 @@ import {
 
 /** Above page content, below portaled overlays (menus z-50, tooltips z-100). */
 const GUEST_Z_INDEX = 30;
-/** Matches the preview panel's rounded-xl browser container. */
-const GUEST_RADIUS = 12;
 /** Guest fade when (un)covering its viewport — softens show/park hops. */
 const GUEST_FADE_MS = 160;
 /**
@@ -79,7 +77,7 @@ function visibleStyle(
     width: viewport.width,
     height: viewport.height,
     zIndex: GUEST_Z_INDEX,
-    borderRadius: GUEST_RADIUS,
+    borderRadius: 0,
     overflow: 'hidden',
     opacity: shown ? 1 : 0,
     transition: `opacity ${GUEST_FADE_MS}ms ease`,
@@ -131,6 +129,12 @@ function PreviewGuest({
   useEffect(() => {
     tabIdRef.current = tab.id;
   }, [tab.id]);
+  // A New session draft tab moves to its Session when the first task starts;
+  // follow the owner without recreating (and reloading) the guest.
+  const projectIdRef = useRef(projectId);
+  useEffect(() => {
+    projectIdRef.current = projectId;
+  }, [projectId]);
 
   // Show/park with a short opacity fade instead of an instant hop:
   // 'parked' → offscreen, 'faded' → over the viewport at opacity 0,
@@ -199,7 +203,7 @@ function PreviewGuest({
       lastUrl = url;
       usePageTabStore
         .getState()
-        .updateBrowserPreviewTabIn(projectId, tabIdRef.current, {
+        .updateBrowserPreviewTabIn(projectIdRef.current, tabIdRef.current, {
           title: browserTitle(
             state,
             i18n.t('layout.new-tab', { defaultValue: 'New tab' })
@@ -255,7 +259,7 @@ function PreviewGuest({
       unregisterPreviewWebview(tab.webviewId);
       element.remove();
     };
-  }, [projectId, tab.webviewId]);
+  }, [tab.webviewId]);
 
   const handledRetryRequest = useRef(tab.navigation.retryRequestId ?? 0);
   useEffect(() => {
@@ -347,7 +351,10 @@ export function PreviewBrowserLayer() {
 
   const guests: React.ReactNode[] = [];
   for (const [projectId, slice] of Object.entries(byProject)) {
-    if (!activatedProjects.has(projectId)) continue;
+    // The scoped Session counts as activated before the effect records it, so
+    // a handed-over guest never unmounts for a render.
+    if (!activatedProjects.has(projectId) && projectId !== scopeProjectId)
+      continue;
     for (const tab of slice.tabs) {
       if (tab.type !== 'browser' || !tab.url) continue;
       const visible =

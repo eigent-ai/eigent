@@ -2943,6 +2943,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       const sessionModeForRequest =
         sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
+      // Let the Session layout open Activity for a user-started task.
+      if (isLiveTask && project_id && !executionId) {
+        usePageTabStore.getState().markSessionTaskStarted(project_id);
+      }
       // Track genuine, user-facing task starts (skip replay/share playback).
       // Powers the "time to first task" lifecycle event.
       if (isLiveTask) {
