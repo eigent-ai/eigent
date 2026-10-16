@@ -98,6 +98,7 @@ const mocks = vi.hoisted(() => {
     workspaceChatFocusRequestId: 0,
     customAgentFolderPathByProjectId: {},
     setActiveWorkspaceTab: vi.fn(),
+    handOffNewSessionDraft: vi.fn(),
   };
 
   return {
@@ -562,6 +563,42 @@ describe('Workspace', () => {
     expect(screen.queryByText('draft.txt')).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['new-project', true],
+    ['workforce', false],
+  ] as const)(
+    'hands New session Preview and Summary to the started Session only from %s',
+    async (tab, handsOff) => {
+      mocks.pageState.activeWorkspaceTab = tab;
+      mocks.pageState.handOffNewSessionDraft.mockClear();
+      renderWorkspace({
+        variant: tab === 'new-project' ? 'new-project' : 'workspace',
+      });
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'Start with my tabs' },
+      });
+      fireEvent.click(screen.getByText('Send'));
+
+      await waitFor(() =>
+        expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledWith(
+          'project'
+        )
+      );
+      if (handsOff) {
+        expect(mocks.pageState.handOffNewSessionDraft).toHaveBeenCalledWith(
+          'new-project'
+        );
+        expect(
+          mocks.pageState.handOffNewSessionDraft.mock.invocationCallOrder[0]
+        ).toBeLessThan(
+          mocks.pageState.setActiveWorkspaceTab.mock.invocationCallOrder[0]
+        );
+      } else {
+        expect(mocks.pageState.handOffNewSessionDraft).not.toHaveBeenCalled();
+      }
+    }
+  );
+
   it.each(['workforce', 'new-project'])(
     'preserves text, attachments and the %s page on startup failure',
     async (tab) => {
@@ -585,6 +622,8 @@ describe('Workspace', () => {
         )
       );
       expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+      // A failed start keeps draft Preview tabs on the New session page.
+      expect(mocks.pageState.handOffNewSessionDraft).not.toHaveBeenCalled();
       expect(screen.getByLabelText('workspace-message')).toHaveValue(
         'Retry this work'
       );

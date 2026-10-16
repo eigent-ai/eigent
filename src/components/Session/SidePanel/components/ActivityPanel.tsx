@@ -592,9 +592,11 @@ function FilesSection({
 
 export function SessionActivityPanel({
   agentHeaderAction,
+  header,
   scope,
 }: {
   agentHeaderAction?: ReactNode;
+  header?: ReactNode;
   scope: SessionPanelScope;
 }) {
   const managedPreview = useSessionArtifactPreview();
@@ -863,6 +865,7 @@ export function SessionActivityPanel({
           the sections outgrow the column. */}
       <div className="relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden">
         <div className="scrollbar-always-visible flex min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto">
+          {header}
           <SectionList>
             {agents.length > 0 ? (
               <AgentCategorySection

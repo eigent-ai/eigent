@@ -12,14 +12,32 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelFoldButton } from '@/components/Session/SidePanel/components/FoldButton';
+import ContentHeader from '@/components/Layout/ContentHeader';
+import type { SessionPanelScope } from '@/components/Session/SidePanel/sections/sessionPanelScope';
+import { TOP_BAR_CONTROL_STATE_CLASS } from '@/components/TopBar/controlStyles';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { DsText } from '@/components/ui/ds-text';
+import { Separator } from '@/components/ui/separator';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
-import type { SessionModeType } from '@/types/constants';
-import { LoaderCircle, RotateCw } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+import { Check, ChevronDown, LoaderCircle, RotateCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const SCOPES = [
+  'latest',
+  'all',
+] as const satisfies readonly SessionPanelScope[];
+/** Hidden at rest on hover devices; shown on card hover/focus or while open. */
+const SCOPE_TRIGGER_REVEAL_CLASS =
+  'pointer-events-none opacity-0 transition-opacity group-focus-within/activity-section:pointer-events-auto group-focus-within/activity-section:opacity-100 group-hover/activity-section:pointer-events-auto group-hover/activity-section:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100';
 
 /** Consumes the shared Session runtime; never starts another history loader. */
 export function SessionHistoryAction() {
@@ -71,40 +89,93 @@ export function SessionHistoryAction() {
   );
 }
 
-export interface SidePanelHeaderProps {
-  title: string;
-  mode: SessionModeType;
-  isSidePanelVisible: boolean;
-  onToggle: () => void;
-  /** Optional right-side content (e.g. workforce expand overlay) */
-  end?: ReactNode;
-}
+/**
+ * Activity title row with the history retry and Summary scope menu. The scope
+ * menu reveals on hover/focus of the enclosing `group/activity-section` card.
+ */
+export function ActivityHeader({
+  scope,
+  onScopeChange,
+}: {
+  scope: SessionPanelScope;
+  onScopeChange: (scope: SessionPanelScope) => void;
+}) {
+  const { t } = useTranslation();
+  const title = t('layout.session-panel-activity', {
+    defaultValue: 'Activity',
+  });
+  const scopeLabel = t('layout.session-summary-scope', {
+    defaultValue: 'Summary content',
+  });
+  const scopeLabels: Record<SessionPanelScope, string> = {
+    latest: t('layout.session-summary-latest-only', {
+      defaultValue: 'Latest only',
+    }),
+    all: t('layout.session-summary-all', { defaultValue: 'All' }),
+  };
 
-export function SidePanelHeader({
-  title,
-  mode,
-  isSidePanelVisible,
-  onToggle,
-  end,
-}: SidePanelHeaderProps) {
   return (
-    <div className="relative z-50 flex h-ds-layout-row-header min-h-ds-layout-row-header w-full min-w-0 shrink-0 items-center overflow-visible px-ds-8">
-      <div className="flex min-w-0 flex-1 items-center justify-start gap-1">
-        <SidePanelFoldButton
-          sessionSidePanelMode={mode}
-          isSidePanelVisible={isSidePanelVisible}
-          onToggle={onToggle}
-        />
-        <span className="max-w-full min-w-0 truncate text-center text-ds-text-body-large font-semibold text-ds-ink-default-default">
-          {title}
-        </span>
-      </div>
-
-      <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
-        {end != null ? (
-          <div className="flex items-center gap-1">{end}</div>
-        ) : null}
-      </div>
-    </div>
+    <>
+      <ContentHeader
+        inset="none"
+        className="mb-ds-4 pr-ds-2 pl-ds-8"
+        titleAsChild
+        title={
+          <DsText
+            as="span"
+            role="base"
+            weight="semibold"
+            className="min-w-0 truncate text-ds-ink-default-default"
+          >
+            {title}
+          </DsText>
+        }
+        border={false}
+        actions={
+          <>
+            <SessionHistoryAction />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={scopeLabel}
+                  className={cn(
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    SCOPE_TRIGGER_REVEAL_CLASS
+                  )}
+                >
+                  {scopeLabels[scope]}
+                  <ChevronDown aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" sideOffset={8}>
+                <DropdownMenuGroup aria-label={scopeLabel}>
+                  {SCOPES.map((value) => (
+                    <DropdownMenuItem
+                      key={value}
+                      role="menuitemradio"
+                      aria-checked={scope === value}
+                      onSelect={() => onScopeChange(value)}
+                    >
+                      <span className="min-w-0 flex-1">
+                        {scopeLabels[value]}
+                      </span>
+                      {scope === value ? (
+                        <Check
+                          className="text-ds-accent-default-default"
+                          aria-hidden
+                        />
+                      ) : null}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
+      <Separator decorative={false} className="bg-ds-hairline-subtle-default" />
+    </>
   );
 }

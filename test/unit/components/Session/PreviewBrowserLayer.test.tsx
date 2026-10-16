@@ -16,7 +16,11 @@ import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/brow
 import { getPreviewWebview } from '@/components/Session/PreviewPanel/tabs/browser/webviewRegistry';
 import { HostProvider } from '@/host';
 import i18n from '@/i18n';
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import {
+  getSessionPreviewSlice,
+  NEW_SESSION_DRAFT_SCOPE,
+  usePageTabStore,
+} from '@/store/pageTabStore';
 import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -92,6 +96,7 @@ describe('PreviewBrowserLayer', () => {
     const container = guestContainer(tab.webviewId)!;
     expect(container.style.left).toBe('100px');
     expect(container.style.width).toBe('640px');
+    expect(container.style.borderRadius).toBe('0');
     expect(container.style.visibility).not.toBe('hidden');
 
     // Closing the panel parks the guest (kept alive, hidden) — no unmount.
@@ -164,6 +169,54 @@ describe('PreviewBrowserLayer', () => {
     expect(restoredGuest?.getAttribute('src')).toBe(url);
     expect(getBrowserTab().webviewId).toBe(tab.webviewId);
     expect(guestContainer(tab.webviewId)?.style.visibility).not.toBe('hidden');
+  });
+
+  it('keeps a New session draft page live when its tab moves to the started Session', () => {
+    usePageTabStore.setState({
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
+      sessionSummaryOpenByProject: {},
+    });
+    usePageTabStore
+      .getState()
+      .setSessionPreviewProject(NEW_SESSION_DRAFT_SCOPE);
+    usePageTabStore.getState().openPreviewTab('browser');
+    renderLayer();
+    const tab = getBrowserTab();
+    act(() => {
+      usePageTabStore
+        .getState()
+        .updateBrowserPreviewTab(tab.id, { url: 'https://example.com/' });
+    });
+    const webview = guestContainer(tab.webviewId)!.querySelector(
+      'webview'
+    ) as HTMLElement & Record<string, unknown>;
+
+    act(() => {
+      usePageTabStore.getState().handOffNewSessionDraft('started');
+    });
+
+    // Same element: the page is not reloaded by the handoff.
+    expect(guestContainer(tab.webviewId)!.querySelector('webview')).toBe(
+      webview
+    );
+    webview.getURL = () => 'https://example.com/next';
+    webview.getTitle = () => 'Next';
+    webview.isLoading = () => false;
+    act(() => {
+      webview.dispatchEvent(new Event('did-navigate'));
+    });
+    // Navigation now lands in the started Session's slice.
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject.started.tabs
+    ).toContainEqual(
+      expect.objectContaining({ url: 'https://example.com/next' })
+    );
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject[
+        NEW_SESSION_DRAFT_SCOPE
+      ]
+    ).toBeUndefined();
   });
 
   it('feeds guest navigation events back into the per-project store slice', () => {

@@ -17,7 +17,11 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore, type SessionTerminalTab } from '@/store/pageTabStore';
+import {
+  isNewSessionDraftScope,
+  usePageTabStore,
+  type SessionTerminalTab,
+} from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { Check, Copy, SquareTerminal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -86,7 +90,13 @@ function LocalShellTerminal({ tab, viewportSettled }: TerminalTabProps) {
       return;
     }
     const api = host?.electronAPI;
-    if (!api?.getProjectFolderPath || !email || !projectId) {
+    // The New session draft has no Project folder yet; use the home folder.
+    if (
+      !api?.getProjectFolderPath ||
+      !email ||
+      !projectId ||
+      isNewSessionDraftScope(projectId)
+    ) {
       setCwdResolved(true);
       return;
     }

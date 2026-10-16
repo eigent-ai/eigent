@@ -234,6 +234,13 @@ export default function Workspace({
     }
   }, [modelType]);
 
+  // Preview tabs and the Summary choice opened on the New session page follow
+  // the user into the Session their first task creates.
+  const handOffNewSessionDraft = (projectId: string) => {
+    if (variant === 'new-project')
+      usePageTabStore.getState().handOffNewSessionDraft(projectId);
+  };
+
   const handleSend = async () => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) {
@@ -330,6 +337,7 @@ export default function Workspace({
           useProjectRuntimeStore.getState().setActiveProject(projectId);
           setMessage('');
           managedDraftRef.current = null;
+          handOffNewSessionDraft(projectId);
           setActiveWorkspaceTab('project');
         }
         return;
@@ -394,6 +402,7 @@ export default function Workspace({
       ) {
         setDraftFiles([]);
         setMessage('');
+        handOffNewSessionDraft(targetProjectId);
         setActiveWorkspaceTab('project');
       }
     } catch (err: unknown) {

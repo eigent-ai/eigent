@@ -24,6 +24,7 @@ import {
   submitWorkspaceSessionDraft,
 } from '@/service/sessionMessage';
 import { useAuthStore } from '@/store/authStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -178,6 +179,14 @@ it('keeps first-send selection while a newer default choice is being saved', asy
   await submit;
   expect(saved.modelSelection.provider_id).toBe(2);
   expect(mocks.prefer.mock.calls.map((c) => c[1].provider_id)).toEqual([2, 3]);
+});
+it('signals the Session layout when a managed task starts', async () => {
+  usePageTabStore.setState({ sessionTaskStartedProjectIds: {} });
+  const draft = createWorkspaceSessionDraft('space', 'draft', 'high');
+  await submitWorkspaceSessionDraft(draft);
+  expect(usePageTabStore.getState().sessionTaskStartedProjectIds).toEqual({
+    [draft.intent.scope.projectId]: true,
+  });
 });
 it('keeps a rejected selection from falling back to the old default or creating a Session', async () => {
   mocks.prefer.mockRejectedValue(new Error('synthetic save failure'));

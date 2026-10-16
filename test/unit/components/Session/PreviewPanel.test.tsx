@@ -123,6 +123,15 @@ describe('PreviewPanel', () => {
   it('opens on the chooser tab listing the available content kinds', () => {
     renderPanel();
     expect(screen.getByRole('tab', { name: 'New tab' })).toBeInTheDocument();
+    const header = screen.getByRole('tablist').closest('header')!;
+    expect(header).toHaveClass(
+      'border-b',
+      'border-ds-hairline-subtle-disabled'
+    );
+    expect(header.nextElementSibling).not.toHaveClass(
+      'rounded-xl',
+      'border-solid'
+    );
     // Vertical options use the same product copy users see in the chooser.
     for (const label of ['Browser', 'File', 'Review', 'Terminal']) {
       expect(
