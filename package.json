@@ -196,7 +196,8 @@
     "vitest": "2.1.9"
   },
   "overrides": {
-    "@types/node": "20.19.32"
+    "@types/node": "20.19.32",
+    "vitest": "2.1.9"
   },
   "pnpm": {
     "neverBuiltDependencies": []

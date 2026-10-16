@@ -96,8 +96,7 @@ jobs:
         run: npm install -g bun
 
       - name: Install Dependencies
-        # npm 10 can crash in Arborist's optional peer resolution (npm/cli#8448).
-        run: npx --yes npm@11.21.1 install
+        run: npm install
 
       # Verify Electron installation on macOS
       - name: Verify Electron Installation (macOS)
