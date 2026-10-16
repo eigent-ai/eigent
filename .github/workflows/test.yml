@@ -33,7 +33,8 @@ jobs:
           node-version: 20
 
       - name: Install frontend dependencies
-        run: npm install --ignore-scripts
+        # npm 10 can crash in Arborist's optional peer resolution (npm/cli#8448).
+        run: npx --yes npm@11.21.1 install --ignore-scripts
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -69,7 +70,8 @@ jobs:
           node-version: 20
 
       - name: Install frontend dependencies
-        run: npm install --ignore-scripts
+        # npm 10 can crash in Arborist's optional peer resolution (npm/cli#8448).
+        run: npx --yes npm@11.21.1 install --ignore-scripts
 
       - name: Run type check
         run: npm run type-check
@@ -136,7 +138,8 @@ jobs:
           node-version: 20
 
       - name: Install frontend dependencies
-        run: npm install --ignore-scripts
+        # npm 10 can crash in Arborist's optional peer resolution (npm/cli#8448).
+        run: npx --yes npm@11.21.1 install --ignore-scripts
 
       - name: Install Electron runtime
         run: npm rebuild electron
