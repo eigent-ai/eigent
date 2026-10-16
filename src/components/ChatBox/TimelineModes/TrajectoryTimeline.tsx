@@ -17,6 +17,7 @@ import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotic
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { DsText } from '@/components/ui/ds-text';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { approvalRecordedReason } from '@/lib/approvalPresentation';
 import type {
   TimelineRunView,
@@ -26,7 +27,6 @@ import type {
 import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { errorCopy } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
-import { usePageTabStore } from '@/store/pageTabStore';
 import type { TFunction } from 'i18next';
 import { ChevronRight, FileText } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -473,7 +473,9 @@ function NodeTraceDetails({
   runId: string;
 }) {
   const { t } = useTranslation();
-  const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
+  const openReviewPreview = useSessionPageTabStore(
+    (state) => state.openReviewPreview
+  );
   const node = row.node;
   if (node.kind === 'message') {
     return (

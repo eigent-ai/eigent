@@ -25,6 +25,7 @@ vi.mock('@/hooks/useSessionExecution', () => ({
 }));
 
 import BottomBox from '@/components/ChatBox/BottomBox';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
 import { generateUniqueId } from '@/lib';
 import { runProjectionStore } from '@/lib/runEvents';
 import { errorCopy } from '@/lib/usageErrors';
@@ -40,7 +41,7 @@ import {
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useSyncExternalStore } from 'react';
 import { BrowserRouter } from 'react-router-dom';
@@ -256,6 +257,7 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
           ))}
           <input
             data-testid="message-input"
+            ref={inputProps.textareaRef}
             placeholder={inputProps.placeholder}
             value={inputProps.value}
             disabled={inputProps.disabled}
@@ -565,7 +567,9 @@ describe('ChatBox Component', async () => {
       projectStore: defaultProjectStoreState as any,
       chatStore: defaultChatStoreState as any,
     });
-    mockUseProjectStore.mockReturnValue(defaultProjectStoreState as any);
+    mockUseProjectStore.mockImplementation((selector: any) =>
+      selector ? selector(defaultProjectStoreState) : defaultProjectStoreState
+    );
     mockUseAuthStore.mockReturnValue(defaultAuthStoreState as any);
 
     // Setup default API responses
@@ -617,6 +621,78 @@ describe('ChatBox Component', async () => {
       </BrowserRouter>
     );
   };
+
+  it('sends from the non-active pane and keeps the other composer draft', async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <BrowserRouter>
+        <div data-testid="pane-a">
+          <SessionPaneProvider projectId="test-project-id">
+            <ChatBox />
+          </SessionPaneProvider>
+        </div>
+        <div data-testid="pane-b">
+          <SessionPaneProvider projectId="other-session">
+            <ChatBox />
+          </SessionPaneProvider>
+        </div>
+      </BrowserRouter>
+    );
+    const a = within(view.getByTestId('pane-a'));
+    const b = within(view.getByTestId('pane-b'));
+    await user.type(a.getByTestId('message-input'), 'Keep A draft');
+    await user.type(b.getByTestId('message-input'), 'Send from B');
+    await user.click(b.getByTestId('send-button'));
+    await waitFor(() =>
+      expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+    );
+    expect(defaultChatStoreState.startTask.mock.calls[0][7]).toBe(
+      'other-session'
+    );
+    expect(a.getByTestId('message-input')).toHaveValue('Keep A draft');
+    expect(b.getByTestId('message-input')).toHaveValue('');
+    expect(defaultProjectStoreState.activeProjectId).toBe('test-project-id');
+  });
+
+  it('focuses the composer once per chat-focus request, not again when pane focus returns', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const paneTree = () => (
+        <BrowserRouter>
+          <SessionPaneProvider projectId="test-project-id">
+            <ChatBox />
+          </SessionPaneProvider>
+        </BrowserRouter>
+      );
+      const view = render(paneTree());
+      const focus = vi.spyOn(screen.getByTestId('message-input'), 'focus');
+
+      act(() => {
+        usePageTabStore.setState({
+          workspaceChatFocusRequestId: 1,
+          workspaceChatFocusProjectId: null,
+        });
+      });
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(1);
+
+      // Focus moves to another Session and back without a new request.
+      defaultProjectStoreState.activeProjectId = 'other-session';
+      view.rerender(paneTree());
+      defaultProjectStoreState.activeProjectId = 'test-project-id';
+      view.rerender(paneTree());
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        usePageTabStore.setState({ workspaceChatFocusRequestId: 2 });
+      });
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   describe('subscription quota copy', () => {
     const trial = {

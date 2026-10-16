@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import {
   recordMessageFeedback,
   type MessageFeedbackRating,
@@ -23,7 +24,6 @@ import {
   isRefinableReason,
   type ErrorReason,
 } from '@/lib/usageErrors';
-import { usePageTabStore } from '@/store/pageTabStore';
 import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -90,7 +90,7 @@ export function AgentMessageCard({
   messageStep,
   deferredFooter,
 }: AgentMessageCardProps) {
-  const openFilePreview = usePageTabStore((s) => s.openFilePreview);
+  const openFilePreview = useSessionPageTabStore((s) => s.openFilePreview);
   const [markdownAndTypingComplete, setMarkdownAndTypingComplete] = useState(
     () => completedTypewriterByMessageId.has(id)
   );

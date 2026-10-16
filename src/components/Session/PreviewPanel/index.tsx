@@ -16,12 +16,12 @@ import ContentHeader from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import {
   getSessionPreviewSlice,
   isNewSessionDraftScope,
-  usePageTabStore,
   type PreviewTabKind,
   type SessionPreviewTab,
 } from '@/store/pageTabStore';
@@ -72,23 +72,25 @@ export function PreviewPanel({
   // Exiting children keep their last props, so presence is what tells the
   // shell to stop fitting while the display panel collapses.
   const isPresent = useIsPresent();
-  const tabs = usePageTabStore((state) => getSessionPreviewSlice(state).tabs);
-  const isDraft = usePageTabStore((state) =>
+  const tabs = useSessionPageTabStore(
+    (state) => getSessionPreviewSlice(state).tabs
+  );
+  const isDraft = useSessionPageTabStore((state) =>
     isNewSessionDraftScope(state.sessionPreviewProjectId)
   );
-  const activeTabId = usePageTabStore(
+  const activeTabId = useSessionPageTabStore(
     (state) => getSessionPreviewSlice(state).activeTabId
   );
-  const addChooserPreviewTab = usePageTabStore(
+  const addChooserPreviewTab = useSessionPageTabStore(
     (state) => state.addChooserPreviewTab
   );
-  const choosePreviewTabType = usePageTabStore(
+  const choosePreviewTabType = useSessionPageTabStore(
     (state) => state.choosePreviewTabType
   );
-  const selectSessionPreviewTab = usePageTabStore(
+  const selectSessionPreviewTab = useSessionPageTabStore(
     (state) => state.selectSessionPreviewTab
   );
-  const closeSessionPreviewTab = usePageTabStore(
+  const closeSessionPreviewTab = useSessionPageTabStore(
     (state) => state.closeSessionPreviewTab
   );
 
@@ -304,7 +306,7 @@ export function PreviewPanel({
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            onClick={addChooserPreviewTab}
+            onClick={() => addChooserPreviewTab()}
             aria-label={t('layout.add-preview-tab', {
               defaultValue: 'New tab',
             })}

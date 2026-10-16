@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { ChatStore } from '@/store/chatStore';
 import {
   type ProjectRuntimeStore,
@@ -21,16 +22,20 @@ import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 const useChatStoreAdapter = (): {
   projectStore: ProjectRuntimeStore;
+  projectId: string | null;
   // TODO(PR-X3): This can be null while a Space is selected but no Project
   // runtime is active. Existing legacy consumers still assume a ChatStore;
   // finish nullable typing when projectRuntimeStore is fully split.
   chatStore: ChatStore;
 } => {
   const projectStore = useProjectRuntimeStore();
+  const projectId = useSessionProjectId();
 
   // Get the active chat store from project store
   // This creates a hook-like interface for the vanilla store
-  const activeChatStore = projectStore.getActiveChatStore();
+  const activeChatStore = projectId
+    ? projectStore.getActiveChatStore(projectId)
+    : null;
 
   // Read the newly selected store synchronously. The previous effect-based
   // bridge rendered one frame with the new Project id but the old Project's
@@ -70,6 +75,7 @@ const useChatStoreAdapter = (): {
 
   return {
     projectStore,
+    projectId,
     chatStore,
   };
 };

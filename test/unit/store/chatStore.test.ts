@@ -229,6 +229,21 @@ describe('ChatStore - Core Functionality', () => {
     vi.clearAllMocks();
   });
 
+  it('saves plan edits to the supplied non-active Session', async () => {
+    const store = createChatStoreInstance();
+    store.getState().create('pane-run');
+    store
+      .getState()
+      .setTaskInfo('pane-run', [
+        { id: 'step', content: 'Keep the plan scoped' },
+      ] as any);
+    vi.mocked(fetchPut).mockResolvedValueOnce({});
+    await store.getState().savePlan('pane-run', 'pane-b');
+    expect(fetchPut).toHaveBeenCalledWith('/task/pane-b', {
+      task: [expect.objectContaining({ content: 'Keep the plan scoped' })],
+    });
+  });
+
   describe('Confirmed user prompt resolution', () => {
     it('uses the optimistic user message when it exists', () => {
       expect(

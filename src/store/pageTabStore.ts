@@ -247,11 +247,17 @@ const EMPTY_SESSION_PREVIEW: SessionPreviewSlice = {
  * selector (e.g. `usePageTabStore((s) => getSessionPreviewSlice(s).tabs)`)
  * instead of reading mirrored flat fields, so state can never drift.
  */
-export function getSessionPreviewSlice(state: {
-  sessionPreviewProjectId: string | null;
-  sessionPreviewByProject: Record<string, SessionPreviewSlice>;
-}): SessionPreviewSlice {
-  const projectId = state.sessionPreviewProjectId;
+export function getSessionPreviewSlice(
+  state: {
+    sessionPreviewProjectId: string | null;
+    sessionPreviewByProject: Record<string, SessionPreviewSlice>;
+  },
+  targetProjectId?: string | null
+): SessionPreviewSlice {
+  const projectId =
+    targetProjectId === undefined
+      ? state.sessionPreviewProjectId
+      : targetProjectId;
   return (
     (projectId ? state.sessionPreviewByProject[projectId] : undefined) ??
     EMPTY_SESSION_PREVIEW
@@ -489,7 +495,7 @@ function disposePreviewShellTabs(tabs: SessionPreviewTab[]) {
   }
 }
 
-interface PageTabState {
+export interface PageTabState {
   activeTab: 'tasks' | 'trigger';
   setActiveTab: (tab: 'tasks' | 'trigger') => void;
   // Workspace tabs within the Tasks page (sidebar → main panel)
@@ -513,7 +519,8 @@ interface PageTabState {
   setChatTimelineDetailLevel: (level: ChatTimelineDetailLevel) => void;
   /** One-shot request consumed by the active Project session panel. */
   sessionSidePanelToggleRequestId: number;
-  requestToggleSessionSidePanel: () => void;
+  sessionSidePanelToggleProjectId: string | null;
+  requestToggleSessionSidePanel: (projectId?: string | null) => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -536,7 +543,12 @@ interface PageTabState {
   ) => void;
   /** Set by the sidebar to tell the chat container to scroll to a specific query group */
   scrollToQueryId: string | null;
-  setScrollToQueryId: (queryId: string | null) => void;
+  scrollToQueryProjectId: string | null;
+  /** Unscoped requests (no `projectId`) apply to whichever chat is mounted. */
+  setScrollToQueryId: (
+    queryId: string | null,
+    projectId?: string | null
+  ) => void;
   /**
    * Bumped when the side-panel Progress section asks the chat to surface
    * the task box: TaskCard expands itself, ProjectChatContainer scrolls
@@ -563,7 +575,8 @@ interface PageTabState {
    * ChatBox / Home listen to perform focus and ensure the chat panel is visible.
    */
   workspaceChatFocusRequestId: number;
-  requestWorkspaceChatFocus: () => void;
+  workspaceChatFocusProjectId: string | null;
+  requestWorkspaceChatFocus: (projectId?: string | null) => void;
   /** One-shot handoff that appends review feedback to the matching Chat draft. */
   workspaceChatDraftRequest: WorkspaceChatDraftRequest | null;
   workspaceChatDraftRequestSequence: number;
@@ -571,7 +584,8 @@ interface PageTabState {
   workspaceReviewHandoffs: WorkspaceReviewHandoff[];
   requestWorkspaceChatDraft: (
     content: string,
-    reviewSource?: WorkspaceReviewHandoffSource
+    reviewSource?: WorkspaceReviewHandoffSource,
+    targetProjectId?: string | null
   ) => void;
   consumeWorkspaceChatDraft: (requestId: number) => void;
   acknowledgeWorkspaceReviewHandoffs: (
@@ -606,6 +620,7 @@ interface PageTabState {
   sessionPreviewProjectId: string | null;
   /** Transient entrance intent; never persisted with a Session's preview slice. */
   sessionPreviewOpening: SessionPreviewOpening | null;
+  sessionPreviewOpeningByProject: Record<string, SessionPreviewOpening>;
   /**
    * Preview panel state per project — the single source of truth, persisted
    * so sessions restore. Read the scoped slice via `getSessionPreviewSlice`.
@@ -631,34 +646,51 @@ interface PageTabState {
    * this so guests (and their history) survive panel close / project switch.
    */
   previewBrowserViewport: PreviewBrowserViewport | null;
-  setPreviewBrowserViewport: (rect: PreviewBrowserViewport | null) => void;
+  previewBrowserViewportByProject: Record<string, PreviewBrowserViewport>;
+  setPreviewBrowserViewport: (
+    rect: PreviewBrowserViewport | null,
+    projectId?: string | null
+  ) => void;
   /** Toggle the unified preview panel (opens onto the chooser tab). */
-  toggleSessionPreview: (options?: SessionPreviewOpenOptions) => void;
+  toggleSessionPreview: (
+    options?: SessionPreviewOpenOptions,
+    projectId?: string | null
+  ) => void;
   /** Open and select a preview tab of the requested kind. */
   openPreviewTab: (
     kind: PreviewTabKind,
-    options?: SessionPreviewOpenOptions
+    options?: SessionPreviewOpenOptions,
+    projectId?: string | null
   ) => void;
   /** Add and activate a blank chooser tab (the "+" button). */
-  addChooserPreviewTab: () => void;
+  addChooserPreviewTab: (projectId?: string | null) => void;
   /**
    * Turn a tab (typically the chooser) into the chosen content kind, in place.
    * Falls back to appending if the target tab no longer exists.
    */
-  choosePreviewTabType: (tabId: string, kind: PreviewTabKind) => void;
+  choosePreviewTabType: (
+    tabId: string,
+    kind: PreviewTabKind,
+    projectId?: string | null
+  ) => void;
   /** Open a file in a deduplicated file tab (reuses a blank starter tab). */
-  openFilePreview: (file?: FileInfo | null) => void;
+  openFilePreview: (file?: FileInfo | null, projectId?: string | null) => void;
   /** Open a task-focused Git review and optionally focus one changed path. */
-  openReviewPreview: (input?: OpenReviewPreviewInput) => void;
+  openReviewPreview: (
+    input?: OpenReviewPreviewInput,
+    projectId?: string | null
+  ) => void;
   /** Replace the local comment drafts owned by one Review tab. */
   updateReviewComments: (
     tabId: string,
-    comments: SessionReviewComment[]
+    comments: SessionReviewComment[],
+    projectId?: string | null
   ) => void;
   setReviewIdentity: (
     tabId: string,
     identity: SessionReviewIdentity,
-    targetKey?: string
+    targetKey?: string,
+    projectId?: string | null
   ) => void;
   /**
    * Open a URL in this project's preview browser — the default target for
@@ -666,7 +698,7 @@ interface PageTabState {
    * of jumping to the system browser. Reuses a tab already on that URL, then
    * a blank starter tab (chooser or empty browser); otherwise appends.
    */
-  openBrowserPreview: (url: string, projectId?: string) => void;
+  openBrowserPreview: (url: string, projectId?: string | null) => void;
   /**
    * Open an agent terminal stream (read-only) in a terminal tab. Reuses a tab
    * already showing that stream; otherwise converts `fromTabId` (the chooser
@@ -675,13 +707,15 @@ interface PageTabState {
   openAgentTerminalPreview: (
     sourceId: string,
     title: string,
-    fromTabId?: string
+    fromTabId?: string,
+    projectId?: string | null
   ) => void;
-  selectSessionPreviewTab: (tabId: string) => void;
-  closeSessionPreviewTab: (tabId: string) => void;
+  selectSessionPreviewTab: (tabId: string, projectId?: string | null) => void;
+  closeSessionPreviewTab: (tabId: string, projectId?: string | null) => void;
   updateBrowserPreviewTab: (
     tabId: string,
-    patch: Partial<Omit<SessionBrowserTab, 'id' | 'type' | 'webviewId'>>
+    patch: Partial<Omit<SessionBrowserTab, 'id' | 'type' | 'webviewId'>>,
+    projectId?: string | null
   ) => void;
   /**
    * Same as updateBrowserPreviewTab but addressed to an explicit project —
@@ -693,8 +727,8 @@ interface PageTabState {
     tabId: string,
     patch: Partial<Omit<SessionBrowserTab, 'id' | 'type' | 'webviewId'>>
   ) => void;
-  closeSessionPreview: () => void;
-  resetSessionPreview: () => void;
+  closeSessionPreview: (projectId?: string | null) => void;
+  resetSessionPreview: (projectId?: string | null) => void;
   /**
    * Drop a deleted project's persisted preview state and terminate every
    * interactive shell it owned, even when no preview component is mounted.
@@ -727,25 +761,41 @@ function setSessionPreviewSlice(
   {
     projectId: targetProjectId,
     immediate = false,
-  }: SessionPreviewOpenOptions & { projectId?: string } = {}
+  }: SessionPreviewOpenOptions & { projectId?: string | null } = {}
 ) {
   set((state) => {
-    const projectId = targetProjectId ?? state.sessionPreviewProjectId;
+    const projectId =
+      targetProjectId === undefined
+        ? state.sessionPreviewProjectId
+        : targetProjectId;
     if (!projectId) return state;
     const scopedState = { ...state, sessionPreviewProjectId: projectId };
     const previousSlice = getSessionPreviewSlice(scopedState);
     const slice = updater(previousSlice, scopedState);
     if (!slice) return state;
     return {
-      ...(!previousSlice.open &&
-      slice.open &&
-      projectId === state.sessionPreviewProjectId
+      ...(!previousSlice.open && slice.open
         ? {
-            sessionPreviewOpening: {
-              projectId,
-              requestId: (state.sessionPreviewOpening?.requestId ?? 0) + 1,
-              immediate,
+            sessionPreviewOpeningByProject: {
+              ...state.sessionPreviewOpeningByProject,
+              [projectId]: {
+                projectId,
+                requestId:
+                  (state.sessionPreviewOpeningByProject[projectId]?.requestId ??
+                    0) + 1,
+                immediate,
+              },
             },
+            ...(projectId === state.sessionPreviewProjectId
+              ? {
+                  sessionPreviewOpening: {
+                    projectId,
+                    requestId:
+                      (state.sessionPreviewOpening?.requestId ?? 0) + 1,
+                    immediate,
+                  },
+                }
+              : {}),
           }
         : {}),
       sessionPreviewByProject: {
@@ -803,10 +853,12 @@ export const usePageTabStore = create<PageTabState>()(
           chatTimelineDetailLevel: normalizeChatTimelineDetailLevel(level),
         }),
       sessionSidePanelToggleRequestId: 0,
-      requestToggleSessionSidePanel: () =>
+      sessionSidePanelToggleProjectId: null,
+      requestToggleSessionSidePanel: (projectId) =>
         set((state) => ({
           sessionSidePanelToggleRequestId:
             state.sessionSidePanelToggleRequestId + 1,
+          sessionSidePanelToggleProjectId: projectId ?? null,
         })),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
@@ -848,7 +900,12 @@ export const usePageTabStore = create<PageTabState>()(
           return { unviewedTabs: newUnviewedTabs };
         }),
       scrollToQueryId: null,
-      setScrollToQueryId: (queryId) => set({ scrollToQueryId: queryId }),
+      scrollToQueryProjectId: null,
+      setScrollToQueryId: (queryId, projectId) =>
+        set({
+          scrollToQueryId: queryId,
+          scrollToQueryProjectId: projectId ?? null,
+        }),
       taskBoxFocusRequestId: 0,
       taskBoxFocusProjectId: null,
       taskBoxFocusTaskId: null,
@@ -870,10 +927,11 @@ export const usePageTabStore = create<PageTabState>()(
           return { customAgentFolderPathByProjectId: next };
         }),
       workspaceChatFocusRequestId: 0,
+      workspaceChatFocusProjectId: null,
       workspaceChatDraftRequest: null,
       workspaceChatDraftRequestSequence: 0,
       workspaceReviewHandoffs: [],
-      requestWorkspaceChatFocus: () =>
+      requestWorkspaceChatFocus: (projectId) =>
         set((state) => {
           const tab = state.activeWorkspaceTab;
           const alreadyOnWorkspaceChat =
@@ -886,11 +944,17 @@ export const usePageTabStore = create<PageTabState>()(
               ? {}
               : { activeWorkspaceTab: 'project' as const }),
             workspaceChatFocusRequestId: state.workspaceChatFocusRequestId + 1,
+            // The preview scope is the draft sentinel on New session and lags
+            // a same-tick `setActiveProject`; unscoped requests target focus.
+            workspaceChatFocusProjectId: projectId ?? null,
           };
         }),
-      requestWorkspaceChatDraft: (content, reviewSource) => {
+      requestWorkspaceChatDraft: (content, reviewSource, targetProjectId) => {
         const normalized = content.trim();
-        const projectId = get().sessionPreviewProjectId;
+        const projectId =
+          targetProjectId === undefined
+            ? get().sessionPreviewProjectId
+            : targetProjectId;
         if (!normalized || !projectId) return;
         set((state) => {
           const requestId = state.workspaceChatDraftRequestSequence + 1;
@@ -929,7 +993,7 @@ export const usePageTabStore = create<PageTabState>()(
               : {}),
           };
         });
-        get().requestWorkspaceChatFocus();
+        get().requestWorkspaceChatFocus(projectId);
       },
       consumeWorkspaceChatDraft: (requestId) =>
         set((state) =>
@@ -1030,6 +1094,8 @@ export const usePageTabStore = create<PageTabState>()(
 
       sessionPreviewProjectId: null,
       sessionPreviewOpening: null,
+      sessionPreviewOpeningByProject: {},
+      previewBrowserViewportByProject: {},
       sessionPreviewByProject: {},
       sessionSummaryOpenByProject: {},
       setSessionSummaryOpen: (projectId, open) =>
@@ -1061,8 +1127,21 @@ export const usePageTabStore = create<PageTabState>()(
           return { sessionTaskStartedProjectIds };
         }),
       previewBrowserViewport: null,
-      setPreviewBrowserViewport: (rect) =>
-        set({ previewBrowserViewport: rect }),
+      setPreviewBrowserViewport: (rect, projectId) =>
+        set((state) => {
+          const id =
+            projectId === undefined ? state.sessionPreviewProjectId : projectId;
+          if (!id) return state;
+          // Legacy publishers own the one focused viewport. Pane publishers
+          // pass an owner explicitly and can remain visible simultaneously.
+          if (projectId === undefined) return { previewBrowserViewport: rect };
+          const viewports = { ...state.previewBrowserViewportByProject };
+          if (rect) viewports[id] = rect;
+          else delete viewports[id];
+          return {
+            previewBrowserViewportByProject: viewports,
+          };
+        }),
       setSessionPreviewProject: (projectId) =>
         set((state) =>
           state.sessionPreviewProjectId === projectId
@@ -1072,7 +1151,7 @@ export const usePageTabStore = create<PageTabState>()(
                 sessionPreviewOpening: null,
               }
         ),
-      toggleSessionPreview: (options) =>
+      toggleSessionPreview: (options, projectId) =>
         setSessionPreviewSlice(
           set,
           (slice) => {
@@ -1085,9 +1164,9 @@ export const usePageTabStore = create<PageTabState>()(
               activeTabId: initial.activeTabId,
             };
           },
-          options
+          { ...options, projectId }
         ),
-      openPreviewTab: (kind, options) =>
+      openPreviewTab: (kind, options, projectId) =>
         setSessionPreviewSlice(
           set,
           (slice, state) => {
@@ -1113,181 +1192,206 @@ export const usePageTabStore = create<PageTabState>()(
             else tabs.push(tab);
             return { open: true, tabs, activeTabId: tab.id };
           },
-          options
+          { ...options, projectId }
         ),
-      addChooserPreviewTab: () =>
-        setSessionPreviewSlice(set, (slice) => {
-          const tab = createChooserPreviewTab();
-          return {
-            open: true,
-            tabs: [...slice.tabs, tab],
-            activeTabId: tab.id,
-          };
-        }),
-      choosePreviewTabType: (tabId, kind) =>
-        setSessionPreviewSlice(set, (slice, state) => {
-          const tab = createPreviewTabOfKind(
-            kind,
-            state.sessionPreviewProjectId
-          );
-          const index = slice.tabs.findIndex(
-            (candidate) => candidate.id === tabId
-          );
-          const tabs = [...slice.tabs];
-          if (index >= 0) {
-            // Replace the chooser in place so the tab keeps its position.
-            tabs[index] = tab;
-          } else {
-            tabs.push(tab);
-          }
-          return { open: true, tabs, activeTabId: tab.id };
-        }),
-      openFilePreview: (file) =>
-        setSessionPreviewSlice(set, (slice) => {
-          const targetFile = file ?? null;
-          const previewTabs = slice.tabs;
-          const matchingIndex = targetFile
-            ? previewTabs.findIndex(
-                (tab) =>
-                  tab.type === 'file' &&
-                  tab.file !== null &&
-                  isSameFilePreview(tab.file, targetFile)
-              )
-            : previewTabs.findIndex(
-                (tab) => tab.type === 'file' && tab.file === null
-              );
-          if (matchingIndex >= 0) {
-            const matchingTab = previewTabs[matchingIndex] as SessionFileTab;
-            const tabs = [...previewTabs];
-            // Durable Artifact identity intentionally deduplicates the tab,
-            // but its preview source may change after workspace restoration
-            // (for example from a signed Cloud URL to a local Space path).
-            // Refresh the tab payload so a persisted remote source cannot win.
-            tabs[matchingIndex] = {
-              ...matchingTab,
-              title: targetFile?.name || matchingTab.title,
-              file: targetFile,
-            };
+      addChooserPreviewTab: (projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice) => {
+            const tab = createChooserPreviewTab();
             return {
               open: true,
-              tabs,
-              activeTabId: matchingTab.id,
+              tabs: [...slice.tabs, tab],
+              activeTabId: tab.id,
             };
-          }
-
-          // Reuse a "blank" starter tab (empty file, or the chooser) in place —
-          // preferring the active one — so opening a file doesn't pile up tabs.
-          const isReusable = (tab: SessionPreviewTab) =>
-            tab.type === 'chooser' ||
-            (tab.type === 'file' && tab.file === null);
-          const reuseIndex = (() => {
-            const activeIndex = previewTabs.findIndex(
-              (tab) => tab.id === slice.activeTabId && isReusable(tab)
+          },
+          { projectId }
+        ),
+      choosePreviewTabType: (tabId, kind, projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice, state) => {
+            const tab = createPreviewTabOfKind(
+              kind,
+              state.sessionPreviewProjectId
             );
-            return activeIndex >= 0
-              ? activeIndex
-              : previewTabs.findIndex(isReusable);
-          })();
-          if (reuseIndex >= 0) {
-            const tabs = [...previewTabs];
-            tabs[reuseIndex] = createFilePreviewTab(targetFile);
-            return { open: true, tabs, activeTabId: tabs[reuseIndex].id };
-          }
-
-          const tab = createFilePreviewTab(targetFile);
-          return {
-            open: true,
-            tabs: [...previewTabs, tab],
-            activeTabId: tab.id,
-          };
-        }),
-      openReviewPreview: (input) =>
-        setSessionPreviewSlice(set, (slice) => {
-          const requestedTarget = createReviewTarget(input);
-          const sameScope = (tab: SessionPreviewTab) => {
-            if (tab.type !== 'review') return false;
-            const currentTarget = tab.reviewTarget ?? createReviewTarget();
-            return (
-              currentTarget.scope === requestedTarget.scope &&
-              currentTarget.runId === requestedTarget.runId
+            const index = slice.tabs.findIndex(
+              (candidate) => candidate.id === tabId
             );
-          };
-          const existingIndex = slice.tabs.findIndex(sameScope);
-          if (existingIndex >= 0) {
-            const current = slice.tabs[existingIndex] as SessionReviewTab;
-            const currentTarget = current.reviewTarget ?? createReviewTarget();
             const tabs = [...slice.tabs];
-            tabs[existingIndex] = {
-              ...current,
-              reviewTarget: {
-                ...currentTarget,
-                ...(requestedTarget.focusPath
-                  ? { focusPath: requestedTarget.focusPath }
-                  : {}),
-                focusRequestId: currentTarget.focusRequestId + 1,
-              },
-            };
-            return { open: true, tabs, activeTabId: current.id };
-          }
+            if (index >= 0) {
+              // Replace the chooser in place so the tab keeps its position.
+              tabs[index] = tab;
+            } else {
+              tabs.push(tab);
+            }
+            return { open: true, tabs, activeTabId: tab.id };
+          },
+          { projectId }
+        ),
+      openFilePreview: (file, projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice) => {
+            const targetFile = file ?? null;
+            const previewTabs = slice.tabs;
+            const matchingIndex = targetFile
+              ? previewTabs.findIndex(
+                  (tab) =>
+                    tab.type === 'file' &&
+                    tab.file !== null &&
+                    isSameFilePreview(tab.file, targetFile)
+                )
+              : previewTabs.findIndex(
+                  (tab) => tab.type === 'file' && tab.file === null
+                );
+            if (matchingIndex >= 0) {
+              const matchingTab = previewTabs[matchingIndex] as SessionFileTab;
+              const tabs = [...previewTabs];
+              // Durable Artifact identity intentionally deduplicates the tab,
+              // but its preview source may change after workspace restoration
+              // (for example from a signed Cloud URL to a local Space path).
+              // Refresh the tab payload so a persisted remote source cannot win.
+              tabs[matchingIndex] = {
+                ...matchingTab,
+                title: targetFile?.name || matchingTab.title,
+                file: targetFile,
+              };
+              return {
+                open: true,
+                tabs,
+                activeTabId: matchingTab.id,
+              };
+            }
 
-          const tab = createReviewPreviewTab(input);
-          const reusableIndex = slice.tabs.findIndex(
-            (candidate) => candidate.type === 'chooser'
-          );
-          const tabs = [...slice.tabs];
-          if (reusableIndex >= 0) tabs[reusableIndex] = tab;
-          else tabs.push(tab);
-          return { open: true, tabs, activeTabId: tab.id };
-        }),
-      updateReviewComments: (tabId, comments) =>
-        setSessionPreviewSlice(set, (slice) => {
-          const index = slice.tabs.findIndex(
-            (tab) => tab.id === tabId && tab.type === 'review'
-          );
-          if (index < 0) return null;
-          const current = slice.tabs[index] as SessionReviewTab;
-          const tabs = [...slice.tabs];
-          tabs[index] = { ...current, reviewComments: comments };
-          return { ...slice, tabs };
-        }),
-      setReviewIdentity: (tabId, identity, targetKey) =>
-        setSessionPreviewSlice(set, (slice) => {
-          const index = slice.tabs.findIndex(
-            (tab) => tab.id === tabId && tab.type === 'review'
-          );
-          if (index < 0) return null;
-          const current = slice.tabs[index] as SessionReviewTab;
-          const ownKey = reviewTargetIdentityKey(
-            current.reviewTarget ?? createReviewTarget()
-          );
-          const key = targetKey ?? ownKey;
-          // The tab's own scope keeps mirroring into `reviewIdentity` so tabs
-          // persisted before per-scope pins existed still resolve.
-          const mirrors = key === ownKey;
-          // First write wins: the pin is what the out-of-date guard compares
-          // against, so it must not drift onto each newly fetched revision.
-          const pinned =
-            current.reviewIdentities?.[key] ??
-            (mirrors ? current.reviewIdentity : undefined) ??
-            identity;
-          const needsPin = current.reviewIdentities?.[key] !== pinned;
-          const needsMirror = mirrors && current.reviewIdentity !== pinned;
-          if (!needsPin && !needsMirror) return null;
-          const tabs = [...slice.tabs];
-          tabs[index] = {
-            ...current,
-            ...(needsMirror ? { reviewIdentity: pinned } : {}),
-            ...(needsPin
-              ? {
-                  reviewIdentities: {
-                    ...current.reviewIdentities,
-                    [key]: pinned,
-                  },
-                }
-              : {}),
-          };
-          return { ...slice, tabs };
-        }),
+            // Reuse a "blank" starter tab (empty file, or the chooser) in place —
+            // preferring the active one — so opening a file doesn't pile up tabs.
+            const isReusable = (tab: SessionPreviewTab) =>
+              tab.type === 'chooser' ||
+              (tab.type === 'file' && tab.file === null);
+            const reuseIndex = (() => {
+              const activeIndex = previewTabs.findIndex(
+                (tab) => tab.id === slice.activeTabId && isReusable(tab)
+              );
+              return activeIndex >= 0
+                ? activeIndex
+                : previewTabs.findIndex(isReusable);
+            })();
+            if (reuseIndex >= 0) {
+              const tabs = [...previewTabs];
+              tabs[reuseIndex] = createFilePreviewTab(targetFile);
+              return { open: true, tabs, activeTabId: tabs[reuseIndex].id };
+            }
+
+            const tab = createFilePreviewTab(targetFile);
+            return {
+              open: true,
+              tabs: [...previewTabs, tab],
+              activeTabId: tab.id,
+            };
+          },
+          { projectId }
+        ),
+      openReviewPreview: (input, projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice) => {
+            const requestedTarget = createReviewTarget(input);
+            const sameScope = (tab: SessionPreviewTab) => {
+              if (tab.type !== 'review') return false;
+              const currentTarget = tab.reviewTarget ?? createReviewTarget();
+              return (
+                currentTarget.scope === requestedTarget.scope &&
+                currentTarget.runId === requestedTarget.runId
+              );
+            };
+            const existingIndex = slice.tabs.findIndex(sameScope);
+            if (existingIndex >= 0) {
+              const current = slice.tabs[existingIndex] as SessionReviewTab;
+              const currentTarget =
+                current.reviewTarget ?? createReviewTarget();
+              const tabs = [...slice.tabs];
+              tabs[existingIndex] = {
+                ...current,
+                reviewTarget: {
+                  ...currentTarget,
+                  ...(requestedTarget.focusPath
+                    ? { focusPath: requestedTarget.focusPath }
+                    : {}),
+                  focusRequestId: currentTarget.focusRequestId + 1,
+                },
+              };
+              return { open: true, tabs, activeTabId: current.id };
+            }
+
+            const tab = createReviewPreviewTab(input);
+            const reusableIndex = slice.tabs.findIndex(
+              (candidate) => candidate.type === 'chooser'
+            );
+            const tabs = [...slice.tabs];
+            if (reusableIndex >= 0) tabs[reusableIndex] = tab;
+            else tabs.push(tab);
+            return { open: true, tabs, activeTabId: tab.id };
+          },
+          { projectId }
+        ),
+      updateReviewComments: (tabId, comments, projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice) => {
+            const index = slice.tabs.findIndex(
+              (tab) => tab.id === tabId && tab.type === 'review'
+            );
+            if (index < 0) return null;
+            const current = slice.tabs[index] as SessionReviewTab;
+            const tabs = [...slice.tabs];
+            tabs[index] = { ...current, reviewComments: comments };
+            return { ...slice, tabs };
+          },
+          { projectId }
+        ),
+      setReviewIdentity: (tabId, identity, targetKey, projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice) => {
+            const index = slice.tabs.findIndex(
+              (tab) => tab.id === tabId && tab.type === 'review'
+            );
+            if (index < 0) return null;
+            const current = slice.tabs[index] as SessionReviewTab;
+            const ownKey = reviewTargetIdentityKey(
+              current.reviewTarget ?? createReviewTarget()
+            );
+            const key = targetKey ?? ownKey;
+            // The tab's own scope keeps mirroring into `reviewIdentity` so tabs
+            // persisted before per-scope pins existed still resolve.
+            const mirrors = key === ownKey;
+            // First write wins: the pin is what the out-of-date guard compares
+            // against, so it must not drift onto each newly fetched revision.
+            const pinned =
+              current.reviewIdentities?.[key] ??
+              (mirrors ? current.reviewIdentity : undefined) ??
+              identity;
+            const needsPin = current.reviewIdentities?.[key] !== pinned;
+            const needsMirror = mirrors && current.reviewIdentity !== pinned;
+            if (!needsPin && !needsMirror) return null;
+            const tabs = [...slice.tabs];
+            tabs[index] = {
+              ...current,
+              ...(needsMirror ? { reviewIdentity: pinned } : {}),
+              ...(needsPin
+                ? {
+                    reviewIdentities: {
+                      ...current.reviewIdentities,
+                      [key]: pinned,
+                    },
+                  }
+                : {}),
+            };
+            return { ...slice, tabs };
+          },
+          { projectId }
+        ),
       openBrowserPreview: (url, projectId) =>
         setSessionPreviewSlice(
           set,
@@ -1374,68 +1478,85 @@ export const usePageTabStore = create<PageTabState>()(
           },
           { projectId }
         ),
-      openAgentTerminalPreview: (sourceId, title, fromTabId) =>
-        setSessionPreviewSlice(set, (slice) => {
-          const existing = slice.tabs.find(
-            (tab) => tab.type === 'terminal' && tab.agentSourceId === sourceId
-          );
-          if (existing) {
-            return { ...slice, open: true, activeTabId: existing.id };
-          }
-          const tab: SessionTerminalTab = {
-            id: nextSessionPreviewTabId('terminal'),
-            type: 'terminal',
-            title: title || 'Terminal',
-            agentSourceId: sourceId,
-          };
-          const replaceIndex = fromTabId
-            ? slice.tabs.findIndex(
-                (candidate) =>
-                  candidate.id === fromTabId && candidate.type === 'chooser'
-              )
-            : -1;
-          const tabs = [...slice.tabs];
-          if (replaceIndex >= 0) {
-            tabs[replaceIndex] = tab;
-          } else {
-            tabs.push(tab);
-          }
-          return { open: true, tabs, activeTabId: tab.id };
-        }),
-      selectSessionPreviewTab: (tabId) =>
-        setSessionPreviewSlice(set, (slice) =>
-          slice.tabs.some((tab) => tab.id === tabId)
-            ? { ...slice, activeTabId: tabId }
-            : null
+      openAgentTerminalPreview: (sourceId, title, fromTabId, projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice) => {
+            const existing = slice.tabs.find(
+              (tab) => tab.type === 'terminal' && tab.agentSourceId === sourceId
+            );
+            if (existing) {
+              return { ...slice, open: true, activeTabId: existing.id };
+            }
+            const tab: SessionTerminalTab = {
+              id: nextSessionPreviewTabId('terminal'),
+              type: 'terminal',
+              title: title || 'Terminal',
+              agentSourceId: sourceId,
+            };
+            const replaceIndex = fromTabId
+              ? slice.tabs.findIndex(
+                  (candidate) =>
+                    candidate.id === fromTabId && candidate.type === 'chooser'
+                )
+              : -1;
+            const tabs = [...slice.tabs];
+            if (replaceIndex >= 0) {
+              tabs[replaceIndex] = tab;
+            } else {
+              tabs.push(tab);
+            }
+            return { open: true, tabs, activeTabId: tab.id };
+          },
+          { projectId }
         ),
-      closeSessionPreviewTab: (tabId) => {
-        const closingTab = getSessionPreviewSlice(get()).tabs.find(
+      selectSessionPreviewTab: (tabId, projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice) =>
+            slice.tabs.some((tab) => tab.id === tabId)
+              ? { ...slice, activeTabId: tabId }
+              : null,
+          { projectId }
+        ),
+      closeSessionPreviewTab: (tabId, projectId) => {
+        const closingTab = getSessionPreviewSlice(get(), projectId).tabs.find(
           (tab) => tab.id === tabId
         );
         if (closingTab) disposePreviewShellTabs([closingTab]);
-        setSessionPreviewSlice(set, (slice) => {
-          const closingIndex = slice.tabs.findIndex((tab) => tab.id === tabId);
-          if (closingIndex < 0) return null;
-          const tabs = slice.tabs.filter((tab) => tab.id !== tabId);
-          if (tabs.length === 0) {
-            return { open: false, tabs: [], activeTabId: null };
-          }
-          if (slice.activeTabId !== tabId) {
-            return { ...slice, tabs };
-          }
-          const nextTab = tabs[Math.min(closingIndex, tabs.length - 1)];
-          return { ...slice, tabs, activeTabId: nextTab.id };
-        });
+        setSessionPreviewSlice(
+          set,
+          (slice) => {
+            const closingIndex = slice.tabs.findIndex(
+              (tab) => tab.id === tabId
+            );
+            if (closingIndex < 0) return null;
+            const tabs = slice.tabs.filter((tab) => tab.id !== tabId);
+            if (tabs.length === 0) {
+              return { open: false, tabs: [], activeTabId: null };
+            }
+            if (slice.activeTabId !== tabId) {
+              return { ...slice, tabs };
+            }
+            const nextTab = tabs[Math.min(closingIndex, tabs.length - 1)];
+            return { ...slice, tabs, activeTabId: nextTab.id };
+          },
+          { projectId }
+        );
       },
-      updateBrowserPreviewTab: (tabId, patch) =>
-        setSessionPreviewSlice(set, (slice) => ({
-          ...slice,
-          tabs: slice.tabs.map((tab) =>
-            tab.id === tabId && tab.type === 'browser'
-              ? { ...tab, ...patch }
-              : tab
-          ),
-        })),
+      updateBrowserPreviewTab: (tabId, patch, projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice) => ({
+            ...slice,
+            tabs: slice.tabs.map((tab) =>
+              tab.id === tabId && tab.type === 'browser'
+                ? { ...tab, ...patch }
+                : tab
+            ),
+          }),
+          { projectId }
+        ),
       updateBrowserPreviewTabIn: (projectId, tabId, patch) =>
         set((state) => {
           const slice = state.sessionPreviewByProject[projectId];
@@ -1454,15 +1575,21 @@ export const usePageTabStore = create<PageTabState>()(
             },
           };
         }),
-      closeSessionPreview: () =>
-        setSessionPreviewSlice(set, (slice) => ({ ...slice, open: false })),
-      resetSessionPreview: () => {
-        disposePreviewShellTabs(getSessionPreviewSlice(get()).tabs);
-        setSessionPreviewSlice(set, () => ({
-          open: false,
-          tabs: [],
-          activeTabId: null,
-        }));
+      closeSessionPreview: (projectId) =>
+        setSessionPreviewSlice(set, (slice) => ({ ...slice, open: false }), {
+          projectId,
+        }),
+      resetSessionPreview: (projectId) => {
+        disposePreviewShellTabs(getSessionPreviewSlice(get(), projectId).tabs);
+        setSessionPreviewSlice(
+          set,
+          () => ({
+            open: false,
+            tabs: [],
+            activeTabId: null,
+          }),
+          { projectId }
+        );
       },
       handOffNewSessionDraft: (projectId) =>
         set((state) => {
@@ -1484,6 +1611,18 @@ export const usePageTabStore = create<PageTabState>()(
           return {
             sessionPreviewByProject,
             sessionSummaryOpenByProject,
+            sessionPreviewOpeningByProject: slice?.open
+              ? {
+                  ...state.sessionPreviewOpeningByProject,
+                  [projectId]: {
+                    projectId,
+                    requestId:
+                      (state.sessionPreviewOpeningByProject[projectId]
+                        ?.requestId ?? 0) + 1,
+                    immediate: true,
+                  },
+                }
+              : state.sessionPreviewOpeningByProject,
             ...(scoped
               ? {
                   sessionPreviewProjectId: projectId,
@@ -1516,10 +1655,20 @@ export const usePageTabStore = create<PageTabState>()(
             ...state.sessionPreviewByProject,
           };
           delete sessionPreviewByProject[projectId];
+          const sessionPreviewOpeningByProject = {
+            ...state.sessionPreviewOpeningByProject,
+          };
+          delete sessionPreviewOpeningByProject[projectId];
+          const previewBrowserViewportByProject = {
+            ...state.previewBrowserViewportByProject,
+          };
+          delete previewBrowserViewportByProject[projectId];
           return {
             sessionPreviewByProject,
             sessionSummaryOpenByProject,
             sessionTaskStartedProjectIds,
+            sessionPreviewOpeningByProject,
+            previewBrowserViewportByProject,
             ...(state.sessionPreviewProjectId === projectId
               ? {
                   sessionPreviewProjectId: null,
