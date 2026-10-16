@@ -253,6 +253,8 @@ class MemoryExtractionEventRecord:
     created_at: float
     payload_bytes: int
     last_error: str | None = None
+    # ``payload.source`` of a user.message; None for other event types.
+    message_source: object = None
 
 
 @dataclass(frozen=True)

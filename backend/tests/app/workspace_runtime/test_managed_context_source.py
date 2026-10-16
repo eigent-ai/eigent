@@ -356,10 +356,61 @@ async def test_c4_uses_another_configured_provider_without_history_allowlist(
     assert document["binding"]["history_context"] == "journal-context-v1"
 
 
+def set_input_source(connection, run_id, source):
+    event_id = "execution-input:" + run_id
+    payload = json.loads(
+        connection.execute(
+            "SELECT payload_json FROM run_events WHERE event_id=?", (event_id,)
+        ).fetchone()["payload_json"]
+    )
+    assert payload.pop("source") == "local"
+    if source is not None:
+        payload["source"] = source
+    connection.execute(
+        "UPDATE run_events SET payload_json=? WHERE event_id=?",
+        (json.dumps(payload), event_id),
+    )
+
+
+@pytest.mark.asyncio
+async def test_prior_input_recorded_before_its_source_still_captures(
+    deployment, monkeypatch
+):
+    d = deployment
+    d.project("a")
+    await configure_test_provider(d)
+    envelope = await d.register("a")
+    sources, errors = {}, []
+
+    async def drop_source(adapter, request, bound):
+        if request.request_id == "second":
+            # History written before user.message carried its source.
+            with d.journal._write_transaction() as connection:
+                set_input_source(connection, "first", None)
+
+    observe_capture(monkeypatch, sources, errors, drop_source)
+    ModelScript(monkeypatch)
+    await d.service.start()
+    await send(d, "first", envelope)
+    await terminal(d, "first", errors)
+    await send(d, "second", envelope, kind="follow_up")
+    await terminal(d, "second", errors)
+    [retained] = sources["second"].runs
+    assert "execution-input:first" in retained.source_event_ids
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "corruption",
-    ["message", "envelope", "account", "attempt", "tool", "settlement"],
+    [
+        "message",
+        "message_source",
+        "envelope",
+        "account",
+        "attempt",
+        "tool",
+        "settlement",
+    ],
 )
 async def test_canonical_owner_or_message_corruption_rejects_capture(
     deployment, monkeypatch, corruption
@@ -379,6 +430,8 @@ async def test_canonical_owner_or_message_corruption_rejects_capture(
                 connection.execute(
                     "UPDATE follow_up_requests SET content='wrong-message' WHERE request_id='second'"
                 )
+            elif corruption == "message_source":
+                set_input_source(connection, "first", "scheduled")
             elif corruption == "envelope":
                 connection.execute(
                     "UPDATE execution_requests SET envelope_digest=? WHERE request_id='first'",

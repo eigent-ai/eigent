@@ -102,7 +102,14 @@ spec:
         )
 
     def register(
-        self, project, handler, *, space="space", git=False, source=None
+        self,
+        project,
+        handler,
+        *,
+        space="space",
+        git=False,
+        source=None,
+        sources=frozenset({"local"}),
     ):
         source = source or self.root / space
         source.mkdir(exist_ok=True)
@@ -177,12 +184,13 @@ spec:
             authorize=lambda origin: (
                 origin.principal_ref == self.origin.principal_ref
             ),
+            sources=sources,
         )
         self.registry.register(project, policy)
         self.policies[project] = policy
         return policy
 
-    async def submit(self, project, request, *, followup=False):
+    async def submit(self, project, request, *, followup=False, origin=None):
         envelope = dict(self.policies[project].configuration)
         kwargs = {}
         if followup:
@@ -197,7 +205,7 @@ spec:
             project_id=project,
             kind="follow_up" if followup else "start",
             envelope=envelope,
-            origin=self.origin,
+            origin=origin or self.origin,
             **kwargs,
         )
 
@@ -355,6 +363,30 @@ async def test_session_fifo_followup_atomic_message_and_next_input(world):
             "SELECT COUNT(*) FROM run_events WHERE run_id='second' AND event_type='user.message'"
         ).fetchone()[0]
     assert events == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["local", "scheduled"])
+async def test_managed_input_records_its_admitting_source(world, source):
+    async def handler(_runtime, request):
+        return request.request_id
+
+    world.register("p", handler, sources=frozenset({"local", "scheduled"}))
+    origin = replace(world.origin, source=source)
+    await world.submit("p", "first", origin=origin)
+    await world.submit("p", "second", followup=True, origin=origin)
+    await world.service.start()
+    await eventually(lambda: world.completed("second"))
+
+    # Memory needs the source to tell the user's sends from trigger text.
+    assert {
+        run_id: [
+            event.payload["source"]
+            for event in world.journal.list_events(run_id)
+            if event.event_type == "user.message"
+        ]
+        for run_id in ("first", "second")
+    } == {"first": [source], "second": [source]}
 
 
 @pytest.mark.asyncio
