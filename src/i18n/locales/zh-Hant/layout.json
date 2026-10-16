@@ -249,6 +249,7 @@
   "project-name": "工作階段名稱",
   "enter-project-name": "輸入工作階段名稱",
   "rename-project": "重新命名工作階段",
+  "failed-to-rename-session": "無法重新命名工作階段，請再試一次。",
   "no-description": "尚無描述。",
   "completed": "已完成",
   "failed": "失敗",

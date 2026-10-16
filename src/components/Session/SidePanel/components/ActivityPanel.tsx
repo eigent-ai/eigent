@@ -420,9 +420,9 @@ function ContextItemIcon({ item }: { item: SessionContextItem }) {
   }
   if (item.icon) return item.icon;
   return item.category === 'skill' ? (
-    <WandSparkles size={16} aria-hidden />
+    <DsIcon icon={WandSparkles} />
   ) : (
-    <Hammer size={16} aria-hidden />
+    <DsIcon icon={Hammer} />
   );
 }
 
@@ -445,13 +445,15 @@ function ResourcesSection({
           key={item.id}
           leading={
             item.kind === 'url' ? (
-              <Globe size={16} aria-hidden />
+              <DsIcon icon={Globe} />
             ) : (
-              <FileText size={16} aria-hidden />
+              <DsIcon icon={FileText} />
             )
           }
           trailing={
-            item.kind === 'url' ? <ExternalLink size={14} aria-hidden /> : null
+            item.kind === 'url' ? (
+              <DsIcon icon={ExternalLink} recipe="main-compact" />
+            ) : null
           }
           onClick={() => onSelect(item)}
         >
@@ -552,7 +554,7 @@ function FilesSection({
       render={(item) => (
         <SidePanelListRow
           key={item.id}
-          leading={<FileText size={16} aria-hidden />}
+          leading={<DsIcon icon={FileText} />}
           trailing={
             !item.previewable ? (
               <span className="text-ds-text-meta text-ds-ink-muted-default">
@@ -970,7 +972,7 @@ export function SessionActivityPanel({
                         aria-label={addFilesLabel}
                         onClick={() => void addFiles()}
                       >
-                        <Plus className="size-4" aria-hidden />
+                        <DsIcon icon={Plus} />
                       </Button>
                     </span>
                   </TooltipSimple>

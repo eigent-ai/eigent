@@ -17,38 +17,28 @@ import { Button } from '@/components/ui/button';
 import { openTerminalProcessPreview } from '@/lib/terminalPreview';
 import { usePageTabStore } from '@/store/pageTabStore';
 
-import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
-import ShinyText from '@/components/ui/ShinyText/ShinyText';
-import { DsIcon } from '@/components/ui/ds-icon';
-import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
-import type { TimelineCall } from '@/lib/projector/chat/presentation';
+import {
+  timelineCallTitle,
+  type TimelineCall,
+  type TimelineCallTitle,
+} from '@/lib/projector/chat/presentation';
 import { cn } from '@/lib/utils';
-import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { actionIcon } from './actionIcon';
-import { disclosureMotion } from './shared';
+import { callIcon } from './actionIcon';
+import {
+  TaskLogCollapsible,
+  TaskLogContent,
+  TaskLogDescription,
+  TaskLogIcon,
+  TaskLogLine,
+  TaskLogTitle,
+  TaskLogTrigger,
+  useTaskLogOpenState,
+} from './TaskLog';
 
 const ERROR_STATUSES = new Set(['failed', 'timed_out', 'outcome_unknown']);
-
-function formatCallDuration(durationMs: number | undefined): string | null {
-  if (
-    durationMs === undefined ||
-    !Number.isFinite(durationMs) ||
-    durationMs < 0
-  ) {
-    return null;
-  }
-  if (durationMs < 1_000) return `${Math.round(durationMs)} ms`;
-  if (durationMs < 60_000) {
-    const seconds = Number((durationMs / 1_000).toFixed(1));
-    return `${seconds} s`;
-  }
-  return formatSplittingElapsed(durationMs);
-}
 
 export function isCallErrorStatus(status: TimelineCall['status']): boolean {
   return ERROR_STATUSES.has(status);
@@ -60,6 +50,11 @@ export function isCallActiveStatus(status: TimelineCall['status']): boolean {
 
 interface CallRowProps {
   call: TimelineCall;
+  /** Outcome-tense row title; defaults to one without a subject. */
+  title?: TimelineCallTitle;
+  /** Keep disclosure open if this call moves into a repeated-call group. */
+  initialOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
   runActive: boolean;
   /** Row id that currently owns the single running shimmer, if any. */
   latestRunningCallId?: string | null;
@@ -78,6 +73,9 @@ interface CallRowProps {
  */
 export function CallRow({
   call,
+  title: titleOverride,
+  initialOpen,
+  onOpenChange,
   runActive,
   latestRunningCallId = null,
   reducedMotion,
@@ -108,215 +106,142 @@ export function CallRow({
           })
         : t('chat.completed', { defaultValue: 'Completed.' })
       : undefined);
-  const duration = formatCallDuration(call.durationMs);
-  let statusSummary: string;
+  let restingStatusText: string | null;
   switch (call.status) {
-    case 'completed':
-      statusSummary = duration
-        ? t('chat.timeline-completed-in', {
-            defaultValue: 'Completed in {{duration}}',
-            duration,
-          })
-        : t('chat.timeline-completed', { defaultValue: 'Completed' });
-      break;
     case 'failed':
-      statusSummary = t('chat.timeline-failed', { defaultValue: 'Failed' });
+      restingStatusText = t('chat.timeline-failed', { defaultValue: 'Failed' });
       break;
     case 'timed_out':
-      statusSummary = t('chat.timeline-timed-out', {
+      restingStatusText = t('chat.timeline-timed-out', {
         defaultValue: 'Timed out',
       });
       break;
     case 'cancelled':
-      statusSummary = t('chat.timeline-cancelled', {
+      restingStatusText = t('chat.timeline-cancelled', {
         defaultValue: 'Cancelled',
       });
       break;
     case 'blocked':
-      statusSummary = t('chat.timeline-blocked', {
+      restingStatusText = t('chat.timeline-blocked', {
         defaultValue: 'Blocked',
       });
       break;
     case 'interrupted':
-      statusSummary = t('chat.timeline-interrupted', {
+      restingStatusText = t('chat.timeline-interrupted', {
         defaultValue: 'Interrupted',
       });
       break;
-    case 'pending':
-    case 'running':
-      statusSummary = t('chat.timeline-in-progress', {
-        defaultValue: 'In progress',
-      });
-      break;
     case 'outcome_unknown':
-    case 'unknown':
-      statusSummary = t('chat.tool-status-unknown', {
+      restingStatusText = t('chat.tool-status-unknown', {
         defaultValue: 'Unknown',
       });
       break;
+    default:
+      restingStatusText = null;
   }
-  const metadataParts = [
-    call.notice?.title?.trim() || call.title.trim(),
-    statusSummary?.trim(),
-  ].filter(
-    (part, index, parts): part is string =>
-      Boolean(part) && parts.indexOf(part) === index
-  );
   // A pending human call is the one thing the user must act on, so it opens
-  // itself. Everything else follows the shimmer/auto-collapse rule.
-  const autoExpanded = highlighted || pendingHuman;
-  const [open, setOpen] = useState(autoExpanded);
-  const wasAutoExpanded = useRef(autoExpanded);
+  // itself and folds once answered. A running tool only shimmers, like a
+  // legacy event-log row, so the list never jumps.
+  const [open, setOpen] = useTaskLogOpenState(pendingHuman, initialOpen);
+  // Only a row with something to reveal is a trigger. A running call with no
+  // request yet stays a plain line until its detail arrives.
+  const expandable =
+    Boolean(
+      call.input ||
+      call.output ||
+      call.notice?.content.trim() ||
+      call.detail?.trim()
+    ) ||
+    pendingHuman ||
+    failed;
+  const title = titleOverride ?? timelineCallTitle(call);
+  // Only an outcome the title does not already say gets a word at rest.
+  const restingDescription = title.statesStatus ? null : restingStatusText;
+  const lineStatus = failed ? 'error' : highlighted ? 'running' : undefined;
+  const lineContent = (
+    <>
+      <TaskLogIcon
+        icon={callIcon(call)}
+        data-timeline-action-icon={call.actionKind}
+      />
+      <TaskLogTitle shimmer={highlighted}>{title.text}</TaskLogTitle>
+      {restingDescription ? (
+        <TaskLogDescription
+          className={cn(!failed && 'text-ds-ink-muted-default')}
+          data-timeline-call-resting-description
+        >
+          {restingDescription}
+        </TaskLogDescription>
+      ) : null}
+    </>
+  );
+  const processAction = process ? (
+    <Button
+      variant="text"
+      size="sm"
+      onClick={() => openTerminalProcessPreview(process)}
+    >
+      {t(
+        process.url && process.status === 'running'
+          ? 'layout.terminal-process-open-server'
+          : 'layout.terminal-process-open-output'
+      )}
+    </Button>
+  ) : null;
+  const rowData = {
+    'data-timeline-call-executor': call.executor,
+    'data-timeline-call-id': call.toolCallId || call.interactionId,
+    'data-timeline-call-status': call.status,
+    'data-timeline-action-kind': call.actionKind,
+    'data-timeline-call-highlighted': highlighted ? 'true' : undefined,
+    'data-interaction-id': call.interactionId,
+  };
 
-  useEffect(() => {
-    if (autoExpanded) setOpen(true);
-    else if (wasAutoExpanded.current) setOpen(false);
-    wasAutoExpanded.current = autoExpanded;
-  }, [autoExpanded]);
+  if (!expandable) {
+    return (
+      <div className="flex w-full min-w-0 flex-col items-start" {...rowData}>
+        <TaskLogLine status={lineStatus} data-timeline-call-line>
+          {lineContent}
+        </TaskLogLine>
+        {processAction}
+      </div>
+    );
+  }
 
   return (
-    <div
-      className="flex w-full min-w-0 flex-col items-start"
-      data-timeline-call-executor={call.executor}
-      data-timeline-call-id={call.toolCallId || call.interactionId}
-      data-timeline-call-status={call.status}
-      data-timeline-action-kind={call.actionKind}
-      data-timeline-call-highlighted={highlighted ? 'true' : undefined}
-      data-interaction-id={call.interactionId}
+    <TaskLogCollapsible
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        onOpenChange?.(nextOpen);
+      }}
+      reducedMotion={reducedMotion}
+      {...rowData}
     >
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className={cn(
-          'inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left transition-opacity hover:opacity-80',
-          DS_FOCUS_RING,
-          failed && 'text-ds-text-status-error-default-default'
-        )}
+      <TaskLogTrigger
+        status={lineStatus}
+        chevronProps={{ 'data-timeline-call-chevron': true }}
+        data-timeline-call-line
         data-timeline-call-trigger
       >
-        <DsIcon
-          icon={actionIcon(call.actionKind)}
-          recipe="main"
-          className={cn(
-            failed
-              ? 'text-ds-text-status-error-default-default'
-              : 'text-ds-ink-subtle-default'
-          )}
-          data-timeline-action-icon={call.actionKind}
+        {lineContent}
+      </TaskLogTrigger>
+      {processAction}
+      <TaskLogContent data-timeline-call-content>
+        <ToolInputOutputDetails
+          appearance="code-scroll"
+          description={description}
+          input={call.input}
+          inputLabel={call.inputLabel}
+          output={call.output}
+          outputLabel={call.outputLabel}
+          showEmptyOutput={showWaitingOutput}
+          emptyOutputText={
+            call.emptyOutputText ||
+            (running ? 'Waiting for a response.' : 'Waiting for you.')
+          }
         />
-        {highlighted ? (
-          <ShinyText
-            text={call.title}
-            speed={2.5}
-            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default"
-          />
-        ) : (
-          <span
-            className={cn(
-              'min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap',
-              failed
-                ? 'text-ds-text-status-error-default-default'
-                : 'text-ds-ink-subtle-default'
-            )}
-          >
-            {call.title}
-          </span>
-        )}
-        {failed ? (
-          <span className="sr-only">
-            {call.executor === 'human'
-              ? t('chat.request-not-completed', {
-                  defaultValue: 'This request was not completed.',
-                })
-              : t('chat.tool-call-failed', {
-                  defaultValue: 'Tool call failed.',
-                })}
-          </span>
-        ) : null}
-        <DsIcon
-          icon={ChevronRight}
-          className={cn(
-            'transition-transform duration-200',
-            failed
-              ? 'text-ds-text-status-error-default-default'
-              : 'text-ds-ink-subtle-default',
-            open && 'rotate-90'
-          )}
-          data-timeline-call-chevron
-        />
-      </button>
-      {process ? (
-        <Button
-          variant="text"
-          size="sm"
-          onClick={() => openTerminalProcessPreview(process)}
-        >
-          {t(
-            process.url && process.status === 'running'
-              ? 'layout.terminal-process-open-server'
-              : 'layout.terminal-process-open-output'
-          )}
-        </Button>
-      ) : null}
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            key="timeline-call-detail"
-            {...disclosureMotion(reducedMotion)}
-            className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-ds-6 overflow-hidden"
-          >
-            <span
-              aria-hidden
-              className="w-ds-icon-main"
-              data-timeline-call-indent
-            />
-            <div
-              className="flex w-full min-w-0 flex-col gap-ds-10 pt-ds-4"
-              data-timeline-call-content
-            >
-              <div
-                className={cn(
-                  'flex min-w-0 flex-wrap items-baseline gap-ds-8 !text-ds-text-meta font-normal break-words text-ds-ink-muted-default',
-                  failed && 'text-ds-text-status-error-default-default',
-                  call.notice?.severity === 'warning' &&
-                    'text-ds-text-warning-strong-default'
-                )}
-                data-timeline-call-metadata
-              >
-                {metadataParts.map((part, index) => (
-                  <span
-                    key={`${index}-${part}`}
-                    className={cn(
-                      index > 0 && 'inline-flex items-baseline gap-ds-8'
-                    )}
-                  >
-                    {index > 0 ? (
-                      <span aria-hidden data-timeline-call-separator>
-                        ·
-                      </span>
-                    ) : null}
-                    <span>{part}</span>
-                  </span>
-                ))}
-              </div>
-              <ToolInputOutputDetails
-                appearance="code-scroll"
-                description={description}
-                input={call.input}
-                inputLabel={call.inputLabel}
-                output={call.output}
-                outputLabel={call.outputLabel}
-                showEmptyOutput={showWaitingOutput}
-                emptyOutputText={
-                  call.emptyOutputText ||
-                  (running ? 'Waiting for a response.' : 'Waiting for you.')
-                }
-              />
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
+      </TaskLogContent>
+    </TaskLogCollapsible>
   );
 }

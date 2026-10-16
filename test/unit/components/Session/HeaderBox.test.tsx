@@ -13,20 +13,93 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { HeaderBox } from '@/components/Session/HeaderBox';
+import type { ChatMessageNode } from '@/lib/projector/chat';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { act, render, screen } from '@testing-library/react';
+import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { useSessionControlsStore } from '@/store/sessionControlsStore';
+import { useSkillsStore } from '@/store/skillsStore';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { runtimeMock } = vi.hoisted(() => ({ runtimeMock: vi.fn() }));
 
 vi.mock('@/store/authStore', () => ({
   getAuthStore: vi.fn(() => ({ language: 'en-US' })),
   useAuthStore: vi.fn(() => ({ appearance: 'light' })),
 }));
 
+vi.mock('@/hooks/useProjectEventRuntime', () => ({
+  useProjectEventRuntime: runtimeMock,
+}));
+
+vi.mock('@/components/Trigger/TriggerDialog', () => ({
+  TriggerDialog: ({
+    isOpen,
+    sourceProjectId,
+    initialTaskPrompt,
+  }: {
+    isOpen: boolean;
+    sourceProjectId?: string;
+    initialTaskPrompt?: string;
+  }) =>
+    isOpen ? (
+      <div role="dialog" aria-label="Automation draft">
+        {sourceProjectId}: {initialTaskPrompt}
+      </div>
+    ) : null,
+}));
+
+function message(
+  id: string,
+  runId: string,
+  runSequence: number,
+  role: ChatMessageNode['role'],
+  purpose: ChatMessageNode['purpose'],
+  content: string
+): ChatMessageNode {
+  return {
+    id,
+    eventId: id,
+    projectId: 'project-1',
+    runId,
+    runSequence,
+    cloudCursor: null,
+    createdAt: `2026-09-23T10:00:0${runSequence}.000Z`,
+    eventType: 'test.message',
+    legacyStep: null,
+    kind: 'message',
+    role,
+    purpose,
+    content,
+    status: 'complete',
+  };
+}
+
+function completedSnapshot(): ProjectEventStoreSnapshot {
+  return {
+    view: { projectId: 'project-1', runs: {} },
+    chat: {
+      nodes: [
+        message('query-1', 'run-1', 1, 'user', 'query', 'Original request'),
+        message('final-1', 'run-1', 2, 'assistant', 'final', 'Final result'),
+      ],
+    },
+  } as ProjectEventStoreSnapshot;
+}
+
 describe('HeaderBox chat timeline mode', () => {
   let resizeHeader: ((width: number) => void) | undefined;
+  let resizeTitle: ((width: number) => void) | undefined;
 
   beforeEach(() => {
+    runtimeMock.mockReturnValue({ projectId: null, snapshot: null });
     vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 800,
@@ -34,20 +107,30 @@ describe('HeaderBox chat timeline mode', () => {
     vi.stubGlobal(
       'ResizeObserver',
       class ResizeObserverMock {
-        constructor(callback: ResizeObserverCallback) {
-          resizeHeader = (width) =>
-            callback(
+        constructor(private callback: ResizeObserverCallback) {}
+
+        observe(target: Element) {
+          const resize = (width: number) =>
+            this.callback(
               [{ contentRect: { width } } as ResizeObserverEntry],
               this as unknown as ResizeObserver
             );
+          if (target.tagName === 'SPAN') resizeTitle = resize;
+          else resizeHeader = resize;
         }
 
-        observe() {}
         unobserve() {}
         disconnect() {}
       }
     );
-    usePageTabStore.setState({ chatTimelineDetailLevel: 'narrative' });
+    usePageTabStore.setState({
+      chatTimelineDetailLevel: 'narrative',
+      narrativeInformationDensity: 'compact',
+      sessionPreviewProjectId: null,
+    });
+    useSkillsStore.setState({ skills: [] });
+    localStorage.removeItem('eigent-pinned-projects');
+    useSessionControlsStore.setState({ pinnedProjectIds: [], request: null });
   });
 
   afterEach(() => {
@@ -56,43 +139,327 @@ describe('HeaderBox chat timeline mode', () => {
     vi.restoreAllMocks();
   });
 
-  it('places the mode toggle between token usage and preview controls', () => {
-    render(<HeaderBox totalTokens={42} projectName="Timeline project" />);
+  it('uses the Session title and trailing menu icon as one trigger', async () => {
+    const user = userEvent.setup();
+    render(
+      <HeaderBox
+        totalTokens={42}
+        projectName="Timeline project"
+        projectId="project-1"
+      />
+    );
 
-    const tokenLabel = screen.getByText(/Total:/);
-    const toggle = screen.getByRole('tablist', {
-      name: 'Chat timeline style',
+    const title = screen.getByText('Timeline project');
+    const menu = screen.getByRole('button', {
+      name: 'Session settings: Timeline project',
     });
+    const tokenLabel = screen.getByText(/Total:/);
     const previewButton = screen.getByRole('button', {
       name: 'Open preview',
     });
+    const menuIcon = menu.querySelector('.lucide-ellipsis-vertical');
 
+    expect(menu).toContainElement(title);
+    expect(menu).toContainElement(menuIcon as HTMLElement);
+    expect(menu).toHaveClass('active:scale-100');
+    expect(menu).not.toHaveClass('active:scale-[0.97]');
+    expect(title).toHaveClass('max-w-[200px]', 'overflow-hidden');
+    expect(title).not.toHaveClass('truncate');
+    expect((title as HTMLElement).style.maskImage).toBe('');
+    expect(title).toHaveAttribute('title', 'Timeline project');
     expect(
-      tokenLabel.compareDocumentPosition(toggle) &
+      menu.compareDocumentPosition(tokenLabel) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      toggle.compareDocumentPosition(previewButton) &
+      tokenLabel.compareDocumentPosition(previewButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+
+    await user.click(title);
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    await user.click(menuIcon!);
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('offers exactly the two timeline modes as a segmented control', () => {
-    render(<HeaderBox totalTokens={42} />);
+  it('keeps a long Session title bounded and exposes its full name', () => {
+    const projectName = 'A long Session title that exceeds the header width';
+    let titleWidth = 200;
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(280);
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(
+      () => titleWidth
+    );
+    render(<HeaderBox projectName={projectName} projectId="project-1" />);
 
-    const options = screen.getAllByRole('tab');
-    expect(options.map((option) => option.getAttribute('aria-label'))).toEqual([
-      'Narrative',
-      'Trajectory',
+    const menu = screen.getByRole('button', {
+      name: `Session settings: ${projectName}`,
+    });
+    const title = screen.getByText(projectName);
+
+    expect(menu).toHaveClass('min-w-0', 'max-w-full', 'shrink');
+    expect(title).toHaveClass('max-w-[200px]', 'overflow-hidden');
+    expect(title).not.toHaveClass('truncate');
+    expect(title).toHaveStyle({
+      maskImage:
+        'linear-gradient(to right, white calc(100% - var(--ds-ref-space-24)), transparent 100%)',
+    });
+    expect(title).toHaveAttribute('title', projectName);
+
+    titleWidth = 300;
+    act(() => resizeTitle?.(titleWidth));
+    expect((title as HTMLElement).style.maskImage).toBe('');
+  });
+
+  it('puts automation actions first and disables them without a completed result', async () => {
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    const items = screen.getAllByRole('menuitem');
+    expect(items.slice(0, 2).map((item) => item.textContent)).toEqual([
+      'Turn into skill',
+      'Turn into automation',
     ]);
-    expect(screen.getByRole('tab', { name: 'Narrative' })).toHaveAttribute(
-      'aria-selected',
+    expect(items[1].querySelector('.lucide-zap')).toBeTruthy();
+    expect(items[0].closest('[role="menu"]')).toHaveClass('w-56');
+    expect(items[0]).toHaveAttribute('aria-disabled', 'true');
+    expect(items[1]).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('drafts from the latest completed result and opens an editable automation', async () => {
+    const user = userEvent.setup();
+    const originalRequestChatDraft =
+      usePageTabStore.getState().requestWorkspaceChatDraft;
+    const requestChatDraft = vi.fn();
+    runtimeMock.mockReturnValue({
+      projectId: 'project-1',
+      snapshot: completedSnapshot(),
+    });
+    usePageTabStore.setState({
+      sessionPreviewProjectId: 'project-1',
+      requestWorkspaceChatDraft: requestChatDraft,
+    });
+    useSkillsStore.setState({
+      skills: [
+        {
+          id: 'skill-creator',
+          name: 'skill-creator',
+          description: '',
+          filePath: '',
+          fileContent: '',
+          addedAt: 0,
+          scope: { isGlobal: true, selectedAgents: [] },
+          enabled: true,
+          isExample: false,
+        },
+      ],
+    });
+
+    try {
+      const { rerender } = render(
+        <HeaderBox projectName="Timeline project" projectId="project-1" />
+      );
+      const trigger = screen.getByRole('button', {
+        name: 'Session settings: Timeline project',
+      });
+      await user.click(trigger);
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Turn into skill' })
+      );
+      expect(requestChatDraft).toHaveBeenCalledWith(
+        expect.stringContaining('#skill-creator'),
+        undefined,
+        { projectId: 'project-1', ifEmpty: true }
+      );
+      expect(requestChatDraft.mock.calls[0][0]).toContain(
+        'Original request:\nOriginal request'
+      );
+      expect(requestChatDraft.mock.calls[0][0]).toContain(
+        'Final result summary:\nFinal result'
+      );
+
+      await user.click(trigger);
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Turn into automation' })
+      );
+      expect(
+        screen.getByRole('dialog', { name: 'Automation draft' })
+      ).toHaveTextContent('project-1: Original request');
+      rerender(
+        <HeaderBox projectName="Another session" projectId="project-2" />
+      );
+      expect(
+        screen.getByRole('dialog', { name: 'Automation draft' })
+      ).toHaveTextContent('project-1: Original request');
+    } finally {
+      act(() => {
+        usePageTabStore.setState({
+          requestWorkspaceChatDraft: originalRequestChatDraft,
+        });
+      });
+    }
+  });
+
+  it('keeps the density slider and Dev mode pill open and restores density', async () => {
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+    const trigger = screen.getByRole('button', {
+      name: 'Session settings: Timeline project',
+    });
+    await user.click(trigger);
+    const slider = screen.getByRole('slider', { name: 'Information density' });
+    const devMode = screen.getByRole('switch', { name: 'Dev mode' });
+    expect(slider).toHaveAttribute('min', '0');
+    expect(slider).toHaveAttribute('max', '2');
+    expect(slider).toHaveAttribute('step', '1');
+    expect(slider).toHaveAttribute('aria-valuetext', 'Minimum');
+    expect(devMode).toHaveAttribute('aria-checked', 'false');
+    for (const [value, density, label] of [
+      ['1', 'balanced', 'Moderate'],
+      ['2', 'expanded', 'Full'],
+    ]) {
+      fireEvent.change(slider, { target: { value } });
+      expect(usePageTabStore.getState().narrativeInformationDensity).toBe(
+        density
+      );
+      expect(slider).toHaveAttribute('aria-valuetext', label);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    }
+    await user.click(devMode);
+    expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
+      'trajectory'
+    );
+    expect(devMode).toHaveAttribute('aria-checked', 'true');
+    expect(devMode).toHaveAttribute('data-state', 'checked');
+    expect(slider).toBeDisabled();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.change(slider, { target: { value: '0' } });
+    expect(usePageTabStore.getState().narrativeInformationDensity).toBe(
+      'expanded'
+    );
+    await user.click(devMode);
+    expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
+      'narrative'
+    );
+    expect(slider).not.toBeDisabled();
+    expect(slider).toHaveValue('2');
+    expect(slider).toHaveAttribute('aria-valuetext', 'Full');
+    expect(devMode).toHaveAttribute('data-state', 'unchecked');
+  });
+
+  it('changes density with horizontal keys without closing the menu', async () => {
+    usePageTabStore.setState({ narrativeInformationDensity: 'compact' });
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    const slider = screen.getByRole('slider', { name: 'Information density' });
+    act(() => slider.focus());
+    for (const [key, label] of [
+      ['ArrowRight', 'Moderate'],
+      ['ArrowRight', 'Full'],
+      ['ArrowRight', 'Full'],
+      ['ArrowLeft', 'Moderate'],
+    ]) {
+      fireEvent.keyDown(slider, { key });
+      expect(slider).toHaveAttribute('aria-valuetext', label);
+      expect(slider).toHaveFocus();
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+    }
+  });
+
+  it('leaves vertical and boundary keys to menu navigation', async () => {
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    const slider = screen.getByRole('slider', { name: 'Information density' });
+    for (const key of [
+      'ArrowUp',
+      'Home',
+      'End',
+      'PageUp',
+      'PageDown',
+      'ArrowDown',
+    ]) {
+      act(() => slider.focus());
+      fireEvent.keyDown(slider, { key });
+      expect(slider).toHaveAttribute('aria-valuetext', 'Moderate');
+    }
+    expect(usePageTabStore.getState().narrativeInformationDensity).toBe(
+      'balanced'
+    );
+    // ArrowDown continues roving focus to the next menu item.
+    await waitFor(() => expect(slider).not.toHaveFocus());
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+
+  it('reflects saved Trajectory mode with the density control disabled', async () => {
+    usePageTabStore.setState({
+      chatTimelineDetailLevel: 'trajectory',
+      narrativeInformationDensity: 'balanced',
+    });
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    expect(screen.getByRole('switch', { name: 'Dev mode' })).toHaveAttribute(
+      'aria-checked',
       'true'
+    );
+    expect(
+      screen.getByRole('slider', { name: 'Information density' })
+    ).toBeDisabled();
+    expect(screen.getByRole('slider')).toHaveAttribute(
+      'aria-valuetext',
+      'Moderate'
     );
   });
 
-  it('hides token usage when the Session pane shrinks and keeps both right-side controls', () => {
-    render(<HeaderBox totalTokens={42} />);
+  it('hides timeline controls when the event timeline is disabled', async () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: 'Dev mode' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the Session trigger as selected only while its panel is open', async () => {
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+    const trigger = screen.getByRole('button', {
+      name: 'Session settings: Timeline project',
+    });
+
+    expect(trigger).not.toHaveClass('bg-ds-neutral-strong-default');
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(trigger).toHaveClass('bg-ds-neutral-strong-default');
+    await user.keyboard('{Escape}');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).not.toHaveClass('bg-ds-neutral-strong-default');
+  });
+
+  it('hides token usage when the Session pane shrinks and keeps the menu and preview', () => {
+    render(
+      <HeaderBox
+        totalTokens={42}
+        projectName="Timeline project"
+        projectId="project-1"
+      />
+    );
 
     expect(screen.getByText(/Total:/)).toBeInTheDocument();
 
@@ -100,29 +467,87 @@ describe('HeaderBox chat timeline mode', () => {
 
     expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
     expect(
-      screen.getByRole('tablist', { name: 'Chat timeline style' })
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Open preview' })
     ).toBeInTheDocument();
   });
 
-  it('switches the event timeline presentation from the toggle', async () => {
+  it('routes Session actions and updates the shared pinned state', async () => {
     const user = userEvent.setup();
-    render(<HeaderBox totalTokens={42} />);
+    render(
+      <HeaderBox
+        totalTokens={42}
+        projectName="Timeline project"
+        projectId="project-1"
+      />
+    );
 
-    await user.click(screen.getByRole('tab', { name: 'Trajectory' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Pin' }));
+    expect(useSessionControlsStore.getState().pinnedProjectIds).toEqual([
+      'project-1',
+    ]);
+    expect(
+      JSON.parse(localStorage.getItem('eigent-pinned-projects') ?? '[]')
+    ).toEqual(['project-1']);
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    expect(screen.getByRole('menuitem', { name: 'Unpin' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Rename session' }));
+    expect(useSessionControlsStore.getState().request).toMatchObject({
+      action: 'rename',
+      projectId: 'project-1',
+    });
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'End session' }));
+    expect(useSessionControlsStore.getState().request).toMatchObject({
+      action: 'end',
+      projectId: 'project-1',
+    });
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session' }));
+    expect(useSessionControlsStore.getState().request).toMatchObject({
+      action: 'delete',
+      projectId: 'project-1',
+    });
+  });
 
+  it('disables End session for an ended Session', async () => {
+    const user = userEvent.setup();
+    render(
+      <HeaderBox projectName="Ended" projectId="project-1" projectAchieved />
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Ended' })
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'End session' })
+    ).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('lets keyboard users toggle Dev mode without closing the menu', async () => {
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+    const trigger = screen.getByRole('button', {
+      name: 'Session settings: Timeline project',
+    });
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    const trajectoryMode = screen.getByRole('switch', { name: 'Dev mode' });
+    act(() => trajectoryMode.focus());
+    await user.keyboard('{Enter}');
     expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
       'trajectory'
     );
-    expect(screen.getByRole('tab', { name: 'Trajectory' })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
-    expect(screen.getByRole('tab', { name: 'Narrative' })).toHaveAttribute(
-      'aria-selected',
-      'false'
-    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
   });
 });

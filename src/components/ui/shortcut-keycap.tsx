@@ -35,7 +35,7 @@ export function ShortcutKeycap({
           ? 'h-4 min-w-4 text-ds-text-meta leading-none'
           : 'h-5 min-w-5 text-ds-text-meta leading-none',
         appearance === 'button' &&
-          'rounded-full bg-ds-accent-subtle-default !text-ds-text-meta text-ds-accent-default-default opacity-60 ring-ds-hairline-muted-default',
+          'rounded-full bg-transparent !text-ds-text-meta !text-ds-ink-inverse ring-ds-hairline-muted-default',
         className
       )}
       {...props}

@@ -202,9 +202,8 @@ export function ArtifactChangeList({
                   defaultValue_one: 'Show {{count}} more file',
                   defaultValue_other: 'Show {{count}} more files',
                 })}
-            <ChevronDown
-              size={15}
-              aria-hidden
+            <DsIcon
+              icon={ChevronDown}
               className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
             />
           </button>
