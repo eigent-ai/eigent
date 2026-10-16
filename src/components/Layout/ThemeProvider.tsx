@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host/context';
 import {
   applyThemeContractV2,
   createDefaultThemeContractV2,
@@ -22,6 +23,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useEffect, useMemo, useState } from 'react';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const host = useHost();
   const {
     appearance,
     appearanceMode,
@@ -83,6 +85,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setResolvedAppearance(resolvedMode);
     }
   }, [appearance, resolvedMode, setResolvedAppearance]);
+
+  useEffect(() => {
+    host?.electronAPI?.setWindowChromeTheme?.(resolvedMode);
+  }, [host, resolvedMode]);
 
   useEffect(() => {
     const root = document.documentElement;

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { WindowTitleBar } from '@/components/Layout/WindowTitleBar';
 import { Button } from '@/components/ui/button';
 import {
   completeProjectViewResync,
@@ -695,32 +696,39 @@ export default function RemoteControlPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-ds-neutral-subtle-default text-ds-ink-default-default">
-        <Loader2 className="h-5 w-5 animate-spin" />
+      <div className="flex h-full flex-col bg-ds-neutral-subtle-default text-ds-ink-default-default">
+        <WindowTitleBar />
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
       </div>
     );
   }
 
   if (error || !session) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-ds-neutral-subtle-default px-4 text-ds-ink-default-default">
-        <div className="w-full max-w-md rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-5">
-          <h1 className="!text-ds-text-title font-semibold text-ds-ink-default-default">
-            {t('layout.remote-control-unavailable', {
-              defaultValue: 'Remote control unavailable',
-            })}
-          </h1>
-          <p className="mt-2 !text-ds-text-base text-ds-ink-muted-default">
-            {error}
-          </p>
+      <div className="flex h-full flex-col bg-ds-neutral-subtle-default text-ds-ink-default-default">
+        <WindowTitleBar />
+        <div className="flex min-h-0 flex-1 items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-5">
+            <h1 className="!text-ds-text-title font-semibold text-ds-ink-default-default">
+              {t('layout.remote-control-unavailable', {
+                defaultValue: 'Remote control unavailable',
+              })}
+            </h1>
+            <p className="mt-2 !text-ds-text-base text-ds-ink-muted-default">
+              {error}
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <main className="flex min-h-screen bg-ds-neutral-subtle-default text-ds-ink-default-default">
-      <section className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-4 py-4 sm:px-6">
+    <main className="flex h-full flex-col bg-ds-neutral-subtle-default text-ds-ink-default-default">
+      <WindowTitleBar />
+      <section className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-4 sm:px-6">
         <header className="flex flex-col gap-3 border-x-0 border-t-0 border-b border-solid border-ds-hairline-default-default pb-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
