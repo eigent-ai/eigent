@@ -480,7 +480,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                     chatState.updateTaskInfo(taskIndex, content);
                   }}
                   onSaveTask={() => {
-                    chatState.saveTaskInfo();
+                    chatState.saveTaskInfo(activeProjectId);
                   }}
                   onDeleteTask={(taskIndex) => {
                     chatState.deleteTaskInfo(taskIndex);

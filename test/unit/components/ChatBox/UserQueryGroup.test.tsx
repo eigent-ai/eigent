@@ -29,6 +29,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { groupMessagesByQuery } from '@/components/ChatBox/ProjectSection';
 import { UserQueryGroup } from '@/components/ChatBox/UserQueryGroup';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
 
 const navigation = vi.hoisted(() => ({
   setActiveProject: vi.fn(),
@@ -40,7 +41,11 @@ vi.mock('@/store/pageTabStore', () => ({
   WorkspaceTab: { Project: 'project' },
   usePageTabStore: Object.assign(
     (selector: (state: any) => unknown) =>
-      selector({ openFilePreview: vi.fn() }),
+      selector({
+        openFilePreview: vi.fn(),
+        sessionPreviewOpeningByProject: {},
+        previewBrowserViewportByProject: {},
+      }),
     {
       getState: () => ({
         setActiveWorkspaceTab: navigation.setActiveWorkspaceTab,
@@ -112,7 +117,11 @@ vi.mock('@/components/ChatBox/MessageItem/NoticeCard', () => ({
 }));
 
 vi.mock('@/components/ChatBox/TaskBox/TaskCard', () => ({
-  TaskCard: () => <div data-testid="task-card" />,
+  TaskCard: ({ onSaveTask }: { onSaveTask: () => void }) => (
+    <button data-testid="task-card" onClick={onSaveTask}>
+      Save tasks
+    </button>
+  ),
 }));
 
 vi.mock('@/components/ChatBox/TaskBox/PlanTaskBox', () => ({
@@ -181,6 +190,41 @@ function renderGroups(messages: any[], overrides: any = {}) {
 }
 
 describe('UserQueryGroup Run work-log ownership', () => {
+  it('saves task edits to the owning pane while another Session is selected', () => {
+    const messages = [
+      { id: 'user-1', role: 'user', content: 'Build a report' },
+      {
+        id: 'plan',
+        role: 'agent',
+        step: AgentStep.TO_SUB_TASKS,
+        content: 'Plan',
+        isConfirm: true,
+      },
+    ];
+    const store = createStore(messages, {
+      sessionMode: SessionMode.MULTI_AGENT,
+      hasWaitComfirm: true,
+      taskInfo: [
+        { id: 'subtask', content: 'Write report', status: 'completed' },
+      ],
+    });
+    render(
+      <SessionPaneProvider projectId="pane-owner">
+        <UserQueryGroup
+          chatId="chat-1"
+          chatStore={store}
+          queryGroup={groupMessagesByQuery(messages)[0]}
+          isActive={false}
+          onQueryActive={() => undefined}
+          index={0}
+          taskId="run-1"
+        />
+      </SessionPaneProvider>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save tasks' }));
+    expect(store.getState().saveTaskInfo).toHaveBeenCalledWith('pane-owner');
+  });
+
   it('keeps exactly one work log while a structured ASK is pending and after its reply', () => {
     const prompt = { id: 'user-1', role: 'user', content: 'Build a report' };
     const ask = {
