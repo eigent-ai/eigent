@@ -14,6 +14,7 @@
 
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import {
   ChevronLeft,
@@ -80,14 +81,14 @@ export function BoxHeaderDisplay({
           )}
           {title && (
             <span className="flex items-center gap-1.5 text-ds-text-base font-bold text-ds-ink-default-default">
+              <span>{title}</span>
               {showQuestionIcon ? (
-                <MessageCircleQuestionMark
-                  aria-hidden
-                  className="size-4 shrink-0 text-ds-ink-default-default"
+                <DsIcon
+                  icon={MessageCircleQuestionMark}
+                  recipe="main"
                   data-bottom-box-question-icon
                 />
               ) : null}
-              <span>{title}</span>
             </span>
           )}
           {description && descriptionAsMarkdown ? (

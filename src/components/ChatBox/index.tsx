@@ -121,6 +121,7 @@ import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
+import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
 import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
@@ -135,6 +136,7 @@ import {
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
 import { FloatingAction } from './MessageItem/FloatingAction';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { ProjectChatContainer } from './ProjectChatContainer';
 import {
   canUseLegacyControlWithoutCanonicalOwner,
@@ -230,6 +232,10 @@ export default function ChatBox(): JSX.Element {
 }
 
 function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
+  const [editingSource, setEditingSource] = useState<{
+    projectId: string;
+    sourceId: string;
+  } | null>(null);
   const host = useHost();
   const overlaySlotId = useSessionPane()?.overlaySlotId ?? PLAN_OVERLAY_SLOT_ID;
 
@@ -264,7 +270,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = sessionProjectId;
-  // Switching Sessions remounts this composer; keep each Session's draft.
+  // Each Session owns its composer draft.
   const {
     text: message,
     setText: setDraftMessage,
@@ -272,9 +278,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     setReviewHandoffIds: setPendingReviewHandoffIds,
   } = useSessionDraft(accountKey, activeProjectId);
   const composerRevisionRef = useRef(0);
+  const previousDraft = useRef({ projectId: activeProjectId, text: message });
+  useEffect(() => {
+    const previous = previousDraft.current;
+    previousDraft.current = { projectId: activeProjectId, text: message };
+    if (previous.projectId === activeProjectId && previous.text && !message) {
+      setEditingSource((current) =>
+        current?.projectId === activeProjectId ? null : current
+      );
+    }
+  }, [activeProjectId, message]);
   const setMessage = useCallback<typeof setDraftMessage>(
     (value) => {
       composerRevisionRef.current += 1;
+      if (value === '') setEditingSource(null);
       setDraftMessage(value);
     },
     [setDraftMessage]
@@ -518,6 +535,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return;
     }
     handledChatDraftRequestRef.current = workspaceChatDraftRequest.requestId;
+    if (
+      workspaceChatDraftRequest.ifEmpty &&
+      (message.trim() || activeTask?.attaches?.length)
+    ) {
+      toast.info(t('chat.message-draft-exists'));
+      consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
+      return;
+    }
     setMessage((current) => {
       const existing = current.trimEnd();
       return existing
@@ -533,10 +558,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
   }, [
     activeProjectId,
+    activeTask?.attaches?.length,
     consumeWorkspaceChatDraft,
-    workspaceChatDraftRequest,
+    message,
     setMessage,
     setPendingReviewHandoffIds,
+    t,
+    workspaceChatDraftRequest,
   ]);
 
   useEffect(() => {
@@ -2861,8 +2889,45 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       ? 'input'
       : legacyHumanInputVariant,
   });
-  const bottomBoxVariant = bottomBoxControl.variant;
+  // The editing note replaces only the plain composer. A legacy ask header
+  // stays visible so an edited copy is never mistaken for a new request.
+  const bottomBoxVariant =
+    bottomBoxControl.source === 'composer' &&
+    bottomBoxControl.variant === 'input' &&
+    editingSource?.projectId === activeProjectId
+      ? {
+          kind: 'input' as const,
+          header: {
+            eyebrow: t('chat.message-editing-copy'),
+          },
+        }
+      : bottomBoxControl.variant;
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
+  const humanDecisionVariant =
+    bottomBoxControl.source === 'human_interaction' &&
+    typeof bottomBoxVariant !== 'string' &&
+    bottomBoxVariant.kind !== 'input' &&
+    bottomBoxVariant.kind !== 'run_control'
+      ? bottomBoxVariant
+      : null;
+  const humanDecisionKey = humanDecisionVariant
+    ? eventNativeTimelineEnabled && eventNativeHumanControl.interaction
+      ? `${activeProjectId}:${eventNativeHumanControl.interaction.runId}:${eventNativeHumanControl.interaction.interactionId}:${eventNativeHumanControl.interaction.version ?? 0}`
+      : `${activeProjectId}:${activeTaskId}:${activeInteraction?.interaction_id ?? activeAskMessage?.id ?? ''}`
+    : null;
+  const handleEditUserMessage = (source: EditUserMessageSource) => {
+    if (message.trim() || activeTask?.attaches?.length) {
+      toast.info(t('chat.message-draft-exists'));
+      return;
+    }
+    setMessage(source.content);
+    if (activeProjectId)
+      setEditingSource({ projectId: activeProjectId, sourceId: source.id });
+    if (source.attaches?.length) {
+      toast.info(t('chat.message-reattach-files'));
+    }
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
   const composerTaskControlState = selectComposerTaskControlState({
     eventNativeTimelineEnabled,
     legacyControlRunId: legacyControlTaskId,
@@ -2943,11 +3008,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               sessionMode={displaySessionMode}
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
             />
           ) : shouldRenderChatTimeline ? (
             <ProjectChatContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
@@ -3056,6 +3123,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+              <HumanDecisionCard
+                key={activeProjectId ?? 'no-session'}
+                requestKey={humanDecisionKey}
+                variant={humanDecisionVariant}
+              />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   compact
@@ -3093,7 +3165,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                     ? 'running'
                     : getBottomBoxState()
                 }
-                variant={bottomBoxVariant}
+                variant={humanDecisionVariant ? 'input' : bottomBoxVariant}
                 queuedMessages={queuedMessages}
                 queueContext={queueContext}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
@@ -3151,7 +3223,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                   },
                   onAddFile: handleFileSelect,
                   placeholder: t('chat.follow-up-placeholder'),
-                  disabled: isInputDisabled,
+                  disabled: isInputDisabled || Boolean(humanDecisionVariant),
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,
