@@ -1,0 +1,22 @@
+{
+  "code": [
+    {
+      "name": "code-review-bug-detection",
+      "description": "Analyze the given source code{def _format_http_error(err: HTTPError) -> str:\n\ttry:\n\t\tbody = err.read().decode(\"utf-8\", \"replace\")\n\texcept Exception:\n\t\tbody = \"\"\n\tparts = [f\"HTTP {err.code} {err.reason} for {err.url}\"]\n\tif body:\n\t\tparts.append(f\"Response body: {body}\")\n\treturn \"\\n\".join(parts)} to identify potential bugs, logical errors, and performance issues. Provide clear explanations and suggest concrete improvements."
+    },
+    {
+      "name": "algorithm-explanation",
+      "description": "Explain the algorithm about RAG, including its time complexity, space complexity, and the reasoning behind key implementation choices."
+    }
+  ],
+  "sales": [
+    {
+      "name": "sales-pitch-personalization",
+      "description": "Create a personalized sales pitch for a potential customer based on their industry, company size, and stated business needs, focusing on value proposition and pain points."
+    },
+    {
+      "name": "objection-handling-strategy",
+      "description": "Given a list of common customer objections, propose effective responses that address concerns while reinforcing the product's value."
+    }
+  ]
+}
