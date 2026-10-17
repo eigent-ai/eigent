@@ -273,9 +273,6 @@ vi.mock('@/components/Workspace/SingleAgentList', () => ({
 vi.mock('@/components/Workspace/WorkforceAgentList', () => ({
   WorkforceAgentList: () => null,
 }));
-vi.mock('@/components/Workspace/WorkspaceProjectPicker', () => ({
-  WorkspaceProjectPicker: () => <div>Space switch</div>,
-}));
 const renderWorkspace = (props: ComponentProps<typeof Workspace> = {}) =>
   render(
     <MemoryRouter>

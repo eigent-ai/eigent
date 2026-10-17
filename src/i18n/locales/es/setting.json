@@ -119,7 +119,6 @@
   "validate-failed": "Validación fallida",
   "copy": "Copiar",
   "copied-to-clipboard": "Copiado al portapapeles",
-  "failed-to-copy-to-clipboard": "Error al copiar al portapapeles",
   "endpoint-url-can-not-be-empty": "La URL del punto de conexión no puede estar vacía.",
   "verification-failed-please-check-endpoint-url": "La verificación ha fallado. Comprueba la URL del punto de conexión.",
   "eigent-cloud-version": "Versión de Eigent Cloud",

@@ -25,7 +25,6 @@ const mocked = vi.hoisted(() => ({
   ),
   reportError: vi.fn(() => 'task'),
   showStorageToast: vi.fn(),
-  showTrafficToast: vi.fn(),
 }));
 
 vi.mock('@/host/createHost', () => ({
@@ -43,10 +42,6 @@ vi.mock('@/lib/notifyError', () => ({
 
 vi.mock('@/components/Toast/storageToast', () => ({
   showStorageToast: mocked.showStorageToast,
-}));
-
-vi.mock('@/components/Toast/trafficToast', () => ({
-  showTrafficToast: mocked.showTrafficToast,
 }));
 
 import {
@@ -73,7 +68,6 @@ describe('api/http handleResponse', () => {
     });
     mocked.reportError.mockClear();
     mocked.showStorageToast.mockClear();
-    mocked.showTrafficToast.mockClear();
     vi.restoreAllMocks();
   });
 

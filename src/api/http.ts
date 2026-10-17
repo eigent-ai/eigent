@@ -275,7 +275,6 @@ async function handleResponse(
       return null;
     }
     const { code, text } = resData;
-    // showCreditsToast()
     if (code === 1 || code === 300) {
       return resData;
     }

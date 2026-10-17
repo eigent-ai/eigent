@@ -119,7 +119,6 @@
   "validate-failed": "Échec de la validation",
   "copy": "Copier",
   "copied-to-clipboard": "Copié dans le presse-papiers",
-  "failed-to-copy-to-clipboard": "Échec de la copie dans le presse-papiers",
   "endpoint-url-can-not-be-empty": "L’URL du point de terminaison ne peut pas être vide.",
   "verification-failed-please-check-endpoint-url": "Échec de la vérification. Vérifiez l’URL du point de terminaison.",
   "eigent-cloud-version": "Version d’Eigent Cloud",

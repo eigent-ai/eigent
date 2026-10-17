@@ -27,7 +27,6 @@ const mocked = vi.hoisted(() => ({
   ),
   reportError: vi.fn(() => 'task'),
   showStorageToast: vi.fn(),
-  showTrafficToast: vi.fn(),
   isHumanInteractionStillPending: vi.fn(),
   getHumanInteractionReceipt: vi.fn(),
 }));
@@ -47,10 +46,6 @@ vi.mock('@/lib/notifyError', () => ({
 
 vi.mock('@/components/Toast/storageToast', () => ({
   showStorageToast: mocked.showStorageToast,
-}));
-
-vi.mock('@/components/Toast/trafficToast', () => ({
-  showTrafficToast: mocked.showTrafficToast,
 }));
 
 vi.mock('@/service/humanInteractionApi', async (importOriginal) => ({

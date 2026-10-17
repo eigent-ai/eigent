@@ -136,13 +136,6 @@ const ALLOWLIST = [
       'Provider metadata is not rendered; Models supplies a localized description.',
   })),
   {
-    file: 'src/components/Session/PreviewPanel/tabs/TerminalTab.tsx',
-    kind: 'jsx-text',
-    text: 'Eigent:~$',
-    count: 1,
-    reason: 'Terminal prompt is a product/command token, not prose.',
-  },
-  {
     file: 'src/components/SpaceSidebar/SpaceSwitchDropdown.tsx',
     kind: 'jsx-expression',
     text: '⌘S',

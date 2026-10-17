@@ -119,7 +119,6 @@
   "validate-failed": "Validate failed",
   "copy": "Copy",
   "copied-to-clipboard": "Copied to clipboard",
-  "failed-to-copy-to-clipboard": "Failed to copy to clipboard",
   "endpoint-url-can-not-be-empty": "Endpoint URL can not be empty!",
   "verification-failed-please-check-endpoint-url": "Verification failed, please check Endpoint URL",
   "eigent-cloud-version": "Eigent Cloud Version",

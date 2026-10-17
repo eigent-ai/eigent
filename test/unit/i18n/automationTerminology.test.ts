@@ -59,7 +59,6 @@ const ENTITY_NOUN_KEYS = [
   'layout.search-triggers',
   'layout.home-space-stat-triggers',
   'layout.triggers-reconnect-hint',
-  'chat.task-completed-card-subtitle',
 ] as const;
 
 const automationNavigationLabels = {

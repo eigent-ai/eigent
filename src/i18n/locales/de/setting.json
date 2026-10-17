@@ -119,7 +119,6 @@
   "validate-failed": "Validierung fehlgeschlagen",
   "copy": "Kopieren",
   "copied-to-clipboard": "Kopiert in den Pufferboard",
-  "failed-to-copy-to-clipboard": "Fehler beim Kopieren in den Pufferboard",
   "endpoint-url-can-not-be-empty": "Endpunkt-URL darf nicht leer sein!",
   "verification-failed-please-check-endpoint-url": "Verifizierung fehlgeschlagen, bitte überprüfen Sie die Endpunkt-URL",
   "eigent-cloud-version": "Eigent Cloud-Version",

@@ -12,9 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { EventTimeline } from '@/components/ChatBox/EventTimeline/EventTimeline';
+import { HistoryEvidence } from '@/components/ChatBox/EventTimeline/HistoryEvidence';
 import { partitionLegacyReplyEvidence } from '@/components/ChatBox/EventTimeline/legacyReplyEvidence';
 import { normalizeLocalRunEvent } from '@/lib/projector';
+import type { ChatProjectionNode } from '@/lib/projector/chat';
 import { projectChatEvents } from '@/lib/projector/chat';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -26,6 +27,12 @@ function project(events = v104GuiInputEvents()) {
     'project-1',
     events.map((event) => normalizeLocalRunEvent(event, 'project-1'))
   ).nodes;
+}
+
+function renderEvidence(nodes: readonly ChatProjectionNode[]) {
+  return render(
+    <HistoryEvidence entries={partitionLegacyReplyEvidence(nodes).evidence} />
+  );
 }
 
 describe('unlinked legacy input evidence', () => {
@@ -44,11 +51,7 @@ describe('unlinked legacy input evidence', () => {
         );
       const nodes = project(events);
       const original = structuredClone(nodes);
-      render(<EventTimeline nodes={nodes} />);
-      const main = screen.getByRole('list', { name: 'Chat event timeline' });
-      expect(within(main).getAllByRole('listitem')).toHaveLength(1);
-      expect(within(main).getByText('report.csv')).toBeVisible();
-      expect(within(main).queryByLabelText('Your message')).toBeNull();
+      renderEvidence(nodes);
       if (conflict) {
         fireEvent.click(
           screen.getByRole('button', { name: 'Earlier reply records (1)' })
@@ -81,14 +84,15 @@ describe('unlinked legacy input evidence', () => {
       expect(presented.evidence).toHaveLength(0);
     }
   );
-  it('shows one canonical receipt and retains the actual v1.0.4 mirror behind a keyboard-accessible disclosure', async () => {
+  it('retains the actual v1.0.4 mirror behind a keyboard-accessible disclosure', async () => {
     const nodes = project();
     const original = structuredClone(nodes);
-    render(<EventTimeline nodes={nodes} />);
-    const main = screen.getByRole('list', { name: 'Chat event timeline' });
-    expect(within(main).getAllByRole('listitem')).toHaveLength(1);
-    expect(within(main).getByText('report.csv')).toBeVisible();
-    expect(within(main).queryByLabelText('Your message')).toBeNull();
+    expect(
+      partitionLegacyReplyEvidence(nodes).nodes.some(
+        (node) => node.kind === 'message'
+      )
+    ).toBe(false);
+    renderEvidence(nodes);
     const trigger = screen.getByRole('button', {
       name: 'Earlier reply records (1)',
     });
@@ -110,7 +114,7 @@ describe('unlinked legacy input evidence', () => {
     const nodes = project(
       v104GuiInputEvents(['report.csv', 'report.csv', 'other.csv'])
     );
-    render(<EventTimeline nodes={nodes} />);
+    renderEvidence(nodes);
     fireEvent.click(
       screen.getByRole('button', { name: 'Earlier reply records (3)' })
     );
@@ -135,29 +139,24 @@ describe('unlinked legacy input evidence', () => {
         (event) => event.event_type === 'legacy.human_reply'
       )
     );
-    render(<EventTimeline nodes={nodes} />);
-    expect(screen.getAllByLabelText('Your message')).toHaveLength(2);
+    const presented = partitionLegacyReplyEvidence(nodes);
     expect(
-      screen.queryByRole('button', { name: /Earlier reply records/ })
-    ).toBeNull();
+      presented.nodes.filter((node) => node.kind === 'message')
+    ).toHaveLength(2);
+    expect(presented.evidence).toHaveLength(0);
   });
 
   it('moves evidence when a canonical response arrives later and restores standalone presentation if the source slice changes', () => {
     const nodes = project();
     const legacy = nodes.filter((node) => node.kind === 'message');
-    const { rerender } = render(<EventTimeline nodes={legacy} />);
-    expect(screen.getByLabelText('Your message')).toBeVisible();
-    rerender(
-      <EventTimeline
-        nodes={[...legacy, ...nodes.filter((node) => node.kind !== 'message')]}
-      />
-    );
-    expect(screen.queryByLabelText('Your message')).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Earlier reply records (1)' })
-    ).toBeVisible();
-    rerender(<EventTimeline nodes={legacy} />);
-    expect(screen.getByLabelText('Your message')).toBeVisible();
+    expect(partitionLegacyReplyEvidence(legacy).evidence).toHaveLength(0);
+    const merged = partitionLegacyReplyEvidence([
+      ...legacy,
+      ...nodes.filter((node) => node.kind !== 'message'),
+    ]);
+    expect(merged.nodes.some((node) => node.kind === 'message')).toBe(false);
+    expect(merged.evidence).toHaveLength(1);
+    expect(partitionLegacyReplyEvidence(legacy).nodes).toEqual(legacy);
   });
 
   it.each(['runId', 'projectId'] as const)(
@@ -177,10 +176,6 @@ describe('unlinked legacy input evidence', () => {
         ? { ...node, interactionId: 'gui-question', interactionResponse: true }
         : node
     );
-    render(<EventTimeline nodes={nodes} />);
-    expect(screen.getAllByRole('listitem')).toHaveLength(1);
-    expect(
-      screen.queryByRole('button', { name: /Earlier reply records/ })
-    ).toBeNull();
+    expect(partitionLegacyReplyEvidence(nodes).evidence).toHaveLength(0);
   });
 });

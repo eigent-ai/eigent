@@ -11,7 +11,7 @@ The target architecture is the event-native timeline plus the shared
 `UserQueryGroup` renderer remains available behind the event timeline feature
 switch while migration is in progress.
 
-New conversation presentation work should be added to `EventTimeline/`, not to
+New conversation presentation work should be added to `TimelineModes/`, not to
 the legacy `MessageItem/` routing path.
 
 ## Current runtime structure
@@ -56,15 +56,11 @@ ChatBox
 ChatBox/
 ├── index.tsx
 ├── EventNativeProjectTimeline.tsx
+├── TimelineModes/
 ├── EventTimeline/
-│   ├── index.ts
-│   ├── EventTimeline.tsx
-│   ├── EventRenderer.tsx
-│   ├── EventRendererBoundary.tsx
-│   ├── DefaultEventRenderers.tsx
-│   ├── UnknownEventFallback.tsx
-│   ├── presentationPolicy.ts
-│   └── rendererRegistry.ts
+│   ├── HistoryEvidence.tsx
+│   ├── legacyReplyEvidence.ts
+│   └── presentationPolicy.ts
 └── BottomBox/
     ├── index.tsx
     ├── types.ts
@@ -402,16 +398,6 @@ MessageItem/
 └── UserMessageCard.tsx
 ```
 
-The following appear unused by production code and should be verified before
-deletion:
-
-```text
-MessageItem/FeedbackCard.tsx
-MessageItem/SummaryMarkDown.tsx
-MessageItem/TaskCompletionCard.tsx
-TaskBox/TaskType.tsx
-```
-
 ### Move or replace before deleting
 
 These components still have consumers outside the legacy ChatBox renderer:
@@ -446,8 +432,7 @@ bridge so legacy transport frames can still be normalized into the event store.
 
 ## Extending ChatBox
 
-- Add a new semantic timeline node renderer in `EventTimeline/` and register it
-  in `rendererRegistry.ts`.
+- Add new timeline presentation in `TimelineModes/`.
 - Add display-density or visibility rules in `presentationPolicy.ts`.
 - Add a new human-control state to `BottomBox/types.ts`, route it through
   `ControlInputRouter`, and derive it in `useEventNativeHumanControl.ts`.
