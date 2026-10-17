@@ -90,6 +90,7 @@ export const DARK_FILL_MODELS = new Set([
   'moonshot',
   OLLAMA_PROVIDER_ID,
   'openrouter',
+  'atlascloud',
   LMSTUDIO_PROVIDER_ID,
   'z.ai',
   'openai-compatible-model',
