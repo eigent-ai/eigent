@@ -21,6 +21,9 @@ import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCar
 import { itemFadeMotion } from '@/components/ui/motion';
 import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import {
+  callDescription,
+  callSubject,
+  callSummary,
   resolveSubagentPresentationIdentity,
   segmentTimelineRun,
   type TimelineCall,
@@ -325,80 +328,6 @@ function buildNarrativeFlow(
     item.calls.forEach((call) => pushCall(call, item.parentStepId));
   }
   return entries;
-}
-
-/** A collapsed row must not promote a long payload or credential-like text. */
-function conciseRowText(value: string | undefined): string | null {
-  const text = value?.trim();
-  if (
-    !text ||
-    text.length > 160 ||
-    /[\r\n\t{}]/.test(text) ||
-    /\b(?:api[_-]?key|access[_-]?token|secret|password|authorization|bearer)\b|(?:^|\s)[\w.-]*(?:KEY|TOKEN|SECRET)=/i.test(
-      text
-    )
-  ) {
-    return null;
-  }
-  return text;
-}
-
-/** Only promote short, display-safe request text to a row. */
-function callSubject(call: TimelineCall): string | null {
-  const input = call.input?.trim();
-  if (!input || input.length > 1_000) return null;
-
-  let subject = input;
-  if (input.startsWith('{')) {
-    try {
-      const parsed: unknown = JSON.parse(input);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return null;
-      }
-      const fields = parsed as Record<string, unknown>;
-      const fieldNames =
-        call.actionKind === 'search'
-          ? ['query', 'search_query', 'q']
-          : ['command', 'cmd'];
-      const value = fieldNames
-        .map((key) => fields[key])
-        .find((field): field is string => typeof field === 'string');
-      if (!value) return null;
-      subject = value.trim();
-    } catch {
-      return null;
-    }
-  } else {
-    subject = subject.replace(/^(?:search query|query|command):\s*/i, '');
-    if (call.actionKind === 'command') subject = subject.replace(/^\$\s+/, '');
-  }
-
-  return conciseRowText(subject);
-}
-
-/** The call detail is the human-readable work description, when supplied. */
-function callDescription(call: TimelineCall): string | null {
-  for (const candidate of [call.notice?.content, call.detail]) {
-    const description = conciseRowText(candidate);
-    if (
-      description &&
-      !/^(?:completed|in progress|started|running|failed|cancelled|timed out|returned text)(?:[ .:(]|$)/i.test(
-        description
-      )
-    ) {
-      return description;
-    }
-  }
-  return null;
-}
-
-/** The subject an authored title carries after it in a repeated group. */
-function callSummary(call: TimelineCall): string | null {
-  const subject = callSubject(call);
-  const description = callDescription(call);
-  return call.actionKind === 'search'
-    ? (subject ?? description)
-    : (description ?? subject);
 }
 
 /**

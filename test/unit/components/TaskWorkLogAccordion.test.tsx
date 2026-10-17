@@ -315,41 +315,50 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
       />
     );
 
+    // Same wording as the Narrative work log: the latest call speaks for
+    // the group in the tense of its outcome.
     const browserGroup = screen.getByRole('button', {
-      name: 'Browser Toolkit · Browser visit page · 2 events',
+      name: 'Browsed https://example.com/two · 2 events',
     });
     const todoGroup = screen.getByRole('button', {
-      name: 'TodoToolkit · Todo_write · 2 events',
+      name: 'Updated the plan · 2 events',
     });
 
     expect(browserGroup).toHaveAttribute('aria-expanded', 'false');
     expect(todoGroup).toHaveAttribute('aria-expanded', 'false');
-    expect(browserGroup.querySelector('svg')).toHaveClass(
+    expect(
+      browserGroup.querySelector('[data-work-log-tool-icon]')
+    ).toBeInTheDocument();
+    expect(browserGroup.querySelector('[data-work-log-chevron]')).toHaveClass(
       'opacity-0',
       'group-hover:opacity-100'
     );
     expect(
       screen.getAllByRole('button', {
-        name: 'Browser Toolkit · Browser visit page · 2 events',
+        name: 'Browsed https://example.com/two · 2 events',
       })
     ).toHaveLength(1);
 
     fireEvent.click(browserGroup);
 
     expect(browserGroup).toHaveAttribute('aria-expanded', 'true');
-    expect(browserGroup.querySelector('svg')).not.toHaveClass('opacity-0');
     expect(
-      screen.getAllByRole('button', {
-        name: 'Browser Toolkit · Browser visit page',
-      })
-    ).toHaveLength(2);
+      browserGroup.querySelector('[data-work-log-chevron]')
+    ).not.toHaveClass('opacity-0');
+    const calls = screen.getAllByRole('button', {
+      name: /^Browsed https:\/\/example\.com\/(?:one|two)$/,
+    });
+    expect(calls.map((call) => call.textContent)).toEqual([
+      'Browsed https://example.com/one',
+      'Browsed https://example.com/two',
+    ]);
     expect(
-      screen
-        .getAllByRole('button', {
-          name: 'Browser Toolkit · Browser visit page',
-        })[0]
-        ?.querySelector('svg')
-    ).toHaveClass('opacity-0', 'group-hover:opacity-100');
+      calls[0]?.querySelector('[data-work-log-tool-icon]')
+    ).toBeInTheDocument();
+    expect(calls[0]?.querySelector('[data-work-log-chevron]')).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100'
+    );
   });
 
   it('keeps Search unified and shows providers only in expanded details', () => {
@@ -377,14 +386,14 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
     );
 
     const searchGroup = screen.getByRole('button', {
-      name: 'Search Toolkit · Search · 2 events',
+      name: 'Searched for OpenAI updates · 2 events',
     });
     expect(screen.queryByText('Querit')).not.toBeInTheDocument();
     expect(screen.queryByText('Google')).not.toBeInTheDocument();
 
     fireEvent.click(searchGroup);
     const calls = screen.getAllByRole('button', {
-      name: 'Search Toolkit · Search',
+      name: 'Searched for OpenAI updates',
     });
     fireEvent.click(calls[0]!);
     fireEvent.click(calls[1]!);
@@ -397,6 +406,44 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
       'data-search-provider',
       'google'
     );
+  });
+
+  it('titles legacy calls by outcome like the Narrative work log', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall(
+        'Terminal Toolkit',
+        'shell exec',
+        "command='npm test', timeout=30",
+        'ok'
+      ),
+      mk(AgentStep.ACTIVATE_TOOLKIT, {
+        toolkit_name: 'Terminal Toolkit',
+        method_name: 'shell exec',
+        message: "command='npm run build'",
+      }),
+    ];
+
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+
+    // The latest call speaks for the group while it runs.
+    const group = screen.getByRole('button', {
+      name: 'Running npm run build · 2 events',
+    });
+    fireEvent.click(group);
+    expect(
+      screen.getByRole('button', { name: 'Ran npm test' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Running npm run build' })
+    ).toBeInTheDocument();
+    // The raw argument text stays in the expanded request, not the title.
+    expect(screen.queryByText(/timeout=30/)).not.toBeInTheDocument();
   });
 
   it('folds a finished Task log and lets a user reopen it', () => {

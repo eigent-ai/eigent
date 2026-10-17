@@ -12,9 +12,17 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { callIcon } from '@/components/ChatBox/TimelineModes/actionIcon';
+import { TaskLogIcon } from '@/components/ChatBox/TimelineModes/TaskLog';
 import { Badge } from '@/components/ui/badge';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
+import {
+  actionKindForActivities,
+  callSubject,
+  timelineCallTitle,
+  type TimelineCallTitle,
+} from '@/lib/projector/chat/presentation';
 import { isSupersededRunError } from '@/lib/taskLifecycleUi';
 import { cn } from '@/lib/utils';
 import type {
@@ -29,7 +37,7 @@ import {
   TaskStatus,
 } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bot, ChevronDown, ChevronRight } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -436,6 +444,46 @@ function isHumanAskTool(toolkitName: string, method: string): boolean {
     normalizedToolkit === 'humantoolkit' &&
     normalizedMethod === 'askhumanviagui'
   );
+}
+
+type LegacyToolCall = Pick<
+  ToolItem,
+  'rowTitle' | 'toolkitName' | 'method' | 'input'
+>;
+
+/**
+ * Title and icon a legacy tool row shares with the Narrative work log. Only
+ * running and done are known here; the legacy stream carries no failure.
+ */
+function legacyToolPresentation(
+  call: LegacyToolCall,
+  running: boolean
+): { title: TimelineCallTitle; icon: LucideIcon; subject: string | null } {
+  const actionKind = actionKindForActivities([
+    { toolkitName: call.toolkitName, methodName: call.method },
+  ]);
+  const subject = callSubject({ input: call.input, actionKind });
+  const human = isHumanAskTool(call.toolkitName, call.method);
+  // Human calls and authored rows keep their own words; only the plain
+  // `Toolkit · Method` fallback is re-titled by outcome.
+  const keepTitle =
+    human || call.rowTitle !== toolRowTitle(call.toolkitName, call.method);
+  const title = timelineCallTitle(
+    {
+      executor: human ? 'human' : 'toolkit',
+      actionKind,
+      status: running ? 'running' : 'completed',
+      title: keepTitle ? call.rowTitle : call.method,
+      toolkitName: call.toolkitName,
+      methodName: call.method,
+    },
+    { subject }
+  );
+  return {
+    title,
+    icon: callIcon({ toolkitName: call.toolkitName, actionKind }),
+    subject,
+  };
 }
 
 function pairKey(toolkit: string, method: string): string {
@@ -1115,6 +1163,8 @@ function useWorkLogElapsedMs(
 
 const ToolDetailRow = memo(function ToolDetailRow({
   rowTitle,
+  toolkitName,
+  method,
   providerLabel,
   input,
   output,
@@ -1123,6 +1173,8 @@ const ToolDetailRow = memo(function ToolDetailRow({
   humanInputReceipt,
 }: {
   rowTitle: string;
+  toolkitName: string;
+  method: string;
   providerLabel?: string | null;
   input: string;
   output: string;
@@ -1132,6 +1184,14 @@ const ToolDetailRow = memo(function ToolDetailRow({
 }) {
   const [open, setOpen] = useState(humanInputPending);
   const wasHumanInputPending = useRef(humanInputPending);
+  const presentation = useMemo(
+    () =>
+      legacyToolPresentation(
+        { rowTitle, toolkitName, method, input },
+        status === 'running'
+      ),
+    [input, method, rowTitle, status, toolkitName]
+  );
 
   useEffect(() => {
     if (humanInputPending) {
@@ -1148,22 +1208,24 @@ const ToolDetailRow = memo(function ToolDetailRow({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="group inline-flex max-w-full min-w-0 items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80"
+        className="group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start px-0 py-0.5 text-left text-ds-ink-subtle-default transition-opacity hover:opacity-80"
       >
+        <TaskLogIcon icon={presentation.icon} data-work-log-tool-icon />
         {status === 'running' ? (
           <ShinyText
-            text={rowTitle}
+            text={presentation.title.text}
             speed={2.5}
             className="min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default"
           />
         ) : (
           <span className="min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default">
-            {rowTitle}
+            {presentation.title.text}
           </span>
         )}
         <ChevronRight
           size={16}
           aria-hidden
+          data-work-log-chevron
           className={cn(
             'shrink-0 text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
             open
@@ -1217,10 +1279,22 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const rowTitle = t('chat.repeated-tool-events', {
-    tool: item.rowTitle,
+  // The latest call speaks for the group, as in the Narrative work log.
+  const latest = item.calls[item.calls.length - 1]!;
+  const latestPresentation = legacyToolPresentation(
+    latest,
+    active && latest.status === 'running'
+  );
+  const countLabel = t('chat.repeated-tool-events', {
+    tool: latestPresentation.title.outcomeTense
+      ? latestPresentation.title.text
+      : item.rowTitle,
     count: item.calls.length,
   });
+  const summary = latestPresentation.title.outcomeTense
+    ? null
+    : latestPresentation.subject;
+  const rowTitle = summary ? `${countLabel} · ${summary}` : countLabel;
   const running = active && item.status === 'running';
 
   return (
@@ -1235,8 +1309,9 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="group inline-flex max-w-full min-w-0 items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80"
+        className="group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start px-0 py-0.5 text-left text-ds-ink-subtle-default transition-opacity hover:opacity-80"
       >
+        <TaskLogIcon icon={latestPresentation.icon} data-work-log-tool-icon />
         {running ? (
           <ShinyText
             text={rowTitle}
@@ -1251,6 +1326,7 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
         <ChevronRight
           size={16}
           aria-hidden
+          data-work-log-chevron
           className={cn(
             'shrink-0 text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
             open
@@ -1275,6 +1351,8 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
                 <ToolDetailRow
                   key={call.id}
                   rowTitle={call.rowTitle}
+                  toolkitName={call.toolkitName}
+                  method={call.method}
                   providerLabel={searchProviderLabel(
                     call.toolkitName,
                     call.method
@@ -1504,6 +1582,8 @@ const AgentBlockRow = memo(function AgentBlockRow({
                   <ToolDetailRow
                     key={item.id}
                     rowTitle={item.rowTitle}
+                    toolkitName={item.toolkitName}
+                    method={item.method}
                     providerLabel={searchProviderLabel(
                       item.toolkitName,
                       item.method
@@ -1784,6 +1864,8 @@ const AgentGroupRow = memo(function AgentGroupRow({
                   <ToolDetailRow
                     key={item.id}
                     rowTitle={item.rowTitle}
+                    toolkitName={item.toolkitName}
+                    method={item.method}
                     providerLabel={searchProviderLabel(
                       item.toolkitName,
                       item.method
