@@ -15,6 +15,7 @@
 import logging
 import uuid
 from collections.abc import Callable
+from copy import deepcopy
 from typing import Any
 
 from camel.messages import BaseMessage
@@ -111,6 +112,94 @@ def _configure_responses_instructions(model_backend: Any) -> None:
         prepare_without_instruction_messages
     )
     model_backend._eigent_instructions_configured = True  # noqa: SLF001
+
+
+def _ensure_additional_props_false_for_groq(
+    tools: list[FunctionTool | Callable] | None,
+    model_platform: str,
+) -> list[FunctionTool | Callable] | None:
+    """Ensure additionalProperties: false on all object schemas for Groq.
+
+    Groq's API requires strict JSON schemas with 'additionalProperties: false'
+    on every object type, including nested objects in anyOf/oneOf arrays.
+    CAMEL's sanitize_and_enforce_required() already does this, but we apply
+    it here as a safety net when tools are passed to the agent.
+
+    Args:
+        tools: List of FunctionTool or callable tools
+        model_platform: The model platform string (e.g., "groq")
+
+    Returns:
+        Modified tools list with additionalProperties: false enforced, or None if input was None
+    """
+    if not tools:
+        return tools
+
+    if model_platform.lower() != "groq":
+        return tools
+
+    def _ensure_additional_props_false(obj: Any) -> Any:
+        """Recursively ensure additionalProperties: false on all object schemas."""
+        if isinstance(obj, dict):
+            new_obj = {}
+            for k, v in obj.items():
+                if k == "additionalProperties" and v is True:
+                    # CAMEL emits this for free-form dict arguments; Groq's
+                    # strict mode requires every object schema to be closed.
+                    new_obj[k] = False
+                    continue
+                if (
+                    k == "type"
+                    and v == "object"
+                    and "additionalProperties" not in obj
+                ):
+                    new_obj[k] = v
+                    new_obj["additionalProperties"] = False
+                elif k in ("properties", "$defs") and isinstance(v, dict):
+                    new_obj[k] = {
+                        pk: _ensure_additional_props_false(pv)
+                        for pk, pv in v.items()
+                    }
+                elif k in ("items", "allOf", "oneOf", "anyOf") and isinstance(
+                    v, (dict, list)
+                ):
+                    if isinstance(v, dict):
+                        new_obj[k] = _ensure_additional_props_false(v)
+                    else:
+                        new_obj[k] = [
+                            _ensure_additional_props_false(item) for item in v
+                        ]
+                else:
+                    new_obj[k] = _ensure_additional_props_false(v)
+            return new_obj
+        elif isinstance(obj, list):
+            return [_ensure_additional_props_false(item) for item in obj]
+        return obj
+
+    modified_tools = []
+    for tool in tools:
+        if isinstance(tool, FunctionTool):
+            schema = tool.get_openai_tool_schema()
+            if isinstance(schema, dict) and "function" in schema:
+                func_schema = schema["function"]
+                new_func_schema = deepcopy(func_schema)
+
+                if "parameters" in new_func_schema:
+                    new_func_schema["parameters"] = (
+                        _ensure_additional_props_false(
+                            new_func_schema["parameters"]
+                        )
+                    )
+
+                new_schema = {"type": "function", "function": new_func_schema}
+                new_tool = FunctionTool(
+                    tool.func, openai_tool_schema=new_schema
+                )
+                modified_tools.append(new_tool)
+                continue
+        modified_tools.append(tool)
+
+    return modified_tools
 
 
 def agent_model(
@@ -468,12 +557,20 @@ def agent_model(
             "tool_log_dir": None,
         }
     )
+
+    # Ensure additionalProperties: false for Groq compatibility
+    # (Groq requires strict JSON schemas on all object types)
+    effective_platform = effective_config.get("model_platform", "")
+    tools_for_agent = _ensure_additional_props_false_for_groq(
+        tools, effective_platform
+    )
+
     return ListenChatAgent(
         options.project_id,
         agent_name,
         system_message,
         model=model,
-        tools=tools,
+        tools=tools_for_agent,
         agent_id=agent_id,
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
         toolkits_to_register_agent=toolkits_to_register_agent,
