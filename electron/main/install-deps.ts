@@ -12,9 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { spawn } from 'child_process';
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
