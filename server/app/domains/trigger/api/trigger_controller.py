@@ -12,6 +12,9 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from app.model.chat.chat_history import ChatHistory
+from app.model.project import Project
+from sqlalchemy import or_
 """Trigger controller. Uses TriggerCrudService for business logic."""
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Query
@@ -66,6 +69,7 @@ def list_triggers(
     trigger_type: Optional[TriggerType] = Query(None, description="Filter by trigger type"),
     status: Optional[TriggerStatus] = Query(None, description="Filter by status"),
     project_id: Optional[str] = Query(None, description="Filter by project ID"),
+    space_id: Optional[str] = Query(None, description="Filter by Space ID"),
     db_session: Session = Depends(session),
     auth: V1UserAuth = Depends(auth_must),
 ) -> Page[TriggerOut]:
@@ -78,6 +82,14 @@ def list_triggers(
         conditions.append(Trigger.status == status)
     if project_id:
         conditions.append(Trigger.project_id == project_id)
+    if space_id:
+        conditions.append(or_(
+            Trigger.space_id == space_id,
+            and_(Trigger.space_id.is_(None), or_(
+                Trigger.project_id.in_(select(Project.id).where(Project.space_id == space_id, Project.user_id == str(user_id))),
+                Trigger.project_id.in_(select(ChatHistory.project_id).where(ChatHistory.space_id == space_id, ChatHistory.user_id == user_id)),
+            )),
+        ))
 
     stmt = select(Trigger).where(and_(*conditions)).order_by(desc(Trigger.created_at))
     result = paginate(db_session, stmt)
@@ -86,6 +98,11 @@ def list_triggers(
     trigger_ids = [t.id for t in result.items]
     counts = TriggerCrudService.get_execution_counts(db_session, trigger_ids)
     result.items = [TriggerCrudService.trigger_to_out(t, counts.get(t.id, 0)) for t in result.items]
+
+    if space_id:
+        for item in result.items:
+            if item.space_id is None:
+                item.space_id = space_id
 
     return result
 

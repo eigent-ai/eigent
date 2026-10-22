@@ -21,6 +21,7 @@ import { errorCopy, errorPresentationReason } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
 import { proxyFetchTriggerExecutions } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import {
   ExecutionStatus,
   Trigger,
@@ -218,6 +219,14 @@ export function AutomationDashboardView({
   loadError = false,
 }: AutomationDashboardViewProps) {
   const { t, i18n } = useTranslation();
+  const projects = useProjectRuntimeStore((state) => state.projects);
+  const queuedExecutions = new Set(
+    Object.values(projects).flatMap((project) =>
+      project.queuedMessages
+        .map((message) => message.executionId)
+        .filter(Boolean)
+    )
+  );
   const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
   const needsAuth =
     trigger.status === TriggerStatus.PendingAuth &&
@@ -474,8 +483,20 @@ export function AutomationDashboardView({
         ) : (
           <ol className="m-0 list-none p-0">
             {runs.map((run, index) => {
-              const style = RUN_STYLES[run.status] ?? RUN_STYLES.pending;
-              const message = runMessage(run);
+              const waiting =
+                queuedExecutions.has(run.execution_id) &&
+                [ExecutionStatus.Pending, ExecutionStatus.Running].includes(
+                  run.status
+                );
+              const displayStatus = waiting
+                ? ExecutionStatus.Pending
+                : run.status;
+              const style = RUN_STYLES[displayStatus] ?? RUN_STYLES.pending;
+              const message = waiting
+                ? t('triggers.waiting-to-execute') +
+                  ' ' +
+                  t('triggers.task-queued-description')
+                : runMessage(run);
               const duration =
                 run.status === ExecutionStatus.Completed
                   ? formatDuration(run.duration_seconds)
@@ -518,7 +539,7 @@ export function AutomationDashboardView({
                       <div className="flex flex-wrap items-baseline gap-x-ds-8">
                         <DsText as="span" role="base" weight="semibold">
                           {t(
-                            RUN_LABEL_KEYS[run.status] ??
+                            RUN_LABEL_KEYS[displayStatus] ??
                               'triggers.unknown-status'
                           )}
                         </DsText>
@@ -561,7 +582,7 @@ export function AutomationDashboardView({
                       >
                         {message ||
                           t(
-                            RUN_LABEL_KEYS[run.status] ??
+                            RUN_LABEL_KEYS[displayStatus] ??
                               'triggers.unknown-status'
                           )}
                       </DsText>

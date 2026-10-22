@@ -38,11 +38,12 @@ import {
   proxyActivateTrigger,
   proxyDeactivateTrigger,
   proxyDeleteTrigger,
-  proxyFetchProjectTriggers,
+  proxyFetchSpaceTriggers,
   proxyRunTriggerNow,
 } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { Trigger, TriggerStatus } from '@/types';
 import { Plus } from 'lucide-react';
@@ -100,31 +101,28 @@ export default function Overview({
   const { triggers, deleteTrigger, updateTrigger, setTriggers } =
     useTriggerStore();
   const { projectStore } = useChatStoreAdapter();
-  const activeProjectId = projectStore.activeProjectId;
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const { addLog } = useActivityLogStore();
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
 
   const [listLoadState, setListLoadState] = useState<TriggerListLoadState>(
-    () => (activeProjectId ? 'loading' : 'idle')
+    () => (activeSpaceId ? 'loading' : 'idle')
   );
   const [listReloadRequest, setListReloadRequest] = useState(0);
 
-  // Load the active project's triggers. Depend on the project id only: the
-  // project store object changes on every store update, so depending on it
-  // refetched the list over and over.
+  // A Space owns this list; changing Session must not clear its automations.
   useEffect(() => {
-    // Never show the previous project's triggers under another project.
+    // Clear the previous Space before loading the next one.
     setTriggers([]);
 
-    // Triggers are listed per project; never call the API without one.
-    if (!activeProjectId) {
+    if (!activeSpaceId) {
       setListLoadState('idle');
       return;
     }
 
     let cancelled = false;
     setListLoadState('loading');
-    proxyFetchProjectTriggers(activeProjectId)
+    proxyFetchSpaceTriggers(activeSpaceId)
       .then((response) => {
         if (cancelled) return;
         setTriggers(response.items || []);
@@ -139,7 +137,7 @@ export default function Overview({
     return () => {
       cancelled = true;
     };
-  }, [activeProjectId, listReloadRequest, setTriggers]);
+  }, [activeSpaceId, listReloadRequest, setTriggers]);
 
   useEffect(() => {
     setHasTriggers(triggers.length > 0);

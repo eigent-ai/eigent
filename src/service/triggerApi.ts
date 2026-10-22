@@ -26,6 +26,7 @@ import {
 } from '@/lib/events/appEvents';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { getAuthStore } from '@/store/authStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   ExecutionStatus,
   ExecutionType,
@@ -108,6 +109,35 @@ export const proxyFetchTriggers = async (
     throw error;
   }
 };
+
+/** Fetch every page before filtering: older servers ignore space_id. */
+export async function proxyFetchSpaceTriggers(
+  spaceId: string
+): Promise<{ items: Trigger[]; total: number }> {
+  const items: Trigger[] = [];
+  const seen = new Set<number>();
+  for (let page = 1; ; page++) {
+    const response = await proxyFetchGet('/api/v1/trigger/', {
+      space_id: spaceId,
+      page,
+      size: 100,
+    });
+    const batch: Trigger[] = response.items || [];
+    let added = 0;
+    for (const trigger of batch) {
+      if (seen.has(trigger.id)) continue;
+      seen.add(trigger.id);
+      added++;
+      const owner =
+        trigger.space_id ||
+        useSpaceStore.getState().getProjectMeta(trigger.project_id || '')
+          ?.spaceId;
+      if (owner === spaceId) items.push(trigger);
+    }
+    if (!added || batch.length < 100 || page * 100 >= response.total) break;
+  }
+  return { items, total: items.length };
+}
 
 export const proxyFetchProjectTriggers = async (
   project_id: string | null,
