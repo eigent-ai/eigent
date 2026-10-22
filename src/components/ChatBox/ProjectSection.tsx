@@ -18,6 +18,7 @@ import { motion } from 'framer-motion';
 import React from 'react';
 import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
 import { partitionLegacyMessageEvidence } from './EventTimeline/legacyReplyEvidence';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import {
   ModelChangeDivider,
   type ResolvedRunModel,
@@ -25,6 +26,7 @@ import {
 import { type QueryGroup, UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   chatId: string;
   chatStore: VanillaChatStore;
   taskId?: string;
@@ -114,6 +116,7 @@ export const ProjectSection = React.forwardRef<
             queryGroup={group}
             isActive={activeQueryId === group.queryId}
             onQueryActive={onQueryActive}
+            onEditUserMessage={props.onEditUserMessage}
             index={index}
             taskId={activeTaskId}
           />

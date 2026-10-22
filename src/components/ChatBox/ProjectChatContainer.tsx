@@ -32,6 +32,7 @@ import {
   animateChatTimelineAnchor,
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { groupMessagesByQuery, ProjectSection } from './ProjectSection';
 import { previousRecordedRunModel } from './TimelineModes/ModelChangeDivider';
 
@@ -42,6 +43,7 @@ const ACTIVE_LEGACY_TASK_STATUSES = new Set<string>([
 ]);
 
 interface ProjectChatContainerProps {
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   className?: string;
   /** Scroll viewport lives in ChatBox (full width) so the scrollbar sits on the panel edge. */
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -50,6 +52,7 @@ interface ProjectChatContainerProps {
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
+  onEditUserMessage,
   className = '',
   scrollContainerRef,
   scrollBottomInsetPx,
@@ -432,6 +435,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
                 model={resolvedModelsByRun[taskId]}
                 activeQueryId={activeQueryId}
                 onQueryActive={setActiveQueryId}
+                onEditUserMessage={onEditUserMessage}
               />
             );
           })}

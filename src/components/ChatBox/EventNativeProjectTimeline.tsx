@@ -54,6 +54,7 @@ import {
 import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
 import { partitionLegacyReplyEvidence } from './EventTimeline/legacyReplyEvidence';
 import { presentChatSemanticEntities } from './EventTimeline/presentationPolicy';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { TimelineModeRenderer } from './TimelineModes';
 import type { ResolvedRunModel } from './TimelineModes/ModelChangeDivider';
@@ -190,6 +191,7 @@ interface EventNativeProjectTimelineProps {
   sessionMode?: SessionModeType;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   scrollBottomInsetPx: number;
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
 }
 
 /**
@@ -208,6 +210,7 @@ export function EventNativeProjectTimeline({
   sessionMode,
   scrollContainerRef,
   scrollBottomInsetPx,
+  onEditUserMessage,
 }: EventNativeProjectTimelineProps) {
   const { t } = useTranslation();
   const runtime = useProjectEventRuntime();
@@ -752,6 +755,7 @@ export function EventNativeProjectTimeline({
               }
               runs={visibleRuns}
               resolvedModelsByRun={resolvedModelsByRun ?? recordedModelsByRun}
+              onEditUserMessage={onEditUserMessage}
               sessionMode={sessionMode}
             />
             <HistoryEvidence entries={conversation.evidence} />

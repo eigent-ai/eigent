@@ -1025,6 +1025,7 @@ export function NarrativeTimeline({
   interactivePlansByRun = {},
   paused = false,
   sessionMode,
+  onEditUserMessage,
 }: TimelineModeProps & { sessionMode?: SessionModeType }) {
   const workforce = sessionMode === SessionMode.WORKFORCE;
   const runIds = runs.map((run) => run.runId);
@@ -1065,6 +1066,17 @@ export function NarrativeTimeline({
                 attaches={run.userQuery.attachments}
                 content={run.userQuery.content}
                 id={run.userQuery.id}
+                createdAt={run.userQuery.createdAt}
+                onEditAndResend={
+                  onEditUserMessage
+                    ? () =>
+                        onEditUserMessage({
+                          id: run.userQuery!.id,
+                          content: run.userQuery!.content,
+                          attaches: run.userQuery!.attachments,
+                        })
+                    : undefined
+                }
               />
             ) : null}
             {isActiveRunStatus(run.status) && !hasWorkBand ? (
