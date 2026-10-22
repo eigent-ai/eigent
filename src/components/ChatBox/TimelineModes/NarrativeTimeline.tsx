@@ -47,6 +47,10 @@ import { taskErrorReason } from '../taskErrorPresentation';
 
 import { actionIcon } from './actionIcon';
 import { CallRow, isCallActiveStatus, isCallErrorStatus } from './CallRow';
+import {
+  ModelChangeDivider,
+  previousRecordedRunModel,
+} from './ModelChangeDivider';
 import { RunFilesGroup } from './RunFiles';
 import {
   disclosureMotion,
@@ -1015,6 +1019,7 @@ function NarrativeRunWorkLog({
 
 export function NarrativeTimeline({
   runs,
+  resolvedModelsByRun = {},
   projectedArtifactsByRun = {},
   artifactManifestsByRun = {},
   interactivePlansByRun = {},
@@ -1022,9 +1027,10 @@ export function NarrativeTimeline({
   sessionMode,
 }: TimelineModeProps & { sessionMode?: SessionModeType }) {
   const workforce = sessionMode === SessionMode.WORKFORCE;
+  const runIds = runs.map((run) => run.runId);
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="narrative">
-      {runs.map((run) => {
+      {runs.map((run, index) => {
         const projectedArtifacts = projectedArtifactsByRun[run.runId];
         const artifactManifest = artifactManifestsByRun[run.runId];
         const interactivePlan = interactivePlansByRun[run.runId];
@@ -1044,6 +1050,16 @@ export function NarrativeTimeline({
             data-run-id={run.runId}
             key={run.id}
           >
+            {index > 0 ? (
+              <ModelChangeDivider
+                previous={previousRecordedRunModel(
+                  runIds,
+                  index,
+                  resolvedModelsByRun
+                )}
+                current={resolvedModelsByRun[run.runId]}
+              />
+            ) : null}
             {run.userQuery ? (
               <UserMessageCard
                 attaches={run.userQuery.attachments}

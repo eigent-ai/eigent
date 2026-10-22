@@ -221,6 +221,7 @@
   "timeline-history-loading": "会話を読み込み中…",
   "timeline-history-reconnecting": "再接続中…",
   "timeline-history-retry": "再試行",
+  "timeline-model-changed": "モデルを{{model}}に変更しました",
   "timeline-empty": "まだメッセージがありません。メッセージを送信して始めましょう。",
   "run-working-indicator": "Eigent が作業中…",
   "timeline-style-tooltip": "チャットタイムラインの表示",

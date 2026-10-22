@@ -221,6 +221,7 @@
   "timeline-history-loading": "正在加载对话…",
   "timeline-history-reconnecting": "正在重新连接…",
   "timeline-history-retry": "重试",
+  "timeline-model-changed": "模型已切换为 {{model}}",
   "timeline-empty": "还没有消息。发送一条消息即可开始。",
   "run-working-indicator": "Eigent 正在处理…",
   "timeline-style-tooltip": "聊天时间线样式",

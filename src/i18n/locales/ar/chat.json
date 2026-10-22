@@ -221,6 +221,7 @@
   "timeline-history-loading": "جارٍ تحميل المحادثة…",
   "timeline-history-reconnecting": "جارٍ إعادة الاتصال…",
   "timeline-history-retry": "إعادة المحاولة",
+  "timeline-model-changed": "تم تغيير النموذج إلى {{model}}",
   "timeline-empty": "لا توجد رسائل بعد. أرسل رسالة للبدء.",
   "run-working-indicator": "Eigent قيد العمل…",
   "timeline-style-tooltip": "نمط الخط الزمني للمحادثة",

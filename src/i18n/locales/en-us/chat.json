@@ -221,6 +221,7 @@
   "timeline-history-loading": "Loading conversation…",
   "timeline-history-reconnecting": "Reconnecting…",
   "timeline-history-retry": "Try again",
+  "timeline-model-changed": "Model changed to {{model}}",
   "timeline-empty": "No messages yet. Send a message to get started.",
   "run-working-indicator": "Eigent is working…",
   "timeline-style-tooltip": "Chat timeline style",

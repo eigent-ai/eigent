@@ -221,6 +221,7 @@
   "timeline-history-loading": "대화를 불러오는 중…",
   "timeline-history-reconnecting": "다시 연결하는 중…",
   "timeline-history-retry": "다시 시도",
+  "timeline-model-changed": "모델을 {{model}}(으)로 변경했습니다",
   "timeline-empty": "아직 메시지가 없습니다. 메시지를 보내 시작하세요.",
   "run-working-indicator": "Eigent가 작업 중…",
   "timeline-style-tooltip": "채팅 타임라인 스타일",

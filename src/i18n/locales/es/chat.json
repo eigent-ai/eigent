@@ -221,6 +221,7 @@
   "timeline-history-loading": "Cargando la conversación…",
   "timeline-history-reconnecting": "Reconectando…",
   "timeline-history-retry": "Reintentar",
+  "timeline-model-changed": "Modelo cambiado a {{model}}",
   "timeline-empty": "Aún no hay mensajes. Envía uno para empezar.",
   "run-working-indicator": "Eigent está trabajando…",
   "timeline-style-tooltip": "Estilo de cronología del chat",
