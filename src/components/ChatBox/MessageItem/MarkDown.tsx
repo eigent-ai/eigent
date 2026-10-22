@@ -21,7 +21,7 @@ import { escapeHtml } from '@/lib/richText';
 import { cn } from '@/lib/utils';
 import '@/style/markdown-styles.css';
 import DOMPurify from 'dompurify';
-import { Marked, type Tokens } from 'marked';
+import { Marked, Renderer, type Tokens } from 'marked';
 import { memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -155,6 +155,9 @@ function createMarkdownParser(
     renderer: {
       code(token: Tokens.Code) {
         return codeBlockHtml(token.text, token.lang, profile, labels);
+      },
+      table(token: Tokens.Table) {
+        return `<div class="markdown-table-scroll scrollbar-always-visible">${Renderer.prototype.table.call(this, token)}</div>`;
       },
     },
   });
@@ -418,6 +421,28 @@ export const MarkDown = memo(
         cancelled = true;
       };
     }, [displayedContent, content, contentBasePath, electronAPI, profile, t]);
+
+    useEffect(() => {
+      const root = contentRef.current;
+      if (!root) return;
+      const tables = Array.from(
+        root.querySelectorAll<HTMLElement>('.markdown-table-scroll')
+      );
+      const updateOverflow = () => {
+        for (const table of tables) {
+          if (table.scrollWidth > table.clientWidth) table.tabIndex = 0;
+          else table.removeAttribute('tabindex');
+        }
+      };
+      updateOverflow();
+      if (tables.length === 0 || typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(updateOverflow);
+      for (const table of tables) {
+        observer.observe(table);
+        if (table.firstElementChild) observer.observe(table.firstElementChild);
+      }
+      return () => observer.disconnect();
+    }, [html]);
 
     // Reuse the Monaco grammars already shipped for Source/Review. Highlight
     // only stable content so streaming responses stay cheap and responsive.
