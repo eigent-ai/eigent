@@ -14,6 +14,13 @@
 
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { localTimeToUTC } from '@/lib/utils';
+import {
+  ListenerType,
+  RequestType,
+  TriggerStatus,
+  TriggerType,
+  type Trigger,
+} from '@/types';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -118,4 +125,60 @@ describe('TriggerDialog schedule time validation', () => {
       })
     );
   });
+});
+
+describe('TriggerDialog saving a schedule the editor cannot show', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.proxyUpdateTrigger.mockImplementation(async (id, data) => ({
+      id,
+      ...data,
+    }));
+  });
+
+  it.each([
+    ['0 9 * * 1,3-5', false],
+    ['0 9 1-5 1 *', true],
+    ['0 9 1,15 * *', false],
+  ])(
+    'keeps %s and its run-once setting when only the name changes',
+    async (cron, runsOnce) => {
+      const user = userEvent.setup();
+      const stored = {
+        id: 7,
+        name: 'Stored schedule',
+        task_prompt: 'Summarize the inbox',
+        trigger_type: TriggerType.Schedule,
+        status: TriggerStatus.Inactive,
+        custom_cron_expression: cron,
+        is_single_execution: runsOnce,
+        listener_type: ListenerType.Workforce,
+        webhook_method: RequestType.POST,
+        config: { max_failure_count: 5 },
+      } as unknown as Trigger;
+      render(
+        <TriggerDialog selectedTrigger={stored} isOpen onOpenChange={vi.fn()} />
+      );
+      expect(
+        screen.getByText(/This schedule can't be edited here/)
+      ).toBeInTheDocument();
+
+      const name = screen.getByPlaceholderText('Enter automation name');
+      await user.clear(name);
+      await user.type(name, 'Renamed schedule');
+      await user.click(screen.getByRole('button', { name: 'Update' }));
+
+      await vi.waitFor(() =>
+        expect(mocks.proxyUpdateTrigger).toHaveBeenCalledTimes(1)
+      );
+      expect(mocks.proxyUpdateTrigger).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({
+          name: 'Renamed schedule',
+          custom_cron_expression: cron,
+          is_single_execution: runsOnce,
+        })
+      );
+    }
+  );
 });

@@ -14,6 +14,7 @@
 
 import { useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -453,6 +454,16 @@ describe('Space default through the real Chat start path', () => {
     expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
     expect(request().workspace_model_selection).toBeUndefined();
     expect(project.metadata.modelSelection.cloud_model_type).toBe('manual');
+  });
+
+  it('signals the Session layout when the user starts a task', async () => {
+    usePageTabStore.setState({ sessionTaskStartedProjectIds: {} });
+
+    await start();
+
+    expect(
+      usePageTabStore.getState().sessionTaskStartedProjectIds['session-1']
+    ).toBe(true);
   });
 
   it('keeps established Session starts outside the fresh quota guard', async () => {

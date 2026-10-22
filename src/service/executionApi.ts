@@ -342,14 +342,21 @@ export async function deliverSessionMessage(
       if ((error as { status?: number }).status !== 404) throw error;
     }
   }
-  intent.deliveryAttempted = true;
   const result = await scoped<SessionExecutionRequest>(
     scope,
     fetchPost(
       `/projects/${encodeURIComponent(scope.projectId)}/executions`,
       intent.body,
       undefined,
-      options(scope)
+      {
+        ...options(scope),
+        // Count the delivery only once the request is actually sent. Leaving
+        // the Session while it is still being prepared sends nothing, so the
+        // message can still be offered again as a draft.
+        beforeRequest: () => {
+          if (!scope.signal?.aborted) intent.deliveryAttempted = true;
+        },
+      }
     )
   );
   if (

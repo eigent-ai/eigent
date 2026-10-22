@@ -92,6 +92,10 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const isWorkspacePage = location.pathname === '/';
   const isProjectTab =
     isWorkspacePage && activeWorkspaceTab === WorkspaceTab.Project;
+  // Preview and Summary columns also exist on the New session page.
+  const isSessionLayoutTab =
+    isProjectTab ||
+    (isWorkspacePage && activeWorkspaceTab === WorkspaceTab.NewProject);
 
   const openFilesTab = useCallback(() => {
     const projectStore = useProjectRuntimeStore.getState();
@@ -186,19 +190,21 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           }
           return;
         case APP_COMMAND.togglePreviewPanel:
-          if (isProjectTab) toggleSessionPreview();
+          if (isSessionLayoutTab) toggleSessionPreview({ immediate: true });
           return;
         case APP_COMMAND.openPreviewBrowser:
-          if (isProjectTab) openPreviewTab('browser');
+          if (isSessionLayoutTab)
+            openPreviewTab('browser', { immediate: true });
           return;
         case APP_COMMAND.openPreviewTerminal:
-          if (isProjectTab) openPreviewTab('terminal');
+          if (isSessionLayoutTab)
+            openPreviewTab('terminal', { immediate: true });
           return;
         case APP_COMMAND.toggleWorkspaceSidebar:
           if (isWorkspacePage) toggleWorkspaceSidebar();
           return;
         case APP_COMMAND.toggleSessionSidePanel:
-          if (isProjectTab) requestToggleSessionSidePanel();
+          if (isSessionLayoutTab) requestToggleSessionSidePanel();
           return;
         case APP_COMMAND.navigateHome:
           void runAfterWorkspaceConfigurationSave(() => {
@@ -260,6 +266,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       chatTimelineDetailLevel,
       closeSettings,
       isProjectTab,
+      isSessionLayoutTab,
       isWorkspacePage,
       location.pathname,
       location.search,

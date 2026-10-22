@@ -27,17 +27,21 @@ import { PREVIEW_TAB_KINDS } from '../tabKinds';
 export interface ChooserTabProps {
   /** Open the given content kind (replaces this chooser tab in place). */
   onChoose: (kind: PreviewTabKind) => void;
+  /** Kinds to offer; defaults to all. */
+  kinds?: PreviewTabKind[];
 }
 
 /** The four default view types. Session processes are listed in Summary. */
-export function ChooserTab({ onChoose }: ChooserTabProps) {
+export function ChooserTab({ onChoose, kinds }: ChooserTabProps) {
   const { t } = useTranslation();
   const shortcutPlatform = useDesktopShortcutPlatform();
   return (
     <div className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-y-auto p-4">
       <div className="w-full max-w-[420px]">
         <div className="flex flex-col gap-1.5">
-          {PREVIEW_TAB_KINDS.map(
+          {PREVIEW_TAB_KINDS.filter(
+            ({ kind }) => !kinds || kinds.includes(kind)
+          ).map(
             ({
               kind,
               icon: Icon,

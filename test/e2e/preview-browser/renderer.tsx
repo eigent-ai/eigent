@@ -16,10 +16,12 @@ import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import { BrowserTab } from '@/components/Session/PreviewPanel/tabs/browser/BrowserTab';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
 import { FileTab } from '@/components/Session/PreviewPanel/tabs/FileTab';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
 import { HostProvider, createHost } from '@/host';
 import i18n, { LocaleEnum } from '@/i18n';
 import { createBrowserPreviewHandoff } from '@/lib/browserPreviewHandoff';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import '@/style/index.css';
 import { createRoot } from 'react-dom/client';
 
@@ -111,7 +113,50 @@ function Fixture() {
     </HostProvider>
   );
 }
-createRoot(document.getElementById('root')!).render(
+function SplitBrowser({ projectId }: { projectId: string }) {
+  const slice = usePageTabStore((state) =>
+    getSessionPreviewSlice(state, projectId)
+  );
+  const tab = slice.tabs.find(
+    (candidate) => candidate.id === slice.activeTabId
+  );
+  return (
+    <SessionPaneProvider projectId={projectId}>
+      <main
+        data-browser-pane={projectId}
+        className="flex min-w-0 flex-1 flex-col"
+      >
+        {tab?.type === 'browser' && <BrowserTab tab={tab} isDesktop />}
+      </main>
+    </SessionPaneProvider>
+  );
+}
+const root = createRoot(document.getElementById('root')!);
+Object.assign(window.previewTest, {
+  projects: useProjectRuntimeStore,
+  showSplit: () => {
+    const projects = useProjectRuntimeStore.getState();
+    for (const id of ['session-a', 'session-b']) {
+      projects.createProject(id, undefined, id);
+      usePageTabStore.getState().resetSessionPreview(id);
+      usePageTabStore.getState().openBrowserPreview(`${site}?pane=${id}`, id);
+    }
+    projects.setActiveProject('session-a');
+    usePageTabStore.getState().setSessionPreviewProject('session-a');
+    root.render(
+      <ThemeProvider>
+        <HostProvider host={createHost()}>
+          <div className="flex h-screen">
+            <SplitBrowser projectId="session-a" />
+            <SplitBrowser projectId="session-b" />
+          </div>
+          <PreviewBrowserLayer />
+        </HostProvider>
+      </ThemeProvider>
+    );
+  },
+});
+root.render(
   <ThemeProvider>
     <Fixture />
   </ThemeProvider>

@@ -14,6 +14,7 @@
 
 import { fetchGet } from '@/api/http';
 import { runProjectionStore } from '@/lib/runEvents';
+import { retainSessionPane } from '@/lib/sessionPaneLifetime';
 import { useAuthStore } from '@/store/authStore';
 import {
   createChatStoreInstance,
@@ -148,6 +149,25 @@ describe('scoped Task failure presentation hydration', () => {
       ).toMatchObject({ terminalReason: 'deadline_exceeded' });
     } finally {
       runProjectionStore.clearProject('session');
+    }
+  });
+
+  it('keeps failure evidence owned by a visible non-focused Session', async () => {
+    const owner = setup();
+    const release = retainSessionPane('session');
+    fetchGetMock.mockResolvedValue(events());
+    useProjectStore.setState({ activeProjectId: 'other' });
+    try {
+      expect(
+        await readTaskFailureFacts(
+          owner,
+          'session',
+          'failed-run',
+          new AbortController().signal
+        )
+      ).not.toBeNull();
+    } finally {
+      release();
     }
   });
 

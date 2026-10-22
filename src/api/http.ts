@@ -152,7 +152,11 @@ export type FetchRequestOptions = {
   assertCurrent?: () => void;
   signal?: AbortSignal;
   expectedAccountKey?: string;
-  /** Revalidate mutable admission context after asynchronous header lookup. */
+  /**
+   * Revalidate mutable admission context after asynchronous header lookup.
+   * Runs synchronously, at most once, immediately before `fetch`, so callers
+   * may also use it to mark that the request is being sent.
+   */
   beforeRequest?: () => void;
 };
 

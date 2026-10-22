@@ -14,10 +14,14 @@
 
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore, type SessionTerminalTab } from '@/store/pageTabStore';
+import {
+  isNewSessionDraftScope,
+  type SessionTerminalTab,
+} from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { Check, Copy, SquareTerminal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -56,10 +60,12 @@ export function terminalSourceLabel(source: TerminalSource): string {
 function LocalShellTerminal({ tab, viewportSettled }: TerminalTabProps) {
   const { t } = useTranslation();
   const host = useHost();
-  const openBrowserPreview = usePageTabStore(
+  const openBrowserPreview = useSessionPageTabStore(
     (state) => state.openBrowserPreview
   );
-  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const projectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
   const isDesktop = Boolean(host?.electronAPI?.terminalCreate);
@@ -86,7 +92,13 @@ function LocalShellTerminal({ tab, viewportSettled }: TerminalTabProps) {
       return;
     }
     const api = host?.electronAPI;
-    if (!api?.getProjectFolderPath || !email || !projectId) {
+    // The New session draft has no Project folder yet; use the home folder.
+    if (
+      !api?.getProjectFolderPath ||
+      !email ||
+      !projectId ||
+      isNewSessionDraftScope(projectId)
+    ) {
       setCwdResolved(true);
       return;
     }
@@ -138,10 +150,12 @@ function LocalShellTerminal({ tab, viewportSettled }: TerminalTabProps) {
 function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
   const { t } = useTranslation();
   const sources = useSessionTerminalSources();
-  const openBrowserPreview = usePageTabStore(
+  const openBrowserPreview = useSessionPageTabStore(
     (state) => state.openBrowserPreview
   );
-  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const projectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
   const processes = useTerminalProcesses(projectId);
   const process = processes.find(
     (candidate) => `process:${candidate.id}` === sourceId

@@ -16,6 +16,7 @@ import { HeaderBox } from '@/components/Session/HeaderBox';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/store/authStore', () => ({
@@ -56,6 +57,31 @@ describe('HeaderBox chat timeline mode', () => {
     vi.restoreAllMocks();
   });
 
+  it('hides Back and the timeline style on the New session header', () => {
+    render(
+      <HeaderBox
+        projectName="New session"
+        showBack={false}
+        showTimelineStyle={false}
+      />
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Back' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('tablist', { name: 'Chat timeline style' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('New session')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Open preview' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows Back on a Session header', () => {
+    render(<HeaderBox projectName="Timeline project" />);
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+  });
+
   it('places the mode toggle between token usage and preview controls', () => {
     render(<HeaderBox totalTokens={42} projectName="Timeline project" />);
 
@@ -75,6 +101,90 @@ describe('HeaderBox chat timeline mode', () => {
       toggle.compareDocumentPosition(previewButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+
+  it('puts the Summary toggle next to Preview with keyboard focus and pressed state', async () => {
+    const user = userEvent.setup();
+    const toggle = vi.fn();
+    const { rerender } = render(
+      <HeaderBox summary={{ open: false, onToggle: toggle }} />
+    );
+    const summary = screen.getByRole('button', { name: 'Summary' });
+    const preview = screen.getByRole('button', { name: 'Open preview' });
+    expect(summary).toHaveAttribute('aria-pressed', 'false');
+    expect(
+      summary.compareDocumentPosition(preview) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    act(() => summary.focus());
+    await user.keyboard('{Enter}');
+    expect(toggle).toHaveBeenCalledOnce();
+    rerender(<HeaderBox summary={{ open: true, onToggle: toggle }} />);
+    expect(summary).toHaveAttribute('aria-pressed', 'true');
+    expect(summary).toHaveFocus();
+    await user.tab();
+    expect(preview).toHaveFocus();
+  });
+
+  it('opens Activity over chat from the same icon and restores focus after Escape', async () => {
+    const user = userEvent.setup();
+    function NarrowHeader() {
+      const [open, setOpen] = useState(false);
+      return (
+        <HeaderBox
+          summary={{
+            open: false,
+            onToggle: () => {},
+            popover: <button>Activity content</button>,
+            popoverOpen: open,
+            onPopoverOpenChange: setOpen,
+          }}
+        />
+      );
+    }
+    render(<NarrowHeader />);
+    const summary = screen.getByRole('button', { name: 'Summary' });
+    await user.click(summary);
+    expect(screen.getByRole('dialog', { name: 'Summary' })).toContainElement(
+      screen.getByRole('button', { name: 'Activity content' })
+    );
+    expect(summary).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(summary).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('dialog', { name: 'Summary' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open preview' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('opens Preview immediately from the keyboard and animates the next pointer opening', async () => {
+    const user = userEvent.setup();
+    usePageTabStore.setState({
+      sessionPreviewProjectId: 'keyboard-test',
+      sessionPreviewByProject: {},
+      sessionPreviewOpening: null,
+    });
+    render(<HeaderBox />);
+    const preview = screen.getByRole('button', { name: 'Open preview' });
+    act(() => preview.focus());
+    await user.keyboard('{Enter}');
+    expect(usePageTabStore.getState().sessionPreviewOpening).toMatchObject({
+      immediate: true,
+    });
+    expect(preview).toHaveFocus();
+    await user.click(preview);
+    await user.click(preview);
+    expect(usePageTabStore.getState().sessionPreviewOpening).toMatchObject({
+      immediate: false,
+    });
+    act(() =>
+      usePageTabStore.setState({
+        sessionPreviewProjectId: null,
+        sessionPreviewByProject: {},
+        sessionPreviewOpening: null,
+      })
+    );
   });
 
   it('offers exactly the two timeline modes as a segmented control', () => {

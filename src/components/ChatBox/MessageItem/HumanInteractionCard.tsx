@@ -17,6 +17,7 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { useHost } from '@/host';
 import { isInteractionTerminal } from '@/lib/approvalPresentation';
 import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
@@ -32,7 +33,6 @@ import {
 } from '@/service/humanInteractionApi';
 import { watchHumanInteractionPending } from '@/service/humanInteractionPendingCheck';
 import { useAuthStore } from '@/store/authStore';
-import { useProjectStore } from '@/store/projectStore';
 import { ShieldAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -137,7 +137,7 @@ export function HumanInteractionCard({
   const { t } = useTranslation();
   const host = useHost();
   const userId = useAuthStore((state) => state.user_id);
-  const projectId = useProjectStore((state) => state.activeProjectId);
+  const projectId = useSessionProjectId();
   const owner = controlOwner();
   const viewKey = JSON.stringify([
     owner,

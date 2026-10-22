@@ -12,13 +12,17 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ContentHeader from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import {
   getSessionPreviewSlice,
-  usePageTabStore,
+  isNewSessionDraftScope,
+  type PreviewTabKind,
   type SessionPreviewTab,
 } from '@/store/pageTabStore';
 import { useIsPresent } from 'framer-motion';
@@ -32,6 +36,9 @@ import { ChooserTab } from './tabs/ChooserTab';
 import { FileTab } from './tabs/FileTab';
 import { ReviewTab } from './tabs/ReviewTab';
 import { TerminalTab } from './tabs/terminal/TerminalTab';
+
+/** Before a Session exists there are no files or runs to show. */
+const DRAFT_PREVIEW_KINDS: PreviewTabKind[] = ['browser', 'terminal'];
 
 // Tabs render at a comfortable default width and shrink evenly as more are
 // added, down to a minimum that keeps the title/close affordance legible.
@@ -65,20 +72,25 @@ export function PreviewPanel({
   // Exiting children keep their last props, so presence is what tells the
   // shell to stop fitting while the display panel collapses.
   const isPresent = useIsPresent();
-  const tabs = usePageTabStore((state) => getSessionPreviewSlice(state).tabs);
-  const activeTabId = usePageTabStore(
+  const tabs = useSessionPageTabStore(
+    (state) => getSessionPreviewSlice(state).tabs
+  );
+  const isDraft = useSessionPageTabStore((state) =>
+    isNewSessionDraftScope(state.sessionPreviewProjectId)
+  );
+  const activeTabId = useSessionPageTabStore(
     (state) => getSessionPreviewSlice(state).activeTabId
   );
-  const addChooserPreviewTab = usePageTabStore(
+  const addChooserPreviewTab = useSessionPageTabStore(
     (state) => state.addChooserPreviewTab
   );
-  const choosePreviewTabType = usePageTabStore(
+  const choosePreviewTabType = useSessionPageTabStore(
     (state) => state.choosePreviewTabType
   );
-  const selectSessionPreviewTab = usePageTabStore(
+  const selectSessionPreviewTab = useSessionPageTabStore(
     (state) => state.selectSessionPreviewTab
   );
-  const closeSessionPreviewTab = usePageTabStore(
+  const closeSessionPreviewTab = useSessionPageTabStore(
     (state) => state.closeSessionPreviewTab
   );
 
@@ -158,6 +170,7 @@ export function PreviewPanel({
       case 'chooser':
         return (
           <ChooserTab
+            kinds={isDraft ? DRAFT_PREVIEW_KINDS : undefined}
             onChoose={(kind) => choosePreviewTabType(activeTab.id, kind)}
           />
         );
@@ -193,8 +206,11 @@ export function PreviewPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden px-1 pb-1">
-      <div className="flex h-ds-layout-row-header shrink-0 items-center justify-start gap-1 overflow-visible px-1.5">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+      <ContentHeader
+        inset="none"
+        className="justify-start gap-ds-4 border-ds-hairline-subtle-disabled px-ds-4"
+      >
         <div className="relative flex min-w-0 items-center">
           <div
             ref={tabListRef}
@@ -203,7 +219,7 @@ export function PreviewPanel({
               defaultValue: 'Preview tabs',
             })}
             onKeyDown={handleTabListKeyDown}
-            className="scrollbar-hide flex h-7 w-full min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden"
+            className="scrollbar-hide flex h-7 w-full min-w-0 items-center gap-ds-4 overflow-x-auto overflow-y-hidden"
           >
             {tabs.map((tab) => {
               const selected = tab.id === activeTab.id;
@@ -232,7 +248,7 @@ export function PreviewPanel({
                     onClick={() => selectSessionPreviewTab(tab.id)}
                     className="flex h-full w-full min-w-0 cursor-pointer items-center gap-2 border-0 border-x-0 border-y-0 bg-transparent px-2 text-left text-inherit"
                   >
-                    <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                    <DsIcon icon={Icon} recipe="main" />
                     <span className="truncate text-sm font-medium">
                       {tab.title}
                     </span>
@@ -290,18 +306,18 @@ export function PreviewPanel({
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            onClick={addChooserPreviewTab}
+            onClick={() => addChooserPreviewTab()}
             aria-label={t('layout.add-preview-tab', {
               defaultValue: 'New tab',
             })}
             className="shrink-0"
           >
-            <Plus className="h-4 w-4" aria-hidden />
+            <Plus aria-hidden />
           </Button>
         </TooltipSimple>
-      </div>
+      </ContentHeader>
 
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border-solid border-ds-hairline-subtle-disabled bg-ds-neutral-subtle-default">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-ds-neutral-subtle-default">
         {renderActiveContent()}
       </div>
     </div>

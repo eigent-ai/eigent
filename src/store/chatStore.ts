@@ -71,6 +71,7 @@ import {
 } from '@/lib/runEvents';
 import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
+import { hasSessionPane } from '@/lib/sessionPaneLifetime';
 import {
   isLocalWorkspaceSpace,
   isPlaceholderProjectName,
@@ -91,6 +92,7 @@ import {
 import { recoverCompletedRunDisplay } from '@/service/completedRunDisplayRecovery';
 import { executionScope } from '@/service/executionApi';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
+import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import {
   createTaskTimerWaitSync,
   isRunWaitingForUser,
@@ -1328,7 +1330,8 @@ export interface ChatStore {
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
   observeTaskFailureFacts: (
     taskId: string,
-    onFacts: (facts: TaskFailureFacts | undefined) => void
+    onFacts: (facts: TaskFailureFacts | undefined) => void,
+    projectId?: string | null
   ) => () => void;
   setDurableRunStatus: (
     taskId: string,
@@ -1422,7 +1425,7 @@ export interface ChatStore {
   getLastUserMessage: () => Message | null;
   addTaskInfo: () => void;
   updateTaskInfo: (index: number, content: string) => void;
-  saveTaskInfo: () => void;
+  saveTaskInfo: (projectId?: string | null) => void;
   deleteTaskInfo: (index: number) => void;
   setTaskTime: (taskId: string, taskTime: number) => void;
   setElapsed: (taskId: string, taskTime: number) => void;
@@ -1441,7 +1444,7 @@ export interface ChatStore {
   setSnapshotsTemp: (taskId: string, snapshot: any) => void;
   setPlanDirty: (taskId: string, dirty: boolean) => void;
   setAutoConfirmDeadline: (taskId: string, deadline: number | null) => void;
-  savePlan: (taskId: string) => Promise<void>;
+  savePlan: (taskId: string, projectId?: string | null) => Promise<void>;
   clearTasks: () => void;
   setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
   setNextTaskId: (taskId: string | null) => void;
@@ -2299,8 +2302,10 @@ const ensureSingleAgentAssignment = (
 };
 
 /** Persist subtask edits to backend via PUT /task/{project_id}. */
-const persistSubtaskEdits = async (taskInfo: TaskInfo[]) => {
-  const projectId = useProjectStore.getState().activeProjectId;
+const persistSubtaskEdits = async (
+  taskInfo: TaskInfo[],
+  projectId: string | null
+) => {
   if (!projectId) return;
 
   const nonEmpty = taskInfo.filter((t) => t.content !== '');
@@ -2466,7 +2471,7 @@ export async function readTaskFailureFacts(
       !signal.aborted &&
       !controller.signal.aborted &&
       getAccountEnvironmentKey(getAuthStore()) === accountKey &&
-      projects.activeProjectId === projectId &&
+      (projects.activeProjectId === projectId || hasSessionPane(projectId)) &&
       projects
         .getAllChatStores(projectId)
         .some((entry) => entry.chatStore === owner) &&
@@ -2942,6 +2947,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       const sessionModeForRequest =
         sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
+      // Let the Session layout open Activity for a user-started task.
+      if (isLiveTask && project_id && !executionId) {
+        usePageTabStore.getState().markSessionTaskStarted(project_id);
+      }
       // Track genuine, user-facing task starts (skip replay/share playback).
       // Powers the "time to first task" lifecycle event.
       if (isLiveTask) {
@@ -4099,9 +4108,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ...Object.keys(CANONICAL_TERMINAL_RUN_STATUSES),
               'run.attempt_created',
               'run.attempt_started',
+              'approval.cancelled',
+              'interaction.cancelled',
             ],
           },
           (event) => {
+            if (
+              event.eventType === 'approval.cancelled' ||
+              event.eventType === 'interaction.cancelled'
+            ) {
+              // The chat stream never reports a request the backend closed
+              // itself, so close its card here and show the next one.
+              const interactionId =
+                event.payload.interaction_id ?? event.payload.approval_id;
+              if (active && typeof interactionId === 'string')
+                completeHumanInteraction(
+                  observedChatStore.getState(),
+                  observedTaskId,
+                  interactionId
+                );
+              return;
+            }
             if (
               ['run.attempt_created', 'run.attempt_started'].includes(
                 event.eventType
@@ -8061,8 +8088,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    observeTaskFailureFacts(taskId, onFacts) {
-      const projectId = useProjectStore.getState().activeProjectId;
+    observeTaskFailureFacts(
+      taskId,
+      onFacts,
+      projectId = useProjectStore.getState().activeProjectId
+    ) {
       if (!projectId) return () => {};
       const executionId = get().tasks[taskId]?.executionId;
       const accountKey = getAccountEnvironmentKey(getAuthStore());
@@ -8071,7 +8101,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         if (controller.signal.aborted) return;
         if (
           getAccountEnvironmentKey(getAuthStore()) !== accountKey ||
-          useProjectStore.getState().activeProjectId !== projectId ||
+          (useProjectStore.getState().activeProjectId !== projectId &&
+            !hasSessionPane(projectId)) ||
           !useProjectStore
             .getState()
             .getAllChatStores(projectId)
@@ -8456,10 +8487,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       );
       setTaskInfo(activeTaskId, targetTaskInfo);
     },
-    saveTaskInfo() {
+    saveTaskInfo(projectId = useProjectStore.getState().activeProjectId) {
       const { tasks, activeTaskId } = get();
       if (!activeTaskId) return;
-      persistSubtaskEdits(tasks[activeTaskId].taskInfo);
+      persistSubtaskEdits(tasks[activeTaskId].taskInfo, projectId);
     },
     deleteTaskInfo(index: number) {
       const { tasks, activeTaskId, setTaskInfo } = get();
@@ -8645,14 +8676,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       });
     },
-    async savePlan(taskId: string) {
+    async savePlan(
+      taskId: string,
+      projectId = useProjectStore.getState().activeProjectId
+    ) {
       const { tasks, setPlanDirty, setAutoConfirmDeadline } = get();
       const task = tasks[taskId];
       if (!task || task.status === ChatTaskStatus.FINISHED) return;
       const save = Symbol(taskId);
       activePlanSaves.set(taskId, save);
       try {
-        await persistSubtaskEdits(task.taskInfo);
+        await persistSubtaskEdits(task.taskInfo, projectId);
         // Status may already be PENDING again after terminal -> Resume.
         if (activePlanSaves.get(taskId) !== save) return;
         const currentTask = get().tasks[taskId];
@@ -8668,8 +8702,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
-      // After Save, restart the 30-second auto-confirm timer for predictable UX.
-      const projectId = useProjectStore.getState().activeProjectId;
+      // After Save, restart the 30-second auto-confirm timer for this Session.
       const currentTask = get().tasks[taskId];
       if (!currentTask || currentTask.status === ChatTaskStatus.FINISHED)
         return;

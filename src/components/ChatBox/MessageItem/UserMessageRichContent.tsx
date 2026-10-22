@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import {
   RICH_CONNECTOR_STYLE_CLASSES,
@@ -23,7 +24,6 @@ import {
   tokenizeRichPlainText,
 } from '@/lib/richText';
 import { cn } from '@/lib/utils';
-import { usePageTabStore } from '@/store/pageTabStore';
 import { Fragment, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -144,7 +144,9 @@ export function UserMessageRichContent({
 }: UserMessageRichContentProps) {
   const { t } = useTranslation();
   const host = useHost();
-  const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
+  const openBrowserPreview = useSessionPageTabStore(
+    (s) => s.openBrowserPreview
+  );
   const contentNodes = parseContentWithTags(content);
 
   const handleOpenSkillFolder = (skillName: string) => {

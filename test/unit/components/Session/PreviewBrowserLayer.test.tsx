@@ -16,7 +16,12 @@ import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/brow
 import { getPreviewWebview } from '@/components/Session/PreviewPanel/tabs/browser/webviewRegistry';
 import { HostProvider } from '@/host';
 import i18n from '@/i18n';
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import {
+  getSessionPreviewSlice,
+  NEW_SESSION_DRAFT_SCOPE,
+  usePageTabStore,
+} from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -48,6 +53,7 @@ describe('PreviewBrowserLayer', () => {
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
       previewBrowserViewport: null,
+      previewBrowserViewportByProject: {},
     });
     usePageTabStore.getState().setSessionPreviewProject('project-a');
     usePageTabStore.getState().toggleSessionPreview();
@@ -55,6 +61,37 @@ describe('PreviewBrowserLayer', () => {
     const chooserId = getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
       .id;
     usePageTabStore.getState().choosePreviewTabType(chooserId, 'browser');
+  });
+
+  it('shows two pane browsers with independent bounds and parks only the removed viewport', async () => {
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://a.example', 'project-a');
+    store.openBrowserPreview('https://b.example', 'project-b');
+    store.setPreviewBrowserViewport(
+      { x: 0, y: 0, width: 600, height: 500 },
+      'project-a'
+    );
+    store.setPreviewBrowserViewport(
+      { x: 600, y: 0, width: 600, height: 500 },
+      'project-b'
+    );
+    const tabA = getBrowserTab();
+    const tabB = usePageTabStore
+      .getState()
+      .sessionPreviewByProject['project-b'].tabs.find(
+        (t) => t.type === 'browser'
+      )!;
+    renderLayer();
+    await waitFor(() =>
+      expect(guestContainer(tabA.webviewId)!.style.opacity).toBe('1')
+    );
+    expect(guestContainer(tabB.webviewId)!.style.left).toBe('600px');
+    act(() => store.setPreviewBrowserViewport(null, 'project-a'));
+    await waitFor(() =>
+      expect(guestContainer(tabA.webviewId)!.style.visibility).toBe('hidden')
+    );
+    expect(guestContainer(tabB.webviewId)!.style.visibility).not.toBe('hidden');
+    store.setPreviewBrowserViewport(null, 'project-b');
   });
 
   it('mounts a <webview> guest once a browser tab has a URL', () => {
@@ -77,6 +114,55 @@ describe('PreviewBrowserLayer', () => {
     expect(getPreviewWebview(tab.webviewId)).toBe(webview);
   });
 
+  it('does not reuse another pane viewport when focus moves to a browser without bounds', async () => {
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://a.example', 'project-a');
+    store.openBrowserPreview('https://b.example', 'project-b');
+    store.setPreviewBrowserViewport(
+      { x: 40, y: 0, width: 600, height: 500 },
+      'project-a'
+    );
+    const tabA = getBrowserTab();
+    const tabB = getSessionPreviewSlice(
+      usePageTabStore.getState(),
+      'project-b'
+    ).tabs.find((tab) => tab.type === 'browser')!;
+    renderLayer();
+    act(() => store.setSessionPreviewProject('project-b'));
+    await waitFor(() =>
+      expect(guestContainer(tabA.webviewId)!.style.opacity).toBe('1')
+    );
+    expect(guestContainer(tabB.webviewId)!.style.visibility).toBe('hidden');
+    expect(guestContainer(tabA.webviewId)!.style.left).toBe('40px');
+  });
+
+  it('focuses the owning Session when its guest gains focus and cleans up on unmount', async () => {
+    const runtime = useProjectRuntimeStore.getState();
+    runtime.createProject('A', undefined, 'project-a');
+    runtime.createProject('B', undefined, 'project-b');
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://a.example', 'project-a');
+    store.setPreviewBrowserViewport(
+      { x: 0, y: 0, width: 600, height: 500 },
+      'project-a'
+    );
+    const tab = getBrowserTab();
+    const layer = renderLayer();
+    await waitFor(() =>
+      expect(guestContainer(tab.webviewId)!.style.opacity).toBe('1')
+    );
+    const guest = getPreviewWebview(tab.webviewId)!;
+    act(() => guest.dispatchEvent(new FocusEvent('focus')));
+    expect(useProjectRuntimeStore.getState().activeProjectId).toBe('project-a');
+    expect(usePageTabStore.getState().sessionPreviewProjectId).toBe(
+      'project-a'
+    );
+    layer.unmount();
+    act(() => runtime.setActiveProject('project-b'));
+    guest.dispatchEvent(new FocusEvent('focus'));
+    expect(useProjectRuntimeStore.getState().activeProjectId).toBe('project-b');
+  });
+
   it('positions the active guest over the published viewport and parks it when closed', async () => {
     renderLayer();
     const tab = getBrowserTab();
@@ -92,6 +178,7 @@ describe('PreviewBrowserLayer', () => {
     const container = guestContainer(tab.webviewId)!;
     expect(container.style.left).toBe('100px');
     expect(container.style.width).toBe('640px');
+    expect(container.style.borderRadius).toBe('0');
     expect(container.style.visibility).not.toBe('hidden');
 
     // Closing the panel parks the guest (kept alive, hidden) — no unmount.
@@ -164,6 +251,54 @@ describe('PreviewBrowserLayer', () => {
     expect(restoredGuest?.getAttribute('src')).toBe(url);
     expect(getBrowserTab().webviewId).toBe(tab.webviewId);
     expect(guestContainer(tab.webviewId)?.style.visibility).not.toBe('hidden');
+  });
+
+  it('keeps a New session draft page live when its tab moves to the started Session', () => {
+    usePageTabStore.setState({
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
+      sessionSummaryOpenByProject: {},
+    });
+    usePageTabStore
+      .getState()
+      .setSessionPreviewProject(NEW_SESSION_DRAFT_SCOPE);
+    usePageTabStore.getState().openPreviewTab('browser');
+    renderLayer();
+    const tab = getBrowserTab();
+    act(() => {
+      usePageTabStore
+        .getState()
+        .updateBrowserPreviewTab(tab.id, { url: 'https://example.com/' });
+    });
+    const webview = guestContainer(tab.webviewId)!.querySelector(
+      'webview'
+    ) as HTMLElement & Record<string, unknown>;
+
+    act(() => {
+      usePageTabStore.getState().handOffNewSessionDraft('started');
+    });
+
+    // Same element: the page is not reloaded by the handoff.
+    expect(guestContainer(tab.webviewId)!.querySelector('webview')).toBe(
+      webview
+    );
+    webview.getURL = () => 'https://example.com/next';
+    webview.getTitle = () => 'Next';
+    webview.isLoading = () => false;
+    act(() => {
+      webview.dispatchEvent(new Event('did-navigate'));
+    });
+    // Navigation now lands in the started Session's slice.
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject.started.tabs
+    ).toContainEqual(
+      expect.objectContaining({ url: 'https://example.com/next' })
+    );
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject[
+        NEW_SESSION_DRAFT_SCOPE
+      ]
+    ).toBeUndefined();
   });
 
   it('feeds guest navigation events back into the per-project store slice', () => {

@@ -14,12 +14,16 @@
 
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { TaskItem } from './TaskItem';
 
 import { TaskState, TaskStateType } from '@/components/TaskState';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { usePageTabStore } from '@/store/pageTabStore';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
 import { ChatTaskStatus, TaskStatus } from '@/types/constants';
 import {
   ChevronDown,
@@ -101,6 +105,8 @@ export function TaskCard({
 
   //Get Chatstore and ProjectStore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
 
   // Extract values for dependency arrays (must be before any conditional returns)
   const activeTaskId = taskId ?? (chatStore?.activeTaskId as string);
@@ -125,18 +131,35 @@ export function TaskCard({
   // Side-panel Progress section can ask the chat to surface this card. Each
   // bump of the counter forces the card open; ProjectChatContainer handles
   // the scroll. Skip the initial value so we don't pop on mount.
-  const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
-  const taskBoxFocusTaskId = usePageTabStore((s) => s.taskBoxFocusTaskId);
+  const taskBoxFocusRequestId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusRequestId
+  );
+  const taskBoxFocusProjectId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusProjectId
+  );
+  const taskBoxFocusTaskId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusTaskId
+  );
   const lastSeenFocusRef = useRef(taskBoxFocusRequestId);
   useEffect(() => {
+    if (taskBoxFocusRequestId === lastSeenFocusRef.current) return;
+    lastSeenFocusRef.current = taskBoxFocusRequestId;
     if (
-      taskBoxFocusRequestId !== lastSeenFocusRef.current &&
+      (taskBoxFocusProjectId
+        ? taskBoxFocusProjectId === sessionProjectId
+        : isFocusedPane) &&
       (!taskBoxFocusTaskId || taskBoxFocusTaskId === activeTaskId)
     ) {
-      lastSeenFocusRef.current = taskBoxFocusRequestId;
       setIsExpanded(true);
     }
-  }, [activeTaskId, taskBoxFocusRequestId, taskBoxFocusTaskId]);
+  }, [
+    activeTaskId,
+    taskBoxFocusRequestId,
+    taskBoxFocusTaskId,
+    taskBoxFocusProjectId,
+    sessionProjectId,
+    isFocusedPane,
+  ]);
 
   useEffect(() => {
     const tasks = taskRunning || [];
@@ -414,11 +437,12 @@ export function TaskCard({
                         onClick={() => {
                           if (task.agent) {
                             // Switch to the chatStore that owns this task card (for multi-turn conversations)
-                            if (chatId && projectStore.activeProjectId) {
-                              const activeProjectId =
-                                projectStore.activeProjectId;
+                            if (chatId && sessionProjectId) {
+                              const activeProjectId = sessionProjectId;
                               const activeChatStore =
-                                projectStore.getActiveChatStore();
+                                projectStore.getActiveChatStore(
+                                  sessionProjectId ?? undefined
+                                );
                               const currentChatId = activeChatStore
                                 ? Object.keys(
                                     projectStore.projects[activeProjectId]

@@ -25,13 +25,14 @@ import {
 import { DsIcon } from '@/components/ui/ds-icon';
 import { Textarea } from '@/components/ui/textarea';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useAuthStore } from '@/store/authStore';
 import type {
   SessionReviewComment,
   SessionReviewTab,
   SessionReviewTarget,
 } from '@/store/pageTabStore';
-import { reviewTargetIdentityKey, usePageTabStore } from '@/store/pageTabStore';
+import { reviewTargetIdentityKey } from '@/store/pageTabStore';
 import {
   ArrowDown,
   ArrowUp,
@@ -132,11 +133,13 @@ export function buildReviewFeedbackPrompt(
 export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
-  const updateReviewComments = usePageTabStore(
+  const updateReviewComments = useSessionPageTabStore(
     (state) => state.updateReviewComments
   );
-  const setReviewIdentity = usePageTabStore((state) => state.setReviewIdentity);
-  const requestWorkspaceChatDraft = usePageTabStore(
+  const setReviewIdentity = useSessionPageTabStore(
+    (state) => state.setReviewIdentity
+  );
+  const requestWorkspaceChatDraft = useSessionPageTabStore(
     (state) => state.requestWorkspaceChatDraft
   );
   const reviewTarget = tab.reviewTarget ?? DEFAULT_REVIEW_TARGET;

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { retainSessionPane } from '@/lib/sessionPaneLifetime';
 // These cases exercise the existing legacy lane. C6 ownership/transport is
 // covered separately by sessionExecution and real ASGI IPC integration tests.
 const sessionEntryGuard = vi.hoisted(() =>
@@ -1923,6 +1924,24 @@ describe('projectStore runtime shape', () => {
     expect(normalizeThinkingEffort('extra_high')).toBe(ThinkingEffort.XHIGH);
     expect(normalizeThinkingEffort('ultra')).toBe(ThinkingEffort.MAX);
     expect(normalizeThinkingEffort('unsupported')).toBe(ThinkingEffort.MEDIUM);
+  });
+
+  it('keeps a stale runtime while any pane still renders the Session', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Visible Session', undefined, 'visible-session');
+    useProjectStore.setState({ staleProjectIds: new Set([projectId]) });
+    const releaseFirst = retainSessionPane(projectId);
+    const releaseSecond = retainSessionPane(projectId);
+    try {
+      useProjectStore.getState()._evictStaleOnTransition('another-session');
+      releaseFirst();
+      useProjectStore.getState()._evictStaleOnTransition('another-session');
+      expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+      expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+    } finally {
+      releaseSecond();
+    }
   });
 
   it('keeps stale project runtime while one of its tasks has an active SSE stream', () => {

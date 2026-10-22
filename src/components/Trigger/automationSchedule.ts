@@ -141,10 +141,12 @@ function nextOneTimeCronMatch(cron: string, from: Date): Date | null {
 
 export function isOneTimeCron(cron?: string): boolean {
   const parts = cron?.trim().split(/\s+/) ?? [];
+  // Only a single fixed day and month is one date. Ranges, lists and steps
+  // such as `1-5` or `1,15` repeat, even though they are not `*`.
   return (
     parts.length === 5 &&
-    parts[2] !== '*' &&
-    parts[3] !== '*' &&
+    /^\d+$/.test(parts[2]) &&
+    /^\d+$/.test(parts[3]) &&
     parts[4] === '*'
   );
 }
@@ -195,13 +197,13 @@ export function parseCron(
     return { frequency: 'daily', ...base };
   }
   if (dayPart === '*' && monthPart === '*') {
-    const weekdays = weekdayPart
-      .split(',')
-      .filter((value) => /^\d+$/.test(value))
-      .map((value) => (Number(value) + dayOffset + 7) % 7);
-    return weekdays.length > 0
-      ? { frequency: 'weekly', ...base, weekdays }
-      : null;
+    const values = weekdayPart.split(',');
+    // A range or step such as `3-5` or `*/2` cannot be shown as single days.
+    // Dropping it would rewrite the schedule on the next save, so leave the
+    // whole cron unparsed and the editor keeps it as stored.
+    if (!values.every((value) => /^\d+$/.test(value))) return null;
+    const weekdays = values.map((value) => (Number(value) + dayOffset + 7) % 7);
+    return { frequency: 'weekly', ...base, weekdays };
   }
   if (
     (/^\d+$/.test(dayPart) || dayPart === 'L') &&

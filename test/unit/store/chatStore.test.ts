@@ -229,6 +229,21 @@ describe('ChatStore - Core Functionality', () => {
     vi.clearAllMocks();
   });
 
+  it('saves plan edits to the supplied non-active Session', async () => {
+    const store = createChatStoreInstance();
+    store.getState().create('pane-run');
+    store
+      .getState()
+      .setTaskInfo('pane-run', [
+        { id: 'step', content: 'Keep the plan scoped' },
+      ] as any);
+    vi.mocked(fetchPut).mockResolvedValueOnce({});
+    await store.getState().savePlan('pane-run', 'pane-b');
+    expect(fetchPut).toHaveBeenCalledWith('/task/pane-b', {
+      task: [expect.objectContaining({ content: 'Keep the plan scoped' })],
+    });
+  });
+
   describe('Confirmed user prompt resolution', () => {
     it('uses the optimistic user message when it exists', () => {
       expect(
@@ -4443,6 +4458,121 @@ describe('ChatStore - Core Functionality', () => {
           );
           advance(3_000);
           expect(shownMs(store)).toBe(5_000);
+        });
+
+        it('continues after the remaining approval is answered when another one was cancelled', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-2')
+          );
+          advance(10_000);
+          // The other request is still open, so the task is not interrupted.
+          await deliver(streamContaining, 'approval.cancelled', {
+            approval_id: 'approval:call-1',
+            interaction_id: 'approval:call-1',
+            decision: 'rejected',
+            continued_attempt: false,
+            remaining_interaction_count: 1,
+          });
+          expect(
+            runProjectionStore.getRun('project-1', 'live-run')?.status
+          ).toBe('waiting_for_user');
+          expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+          advance(10_000);
+          expect(shownMs(store)).toBe(2_000);
+
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-2')
+          );
+          advance(3_000);
+          expect(shownMs(store)).toBe(5_000);
+          expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+        });
+
+        it.each(['active', 'queued'] as const)(
+          'closes the %s card of a cancelled approval and keeps the other one',
+          async (cancelledCard) => {
+            const { store, streamContaining } = await startWorking();
+            for (const id of ['approval:call-1', 'approval:call-2']) {
+              await deliver(
+                streamContaining,
+                'approval.requested',
+                approvalRequested(id)
+              );
+              await sendLegacy(streamContaining, AgentStep.ASK, {
+                agent: 'single_agent',
+                interaction_id: id,
+                interaction_type: 'approval',
+                approval_id: id,
+                question: 'Allow the write?',
+              });
+            }
+            const lastAsk = () =>
+              taskOf(store).messages.findLast(
+                (message) => message.step === AgentStep.ASK
+              )?.interaction?.interaction_id;
+            expect(lastAsk()).toBe('approval:call-1');
+            expect(
+              taskOf(store).askList.map(
+                (message) => message.interaction?.interaction_id
+              )
+            ).toEqual(['approval:call-2']);
+
+            const cancelled =
+              cancelledCard === 'active'
+                ? 'approval:call-1'
+                : 'approval:call-2';
+            const remaining =
+              cancelledCard === 'active'
+                ? 'approval:call-2'
+                : 'approval:call-1';
+            await deliver(streamContaining, 'approval.cancelled', {
+              approval_id: cancelled,
+              interaction_id: cancelled,
+              decision: 'rejected',
+              continued_attempt: false,
+              remaining_interaction_count: 1,
+            });
+
+            expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+            expect(taskOf(store).activeAsk).toBe('single_agent');
+            expect(lastAsk()).toBe(remaining);
+            expect(taskOf(store).askList).toEqual([]);
+          }
+        );
+
+        it('ends as cancelled when stopped while an approval waits', async () => {
+          const { store, streamContaining } = await startWorking();
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          await deliver(streamContaining, 'run.cancel_requested');
+          // The backend closes the open request with the Run's own end.
+          await deliver(streamContaining, 'approval.cancelled', {
+            approval_id: 'approval:call-1',
+            interaction_id: 'approval:call-1',
+            decision: 'rejected',
+            continued_attempt: false,
+            reason: 'run_terminal:cancelled',
+            source: 'system',
+          });
+          expect(taskOf(store).durableRunStatus).not.toBe('interrupted');
+          await deliver(streamContaining, 'run.cancelled');
+          await vi.waitFor(() =>
+            expect(taskOf(store).durableRunStatus).toBe('cancelled')
+          );
         });
 
         it('holds the time worked while a question waits for an answer', async () => {

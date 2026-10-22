@@ -21,10 +21,11 @@ import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { getSessionPreviewSlice } from '@/store/pageTabStore';
 import {
   chatTimelineDetailLevels,
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
@@ -38,6 +39,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { SummaryToggle, type SummaryToggleProps } from './SummaryToggle';
 
 const SquareText = createLucideIcon('square-text', [
   [
@@ -73,30 +75,40 @@ export interface HeaderBoxProps {
   projectName?: string | null;
   /** Optional extra class names for the outer container */
   className?: string;
-  /** Reserve header height without controls or token count. */
-  empty?: boolean;
+  /** Show the chat timeline style control (hidden before a Session starts). */
+  showTimelineStyle?: boolean;
+  /** Show the back-to-workspace button (hidden on the New session page). */
+  showBack?: boolean;
+  /** Summary column toggle, shown beside Preview when provided. */
+  summary?: SummaryToggleProps;
 }
 
 export function HeaderBox({
   totalTokens = 0,
   projectName,
   className,
-  empty = false,
+  showTimelineStyle = true,
+  showBack = true,
+  summary,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
   const [headerRef, compact] = useIsCompactWidth<HTMLDivElement>(
     COMPACT_WIDTH_THRESHOLD
   );
   const { appearance } = useAuthStore();
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const sessionPreviewOpen = usePageTabStore(
+  const setActiveWorkspaceTab = useSessionPageTabStore(
+    (s) => s.setActiveWorkspaceTab
+  );
+  const sessionPreviewOpen = useSessionPageTabStore(
     (s) => getSessionPreviewSlice(s).open
   );
-  const toggleSessionPreview = usePageTabStore((s) => s.toggleSessionPreview);
-  const chatTimelineDetailLevel = usePageTabStore(
+  const toggleSessionPreview = useSessionPageTabStore(
+    (s) => s.toggleSessionPreview
+  );
+  const chatTimelineDetailLevel = useSessionPageTabStore(
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
-  const setChatTimelineDetailLevel = usePageTabStore(
+  const setChatTimelineDetailLevel = useSessionPageTabStore(
     (s) => s.setChatTimelineDetailLevel
   );
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
@@ -123,36 +135,28 @@ export function HeaderBox({
     setChatTimelineDetailLevel(value);
   };
 
-  if (empty) {
-    return (
-      <div
-        ref={headerRef}
-        className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
-        aria-hidden
-      />
-    );
-  }
-
   return (
     <div
       ref={headerRef}
       className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
     >
       {/* Left: return to workspace + display-only Project identity. */}
-      <div className="flex min-w-0 items-center gap-2">
-        <TooltipSimple content={backTooltip} variant="instant" side="bottom">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            buttonContent="icon-only"
-            onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
-            aria-label={backTooltip}
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-          </Button>
-        </TooltipSimple>
+      <div className="flex min-w-0 items-center gap-ds-4">
+        {showBack ? (
+          <TooltipSimple content={backTooltip} variant="instant" side="bottom">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              onClick={() => setActiveWorkspaceTab('workforce')}
+              className="no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
+              aria-label={backTooltip}
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+            </Button>
+          </TooltipSimple>
+        ) : null}
         {projectName ? (
           <span
             className="max-w-[200px] min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default"
@@ -164,7 +168,7 @@ export function HeaderBox({
       </div>
 
       {/* Right: optional token count + timeline pill + preview toggle. */}
-      <div className="flex items-center gap-2 text-ds-ink-muted-default">
+      <div className="flex items-center gap-ds-4 text-ds-ink-muted-default">
         {!compact ? (
           <div className="flex items-center gap-1">
             <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
@@ -174,7 +178,7 @@ export function HeaderBox({
             </span>
           </div>
         ) : null}
-        {eventNativeTimelineEnabled ? (
+        {eventNativeTimelineEnabled && showTimelineStyle ? (
           <Tabs
             value={chatTimelineDetailLevel}
             onValueChange={(value) =>
@@ -212,6 +216,7 @@ export function HeaderBox({
             </TabsList>
           </Tabs>
         ) : null}
+        {summary ? <SummaryToggle {...summary} /> : null}
         <TooltipSimple
           content={
             <ShortcutTooltipContent
@@ -228,15 +233,9 @@ export function HeaderBox({
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            onClick={(event) => {
-              const wasOpen = sessionPreviewOpen;
-              toggleSessionPreview();
-              // Closing leaves :focus on the ghost button, which keeps the
-              // hover/selected fill until the next click elsewhere.
-              if (wasOpen) {
-                event.currentTarget.blur();
-              }
-            }}
+            onClick={(event) =>
+              toggleSessionPreview({ immediate: event.detail === 0 })
+            }
             className={cn(
               'no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default',
               sessionPreviewOpen &&
@@ -245,7 +244,7 @@ export function HeaderBox({
             aria-label={windowPreviewTooltip}
             aria-pressed={sessionPreviewOpen}
           >
-            <GalleryThumbnails className="h-4 w-4" aria-hidden />
+            <GalleryThumbnails aria-hidden />
           </Button>
         </TooltipSimple>
       </div>

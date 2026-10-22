@@ -15,6 +15,7 @@
 import { fetchPut } from '@/api/http';
 import Terminal from '@/components/Terminal';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { useHost } from '@/host';
 import {
   ArrowDown,
@@ -37,7 +38,8 @@ export default function TerminalAgentWorkspace() {
   //Get Chatstore for the active project's task
   const host = useHost();
   const electronAPI = host?.electronAPI;
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { chatStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const { t } = useTranslation();
   const [isSingleMode, setIsSingleMode] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -111,7 +113,7 @@ export default function TerminalAgentWorkspace() {
   };
   const _handleTakeControl = (id: string) => {
     console.log('handleTakeControl', id);
-    fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+    fetchPut(`/task/${sessionProjectId}/take-control`, {
       action: 'pause',
     });
     setIsTakeControl(true);
@@ -125,7 +127,7 @@ export default function TerminalAgentWorkspace() {
             size="sm"
             variant="success"
             onClick={() => {
-              fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+              fetchPut(`/task/${sessionProjectId}/take-control`, {
                 action: 'resume',
               });
               setIsTakeControl(false);

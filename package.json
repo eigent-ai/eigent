@@ -1,6 +1,6 @@
 {
   "name": "eigent",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "main": "dist-electron/main/index.js",
   "description": "Eigent",
   "author": "Eigent.AI",
@@ -196,7 +196,8 @@
     "vitest": "2.1.9"
   },
   "overrides": {
-    "@types/node": "20.19.32"
+    "@types/node": "20.19.32",
+    "vitest": "2.1.9"
   },
   "pnpm": {
     "neverBuiltDependencies": []
