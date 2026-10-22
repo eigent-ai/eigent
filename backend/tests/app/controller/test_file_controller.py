@@ -523,3 +523,27 @@ def test_task_changes_endpoint_requires_local_capability(
         "scan_status": "complete",
         "truncated": False,
     }
+
+
+def test_named_pdf_preview_preserves_authorized_identity_and_byte_ranges(
+    monkeypatch, tmp_path
+):
+    (tmp_path / "actual.pdf").write_bytes(b"0123456789")
+    monkeypatch.setattr(
+        file_controller, "_resolve_file_root", lambda *_a, **_k: tmp_path
+    )
+    app = FastAPI()
+    app.include_router(file_controller.router)
+    response = TestClient(app).get(
+        "/files/stream/display.pdf",
+        params={
+            "path": "actual.pdf",
+            "project_id": "project-1",
+            "email": "user@example.com",
+        },
+        headers={"Range": "bytes=2-5"},
+    )
+    assert response.status_code == 206
+    assert response.content == b"2345"
+    assert "actual.pdf" in response.headers["content-disposition"]
+    assert response.headers["content-type"] == "application/pdf"

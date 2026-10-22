@@ -414,8 +414,10 @@ async def list_project_files(
     return result
 
 
+@router.api_route("/files/stream/{filename}", methods=["GET", "HEAD"])
 @router.api_route("/files/stream", methods=["GET", "HEAD"])
 async def stream_file(
+    filename: str | None = None,
     path: str = Query(..., description="Relative path from project root"),
     project_id: str = Query(..., description="Project ID"),
     email: str = Query(..., description="User email"),

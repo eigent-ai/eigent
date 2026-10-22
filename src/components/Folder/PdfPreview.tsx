@@ -20,12 +20,32 @@ import { useLayoutEffect, useState } from 'react';
  * prompts and document errors. An iframe load event is not proof that a PDF
  * rendered, so do not overlay an app-owned loading or success state.
  * Uses the existing third-party-viewports exception for native viewer chrome. */
+export function pdfPreviewUrl(url: string, name: string): string {
+  const parsed = new URL(url);
+  // Keep the authorized file identity in the query. The path supplies only
+  // the native viewer's display name.
+  if (
+    parsed.protocol === 'localfile:' &&
+    parsed.hostname === 'preview' &&
+    parsed.searchParams.has('path')
+  ) {
+    parsed.pathname = '/' + encodeURIComponent(name);
+  } else if (/\/files\/stream$/.test(parsed.pathname)) {
+    parsed.pathname += '/' + encodeURIComponent(name);
+  }
+  const fragment = new URLSearchParams(parsed.hash.slice(1));
+  if (!fragment.has('view') && !fragment.has('zoom'))
+    fragment.set('view', 'FitH');
+  parsed.hash = fragment.toString();
+  return parsed.toString();
+}
+
 export function PdfPreview({ url, name }: { url: string; name: string }) {
   return (
     <iframe
-      src={url}
+      src={pdfPreviewUrl(url, name)}
       title={name}
-      className="h-full min-h-0 w-full flex-1 border-0 border-x-0 border-y-0"
+      className="block h-full min-h-0 w-full min-w-0 flex-1 border-0 border-x-0 border-y-0"
     />
   );
 }
@@ -33,7 +53,10 @@ export function PdfPreview({ url, name }: { url: string; name: string }) {
 /** True once the desktop host reports that the frame loading `url` failed and
  * now shows a blank browser error page. Resets when `url` changes, so selecting
  * the file again retries the frame. */
-export function usePdfFrameLoadFailed(url: string | undefined): boolean {
+export function usePdfFrameLoadFailed(
+  url: string | undefined,
+  name = ''
+): boolean {
   const subscribe = (useHost()?.electronAPI as AppShellElectronAPI | undefined)
     ?.onSubframeLoadFailed;
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -43,13 +66,19 @@ export function usePdfFrameLoadFailed(url: string | undefined): boolean {
   useLayoutEffect(() => {
     if (!url || !subscribe) return;
     const unsubscribe = subscribe((failure) => {
-      if (isSameFrameUrl(failure.url, url)) setFailedUrl(url);
+      if (
+        isSameFrameUrl(
+          pdfPreviewUrl(failure.url, name),
+          pdfPreviewUrl(url, name)
+        )
+      )
+        setFailedUrl(url);
     });
     return () => {
       unsubscribe();
       setFailedUrl(null);
     };
-  }, [subscribe, url]);
+  }, [subscribe, url, name]);
 
   return Boolean(url) && failedUrl === url;
 }
