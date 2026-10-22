@@ -2469,3 +2469,38 @@ async def test_session_model_still_rejects_a_different_model(
         with pytest.raises(HTTPException) as error:
             await _prepare_chat_run(chat_data, MagicMock())
     assert error.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_refused_initial_admission_is_durably_failed(
+    sample_chat_data, mock_request, tmp_path, monkeypatch
+):
+    from app.workspace_config import UnsupportedThinkingEffortError
+    import app.controller.chat_controller as controller
+
+    journal = SQLiteRunJournal(tmp_path / "refused.db")
+    coordinator = RunCoordinator(journal=journal)
+    data = Chat(**sample_chat_data)
+    run_id = data.run_id or data.task_id
+
+    async def refuse(*args, **kwargs):
+        journal.ensure_run(
+            run_id=run_id, project_id=data.project_id, status="pending"
+        )
+        raise UnsupportedThinkingEffortError("Unsupported effort")
+
+    monkeypatch.setattr(controller, "get_default_run_journal", lambda: journal)
+    monkeypatch.setattr(
+        controller, "get_default_run_coordinator", lambda: coordinator
+    )
+    monkeypatch.setattr(controller, "get_task_lock_if_exists", lambda _: None)
+    monkeypatch.setattr(controller, "_prepare_chat_run", refuse)
+    with pytest.raises(HTTPException) as error:
+        await post(data, mock_request)
+    assert error.value.status_code == 422
+    assert journal.get_run(run_id).status == "failed"
+    assert (
+        journal.list_events(run_id)[0].payload["message"]
+        == "Unsupported effort"
+    )
+    await coordinator.close()

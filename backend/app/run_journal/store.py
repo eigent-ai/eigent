@@ -11028,6 +11028,43 @@ class SQLiteRunJournal:
                 (timestamp, project_id),
             )
 
+    def reject_unstarted_run(
+        self, run_id: str, *, project_id: str, message: str
+    ) -> bool:
+        """Close a refused admission without touching a consumer-owned Run."""
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ? AND project_id = ?",
+                (run_id, project_id),
+            ).fetchone()
+            if run is None or run["status"] != "pending":
+                return False
+            if connection.execute(
+                "SELECT 1 FROM run_attempts WHERE run_id = ? LIMIT 1",
+                (run_id,),
+            ).fetchone():
+                return False
+            draft = RunEventDraft(
+                event_id=f"admission:{run_id}:refused",
+                event_type="run.failed",
+                legacy_step="error",
+                payload={"reason": "admission_refused", "message": message},
+            )
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                draft,
+                payload_json=json.dumps(dict(draft.payload)),
+                run_status="failed",
+                clear_active_attempt=True,
+            )
+            connection.execute(
+                """UPDATE follow_up_requests SET status='rejected', last_error=?, updated_at=?
+                WHERE request_id=? AND project_id=? AND status='pending'""",
+                (message, draft.created_at, run_id, project_id),
+            )
+            return True
+
     def append_event(
         self,
         run_id: str,
