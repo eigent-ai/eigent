@@ -47,6 +47,7 @@ import {
   useTriggerConfigQuery,
 } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { confirmScheduleTimezone } from '@/lib/triggerScheduleCompatibility';
 import { proxyCreateTrigger, proxyUpdateTrigger } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -358,6 +359,11 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
+        response = await confirmScheduleTimezone(
+          response,
+          updateData,
+          proxyUpdateTrigger
+        );
 
         // Update trigger in store
         updateTrigger(selectedTrigger.id, response);
@@ -408,6 +414,11 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyCreateTrigger(createData);
+        response = await confirmScheduleTimezone(
+          response,
+          createData,
+          proxyUpdateTrigger
+        );
 
         // Add trigger to store
         addTrigger(response);
@@ -546,6 +557,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             </TabsList>
             <TabsContent value="schedule" className="px-6 py-4">
               <SchedulePicker
+                timezone={
+                  configData?.schema_?.properties?.timezone
+                    ? selectedTrigger?.config?.timezone ||
+                      Intl.DateTimeFormat().resolvedOptions().timeZone
+                    : undefined
+                }
                 isEditing={!!selectedTrigger}
                 useDefaultTime={!selectedTrigger && !draft}
                 value={formData.custom_cron_expression || DEFAULT_CRON}
