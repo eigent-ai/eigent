@@ -70,7 +70,7 @@ import {
   Slack,
   WebhookIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { isOneTimeCron, parseCron } from './automationSchedule';
@@ -117,6 +117,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   const { addTrigger, updateTrigger } = useTriggerStore();
   const { addLog } = useActivityLogStore();
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
+  const automationSessionRef = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isWebhookSuccessOpen, setIsWebhookSuccessOpen] = useState(false);
   const [createdWebhookUrl, setCreatedWebhookUrl] = useState<string>('');
@@ -185,6 +186,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   // Reset form when dialog opens
   useEffect(() => {
     if (isOpen) {
+      automationSessionRef.current = null;
       // Clear validation errors when dialog opens
       setNameError('');
       setTaskPromptError('');
@@ -321,7 +323,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
     try {
       //Make sure we have an active project
-      if (!projectStore.activeProjectId) {
+      const targetSpaceId = activeProjectMeta?.spaceId || activeSpaceId;
+      if (!selectedTrigger && !targetSpaceId) {
         toast.error(t('triggers.project-id-required'));
         return;
       }
@@ -376,7 +379,16 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
         toast.success(t('triggers.updated-successfully'));
       } else {
-        // Creating new trigger
+        // Capture a dedicated Session once, including retries of this form.
+        automationSessionRef.current ??= projectStore.createProject(
+          t('triggers.automation-project-name', { name: formData.name }),
+          '',
+          undefined,
+          undefined,
+          undefined,
+          false,
+          { spaceId: targetSpaceId || undefined }
+        );
         const createData: TriggerInput = {
           name: formData.name,
           description: formData.description,
@@ -390,7 +402,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           task_prompt: formData.task_prompt,
           max_executions_per_hour: formData.max_executions_per_hour,
           max_executions_per_day: formData.max_executions_per_day,
-          project_id: activeProjectId || undefined,
+          project_id: automationSessionRef.current || undefined,
         };
 
         // Include config based on trigger type

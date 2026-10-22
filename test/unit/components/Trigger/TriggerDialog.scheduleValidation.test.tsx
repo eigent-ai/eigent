@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   proxyCreateTrigger: vi.fn(),
   proxyUpdateTrigger: vi.fn(),
   toastError: vi.fn(),
+  createProject: vi.fn(() => 'automation-session'),
 }));
 
 vi.mock('@/service/triggerApi', () => ({
@@ -44,7 +45,12 @@ vi.mock('@/hooks/queries/useTriggerQueries', () => ({
 }));
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
-  default: () => ({ projectStore: { activeProjectId: 'project-1' } }),
+  default: () => ({
+    projectStore: {
+      activeProjectId: 'project-1',
+      createProject: mocks.createProject,
+    },
+  }),
 }));
 
 vi.mock('@/store/spaceStore', () => ({
@@ -119,6 +125,8 @@ describe('TriggerDialog schedule time validation', () => {
     expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1);
     expect(mocks.proxyCreateTrigger).toHaveBeenCalledWith(
       expect.objectContaining({
+        project_id: 'automation-session',
+        space_id: 'space-1',
         name: 'Nightly',
         task_prompt: 'Say hello',
         custom_cron_expression: `${utcMinute} ${utcHour} * * *`,
