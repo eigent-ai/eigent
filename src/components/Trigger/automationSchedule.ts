@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { formatAppDate } from '@/lib/appDate';
 import { localTimeToUTC, utcTimeToLocal } from '@/lib/utils';
 import type { Trigger } from '@/types';
 
@@ -286,10 +287,14 @@ export function formatScheduleLabel(
       });
     case 'once':
       return t('triggers.schedule-label-once', {
-        date: schedule.date.toLocaleDateString(locale, {
-          month: 'short',
-          day: 'numeric',
-        }),
+        date: formatAppDate(
+          schedule.date,
+          {
+            month: 'short',
+            day: 'numeric',
+          },
+          locale
+        ),
         time,
       });
   }
@@ -387,14 +392,18 @@ export function getNextRun(
 export function formatRunTime(value: Date | string, locale?: string): string {
   const date = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString(locale, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+  return formatAppDate(
+    date,
+    {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    },
+    locale
+  );
 }
 
 /** The time of day of a run, e.g. "09:30". */

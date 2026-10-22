@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { formatAppDate } from '@/lib/appDate';
 import {
   completeProjectViewResync,
   importLegacyChatSteps,
@@ -146,9 +147,9 @@ export default function RemoteControlPage() {
         defaultValue: 'History resync required',
       });
     const syncedAt = projectView.lastSyncedAt
-      ? new Date(projectView.lastSyncedAt).toLocaleTimeString(
-          i18n.resolvedLanguage || i18n.language
-        )
+      ? formatAppDate(new Date(projectView.lastSyncedAt), {
+          timeStyle: 'medium',
+        })
       : t('layout.remote-control-not-synced', {
           defaultValue: 'not synced',
         });
