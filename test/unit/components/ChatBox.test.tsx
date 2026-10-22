@@ -4325,6 +4325,95 @@ describe('ChatBox Component', async () => {
   });
 
   describe('Agent Interaction', () => {
+    it('answers a legacy question in a separate card while the composer stays disabled', async () => {
+      const user = userEvent.setup();
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'test-agent',
+              hasMessages: true,
+              messages: [
+                {
+                  id: 'legacy-question',
+                  role: 'agent',
+                  step: 'ask',
+                  content: 'Which colour?',
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+      renderChatBox();
+
+      const card = screen.getByRole('region', {
+        name: 'chat.control-region-label',
+      });
+      const response = within(card).getByRole('textbox', {
+        name: 'chat.control-feedback-label',
+      });
+      expect(within(card).getByText('Which colour?')).toBeInTheDocument();
+      expect(card.querySelector('[data-question-divider]')).not.toBeNull();
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      expect(screen.getByTestId('bottom-box')).not.toContainElement(response);
+
+      await user.type(response, 'green{Shift>}{Enter}{/Shift}please');
+      expect(response).toHaveValue('green\nplease');
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      await user.type(response, '{Enter}');
+      await waitFor(() =>
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/chat/test-project-id/human-reply',
+          expect.objectContaining({
+            agent: 'test-agent',
+            reply: 'green\nplease',
+          })
+        )
+      );
+    });
+
+    it('keeps a failed legacy question answer in the card for retry', async () => {
+      const user = userEvent.setup();
+      _mockFetchPost.mockRejectedValueOnce(new Error('Reply unavailable'));
+      const storeObj = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            status: 'running',
+            activeAsk: 'test-agent',
+            hasMessages: true,
+            messages: [
+              {
+                id: 'legacy-question',
+                role: 'agent',
+                step: 'ask',
+                content: 'Which colour?',
+              },
+            ],
+          },
+        },
+      } as any;
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: storeObj,
+      });
+      renderChatBox();
+      const response = screen.getByRole('textbox', {
+        name: 'chat.control-feedback-label',
+      });
+      await user.type(response, 'green{Enter}');
+      await waitFor(() => expect(storeObj.removeMessage).toHaveBeenCalled());
+      expect(response).toHaveValue('green');
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      expect(storeObj.setActiveAsk).not.toHaveBeenCalled();
+    });
+
     it('should handle human reply when activeAsk is set', async () => {
       const user = userEvent.setup();
 

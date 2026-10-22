@@ -125,7 +125,7 @@ import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
 import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
-  BottomBoxInputVariant,
+  BottomBoxFeedbackVariant,
   BottomBoxRunControlVariant,
 } from './BottomBox/types';
 import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
@@ -2838,29 +2838,37 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   ) {
     legacyApprovalVariant.disabled = true;
   }
-  const legacyHumanInputVariant: BottomBoxInputVariant | 'input' =
-    activeAsk && isInteractiveHumanReply && activeAskMessage
+  const legacyQuestionVariant: BottomBoxFeedbackVariant | null =
+    !eventNativeTimelineEnabled &&
+    activeAsk &&
+    !isLegacyApproval &&
+    isInteractiveHumanReply &&
+    activeAskMessage
       ? {
-          kind: 'input',
+          kind: 'feedback',
+          presentation: 'question',
           header: {
-            eyebrow: t('chat.control-input-required'),
-            title:
+            title: t('chat.timeline-question'),
+            description:
               activeInteraction?.question || activeAskMessage.content.trim(),
           },
+          value: message,
+          placeholder: t('chat.control-response-placeholder'),
+          submitting: activeAskTask?.isPending,
+          onChange: setMessage,
+          onSubmit: () => void handleSend(),
         }
-      : 'input';
+      : null;
   // Timeline density is presentation-only. Select one shared BottomBox control
   // from the active authority before rendering Normal, Detailed, or Summarised.
   const bottomBoxControl = selectBottomBoxControl({
     humanInteractionVariant: eventNativeTimelineEnabled
       ? eventNativeHumanControl.variant
-      : legacyApprovalVariant,
+      : (legacyApprovalVariant ?? legacyQuestionVariant),
     runControlVariant: eventNativeTimelineEnabled
       ? eventNativeRunControlVariant
       : null,
-    composerVariant: eventNativeTimelineEnabled
-      ? 'input'
-      : legacyHumanInputVariant,
+    composerVariant: 'input',
   });
   const bottomBoxVariant = bottomBoxControl.variant;
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
@@ -3150,7 +3158,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                 onEdit={handleEditQuery}
                 loading={loading}
                 inputProps={{
-                  value: message,
+                  value: legacyQuestionVariant ? '' : message,
                   onChange: setMessage,
                   onSend: handleSend,
                   queuesFollowUp: isTaskBusy && !activeAsk,
