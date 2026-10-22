@@ -757,9 +757,10 @@ async def test_warm_turn_cancel_never_becomes_success_on_legacy_end(tmp_path):
 async def test_interrupted_run_keeps_written_file_in_manifest(
     tmp_path, monkeypatch
 ):
-    from app import artifacts
     from types import SimpleNamespace
     from unittest.mock import MagicMock
+
+    from app import artifacts
 
     output = tmp_path / "output"
     output.mkdir()
