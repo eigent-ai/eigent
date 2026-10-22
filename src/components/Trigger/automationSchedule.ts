@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { parseServerTimestamp } from '@/lib/serverTimestamp';
 import { localTimeToUTC, utcTimeToLocal } from '@/lib/utils';
 import type { Trigger } from '@/types';
 
@@ -68,8 +69,18 @@ export function parseScheduleNumber(
 /** Converts a local-time schedule into the UTC cron the trigger API stores. */
 export function scheduleToCron(
   schedule: LocalSchedule,
-  reference: Date = new Date()
+  reference: Date = new Date(),
+  timezone?: string
 ): string {
+  if (timezone) {
+    if (schedule.frequency === 'once')
+      return `${schedule.minute} ${schedule.hour} ${schedule.date.getDate()} ${schedule.date.getMonth() + 1} *`;
+    if (schedule.frequency === 'weekly')
+      return `${schedule.minute} ${schedule.hour} * * ${(schedule.weekdays ?? [1]).join(',')}`;
+    if (schedule.frequency === 'monthly')
+      return `${schedule.minute} ${schedule.hour} ${schedule.dayOfMonth ?? 1} * *`;
+    return `${schedule.minute} ${schedule.hour} * * *`;
+  }
   if (schedule.frequency === 'once') {
     const date = new Date(schedule.date);
     date.setHours(schedule.hour, schedule.minute, 0, 0);
@@ -155,12 +166,48 @@ export function isOneTimeCron(cron?: string): boolean {
 export function parseCron(
   cron?: string,
   reference: Date = new Date(),
-  oneTimeDate?: string
+  oneTimeDate?: string,
+  timezone?: string
 ): LocalSchedule | null {
   const parts = cron?.trim().split(/\s+/) ?? [];
   if (parts.length !== 5) return null;
   const [minutePart, hourPart, dayPart, monthPart, weekdayPart] = parts;
   if (!/^\d+$/.test(minutePart) || !/^\d+$/.test(hourPart)) return null;
+  if (timezone) {
+    const hour = Number(hourPart),
+      minute = Number(minutePart);
+    if (hour > 23 || minute > 59) return null;
+    if (isOneTimeCron(cron))
+      return {
+        frequency: 'once',
+        hour,
+        minute,
+        date: new Date(
+          `${oneTimeDate?.slice(0, 10) || `${reference.getFullYear()}-${monthPart.padStart(2, '0')}-${dayPart.padStart(2, '0')}`}T12:00:00`
+        ),
+      };
+    if (dayPart === '*' && monthPart === '*' && weekdayPart === '*')
+      return { frequency: 'daily', hour, minute };
+    if (
+      dayPart === '*' &&
+      monthPart === '*' &&
+      /^\d+(,\d+)*$/.test(weekdayPart)
+    )
+      return {
+        frequency: 'weekly',
+        hour,
+        minute,
+        weekdays: weekdayPart.split(',').map(Number),
+      };
+    if (/^\d+$/.test(dayPart) && monthPart === '*' && weekdayPart === '*')
+      return {
+        frequency: 'monthly',
+        hour,
+        minute,
+        dayOfMonth: Number(dayPart),
+      };
+    return null;
+  }
   const utcMinute = Number(minutePart);
   const utcHour = Number(hourPart);
 
@@ -257,7 +304,8 @@ export function parseTriggerSchedule(
   return parseCron(
     trigger.custom_cron_expression,
     reference,
-    trigger.config?.date || trigger.next_run_at
+    trigger.config?.date || trigger.next_run_at,
+    trigger.config?.timezone
   );
 }
 
@@ -330,12 +378,89 @@ export function nextOccurrence(
   return null;
 }
 
+function wallParts(date: Date, timezone: string): number[] {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  return ['year', 'month', 'day', 'hour', 'minute'].map((key) =>
+    Number(parts.find((part) => part.type === key)!.value)
+  );
+}
+
+/** Resolve calendar matches in the saved IANA zone, including clock changes. */
+export function nextOccurrenceInZone(
+  schedule: LocalSchedule,
+  timezone: string,
+  from = new Date()
+): Date | null {
+  const [year, month, day] = wallParts(from, timezone);
+  for (let offset = 0; offset < 400; offset++) {
+    const calendar =
+      schedule.frequency === 'once'
+        ? new Date(
+            Date.UTC(
+              schedule.date.getFullYear(),
+              schedule.date.getMonth(),
+              schedule.date.getDate()
+            )
+          )
+        : new Date(Date.UTC(year, month - 1, day + offset));
+    if (
+      schedule.frequency === 'weekly' &&
+      !(schedule.weekdays ?? [1]).includes(calendar.getUTCDay())
+    )
+      continue;
+    if (
+      schedule.frequency === 'monthly' &&
+      calendar.getUTCDate() !== (schedule.dayOfMonth ?? 1)
+    )
+      continue;
+    const target = Date.UTC(
+      calendar.getUTCFullYear(),
+      calendar.getUTCMonth(),
+      calendar.getUTCDate(),
+      schedule.hour,
+      schedule.minute
+    );
+    let instant = target;
+    for (let pass = 0; pass < 4; pass++) {
+      const [y, m, d, h, min] = wallParts(new Date(instant), timezone);
+      instant += target - Date.UTC(y, m - 1, d, h, min);
+    }
+    // On a repeated hour use the first occurrence, matching the scheduler.
+    for (const delta of [7200000, 3600000, 1800000]) {
+      const earlier = new Date(instant - delta);
+      const [ey, em, ed, eh, emin] = wallParts(earlier, timezone);
+      if (Date.UTC(ey, em - 1, ed, eh, emin) === target) instant -= delta;
+    }
+    const candidate = new Date(instant);
+    const [y, m, d, h, min] = wallParts(candidate, timezone);
+    if (Date.UTC(y, m - 1, d, h, min) === target && candidate > from)
+      return candidate;
+    if (schedule.frequency === 'once') return null;
+  }
+  return null;
+}
+
 /** Prefer a future scheduler time; calculate fallbacks in UTC, as the server does. */
 export function getNextRun(
   trigger: Pick<Trigger, 'next_run_at' | 'custom_cron_expression' | 'config'>,
   from: Date = new Date()
 ): Date | null {
   const schedule = parseTriggerSchedule(trigger, from);
+  if (trigger.config?.timezone) {
+    const stored = new Date(parseServerTimestamp(trigger.next_run_at));
+    if (stored > from) return stored;
+    return schedule
+      ? nextOccurrenceInZone(schedule, trigger.config.timezone, from)
+      : null;
+  }
   if (schedule?.frequency === 'once') {
     const chosen = nextOccurrence(schedule, from);
     // A date saved a year or more ahead still runs at the cron's next match.
@@ -344,7 +469,7 @@ export function getNextRun(
     return match && match < chosen ? match : chosen;
   }
   if (trigger.next_run_at) {
-    const date = new Date(trigger.next_run_at);
+    const date = new Date(parseServerTimestamp(trigger.next_run_at));
     if (!Number.isNaN(date.getTime()) && date > from) return date;
   }
   if (!schedule) return null;
@@ -385,7 +510,8 @@ export function getNextRun(
 
 /** Short local date and time, e.g. "Mon, Oct 5, 09:00". */
 export function formatRunTime(value: Date | string, locale?: string): string {
-  const date = typeof value === 'string' ? new Date(value) : value;
+  const date =
+    typeof value === 'string' ? new Date(parseServerTimestamp(value)) : value;
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleString(locale, {
     weekday: 'short',
@@ -399,7 +525,8 @@ export function formatRunTime(value: Date | string, locale?: string): string {
 
 /** The time of day of a run, e.g. "09:30". */
 export function formatTimeOfDay(value: Date | string): string {
-  const date = typeof value === 'string' ? new Date(value) : value;
+  const date =
+    typeof value === 'string' ? new Date(parseServerTimestamp(value)) : value;
   if (Number.isNaN(date.getTime())) return '';
   return formatScheduleTime({
     hour: date.getHours(),
