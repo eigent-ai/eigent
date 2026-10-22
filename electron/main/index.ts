@@ -4008,6 +4008,7 @@ app.whenReady().then(async () => {
         'Accept-Ranges': 'bytes',
         'Content-Type': contentType,
         'Content-Length': contentLength.toString(),
+        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(path.basename(authorizedFilePath))}`,
       };
       if (status === 206) {
         headers['Content-Range'] = `bytes ${start}-${end}/${stats.size}`;

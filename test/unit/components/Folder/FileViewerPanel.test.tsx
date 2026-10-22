@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { FileViewerPanel } from '@/components/Folder';
+import { pdfPreviewUrl } from '@/components/Folder/PdfPreview';
 import { HostProvider } from '@/host';
 import type { SubframeLoadFailure } from '@/shared/subframeLoadFailure';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -517,7 +518,7 @@ describe('FileViewerPanel toolbar', () => {
       const { container, unmount } = renderViewer(file, { embedded });
       const frame = container.querySelector('iframe');
       expect(frame).toHaveAttribute('title', name);
-      expect(frame).toHaveAttribute('src', url);
+      expect(frame).toHaveAttribute('src', pdfPreviewUrl(url, name));
       // A sandbox or toolbar-hiding fragment would disable native PDF actions.
       expect(frame).not.toHaveAttribute('sandbox');
       expect(container.querySelector('canvas, [data-pdf-controls]')).toBeNull();
@@ -588,7 +589,10 @@ describe('FileViewerPanel toolbar', () => {
 
     it('replaces the blank frame with a message and the external-open action', async () => {
       const { container, reportFailure } = renderWithFrameFailures(pdfFile);
-      expect(container.querySelector('iframe')).toHaveAttribute('src', pdfUrl);
+      expect(container.querySelector('iframe')).toHaveAttribute(
+        'src',
+        pdfPreviewUrl(pdfUrl, pdfFile.name)
+      );
       expect(
         screen.queryByRole('button', { name: 'Open externally' })
       ).toBeNull();
@@ -625,7 +629,10 @@ describe('FileViewerPanel toolbar', () => {
         url: 'http://localhost:5001/files/stream?path=docs%2Fother.pdf',
         errorCode: -27,
       });
-      expect(container.querySelector('iframe')).toHaveAttribute('src', pdfUrl);
+      expect(container.querySelector('iframe')).toHaveAttribute(
+        'src',
+        pdfPreviewUrl(pdfUrl, pdfFile.name)
+      );
       expect(screen.queryByRole('alert')).toBeNull();
     });
 
@@ -638,7 +645,10 @@ describe('FileViewerPanel toolbar', () => {
       showFile(textFile());
       expect(unsubscribe).toHaveBeenCalledOnce();
       showFile(pdfFile);
-      expect(container.querySelector('iframe')).toHaveAttribute('src', pdfUrl);
+      expect(container.querySelector('iframe')).toHaveAttribute(
+        'src',
+        pdfPreviewUrl(pdfUrl, pdfFile.name)
+      );
       expect(screen.queryByRole('alert')).toBeNull();
 
       unmount();
