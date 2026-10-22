@@ -1973,7 +1973,20 @@ async def start_chat_stream(data: Chat, request: Request):
                 request,
                 admission_request_id=request_id,
             )
-        except Exception:
+        except Exception as exc:
+            if isinstance(journal, SQLiteRunJournal):
+                detail = getattr(exc, "detail", None)
+                message = (
+                    detail.get("message", str(detail))
+                    if isinstance(detail, dict)
+                    else str(detail or exc)
+                )
+                await asyncio.to_thread(
+                    journal.reject_unstarted_run,
+                    run_id,
+                    project_id=data.project_id,
+                    message=message,
+                )
             if _is_weak_continuation(data.question):
                 await asyncio.to_thread(
                     journal.release_unadmitted_continuation,
