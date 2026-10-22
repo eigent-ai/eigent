@@ -751,3 +751,46 @@ async def test_warm_turn_cancel_never_becomes_success_on_legacy_end(tmp_path):
         release.set()
         await coordinator.close()
         journal.close()
+
+
+@pytest.mark.asyncio
+async def test_interrupted_run_keeps_written_file_in_manifest(
+    tmp_path, monkeypatch
+):
+    from app import artifacts
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "saved.txt").write_text(
+        "work completed before the provider failed"
+    )
+    snapshot = SimpleNamespace(
+        task_id="run-1",
+        project_id="project-1",
+        task_output_root=str(output),
+        working_directory=str(output),
+        task_start_time=0,
+        artifact_manifest=None,
+        user_id="user-1",
+    )
+    resolver = MagicMock()
+    resolver.store.find_snapshot.return_value = ("user_user-1", snapshot)
+    monkeypatch.setattr(artifacts, "get_workspace_resolver", lambda: resolver)
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        coordinator = RunCoordinator(journal)
+        await coordinator._commit_run_terminal(
+            run_id="run-1",
+            started_at=1,
+            event_type="run.interrupted",
+            payload={"reason": "provider_error"},
+        )
+        assert journal.get_run("run-1").status == "interrupted"
+        manifest = journal.get_run_artifact_manifest_event("run-1")
+        assert manifest is not None
+        assert any(
+            file["relativePath"] == "saved.txt"
+            for file in manifest.payload["artifacts"]
+        )

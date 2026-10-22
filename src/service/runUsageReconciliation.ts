@@ -43,6 +43,8 @@ const TERMINAL_EVENTS = new Set([
   'run.failed',
   'run.deadline_reached',
   'run.cancelled',
+  'run.interrupted',
+  'runtime.interrupted',
 ]);
 
 type UsageReconciliationInput = {
@@ -159,7 +161,13 @@ export async function readTerminalRunResult({
     !projectId ||
     !runId ||
     terminalEventTypes.length === 0 ||
-    terminalEventTypes.some((type) => !TERMINAL_EVENTS.has(type)) ||
+    terminalEventTypes.some(
+      (type) =>
+        !TERMINAL_EVENTS.has(type) ||
+        (!includeFailureFacts &&
+          throughSequence === undefined &&
+          ['run.interrupted', 'runtime.interrupted'].includes(type))
+    ) ||
     (throughSequence !== undefined &&
       (!Number.isSafeInteger(throughSequence) || throughSequence < 1))
   ) {
@@ -210,8 +218,14 @@ export async function readTerminalRunResult({
   const readFailure =
     includeFailureFacts &&
     terminalEventTypes.some((type) =>
-      ['run.failed', 'run.deadline_reached'].includes(type)
+      [
+        'run.failed',
+        'run.deadline_reached',
+        'run.interrupted',
+        'runtime.interrupted',
+      ].includes(type)
     );
+  let matchedReceipt: TerminalRunResult | null = null;
   let hasFinalResponse = false;
   const failureActions = new Map<string, TaskFailureAction>();
   const legacyToolIds = new Set<string>();
@@ -300,6 +314,10 @@ export async function readTerminalRunResult({
       for (const event of events) {
         const payload = object(event.payload);
         if (readFailure) {
+          if (event.event_type === 'run.attempt_created') {
+            matchedReceipt = null;
+            hasFinalResponse = false;
+          }
           retainDisplay(event);
           if (
             event.event_type === 'assistant.final' ||
@@ -494,12 +512,15 @@ export async function readTerminalRunResult({
           terminalEventTypes.includes(event.event_type as string) &&
           (throughSequence === undefined || event.sequence === throughSequence)
         ) {
-          return {
+          const receipt: TerminalRunResult = {
             tokens: total(),
             ...(readFailure &&
-            ['run.failed', 'run.deadline_reached'].includes(
-              String(event.event_type)
-            )
+            [
+              'run.failed',
+              'run.deadline_reached',
+              'run.interrupted',
+              'runtime.interrupted',
+            ].includes(String(event.event_type))
               ? {
                   failureFacts: {
                     terminalReason: runTerminalReason(payload.terminal_reason),
@@ -524,10 +545,19 @@ export async function readTerminalRunResult({
               ? { assistantFinal }
               : {}),
           };
+          if (
+            ['run.interrupted', 'runtime.interrupted'].includes(
+              String(event.event_type)
+            ) &&
+            throughSequence === undefined
+          )
+            matchedReceipt = receipt;
+          else return receipt;
         }
       }
       cursor = expected;
       if (cursor === throughSequence || !page.has_more) {
+        if (matchedReceipt) return matchedReceipt;
         throw new Error(
           'Run usage replay ended before the matching terminal boundary'
         );
