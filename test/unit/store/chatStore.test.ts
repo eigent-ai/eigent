@@ -1664,6 +1664,22 @@ describe('ChatStore - Core Functionality', () => {
         ).toContain(executionId);
       });
 
+      it.each([
+        ['a Trigger run as scheduled', 'memory-trigger', 'scheduled'],
+        ['a user run without a source', undefined, undefined],
+      ])(
+        'submits %s so Memory never learns trigger text',
+        async (_label, triggerExecutionId, source) => {
+          const startup = beginStartup({ triggerExecutionId });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+
+          expect(JSON.parse(stream.body).source).toBe(source);
+          await stream.onopen(response());
+          await startup.admission;
+        }
+      );
+
       it('preserves draft files added after task preparation but before readiness and first open', async () => {
         const startup = beginStartup();
         const nextDraft = [file('next-turn.txt')];

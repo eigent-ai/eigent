@@ -17,7 +17,8 @@
 Mutation-time authorization (for example, proving that an Agent Space write
 has a durable HumanInteraction decision) remains in ``LightweightMemoryService``.
 This module contains the entry invariants that can and must be revalidated when
-a Cloud read model is merged back into a Desktop journal.
+a Cloud read model is merged back into a Desktop journal. It also names the
+``user.message`` sources that count as the user's own words.
 """
 
 from __future__ import annotations
@@ -33,6 +34,19 @@ EXTERNAL_MEMORY_TRUST = frozenset(
     {"external_untrusted", "tool_observed", "model_inferred"}
 )
 INSTRUCTION_MEMORY_KINDS = frozenset({"preference", "constraint"})
+# ``user.message`` sources whose text the user typed: a Chat send, an Improve
+# follow-up, and a managed Session send from this device or Remote Control.
+# Trigger messages (``scheduled``: schedules, webhooks, Slack) embed text the
+# user did not write.
+USER_AUTHORED_MESSAGE_SOURCES = frozenset(
+    {"chat", "improve", "local", "remote_control"}
+)
+
+
+def is_user_authored_message_source(source: object) -> bool:
+    """Fail closed: any other or missing source is not the user's words."""
+
+    return isinstance(source, str) and source in USER_AUTHORED_MESSAGE_SOURCES
 
 
 def normalize_memory_provenance_for_cloud(
