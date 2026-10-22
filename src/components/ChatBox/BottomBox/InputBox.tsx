@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   Popover,
   PopoverContent,
@@ -286,9 +287,9 @@ export const Inputbox = ({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return <Image className="size-3.5 text-ds-ink-default-default" />;
+      return <DsIcon icon={Image} recipe="main-compact" />;
     }
-    return <FileText className="size-3.5 text-ds-ink-default-default" />;
+    return <DsIcon icon={FileText} recipe="main-compact" />;
   };
 
   // Drag & drop handlers
@@ -412,7 +413,7 @@ export const Inputbox = ({
     <div
       data-bottom-box-input-surface
       className={cn(
-        'relative flex w-full flex-col items-start rounded-3xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-3 transition-colors',
+        'relative flex w-full flex-col items-start rounded-3xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default px-ds-panel-inset py-ds-12 transition-colors',
         (isFocused || hasContent) &&
           'border-ds-border-information-default-default',
         isDragging &&
@@ -426,7 +427,7 @@ export const Inputbox = ({
     >
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-x-2 border-y-2 border-dashed border-ds-hairline-strong-default bg-ds-bg-information-subtle-default text-ds-ink-default-default backdrop-blur-sm">
-          <UploadCloud className="h-8 w-8" />
+          <DsIcon icon={UploadCloud} recipe="detailed" />
           <span className="block text-ds-text-base font-semibold">
             {t('chat.drop-files-to-attach')}
           </span>
@@ -466,7 +467,11 @@ export const Inputbox = ({
                   title={isHovered ? t('chat.remove-file') : file.fileName}
                 >
                   {isHovered ? (
-                    <X className="size-3.5 text-ds-ink-muted-default" />
+                    <DsIcon
+                      icon={X}
+                      recipe="main-compact"
+                      className="text-ds-ink-muted-default"
+                    />
                   ) : (
                     getFileIcon(file.fileName)
                   )}
@@ -544,7 +549,10 @@ export const Inputbox = ({
                           }
                         >
                           {isHovered ? (
-                            <X className="size-4 text-ds-ink-muted-default" />
+                            <DsIcon
+                              icon={X}
+                              className="text-ds-ink-muted-default"
+                            />
                           ) : (
                             getFileIcon(file.fileName)
                           )}
@@ -621,7 +629,7 @@ export const Inputbox = ({
               aria-label={t('chat.input-attach-add-files-or-photos')}
               onClick={() => onAddFile?.()}
             >
-              <Paperclip />
+              <DsIcon icon={Paperclip} />
             </Button>
           </TooltipSimple>
           {onToggleConnectorPanel && (
@@ -645,7 +653,7 @@ export const Inputbox = ({
                 )}
                 onClick={onToggleConnectorPanel}
               >
-                <Cable />
+                <DsIcon icon={Cable} />
               </Button>
             </TooltipSimple>
           )}
@@ -668,7 +676,7 @@ export const Inputbox = ({
                 className={cn(skillPanelOpen && 'bg-ds-neutral-strong-default')}
                 onClick={onToggleSkillPanel}
               >
-                <WandSparkles />
+                <DsIcon icon={WandSparkles} />
               </Button>
             </TooltipSimple>
           )}
@@ -711,7 +719,8 @@ export const Inputbox = ({
                 className="relative grid size-ds-icon-md place-items-center leading-none"
                 aria-hidden
               >
-                <ArrowRight
+                <DsIcon
+                  icon={ArrowRight}
                   data-composer-primary-icon="arrow"
                   style={PRIMARY_ACTION_ICON_MOTION_STYLE}
                   className={cn(
@@ -723,7 +732,8 @@ export const Inputbox = ({
                       : 'rotate-0 opacity-0'
                   )}
                 />
-                <Square
+                <DsIcon
+                  icon={Square}
                   data-composer-primary-icon="pause"
                   style={PRIMARY_ACTION_ICON_MOTION_STYLE}
                   className={cn(
@@ -733,7 +743,8 @@ export const Inputbox = ({
                       : 'rotate-90 opacity-0'
                   )}
                 />
-                <Play
+                <DsIcon
+                  icon={Play}
                   data-composer-primary-icon="play"
                   style={PRIMARY_ACTION_ICON_MOTION_STYLE}
                   className={cn(

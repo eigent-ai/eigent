@@ -146,6 +146,7 @@
   "tool-status-unknown": "未知",
   "follow-up-prepare-failed": "無法準備後續任務。",
   "control-region-label": "智慧代理請求",
+  "control-review-next-request": "檢視下一個請求",
   "control-input-required": "需要你的確認",
   "control-input-required-message": "需要你的輸入：{{message}}",
   "control-input-required-count": "需要你的確認 · {{count}} 項待處理",

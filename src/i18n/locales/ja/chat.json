@@ -146,6 +146,7 @@
   "tool-status-unknown": "不明",
   "follow-up-prepare-failed": "フォローアップタスクを準備できませんでした。",
   "control-region-label": "エージェントからのリクエスト",
+  "control-review-next-request": "次のリクエストを確認",
   "control-input-required": "確認が必要です",
   "control-input-required-message": "入力が必要です：{{message}}",
   "control-input-required-count": "確認が必要です · 保留中 {{count}} 件",

@@ -121,6 +121,7 @@ import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
+import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
 import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
@@ -2863,6 +2864,18 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   });
   const bottomBoxVariant = bottomBoxControl.variant;
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
+  const humanDecisionVariant =
+    bottomBoxControl.source === 'human_interaction' &&
+    typeof bottomBoxVariant !== 'string' &&
+    bottomBoxVariant.kind !== 'input' &&
+    bottomBoxVariant.kind !== 'run_control'
+      ? bottomBoxVariant
+      : null;
+  const humanDecisionKey = humanDecisionVariant
+    ? eventNativeTimelineEnabled && eventNativeHumanControl.interaction
+      ? `${activeProjectId}:${eventNativeHumanControl.interaction.runId}:${eventNativeHumanControl.interaction.interactionId}:${eventNativeHumanControl.interaction.version ?? 0}`
+      : `${activeProjectId}:${activeTaskId}:${activeInteraction?.interaction_id ?? activeAskMessage?.id ?? ''}`
+    : null;
   const composerTaskControlState = selectComposerTaskControlState({
     eventNativeTimelineEnabled,
     legacyControlRunId: legacyControlTaskId,
@@ -3056,6 +3069,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+              <HumanDecisionCard
+                key={activeProjectId ?? 'no-session'}
+                requestKey={humanDecisionKey}
+                variant={humanDecisionVariant}
+              />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   compact
@@ -3093,7 +3111,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                     ? 'running'
                     : getBottomBoxState()
                 }
-                variant={bottomBoxVariant}
+                variant={humanDecisionVariant ? 'input' : bottomBoxVariant}
                 queuedMessages={queuedMessages}
                 queueContext={queueContext}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
@@ -3151,7 +3169,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                   },
                   onAddFile: handleFileSelect,
                   placeholder: t('chat.follow-up-placeholder'),
-                  disabled: isInputDisabled,
+                  disabled: isInputDisabled || Boolean(humanDecisionVariant),
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,

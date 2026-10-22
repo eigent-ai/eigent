@@ -146,6 +146,7 @@
   "tool-status-unknown": "Unbekannt",
   "follow-up-prepare-failed": "Die Folgeaufgabe konnte nicht vorbereitet werden.",
   "control-region-label": "Agent-Anfrage",
+  "control-review-next-request": "Nächste Anfrage prüfen",
   "control-input-required": "Eingabe erforderlich",
   "control-input-required-message": "Eingabe erforderlich: {{message}}",
   "control-input-required-count": "Eingabe erforderlich · {{count}} ausstehend",

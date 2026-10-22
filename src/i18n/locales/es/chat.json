@@ -146,6 +146,7 @@
   "tool-status-unknown": "Desconocida",
   "follow-up-prepare-failed": "No se pudo preparar la tarea de seguimiento.",
   "control-region-label": "Solicitud del agente",
+  "control-review-next-request": "Revisar la siguiente solicitud",
   "control-input-required": "Se necesita tu respuesta",
   "control-input-required-message": "Se necesita tu respuesta: {{message}}",
   "control-input-required-count": "Se necesita tu respuesta · {{count}} pendientes",
