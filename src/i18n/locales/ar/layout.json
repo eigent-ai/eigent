@@ -249,6 +249,7 @@
   "project-name": "اسم الجلسة",
   "enter-project-name": "أدخل اسم الجلسة",
   "rename-project": "إعادة تسمية الجلسة",
+  "failed-to-rename-session": "تعذرت إعادة تسمية الجلسة. حاول مرة أخرى.",
   "no-description": "لا يوجد وصف بعد.",
   "completed": "مكتمل",
   "failed": "فاشل",

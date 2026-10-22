@@ -17,6 +17,14 @@ import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -26,18 +34,25 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice } from '@/store/pageTabStore';
+import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import {
   chatTimelineDetailLevels,
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
   type ChatTimelineDetailLevel,
 } from '@/types/chatTimeline';
 import {
+  Archive,
   ArrowLeft,
   createLucideIcon,
+  EllipsisVertical,
   GalleryThumbnails,
   Logs,
+  Pencil,
+  Pin,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SummaryToggle, type SummaryToggleProps } from './SummaryToggle';
 
@@ -68,11 +83,18 @@ const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
 /** Match the composer control row when the resizable Session pane is narrow. */
 const COMPACT_WIDTH_THRESHOLD = 460;
 
+/** A mask fades the text itself, so the Button's rest, hover, and open surfaces remain intact. */
+const TITLE_OVERFLOW_MASK =
+  'linear-gradient(to right, white calc(100% - var(--ds-ref-space-24)), transparent 100%)';
+
 export interface HeaderBoxProps {
   /** Total token count for the current project */
   totalTokens?: number;
   /** Display-only identity for the active Project. */
   projectName?: string | null;
+  /** The Session menu is shown only for a saved Project. */
+  projectId?: string | null;
+  projectAchieved?: boolean;
   /** Optional extra class names for the outer container */
   className?: string;
   /** Show the chat timeline style control (hidden before a Session starts). */
@@ -86,15 +108,32 @@ export interface HeaderBoxProps {
 export function HeaderBox({
   totalTokens = 0,
   projectName,
+  projectId,
+  projectAchieved = false,
   className,
   showTimelineStyle = true,
   showBack = true,
   summary,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const [titleOverflowing, setTitleOverflowing] = useState(false);
   const [headerRef, compact] = useIsCompactWidth<HTMLDivElement>(
     COMPACT_WIDTH_THRESHOLD
   );
+  useLayoutEffect(() => {
+    const title = titleRef.current;
+    if (!title) return;
+
+    const measure = () =>
+      setTitleOverflowing(title.scrollWidth > title.clientWidth + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(title);
+    return () => observer.disconnect();
+  }, [projectName]);
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = useSessionPageTabStore(
     (s) => s.setActiveWorkspaceTab
@@ -112,6 +151,10 @@ export function HeaderBox({
     (s) => s.setChatTimelineDetailLevel
   );
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
+  const pinnedProjectIds = useSessionControlsStore((s) => s.pinnedProjectIds);
+  const togglePinned = useSessionControlsStore((s) => s.togglePinned);
+  const requestSessionAction = useSessionControlsStore((s) => s.requestAction);
+  const pinned = Boolean(projectId && pinnedProjectIds.includes(projectId));
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backTooltip = t('layout.back-tooltip', {
     defaultValue: 'Back',
@@ -119,6 +162,9 @@ export function HeaderBox({
   const windowPreviewTooltip = sessionPreviewOpen
     ? t('layout.close-preview-tooltip', { defaultValue: 'Close preview' })
     : t('layout.open-preview-tooltip', { defaultValue: 'Open preview' });
+  const sessionMenuLabel = t('layout.project-settings', {
+    defaultValue: 'Session settings',
+  });
   const timelineStyleTooltip = t('chat.timeline-style-tooltip', {
     defaultValue: 'Chat timeline style',
   });
@@ -140,7 +186,7 @@ export function HeaderBox({
       ref={headerRef}
       className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
     >
-      {/* Left: return to workspace + display-only Project identity. */}
+      {/* Left: return to workspace, Session identity, and its controls. */}
       <div className="flex min-w-0 items-center gap-ds-4">
         {showBack ? (
           <TooltipSimple content={backTooltip} variant="instant" side="bottom">
@@ -157,7 +203,71 @@ export function HeaderBox({
             </Button>
           </TooltipSimple>
         ) : null}
-        {projectName ? (
+        {projectName && projectId ? (
+          <DropdownMenu
+            open={sessionMenuOpen}
+            onOpenChange={setSessionMenuOpen}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                buttonContent="text"
+                className={cn(
+                  'no-drag max-w-full min-w-0 shrink active:scale-100',
+                  sessionMenuOpen &&
+                    'bg-ds-neutral-strong-default text-ds-ink-default-default'
+                )}
+                aria-label={`${sessionMenuLabel}: ${projectName}`}
+              >
+                <span
+                  ref={titleRef}
+                  className="max-w-[200px] min-w-0 overflow-hidden font-semibold whitespace-nowrap"
+                  style={
+                    titleOverflowing
+                      ? {
+                          maskImage: TITLE_OVERFLOW_MASK,
+                          WebkitMaskImage: TITLE_OVERFLOW_MASK,
+                        }
+                      : undefined
+                  }
+                  title={projectName}
+                >
+                  {projectName}
+                </span>
+                <DsIcon icon={EllipsisVertical} recipe="main" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuItem onSelect={() => togglePinned(projectId)}>
+                <DsIcon icon={Pin} recipe="main" />
+                {t(pinned ? 'layout.unpin' : 'layout.pin')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => requestSessionAction('rename', projectId)}
+              >
+                <DsIcon icon={Pencil} recipe="main" />
+                {t('layout.rename-project')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={projectAchieved}
+                onSelect={() => requestSessionAction('end', projectId)}
+              >
+                <DsIcon icon={Archive} recipe="main" />
+                {t('layout.achieve-project')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default"
+                onSelect={() => requestSessionAction('delete', projectId)}
+              >
+                <DsIcon icon={Trash2} recipe="main" />
+                {t('layout.delete-project')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : projectName ? (
           <span
             className="max-w-[200px] min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default"
             title={projectName}
