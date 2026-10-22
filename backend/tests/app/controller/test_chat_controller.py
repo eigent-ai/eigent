@@ -2475,8 +2475,8 @@ async def test_session_model_still_rejects_a_different_model(
 async def test_refused_initial_admission_is_durably_failed(
     sample_chat_data, mock_request, tmp_path, monkeypatch
 ):
-    from app.workspace_config import UnsupportedThinkingEffortError
     import app.controller.chat_controller as controller
+    from app.workspace_config import UnsupportedThinkingEffortError
 
     journal = SQLiteRunJournal(tmp_path / "refused.db")
     coordinator = RunCoordinator(journal=journal)
