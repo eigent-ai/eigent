@@ -834,6 +834,11 @@ export const UNSUCCESSFUL_RUN_STATUSES = new Set<DurableRunDisplayStatus>([
   'timed_out',
 ]);
 
+export const RUN_RECEIPT_STATUSES = new Set<DurableRunDisplayStatus>([
+  ...UNSUCCESSFUL_RUN_STATUSES,
+  'interrupted',
+]);
+
 interface Task {
   source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
@@ -2479,7 +2484,8 @@ export async function readTaskFailureFacts(
         task &&
         current &&
         current.executionId === task.executionId &&
-        UNSUCCESSFUL_RUN_STATUSES.has(current.durableRunStatus!) &&
+        RUN_RECEIPT_STATUSES.has(current.durableRunStatus!) &&
+        !current.isPending &&
         current.status === ChatTaskStatus.FINISHED
       )
     );
@@ -2508,11 +2514,38 @@ export async function readTaskFailureFacts(
     const result = await readTerminalRunResult({
       projectId,
       runId: taskId,
-      terminalEventTypes: ['run.failed', 'run.deadline_reached'],
+      terminalEventTypes: [
+        'run.failed',
+        'run.deadline_reached',
+        'run.interrupted',
+        'runtime.interrupted',
+      ],
       signal: controller.signal,
       expectedAccountKey: accountKey,
       includeFailureFacts: true,
     });
+    if (
+      isCurrent() &&
+      task.durableRunStatus === 'interrupted' &&
+      !task.artifactManifestFinalized
+    ) {
+      const artifacts = await loadRecoveredTaskArtifactFileList(
+        {
+          taskId,
+          projectId,
+          email: getAuthStore().email || undefined,
+          userId: getAuthStore().user_id,
+        },
+        controller.signal
+      );
+      if (isCurrent() && artifacts.canonical)
+        owner.getState().setArtifactManifest(taskId, {
+          files: artifacts.files,
+          finalized: true,
+          scanStatus: artifacts.scanStatus || 'complete',
+          truncated: artifacts.truncated,
+        });
+    }
     return isCurrent()
       ? withRunTerminalReason(
           result.failureFacts ?? unverifiedTaskFailureFacts()

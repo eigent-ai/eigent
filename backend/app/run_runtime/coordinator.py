@@ -1164,6 +1164,8 @@ class RunCoordinator:
                 "run.failed",
                 "run.cancelled",
                 "run.deadline_reached",
+                "run.interrupted",
+                "runtime.interrupted",
             }:
                 from app.artifacts import finalize_run_artifacts
 
