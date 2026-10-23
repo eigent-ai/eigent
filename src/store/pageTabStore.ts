@@ -136,6 +136,8 @@ export interface WorkspaceChatDraftRequest {
   projectId: string;
   content: string;
   reviewHandoffIds: string[];
+  /** Preserve an existing composer draft instead of appending this request. */
+  ifEmpty?: boolean;
 }
 
 export interface WorkspaceReviewHandoff {
@@ -585,7 +587,8 @@ export interface PageTabState {
   requestWorkspaceChatDraft: (
     content: string,
     reviewSource?: WorkspaceReviewHandoffSource,
-    targetProjectId?: string | null
+    targetProjectId?: string | null,
+    options?: { ifEmpty?: boolean }
   ) => void;
   consumeWorkspaceChatDraft: (requestId: number) => void;
   acknowledgeWorkspaceReviewHandoffs: (
@@ -949,7 +952,12 @@ export const usePageTabStore = create<PageTabState>()(
             workspaceChatFocusProjectId: projectId ?? null,
           };
         }),
-      requestWorkspaceChatDraft: (content, reviewSource, targetProjectId) => {
+      requestWorkspaceChatDraft: (
+        content,
+        reviewSource,
+        targetProjectId,
+        options
+      ) => {
         const normalized = content.trim();
         const projectId =
           targetProjectId === undefined
@@ -982,6 +990,7 @@ export const usePageTabStore = create<PageTabState>()(
               projectId,
               content: normalized,
               reviewHandoffIds: reviewHandoff ? [reviewHandoff.handoffId] : [],
+              ifEmpty: options?.ifEmpty,
             },
             ...(reviewHandoff
               ? {

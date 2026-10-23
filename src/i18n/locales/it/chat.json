@@ -528,5 +528,12 @@
   "run-terminal-reason-error": "L’attività si è interrotta a causa di un errore.",
   "run-terminal-reason-budget_exhausted": "L’attività ha esaurito il budget disponibile.",
   "tool-status-timed_out": "Tempo scaduto",
-  "run-resume-reevaluates-hint": "La ripresa rivaluta il lavoro rimanente e chiede di nuovo quando necessario."
+  "run-resume-reevaluates-hint": "La ripresa rivaluta il lavoro rimanente e chiede di nuovo quando necessario.",
+  "automation-draft-with-skill": "Trasforma in abilità",
+  "create-automation-from-task": "Trasforma in automazione",
+  "automation-skill-unavailable": "L’abilità skill-creator non è disponibile.",
+  "automation-source-session": "Automazione dalla sessione: {{name}}",
+  "automation-schedule-review-hint": "Controlla la pianificazione qui sotto. L’editor sceglie un valore predefinito anche senza richiesta di ripetizione.",
+  "automation-review-confirm": "Ho controllato pianificazione e dati richiesti.",
+  "automation-review-required": "Controlla pianificazione e dati richiesti prima di creare."
 }

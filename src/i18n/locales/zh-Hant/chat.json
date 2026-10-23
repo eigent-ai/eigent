@@ -520,5 +520,12 @@
   "run-terminal-reason-error": "任務因錯誤而停止。",
   "run-terminal-reason-budget_exhausted": "任務已用盡可用預算。",
   "tool-status-timed_out": "已逾時",
-  "run-resume-reevaluates-hint": "恢復時會重新評估剩餘工作，並在需要時再次詢問。"
+  "run-resume-reevaluates-hint": "恢復時會重新評估剩餘工作，並在需要時再次詢問。",
+  "automation-draft-with-skill": "轉為技能",
+  "create-automation-from-task": "轉為自動化",
+  "automation-skill-unavailable": "skill-creator 技能無法使用。",
+  "automation-source-session": "來自工作階段的自動化：{{name}}",
+  "automation-schedule-review-hint": "請檢查下方排程。即使未要求重複執行，編輯器也會選擇預設值。",
+  "automation-review-confirm": "我已檢查排程和所需輸入。",
+  "automation-review-required": "建立前請檢查排程和所需輸入。"
 }

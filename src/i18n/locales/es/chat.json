@@ -528,5 +528,12 @@
   "run-terminal-reason-error": "La tarea se detuvo por un error.",
   "run-terminal-reason-budget_exhausted": "La tarea agotó su presupuesto disponible.",
   "tool-status-timed_out": "Tiempo de espera agotado",
-  "run-resume-reevaluates-hint": "Al reanudar se vuelve a evaluar el trabajo pendiente y se vuelve a preguntar cuando sea necesario."
+  "run-resume-reevaluates-hint": "Al reanudar se vuelve a evaluar el trabajo pendiente y se vuelve a preguntar cuando sea necesario.",
+  "automation-draft-with-skill": "Convertir en habilidad",
+  "create-automation-from-task": "Convertir en automatización",
+  "automation-skill-unavailable": "La habilidad skill-creator no está disponible.",
+  "automation-source-session": "Automatización de la sesión: {{name}}",
+  "automation-schedule-review-hint": "Revisa el horario de abajo. El editor elige uno predeterminado aunque no hayas pedido una repetición.",
+  "automation-review-confirm": "He revisado el horario y los datos necesarios.",
+  "automation-review-required": "Revisa el horario y los datos necesarios antes de crearla."
 }

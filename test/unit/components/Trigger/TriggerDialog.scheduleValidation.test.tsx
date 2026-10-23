@@ -182,3 +182,67 @@ describe('TriggerDialog saving a schedule the editor cannot show', () => {
     }
   );
 });
+
+describe('TriggerDialog opened from a Session', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.proxyCreateTrigger.mockImplementation(async (data) => ({
+      id: 2,
+      ...data,
+    }));
+  });
+
+  it('prefills the draft and creates it for the source Session only after review', async () => {
+    const user = userEvent.setup();
+    render(
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen
+        onOpenChange={vi.fn()}
+        sourceProjectId="source-project"
+        initialTaskPrompt="Original request"
+        initialDraft={{
+          version: 1,
+          kind: 'automation-draft',
+          name: 'Weekly digest',
+          description: 'Summarize the week',
+          taskPrompt: 'Summarize this week',
+          schedule: { text: 'Every Monday at 9:00' },
+          requiredInputs: [{ name: 'Inbox', description: 'Which inbox' }],
+          unresolved: [],
+        }}
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Enter automation name')).toHaveValue(
+      'Weekly digest'
+    );
+    expect(
+      screen.getByPlaceholderText('What should this automation do?')
+    ).toHaveValue('Summarize this week');
+    expect(screen.getByText('Every Monday at 9:00')).toBeInTheDocument();
+    expect(screen.getByText('Inbox: Which inbox')).toBeInTheDocument();
+
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).toBeDisabled();
+
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: 'I reviewed the schedule and required inputs.',
+      })
+    );
+    expect(create).toBeEnabled();
+    await user.click(create);
+
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.proxyCreateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Weekly digest',
+        task_prompt: 'Summarize this week',
+        project_id: 'source-project',
+      })
+    );
+  });
+});

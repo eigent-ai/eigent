@@ -535,6 +535,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return;
     }
     handledChatDraftRequestRef.current = workspaceChatDraftRequest.requestId;
+    if (
+      workspaceChatDraftRequest.ifEmpty &&
+      (message.trim() || activeTask?.attaches?.length)
+    ) {
+      toast.info(t('chat.message-draft-exists'));
+      consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
+      return;
+    }
     setMessage((current) => {
       const existing = current.trimEnd();
       return existing
@@ -550,10 +558,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
   }, [
     activeProjectId,
+    activeTask?.attaches?.length,
     consumeWorkspaceChatDraft,
-    workspaceChatDraftRequest,
+    message,
     setMessage,
     setPendingReviewHandoffIds,
+    t,
+    workspaceChatDraftRequest,
   ]);
 
   useEffect(() => {

@@ -13,23 +13,88 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { HeaderBox } from '@/components/Session/HeaderBox';
+import type { ChatMessageNode } from '@/lib/projector/chat';
 import { usePageTabStore } from '@/store/pageTabStore';
+import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
+import { useSkillsStore } from '@/store/skillsStore';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { runtimeMock } = vi.hoisted(() => ({ runtimeMock: vi.fn() }));
 
 vi.mock('@/store/authStore', () => ({
   getAuthStore: vi.fn(() => ({ language: 'en-US' })),
   useAuthStore: vi.fn(() => ({ appearance: 'light' })),
 }));
 
+vi.mock('@/hooks/useProjectEventRuntime', () => ({
+  useProjectEventRuntime: runtimeMock,
+}));
+
+vi.mock('@/components/Trigger/TriggerDialog', () => ({
+  TriggerDialog: ({
+    isOpen,
+    sourceProjectId,
+    initialTaskPrompt,
+  }: {
+    isOpen: boolean;
+    sourceProjectId?: string;
+    initialTaskPrompt?: string;
+  }) =>
+    isOpen ? (
+      <div role="dialog" aria-label="Automation draft">
+        {sourceProjectId}: {initialTaskPrompt}
+      </div>
+    ) : null,
+}));
+
+function message(
+  id: string,
+  runId: string,
+  runSequence: number,
+  role: ChatMessageNode['role'],
+  purpose: ChatMessageNode['purpose'],
+  content: string
+): ChatMessageNode {
+  return {
+    id,
+    eventId: id,
+    projectId: 'project-1',
+    runId,
+    runSequence,
+    cloudCursor: null,
+    createdAt: `2026-09-23T10:00:0${runSequence}.000Z`,
+    eventType: 'test.message',
+    legacyStep: null,
+    kind: 'message',
+    role,
+    purpose,
+    content,
+    status: 'complete',
+  };
+}
+
+function completedSnapshot(): ProjectEventStoreSnapshot {
+  return {
+    view: { projectId: 'project-1', runs: {} },
+    chat: {
+      nodes: [
+        message('query-1', 'run-1', 1, 'user', 'query', 'Original request'),
+        message('final-1', 'run-1', 2, 'assistant', 'final', 'Final result'),
+      ],
+    },
+  } as ProjectEventStoreSnapshot;
+}
+
 describe('HeaderBox chat timeline mode', () => {
   let resizeHeader: ((width: number) => void) | undefined;
   let resizeTitle: ((width: number) => void) | undefined;
 
   beforeEach(() => {
+    runtimeMock.mockReturnValue({ projectId: null, snapshot: null });
     vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 800,
@@ -53,7 +118,11 @@ describe('HeaderBox chat timeline mode', () => {
         disconnect() {}
       }
     );
-    usePageTabStore.setState({ chatTimelineDetailLevel: 'narrative' });
+    usePageTabStore.setState({
+      chatTimelineDetailLevel: 'narrative',
+      sessionPreviewProjectId: null,
+    });
+    useSkillsStore.setState({ skills: [] });
     localStorage.removeItem('eigent-pinned-projects');
     useSessionControlsStore.setState({ pinnedProjectIds: [], request: null });
   });
@@ -136,7 +205,7 @@ describe('HeaderBox chat timeline mode', () => {
     expect((title as HTMLElement).style.maskImage).toBe('');
   });
 
-  it('offers Pin, Rename, End, and Delete in the Session menu', async () => {
+  it('puts automation actions first and disables them without a completed result', async () => {
     const user = userEvent.setup();
     render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
 
@@ -145,12 +214,94 @@ describe('HeaderBox chat timeline mode', () => {
     );
     const items = screen.getAllByRole('menuitem');
     expect(items.map((item) => item.textContent)).toEqual([
+      'Turn into skill',
+      'Turn into automation',
       'Pin',
       'Rename session',
       'End session',
       'Delete session',
     ]);
+    expect(items[1].querySelector('.lucide-zap')).toBeTruthy();
     expect(items[0].closest('[role="menu"]')).toHaveClass('w-56');
+    expect(items[0]).toHaveAttribute('aria-disabled', 'true');
+    expect(items[1]).toHaveAttribute('aria-disabled', 'true');
+    // A separator divides the Task actions from the Session actions.
+    expect(items[1].nextElementSibling).toHaveAttribute('role', 'separator');
+  });
+
+  it('drafts from the latest completed result and opens an editable automation', async () => {
+    const user = userEvent.setup();
+    const originalRequestChatDraft =
+      usePageTabStore.getState().requestWorkspaceChatDraft;
+    const requestChatDraft = vi.fn();
+    runtimeMock.mockReturnValue({
+      projectId: 'project-1',
+      snapshot: completedSnapshot(),
+    });
+    usePageTabStore.setState({
+      sessionPreviewProjectId: 'project-1',
+      requestWorkspaceChatDraft: requestChatDraft,
+    });
+    useSkillsStore.setState({
+      skills: [
+        {
+          id: 'skill-creator',
+          name: 'skill-creator',
+          description: '',
+          filePath: '',
+          fileContent: '',
+          addedAt: 0,
+          scope: { isGlobal: true, selectedAgents: [] },
+          enabled: true,
+          isExample: false,
+        },
+      ],
+    });
+
+    try {
+      const { rerender } = render(
+        <HeaderBox projectName="Timeline project" projectId="project-1" />
+      );
+      const trigger = screen.getByRole('button', {
+        name: 'Session settings: Timeline project',
+      });
+      await user.click(trigger);
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Turn into skill' })
+      );
+      expect(requestChatDraft).toHaveBeenCalledWith(
+        expect.stringContaining('#skill-creator'),
+        undefined,
+        'project-1',
+        { ifEmpty: true }
+      );
+      expect(requestChatDraft.mock.calls[0][0]).toContain(
+        'Original request:\nOriginal request'
+      );
+      expect(requestChatDraft.mock.calls[0][0]).toContain(
+        'Final result summary:\nFinal result'
+      );
+
+      await user.click(trigger);
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Turn into automation' })
+      );
+      expect(
+        screen.getByRole('dialog', { name: 'Automation draft' })
+      ).toHaveTextContent('project-1: Original request');
+      rerender(
+        <HeaderBox projectName="Another session" projectId="project-2" />
+      );
+      expect(
+        screen.getByRole('dialog', { name: 'Automation draft' })
+      ).toHaveTextContent('project-1: Original request');
+    } finally {
+      act(() => {
+        usePageTabStore.setState({
+          requestWorkspaceChatDraft: originalRequestChatDraft,
+        });
+      });
+    }
   });
 
   it('shows the Session trigger as selected only while its menu is open', async () => {
