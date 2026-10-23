@@ -34,6 +34,10 @@ import { useTranslation } from 'react-i18next';
 import { TaskErrorNotice } from '../TaskErrorNotice';
 import { taskErrorReason } from '../taskErrorPresentation';
 
+import {
+  ModelChangeDivider,
+  previousRecordedRunModel,
+} from './ModelChangeDivider';
 import { normalizeRunReviewPath } from './RunFiles';
 import {
   hasRunExecutionRows,
@@ -695,18 +699,31 @@ function DetailedRun({
 
 export function TrajectoryTimeline({
   runs,
+  resolvedModelsByRun = {},
   interactivePlansByRun = {},
   paused = false,
 }: TimelineModeProps) {
+  const runIds = runs.map((run) => run.runId);
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="trajectory">
-      {runs.map((run) => (
-        <DetailedRun
-          interactivePlan={interactivePlansByRun[run.runId]}
-          key={run.id}
-          paused={paused}
-          run={run}
-        />
+      {runs.map((run, index) => (
+        <div className="flex flex-col gap-3" key={run.id}>
+          {index > 0 ? (
+            <ModelChangeDivider
+              previous={previousRecordedRunModel(
+                runIds,
+                index,
+                resolvedModelsByRun
+              )}
+              current={resolvedModelsByRun[run.runId]}
+            />
+          ) : null}
+          <DetailedRun
+            interactivePlan={interactivePlansByRun[run.runId]}
+            paused={paused}
+            run={run}
+          />
+        </div>
       ))}
     </div>
   );

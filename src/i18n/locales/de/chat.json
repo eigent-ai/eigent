@@ -221,6 +221,7 @@
   "timeline-history-loading": "Unterhaltung wird geladen…",
   "timeline-history-reconnecting": "Verbindung wird wiederhergestellt…",
   "timeline-history-retry": "Erneut versuchen",
+  "timeline-model-changed": "Modell gewechselt zu {{model}}",
   "timeline-empty": "Noch keine Nachrichten. Sende eine Nachricht, um zu starten.",
   "run-working-indicator": "Eigent arbeitet…",
   "timeline-style-tooltip": "Stil der Chat-Zeitleiste",

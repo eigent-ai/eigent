@@ -48,6 +48,10 @@ import {
   selectWindowedTimelineRuns,
 } from '@/components/ChatBox/EventNativeProjectTimeline';
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
+import {
+  recordResolvedRunModels,
+  resetResolvedRunModelsForTest,
+} from '@/service/projectRunsApi';
 import type { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -81,6 +85,9 @@ vi.mock('@/hooks/useProjectEventRuntime', () => ({
         }
       : null,
   }),
+}));
+vi.mock('@/service/sessionNavStatus', () => ({
+  refreshSessionNavStatuses: vi.fn(async () => undefined),
 }));
 vi.mock('@/components/ChatBox/TaskBox/PlanTaskBox', () => ({
   PlanTaskBox: ({ taskId }: { taskId: string }) => (
@@ -747,6 +754,53 @@ describe('EventNativeProjectTimeline', () => {
     expect(container.querySelector('[data-interactive-plan-card]')).toBeNull();
     expect(container.querySelector('[data-narrative-plan-id]')).toBeNull();
   });
+
+  it.each(['narrative', 'trajectory'] as const)(
+    'marks a model change between Tasks from the recorded Run models in %s',
+    (detailLevel) => {
+      resetResolvedRunModelsForTest();
+      mocks.projection = projection(
+        ['run-1', 'run-2', 'run-3'].map((runId, index) => ({
+          ...messageNode(index, 'user'),
+          id: `query-${runId}`,
+          eventId: `query-${runId}`,
+          runId,
+          runSequence: 1,
+          eventType: 'user.message',
+          purpose: 'query' as const,
+          content: `Query ${runId}`,
+        }))
+      );
+      recordResolvedRunModels('project-1', {
+        project_id: 'project-1',
+        runs: [
+          ['run-1', { platform: 'openai', type: 'gpt-4.1' }],
+          ['run-2', { platform: 'openai', type: 'gpt-4.1' }],
+          ['run-3', { platform: 'anthropic', type: 'claude-sonnet-4' }],
+        ].map(([run_id, resolved_model]) => ({
+          run_id,
+          project_id: 'project-1',
+          resolved_model,
+        })),
+      });
+
+      const { container } = render(
+        <EventNativeProjectTimeline
+          detailLevel={detailLevel}
+          projectId="project-1"
+          scrollBottomInsetPx={128}
+        />
+      );
+
+      const dividers = container.querySelectorAll(
+        '[data-model-change-divider]'
+      );
+      expect(Array.from(dividers, (divider) => divider.textContent)).toEqual([
+        'Model changed to claude-sonnet-4',
+      ]);
+      resetResolvedRunModelsForTest();
+    }
+  );
 
   it('renders semantic event nodes through the event timeline', () => {
     const unknown: ChatUnknownNode = {

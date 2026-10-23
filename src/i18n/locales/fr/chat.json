@@ -221,6 +221,7 @@
   "timeline-history-loading": "Chargement de la conversation…",
   "timeline-history-reconnecting": "Reconnexion…",
   "timeline-history-retry": "Réessayer",
+  "timeline-model-changed": "Modèle remplacé par {{model}}",
   "timeline-empty": "Aucun message pour l’instant. Envoyez un message pour commencer.",
   "run-working-indicator": "Eigent travaille…",
   "timeline-style-tooltip": "Style de la chronologie du chat",
