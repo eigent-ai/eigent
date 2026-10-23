@@ -146,6 +146,7 @@
   "tool-status-unknown": "Неизвестно",
   "follow-up-prepare-failed": "Не удалось подготовить следующую задачу.",
   "control-region-label": "Запрос агента",
+  "control-review-next-request": "Просмотреть следующий запрос",
   "control-input-required": "Нужен ваш ответ",
   "control-input-required-message": "Требуется ввод: {{message}}",
   "control-input-required-count": "Нужен ваш ответ · в очереди: {{count}}",

@@ -146,6 +146,7 @@
   "tool-status-unknown": "Inconnu",
   "follow-up-prepare-failed": "Impossible de préparer la tâche de suivi.",
   "control-region-label": "Demande de l’agent",
+  "control-review-next-request": "Examiner la demande suivante",
   "control-input-required": "Action requise",
   "control-input-required-message": "Action requise : {{message}}",
   "control-input-required-count": "Action requise · {{count}} en attente",

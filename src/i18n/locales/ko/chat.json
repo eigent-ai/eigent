@@ -146,6 +146,7 @@
   "tool-status-unknown": "알 수 없음",
   "follow-up-prepare-failed": "후속 작업을 준비하지 못했습니다.",
   "control-region-label": "에이전트 요청",
+  "control-review-next-request": "다음 요청 검토",
   "control-input-required": "확인이 필요합니다",
   "control-input-required-message": "입력이 필요합니다: {{message}}",
   "control-input-required-count": "확인이 필요합니다 · 대기 중 {{count}}건",

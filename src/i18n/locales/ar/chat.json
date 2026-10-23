@@ -146,6 +146,7 @@
   "tool-status-unknown": "غير معروف",
   "follow-up-prepare-failed": "تعذر إعداد مهمة المتابعة.",
   "control-region-label": "طلب من الوكيل",
+  "control-review-next-request": "مراجعة الطلب التالي",
   "control-input-required": "مطلوب ردّك",
   "control-input-required-message": "مطلوب ردّك: {{message}}",
   "control-input-required-count": "مطلوب ردّك · {{count}} قيد الانتظار",

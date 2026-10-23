@@ -146,6 +146,7 @@
   "tool-status-unknown": "Sconosciuta",
   "follow-up-prepare-failed": "Impossibile preparare l’attività di follow-up.",
   "control-region-label": "Richiesta dell’agente",
+  "control-review-next-request": "Esamina la richiesta successiva",
   "control-input-required": "Serve la tua risposta",
   "control-input-required-message": "È necessaria una risposta: {{message}}",
   "control-input-required-count": "Serve la tua risposta · {{count}} in attesa",

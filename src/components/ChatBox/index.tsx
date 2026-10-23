@@ -121,10 +121,11 @@ import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
+import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
 import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
-  BottomBoxInputVariant,
+  BottomBoxFeedbackVariant,
   BottomBoxRunControlVariant,
 } from './BottomBox/types';
 import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
@@ -2837,32 +2838,52 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   ) {
     legacyApprovalVariant.disabled = true;
   }
-  const legacyHumanInputVariant: BottomBoxInputVariant | 'input' =
-    activeAsk && isInteractiveHumanReply && activeAskMessage
+  const legacyQuestionVariant: BottomBoxFeedbackVariant | null =
+    !eventNativeTimelineEnabled &&
+    activeAsk &&
+    !isLegacyApproval &&
+    isInteractiveHumanReply &&
+    activeAskMessage
       ? {
-          kind: 'input',
+          kind: 'feedback',
+          presentation: 'question',
           header: {
-            eyebrow: t('chat.control-input-required'),
-            title:
+            title: t('chat.timeline-question'),
+            description:
               activeInteraction?.question || activeAskMessage.content.trim(),
           },
+          value: message,
+          placeholder: t('chat.control-response-placeholder'),
+          submitting: activeAskTask?.isPending,
+          onChange: setMessage,
+          onSubmit: () => void handleSend(),
         }
-      : 'input';
+      : null;
   // Timeline density is presentation-only. Select one shared BottomBox control
   // from the active authority before rendering Normal, Detailed, or Summarised.
   const bottomBoxControl = selectBottomBoxControl({
     humanInteractionVariant: eventNativeTimelineEnabled
       ? eventNativeHumanControl.variant
-      : legacyApprovalVariant,
+      : (legacyApprovalVariant ?? legacyQuestionVariant),
     runControlVariant: eventNativeTimelineEnabled
       ? eventNativeRunControlVariant
       : null,
-    composerVariant: eventNativeTimelineEnabled
-      ? 'input'
-      : legacyHumanInputVariant,
+    composerVariant: 'input',
   });
   const bottomBoxVariant = bottomBoxControl.variant;
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
+  const humanDecisionVariant =
+    bottomBoxControl.source === 'human_interaction' &&
+    typeof bottomBoxVariant !== 'string' &&
+    bottomBoxVariant.kind !== 'input' &&
+    bottomBoxVariant.kind !== 'run_control'
+      ? bottomBoxVariant
+      : null;
+  const humanDecisionKey = humanDecisionVariant
+    ? eventNativeTimelineEnabled && eventNativeHumanControl.interaction
+      ? `${activeProjectId}:${eventNativeHumanControl.interaction.runId}:${eventNativeHumanControl.interaction.interactionId}:${eventNativeHumanControl.interaction.version ?? 0}`
+      : `${activeProjectId}:${activeTaskId}:${activeInteraction?.interaction_id ?? activeAskMessage?.id ?? ''}`
+    : null;
   const composerTaskControlState = selectComposerTaskControlState({
     eventNativeTimelineEnabled,
     legacyControlRunId: legacyControlTaskId,
@@ -3056,6 +3077,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+              <HumanDecisionCard
+                key={activeProjectId ?? 'no-session'}
+                requestKey={humanDecisionKey}
+                variant={humanDecisionVariant}
+              />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   compact
@@ -3093,7 +3119,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                     ? 'running'
                     : getBottomBoxState()
                 }
-                variant={bottomBoxVariant}
+                variant={humanDecisionVariant ? 'input' : bottomBoxVariant}
                 queuedMessages={queuedMessages}
                 queueContext={queueContext}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
@@ -3132,7 +3158,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                 onEdit={handleEditQuery}
                 loading={loading}
                 inputProps={{
-                  value: message,
+                  value: legacyQuestionVariant ? '' : message,
                   onChange: setMessage,
                   onSend: handleSend,
                   queuesFollowUp: isTaskBusy && !activeAsk,
@@ -3151,7 +3177,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                   },
                   onAddFile: handleFileSelect,
                   placeholder: t('chat.follow-up-placeholder'),
-                  disabled: isInputDisabled,
+                  disabled: isInputDisabled || Boolean(humanDecisionVariant),
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,

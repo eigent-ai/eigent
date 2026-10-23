@@ -146,6 +146,7 @@
   "tool-status-unknown": "Unknown",
   "follow-up-prepare-failed": "Unable to prepare the follow-up task.",
   "control-region-label": "Agent request",
+  "control-review-next-request": "Review next request",
   "control-input-required": "Input required",
   "control-input-required-message": "Input required: {{message}}",
   "control-input-required-count": "Input required · {{count}} pending",
