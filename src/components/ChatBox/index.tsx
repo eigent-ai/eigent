@@ -136,6 +136,7 @@ import {
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
 import { FloatingAction } from './MessageItem/FloatingAction';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { ProjectChatContainer } from './ProjectChatContainer';
 import {
   canUseLegacyControlWithoutCanonicalOwner,
@@ -231,6 +232,10 @@ export default function ChatBox(): JSX.Element {
 }
 
 function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
+  const [editingSource, setEditingSource] = useState<{
+    projectId: string;
+    sourceId: string;
+  } | null>(null);
   const host = useHost();
   const overlaySlotId = useSessionPane()?.overlaySlotId ?? PLAN_OVERLAY_SLOT_ID;
 
@@ -273,9 +278,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     setReviewHandoffIds: setPendingReviewHandoffIds,
   } = useSessionDraft(accountKey, activeProjectId);
   const composerRevisionRef = useRef(0);
+  const previousDraft = useRef({ projectId: activeProjectId, text: message });
+  useEffect(() => {
+    const previous = previousDraft.current;
+    previousDraft.current = { projectId: activeProjectId, text: message };
+    if (previous.projectId === activeProjectId && previous.text && !message) {
+      setEditingSource((current) =>
+        current?.projectId === activeProjectId ? null : current
+      );
+    }
+  }, [activeProjectId, message]);
   const setMessage = useCallback<typeof setDraftMessage>(
     (value) => {
       composerRevisionRef.current += 1;
+      if (value === '') setEditingSource(null);
       setDraftMessage(value);
     },
     [setDraftMessage]
@@ -2870,7 +2886,19 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       : null,
     composerVariant: 'input',
   });
-  const bottomBoxVariant = bottomBoxControl.variant;
+  // The editing note decorates only the plain composer. An open approval or
+  // question keeps its own controls, so an edited copy never reads as an answer.
+  const bottomBoxVariant =
+    bottomBoxControl.source === 'composer' &&
+    bottomBoxControl.variant === 'input' &&
+    editingSource?.projectId === activeProjectId
+      ? {
+          kind: 'input' as const,
+          header: {
+            eyebrow: t('chat.message-editing-copy'),
+          },
+        }
+      : bottomBoxControl.variant;
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
   const humanDecisionVariant =
     bottomBoxControl.source === 'human_interaction' &&
@@ -2884,6 +2912,25 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       ? `${activeProjectId}:${eventNativeHumanControl.interaction.runId}:${eventNativeHumanControl.interaction.interactionId}:${eventNativeHumanControl.interaction.version ?? 0}`
       : `${activeProjectId}:${activeTaskId}:${activeInteraction?.interaction_id ?? activeAskMessage?.id ?? ''}`
     : null;
+  const handleEditUserMessage = (source: EditUserMessageSource) => {
+    // A legacy question answers through the composer text, so an earlier
+    // message must not land there while any request is open.
+    if (humanDecisionVariant) {
+      toast.info(t('chat.message-edit-after-request'));
+      return;
+    }
+    if (message.trim() || activeTask?.attaches?.length) {
+      toast.info(t('chat.message-draft-exists'));
+      return;
+    }
+    setMessage(source.content);
+    if (activeProjectId)
+      setEditingSource({ projectId: activeProjectId, sourceId: source.id });
+    if (source.attaches?.length) {
+      toast.info(t('chat.message-reattach-files'));
+    }
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
   const composerTaskControlState = selectComposerTaskControlState({
     eventNativeTimelineEnabled,
     legacyControlRunId: legacyControlTaskId,
@@ -2964,11 +3011,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               sessionMode={displaySessionMode}
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
             />
           ) : shouldRenderChatTimeline ? (
             <ProjectChatContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">

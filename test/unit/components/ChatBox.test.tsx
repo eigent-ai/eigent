@@ -56,6 +56,7 @@ import {
   proxyFetchGet,
 } from '../../../src/api/http';
 import ChatBox from '../../../src/components/ChatBox/index';
+import { ProjectChatContainer } from '../../../src/components/ChatBox/ProjectChatContainer';
 import { useAuthStore } from '../../../src/store/authStore';
 import { usePageTabStore } from '../../../src/store/pageTabStore';
 
@@ -84,7 +85,7 @@ import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import { invalidatePendingFollowUps } from '@/service/followUpQueueApi';
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn(), dismiss: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), dismiss: vi.fn() },
 }));
 
 // Mock dependencies (use the same relative paths as the imports above)
@@ -1253,6 +1254,66 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
+    });
+
+    describe('Edit and resend', () => {
+      const editUserMessage = (
+        source: Parameters<
+          NonNullable<
+            Parameters<typeof ProjectChatContainer>[0]['onEditUserMessage']
+          >
+        >[0]
+      ) => {
+        const props = vi.mocked(ProjectChatContainer).mock.calls.at(-1)?.[0];
+        expect(props?.onEditUserMessage).toBeTypeOf('function');
+        act(() => props!.onEditUserMessage!(source));
+      };
+      const composerVariant = () =>
+        vi.mocked(BottomBox).mock.calls.at(-1)?.[0].variant;
+
+      it('copies an earlier message into the composer as an edited copy', async () => {
+        const user = userEvent.setup();
+        renderChatBox();
+
+        editUserMessage({ id: '1', content: 'Hello' });
+
+        expect(screen.getByTestId('message-input')).toHaveValue('Hello');
+        expect(composerVariant()).toEqual({
+          kind: 'input',
+          header: { eyebrow: 'chat.message-editing-copy' },
+        });
+        expect(toast.info).not.toHaveBeenCalled();
+
+        await user.clear(screen.getByTestId('message-input'));
+        expect(composerVariant()).toBe('input');
+      });
+
+      it('keeps an unsent draft instead of replacing it', async () => {
+        const user = userEvent.setup();
+        renderChatBox();
+        await user.type(screen.getByTestId('message-input'), 'Unsent draft');
+
+        editUserMessage({ id: '1', content: 'Hello' });
+
+        expect(screen.getByTestId('message-input')).toHaveValue('Unsent draft');
+        expect(toast.info).toHaveBeenCalledWith('chat.message-draft-exists');
+        expect(composerVariant()).toBe('input');
+      });
+
+      it('asks for files to be attached again', () => {
+        renderChatBox();
+
+        editUserMessage({
+          id: '1',
+          content: 'Summarize this',
+          attaches: [{ fileName: 'report.pdf' }],
+        });
+
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Summarize this'
+        );
+        expect(toast.info).toHaveBeenCalledWith('chat.message-reattach-files');
+      });
     });
 
     it.each([
@@ -4374,6 +4435,51 @@ describe('ChatBox Component', async () => {
             reply: 'green\nplease',
           })
         )
+      );
+    });
+
+    it('keeps Edit and resend out of an open legacy question answer', () => {
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'test-agent',
+              hasMessages: true,
+              messages: [
+                { id: 'earlier', role: 'user', content: 'Earlier request' },
+                {
+                  id: 'legacy-question',
+                  role: 'agent',
+                  step: 'ask',
+                  content: 'Which colour?',
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+      renderChatBox();
+
+      const props = vi.mocked(ProjectChatContainer).mock.calls.at(-1)?.[0];
+      act(() =>
+        props!.onEditUserMessage!({ id: 'earlier', content: 'Earlier request' })
+      );
+
+      const card = screen.getByRole('region', {
+        name: 'chat.control-region-label',
+      });
+      expect(
+        within(card).getByRole('textbox', {
+          name: 'chat.control-feedback-label',
+        })
+      ).toHaveValue('');
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      expect(toast.info).toHaveBeenCalledWith(
+        'chat.message-edit-after-request'
       );
     });
 

@@ -881,6 +881,34 @@ describe('ChatBox timeline modes', () => {
     ).toBeInTheDocument();
   });
 
+  it('offers the Run query for Edit and resend with its send time', () => {
+    const onEditUserMessage = vi.fn();
+    const runs = composeTimelineRuns(nodes('completed'));
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={runs}
+        onEditUserMessage={onEditUserMessage}
+      />
+    );
+
+    expect(container.querySelector('time')).toHaveAttribute(
+      'datetime',
+      '2026-08-19T00:00:00.000Z'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit and resend' }));
+    expect(onEditUserMessage).toHaveBeenCalledWith({
+      id: 'user-1',
+      content: 'Review the event timeline',
+      attaches: [
+        expect.objectContaining({
+          fileName: 'timeline-notes.md',
+          filePath: 'uploads/timeline-notes.md',
+        }),
+      ],
+    });
+  });
+
   it('renders one live authored Step text slot', () => {
     const timelineNodes: ChatProjectionNode[] = [
       {
