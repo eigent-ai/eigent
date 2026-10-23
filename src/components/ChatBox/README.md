@@ -135,8 +135,8 @@ instead of moving it to the end or nesting it under a tool.
 
 ## Timeline modes
 
-Two modes, selected by an `IconPillToggle` in the Session header and persisted
-in `pageTabStore`:
+Two modes, selected in the Session settings menu and persisted in
+`pageTabStore`:
 
 | Mode         | Question it answers               | Work-band unit |
 | ------------ | --------------------------------- | -------------- |
@@ -195,10 +195,23 @@ prompt and the human's answer through the same disclosure a tool call uses.
 
 ### Fold policy
 
-Calls stay folded by default; narrative exists to show the agent's words, not
-its tool rows. A failed segment is the exception and opens to the failing row.
-While a segment is folded the running shimmer sits on its label; opening it
-hands the shimmer to the call that owns it, so exactly one indicator shows.
+The outer work log follows the Run by default: open while work is active or
+paused, folded when it ends. A user's toggle takes ownership of that Run's
+disclosure until it is unmounted, so later status receipts do not undo the
+choice. Live local toolkit rows come from the canonical Run stream; `/chat`
+toolkit mirrors remain available only for historical playback and the legacy
+renderer.
+
+Narrative follows the older event-log structure: the agent's words in place,
+then one row per call, led by the toolkit's icon. A fallback toolkit/method
+title reads in outcome tense (`Running` / `Ran` / `Failed to run` / `Stopped`);
+an authored title keeps its own wording. Each row's request/response detail
+stays folded; only a pending human call opens itself. A call with nothing to
+reveal is a plain line.
+Minimum and Moderate density count consecutive repeats of one toolkit method
+on a single `· N events` row, which opens when one of its calls fails. While
+that row is folded the running shimmer sits on its label; opening it hands the
+shimmer to the call that owns it, so exactly one indicator shows.
 
 ### Pause and resume
 

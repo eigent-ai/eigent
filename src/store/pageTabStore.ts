@@ -17,8 +17,11 @@ import { canonicalizeBrowserUrl, normalizeBrowserUrl } from '@/lib/browserUrl';
 import { disposeShellSession } from '@/lib/shellSessions';
 import {
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+  DEFAULT_NARRATIVE_INFORMATION_DENSITY,
   normalizeChatTimelineDetailLevel,
+  normalizeNarrativeInformationDensity,
   type ChatTimelineDetailLevel,
+  type NarrativeInformationDensity,
 } from '@/types/chatTimeline';
 import i18next from 'i18next';
 import { create } from 'zustand';
@@ -519,6 +522,10 @@ export interface PageTabState {
   /** Event-native ChatBox presentation density. Persisted across Projects. */
   chatTimelineDetailLevel: ChatTimelineDetailLevel;
   setChatTimelineDetailLevel: (level: ChatTimelineDetailLevel) => void;
+  narrativeInformationDensity: NarrativeInformationDensity;
+  setNarrativeInformationDensity: (
+    density: NarrativeInformationDensity
+  ) => void;
   /** One-shot request consumed by the active Project session panel. */
   sessionSidePanelToggleRequestId: number;
   sessionSidePanelToggleProjectId: string | null;
@@ -854,6 +861,12 @@ export const usePageTabStore = create<PageTabState>()(
       setChatTimelineDetailLevel: (level) =>
         set({
           chatTimelineDetailLevel: normalizeChatTimelineDetailLevel(level),
+        }),
+      narrativeInformationDensity: DEFAULT_NARRATIVE_INFORMATION_DENSITY,
+      setNarrativeInformationDensity: (density) =>
+        set({
+          narrativeInformationDensity:
+            normalizeNarrativeInformationDensity(density),
         }),
       sessionSidePanelToggleRequestId: 0,
       sessionSidePanelToggleProjectId: null,
@@ -1690,7 +1703,7 @@ export const usePageTabStore = create<PageTabState>()(
     }),
     {
       name: 'eigent-page-tab',
-      version: 5,
+      version: 6,
       // v1: Project.mode becomes the source of truth. Drop the legacy global
       // sessionSidePanelMode so mode no longer drifts between Projects.
       // v2: Project sidebar fold was removed; drop persisted fold state.
@@ -1711,6 +1724,12 @@ export const usePageTabStore = create<PageTabState>()(
             next.chatTimelineDetailLevel = normalizeChatTimelineDetailLevel(
               next.chatTimelineDetailLevel
             );
+          }
+          if (version < 6) {
+            next.narrativeInformationDensity =
+              normalizeNarrativeInformationDensity(
+                next.narrativeInformationDensity
+              );
           }
           if (version < 4) {
             next.workspaceReviewHandoffs = [];
@@ -1735,6 +1754,7 @@ export const usePageTabStore = create<PageTabState>()(
         sessionSummaryOpenByProject: state.sessionSummaryOpenByProject,
         workspaceSidebarHidden: state.workspaceSidebarHidden,
         chatTimelineDetailLevel: state.chatTimelineDetailLevel,
+        narrativeInformationDensity: state.narrativeInformationDensity,
         customAgentFolderPathByProjectId:
           state.customAgentFolderPathByProjectId,
         workspaceReviewHandoffs: state.workspaceReviewHandoffs,

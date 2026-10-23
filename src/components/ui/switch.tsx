@@ -20,7 +20,7 @@ import { DS_FOCUS_RING } from './semanticProps';
 import { mergeAliasStyles, switchTokenAliases } from './tokenAliases';
 
 export type SwitchSize = 'default' | 'sm';
-export type SwitchVariant = 'default' | 'outline';
+export type SwitchVariant = 'default' | 'solid' | 'outline';
 
 type SwitchProps = React.ComponentPropsWithoutRef<
   typeof SwitchPrimitives.Root
@@ -43,6 +43,11 @@ const sizeClasses = {
 const variantClasses: Record<SwitchVariant, { root: string; thumb: string }> = {
   default: {
     root: 'border-transparent data-[state=checked]:bg-ds-bg-success-default-default data-[state=unchecked]:bg-ds-neutral-subtle-default',
+    thumb:
+      'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
+  },
+  solid: {
+    root: 'border-transparent data-[state=checked]:bg-ds-bg-success-default-default data-[state=unchecked]:bg-ds-neutral-default-default',
     thumb:
       'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
   },

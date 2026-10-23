@@ -633,7 +633,7 @@
     "navigate-dispatch": "Vai a Distribuzione",
     "navigate-configuration": "Vai a Configurazione",
     "new-project": "Nuova sessione",
-    "toggle-timeline-view": "Alterna vista Chat / Traiettoria",
+    "toggle-timeline-view": "Attiva/disattiva modalità sviluppatore",
     "toggle-preview-panel": "Mostra/nascondi pannello anteprima",
     "open-preview-browser": "Apri il browser nell’anteprima",
     "open-preview-terminal": "Apri il terminale nell’anteprima",

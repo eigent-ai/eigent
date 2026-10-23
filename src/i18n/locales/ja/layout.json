@@ -633,7 +633,7 @@
     "navigate-dispatch": "ディスパッチへ移動",
     "navigate-configuration": "設定へ移動",
     "new-project": "新規セッション",
-    "toggle-timeline-view": "チャット／軌跡ビューの切り替え",
+    "toggle-timeline-view": "開発者モードの切り替え",
     "toggle-preview-panel": "プレビューパネルの切り替え",
     "open-preview-browser": "プレビューでブラウザを開く",
     "open-preview-terminal": "プレビューでターミナルを開く",

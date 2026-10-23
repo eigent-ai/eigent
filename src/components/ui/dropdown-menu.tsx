@@ -96,14 +96,17 @@ const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
     inset?: boolean;
+    /** A composed shared primitive owns its own visual recipe. */
+    unstyled?: boolean;
   }
->(({ className, inset, ...props }, ref) => (
+>(({ className, inset, unstyled = false, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex min-h-ds-control-lg items-center gap-2 rounded-ds-menu-row px-2 py-1.5 text-ds-text-base [&>svg]:size-4 [&>svg]:shrink-0',
-      DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
-      inset && 'pl-8',
+      !unstyled &&
+        'relative flex min-h-ds-control-lg items-center gap-2 rounded-ds-menu-row px-2 py-1.5 text-ds-text-base [&>svg]:size-4 [&>svg]:shrink-0',
+      !unstyled && DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
+      !unstyled && inset && 'pl-8',
       className
     )}
     {...props}
