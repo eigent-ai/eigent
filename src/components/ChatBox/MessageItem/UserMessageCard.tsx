@@ -70,6 +70,8 @@ interface UserMessageCardProps {
   attaches?: readonly UserMessageAttachment[];
   createdAt?: string | number | null;
   onEditAndResend?: () => void;
+  /** Nested in a row that already marks the user query for scroll anchoring. */
+  embedded?: boolean;
 }
 
 export function UserMessageCard({
@@ -79,6 +81,7 @@ export function UserMessageCard({
   attaches,
   createdAt,
   onEditAndResend,
+  embedded = false,
 }: UserMessageCardProps) {
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
@@ -197,8 +200,8 @@ export function UserMessageCard({
     <div
       key={id}
       className={cn('group/msg relative w-full pl-16', className)}
-      data-message-role="user"
-      data-user-query-anchor
+      data-message-role={embedded ? undefined : 'user'}
+      data-user-query-anchor={embedded ? undefined : true}
     >
       <div className="w-full overflow-visible rounded-xl rounded-br-sm bg-ds-neutral-strong-default px-4 py-2">
         {attaches && attaches.length > 0 && (

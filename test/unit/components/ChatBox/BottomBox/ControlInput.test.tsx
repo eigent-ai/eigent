@@ -173,11 +173,10 @@ describe('BottomBox approval keyboard safety', () => {
       name: 'Send feedback',
     });
     expect(within(sendFeedback).getByText('Enter')).toHaveClass(
-      'bg-ds-accent-subtle-default',
+      'bg-transparent',
       'rounded-full',
-      'opacity-60',
       '!text-ds-text-meta',
-      'text-ds-accent-default-default',
+      '!text-ds-ink-inverse',
       'ring-ds-hairline-muted-default'
     );
 

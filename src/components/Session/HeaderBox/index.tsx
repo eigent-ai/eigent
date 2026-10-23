@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
@@ -36,49 +35,22 @@ import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice } from '@/store/pageTabStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import {
-  chatTimelineDetailLevels,
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
-  type ChatTimelineDetailLevel,
+  DEFAULT_NARRATIVE_INFORMATION_DENSITY,
 } from '@/types/chatTimeline';
 import {
   Archive,
   ArrowLeft,
-  createLucideIcon,
   EllipsisVertical,
   GalleryThumbnails,
-  Logs,
   Pencil,
   Pin,
   Trash2,
-  type LucideIcon,
 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SessionViewSettings } from './SessionViewSettings';
 import { SummaryToggle, type SummaryToggleProps } from './SummaryToggle';
-
-const SquareText = createLucideIcon('square-text', [
-  [
-    'rect',
-    { width: '18', height: '18', x: '3', y: '3', rx: '2', key: 'frame' },
-  ],
-  ['path', { d: 'M7 8h10', key: 'line-top' }],
-  ['path', { d: 'M7 12h10', key: 'line-middle' }],
-  ['path', { d: 'M7 16h6', key: 'line-bottom' }],
-]);
-
-/**
- * Narrative reads as prose, trajectory reads as a log trace. The icons
- * carry the distinction on their own so the toggle needs no visible text.
- */
-const TIMELINE_MODE_ICONS: Record<ChatTimelineDetailLevel, LucideIcon> = {
-  narrative: SquareText,
-  trajectory: Logs,
-};
-
-const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
-  narrative: 'Narrative',
-  trajectory: 'Trajectory',
-};
 
 /** Match the composer control row when the resizable Session pane is narrow. */
 const COMPACT_WIDTH_THRESHOLD = 460;
@@ -150,6 +122,13 @@ export function HeaderBox({
   const setChatTimelineDetailLevel = useSessionPageTabStore(
     (s) => s.setChatTimelineDetailLevel
   );
+  const narrativeInformationDensity = useSessionPageTabStore(
+    (s) =>
+      s.narrativeInformationDensity ?? DEFAULT_NARRATIVE_INFORMATION_DENSITY
+  );
+  const setNarrativeInformationDensity = useSessionPageTabStore(
+    (s) => s.setNarrativeInformationDensity
+  );
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
   const pinnedProjectIds = useSessionControlsStore((s) => s.pinnedProjectIds);
   const togglePinned = useSessionControlsStore((s) => s.togglePinned);
@@ -165,21 +144,6 @@ export function HeaderBox({
   const sessionMenuLabel = t('layout.project-settings', {
     defaultValue: 'Session settings',
   });
-  const timelineStyleTooltip = t('chat.timeline-style-tooltip', {
-    defaultValue: 'Chat timeline style',
-  });
-  const timelineStyleLabel = (level: ChatTimelineDetailLevel) =>
-    t(`chat.timeline-style-${level}`, {
-      defaultValue: TIMELINE_MODE_FALLBACK_LABELS[level],
-    });
-  const timelineModeOptions = chatTimelineDetailLevels.map((level) => ({
-    value: level,
-    label: timelineStyleLabel(level),
-    icon: TIMELINE_MODE_ICONS[level],
-  }));
-  const handleTimelineStyleChange = (value: ChatTimelineDetailLevel) => {
-    setChatTimelineDetailLevel(value);
-  };
 
   return (
     <div
@@ -240,6 +204,21 @@ export function HeaderBox({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
+              {eventNativeTimelineEnabled && showTimelineStyle ? (
+                <>
+                  <SessionViewSettings
+                    devMode={chatTimelineDetailLevel === 'trajectory'}
+                    density={narrativeInformationDensity}
+                    onDevModeChange={(enabled) =>
+                      setChatTimelineDetailLevel(
+                        enabled ? 'trajectory' : 'narrative'
+                      )
+                    }
+                    onDensityChange={setNarrativeInformationDensity}
+                  />
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
               <DropdownMenuItem onSelect={() => togglePinned(projectId)}>
                 <DsIcon icon={Pin} recipe="main" />
                 {t(pinned ? 'layout.unpin' : 'layout.pin')}
@@ -277,7 +256,7 @@ export function HeaderBox({
         ) : null}
       </div>
 
-      {/* Right: optional token count + timeline pill + preview toggle. */}
+      {/* Right: optional token count + summary toggle + preview toggle. */}
       <div className="flex items-center gap-ds-4 text-ds-ink-muted-default">
         {!compact ? (
           <div className="flex items-center gap-1">
@@ -287,44 +266,6 @@ export function HeaderBox({
               <AnimatedTokenNumber value={totalTokens} />
             </span>
           </div>
-        ) : null}
-        {eventNativeTimelineEnabled && showTimelineStyle ? (
-          <Tabs
-            value={chatTimelineDetailLevel}
-            onValueChange={(value) =>
-              handleTimelineStyleChange(value as ChatTimelineDetailLevel)
-            }
-            className="no-drag inline-flex shrink-0"
-          >
-            <TabsList appearance="default" aria-label={timelineStyleTooltip}>
-              {timelineModeOptions.map((option) => {
-                const Icon = option.icon;
-                return (
-                  <TabsTrigger
-                    key={option.value}
-                    value={option.value}
-                    aria-label={option.label}
-                  >
-                    <TooltipSimple
-                      content={
-                        <ShortcutTooltipContent
-                          label={option.label}
-                          shortcutId="toggle-timeline-view"
-                        />
-                      }
-                      compact
-                      variant="instant"
-                      side="bottom"
-                    >
-                      <div className="inline-flex h-5 w-5 items-center justify-center">
-                        <Icon size={16} />
-                      </div>
-                    </TooltipSimple>
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-          </Tabs>
         ) : null}
         {summary ? <SummaryToggle {...summary} /> : null}
         <TooltipSimple

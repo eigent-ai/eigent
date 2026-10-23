@@ -364,6 +364,15 @@ option text wrap within that space.
 Use `Textarea variant="outlined"` for a multiline field with the same visible
 border and validation colors as `Input`.
 
+### Switch
+
+Use `Switch` with `size="default"` or `size="sm"`. The `default` variant
+uses Neutral subtle for the off-state track. Use `variant="solid"` on a
+subtle surface: its off-state track uses `bg-ds-neutral-default-default`
+without a visible border or outer shadow. The `outline` variant adds a
+Hairline boundary. All variants share the checked Success treatment, thumb
+geometry, disabled behavior, and keyboard focus ring.
+
 ### Tags, badges, rows, menus, and overlays
 
 - Tags and badges are pills using `text.meta`; tone conveys meaning.
