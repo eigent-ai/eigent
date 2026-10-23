@@ -150,6 +150,7 @@
   "message-editing-copy": "تعديل نسخة من رسالة سابقة",
   "message-draft-exists": "هناك مسودة غير مرسلة بالفعل.",
   "message-reattach-files": "أعد إضافة المرفقات قبل الإرسال.",
+  "message-edit-after-request": "أجب عن الطلب المفتوح أولًا، ثم عدّل وأعد الإرسال.",
   "control-region-label": "طلب من الوكيل",
   "control-review-next-request": "مراجعة الطلب التالي",
   "control-input-required": "مطلوب ردّك",

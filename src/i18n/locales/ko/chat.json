@@ -150,6 +150,7 @@
   "message-editing-copy": "이전 메시지의 사본 수정 중",
   "message-draft-exists": "이미 보내지 않은 초안이 있습니다.",
   "message-reattach-files": "보내기 전에 파일을 다시 첨부하세요.",
+  "message-edit-after-request": "먼저 열려 있는 요청에 답한 다음 수정 후 다시 보내세요.",
   "control-region-label": "에이전트 요청",
   "control-review-next-request": "다음 요청 검토",
   "control-input-required": "확인이 필요합니다",

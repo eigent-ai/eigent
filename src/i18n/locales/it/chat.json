@@ -150,6 +150,7 @@
   "message-editing-copy": "Modifica di una copia di un messaggio precedente",
   "message-draft-exists": "Esiste già una bozza non inviata.",
   "message-reattach-files": "Allega nuovamente i file prima di inviare.",
+  "message-edit-after-request": "Rispondi prima alla richiesta aperta, poi modifica e invia di nuovo.",
   "control-region-label": "Richiesta dell’agente",
   "control-review-next-request": "Esamina la richiesta successiva",
   "control-input-required": "Serve la tua risposta",

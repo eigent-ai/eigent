@@ -150,6 +150,7 @@
   "message-editing-copy": "正在编辑先前消息的副本",
   "message-draft-exists": "已有未发送的草稿。",
   "message-reattach-files": "发送前请重新添加附件。",
+  "message-edit-after-request": "请先回复待处理的请求，再编辑并重新发送。",
   "control-region-label": "智能体请求",
   "control-review-next-request": "查看下一个请求",
   "control-input-required": "需要你的确认",

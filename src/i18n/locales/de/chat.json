@@ -150,6 +150,7 @@
   "message-editing-copy": "Kopie einer früheren Nachricht bearbeiten",
   "message-draft-exists": "Es gibt bereits einen ungesendeten Entwurf.",
   "message-reattach-files": "Füge die Anhänge vor dem Senden erneut hinzu.",
+  "message-edit-after-request": "Beantworte zuerst die offene Anfrage, dann bearbeite und sende erneut.",
   "control-region-label": "Agent-Anfrage",
   "control-review-next-request": "Nächste Anfrage prüfen",
   "control-input-required": "Eingabe erforderlich",

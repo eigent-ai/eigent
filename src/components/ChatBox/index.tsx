@@ -2886,8 +2886,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       : null,
     composerVariant: 'input',
   });
-  // The editing note replaces only the plain composer. A legacy ask header
-  // stays visible so an edited copy is never mistaken for a new request.
+  // The editing note decorates only the plain composer. An open approval or
+  // question keeps its own controls, so an edited copy never reads as an answer.
   const bottomBoxVariant =
     bottomBoxControl.source === 'composer' &&
     bottomBoxControl.variant === 'input' &&
@@ -2913,6 +2913,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       : `${activeProjectId}:${activeTaskId}:${activeInteraction?.interaction_id ?? activeAskMessage?.id ?? ''}`
     : null;
   const handleEditUserMessage = (source: EditUserMessageSource) => {
+    // A legacy question answers through the composer text, so an earlier
+    // message must not land there while any request is open.
+    if (humanDecisionVariant) {
+      toast.info(t('chat.message-edit-after-request'));
+      return;
+    }
     if (message.trim() || activeTask?.attaches?.length) {
       toast.info(t('chat.message-draft-exists'));
       return;

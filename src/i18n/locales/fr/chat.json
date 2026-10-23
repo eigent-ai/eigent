@@ -150,6 +150,7 @@
   "message-editing-copy": "Modification d’une copie d’un ancien message",
   "message-draft-exists": "Un brouillon non envoyé existe déjà.",
   "message-reattach-files": "Ajoutez de nouveau les pièces jointes avant l’envoi.",
+  "message-edit-after-request": "Répondez d’abord à la demande en cours, puis modifiez et renvoyez.",
   "control-region-label": "Demande de l’agent",
   "control-review-next-request": "Examiner la demande suivante",
   "control-input-required": "Action requise",

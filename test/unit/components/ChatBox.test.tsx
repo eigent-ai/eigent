@@ -4438,6 +4438,51 @@ describe('ChatBox Component', async () => {
       );
     });
 
+    it('keeps Edit and resend out of an open legacy question answer', () => {
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'test-agent',
+              hasMessages: true,
+              messages: [
+                { id: 'earlier', role: 'user', content: 'Earlier request' },
+                {
+                  id: 'legacy-question',
+                  role: 'agent',
+                  step: 'ask',
+                  content: 'Which colour?',
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+      renderChatBox();
+
+      const props = vi.mocked(ProjectChatContainer).mock.calls.at(-1)?.[0];
+      act(() =>
+        props!.onEditUserMessage!({ id: 'earlier', content: 'Earlier request' })
+      );
+
+      const card = screen.getByRole('region', {
+        name: 'chat.control-region-label',
+      });
+      expect(
+        within(card).getByRole('textbox', {
+          name: 'chat.control-feedback-label',
+        })
+      ).toHaveValue('');
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      expect(toast.info).toHaveBeenCalledWith(
+        'chat.message-edit-after-request'
+      );
+    });
+
     it('keeps a failed legacy question answer in the card for retry', async () => {
       const user = userEvent.setup();
       _mockFetchPost.mockRejectedValueOnce(new Error('Reply unavailable'));
