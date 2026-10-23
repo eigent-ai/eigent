@@ -404,6 +404,17 @@ Markdown is scoped. Use the existing profile in `src/style/markdown-styles.css`
 and `src/components/ChatBox/MessageItem/MarkDown.tsx`; never style global
 `p`, headings, lists, tables, or code to change one Markdown surface.
 
+### Chat composition
+
+Narrative content and the composer share the existing conversation frame.
+Trajectory intentionally uses the full available chat width. Within narrative,
+use `space.panel-inset` for prose, work-log leading content, file-list content,
+and composer text. Icon-bearing rows retain their icon/text gap and nested
+details retain their indentation. User-message actions stay below the bubble
+with compact `Button size="xs"` controls and stable space on hover or focus.
+Markdown tables keep normal word boundaries and scroll within the shared
+scrollbar recipe when their intrinsic column widths exceed the content area.
+
 ### App shell and working surfaces
 
 Preserve ownership of navigation, split panes, chat scroll anchors, browser

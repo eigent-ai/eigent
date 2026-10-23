@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -140,9 +141,10 @@ export const SessionPanelButton = forwardRef<
           <span className="flex shrink-0 items-center">{badge}</span>
         ) : null}
         {chevron ? (
-          <ChevronDown
+          <DsIcon
+            icon={ChevronDown}
             className={cn(
-              'size-4 shrink-0 text-ds-ink-muted-default transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none',
+              'text-ds-ink-muted-default transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none',
               earlierRow
                 ? 'opacity-100'
                 : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
@@ -259,7 +261,7 @@ export function EarlierItems({
     <div className="flex min-w-0 flex-col">
       <SessionPanelButton
         variant="earlier"
-        leading={<History size={16} aria-hidden />}
+        leading={<DsIcon icon={History} />}
         chevron
         open={open}
         ariaExpanded={open}
