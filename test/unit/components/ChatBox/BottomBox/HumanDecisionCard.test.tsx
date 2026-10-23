@@ -14,8 +14,48 @@
 
 import { HumanDecisionCard } from '@/components/ChatBox/BottomBox/HumanDecisionCard';
 import type { BottomBoxApprovalVariant } from '@/components/ChatBox/BottomBox/types';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { useEventNativeHumanControl } from '@/components/ChatBox/BottomBox/useEventNativeHumanControl';
+import type { HumanControlInteraction } from '@/lib/projector/control';
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  within,
+} from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  interaction: null as HumanControlInteraction | null,
+}));
+
+vi.mock('@/hooks/useProjectEventView', () => ({
+  useProjectHumanControlProjection: () =>
+    mocks.interaction
+      ? {
+          projectId: mocks.interaction.projectId,
+          interactionById: {
+            [mocks.interaction.interactionId]: mocks.interaction,
+          },
+          orderedInteractionIds: [mocks.interaction.interactionId],
+          seenEventIds: {},
+        }
+      : null,
+}));
+
+vi.mock('@/service/humanInteractionApi', () => ({
+  decideHumanInteraction: vi.fn(),
+}));
+
+vi.mock('@/service/humanInteractionEventReconciliation', () => ({
+  reconcileHumanInteractionEvents: vi.fn(),
+}));
+
+vi.mock('@/store/authStore', () => ({
+  getAuthStore: () => ({ user_id: 42 }),
+  useAuthStore: (selector: (state: { user_id: number }) => unknown) =>
+    selector({ user_id: 42 }),
+}));
 
 function approval(
   onApprove: BottomBoxApprovalVariant['onApprove']
@@ -30,7 +70,7 @@ function approval(
 }
 
 describe('HumanDecisionCard', () => {
-  it('shows only the approval type and title above its controls', () => {
+  it('shows the approval type, title, target and arguments above its controls', () => {
     const { container } = render(
       <HumanDecisionCard
         requestKey="run:approval-1"
@@ -52,9 +92,8 @@ describe('HumanDecisionCard', () => {
     expect(screen.getByText('Input required')).toBeInTheDocument();
     expect(screen.getByText('Run shell_exec?')).toBeInTheDocument();
     expect(screen.queryByText('Technical context')).not.toBeInTheDocument();
-    expect(screen.queryByText('single_agent')).not.toBeInTheDocument();
-    expect(screen.queryByText('Review details')).not.toBeInTheDocument();
-    expect(screen.queryByText('secret')).not.toBeInTheDocument();
+    expect(screen.getByText('single_agent')).toBeInTheDocument();
+    expect(screen.getByText('Review details')).toBeInTheDocument();
     const card = container.querySelector('[data-human-decision-card]');
     // A floating card uses elevation alone, not a boundary as well.
     expect(card).toHaveClass('rounded-ds-card', 'shadow-ds-elevation-popover');
@@ -70,6 +109,63 @@ describe('HumanDecisionCard', () => {
     expect(
       screen.getByRole('button', { name: 'Approve once' })
     ).toBeInTheDocument();
+  });
+
+  it('shows the target and arguments of an event-native approval', () => {
+    mocks.interaction = {
+      interactionId: 'approval-1',
+      interactionType: 'approval',
+      status: 'requested',
+      projectId: 'project-1',
+      runId: 'run-1',
+      sequence: 3,
+      lastSequence: 3,
+      cloudCursor: null,
+      lastCloudCursor: null,
+      requestEventId: 'request-1',
+      requestSource: 'canonical',
+      lastEventId: 'request-1',
+      requestedAt: '2026-08-11T10:00:03.000Z',
+      updatedAt: '2026-08-11T10:00:03.000Z',
+      version: 0,
+      approvalId: 'approval-1',
+      actionDigest: 'digest-1',
+      allowedScopes: ['once'],
+      title: 'Allow shell_exec?',
+      prompt: 'The agent wants to run shell_exec (terminal.exec).',
+      agent: 'developer_agent',
+      operation: 'terminal.exec',
+      targetResources: ['notes/plan.md'],
+      displayArguments: { command: 'rm -rf build' },
+      ruleMatcher: null,
+      options: [],
+      fields: [],
+    };
+    const { result } = renderHook(() =>
+      useEventNativeHumanControl({
+        projectId: 'project-1',
+        activeRunId: 'run-1',
+      })
+    );
+    const variant = result.current.variant;
+    if (variant?.kind !== 'approval') throw new Error('Expected an approval');
+
+    const { container } = render(
+      <HumanDecisionCard requestKey="run-1:approval-1" variant={variant} />
+    );
+
+    expect(
+      screen.getByText('The agent wants to run shell_exec (terminal.exec).')
+    ).toBeInTheDocument();
+    expect(screen.getByText('notes/plan.md')).toBeInTheDocument();
+    const details = container.querySelector('details');
+    expect(details).not.toBeNull();
+    expect(
+      within(details as HTMLElement).getByText(
+        'Review details (sensitive values hidden)'
+      )
+    ).toBeInTheDocument();
+    expect(details).toHaveTextContent('rm -rf build');
   });
 
   it('keeps a failed approval decision visible without restoring technical context', () => {

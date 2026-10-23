@@ -76,11 +76,8 @@ export function HumanDecisionCard({
           <BoxHeaderDisplay
             {...variant.header}
             {...(variant.kind === 'approval'
-              ? {
-                  description: undefined,
-                  contextItems: undefined,
-                  details: undefined,
-                }
+              ? // The target and arguments say what is being approved.
+                { description: undefined }
               : {})}
             className="px-0 pt-0"
             descriptionAsTitle={
