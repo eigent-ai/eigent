@@ -344,10 +344,8 @@ function FeedbackInput({
         aria-label={t('chat.control-feedback-label')}
         value={variant.value}
         placeholder={variant.placeholder}
-        className={cn(
-          isQuestion &&
-            'border-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0'
-        )}
+        variant={isQuestion ? 'plain' : 'none'}
+        size="sm"
         disabled={variant.disabled || variant.submitting}
         onChange={(event) => variant.onChange(event.target.value)}
         onEnter={variant.value.trim() ? variant.onSubmit : undefined}
