@@ -29,6 +29,7 @@ import {
 } from '@/components/Session/DeleteSessionDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { useSessionNavStatuses } from '@/hooks/useSessionNavStatuses';
 import { useHost } from '@/host';
@@ -43,6 +44,7 @@ import {
   deleteSessionTaskData,
 } from '@/lib/sessionFileCleanup';
 import { resolveSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import { renameSession } from '@/lib/sessionRename';
 import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
@@ -59,6 +61,7 @@ import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { readSessionExecutionRoute } from '@/store/sessionExecutionStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
@@ -148,17 +151,16 @@ export default function SpaceSidebar({
   const [achieveProjectId, setAchieveProjectId] = useState<string | null>(null);
   const [achieveProjectLoading, setAchieveProjectLoading] = useState(false);
   const [achieveDialogOpen, setAchieveDialogOpen] = useState(false);
-  const [pinnedProjectIds, setPinnedProjectIds] = useState<Set<string>>(() => {
-    try {
-      return new Set(
-        JSON.parse(
-          localStorage.getItem('eigent-pinned-projects') ?? '[]'
-        ) as string[]
-      );
-    } catch {
-      return new Set();
-    }
-  });
+  const pinnedProjectIds = useSessionControlsStore((s) => s.pinnedProjectIds);
+  const togglePinned = useSessionControlsStore((s) => s.togglePinned);
+  const refreshPinned = useSessionControlsStore((s) => s.refreshPinned);
+  const sessionControlRequest = useSessionControlsStore((s) => s.request);
+  const handledSessionControlRequest = useRef(
+    sessionControlRequest?.sequence ?? 0
+  );
+  const [renameProjectId, setRenameProjectId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameProjectLoading, setRenameProjectLoading] = useState(false);
 
   const scheduledTabLabel = t('layout.scheduled-tab');
 
@@ -398,7 +400,7 @@ export default function SpaceSidebar({
               isAchieved: isProjectAchieved(project.metadata),
             }),
             achieved: isProjectAchieved(project.metadata),
-            pinned: pinnedProjectIds.has(project.id),
+            pinned: pinnedProjectIds.includes(project.id),
             source: activeTask?.source,
           };
         }),
@@ -513,25 +515,10 @@ export default function SpaceSidebar({
     return false;
   }, [activeProjectId, activeSpaceId, t]);
 
-  const handlePinSession = useCallback((projectId: string) => {
-    setPinnedProjectIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(projectId)) {
-        next.delete(projectId);
-      } else {
-        next.add(projectId);
-      }
-      try {
-        localStorage.setItem(
-          'eigent-pinned-projects',
-          JSON.stringify([...next])
-        );
-      } catch {
-        /* storage unavailable */
-      }
-      return next;
-    });
-  }, []);
+  const handlePinSession = useCallback(
+    (projectId: string) => togglePinned(projectId),
+    [togglePinned]
+  );
 
   const requestDeleteSession = useCallback((projectId: string) => {
     const auth = useAuthStore.getState();
@@ -545,6 +532,58 @@ export default function SpaceSidebar({
     setAchieveProjectId(projectId);
     setAchieveDialogOpen(true);
   }, []);
+
+  const requestRenameSession = useCallback((projectId: string) => {
+    const name = useSpaceStore.getState().getProjectMeta(projectId)?.name;
+    setRenameValue(name ?? '');
+    setRenameProjectId(projectId);
+  }, []);
+
+  useEffect(() => {
+    refreshPinned();
+    window.addEventListener('storage', refreshPinned);
+    return () => window.removeEventListener('storage', refreshPinned);
+  }, [refreshPinned]);
+
+  useEffect(() => {
+    if (
+      !sessionControlRequest ||
+      sessionControlRequest.sequence <= handledSessionControlRequest.current
+    ) {
+      return;
+    }
+    handledSessionControlRequest.current = sessionControlRequest.sequence;
+    const { action, projectId } = sessionControlRequest;
+    if (action === 'rename') requestRenameSession(projectId);
+    if (action === 'end') requestEndSession(projectId);
+    if (action === 'delete') requestDeleteSession(projectId);
+  }, [
+    requestDeleteSession,
+    requestEndSession,
+    requestRenameSession,
+    sessionControlRequest,
+  ]);
+
+  const confirmRenameSession = useCallback(async () => {
+    const projectId = renameProjectId;
+    const name = renameValue.trim();
+    if (!projectId || !name || renameProjectLoading) return;
+    setRenameProjectLoading(true);
+    try {
+      await renameSession(
+        projectId,
+        name,
+        projectStore,
+        useSpaceStore.getState()
+      );
+      setRenameProjectId(null);
+    } catch (error) {
+      console.error('[SpaceSidebar] Failed to rename session:', error);
+      toast.error(t('layout.failed-to-rename-session'));
+    } finally {
+      setRenameProjectLoading(false);
+    }
+  }, [projectStore, renameProjectId, renameProjectLoading, renameValue, t]);
 
   const confirmDeleteSession = useCallback(async () => {
     const projectId = deleteProjectId;
@@ -688,6 +727,27 @@ export default function SpaceSidebar({
         open={globalSearchOpen}
         onOpenChange={setGlobalSearchOpen}
       />
+      <AlertDialog
+        isOpen={renameProjectId != null}
+        onClose={() => {
+          if (!renameProjectLoading) setRenameProjectId(null);
+        }}
+        onConfirm={() => void confirmRenameSession()}
+        closeOnConfirm={false}
+        title={t('layout.rename-project')}
+        confirmText={t('layout.save')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+        confirmDisabled={!renameValue.trim() || renameProjectLoading}
+      >
+        <Input
+          autoFocus
+          value={renameValue}
+          onChange={(event) => setRenameValue(event.target.value)}
+          placeholder={t('layout.project-name')}
+          aria-label={t('layout.project-name')}
+        />
+      </AlertDialog>
       <DeleteSessionDialog
         projectId={deleteProjectId}
         phase={deleteProjectPhase}

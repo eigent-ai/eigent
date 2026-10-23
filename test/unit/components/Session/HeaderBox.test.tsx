@@ -14,6 +14,7 @@
 
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
@@ -26,6 +27,7 @@ vi.mock('@/store/authStore', () => ({
 
 describe('HeaderBox chat timeline mode', () => {
   let resizeHeader: ((width: number) => void) | undefined;
+  let resizeTitle: ((width: number) => void) | undefined;
 
   beforeEach(() => {
     vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
@@ -35,20 +37,25 @@ describe('HeaderBox chat timeline mode', () => {
     vi.stubGlobal(
       'ResizeObserver',
       class ResizeObserverMock {
-        constructor(callback: ResizeObserverCallback) {
-          resizeHeader = (width) =>
-            callback(
+        constructor(private callback: ResizeObserverCallback) {}
+
+        observe(target: Element) {
+          const resize = (width: number) =>
+            this.callback(
               [{ contentRect: { width } } as ResizeObserverEntry],
               this as unknown as ResizeObserver
             );
+          if (target.tagName === 'SPAN') resizeTitle = resize;
+          else resizeHeader = resize;
         }
 
-        observe() {}
         unobserve() {}
         disconnect() {}
       }
     );
     usePageTabStore.setState({ chatTimelineDetailLevel: 'narrative' });
+    localStorage.removeItem('eigent-pinned-projects');
+    useSessionControlsStore.setState({ pinnedProjectIds: [], request: null });
   });
 
   afterEach(() => {
@@ -57,7 +64,172 @@ describe('HeaderBox chat timeline mode', () => {
     vi.restoreAllMocks();
   });
 
-  it('hides Back and the timeline style on the New session header', () => {
+  it('uses the Session title and trailing menu icon as one trigger', async () => {
+    const user = userEvent.setup();
+    render(
+      <HeaderBox
+        totalTokens={42}
+        projectName="Timeline project"
+        projectId="project-1"
+      />
+    );
+
+    const title = screen.getByText('Timeline project');
+    const menu = screen.getByRole('button', {
+      name: 'Session settings: Timeline project',
+    });
+    const tokenLabel = screen.getByText(/Total:/);
+    const previewButton = screen.getByRole('button', {
+      name: 'Open preview',
+    });
+    const menuIcon = menu.querySelector('.lucide-ellipsis-vertical');
+
+    expect(menu).toContainElement(title);
+    expect(menu).toContainElement(menuIcon as HTMLElement);
+    expect(menu).toHaveClass('active:scale-100');
+    expect(menu).not.toHaveClass('active:scale-[0.97]');
+    expect(title).toHaveClass('max-w-[200px]', 'overflow-hidden');
+    expect(title).not.toHaveClass('truncate');
+    expect((title as HTMLElement).style.maskImage).toBe('');
+    expect(title).toHaveAttribute('title', 'Timeline project');
+    expect(
+      menu.compareDocumentPosition(tokenLabel) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      tokenLabel.compareDocumentPosition(previewButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await user.click(title);
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    await user.click(menuIcon!);
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps a long Session title bounded and exposes its full name', () => {
+    const projectName = 'A long Session title that exceeds the header width';
+    let titleWidth = 200;
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(280);
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(
+      () => titleWidth
+    );
+    render(<HeaderBox projectName={projectName} projectId="project-1" />);
+
+    const menu = screen.getByRole('button', {
+      name: `Session settings: ${projectName}`,
+    });
+    const title = screen.getByText(projectName);
+
+    expect(menu).toHaveClass('min-w-0', 'max-w-full', 'shrink');
+    expect(title).toHaveClass('max-w-[200px]', 'overflow-hidden');
+    expect(title).not.toHaveClass('truncate');
+    expect(title).toHaveStyle({
+      maskImage:
+        'linear-gradient(to right, white calc(100% - var(--ds-ref-space-24)), transparent 100%)',
+    });
+    expect(title).toHaveAttribute('title', projectName);
+
+    titleWidth = 300;
+    act(() => resizeTitle?.(titleWidth));
+    expect((title as HTMLElement).style.maskImage).toBe('');
+  });
+
+  it('offers Pin, Rename, End, and Delete in the Session menu', async () => {
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    const items = screen.getAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Pin',
+      'Rename session',
+      'End session',
+      'Delete session',
+    ]);
+    expect(items[0].closest('[role="menu"]')).toHaveClass('w-56');
+  });
+
+  it('shows the Session trigger as selected only while its menu is open', async () => {
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+    const trigger = screen.getByRole('button', {
+      name: 'Session settings: Timeline project',
+    });
+
+    expect(trigger).not.toHaveClass('bg-ds-neutral-strong-default');
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(trigger).toHaveClass('bg-ds-neutral-strong-default');
+    await user.keyboard('{Escape}');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).not.toHaveClass('bg-ds-neutral-strong-default');
+  });
+
+  it('routes Session actions and updates the shared pinned state', async () => {
+    const user = userEvent.setup();
+    render(
+      <HeaderBox
+        totalTokens={42}
+        projectName="Timeline project"
+        projectId="project-1"
+      />
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Pin' }));
+    expect(useSessionControlsStore.getState().pinnedProjectIds).toEqual([
+      'project-1',
+    ]);
+    expect(
+      JSON.parse(localStorage.getItem('eigent-pinned-projects') ?? '[]')
+    ).toEqual(['project-1']);
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    expect(screen.getByRole('menuitem', { name: 'Unpin' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Rename session' }));
+    expect(useSessionControlsStore.getState().request).toMatchObject({
+      action: 'rename',
+      projectId: 'project-1',
+    });
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'End session' }));
+    expect(useSessionControlsStore.getState().request).toMatchObject({
+      action: 'end',
+      projectId: 'project-1',
+    });
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session' }));
+    expect(useSessionControlsStore.getState().request).toMatchObject({
+      action: 'delete',
+      projectId: 'project-1',
+    });
+  });
+
+  it('disables End session for an ended Session', async () => {
+    const user = userEvent.setup();
+    render(
+      <HeaderBox projectName="Ended" projectId="project-1" projectAchieved />
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Ended' })
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'End session' })
+    ).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('hides Back, the timeline style, and Session actions on the New session header', () => {
     render(
       <HeaderBox
         projectName="New session"
@@ -70,6 +242,9 @@ describe('HeaderBox chat timeline mode', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('tablist', { name: 'Chat timeline style' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Session settings/ })
     ).not.toBeInTheDocument();
     expect(screen.getByText('New session')).toBeInTheDocument();
     expect(
@@ -201,14 +376,23 @@ describe('HeaderBox chat timeline mode', () => {
     );
   });
 
-  it('hides token usage when the Session pane shrinks and keeps both right-side controls', () => {
-    render(<HeaderBox totalTokens={42} />);
+  it('hides token usage when the Session pane shrinks and keeps the menu and right-side controls', () => {
+    render(
+      <HeaderBox
+        totalTokens={42}
+        projectName="Timeline project"
+        projectId="project-1"
+      />
+    );
 
     expect(screen.getByText(/Total:/)).toBeInTheDocument();
 
     act(() => resizeHeader?.(400));
 
     expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('tablist', { name: 'Chat timeline style' })
     ).toBeInTheDocument();
