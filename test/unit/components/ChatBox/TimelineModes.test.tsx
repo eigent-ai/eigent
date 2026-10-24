@@ -2288,11 +2288,12 @@ describe('ChatBox timeline modes', () => {
       const tool = container.querySelector(
         '[data-timeline-call-status="' + status + '"]'
       ) as HTMLElement;
-      const trigger = tool.querySelector(
-        '[data-timeline-call-trigger]'
+      const line = tool.querySelector(
+        '[data-timeline-call-line]'
       ) as HTMLElement;
-      expect(trigger).toHaveClass('text-ds-text-status-error-default-default');
-      expect(trigger.querySelectorAll('svg')).toHaveLength(2);
+      expect(line).toHaveClass('text-ds-text-status-error-default-default');
+      expect(line.querySelectorAll('svg')).toHaveLength(1);
+      expect(tool.querySelector('[data-timeline-call-trigger]')).toBeNull();
     }
   });
 
