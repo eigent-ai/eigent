@@ -3129,6 +3129,15 @@ describe('ChatBox timeline modes', () => {
     expect(screen.getByText('10s')).toBeInTheDocument();
     expect(container.querySelectorAll('.shiny-text')).toHaveLength(1);
     expect(screen.getByText(/Working on tasks for/)).toBeInTheDocument();
+
+    const stopped = {
+      ...run,
+      status: 'cancelled' as const,
+      timestamps: { ...run.timestamps, durationMs: 15_000 },
+    };
+    rerender(<TimelineModeRenderer detailLevel="narrative" runs={[stopped]} />);
+    expect(screen.getByText(/Stopped after/)).toBeInTheDocument();
+    expect(screen.getByText('10s')).toBeInTheDocument();
   });
 });
 
