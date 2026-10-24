@@ -164,7 +164,7 @@ export function getKeyboardShortcutGroups(
         {
           id: 'toggle-timeline-view',
           labelKey: 'layout.shortcuts.toggle-timeline-view',
-          defaultLabel: 'Toggle Chat / Trajectory View',
+          defaultLabel: 'Toggle Dev Mode',
           keys: [primary, shift, 'L'],
         },
         {

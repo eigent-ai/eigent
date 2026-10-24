@@ -15,6 +15,8 @@
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
+import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
@@ -42,7 +44,6 @@ import { normalizeRunReviewPath } from './RunFiles';
 import {
   hasRunExecutionRows,
   isActiveRunStatus,
-  RunActivityIndicator,
   statusIcon,
   statusLabel,
   type InteractiveTimelinePlan,
@@ -183,9 +184,10 @@ function DetailedStatusInline({
       )}
       data-detailed-status={status}
     >
-      <Icon
-        aria-hidden
-        className={cn('size-3', tone.iconClassName, animated && 'animate-spin')}
+      <DsIcon
+        icon={Icon}
+        recipe="main-compact"
+        className={cn(tone.iconClassName, animated && 'animate-spin')}
       />
       <span className={tone.labelClassName}>{statusLabel(status)}</span>
     </span>
@@ -249,7 +251,7 @@ function TraceRow({
         aria-controls={detailsId}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full min-w-0 flex-row items-center gap-3 bg-transparent px-1 py-2.5 text-left"
+        className="group flex w-full min-w-0 flex-row items-center gap-3 bg-transparent px-1 py-2.5 text-left"
       >
         <span className="flex w-28 shrink-0 justify-end" data-trace-tag-column>
           <span
@@ -275,11 +277,14 @@ function TraceRow({
           data-trace-ending
         >
           {status}
-          <ChevronRight
-            aria-hidden
+          <DsIcon
+            icon={ChevronRight}
+            recipe="main-compact"
             className={cn(
-              'size-3.5 shrink-0 text-ds-ink-muted-default transition-transform duration-150 motion-reduce:transition-none',
-              open && 'rotate-90'
+              'text-ds-ink-muted-default transition-[opacity,transform] duration-150 motion-reduce:transition-none',
+              open
+                ? 'rotate-90 opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
             )}
             data-trace-chevron
           />
@@ -472,9 +477,11 @@ function InteractionTraceDetails({
 function NodeTraceDetails({
   row,
   runId,
+  onEditUserMessage,
 }: {
   row: NodeTraceRow;
   runId: string;
+  onEditUserMessage?: TimelineModeProps['onEditUserMessage'];
 }) {
   const { t } = useTranslation();
   const openReviewPreview = useSessionPageTabStore(
@@ -482,6 +489,28 @@ function NodeTraceDetails({
   );
   const node = row.node;
   if (node.kind === 'message') {
+    if (node.role === 'user') {
+      return (
+        <UserMessageCard
+          id={node.id}
+          content={node.content}
+          attaches={node.attachments}
+          createdAt={node.createdAt}
+          className="pl-0"
+          embedded
+          onEditAndResend={
+            onEditUserMessage
+              ? () =>
+                  onEditUserMessage({
+                    id: node.id,
+                    content: node.content,
+                    attaches: node.attachments,
+                  })
+              : undefined
+          }
+        />
+      );
+    }
     return (
       <MarkDown
         content={node.content}
@@ -558,9 +587,10 @@ function NodeTraceDetails({
         }
         className="group flex min-w-0 items-center gap-2 border-0 border-x-0 border-y-0 bg-transparent p-0 text-left disabled:cursor-default"
       >
-        <FileText
-          aria-hidden
-          className="size-3.5 shrink-0 text-ds-ink-subtle-default"
+        <DsIcon
+          icon={FileText}
+          recipe="main-compact"
+          className="text-ds-ink-subtle-default"
         />
         <span className="min-w-0 flex-1 !text-ds-text-meta !font-normal break-all text-ds-ink-default-default group-enabled:group-hover:underline">
           {node.relativePath || node.path}
@@ -597,10 +627,12 @@ function DetailedRun({
   run,
   paused,
   interactivePlan,
+  onEditUserMessage,
 }: {
   run: TimelineRunView;
   paused: boolean;
   interactivePlan?: InteractiveTimelinePlan;
+  onEditUserMessage?: TimelineModeProps['onEditUserMessage'];
 }) {
   const { t } = useTranslation();
   return (
@@ -652,8 +684,9 @@ function DetailedRun({
                     : undefined
                 }
                 autoExpanded={
-                  row.node.kind === 'interaction' &&
-                  row.node.status === 'requested'
+                  (row.node.kind === 'interaction' &&
+                    row.node.status === 'requested') ||
+                  (row.node.kind === 'message' && row.node.role === 'user')
                 }
                 interactionId={
                   row.node.kind === 'interaction'
@@ -677,7 +710,11 @@ function DetailedRun({
                 status={nodeStatus(row, paused)}
                 summary={nodeSummary(row, t)}
               >
-                <NodeTraceDetails row={row} runId={run.runId} />
+                <NodeTraceDetails
+                  row={row}
+                  runId={run.runId}
+                  onEditUserMessage={onEditUserMessage}
+                />
               </TraceRow>
             );
           })}
@@ -686,11 +723,6 @@ function DetailedRun({
       {isActiveRunStatus(run.status) && !hasRunExecutionRows(run) ? (
         <div className="px-3 py-2">
           <PreparingToExecuteTasks />
-        </div>
-      ) : null}
-      {run.status === 'running' && !paused && hasRunExecutionRows(run) ? (
-        <div className="px-3 py-2">
-          <RunActivityIndicator />
         </div>
       ) : null}
     </section>
@@ -702,6 +734,7 @@ export function TrajectoryTimeline({
   resolvedModelsByRun = {},
   interactivePlansByRun = {},
   paused = false,
+  onEditUserMessage,
 }: TimelineModeProps) {
   const runIds = runs.map((run) => run.runId);
   return (
@@ -722,6 +755,7 @@ export function TrajectoryTimeline({
             interactivePlan={interactivePlansByRun[run.runId]}
             paused={paused}
             run={run}
+            onEditUserMessage={onEditUserMessage}
           />
         </div>
       ))}

@@ -633,7 +633,7 @@
     "navigate-dispatch": "前往派送",
     "navigate-configuration": "前往設定",
     "new-project": "新增工作階段",
-    "toggle-timeline-view": "切換對話／軌跡檢視",
+    "toggle-timeline-view": "切換開發者模式",
     "toggle-preview-panel": "切換預覽面板",
     "open-preview-browser": "在預覽中開啟瀏覽器",
     "open-preview-terminal": "在預覽中開啟終端機",

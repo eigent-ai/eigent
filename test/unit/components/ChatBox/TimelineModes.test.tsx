@@ -14,6 +14,7 @@
 
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
 import { TimelineModeRenderer } from '@/components/ChatBox/TimelineModes';
+import { useRunElapsedMs } from '@/components/ChatBox/TimelineModes/shared';
 import { subscribeAppEvents, type AppEvent } from '@/lib/events/appEvents';
 import { selectRenderableChatNodes } from '@/lib/projector/chat';
 import {
@@ -29,7 +30,14 @@ import {
   releaseProjectEventStore,
 } from '@/store/projectEventStore';
 import { SessionMode } from '@/types/constants';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  within,
+} from '@testing-library/react';
 import i18next from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -304,11 +312,486 @@ describe('ChatBox timeline modes', () => {
   afterEach(() => {
     vi.useRealTimers();
     motionPreference.reduced = false;
-    usePageTabStore.setState({
-      sessionPreviewProjectId: null,
-      sessionPreviewByProject: {},
+    act(() => {
+      usePageTabStore.setState({
+        sessionPreviewProjectId: null,
+        sessionPreviewByProject: {},
+        narrativeInformationDensity: 'compact',
+      });
     });
   });
+
+  it('presents the same work log at three distinct Narrative densities', () => {
+    const work: ChatProjectionNode[] = [
+      {
+        ...base,
+        kind: 'message',
+        id: 'density-narration',
+        eventId: 'density-narration',
+        eventType: 'message.completed',
+        runSequence: 1,
+        createdAt: '2026-08-19T00:00:01Z',
+        role: 'assistant',
+        purpose: 'narration',
+        status: 'complete',
+        content: 'I will inspect the files.',
+        agentName: 'Developer Agent',
+      },
+      normalToolActivity({
+        id: 'density-read-a',
+        runSequence: 2,
+        status: 'completed',
+        input: 'src/a.ts',
+        agentName: 'Developer Agent',
+      }),
+      normalToolActivity({
+        id: 'density-read-b',
+        runSequence: 3,
+        status: 'completed',
+        input: 'src/b.ts',
+        agentName: 'Developer Agent',
+      }),
+      normalToolActivity({
+        id: 'density-search',
+        runSequence: 4,
+        status: 'completed',
+        toolkitName: 'Search Toolkit',
+        methodName: 'google_search',
+        input: 'timeline docs',
+        agentName: 'Developer Agent',
+      }),
+      runningRunStatus(5),
+    ];
+    const runs = composeTimelineRuns(work);
+    usePageTabStore.setState({ narrativeInformationDensity: 'compact' });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={runs}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+    const rowLabels = () =>
+      [
+        ...container.querySelectorAll(
+          '[data-narrative-timeline] > div > [data-narrative-repeated-calls] > button, [data-narrative-timeline] > div > [data-timeline-call-id] > button'
+        ),
+      ].map((node) => node.textContent?.trim());
+
+    // Minimum mirrors the legacy event log: narration in place, one row per
+    // toolkit method, consecutive repeats counted on a single row.
+    expect(screen.getByText('I will inspect the files.')).toBeInTheDocument();
+    expect(rowLabels()).toEqual(['Read files · 2 events', 'Searched']);
+
+    act(() =>
+      usePageTabStore.setState({ narrativeInformationDensity: 'balanced' })
+    );
+    expect(rowLabels()).toEqual([
+      'Read src/b.ts · 2 events',
+      'Searched for timeline docs',
+    ]);
+
+    act(() =>
+      usePageTabStore.setState({ narrativeInformationDensity: 'expanded' })
+    );
+    expect(
+      container.querySelectorAll('[data-narrative-repeated-calls]')
+    ).toHaveLength(0);
+    expect(rowLabels()).toEqual([
+      'Read src/a.ts',
+      'Read src/b.ts',
+      'Searched for timeline docs',
+    ]);
+    expect(
+      [...container.querySelectorAll('[data-timeline-call-trigger]')].map(
+        (node) => node.getAttribute('aria-expanded')
+      )
+    ).toEqual(['false', 'false', 'false']);
+    expect(screen.getByText('I will inspect the files.')).toBeInTheDocument();
+  });
+
+  it('summarizes backend-titled searches by density and the latest call', () => {
+    const work = ['octopus', 'squid', 'cuttlefish'].map((query, index) =>
+      normalToolActivity({
+        id: `search-${index}`,
+        runSequence: index + 1,
+        status: 'completed',
+        toolkitName: 'Search Toolkit',
+        methodName: 'search_google',
+        title: `Searched for ${query}`,
+        input: `Query: ${query}`,
+      })
+    );
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([...work, runningRunStatus(4)])}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+    const group = container.querySelector('[data-narrative-segment-trigger]')!;
+    expect(group.textContent).toBe('Searched for cuttlefish · 3 events');
+    act(() =>
+      usePageTabStore.setState({ narrativeInformationDensity: 'compact' })
+    );
+    expect(
+      container.querySelector('[data-narrative-segment-trigger]')?.textContent
+    ).toBe('Searched · 3 events');
+    fireEvent.click(
+      container.querySelector('[data-narrative-segment-trigger]')!
+    );
+    expect(
+      screen.getByRole('button', { name: 'Searched for octopus' })
+    ).toBeInTheDocument();
+  });
+
+  it('counts only consecutive calls of the same toolkit method', () => {
+    const terminal = (
+      id: string,
+      runSequence: number,
+      input?: string
+    ): ChatProjectionNode => ({
+      ...normalToolActivity({
+        id,
+        runSequence,
+        status: 'completed',
+        title: 'Terminal',
+        input,
+      }),
+      activityType: 'terminal',
+      toolkitName: undefined,
+      methodName: undefined,
+    });
+    const work = [
+      normalToolActivity({
+        id: 'search-first',
+        runSequence: 1,
+        status: 'completed',
+        toolkitName: 'Search Toolkit',
+        methodName: 'search_google',
+        input: 'Eigent timeline',
+      }),
+      normalToolActivity({
+        id: 'search-second',
+        runSequence: 2,
+        status: 'completed',
+        toolkitName: 'SearchToolkit',
+        methodName: 'search_google',
+        input: 'Eigent event timeline',
+      }),
+      terminal('terminal-first', 3, 'Command: npm test'),
+      terminal('terminal-second', 4, 'git status'),
+      terminal('terminal-third', 5, '{"command":"npm run build"}'),
+      normalToolActivity({
+        id: 'file-read',
+        runSequence: 6,
+        status: 'completed',
+        toolkitName: 'File Toolkit',
+        methodName: 'read_file',
+        title: 'Read a file',
+      }),
+      terminal('terminal-after-file', 7, 'pwd'),
+      runningRunStatus(8),
+    ];
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(work)}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+
+    const groups = [
+      ...container.querySelectorAll('[data-narrative-segment-trigger]'),
+    ];
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toHaveTextContent(
+      'Searched for Eigent event timeline · 2 events'
+    );
+    expect(groups[1]).toHaveTextContent('Ran npm run build · 3 events');
+    // Legacy Terminal receipts share the Terminal Toolkit identity and icon.
+    expect(groups[1]!.querySelector('svg.lucide-terminal')).toBeInTheDocument();
+    expect(
+      [
+        ...container.querySelectorAll(
+          '[data-narrative-timeline] > div > [data-timeline-call-id] [data-timeline-call-trigger]'
+        ),
+      ].map((node) => node.textContent?.trim())
+    ).toEqual(['Read a file', 'Ran pwd']);
+    fireEvent.click(groups[1] as HTMLElement);
+    expect(
+      container.querySelectorAll(
+        '[data-narrative-segment-calls] [data-timeline-call-trigger]'
+      )
+    ).toHaveLength(3);
+  });
+
+  it('never counts human decisions into a repeated toolkit row', () => {
+    const work: ChatProjectionNode[] = [
+      normalToolActivity({ id: 'read-1', runSequence: 1, status: 'completed' }),
+      {
+        ...base,
+        kind: 'interaction',
+        id: 'read-approval',
+        eventId: 'read-approval',
+        eventType: 'approval.decided',
+        runSequence: 2,
+        createdAt: '2026-08-19T00:00:02Z',
+        interactionId: 'approval:read-2',
+        interactionType: 'approval',
+        status: 'responded',
+        prompt: 'Allow another read?',
+        response: 'approved',
+      },
+      normalToolActivity({ id: 'read-2', runSequence: 3, status: 'completed' }),
+      runningRunStatus(4),
+    ];
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(work)}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-narrative-repeated-calls]')
+    ).toBeNull();
+    expect(
+      container.querySelectorAll('[data-timeline-call-executor="toolkit"]')
+    ).toHaveLength(2);
+    expect(
+      container.querySelectorAll('[data-timeline-call-executor="human"]')
+    ).toHaveLength(1);
+  });
+
+  it('keeps a manually expanded call open when its repeat turns it into a group', () => {
+    const first = normalToolActivity({
+      id: 'file-first',
+      runSequence: 1,
+      status: 'completed',
+      toolkitName: 'File Toolkit',
+      input: 'first.txt',
+    });
+    const second = normalToolActivity({
+      id: 'file-second',
+      runSequence: 2,
+      status: 'running',
+      toolkitName: 'File Toolkit',
+      input: 'second.txt',
+    });
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const view = (calls: ChatProjectionNode[]) => (
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([...calls, runningRunStatus(3)])}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+
+    const { container, rerender } = render(view([first]));
+    const firstTrigger = container.querySelector(
+      '[data-timeline-call-trigger]'
+    ) as HTMLButtonElement;
+    fireEvent.click(firstTrigger);
+    expect(firstTrigger).toHaveAttribute('aria-expanded', 'true');
+
+    rerender(view([first, second]));
+
+    const group = container.querySelector('[data-narrative-segment-trigger]');
+    expect(group).toHaveAttribute('aria-expanded', 'true');
+    const preservedCall = container.querySelector(
+      '[data-timeline-call-id="file-first"] [data-timeline-call-trigger]'
+    );
+    expect(preservedCall).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('refreshes a Moderate repeated row as new calls arrive and hides unsafe subjects', () => {
+    const search = (id: string, runSequence: number, input: string) =>
+      normalToolActivity({
+        id,
+        runSequence,
+        status: 'completed',
+        toolkitName: 'Search Toolkit',
+        methodName: 'search_google',
+        input,
+      });
+    const first = search('search-1', 1, 'initial topic');
+    const second = search('search-2', 2, 'more precise topic');
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const view = (work: ChatProjectionNode[]) => (
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([...work, runningRunStatus(work.length + 1)])}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+    const { container, rerender } = render(view([first, second]));
+    const group = () =>
+      container.querySelector('[data-narrative-segment-trigger]');
+
+    expect(group()).toHaveTextContent(
+      'Searched for more precise topic · 2 events'
+    );
+    rerender(
+      view([first, second, search('search-3', 3, '{"query":"latest topic"}')])
+    );
+    expect(group()).toHaveTextContent('Searched for latest topic · 3 events');
+    rerender(view([first, second, search('search-3', 3, 'api_key=private')]));
+    expect(group()).toHaveTextContent('Searched · 3 events');
+    expect(group()).not.toHaveTextContent('private');
+  });
+
+  it('uses a command description instead of a long script in Moderate rows', () => {
+    const longCommand = `Command: python3 -c "${'import urllib.request '.repeat(20)}"`;
+    const terminal = (
+      id: string,
+      runSequence: number,
+      detail: string
+    ): ChatProjectionNode => ({
+      ...normalToolActivity({
+        id,
+        runSequence,
+        status: 'completed',
+        title: 'Ran command',
+        input: longCommand,
+      }),
+      activityType: 'terminal',
+      toolkitName: undefined,
+      methodName: undefined,
+      detail,
+    });
+    const work = [
+      terminal('fetch-news', 1, 'Fetching Anthropic news page'),
+      normalToolActivity({
+        id: 'read-file',
+        runSequence: 2,
+        status: 'completed',
+        toolkitName: 'File Toolkit',
+        title: 'Read notes',
+      }),
+      terminal('check-news', 3, 'Checking news sources'),
+      terminal('summarize-news', 4, 'Summarizing Anthropic news page'),
+      runningRunStatus(5),
+    ];
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(work)}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+
+    expect(
+      [...container.querySelectorAll('[data-timeline-call-trigger]')].map(
+        (node) => node.textContent?.trim()
+      )
+    ).toEqual(['Ran command · Fetching Anthropic news page', 'Read notes']);
+    const group = container.querySelector('[data-narrative-segment-trigger]');
+    expect(group).toHaveTextContent(
+      'Ran command · Summarizing Anthropic news page · 2 events'
+    );
+    expect(group).not.toHaveTextContent('python3');
+  });
+
+  it.each(['narrative', 'trajectory'] as const)(
+    'shows a recorded model switch before the next query in %s',
+    (detailLevel) => {
+      const secondRunNodes = nodes('completed').map(
+        (node): ChatProjectionNode => ({
+          ...node,
+          id: `${node.id}-2`,
+          eventId: `${node.eventId}-2`,
+          runId: 'run-2',
+          createdAt: '2026-08-20T00:00:00Z',
+        })
+      );
+      const runs = composeTimelineRuns([
+        ...nodes('completed'),
+        ...secondRunNodes,
+      ]);
+      const modelByRun = {
+        'run-1': { platform: 'openai', type: 'gpt-4' },
+        'run-2': { platform: 'openai', type: 'gpt-5' },
+      };
+      const view = render(
+        <TimelineModeRenderer
+          detailLevel={detailLevel}
+          runs={runs}
+          resolvedModelsByRun={modelByRun}
+        />
+      );
+
+      const divider = view.container.querySelector(
+        '[data-model-change-divider]'
+      );
+      expect(divider).toHaveTextContent('Model changed to gpt-5');
+      const secondRun = view.container.querySelector('[data-run-id="run-2"]');
+      expect(
+        detailLevel === 'narrative'
+          ? secondRun?.firstElementChild
+          : secondRun?.previousElementSibling
+      ).toBe(divider);
+      view.rerender(
+        <TimelineModeRenderer
+          detailLevel={detailLevel}
+          runs={runs}
+          resolvedModelsByRun={{
+            'run-1': modelByRun['run-1'],
+            'run-2': modelByRun['run-1'],
+          }}
+        />
+      );
+      expect(
+        view.container.querySelector('[data-model-change-divider]')
+      ).toBeNull();
+      view.rerender(
+        <TimelineModeRenderer detailLevel={detailLevel} runs={runs} />
+      );
+      expect(
+        view.container.querySelector('[data-model-change-divider]')
+      ).toBeNull();
+    }
+  );
+
+  it.each(['narrative', 'trajectory'] as const)(
+    'compares with the last recorded model across a Run without one in %s',
+    (detailLevel) => {
+      const runNodes = (runId: string, minute: number) =>
+        nodes('completed').map((node): ChatProjectionNode => ({
+          ...node,
+          id: `${node.id}-${runId}`,
+          eventId: `${node.eventId}-${runId}`,
+          runId,
+          createdAt: `2026-08-20T00:${minute}:00Z`,
+        }));
+      const runs = composeTimelineRuns([
+        ...nodes('completed'),
+        ...runNodes('run-2', 10),
+        ...runNodes('run-3', 20),
+      ]);
+      const { container } = render(
+        <TimelineModeRenderer
+          detailLevel={detailLevel}
+          runs={runs}
+          resolvedModelsByRun={{
+            'run-1': { platform: 'openai', type: 'gpt-4' },
+            'run-2': null,
+            'run-3': { platform: 'openai', type: 'gpt-5' },
+          }}
+        />
+      );
+
+      const dividers = container.querySelectorAll(
+        '[data-model-change-divider]'
+      );
+      expect(dividers).toHaveLength(1);
+      expect(dividers[0]).toHaveTextContent('Model changed to gpt-5');
+    }
+  );
 
   it('records final-message feedback with logical message and Run identities', async () => {
     const finalMessage: ChatProjectionNode = {
@@ -455,7 +938,10 @@ describe('ChatBox timeline modes', () => {
     );
     rows.forEach((row) => {
       const rowButton = row.querySelector(':scope > button');
-      expect(row).toHaveAttribute('data-expanded', 'false');
+      expect(row).toHaveAttribute(
+        'data-expanded',
+        row.getAttribute('data-message-role') === 'user' ? 'true' : 'false'
+      );
       expect(row).toHaveClass(
         'bg-ds-neutral-subtle-default',
         'hover:bg-ds-neutral-default-default'
@@ -847,16 +1333,20 @@ describe('ChatBox timeline modes', () => {
       container.querySelector('[data-narrative-timeline]')
     ).toBeInTheDocument();
 
-    // Narration is primary text; the calls behind it stay folded until asked
-    // for, which is the whole point of the narrative mode.
+    // Narration is primary text; each call is a row whose detail stays folded
+    // until asked for, like the legacy event log.
     expect(
       container.querySelector('[data-narrative-segment-narration]')
     ).toHaveClass('text-ds-ink-default-default');
-    expect(container.querySelector('[data-timeline-call-id]')).toBeNull();
     expect(screen.queryByText('Developer Agent')).toBeNull();
     expect(container.querySelector('[data-narrative-agent-group]')).toBeNull();
+    expect(
+      container.querySelector('[data-timeline-call-trigger]')
+    ).toHaveAttribute('aria-expanded', 'false');
 
-    openNarrativeSegments(container);
+    fireEvent.click(
+      container.querySelector('[data-timeline-call-trigger]') as HTMLElement
+    );
 
     const tool = container.querySelector(
       '[data-timeline-call-id="call-1"]'
@@ -870,7 +1360,7 @@ describe('ChatBox timeline modes', () => {
     expect(tool).toHaveAttribute('data-timeline-action-kind', 'inspect');
     expect(
       trigger.querySelector('[data-timeline-action-icon="inspect"]')
-    ).toBeInTheDocument();
+    ).toHaveClass('lucide-file-pen');
     expect(within(tool).getByText('Request')).toBeInTheDocument();
     expect(
       within(tool).getByText('src/components/ChatBox/index.tsx')
@@ -959,6 +1449,61 @@ describe('ChatBox timeline modes', () => {
     ).toBeNull();
   });
 
+  it('indents a sub-step under its parent step', () => {
+    const stepNode = (
+      id: string,
+      runSequence: number,
+      stepId: string,
+      title: string,
+      parentStepId?: string
+    ): ChatProjectionNode => ({
+      ...base,
+      kind: 'step',
+      id,
+      eventId: id,
+      eventType: 'step.started',
+      runSequence,
+      createdAt: `2026-08-19T00:00:0${runSequence}Z`,
+      stepId,
+      title,
+      status: 'running',
+      phase: 'started',
+      source: 'authored',
+      parentStepId,
+    });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([
+          stepNode('parent-step', 1, 'stp-parent', 'Plan the report'),
+          stepNode(
+            'child-step',
+            2,
+            'stp-child',
+            'Review visual references',
+            'stp-parent'
+          ),
+          runningRunStatus(3),
+        ])}
+      />
+    );
+
+    const parent = screen.getByText('Plan the report');
+    const child = screen.getByText('Review visual references');
+    expect(
+      parent.closest(
+        '[data-narrative-event-motion][data-narrative-parent-step-id]'
+      )
+    ).toBeNull();
+    const nested = child.closest(
+      '[data-narrative-event-motion][data-narrative-parent-step-id="stp-parent"]'
+    );
+    expect(nested).toHaveClass('ms-ds-16', 'border-s', 'border-solid');
+    expect(
+      container.querySelector('[data-narrative-timeline]')
+    ).toContainElement(nested as HTMLElement);
+  });
+
   it('keeps a correlated notice inside the real tool disclosure', () => {
     const timelineNodes: ChatProjectionNode[] = [
       {
@@ -1011,9 +1556,6 @@ describe('ChatBox timeline modes', () => {
     );
 
     expect(container.querySelector('[data-narrative-notice-id]')).toBeNull();
-    const metadata = call.querySelector(
-      '[data-timeline-call-metadata]'
-    ) as HTMLElement;
     const details = call.querySelector(
       '[data-tool-details-scroll]'
     ) as HTMLElement;
@@ -1025,23 +1567,16 @@ describe('ChatBox timeline modes', () => {
     const content = call.querySelector(
       '[data-timeline-call-content]'
     ) as HTMLElement;
-    const indent = call.querySelector(
-      '[data-timeline-call-indent]'
-    ) as HTMLElement;
+    const indent = call.querySelector('[data-task-log-indent]') as HTMLElement;
     const trigger = call.querySelector(
       '[data-timeline-call-trigger]'
     ) as HTMLElement;
 
-    expect(metadata).toHaveClass('gap-ds-8', '!text-ds-text-meta');
-    expect(within(metadata).getByText('Report completed')).toBeInTheDocument();
-    expect(
-      within(metadata).getByText('Completed in 25 ms')
-    ).toBeInTheDocument();
-    const separator = metadata.querySelector(
-      '[data-timeline-call-separator]'
-    ) as HTMLElement;
-    expect(separator.parentElement).toHaveClass('gap-ds-8');
-    expect(metadata).not.toHaveTextContent('The markdown report is ready.');
+    // The detail is only the request/response box: no repeated title, status,
+    // or duration line above it.
+    expect(content.children).toHaveLength(1);
+    expect(content.firstElementChild).toContainElement(details);
+    expect(call).not.toHaveTextContent('Completed in 25 ms');
     expect(description).toHaveTextContent('The markdown report is ready.');
     expect(description).toHaveClass('!text-ds-text-meta');
     expect(content.parentElement).toHaveClass(
@@ -1075,54 +1610,37 @@ describe('ChatBox timeline modes', () => {
     expect(trigger.children[2]).toHaveAttribute('data-timeline-call-chevron');
   });
 
-  it('uses a count-only group header instead of repeating a single child title', () => {
+  it('shows a single call as its own row with a hover-only chevron', () => {
     const { container } = render(
       <TimelineModeRenderer
         detailLevel="narrative"
         runs={composeTimelineRuns(nodes('running'))}
       />
     );
-    const groupTrigger = container.querySelector(
-      '[data-narrative-segment-trigger]'
+    const trigger = container.querySelector(
+      '[data-timeline-call-trigger]'
     ) as HTMLElement;
-    const groupChevron = groupTrigger.querySelector(
-      '[data-narrative-segment-chevron]'
+    const chevron = trigger.querySelector(
+      '[data-timeline-call-chevron]'
     ) as HTMLElement;
 
-    expect(groupTrigger).toHaveAttribute(
-      'data-narrative-segment-call-count',
-      '1'
-    );
-    expect(groupTrigger).toHaveTextContent('1 action');
-    expect(groupTrigger).not.toHaveTextContent('read_file');
-    expect(groupTrigger).toHaveClass(
-      'group',
-      'text-ds-ink-muted-default',
-      'hover:text-ds-ink-default-default',
-      'focus-visible:text-ds-ink-default-default'
-    );
-    expect(groupChevron).toBeInTheDocument();
-    expect(groupChevron).toHaveClass(
+    expect(
+      container.querySelector('[data-narrative-segment-trigger]')
+    ).toBeNull();
+    expect(trigger).toHaveTextContent('Reading files');
+    expect(trigger).toHaveClass('group', 'gap-ds-6', 'py-ds-2');
+    expect(chevron).toHaveClass(
       'opacity-0',
       'group-hover:opacity-100',
       'group-focus-visible:opacity-100'
     );
 
-    fireEvent.click(groupTrigger);
-
-    expect(groupChevron).toHaveClass('rotate-90', 'opacity-100');
-
-    const childTriggers = container.querySelectorAll(
-      '[data-timeline-call-trigger]'
-    );
-    expect(childTriggers).toHaveLength(1);
-    expect(childTriggers[0]).toHaveTextContent('read_file');
-    expect(
-      childTriggers[0]!.querySelector('[data-timeline-call-chevron]')
-    ).not.toHaveClass('opacity-0');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(chevron).toHaveClass('rotate-90', 'opacity-100');
   });
 
-  it('derives the group count from the rendered children and keeps their order', () => {
+  it('counts consecutive repeats on one row and keeps their order inside', () => {
     const calls = [
       normalToolActivity({
         id: 'count-first',
@@ -1162,8 +1680,11 @@ describe('ChatBox timeline modes', () => {
       'data-narrative-segment-call-count',
       '3'
     );
-    expect(groupTrigger).toHaveTextContent('3 actions');
-    expect(groupTrigger).not.toHaveTextContent('Inspect first file');
+    expect(groupTrigger).toHaveTextContent('Read files · 3 events');
+    expect(groupTrigger).toHaveClass('group', 'gap-ds-6', 'py-ds-2');
+    expect(
+      groupTrigger.querySelector('[data-narrative-segment-chevron]')
+    ).toHaveClass('opacity-0', 'group-hover:opacity-100');
 
     fireEvent.click(groupTrigger);
 
@@ -1174,47 +1695,45 @@ describe('ChatBox timeline modes', () => {
       ...children.querySelectorAll('[data-timeline-call-trigger]'),
     ];
     expect(children).toHaveClass('gap-ds-4', 'pt-ds-4');
-    expect(childTriggers).toHaveLength(3);
     expect(childTriggers.map((trigger) => trigger.textContent?.trim())).toEqual(
       ['Inspect first file', 'Inspect second file', 'Inspect third file']
     );
   });
 
-  it('summarizes each projected action kind once before the group count', () => {
+  it('leads each row with its toolkit icon and falls back to the action icon', () => {
     const calls = [
       normalToolActivity({
-        id: 'icon-write-first',
+        id: 'icon-file',
         runSequence: 1,
         status: 'completed',
-        title: 'Write first file',
         methodName: 'write_file',
       }),
       normalToolActivity({
-        id: 'icon-write-second',
+        id: 'icon-terminal',
         runSequence: 2,
         status: 'completed',
-        title: 'Save second file',
-        methodName: 'save_file',
+        toolkitName: 'Terminal Toolkit',
+        methodName: 'shell_exec',
       }),
       normalToolActivity({
-        id: 'icon-write-third',
+        id: 'icon-memory',
         runSequence: 3,
         status: 'completed',
-        title: 'Draft third file',
-        methodName: 'draft_file',
+        toolkitName: 'Memory Toolkit',
+        methodName: 'search_project_history',
       }),
       normalToolActivity({
-        id: 'icon-generic',
+        id: 'icon-todo',
         runSequence: 4,
         status: 'completed',
-        title: 'Deploy html content',
-        methodName: 'deploy_html_content',
+        toolkitName: 'TodoToolkit',
+        methodName: 'todo_write',
       }),
       normalToolActivity({
-        id: 'icon-search',
+        id: 'icon-unknown',
         runSequence: 5,
         status: 'completed',
-        title: 'Search examples',
+        toolkitName: 'Custom Toolkit',
         methodName: 'google_search',
       }),
       runningRunStatus(9),
@@ -1225,28 +1744,19 @@ describe('ChatBox timeline modes', () => {
         runs={composeTimelineRuns(calls)}
       />
     );
-    const groupTrigger = container.querySelector(
-      '[data-narrative-segment-trigger]'
-    ) as HTMLElement;
-    const iconKinds = [
-      ...groupTrigger.querySelectorAll('[data-narrative-segment-action-icon]'),
-    ].map((icon) => icon.getAttribute('data-narrative-segment-action-icon'));
+    const iconFor = (id: string) =>
+      container
+        .querySelector(
+          `[data-timeline-call-id="${id}"] [data-timeline-call-trigger] > svg`
+        )
+        ?.getAttribute('class');
 
-    expect(groupTrigger).toHaveTextContent('5 actions');
-    expect(iconKinds).toEqual(['write', 'generic', 'search']);
-    expect(groupTrigger).toHaveClass('gap-ds-6', 'py-ds-2');
-    expect(
-      groupTrigger.querySelector('[data-narrative-segment-action-icons]')
-    ).toHaveClass('gap-ds-6');
-    groupTrigger
-      .querySelectorAll('[data-narrative-segment-action-icon]')
-      .forEach((icon) => expect(icon).toHaveClass('size-ds-icon-md'));
-
-    fireEvent.click(groupTrigger);
-    const childTrigger = container.querySelector(
-      '[data-timeline-call-trigger]'
-    ) as HTMLElement;
-    expect(childTrigger).toHaveClass('gap-ds-6', 'py-ds-2');
+    expect(iconFor('icon-file')).toContain('lucide-file-pen');
+    expect(iconFor('icon-terminal')).toContain('lucide-terminal');
+    expect(iconFor('icon-memory')).toContain('lucide-database');
+    expect(iconFor('icon-todo')).toContain('lucide-list-todo');
+    expect(iconFor('icon-unknown')).toContain('lucide-search');
+    expect(iconFor('icon-file')).toContain('size-ds-icon-md');
   });
 
   it('renders one live-status disclosure for each explicitly delegated agent', () => {
@@ -1298,8 +1808,8 @@ describe('ChatBox timeline modes', () => {
     const rows = [
       ...container.querySelectorAll('[data-narrative-subagent-row]'),
     ] as HTMLElement[];
-    const ordinaryGroup = container.querySelector(
-      '[data-narrative-segment-trigger]'
+    const ordinaryCall = container.querySelector(
+      '[data-timeline-call-id="ordinary-agent-named-tool"]'
     ) as HTMLElement;
 
     expect(rows).toHaveLength(5);
@@ -1338,19 +1848,15 @@ describe('ChatBox timeline modes', () => {
       rows[0]!.querySelector('[data-agent-avatar="gemini"]')
     ).toBeInTheDocument();
 
-    // Classification is explicit: a similarly named ordinary tool remains in
-    // the generic action accordion, between its projected neighbours.
-    expect(ordinaryGroup).toHaveAttribute(
-      'data-narrative-segment-call-count',
-      '1'
-    );
-    expect(ordinaryGroup).toHaveTextContent('1 action');
+    // Classification is explicit: a similarly named ordinary tool remains an
+    // ordinary call row, between its projected neighbours.
+    expect(ordinaryCall).toHaveTextContent('agent_run_subagent health check');
     expect(
-      rows[0]!.compareDocumentPosition(ordinaryGroup) &
+      rows[0]!.compareDocumentPosition(ordinaryCall) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      ordinaryGroup.compareDocumentPosition(rows[1]!) &
+      ordinaryCall.compareDocumentPosition(rows[1]!) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
 
@@ -1375,15 +1881,10 @@ describe('ChatBox timeline modes', () => {
       within(rows[3]!).getByText('No failure details were recorded.')
     ).toBeInTheDocument();
 
-    fireEvent.click(ordinaryGroup);
-    expect(
-      screen.getByText('agent_run_subagent health check')
-    ).toBeInTheDocument();
-    expect(
-      container.querySelector(
-        '[data-timeline-call-id="ordinary-agent-named-tool"]'
-      )
-    ).toHaveAttribute('data-timeline-action-kind', 'generic');
+    expect(ordinaryCall).toHaveAttribute(
+      'data-timeline-action-kind',
+      'generic'
+    );
   });
 
   it('keeps the event subagent identity aligned with the Session summary identity', () => {
@@ -1439,22 +1940,20 @@ describe('ChatBox timeline modes', () => {
     ).toBeInTheDocument();
   });
 
-  it('keeps one transient activity marker after running timeline content', () => {
+  it('does not append a redundant activity row after running timeline content', () => {
     const runningRuns = composeTimelineRuns(nodes('running'));
     const { container, rerender } = render(
       <TimelineModeRenderer detailLevel="narrative" runs={runningRuns} />
     );
 
-    expect(
-      container.querySelector('[data-run-activity-indicator]')
-    ).toHaveTextContent('Eigent is working…');
+    expect(container.querySelector('[data-run-activity-indicator]')).toBeNull();
+    expect(screen.queryByText('Eigent is working…')).toBeNull();
 
     rerender(
       <TimelineModeRenderer detailLevel="trajectory" runs={runningRuns} />
     );
-    expect(
-      container.querySelector('[data-run-activity-indicator]')
-    ).toHaveTextContent('Eigent is working…');
+    expect(container.querySelector('[data-run-activity-indicator]')).toBeNull();
+    expect(screen.queryByText('Eigent is working…')).toBeNull();
   });
 
   it('keeps Preparing visible until the narrative work band can render', () => {
@@ -1482,6 +1981,20 @@ describe('ChatBox timeline modes', () => {
     expect(
       container.querySelector('[data-narrative-run-work-log]')
     ).toBeInTheDocument();
+    const workLog = container.querySelector(
+      '[data-narrative-run-work-log]'
+    ) as HTMLElement;
+    const trigger = workLog.querySelector(
+      'button[aria-expanded]'
+    ) as HTMLElement;
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger.querySelector('svg')).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100'
+    );
+    fireEvent.click(trigger);
+    expect(trigger.querySelector('svg')).not.toHaveClass('opacity-0');
   });
 
   it('highlights only the latest running tool and hands off when it completes', () => {
@@ -1522,16 +2035,13 @@ describe('ChatBox timeline modes', () => {
     expect(first).not.toHaveAttribute('data-timeline-call-highlighted');
     expect(second).toHaveAttribute('data-timeline-call-highlighted', 'true');
     expect(container.querySelectorAll('.shiny-text')).toHaveLength(1);
-    expect(
-      within(second).getByText('Waiting for a response.')
-    ).toBeInTheDocument();
-
-    fireEvent.click(
-      first.querySelector('[data-timeline-call-trigger]') as HTMLElement
-    );
-    expect(
-      within(first).getByText('Waiting for a response.')
-    ).toBeInTheDocument();
+    // A running row with no request yet has nothing to reveal, so it stays a
+    // plain line that only shimmers instead of opening an empty detail.
+    for (const row of [first, second]) {
+      expect(row.querySelector('[data-timeline-call-trigger]')).toBeNull();
+      expect(row.querySelector('[data-timeline-call-line]')).not.toBeNull();
+      expect(row.querySelector('button')).toBeNull();
+    }
 
     rerender(
       <TimelineModeRenderer
@@ -1681,7 +2191,7 @@ describe('ChatBox timeline modes', () => {
     expect(workLogMotion).toHaveStyle({ opacity: '0' });
     expect(workLogMotion.style.transform).toBe('');
     expect(
-      workLogMotion.querySelector('[data-narrative-segment-id]')
+      workLogMotion.querySelector('[data-timeline-call-id="first-live-event"]')
     ).toBeInTheDocument();
     expect(
       workLogMotion.querySelector('[data-narrative-event-motion]')
@@ -1822,11 +2332,12 @@ describe('ChatBox timeline modes', () => {
       const tool = container.querySelector(
         '[data-timeline-call-status="' + status + '"]'
       ) as HTMLElement;
-      const trigger = tool.querySelector(
-        '[data-timeline-call-trigger]'
+      const line = tool.querySelector(
+        '[data-timeline-call-line]'
       ) as HTMLElement;
-      expect(trigger).toHaveClass('text-ds-text-status-error-default-default');
-      expect(trigger.querySelectorAll('svg')).toHaveLength(2);
+      expect(line).toHaveClass('text-ds-text-status-error-default-default');
+      expect(line.querySelectorAll('svg')).toHaveLength(1);
+      expect(tool.querySelector('[data-timeline-call-trigger]')).toBeNull();
     }
   });
 
@@ -1951,10 +2462,9 @@ describe('ChatBox timeline modes', () => {
     const permission = container.querySelector(
       '[data-timeline-call-executor="human"]'
     ) as HTMLElement;
-    const laterSegments = [
-      ...container.querySelectorAll('[data-narrative-segment-id]'),
-    ];
-    const thirdTool = laterSegments.at(-1) as HTMLElement;
+    const thirdTool = container.querySelector(
+      '[data-timeline-call-id="search-third"]'
+    ) as HTMLElement;
 
     expect(permission).toBeInTheDocument();
     expect(
@@ -2231,14 +2741,15 @@ describe('ChatBox timeline modes', () => {
     );
 
     const toolSegment = container.querySelector(
-      '[data-narrative-segment-id]'
+      '[data-narrative-repeated-calls]'
     ) as HTMLElement;
     const receipts = container.querySelectorAll(
       '[data-timeline-call-executor="human"]'
     );
 
     // Both decisions are recorded like tool calls, with the human as the
-    // executor, and neither is folded into the toolkit segment before them.
+    // executor, and neither is counted into the repeated row before them.
+    expect(toolSegment).toHaveTextContent('2 events');
     expect(receipts).toHaveLength(2);
     expect(
       within(receipts[0] as HTMLElement).getByText('You · Allowed')
@@ -2341,7 +2852,7 @@ describe('ChatBox timeline modes', () => {
       '[data-narrative-timeline]'
     ) as HTMLElement;
     const tool = timeline.querySelector(
-      '[data-narrative-segment-id]'
+      '[data-timeline-call-executor="toolkit"]'
     ) as HTMLElement;
     const receipt = timeline.querySelector(
       '[data-timeline-call-executor="human"]'
@@ -2506,6 +3017,62 @@ describe('ChatBox timeline modes', () => {
     expect(workLogTrigger).not.toHaveTextContent('{{time}}');
   });
 
+  it('folds the work log on completion until the user opens it', () => {
+    const { container, rerender } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(nodes('running'))}
+      />
+    );
+    const trigger = container.querySelector(
+      '[data-narrative-run-work-log] button[aria-expanded]'
+    ) as HTMLButtonElement;
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(nodes('completed'))}
+      />
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      container.querySelector('[data-narrative-timeline]')
+    ).toBeInTheDocument();
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(nodes('completed'))}
+      />
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps a user-opened work log open across the terminal receipt', () => {
+    const running = composeTimelineRuns(nodes('running'));
+    const { container, rerender } = render(
+      <TimelineModeRenderer detailLevel="narrative" runs={running} />
+    );
+    const trigger = container.querySelector(
+      '[data-narrative-run-work-log] button[aria-expanded]'
+    ) as HTMLButtonElement;
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(nodes('completed'))}
+      />
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('shows canonical duration even when an older Task has no work-log items yet', () => {
     const composed = composeTimelineRuns(
       nodes('completed').filter(
@@ -2570,6 +3137,29 @@ describe('ChatBox timeline modes', () => {
     expect(screen.getByText('10s')).toBeInTheDocument();
     expect(container.querySelectorAll('.shiny-text')).toHaveLength(1);
     expect(screen.getByText(/Working on tasks for/)).toBeInTheDocument();
+
+    const stopped = {
+      ...run,
+      status: 'cancelled' as const,
+      timestamps: { ...run.timestamps, durationMs: 15_000 },
+    };
+    rerender(<TimelineModeRenderer detailLevel="narrative" runs={[stopped]} />);
+    expect(screen.getByText(/Stopped after/)).toBeInTheDocument();
+    expect(screen.getByText('10s')).toBeInTheDocument();
+  });
+
+  it('does not subtract another Task pause from an already completed Run', () => {
+    vi.useFakeTimers();
+    const run = composeTimelineRuns(nodes('completed'))[0]!;
+    run.timestamps.durationMs = 20_000;
+    const { result, rerender } = renderHook(
+      ({ paused }) => useRunElapsedMs(run, paused),
+      { initialProps: { paused: false } }
+    );
+    rerender({ paused: true });
+    act(() => vi.advanceTimersByTime(5_000));
+    rerender({ paused: false });
+    expect(result.current).toBe(20_000);
   });
 });
 

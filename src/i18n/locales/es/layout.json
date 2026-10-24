@@ -633,7 +633,7 @@
     "navigate-dispatch": "Ir a Despacho",
     "navigate-configuration": "Ir a Configuración",
     "new-project": "Nueva sesión",
-    "toggle-timeline-view": "Alternar vista Chat / Trayectoria",
+    "toggle-timeline-view": "Alternar modo desarrollador",
     "toggle-preview-panel": "Alternar panel de vista previa",
     "open-preview-browser": "Abrir navegador en la vista previa",
     "open-preview-terminal": "Abrir terminal en la vista previa",
