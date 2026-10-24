@@ -134,6 +134,7 @@ export function HeaderBox({
   const { t } = useTranslation();
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const titleRef = useRef<HTMLSpanElement>(null);
+  const sessionMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [titleOverflowing, setTitleOverflowing] = useState(false);
   const [automationDialogOpen, setAutomationDialogOpen] = useState(false);
   const [automationDialogContext, setAutomationDialogContext] = useState<{
@@ -305,6 +306,7 @@ export function HeaderBox({
           >
             <DropdownMenuTrigger asChild>
               <Button
+                ref={sessionMenuTriggerRef}
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -483,6 +485,10 @@ export function HeaderBox({
           selectedTrigger={null}
           isOpen={automationDialogOpen}
           onOpenChange={setAutomationDialogOpen}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            sessionMenuTriggerRef.current?.focus();
+          }}
           sourceProjectId={automationDialogContext.projectId}
           initialTaskPrompt={automationDialogContext.source.taskPrompt}
           initialDraft={automationDialogContext.draft}

@@ -106,6 +106,9 @@ type TriggerDialogProps = {
   /** Captured source Session; the active Session may change while editing. */
   sourceProjectId?: string;
   initialDraft?: AutomationDraftV1 | null;
+  onCloseAutoFocus?: React.ComponentProps<
+    typeof DialogContent
+  >['onCloseAutoFocus'];
 };
 
 export const TriggerDialog: React.FC<TriggerDialogProps> = ({
@@ -118,6 +121,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   initialTaskPrompt = '',
   sourceProjectId,
   initialDraft,
+  onCloseAutoFocus,
 }) => {
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
@@ -944,6 +948,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           size="md"
           showCloseButton={true}
           onClose={handleClose}
+          onCloseAutoFocus={onCloseAutoFocus}
           aria-describedby={undefined}
           className="h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)] min-h-0"
         >

@@ -23,6 +23,7 @@ import {
 } from '@/types';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -190,6 +191,41 @@ describe('TriggerDialog opened from a Session', () => {
       id: 2,
       ...data,
     }));
+  });
+
+  it('returns keyboard focus to its source control after Escape', async () => {
+    const user = userEvent.setup();
+    function SessionAutomation() {
+      const [open, setOpen] = useState(false);
+      const source = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={source} onClick={() => setOpen(true)}>
+            Session menu
+          </button>
+          <TriggerDialog
+            selectedTrigger={null}
+            isOpen={open}
+            onOpenChange={setOpen}
+            sourceProjectId="source-project"
+            initialTaskPrompt="Original request"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              source.current?.focus();
+            }}
+          />
+        </>
+      );
+    }
+    render(<SessionAutomation />);
+    const source = screen.getByRole('button', { name: 'Session menu' });
+    await user.click(source);
+    await vi.waitFor(() =>
+      expect(screen.getByPlaceholderText('Enter automation name')).toHaveFocus()
+    );
+    await user.keyboard('{Escape}');
+    await vi.waitFor(() => expect(source).toHaveFocus());
+    expect(mocks.proxyCreateTrigger).not.toHaveBeenCalled();
   });
 
   it('prefills the draft and creates it for the source Session only after review', async () => {
