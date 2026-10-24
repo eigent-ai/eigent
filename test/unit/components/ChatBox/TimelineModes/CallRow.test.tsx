@@ -127,20 +127,44 @@ describe('CallRow', () => {
     rerender(
       <CallRow call={toolCall('failed')} runActive={false} reducedMotion />
     );
-    const trigger = screen.getByRole('button', { name: /File Toolkit/ });
-    expect(trigger).toHaveTextContent('Failed');
-    expect(trigger).toHaveAttribute('data-task-log-status', 'error');
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByText('Failed')).toBeInTheDocument();
   });
 
-  it('shows no duration for a completed call', () => {
+  it('keeps lifecycle-only completed calls as plain lines', () => {
     render(
       <CallRow
-        call={toolCall('completed', { durationMs: 2_100 })}
+        call={toolCall('completed', {
+          durationMs: 2_100,
+          detail: 'Completed in 2.1 s',
+        })}
         runActive={false}
         reducedMotion
       />
     );
     expect(screen.queryByText(/2\.1 s|Completed in/)).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('opens request and response without a lifecycle duration header', () => {
+    render(
+      <CallRow
+        call={toolCall('completed', {
+          input: 'Query: Eigent AI',
+          output: 'Sources: https://www.eigent.ai/',
+          detail: 'Completed in 465 ms',
+          durationMs: 465,
+        })}
+        runActive={false}
+        reducedMotion
+      />
+    );
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('Query: Eigent AI')).toBeInTheDocument();
+    expect(
+      screen.getByText('Sources: https://www.eigent.ai/')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Completed in|465 ms/)).toBeNull();
   });
 
   it('titles a fallback-named call in the tense of its outcome', () => {

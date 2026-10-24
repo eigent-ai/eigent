@@ -98,16 +98,7 @@ export function CallRow({
   const failed = isCallErrorStatus(call.status);
   const pendingHuman = call.executor === 'human' && call.status === 'pending';
   const showWaitingOutput = !call.output && (running || pendingHuman);
-  const description =
-    call.notice?.content.trim() ||
-    call.detail ||
-    (!call.input && !call.output && !showWaitingOutput
-      ? failed
-        ? t('chat.no-failure-details', {
-            defaultValue: 'No failure details were recorded.',
-          })
-        : t('chat.completed', { defaultValue: 'Completed.' })
-      : undefined);
+  const description = call.notice?.content.trim() || undefined;
   let restingStatusText: string | null;
   switch (call.status) {
     case 'failed':
@@ -148,14 +139,8 @@ export function CallRow({
   // Only a row with something to reveal is a trigger. A running call with no
   // request yet stays a plain line until its detail arrives.
   const expandable =
-    Boolean(
-      call.input ||
-      call.output ||
-      call.notice?.content.trim() ||
-      call.detail?.trim()
-    ) ||
-    pendingHuman ||
-    failed;
+    Boolean(call.input || call.output || call.notice?.content.trim()) ||
+    pendingHuman;
   const title = titleOverride ?? timelineCallTitle(call);
   // Only an outcome the title does not already say gets a word at rest.
   const restingDescription = title.statesStatus ? null : restingStatusText;
