@@ -112,7 +112,8 @@ export function callSubject(
   call: Pick<TimelineCall, 'input' | 'actionKind'>
 ): string | null {
   const input = call.input?.trim();
-  if (!input || input.length > 1_000) return null;
+  if (!input || input.length > 1_000 || /^parameters:/i.test(input))
+    return null;
   const fields = SUBJECT_FIELDS[call.actionKind] ?? [];
 
   let subject: string | undefined;
@@ -169,6 +170,7 @@ export function callDescription(
     const description = conciseRowText(candidate);
     if (
       description &&
+      !/^parameters:/i.test(description) &&
       !/^(?:completed|in progress|started|running|failed|cancelled|timed out|stopped|interrupted|prepared|outcome unknown|returned text)(?:[ .:(]|$)/i.test(
         description
       )
