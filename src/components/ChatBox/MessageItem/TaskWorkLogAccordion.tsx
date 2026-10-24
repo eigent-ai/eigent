@@ -1193,13 +1193,10 @@ const ToolDetailRow = memo(function ToolDetailRow({
 }) {
   const [open, setOpen] = useState(humanInputPending);
   const wasHumanInputPending = useRef(humanInputPending);
-  const presentation = useMemo(
-    () =>
-      legacyToolPresentation(
-        { rowTitle, toolkitName, method, input },
-        status === 'running'
-      ),
-    [input, method, rowTitle, status, toolkitName]
+  useTranslation();
+  const presentation = legacyToolPresentation(
+    { rowTitle, toolkitName, method, input },
+    status === 'running'
   );
 
   useEffect(() => {
