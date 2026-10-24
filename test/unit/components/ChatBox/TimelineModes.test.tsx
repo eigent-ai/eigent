@@ -14,6 +14,7 @@
 
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
 import { TimelineModeRenderer } from '@/components/ChatBox/TimelineModes';
+import { useRunElapsedMs } from '@/components/ChatBox/TimelineModes/shared';
 import { subscribeAppEvents, type AppEvent } from '@/lib/events/appEvents';
 import { selectRenderableChatNodes } from '@/lib/projector/chat';
 import {
@@ -29,7 +30,14 @@ import {
   releaseProjectEventStore,
 } from '@/store/projectEventStore';
 import { SessionMode } from '@/types/constants';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  within,
+} from '@testing-library/react';
 import i18next from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -3138,6 +3146,20 @@ describe('ChatBox timeline modes', () => {
     rerender(<TimelineModeRenderer detailLevel="narrative" runs={[stopped]} />);
     expect(screen.getByText(/Stopped after/)).toBeInTheDocument();
     expect(screen.getByText('10s')).toBeInTheDocument();
+  });
+
+  it('does not subtract another Task pause from an already completed Run', () => {
+    vi.useFakeTimers();
+    const run = composeTimelineRuns(nodes('completed'))[0]!;
+    run.timestamps.durationMs = 20_000;
+    const { result, rerender } = renderHook(
+      ({ paused }) => useRunElapsedMs(run, paused),
+      { initialProps: { paused: false } }
+    );
+    rerender({ paused: true });
+    act(() => vi.advanceTimersByTime(5_000));
+    rerender({ paused: false });
+    expect(result.current).toBe(20_000);
   });
 });
 

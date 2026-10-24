@@ -183,7 +183,10 @@ export function useRunElapsedMs(run: TimelineRunView, paused = false): number {
     return () => window.clearInterval(timer);
   }, [active]);
 
-  const pausedOffsetMs = usePausedOffsetMs(paused && !heldForUser, now);
+  const pausedOffsetMs = usePausedOffsetMs(
+    paused && isActiveRunStatus(run.status) && !heldForUser,
+    now
+  );
 
   if (run.timestamps.durationMs !== null) {
     return Math.max(0, run.timestamps.durationMs - pausedOffsetMs);
