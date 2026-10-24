@@ -524,5 +524,12 @@
   "run-terminal-reason-error": "Die Aufgabe wurde wegen eines Fehlers beendet.",
   "run-terminal-reason-budget_exhausted": "Die Aufgabe hat ihr verfügbares Budget aufgebraucht.",
   "tool-status-timed_out": "Zeitüberschreitung",
-  "run-resume-reevaluates-hint": "Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf erneut nachgefragt."
+  "run-resume-reevaluates-hint": "Beim Fortsetzen wird die verbleibende Arbeit neu bewertet und bei Bedarf erneut nachgefragt.",
+  "automation-draft-with-skill": "In Skill umwandeln",
+  "create-automation-from-task": "In Automation umwandeln",
+  "automation-skill-unavailable": "Der skill-creator-Skill ist nicht verfügbar.",
+  "automation-source-session": "Automation aus Session: {{name}}",
+  "automation-schedule-review-hint": "Prüfe den Zeitplan unten. Der Editor wählt eine Vorgabe, auch wenn keine Wiederholung angegeben wurde.",
+  "automation-review-confirm": "Ich habe Zeitplan und erforderliche Eingaben geprüft.",
+  "automation-review-required": "Prüfe vor dem Erstellen Zeitplan und erforderliche Eingaben."
 }

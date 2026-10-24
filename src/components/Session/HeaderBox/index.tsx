@@ -16,6 +16,7 @@ import tokenDarkIcon from '@/assets/custom/token-dark.svg';
 import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
+import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -28,13 +29,21 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
+import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import {
+  parseAutomationDraft,
+  type AutomationDraftV1,
+} from '@/lib/automationDraft';
+import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice } from '@/store/pageTabStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
+import { useSkillsStore } from '@/store/skillsStore';
 import {
   chatTimelineDetailLevels,
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
@@ -50,10 +59,17 @@ import {
   Pencil,
   Pin,
   Trash2,
+  WandSparkles,
   type LucideIcon,
 } from 'lucide-react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import {
+  selectEventAutomationSource,
+  selectLegacyAutomationSource,
+  type SessionAutomationSource,
+} from './sessionAutomationSource';
 import { SummaryToggle, type SummaryToggleProps } from './SummaryToggle';
 
 const SquareText = createLucideIcon('square-text', [
@@ -118,7 +134,16 @@ export function HeaderBox({
   const { t } = useTranslation();
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const titleRef = useRef<HTMLSpanElement>(null);
+  const sessionMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [titleOverflowing, setTitleOverflowing] = useState(false);
+  const [automationDialogOpen, setAutomationDialogOpen] = useState(false);
+  const [automationDialogContext, setAutomationDialogContext] = useState<{
+    projectId: string;
+    source: SessionAutomationSource;
+    draft: AutomationDraftV1 | null;
+  } | null>(null);
+  const { projectStore, chatStore } = useChatStoreAdapter();
+  const projectEventRuntime = useProjectEventRuntime();
   const [headerRef, compact] = useIsCompactWidth<HTMLDivElement>(
     COMPACT_WIDTH_THRESHOLD
   );
@@ -154,7 +179,53 @@ export function HeaderBox({
   const pinnedProjectIds = useSessionControlsStore((s) => s.pinnedProjectIds);
   const togglePinned = useSessionControlsStore((s) => s.togglePinned);
   const requestSessionAction = useSessionControlsStore((s) => s.requestAction);
+  const requestChatDraft = useSessionPageTabStore(
+    (state) => state.requestWorkspaceChatDraft
+  );
+  const activePreviewProjectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
+  const skillCreatorAvailable = useSkillsStore((state) =>
+    state.skills.some(
+      (skill) =>
+        skill.enabled &&
+        (skill.name === 'skill-creator' ||
+          skill.skillDirName === 'skill-creator')
+    )
+  );
   const pinned = Boolean(projectId && pinnedProjectIds.includes(projectId));
+  const automationSource = useMemo(() => {
+    if (!sessionMenuOpen || !projectId) return null;
+    const eventSource = selectEventAutomationSource(
+      projectEventRuntime.projectId === projectId
+        ? projectEventRuntime.snapshot
+        : null,
+      projectId
+    );
+    const legacySource = () => {
+      const chatStates = projectStore
+        .getAllChatStores(projectId)
+        .map(({ chatStore: store }) => ({ tasks: store.getState().tasks }));
+      if (
+        chatStore?.tasks &&
+        !chatStates.some((state) => state.tasks === chatStore.tasks)
+      ) {
+        chatStates.push({ tasks: chatStore.tasks });
+      }
+      return selectLegacyAutomationSource(chatStates);
+    };
+    return eventNativeTimelineEnabled
+      ? (eventSource ?? legacySource())
+      : (legacySource() ?? eventSource);
+  }, [
+    chatStore,
+    eventNativeTimelineEnabled,
+    projectEventRuntime.projectId,
+    projectEventRuntime.snapshot,
+    projectId,
+    projectStore,
+    sessionMenuOpen,
+  ]);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backTooltip = t('layout.back-tooltip', {
     defaultValue: 'Back',
@@ -179,6 +250,31 @@ export function HeaderBox({
   }));
   const handleTimelineStyleChange = (value: ChatTimelineDetailLevel) => {
     setChatTimelineDetailLevel(value);
+  };
+  const turnIntoSkill = () => {
+    if (!projectId || !automationSource || activePreviewProjectId !== projectId)
+      return;
+    if (!skillCreatorAvailable) {
+      toast.info(t('chat.automation-skill-unavailable'));
+      return;
+    }
+    const prompt = [
+      '#skill-creator',
+      'Use the skill-creator skill to turn this completed Task into a reusable skill. Generalize the repeatable workflow rather than copying the one-off result. Show the proposed skill for review before saving it.',
+      `Original request:\n${automationSource.taskPrompt.slice(0, 4000)}`,
+      `Final result summary:\n${automationSource.resultContent.slice(0, 4000)}`,
+    ].join('\n\n');
+    requestChatDraft(prompt, undefined, projectId, { ifEmpty: true });
+  };
+
+  const openAutomationDialog = () => {
+    if (!projectId || !automationSource) return;
+    setAutomationDialogContext({
+      projectId,
+      source: automationSource,
+      draft: parseAutomationDraft(automationSource.resultContent),
+    });
+    setAutomationDialogOpen(true);
   };
 
   return (
@@ -210,6 +306,7 @@ export function HeaderBox({
           >
             <DropdownMenuTrigger asChild>
               <Button
+                ref={sessionMenuTriggerRef}
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -239,7 +336,32 @@ export function HeaderBox({
                 <DsIcon icon={EllipsisVertical} recipe="main" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuContent
+              align="start"
+              className="w-56"
+              onCloseAutoFocus={(event) => {
+                if (automationDialogOpen) event.preventDefault();
+              }}
+            >
+              <DropdownMenuItem
+                disabled={
+                  !automationSource || activePreviewProjectId !== projectId
+                }
+                onSelect={turnIntoSkill}
+              >
+                <DsIcon icon={WandSparkles} recipe="main" />
+                {t('chat.automation-draft-with-skill')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!automationSource}
+                onSelect={openAutomationDialog}
+              >
+                <DsIcon icon={AUTOMATION_ICON} recipe="main" />
+                {t('chat.create-automation-from-task', {
+                  defaultValue: 'Turn into automation',
+                })}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => togglePinned(projectId)}>
                 <DsIcon icon={Pin} recipe="main" />
                 {t(pinned ? 'layout.unpin' : 'layout.pin')}
@@ -358,6 +480,20 @@ export function HeaderBox({
           </Button>
         </TooltipSimple>
       </div>
+      {automationDialogContext ? (
+        <TriggerDialog
+          selectedTrigger={null}
+          isOpen={automationDialogOpen}
+          onOpenChange={setAutomationDialogOpen}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            sessionMenuTriggerRef.current?.focus();
+          }}
+          sourceProjectId={automationDialogContext.projectId}
+          initialTaskPrompt={automationDialogContext.source.taskPrompt}
+          initialDraft={automationDialogContext.draft}
+        />
+      ) : null}
     </div>
   );
 }

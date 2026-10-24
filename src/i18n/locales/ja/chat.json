@@ -520,5 +520,12 @@
   "run-terminal-reason-error": "エラーによりタスクが停止しました。",
   "run-terminal-reason-budget_exhausted": "タスクが利用可能な予算を使い切りました。",
   "tool-status-timed_out": "タイムアウト",
-  "run-resume-reevaluates-hint": "再開すると残りの作業を再評価し、必要に応じて改めて確認します。"
+  "run-resume-reevaluates-hint": "再開すると残りの作業を再評価し、必要に応じて改めて確認します。",
+  "automation-draft-with-skill": "スキルに変換",
+  "create-automation-from-task": "自動化に変換",
+  "automation-skill-unavailable": "skill-creator スキルを利用できません。",
+  "automation-source-session": "セッションからの自動化: {{name}}",
+  "automation-schedule-review-hint": "以下のスケジュールを確認してください。繰り返しの指定がなくても既定値が選ばれます。",
+  "automation-review-confirm": "スケジュールと必要な入力を確認しました。",
+  "automation-review-required": "作成前にスケジュールと必要な入力を確認してください。"
 }

@@ -785,6 +785,32 @@ describe('ChatBox Component', async () => {
       expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
     });
 
+    it('keeps an unsent draft when a request asks to fill only an empty composer', async () => {
+      const user = userEvent.setup();
+      renderChatBox();
+      await user.type(screen.getByTestId('message-input'), 'Unsent draft');
+
+      act(() => {
+        usePageTabStore.setState({
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: '#skill-creator Turn this Task into a skill.',
+            reviewHandoffIds: [],
+            ifEmpty: true,
+          },
+        });
+      });
+
+      await waitFor(() => {
+        expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
+      });
+      expect(screen.getByTestId('message-input')).toHaveValue('Unsent draft');
+      expect(toast.info).toHaveBeenCalledWith('chat.message-draft-exists');
+    });
+
     it('marks review comments sent only after Chat accepts the message', async () => {
       renderChatBox();
 

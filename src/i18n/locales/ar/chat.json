@@ -540,5 +540,12 @@
   "run-terminal-reason-error": "توقفت المهمة بسبب خطأ.",
   "run-terminal-reason-budget_exhausted": "استنفدت المهمة الميزانية المتاحة.",
   "tool-status-timed_out": "انتهت المهلة",
-  "run-resume-reevaluates-hint": "عند الاستئناف، يُعاد تقييم العمل المتبقي ويُطلب منك الرد مجددًا عند الحاجة."
+  "run-resume-reevaluates-hint": "عند الاستئناف، يُعاد تقييم العمل المتبقي ويُطلب منك الرد مجددًا عند الحاجة.",
+  "automation-draft-with-skill": "تحويل إلى مهارة",
+  "create-automation-from-task": "تحويل إلى أتمتة",
+  "automation-skill-unavailable": "مهارة skill-creator غير متاحة.",
+  "automation-source-session": "الأتمتة من الجلسة: {{name}}",
+  "automation-schedule-review-hint": "راجع الجدول أدناه. يختار المحرر وقتًا افتراضيًا حتى إن لم تحدد وقتًا للتكرار.",
+  "automation-review-confirm": "راجعت الجدول والمدخلات المطلوبة.",
+  "automation-review-required": "راجع الجدول والمدخلات المطلوبة قبل الإنشاء."
 }
