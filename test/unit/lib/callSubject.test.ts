@@ -78,6 +78,12 @@ describe('callSubject', () => {
       callSubject({ actionKind: 'command', input: "command='a\\nb'" })
     ).toBeNull();
   });
+
+  it('keeps redacted parameter-key summaries out of collapsed row subjects', () => {
+    const summary = 'Parameters: file paths';
+    expect(callSubject({ actionKind: 'inspect', input: summary })).toBeNull();
+    expect(callDescription({ detail: summary })).toBeNull();
+  });
 });
 
 describe('callDescription', () => {
