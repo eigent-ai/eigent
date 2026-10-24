@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { callSubject } from '@/lib/projector/chat/presentation';
+import {
+  callDescription,
+  callSubject,
+} from '@/lib/projector/chat/presentation';
 import { describe, expect, it } from 'vitest';
 
 describe('callSubject', () => {
@@ -74,5 +77,22 @@ describe('callSubject', () => {
     expect(
       callSubject({ actionKind: 'command', input: "command='a\\nb'" })
     ).toBeNull();
+  });
+});
+
+describe('callDescription', () => {
+  it.each([
+    'Outcome unknown after 17 s',
+    'Completed in 465 ms',
+    'Prepared',
+    'Stopped after 5 s',
+  ])('omits lifecycle-only detail %s from row titles', (detail) => {
+    expect(callDescription({ detail })).toBeNull();
+  });
+
+  it('keeps a toolkit work description', () => {
+    expect(callDescription({ detail: 'Fetching Anthropic news page' })).toBe(
+      'Fetching Anthropic news page'
+    );
   });
 });
