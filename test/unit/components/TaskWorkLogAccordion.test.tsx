@@ -361,6 +361,38 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
     );
   });
 
+  it('groups real SearchToolkit formatted inputs without inline argument narration', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...['octopus', 'squid', 'cuttlefish'].flatMap((query) =>
+        completedCall(
+          'Search Toolkit',
+          'search google',
+          `With query '${query}', web type, 1 result pages starting from page 1`,
+          '[]'
+        )
+      ),
+    ];
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+    const group = screen.getByRole('button', {
+      name: 'Searched for cuttlefish · 3 events',
+    });
+    expect(screen.queryByText(/^With query/)).not.toBeInTheDocument();
+    fireEvent.click(group);
+    const call = screen.getByRole('button', { name: 'Searched for octopus' });
+    fireEvent.click(call);
+    expect(
+      screen.getByText(
+        "With query 'octopus', web type, 1 result pages starting from page 1"
+      )
+    ).toBeInTheDocument();
+  });
+
   it('keeps Search unified and shows providers only in expanded details', () => {
     const log = [
       mk(AgentStep.ACTIVATE_AGENT),

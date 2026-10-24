@@ -239,6 +239,15 @@ function looksLikeNarration(raw: string): boolean {
   const head = s.slice(0, 1);
   if (head === '{' || head === '[' || head === '<') return false;
   if (/^https?:\/\//i.test(s)) return false;
+  // Formatted tool arguments stay inside request details, not between calls.
+  if (/^with query (['"]).*\1, (?:web|image|news|video) type,/i.test(s))
+    return false;
+  if (
+    /^write content to file: .+ with encoding: \S+ and use_latex: (?:true|false)$/i.test(
+      s
+    )
+  )
+    return false;
   // kwargs-ish: leading `key=` or `key='`
   if (/^[a-z_][\w]*\s*=/i.test(s)) return false;
   // Multi-word, alpha-leading, ends in punctuation or is a long sentence.
