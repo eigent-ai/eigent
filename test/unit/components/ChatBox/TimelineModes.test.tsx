@@ -402,6 +402,42 @@ describe('ChatBox timeline modes', () => {
     expect(screen.getByText('I will inspect the files.')).toBeInTheDocument();
   });
 
+  it('summarizes backend-titled searches by density and the latest call', () => {
+    const work = ['octopus', 'squid', 'cuttlefish'].map((query, index) =>
+      normalToolActivity({
+        id: `search-${index}`,
+        runSequence: index + 1,
+        status: 'completed',
+        toolkitName: 'Search Toolkit',
+        methodName: 'search_google',
+        title: `Searched for ${query}`,
+        input: `Query: ${query}`,
+      })
+    );
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([...work, runningRunStatus(4)])}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+    const group = container.querySelector('[data-narrative-segment-trigger]')!;
+    expect(group.textContent).toBe('Searched for cuttlefish · 3 events');
+    act(() =>
+      usePageTabStore.setState({ narrativeInformationDensity: 'compact' })
+    );
+    expect(
+      container.querySelector('[data-narrative-segment-trigger]')?.textContent
+    ).toBe('Searched · 3 events');
+    fireEvent.click(
+      container.querySelector('[data-narrative-segment-trigger]')!
+    );
+    expect(
+      screen.getByRole('button', { name: 'Searched for octopus' })
+    ).toBeInTheDocument();
+  });
+
   it('counts only consecutive calls of the same toolkit method', () => {
     const terminal = (
       id: string,
@@ -648,7 +684,7 @@ describe('ChatBox timeline modes', () => {
     ).toEqual(['Ran command · Fetching Anthropic news page', 'Read notes']);
     const group = container.querySelector('[data-narrative-segment-trigger]');
     expect(group).toHaveTextContent(
-      'Ran command · 2 events · Summarizing Anthropic news page'
+      'Ran command · Summarizing Anthropic news page · 2 events'
     );
     expect(group).not.toHaveTextContent('python3');
   });
@@ -1636,7 +1672,7 @@ describe('ChatBox timeline modes', () => {
       'data-narrative-segment-call-count',
       '3'
     );
-    expect(groupTrigger).toHaveTextContent('Inspect first file · 3 events');
+    expect(groupTrigger).toHaveTextContent('Read files · 3 events');
     expect(groupTrigger).toHaveClass('group', 'gap-ds-6', 'py-ds-2');
     expect(
       groupTrigger.querySelector('[data-narrative-segment-chevron]')
