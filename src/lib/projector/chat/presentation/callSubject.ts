@@ -153,7 +153,7 @@ export function callDescription(
     const description = conciseRowText(candidate);
     if (
       description &&
-      !/^(?:completed|in progress|started|running|failed|cancelled|timed out|returned text)(?:[ .:(]|$)/i.test(
+      !/^(?:completed|in progress|started|running|failed|cancelled|timed out|stopped|interrupted|prepared|outcome unknown|returned text)(?:[ .:(]|$)/i.test(
         description
       )
     ) {
