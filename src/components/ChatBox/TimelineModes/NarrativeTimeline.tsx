@@ -23,7 +23,6 @@ import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import {
   callDescription,
   callSubject,
-  callSummary,
   resolveSubagentPresentationIdentity,
   segmentTimelineRun,
   type TimelineCall,
@@ -371,17 +370,16 @@ function NarrativeRepeatedCalls({
     calls.some((call) => initiallyOpenCallIds.has(call.id)) ? true : undefined
   );
 
-  // The latest call speaks for the group, so its tense follows the work. An
-  // authored title keeps its words and takes the latest subject after them.
+  // Group summaries follow density; the child rows retain authored titles.
   const latest = calls[calls.length - 1];
   const latestTitle = callTitle(latest, summarize);
-  const countLabel = t('chat.repeated-tool-events', {
-    tool: latestTitle.outcomeTense ? latestTitle.text : first.title,
+  const groupTitle = summarize
+    ? latestTitle.text
+    : timelineCallTitle({ ...latest, title: '' }).text;
+  const label = t('chat.repeated-tool-events', {
+    tool: groupTitle,
     count: calls.length,
   });
-  const summary =
-    summarize && !latestTitle.outcomeTense ? callSummary(latest) : null;
-  const label = summary ? `${countLabel} · ${summary}` : countLabel;
   // A closed group hides the running call, so the shimmer moves up to the
   // label. Opening it hands the shimmer back to the call that owns it, which
   // keeps exactly one live indicator on screen either way.

@@ -239,7 +239,8 @@ function isFallbackTitle(call: TitledCall): boolean {
 }
 
 function joinTitle(title: string, extra: string | null | undefined): string {
-  return extra ? `${title} · ${extra}` : title;
+  if (!extra || title === extra || title.endsWith(` ${extra}`)) return title;
+  return `${title} · ${extra}`;
 }
 
 /**
