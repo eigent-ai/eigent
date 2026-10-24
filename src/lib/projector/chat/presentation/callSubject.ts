@@ -137,8 +137,24 @@ export function callSubject(
       (fields.length > 0 && Object.keys(parsed.named).length === 0
         ? parsed.positional[0]
         : undefined);
+  } else if (call.actionKind === 'search' && /^with query /i.test(input)) {
+    // SearchToolkit's legacy formatter includes options after the query.
+    subject = /^with query (['"])(.*)\1, (?:web|image|news|video) type,/i.exec(
+      input
+    )?.[2];
+  } else if (
+    call.actionKind === 'write' &&
+    /^write content to file:/i.test(input)
+  ) {
+    subject =
+      /^write content to file: (.+) with encoding: \S+ and use_latex: (?:true|false)$/i.exec(
+        input
+      )?.[1];
   } else {
-    subject = input.replace(/^(?:search query|query|command):\s*/i, '');
+    subject = input.replace(
+      /^(?:search query|query|command|file|path|url):\s*/i,
+      ''
+    );
   }
   if (!subject) return null;
   if (call.actionKind === 'command') subject = subject.replace(/^\$\s+/, '');

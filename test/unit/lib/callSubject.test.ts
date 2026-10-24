@@ -96,3 +96,40 @@ describe('callDescription', () => {
     );
   });
 });
+
+describe('legacy toolkit subjects', () => {
+  it('extracts only the query from the SearchToolkit formatter', () => {
+    expect(
+      callSubject({
+        actionKind: 'search',
+        input:
+          "With query 'Eigent AI', web type, 1 result pages starting from page 1",
+      })
+    ).toBe('Eigent AI');
+    expect(
+      callSubject({
+        actionKind: 'search',
+        input:
+          "With query 'sea, life', web type, 1 result pages starting from page 1",
+      })
+    ).toBe('sea, life');
+    expect(
+      callSubject({
+        actionKind: 'search',
+        input: 'With query malformed options',
+      })
+    ).toBeNull();
+  });
+  it('extracts filenames from the FileWriteToolkit formatter and canonical prefixes', () => {
+    expect(
+      callSubject({
+        actionKind: 'write',
+        input:
+          'Write content to file: notes.txt with encoding: utf-8 and use_latex: False',
+      })
+    ).toBe('notes.txt');
+    expect(callSubject({ actionKind: 'write', input: 'File: notes.txt' })).toBe(
+      'notes.txt'
+    );
+  });
+});
