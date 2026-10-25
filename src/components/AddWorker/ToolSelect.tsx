@@ -23,6 +23,7 @@ import {
 import IntegrationList from '@/components/Dashboard/IntegrationList';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   useIntegrationManagement,
   type IntegrationItem,
@@ -840,8 +841,9 @@ const ToolSelect = forwardRef<
         >
           {item.name || item.mcp_name || item.key || `tool_${item.id}`}
           <div className="flex items-center justify-center rounded-sm bg-transparent">
-            <X
-              className="h-4 w-4 shrink-0 cursor-pointer text-ds-ink-default-disabled hover:text-ds-ink-default-default"
+            <DsIcon
+              icon={X}
+              className="shrink-0 cursor-pointer text-ds-ink-default-disabled hover:text-ds-ink-default-default"
               onClick={() => removeOption(item)}
             />
           </div>
@@ -887,8 +889,8 @@ const ToolSelect = forwardRef<
         <div className="flex min-h-5 shrink-0 items-center gap-1 text-sm leading-normal font-bold text-ds-ink-default-default">
           {t('workforce.agent-tool')}
           <TooltipSimple content={t('workforce.agent-tool-tooltip')}>
-            <CircleAlert
-              size={16}
+            <DsIcon
+              icon={CircleAlert}
               className="shrink-0 text-ds-ink-default-default"
             />
           </TooltipSimple>

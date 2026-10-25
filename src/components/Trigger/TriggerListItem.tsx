@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { cn } from '@/lib/utils';
@@ -175,7 +176,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             })}
             onClick={(event) => event.stopPropagation()}
           >
-            <MoreHorizontal aria-hidden />
+            <DsIcon icon={MoreHorizontal} recipe="main-compact" aria-hidden />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -186,14 +187,18 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             disabled={isBusy || !!needsAuth}
             onSelect={() => void onRunNow(trigger)}
           >
-            <Play aria-hidden />
+            <DsIcon icon={Play} aria-hidden />
             {t('triggers.action-run-now')}
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={isBusy || !!needsAuth}
             onSelect={() => onToggleActive(trigger)}
           >
-            {isActive ? <Pause aria-hidden /> : <CirclePlay aria-hidden />}
+            {isActive ? (
+              <DsIcon icon={Pause} aria-hidden />
+            ) : (
+              <DsIcon icon={CirclePlay} aria-hidden />
+            )}
             {t(isActive ? 'triggers.action-pause' : 'triggers.action-resume')}
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -201,7 +206,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             disabled={isBusy}
             onSelect={() => onEdit(trigger)}
           >
-            <Pencil aria-hidden />
+            <DsIcon icon={Pencil} aria-hidden />
             {t('triggers.edit')}
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -209,7 +214,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             disabled={isBusy}
             onSelect={() => onDelete(trigger)}
           >
-            <Trash2 aria-hidden />
+            <DsIcon icon={Trash2} aria-hidden />
             {t('triggers.delete')}
           </DropdownMenuItem>
         </DropdownMenuContent>

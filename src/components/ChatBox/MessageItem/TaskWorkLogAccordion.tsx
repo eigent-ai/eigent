@@ -12,9 +12,18 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { callIcon } from '@/components/ChatBox/TimelineModes/actionIcon';
+import { TaskLogIcon } from '@/components/ChatBox/TimelineModes/TaskLog';
 import { Badge } from '@/components/ui/badge';
+import { DsIcon } from '@/components/ui/ds-icon';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
+import {
+  actionKindForActivities,
+  callSubject,
+  timelineCallTitle,
+  type TimelineCallTitle,
+} from '@/lib/projector/chat/presentation';
 import { isSupersededRunError } from '@/lib/taskLifecycleUi';
 import { cn } from '@/lib/utils';
 import type {
@@ -29,7 +38,7 @@ import {
   TaskStatus,
 } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bot, ChevronDown, ChevronRight } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -231,6 +240,15 @@ function looksLikeNarration(raw: string): boolean {
   const head = s.slice(0, 1);
   if (head === '{' || head === '[' || head === '<') return false;
   if (/^https?:\/\//i.test(s)) return false;
+  // Formatted tool arguments stay inside request details, not between calls.
+  if (/^with query (['"]).*\1, (?:web|image|news|video) type,/i.test(s))
+    return false;
+  if (
+    /^write content to file: .+ with encoding: \S+ and use_latex: (?:true|false)$/i.test(
+      s
+    )
+  )
+    return false;
   // kwargs-ish: leading `key=` or `key='`
   if (/^[a-z_][\w]*\s*=/i.test(s)) return false;
   // Multi-word, alpha-leading, ends in punctuation or is a long sentence.
@@ -436,6 +454,46 @@ function isHumanAskTool(toolkitName: string, method: string): boolean {
     normalizedToolkit === 'humantoolkit' &&
     normalizedMethod === 'askhumanviagui'
   );
+}
+
+type LegacyToolCall = Pick<
+  ToolItem,
+  'rowTitle' | 'toolkitName' | 'method' | 'input'
+>;
+
+/**
+ * Title and icon a legacy tool row shares with the Narrative work log. Only
+ * running and done are known here; the legacy stream carries no failure.
+ */
+function legacyToolPresentation(
+  call: LegacyToolCall,
+  running: boolean
+): { title: TimelineCallTitle; icon: LucideIcon; subject: string | null } {
+  const actionKind = actionKindForActivities([
+    { toolkitName: call.toolkitName, methodName: call.method },
+  ]);
+  const subject = callSubject({ input: call.input, actionKind });
+  const human = isHumanAskTool(call.toolkitName, call.method);
+  // Human calls and authored rows keep their own words; only the plain
+  // `Toolkit · Method` fallback is re-titled by outcome.
+  const keepTitle =
+    human || call.rowTitle !== toolRowTitle(call.toolkitName, call.method);
+  const title = timelineCallTitle(
+    {
+      executor: human ? 'human' : 'toolkit',
+      actionKind,
+      status: running ? 'running' : 'completed',
+      title: keepTitle ? call.rowTitle : call.method,
+      toolkitName: call.toolkitName,
+      methodName: call.method,
+    },
+    { subject }
+  );
+  return {
+    title,
+    icon: callIcon({ toolkitName: call.toolkitName, actionKind }),
+    subject,
+  };
 }
 
 function pairKey(toolkit: string, method: string): string {
@@ -1115,6 +1173,8 @@ function useWorkLogElapsedMs(
 
 const ToolDetailRow = memo(function ToolDetailRow({
   rowTitle,
+  toolkitName,
+  method,
   providerLabel,
   input,
   output,
@@ -1123,6 +1183,8 @@ const ToolDetailRow = memo(function ToolDetailRow({
   humanInputReceipt,
 }: {
   rowTitle: string;
+  toolkitName: string;
+  method: string;
   providerLabel?: string | null;
   input: string;
   output: string;
@@ -1132,6 +1194,11 @@ const ToolDetailRow = memo(function ToolDetailRow({
 }) {
   const [open, setOpen] = useState(humanInputPending);
   const wasHumanInputPending = useRef(humanInputPending);
+  useTranslation();
+  const presentation = legacyToolPresentation(
+    { rowTitle, toolkitName, method, input },
+    status === 'running'
+  );
 
   useEffect(() => {
     if (humanInputPending) {
@@ -1148,27 +1215,29 @@ const ToolDetailRow = memo(function ToolDetailRow({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="group inline-flex max-w-full min-w-0 items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80"
+        className="group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start px-0 py-0.5 text-left text-ds-ink-subtle-default transition-opacity hover:opacity-80"
       >
+        <TaskLogIcon icon={presentation.icon} data-work-log-tool-icon />
         {status === 'running' ? (
           <ShinyText
-            text={rowTitle}
+            text={presentation.title.text}
             speed={2.5}
             className="min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default"
           />
         ) : (
           <span className="min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default">
-            {rowTitle}
+            {presentation.title.text}
           </span>
         )}
-        <ChevronRight
-          size={16}
+        <DsIcon
+          icon={ChevronRight}
           aria-hidden
+          data-work-log-chevron
           className={cn(
             'shrink-0 text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
             open
               ? 'rotate-90 opacity-100'
-              : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
           )}
         />
       </button>
@@ -1217,10 +1286,22 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const rowTitle = t('chat.repeated-tool-events', {
-    tool: item.rowTitle,
+  // The latest call speaks for the group, as in the Narrative work log.
+  const latest = item.calls[item.calls.length - 1]!;
+  const latestPresentation = legacyToolPresentation(
+    latest,
+    active && latest.status === 'running'
+  );
+  const countLabel = t('chat.repeated-tool-events', {
+    tool: latestPresentation.title.outcomeTense
+      ? latestPresentation.title.text
+      : item.rowTitle,
     count: item.calls.length,
   });
+  const summary = latestPresentation.title.outcomeTense
+    ? null
+    : latestPresentation.subject;
+  const rowTitle = summary ? `${countLabel} · ${summary}` : countLabel;
   const running = active && item.status === 'running';
 
   return (
@@ -1235,8 +1316,9 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="group inline-flex max-w-full min-w-0 items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80"
+        className="group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start px-0 py-0.5 text-left text-ds-ink-subtle-default transition-opacity hover:opacity-80"
       >
+        <TaskLogIcon icon={latestPresentation.icon} data-work-log-tool-icon />
         {running ? (
           <ShinyText
             text={rowTitle}
@@ -1248,14 +1330,15 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
             {rowTitle}
           </span>
         )}
-        <ChevronRight
-          size={16}
+        <DsIcon
+          icon={ChevronRight}
           aria-hidden
+          data-work-log-chevron
           className={cn(
             'shrink-0 text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
             open
               ? 'rotate-90 opacity-100'
-              : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
           )}
         />
       </button>
@@ -1275,6 +1358,8 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
                 <ToolDetailRow
                   key={call.id}
                   rowTitle={call.rowTitle}
+                  toolkitName={call.toolkitName}
+                  method={call.method}
                   providerLabel={searchProviderLabel(
                     call.toolkitName,
                     call.method
@@ -1432,7 +1517,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="my-1 flex w-fit max-w-full min-w-0 items-center gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80"
+        className="group my-1 flex w-fit max-w-full min-w-0 items-center gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80"
       >
         <span className="inline-flex max-w-full min-w-0 items-baseline gap-1.5 truncate">
           {headerRunning ? (
@@ -1460,16 +1545,16 @@ const AgentBlockRow = memo(function AgentBlockRow({
           )}
         </span>
         {open ? (
-          <ChevronDown
-            size={16}
+          <DsIcon
+            icon={ChevronDown}
             aria-hidden
             className="shrink-0 text-ds-ink-subtle-default"
           />
         ) : (
-          <ChevronRight
-            size={16}
+          <DsIcon
+            icon={ChevronRight}
             aria-hidden
-            className="shrink-0 text-ds-ink-subtle-default"
+            className="shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           />
         )}
       </button>
@@ -1504,6 +1589,8 @@ const AgentBlockRow = memo(function AgentBlockRow({
                   <ToolDetailRow
                     key={item.id}
                     rowTitle={item.rowTitle}
+                    toolkitName={item.toolkitName}
+                    method={item.method}
                     providerLabel={searchProviderLabel(
                       item.toolkitName,
                       item.method
@@ -1590,7 +1677,7 @@ function getGroupHeaderParts(group: AgentGroup): GroupHeaderParts {
 }
 
 const DEFAULT_BOT_ICON = (
-  <Bot size={16} className="text-ds-ink-default-default" />
+  <DsIcon icon={Bot} className="text-ds-ink-default-default" />
 );
 
 const AgentGroupRow = memo(function AgentGroupRow({
@@ -1648,7 +1735,7 @@ const AgentGroupRow = memo(function AgentGroupRow({
         aria-expanded={open}
         onClick={onToggle}
         className={cn(
-          'my-1 flex w-fit max-w-full min-w-0 gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80',
+          'group my-1 flex w-fit max-w-full min-w-0 gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80',
           useSingleAgentLiveHeader ? 'items-start' : 'items-center'
         )}
       >
@@ -1728,8 +1815,8 @@ const AgentGroupRow = memo(function AgentGroupRow({
         )}
 
         {open ? (
-          <ChevronDown
-            size={16}
+          <DsIcon
+            icon={ChevronDown}
             aria-hidden
             className={cn(
               'shrink-0 text-ds-ink-subtle-default',
@@ -1737,11 +1824,11 @@ const AgentGroupRow = memo(function AgentGroupRow({
             )}
           />
         ) : (
-          <ChevronRight
-            size={16}
+          <DsIcon
+            icon={ChevronRight}
             aria-hidden
             className={cn(
-              'shrink-0 text-ds-ink-subtle-default',
+              'shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100',
               useSingleAgentLiveHeader ? 'my-0.5' : ''
             )}
           />
@@ -1784,6 +1871,8 @@ const AgentGroupRow = memo(function AgentGroupRow({
                   <ToolDetailRow
                     key={item.id}
                     rowTitle={item.rowTitle}
+                    toolkitName={item.toolkitName}
+                    method={item.method}
                     providerLabel={searchProviderLabel(
                       item.toolkitName,
                       item.method
@@ -1991,15 +2080,14 @@ export function TaskWorkLogAccordion({
 
   const { isOpen, toggle } = useGroupOpenState(effectiveGroups);
 
-  const [outerOpen, setOuterOpen] = useState(() => taskRunning);
-
-  useEffect(() => {
-    if (status === ChatTaskStatus.FINISHED) {
-      setOuterOpen(false);
-    } else if (status === ChatTaskStatus.RUNNING) {
-      setOuterOpen(true);
-    }
-  }, [status]);
+  const [manualOuterOpen, setManualOuterOpen] = useState<{
+    taskId: string;
+    open: boolean;
+  } | null>(null);
+  const outerOpen =
+    manualOuterOpen?.taskId === taskId
+      ? manualOuterOpen.open
+      : status === ChatTaskStatus.RUNNING || status === ChatTaskStatus.PAUSE;
 
   if (!taskId || !task) return null;
 
@@ -2018,9 +2106,9 @@ export function TaskWorkLogAccordion({
       <button
         type="button"
         aria-expanded={outerOpen}
-        onClick={() => setOuterOpen((v) => !v)}
+        onClick={() => setManualOuterOpen({ taskId, open: !outerOpen })}
         className={cn(
-          'flex w-full min-w-0 items-center justify-start gap-1 px-0 py-2 text-left',
+          'group flex w-full min-w-0 items-center justify-start gap-1 px-0 py-2 text-left',
           WORK_LOG_SUMMARY_TRIGGER_BORDER_CLASS
         )}
       >
@@ -2049,18 +2137,16 @@ export function TaskWorkLogAccordion({
           )}
         </span>
         {outerOpen ? (
-          <ChevronDown
-            size={16}
-            strokeWidth={2}
+          <DsIcon
+            icon={ChevronDown}
             aria-hidden
             className="shrink-0 text-ds-ink-muted-default"
           />
         ) : (
-          <ChevronRight
-            size={16}
-            strokeWidth={2}
+          <DsIcon
+            icon={ChevronRight}
             aria-hidden
-            className="shrink-0 text-ds-ink-muted-default"
+            className="shrink-0 text-ds-ink-muted-default opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           />
         )}
       </button>

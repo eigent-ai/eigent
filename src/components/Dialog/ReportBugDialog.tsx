@@ -19,6 +19,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Textarea } from '@/components/ui/textarea';
 import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
@@ -291,12 +292,13 @@ export default function ReportBugDialog({
                   })}
                 >
                   {exportingLog === 'eigent' ? (
-                    <Loader2
-                      className="h-4 w-4 shrink-0 animate-spin"
+                    <DsIcon
+                      icon={Loader2}
+                      className="shrink-0 animate-spin"
                       aria-hidden
                     />
                   ) : (
-                    <Download className="h-4 w-4 shrink-0" aria-hidden />
+                    <DsIcon icon={Download} className="shrink-0" aria-hidden />
                   )}
                   {t('layout.support-download', { defaultValue: 'Download' })}
                 </Button>
@@ -326,12 +328,17 @@ export default function ReportBugDialog({
                     })}
                   >
                     {exportingLog === 'camel' ? (
-                      <Loader2
-                        className="h-4 w-4 shrink-0 animate-spin"
+                      <DsIcon
+                        icon={Loader2}
+                        className="shrink-0 animate-spin"
                         aria-hidden
                       />
                     ) : (
-                      <Download className="h-4 w-4 shrink-0" aria-hidden />
+                      <DsIcon
+                        icon={Download}
+                        className="shrink-0"
+                        aria-hidden
+                      />
                     )}
                     {t('layout.support-download', { defaultValue: 'Download' })}
                   </Button>
@@ -365,12 +372,13 @@ export default function ReportBugDialog({
               disabled={!description.trim() || submitting}
             >
               {submitting ? (
-                <Loader2
-                  className="h-4 w-4 shrink-0 animate-spin"
+                <DsIcon
+                  icon={Loader2}
+                  className="shrink-0 animate-spin"
                   aria-hidden
                 />
               ) : (
-                <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={ExternalLink} className="shrink-0" aria-hidden />
               )}
               {t('layout.report-bug-open-github', {
                 defaultValue: 'Open on GitHub',

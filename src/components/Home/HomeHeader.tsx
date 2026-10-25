@@ -25,6 +25,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
@@ -114,7 +115,7 @@ export default function HomeHeader() {
                 className="rounded-full"
                 aria-label={sortLabel}
               >
-                <ArrowUpDown className="h-4 w-4" />
+                <DsIcon icon={ArrowUpDown} />
               </Button>
             </DropdownMenuTrigger>
           </span>
@@ -131,9 +132,9 @@ export default function HomeHeader() {
                 <span className="flex-1">{t(`layout.home-sort-${field}`)}</span>
                 {sortBy === field ? (
                   sortDirection === 'desc' ? (
-                    <ArrowDown aria-hidden />
+                    <DsIcon icon={ArrowDown} aria-hidden />
                   ) : (
-                    <ArrowUp aria-hidden />
+                    <DsIcon icon={ArrowUp} aria-hidden />
                   )
                 ) : null}
               </DropdownMenuRadioItem>
@@ -154,7 +155,7 @@ export default function HomeHeader() {
               side="bottom"
             >
               <div className="inline-flex h-5 w-5 items-center justify-center">
-                <LayoutGrid size={16} />
+                <DsIcon icon={LayoutGrid} />
               </div>
             </TooltipSimple>
           </TabsTrigger>
@@ -165,7 +166,7 @@ export default function HomeHeader() {
               side="bottom"
             >
               <div className="inline-flex h-5 w-5 items-center justify-center">
-                <List size={16} />
+                <DsIcon icon={List} />
               </div>
             </TooltipSimple>
           </TabsTrigger>

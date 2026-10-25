@@ -14,6 +14,7 @@
 
 import { UserMessageRichContent } from '@/components/ChatBox/MessageItem/UserMessageRichContent';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import type { VanillaChatStore } from '@/store/chatStore';
 import { motion } from 'framer-motion';
 import { CircleDashed, LoaderCircle, Minimize2 } from 'lucide-react';
@@ -99,7 +100,7 @@ export function ExpandedOverlay({
               onClick={onMinimize}
               aria-label={t('chat.minimize-plan')}
             >
-              <Minimize2 className="size-ds-icon-md" />
+              <DsIcon icon={Minimize2} />
             </Button>
           </div>
 
@@ -140,13 +141,15 @@ export function ExpandedOverlay({
                     >
                       <div className="flex h-4 shrink-0 items-center justify-center pt-0.5">
                         {streaming ? (
-                          <LoaderCircle
-                            size={13}
+                          <DsIcon
+                            icon={LoaderCircle}
+                            recipe="main-compact"
                             className="animate-spin text-ds-icon-information-default-default"
                           />
                         ) : (
-                          <CircleDashed
-                            size={13}
+                          <DsIcon
+                            icon={CircleDashed}
+                            recipe="main-compact"
                             className="text-ds-ink-muted-default"
                           />
                         )}

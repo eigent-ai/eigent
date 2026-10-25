@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
 import {
   ensureShellSession,
@@ -253,7 +254,7 @@ export function ShellTerminal({
             size="xs"
             onClick={() => void handleRestart()}
           >
-            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            <DsIcon icon={RotateCcw} recipe="main-compact" aria-hidden />
             {t('layout.terminal-restart', { defaultValue: 'Restart shell' })}
           </Button>
         </div>

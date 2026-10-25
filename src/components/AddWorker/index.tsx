@@ -28,6 +28,7 @@ import {
   DialogHeader,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -436,8 +437,22 @@ export function AddWorker({
   // tool function
   const getCategoryIcon = (categoryName?: string) => {
     if (!categoryName)
-      return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
-    return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
+      return (
+        <DsIcon
+          icon={Bot}
+          recipe="illustration"
+          illustrationSize={40}
+          className="text-ds-ink-default-default"
+        />
+      );
+    return (
+      <DsIcon
+        icon={Bot}
+        recipe="illustration"
+        illustrationSize={40}
+        className="text-ds-ink-default-default"
+      />
+    );
   };
 
   const getGithubRepoName = (homePage?: string) => {
@@ -611,7 +626,7 @@ export function AddWorker({
                 setSelectedTools(workerInfo?.workerInfo?.selectedTools || []);
               }}
             >
-              <Edit size={16} />
+              <DsIcon icon={Edit} />
               {t('workforce.edit')}
             </Button>
           )}
@@ -694,13 +709,13 @@ export function AddWorker({
                           backIcon={
                             isSensitiveKey(key) ? (
                               secretVisible[key] ? (
-                                <EyeOff
-                                  size={16}
+                                <DsIcon
+                                  icon={EyeOff}
                                   className="text-ds-ink-muted-disabled"
                                 />
                               ) : (
-                                <Eye
-                                  size={16}
+                                <DsIcon
+                                  icon={Eye}
                                   className="text-ds-ink-muted-disabled"
                                 />
                               )
@@ -747,7 +762,12 @@ export function AddWorker({
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-sm">
                     <div className="flex h-16 w-16 items-center justify-center">
-                      <Bot size={32} className="text-ds-ink-default-default" />
+                      <DsIcon
+                        icon={Bot}
+                        recipe="illustration"
+                        illustrationSize={32}
+                        className="text-ds-ink-default-default"
+                      />
                     </div>
                     <Input
                       size="sm"

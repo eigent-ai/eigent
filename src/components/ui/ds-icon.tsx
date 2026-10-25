@@ -15,47 +15,76 @@
 import { cn } from '@/lib/utils';
 import type { LucideIcon, LucideProps } from 'lucide-react';
 
-export type DsIconRecipe = 'main' | 'main-compact' | 'detailed';
+/**
+ * Two base styles share one line weight: `main` (16px, the standard) and
+ * `main-compact` (12px, dense metadata). `illustration` is the only exception,
+ * reserved for empty states and onboarding moments.
+ */
+export type DsIconRecipe = 'main' | 'main-compact' | 'illustration';
 
-const ICON_RECIPES: Record<
-  DsIconRecipe,
-  { size: number; strokeWidth: number; className: string }
+/** Illustration sizes; every other icon uses a base style. */
+export type DsIllustrationSize = 24 | 32 | 40 | 48;
+
+/** Stroke in screen pixels, independent of the icon's size. */
+export const DS_ICON_STROKE_PX = 1.25;
+export const DS_ILLUSTRATION_STROKE_PX = 1.5;
+
+const BASE_RECIPES: Record<
+  Exclude<DsIconRecipe, 'illustration'>,
+  { size: number; className: string }
 > = {
-  main: {
-    size: 16,
-    strokeWidth: 1.25,
-    className: 'size-ds-icon-md',
-  },
-  'main-compact': {
-    size: 12,
-    strokeWidth: 1.25,
-    className: 'size-ds-icon-xs',
-  },
-  detailed: {
-    size: 24,
-    strokeWidth: 1.5,
-    className: 'size-ds-icon-xl',
-  },
+  main: { size: 16, className: 'size-ds-icon-md' },
+  'main-compact': { size: 12, className: 'size-ds-icon-xs' },
 };
 
-export type DsIconProps = Omit<LucideProps, 'size' | 'strokeWidth'> & {
+const ILLUSTRATION_CLASS: Record<DsIllustrationSize, string> = {
+  24: 'size-ds-icon-xl',
+  32: 'size-8',
+  40: 'size-10',
+  48: 'size-12',
+};
+
+export function dsIconSpec(
+  recipe: DsIconRecipe,
+  illustrationSize: DsIllustrationSize = 24
+): { size: number; strokeWidth: number; className: string } {
+  if (recipe === 'illustration') {
+    return {
+      size: illustrationSize,
+      strokeWidth: DS_ILLUSTRATION_STROKE_PX,
+      className: ILLUSTRATION_CLASS[illustrationSize],
+    };
+  }
+  return { ...BASE_RECIPES[recipe], strokeWidth: DS_ICON_STROKE_PX };
+}
+
+export type DsIconProps = Omit<
+  LucideProps,
+  'size' | 'strokeWidth' | 'absoluteStrokeWidth'
+> & {
   icon: LucideIcon;
   recipe?: DsIconRecipe;
+  /** Only with `recipe="illustration"`. */
+  illustrationSize?: DsIllustrationSize;
   decorative?: boolean;
 };
 
 export function DsIcon({
   icon: Icon,
   recipe = 'main',
+  illustrationSize,
   decorative = true,
   className,
   ...props
 }: DsIconProps) {
-  const spec = ICON_RECIPES[recipe];
+  const spec = dsIconSpec(recipe, illustrationSize);
   return (
     <Icon
       size={spec.size}
       strokeWidth={spec.strokeWidth}
+      // Lucide scales its 24-unit stroke with the icon size by default; the
+      // design system specifies the stroke in screen pixels instead.
+      absoluteStrokeWidth
       aria-hidden={decorative ? true : undefined}
       className={cn('shrink-0 text-current', spec.className, className)}
       {...props}

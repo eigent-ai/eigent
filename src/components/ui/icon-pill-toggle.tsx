@@ -15,6 +15,7 @@
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
+import { DsIcon } from './ds-icon';
 
 export interface IconPillToggleOption<T extends string = string> {
   value: T;
@@ -92,7 +93,11 @@ export function IconPillToggle<T extends string>({
                 aria-hidden
               />
             ) : null}
-            <Icon className="relative z-10 h-3.5 w-3.5" aria-hidden />
+            <DsIcon
+              icon={Icon}
+              recipe="main-compact"
+              className="relative z-10"
+            />
           </button>
         );
       })}

@@ -24,6 +24,7 @@ import {
   SidebarSection,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
 import { useHost } from '@/host';
 import { selectableConfiguredModels } from '@/lib/configuredModels';
@@ -192,7 +193,7 @@ export default function SettingsSidebar({
                     key={item.id}
                     active={active}
                     onClick={() => onSectionChange(item.id)}
-                    leading={<Icon className="h-4 w-4 shrink-0" aria-hidden />}
+                    leading={<DsIcon icon={Icon} />}
                     label={label}
                     trailing={
                       count == null ? undefined : (

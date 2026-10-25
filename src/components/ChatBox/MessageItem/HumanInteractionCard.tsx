@@ -490,7 +490,10 @@ export function HumanInteractionCard({
       className={`${timelineReceipt ? 'w-full' : 'mx-6 my-3'} rounded-2xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4`}
     >
       <div className="flex items-start gap-3">
-        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-ds-icon-warning-default-default" />
+        <DsIcon
+          icon={ShieldAlert}
+          className="mt-0.5 shrink-0 text-ds-icon-warning-default-default"
+        />
         <div className="min-w-0 flex-1 space-y-3">
           <div>
             <span className="block text-sm font-semibold text-ds-ink-default-default">
