@@ -9,6 +9,8 @@ These are component-preview screenshots, not a live Electron task run.
 - [Light, answer focused](light-typing.png)
 - [Light, empty answer focused](light-empty-focused.png)
 - [Dark, empty answer focused](dark-empty-focused.png)
+- [Light, matching placeholders](light-placeholders.png)
+- [Dark, matching placeholders](dark-placeholders.png)
 
 In both themes, the card has no shadow and its border resolves to the same
 color as the composer boundary. The question answer has no visible inner
@@ -33,3 +35,11 @@ Validation: 32 focused Vitest tests; type checking; design-token checks;
 focused ESLint; Prettier; and `git diff --check` passed.
 Live Electron/backend submission, alternate theme palettes, localization,
 200% zoom and the full responsive matrix were not run. Human review is pending.
+
+The placeholder comparison screenshots render the real `RichChatInput` below
+the reply card. Both placeholders use `ink.subtle.disabled`: computed colors
+match exactly in light and dark modes. The question still hides its placeholder
+on focus. The shared Textarea default placeholder color is unchanged.
+
+Placeholder follow-up validation: 12 focused reply/card tests, type checking,
+design-token checks, focused ESLint, Prettier and `git diff --check` passed.

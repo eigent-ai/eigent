@@ -348,7 +348,7 @@ function FeedbackInput({
         variant={isQuestion ? 'plain' : 'none'}
         className={
           isQuestion
-            ? 'focus-visible:ring-0 focus-visible:ring-offset-0'
+            ? 'placeholder:text-ds-ink-subtle-disabled focus-visible:ring-0 focus-visible:ring-offset-0'
             : undefined
         }
         size="sm"
