@@ -148,9 +148,11 @@ export default function RemoteControlPage() {
         defaultValue: 'History resync required',
       });
     const syncedAt = projectView.lastSyncedAt
-      ? formatAppDate(new Date(projectView.lastSyncedAt), {
-          timeStyle: 'medium',
-        })
+      ? formatAppDate(
+          new Date(projectView.lastSyncedAt),
+          { timeStyle: 'medium' },
+          i18n.resolvedLanguage || i18n.language
+        )
       : t('layout.remote-control-not-synced', {
           defaultValue: 'not synced',
         });
