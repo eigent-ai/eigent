@@ -3854,8 +3854,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               (priorRun?.used_browser === true ||
                 priorRun?.latest_attempt?.used_browser === true);
           } catch (error) {
-            finishStartupFailure();
-            throw error;
+            // The earlier browser use is only a hint; Resume continues
+            // without it and still checks the original request below.
+            console.warn('[Resume] Could not read earlier browser use', error);
           }
         }
         const originalPrompt = targetChatStore

@@ -497,22 +497,10 @@ async def list_project_runs(
     for run in runs:
         attempts = attempts_by_run[run.run_id]
         bound_attempt = bound_attempts[run.run_id]
-        browser_attempts = await asyncio.to_thread(
-            journal.browser_tool_attempts, run.run_id
-        )
         items.append(
             {
                 **asdict(run),
-                "used_browser": bool(browser_attempts),
-                "latest_attempt": (
-                    {
-                        **asdict(attempts[-1]),
-                        "used_browser": attempts[-1].attempt_id
-                        in browser_attempts,
-                    }
-                    if attempts
-                    else None
-                ),
+                "latest_attempt": (asdict(attempts[-1]) if attempts else None),
                 "resolved_model": _resolved_model_for_attempt(
                     specs.get(bound_attempt.environment_spec_id)
                     if bound_attempt

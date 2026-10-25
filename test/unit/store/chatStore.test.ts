@@ -1744,6 +1744,51 @@ describe('ChatStore - Core Functionality', () => {
         }
       );
 
+      it('still resumes when the earlier browser use cannot be read', async () => {
+        const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+        const invoke = vi.fn(async (channel: string) => {
+          if (channel === 'get-browser-port') return 9222;
+          if (channel === 'get-embedded-browser-runtime')
+            return {
+              port: 9222,
+              targetAvailable: true,
+              targets: [
+                {
+                  url: 'about:blank#eigent-browser-toolkit=resume',
+                  webContentsId: 7,
+                },
+              ],
+            };
+          if (channel === 'get-env-path') return '';
+          return undefined;
+        });
+        injectHost({ ipcRenderer: { invoke } } as any);
+        try {
+          vi.mocked(fetchGet).mockRejectedValue(new Error('Brain busy'));
+          const startup = beginStartup({ resume: true });
+          startup.owner.getState().addMessages(startup.runId, {
+            id: 'original',
+            role: 'user',
+            content: 'Open it in the browser',
+          });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          const body = JSON.parse(stream.body);
+          expect(body.cdp_browsers).toEqual([
+            expect.objectContaining({ managedBy: 'electron' }),
+          ]);
+          expect(body.browser_unavailable_on_resume).toBe(false);
+          await stream.onopen(response());
+          await startup.admission;
+          startup.finishStream();
+        } finally {
+          injectHost(null);
+          vi.mocked(fetchGet).mockReset();
+          if (originalFetch)
+            vi.mocked(fetchGet).mockImplementation(originalFetch);
+        }
+      });
+
       it('preserves draft files added after task preparation but before readiness and first open', async () => {
         const startup = beginStartup();
         const nextDraft = [file('next-turn.txt')];
