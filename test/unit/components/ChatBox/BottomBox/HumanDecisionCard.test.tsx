@@ -206,10 +206,14 @@ describe('HumanDecisionCard', () => {
       <HumanDecisionCard requestKey="run:question-1" variant={variant} />
     );
     const answer = screen.getByRole('textbox', { name: 'Feedback' });
-    expect(answer.closest('[data-human-decision-card]')).toHaveClass(
-      'rounded-3xl',
+    const card = answer.closest('[data-human-decision-card]');
+    // Like the composer: information border while the answer has the cursor
+    // (CSS :has) or holds text.
+    expect(card).toHaveClass(
+      'rounded-ds-24',
       'border',
-      'border-ds-border-information-default-default'
+      'border-ds-border-information-default-default',
+      'has-[textarea:focus]:border-ds-border-information-default-default'
     );
     expect(answer.closest('[data-human-decision-card]')).not.toHaveClass(
       'shadow-ds-elevation-popover'
@@ -231,6 +235,33 @@ describe('HumanDecisionCard', () => {
     ).toBeDisabled();
     fireEvent.keyDown(answer, { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it('keeps an empty, unfocused question card on the neutral border', () => {
+    render(
+      <HumanDecisionCard
+        requestKey="run:question-empty"
+        variant={{
+          kind: 'feedback',
+          presentation: 'question',
+          header: { title: 'Question', description: 'Which format?' },
+          value: '',
+          onChange: vi.fn(),
+          onSubmit: vi.fn(),
+        }}
+      />
+    );
+    const card = screen
+      .getByRole('textbox', { name: 'Feedback' })
+      .closest('[data-human-decision-card]');
+
+    expect(card).toHaveClass('border-ds-hairline-default-default');
+    expect(card).not.toHaveClass(
+      'border-ds-border-information-default-default'
+    );
+    expect(card).toHaveClass(
+      'has-[textarea:focus]:border-ds-border-information-default-default'
+    );
   });
 
   it('requires a separate review action for a successor after the first request settles', () => {

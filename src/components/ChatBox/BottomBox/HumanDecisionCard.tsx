@@ -48,16 +48,23 @@ export function HumanDecisionCard({
   if (!variant || !requestKey) return null;
   const isQuestion =
     variant.kind === 'feedback' && variant.presentation === 'question';
+  // Like the composer, a question card shows the information border while its
+  // answer has the cursor or holds text.
+  const answerHasContent =
+    isQuestion && variant.kind === 'feedback' && variant.value.trim() !== '';
 
   return (
     <section
       data-human-decision-card
       data-request-key={requestKey}
       className={cn(
-        'mb-ds-12 w-full border border-x border-y border-solid bg-ds-neutral-subtle-default',
+        'mb-ds-12 w-full border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default',
         isQuestion
-          ? 'rounded-3xl border-ds-border-information-default-default px-ds-16 py-ds-12'
-          : 'rounded-ds-card border-ds-hairline-default-default p-ds-12'
+          ? cn(
+              'rounded-ds-24 px-ds-16 py-ds-12 transition-colors has-[textarea:focus]:border-ds-border-information-default-default',
+              answerHasContent && 'border-ds-border-information-default-default'
+            )
+          : 'rounded-ds-card p-ds-12'
       )}
       role="region"
       aria-label={t('chat.control-region-label')}

@@ -62,7 +62,7 @@ describe('BottomBox feedback answer field', () => {
     expect(answer).not.toHaveClass('border-ds-hairline-default-default');
   });
 
-  it('hides the question placeholder on focus and restores it on blur', () => {
+  it('hides the question placeholder while the answer is focused', () => {
     render(
       <ControlInputRouter
         variant={{
@@ -78,10 +78,10 @@ describe('BottomBox feedback answer field', () => {
       />
     );
     const answer = screen.getByRole('textbox', { name: 'Feedback' });
+    // The placeholder text stays for assistive technology; CSS hides it on focus.
     expect(answer).toHaveAttribute('placeholder', 'Type your response');
+    expect(answer).toHaveClass('focus:placeholder:opacity-0');
     fireEvent.focus(answer);
-    expect(answer).toHaveAttribute('placeholder', '');
-    fireEvent.blur(answer);
     expect(answer).toHaveAttribute('placeholder', 'Type your response');
   });
 
