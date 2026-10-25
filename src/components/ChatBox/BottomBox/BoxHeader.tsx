@@ -14,6 +14,7 @@
 
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import {
   ChevronLeft,
@@ -80,14 +81,14 @@ export function BoxHeaderDisplay({
           )}
           {title && (
             <span className="flex items-center gap-1.5 text-ds-text-base font-bold text-ds-ink-default-default">
+              <span>{title}</span>
               {showQuestionIcon ? (
-                <MessageCircleQuestionMark
-                  aria-hidden
-                  className="size-4 shrink-0 text-ds-ink-default-default"
+                <DsIcon
+                  icon={MessageCircleQuestionMark}
+                  recipe="main"
                   data-bottom-box-question-icon
                 />
               ) : null}
-              <span>{title}</span>
             </span>
           )}
           {description && descriptionAsMarkdown ? (
@@ -124,9 +125,11 @@ export function BoxHeaderDisplay({
               className="flex max-w-full min-w-0 items-center gap-1 rounded-lg bg-ds-neutral-strong-default px-2 py-1"
             >
               {item.kind === 'file' && (
-                <FileText
+                <DsIcon
+                  icon={FileText}
+                  recipe="main-compact"
                   aria-hidden
-                  className="size-3.5 shrink-0 text-ds-ink-muted-default"
+                  className="shrink-0 text-ds-ink-muted-default"
                 />
               )}
               <span className="sr-only">
@@ -151,7 +154,7 @@ export function BoxHeaderDisplay({
                   })}
                   onClick={() => onRemoveContextItem(item.id)}
                 >
-                  <X className="size-3.5" />
+                  <DsIcon icon={X} recipe="main-compact" />
                 </Button>
               )}
             </li>
@@ -233,7 +236,7 @@ export const BoxHeaderConfirm = ({
           className="focus:ring-0 focus-visible:outline-none"
           onClick={onEdit}
         >
-          <ChevronLeft />
+          <DsIcon icon={ChevronLeft} />
         </Button>
 
         <div className="flex items-center gap-2">
@@ -302,7 +305,7 @@ export const BoxHeaderSave = ({
           className="focus:ring-0 focus-visible:outline-none"
           onClick={onEdit}
         >
-          <ChevronLeft />
+          <DsIcon icon={ChevronLeft} />
         </Button>
 
         <Button

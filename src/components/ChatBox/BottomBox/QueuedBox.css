@@ -118,7 +118,7 @@
 .queued-task-row[data-dragging] .queued-task-drag-handle {
   cursor: grabbing;
 }
-/* InputBox's border + inset, then RichChatInput's placeholder text inset. */
+/* Match InputBox's border and shared content inset. */
 .queued-task-composer-inset {
   margin-inline: calc(var(--ds-border-thin) + var(--ds-space-panel-inset));
 }

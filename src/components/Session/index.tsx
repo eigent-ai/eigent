@@ -26,6 +26,7 @@ import {
   useIsFocusedSessionPane,
   useSessionProjectId,
 } from '@/hooks/useSessionProjectId';
+import { isProjectAchieved } from '@/lib/projectAchievement';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { getSessionMetaDisplayName } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
@@ -547,6 +548,10 @@ function SessionContent({ isNewProject = false }: SessionProps) {
               : activeProjectMeta
                 ? getSessionMetaDisplayName(activeProjectMeta, t)
                 : undefined
+          }
+          projectId={isNewProject ? null : activeProjectId}
+          projectAchieved={
+            !isNewProject && isProjectAchieved(activeProjectMeta?.metadata)
           }
           totalTokens={isNewProject ? 0 : (activeTask?.tokens ?? 0)}
           showTimelineStyle={!isNewProject}

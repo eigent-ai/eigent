@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import { Textarea } from '@/components/ui/textarea';
@@ -39,6 +40,8 @@ import type {
 interface InputVariantRouterProps {
   variant: BottomBoxVariant;
   inputProps: InputboxProps;
+  borderlessApproval?: boolean;
+  borderlessQuestion?: boolean;
   connectorPanelOpen?: boolean;
   onToggleConnectorPanel?: () => void;
   skillPanelOpen?: boolean;
@@ -46,7 +49,7 @@ interface InputVariantRouterProps {
 }
 
 const controlSurfaceClassName =
-  'flex w-full flex-col gap-3 rounded-3xl border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-3';
+  'flex w-full flex-col gap-3 rounded-ds-24 border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-3';
 
 function ControlActions({ children }: { children: React.ReactNode }) {
   return (
@@ -103,24 +106,41 @@ function ConfirmationInput({
   );
 }
 
-function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
+function ApprovalInput({
+  variant,
+  borderless,
+}: {
+  variant: BottomBoxApprovalVariant;
+  borderless?: boolean;
+}) {
   const { t } = useTranslation();
 
   return (
     <div
       data-bottom-box-input-surface
       data-approval-surface
-      className={controlSurfaceClassName}
+      className={
+        borderless ? 'flex w-full flex-col gap-3' : controlSurfaceClassName
+      }
     >
       <BoxHeaderDisplay
-        {...variant.header}
-        eyebrow={undefined}
-        contextItems={undefined}
-        details={undefined}
+        eyebrow={variant.header.eyebrow}
+        title={variant.header.title}
         className="px-0 pt-0 pb-0"
       />
-      <div data-approval-actions className="flex w-full justify-end">
-        <ControlActions>
+      {variant.error ? (
+        <p
+          role="alert"
+          className="m-0 text-ds-text-meta text-ds-text-error-default-default"
+        >
+          {variant.error}
+        </p>
+      ) : null}
+      <div
+        data-approval-actions
+        className="flex w-full flex-wrap justify-end gap-ds-8"
+      >
+        <div className="flex flex-wrap justify-end gap-ds-8">
           <Button
             type="button"
             variant="ghost"
@@ -131,15 +151,22 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
           >
             {variant.rejectLabel ?? t('chat.control-reject')}
           </Button>
-          {variant.options.map((option) => {
+          {variant.options.map((option, index) => {
             return (
               <Button
                 key={option.scope}
                 type="button"
-                variant="primary"
-                tone="success"
+                variant={
+                  option.scope === 'once' ||
+                  (index === 0 &&
+                    !variant.options.some((item) => item.scope === 'once'))
+                    ? 'primary'
+                    : 'secondary'
+                }
+                tone={option.scope === 'once' ? 'success' : 'neutral'}
                 size="sm"
                 buttonRadius="full"
+                title={option.description}
                 disabled={variant.disabled || variant.submitting}
                 onClick={() => variant.onApprove(option.scope)}
               >
@@ -147,7 +174,7 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
               </Button>
             );
           })}
-        </ControlActions>
+        </div>
       </div>
     </div>
   );
@@ -257,7 +284,11 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
                 )}
               >
                 {isSelected && (
-                  <Check className="size-3 text-ds-success-on-default" />
+                  <DsIcon
+                    icon={Check}
+                    recipe="main-compact"
+                    className="text-ds-success-on-default"
+                  />
                 )}
               </span>
               <span className="flex min-w-0 flex-col">
@@ -296,20 +327,36 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
   );
 }
 
-function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
+function FeedbackInput({
+  variant,
+  borderless,
+}: {
+  variant: BottomBoxFeedbackVariant;
+  borderless?: boolean;
+}) {
   const { t } = useTranslation();
   const enterLabel = getEnterKeyLabel(useDesktopShortcutPlatform());
 
+  const isQuestion = variant.presentation === 'question';
+
   return (
-    <div className={controlSurfaceClassName}>
+    <div
+      className={
+        borderless ? 'flex w-full flex-col gap-ds-12' : controlSurfaceClassName
+      }
+    >
       <Textarea
         aria-label={t('chat.control-feedback-label')}
         value={variant.value}
         placeholder={variant.placeholder}
-        className={cn(
-          variant.presentation === 'question' &&
-            'border-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0'
-        )}
+        variant={isQuestion ? 'plain' : 'none'}
+        className={
+          isQuestion
+            ? // The card shows focus; the answer hides its placeholder instead of a ring.
+              'placeholder:text-ds-ink-subtle-disabled focus:placeholder:opacity-0 focus-visible:ring-0 focus-visible:ring-offset-0'
+            : undefined
+        }
+        size="sm"
         disabled={variant.disabled || variant.submitting}
         onChange={(event) => variant.onChange(event.target.value)}
         onEnter={variant.value.trim() ? variant.onSubmit : undefined}
@@ -437,7 +484,7 @@ function BlockedInput({ variant }: { variant: BottomBoxBlockedVariant }) {
   return (
     <div className={controlSurfaceClassName} role="alert">
       <div className="flex items-start gap-2 text-ds-text-base text-ds-text-warning-default-default">
-        <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+        <DsIcon icon={TriangleAlert} aria-hidden className="mt-0.5 shrink-0" />
         <span className="block font-normal">{variant.message}</span>
       </div>
       {variant.onRecover ? (
@@ -525,6 +572,8 @@ function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
 export function ControlInputRouter({
   variant,
   inputProps,
+  borderlessApproval,
+  borderlessQuestion,
   connectorPanelOpen,
   onToggleConnectorPanel,
   skillPanelOpen,
@@ -549,13 +598,17 @@ export function ControlInputRouter({
       content = <ConfirmationInput variant={variant} />;
       break;
     case 'approval':
-      content = <ApprovalInput variant={variant} />;
+      content = (
+        <ApprovalInput variant={variant} borderless={borderlessApproval} />
+      );
       break;
     case 'selection':
       content = <SelectionInput variant={variant} />;
       break;
     case 'feedback':
-      content = <FeedbackInput variant={variant} />;
+      content = (
+        <FeedbackInput variant={variant} borderless={borderlessQuestion} />
+      );
       break;
     case 'form':
       content = <FormInput variant={variant} />;

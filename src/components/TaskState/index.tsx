@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import {
   Circle,
@@ -95,11 +96,10 @@ export const TaskState = ({
             } ${clickable && 'cursor-pointer hover:opacity-80'}`}
             onClick={() => handleStateClick('done')}
           >
-            <CircleCheckBig
-              className={`h-[10px] w-[10px] text-ds-ink-muted-default group-hover:text-ds-icon-status-completed-default-default ${
-                (isSelected('done') || forceVisible) &&
-                '!text-ds-icon-status-completed-default-default'
-              }`}
+            <DsIcon
+              icon={CircleCheckBig}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-completed-default-default ${(isSelected('done') || forceVisible) && '!text-ds-icon-status-completed-default-default'}`}
             />
             <span
               className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-status-completed-strong-default ${
@@ -120,11 +120,10 @@ export const TaskState = ({
             } ${clickable && 'cursor-pointer hover:opacity-80'}`}
             onClick={() => handleStateClick('reassigned')}
           >
-            <CircleSlash2
-              className={`h-[10px] w-[10px] text-ds-ink-muted-default group-hover:text-ds-icon-status-pending-default-default ${
-                (isSelected('reassigned') || forceVisible) &&
-                '!text-ds-icon-status-pending-default-default'
-              }`}
+            <DsIcon
+              icon={CircleSlash2}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-pending-default-default ${(isSelected('reassigned') || forceVisible) && '!text-ds-icon-status-pending-default-default'}`}
             />
             <span
               className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-warning-strong-default ${
@@ -148,14 +147,10 @@ export const TaskState = ({
             }`}
             onClick={() => handleStateClick('ongoing')}
           >
-            <LoaderCircle
-              className={`h-[10px] w-[10px] text-ds-ink-muted-default group-hover:text-ds-icon-status-splitting-default-default ${
-                (isSelected('ongoing') || forceVisible) &&
-                '!text-ds-icon-status-splitting-default-default'
-              } ${
-                chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-                  'running' && 'animate-spin'
-              }`}
+            <DsIcon
+              icon={LoaderCircle}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-splitting-default-default ${(isSelected('ongoing') || forceVisible) && '!text-ds-icon-status-splitting-default-default'} ${chatStore.tasks[chatStore.activeTaskId as string]?.status === 'running' && 'animate-spin'}`}
             />
             <span
               className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-status-splitting-strong-default ${
@@ -177,11 +172,10 @@ export const TaskState = ({
             } ${clickable && 'cursor-pointer hover:opacity-80'}`}
             onClick={() => handleStateClick('failed')}
           >
-            <CircleSlash2
-              className={`h-[10px] w-[10px] text-ds-ink-muted-default group-hover:text-ds-icon-status-error-default-default ${
-                (isSelected('failed') || forceVisible) &&
-                '!text-ds-icon-status-error-default-default'
-              }`}
+            <DsIcon
+              icon={CircleSlash2}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-error-default-default ${(isSelected('failed') || forceVisible) && '!text-ds-icon-status-error-default-default'}`}
             />
             <span
               className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-status-error-strong-default ${
@@ -205,11 +199,10 @@ export const TaskState = ({
             }`}
             onClick={() => handleStateClick('pending')}
           >
-            <Circle
-              className={`h-[10px] w-[10px] text-ds-ink-muted-default group-hover:text-ds-icon-status-pending-default-default ${
-                (isSelected('pending') || forceVisible) &&
-                'text-ds-icon-status-pending-default-default'
-              }`}
+            <DsIcon
+              icon={Circle}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-pending-default-default ${(isSelected('pending') || forceVisible) && 'text-ds-icon-status-pending-default-default'}`}
             />
             <span
               className={`text-xs leading-tight font-normal text-ds-ink-muted-default group-hover:text-ds-text-status-pending-strong-default ${

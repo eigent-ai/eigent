@@ -18,6 +18,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Eye, EyeOff } from 'lucide-react';
@@ -139,9 +140,9 @@ export default function MCPConfigDialog({
                     disabled={loading}
                     backIcon={
                       showEnvValues[k] ? (
-                        <Eye className="h-5 w-5" />
+                        <DsIcon icon={Eye} />
                       ) : (
-                        <EyeOff className="h-5 w-5" />
+                        <DsIcon icon={EyeOff} />
                       )
                     }
                     onBackIconClick={() =>

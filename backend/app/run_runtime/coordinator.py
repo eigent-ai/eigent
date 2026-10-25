@@ -29,6 +29,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.models import latest_environment_attempt
 from app.run_journal.transitions import RUN_TERMINAL_STATES
 
 if TYPE_CHECKING:
@@ -868,34 +869,29 @@ class RunCoordinator:
     ) -> AttemptEnvironmentBinding | None:
         from app.run_journal.models import AttemptEnvironmentBinding
 
-        for attempt in reversed(attempts):
-            if attempt.environment_spec_id is None:
-                continue
-            values = {
-                "environment_spec_digest": attempt.environment_spec_digest,
-                "bundle_revision_id": attempt.bundle_revision_id,
-                "permission_profile_revision": (
-                    attempt.permission_profile_revision
-                ),
-                "thinking_effort_requested": (
-                    attempt.thinking_effort_requested
-                ),
-                "thinking_effort_effective": (
-                    attempt.thinking_effort_effective
-                ),
-                "provider_capability_revision": (
-                    attempt.provider_capability_revision
-                ),
-            }
-            if any(value is None for value in values.values()):
-                raise RunRuntimeError(
-                    "latest Run environment binding is incomplete"
-                )
-            return AttemptEnvironmentBinding(
-                environment_spec_id=attempt.environment_spec_id,
-                **values,
+        attempt = latest_environment_attempt(attempts)
+        if attempt is None:
+            return None
+        values = {
+            "environment_spec_digest": attempt.environment_spec_digest,
+            "bundle_revision_id": attempt.bundle_revision_id,
+            "permission_profile_revision": (
+                attempt.permission_profile_revision
+            ),
+            "thinking_effort_requested": attempt.thinking_effort_requested,
+            "thinking_effort_effective": attempt.thinking_effort_effective,
+            "provider_capability_revision": (
+                attempt.provider_capability_revision
+            ),
+        }
+        if any(value is None for value in values.values()):
+            raise RunRuntimeError(
+                "latest Run environment binding is incomplete"
             )
-        return None
+        return AttemptEnvironmentBinding(
+            environment_spec_id=attempt.environment_spec_id,
+            **values,
+        )
 
     async def fork(
         self,

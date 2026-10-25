@@ -30,6 +30,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
 import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -231,12 +232,13 @@ export function UserMenu() {
               onSelect={handleOpenSubscriptionDashboard}
             >
               {planLoading ? (
-                <Loader2
-                  className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                <DsIcon
+                  icon={Loader2}
+                  className="animate-spin motion-reduce:animate-none"
                   aria-hidden
                 />
               ) : (
-                <Gem className="h-4 w-4" aria-hidden />
+                <DsIcon icon={Gem} aria-hidden />
               )}
               {planLoading ? (
                 <span className="min-w-0 flex-1 truncate">
@@ -253,8 +255,9 @@ export function UserMenu() {
                   </span>
                 </span>
               )}
-              <ArrowUpRight
-                className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
+              <DsIcon
+                icon={ArrowUpRight}
+                className="shrink-0 text-ds-ink-muted-default"
                 aria-hidden
               />
             </DropdownMenuItem>
@@ -265,7 +268,7 @@ export function UserMenu() {
             onPointerEnter={closeLanguageSub}
             onSelect={() => setInviteCodeDialogOpen(true)}
           >
-            <Gift className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Gift} aria-hidden />
             {t('layout.refer-friends')}
           </DropdownMenuItem>
 
@@ -294,7 +297,7 @@ export function UserMenu() {
             onOpenChange={setLanguageSubOpen}
           >
             <DropdownMenuSubTrigger className="gap-2">
-              <Languages className="h-4 w-4" aria-hidden />
+              <DsIcon icon={Languages} aria-hidden />
               {t('setting.language')}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent
@@ -320,8 +323,9 @@ export function UserMenu() {
                         : option.label}
                     </span>
                     {selected ? (
-                      <Check
-                        className="h-4 w-4 shrink-0 text-ds-accent-default-default"
+                      <DsIcon
+                        icon={Check}
+                        className="shrink-0 text-ds-accent-default-default"
                         aria-hidden
                       />
                     ) : null}
@@ -336,7 +340,7 @@ export function UserMenu() {
             onPointerEnter={closeLanguageSub}
             onSelect={handleOpenSettings}
           >
-            <Settings className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Settings} aria-hidden />
             {t('setting.settings')}
           </DropdownMenuItem>
 
@@ -345,7 +349,7 @@ export function UserMenu() {
             onPointerEnter={closeLanguageSub}
             onSelect={handleOpenKeyboardShortcuts}
           >
-            <Keyboard className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Keyboard} aria-hidden />
             <span className="min-w-0 flex-1 truncate">
               {t('layout.shortcuts.title')}
             </span>
@@ -358,8 +362,9 @@ export function UserMenu() {
             onPointerEnter={closeLanguageSub}
             onSelect={handleLogout}
           >
-            <LogOut
-              className="h-4 w-4 text-ds-icon-error-default-default"
+            <DsIcon
+              icon={LogOut}
+              className="text-ds-icon-error-default-default"
               aria-hidden
             />
             {t('setting.log-out')}

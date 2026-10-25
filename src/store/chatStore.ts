@@ -975,18 +975,19 @@ export function syncProjectDisplayName(
   name?: string
 ) {
   const displayName = (name ?? '').trim();
-  if (!projectId || !displayName) return;
+  if (!projectId) return;
   const project = useProjectStore.getState().getProjectById(projectId);
   const meta = useSpaceStore.getState().getProjectMeta(projectId);
-  if (
-    [meta, project].some(
-      (value) =>
-        value &&
-        (value.metadata?.nameSource ||
-          !isPlaceholderProjectName(value.name, projectId))
-    )
-  )
-    return;
+  const assignedName = [meta, project].find(
+    (value) =>
+      value &&
+      (value.metadata?.nameSource ||
+        !isPlaceholderProjectName(value.name, projectId))
+  );
+  // History writes must use the same Session name as the visible caches.
+  // A Task summary must not rename the Session through a later history sync.
+  if (assignedName) return assignedName.name;
+  if (!displayName) return;
   useSpaceStore.getState().updateProjectMeta(projectId, {
     name: displayName,
     metadata: { ...meta?.metadata, nameSource: 'initial' },
@@ -995,6 +996,7 @@ export function syncProjectDisplayName(
     name: displayName,
     metadata: { ...project?.metadata, nameSource: 'initial' },
   });
+  return displayName;
 }
 
 const compactContextText = (value?: unknown) =>
@@ -5277,11 +5279,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (summaryTask && tasks[metadataTaskId]) {
               setSummaryTask(metadataTaskId, summaryTask);
             }
-            syncProjectDisplayName(project_id, projectName);
+            const sessionName = syncProjectDisplayName(project_id, projectName);
 
             if (!type && historyId && projectName) {
               void proxyFetchPut(`/api/v1/chat/history/${historyId}`, {
-                project_name: projectName,
+                project_name: sessionName,
                 summary: clampHistorySummary(projectSummary),
                 tokens: getTokens(metadataTaskId),
               });
@@ -5442,13 +5444,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const projectName =
                 agentMessages.data!.summary_task?.split('|')[0] || '';
               const obj = {
-                project_name: projectName,
+                project_name: syncProjectDisplayName(project_id, projectName),
                 summary: clampHistorySummary(
                   agentMessages.data!.summary_task?.split('|')[1]
                 ),
                 tokens: getTokens(currentTaskId),
               };
-              syncProjectDisplayName(project_id, projectName);
               proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
             }
             setSummaryTask(
@@ -5879,13 +5880,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const projectName =
                   tasks[currentTaskId].summaryTask.split('|')[0];
                 const obj = {
-                  project_name: projectName,
+                  project_name: syncProjectDisplayName(project_id, projectName),
                   summary: clampHistorySummary(
                     tasks[currentTaskId].summaryTask.split('|')[1]
                   ),
                   tokens: getTokens(currentTaskId),
                 };
-                syncProjectDisplayName(project_id, projectName);
                 proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
               }
 
@@ -7198,12 +7198,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 // history-replay polish keys off this flag.
                 const projectName = parts[0] || '';
                 const obj = {
-                  project_name: projectName,
+                  project_name: syncProjectDisplayName(project_id, projectName),
                   summary: clampHistorySummary(completionSummary),
                   status: wasStoppedByUser ? 1 : 2,
                   tokens: getTokens(currentTaskId),
                 };
-                syncProjectDisplayName(project_id, projectName);
                 proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
               } catch (e) {
                 console.warn('History update failed on END:', e);

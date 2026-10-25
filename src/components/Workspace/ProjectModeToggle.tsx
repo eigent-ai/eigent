@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import type { SessionModeType } from '@/types/constants';
 import { SessionMode } from '@/types/constants';
@@ -102,15 +103,23 @@ export function ProjectModeToggle({
     className
   );
 
-  const chevronClass = 'size-3 shrink-0 opacity-80';
+  const chevronClass = 'opacity-80';
 
   const endChevrons = (
     <span
       className="inline-flex shrink-0 flex-col items-center justify-center gap-0 leading-none"
       aria-hidden
     >
-      <ChevronUp className={cn(chevronClass, '-mb-1')} strokeWidth={2} />
-      <ChevronDown className={chevronClass} strokeWidth={2} />
+      <DsIcon
+        icon={ChevronUp}
+        recipe="main-compact"
+        className={cn(chevronClass, '-mb-ds-4')}
+      />
+      <DsIcon
+        icon={ChevronDown}
+        recipe="main-compact"
+        className={chevronClass}
+      />
     </span>
   );
 
@@ -123,11 +132,7 @@ export function ProjectModeToggle({
         className={cn(shellClass, 'pointer-events-none bg-transparent')}
       >
         <span className="inline-flex min-h-[1.25rem] items-center gap-1.5 overflow-hidden">
-          <LeadingIcon
-            className="size-3.5 shrink-0"
-            strokeWidth={2}
-            aria-hidden
-          />
+          <DsIcon icon={LeadingIcon} />
           {!compact && (
             <span className="!text-ds-text-meta font-semibold">{label}</span>
           )}
@@ -161,11 +166,7 @@ export function ProjectModeToggle({
             animate="animate"
             exit="exit"
           >
-            <LeadingIcon
-              className="size-3.5 shrink-0"
-              strokeWidth={2}
-              aria-hidden
-            />
+            <DsIcon icon={LeadingIcon} />
             {!compact && (
               <span className="!text-ds-text-meta font-semibold whitespace-nowrap">
                 {label}

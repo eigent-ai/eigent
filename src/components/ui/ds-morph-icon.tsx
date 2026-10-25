@@ -14,14 +14,7 @@
 
 import { MorphIcon, type IconInput } from 'morphicons/react';
 
-import type { DsIconRecipe } from './ds-icon';
-
-const RECIPE_SIZE: Record<DsIconRecipe, { size: number; strokeWidth: number }> =
-  {
-    main: { size: 16, strokeWidth: 1.25 },
-    'main-compact': { size: 12, strokeWidth: 1.25 },
-    detailed: { size: 24, strokeWidth: 1.5 },
-  };
+import { dsIconSpec, type DsIconRecipe } from './ds-icon';
 
 export type DsMorphIconProps = {
   icon: IconInput;
@@ -34,12 +27,13 @@ export function DsMorphIcon({
   recipe = 'main',
   className,
 }: DsMorphIconProps) {
-  const spec = RECIPE_SIZE[recipe];
+  const spec = dsIconSpec(recipe);
   return (
     <MorphIcon
       icon={icon}
       size={spec.size}
       strokeWidth={spec.strokeWidth}
+      absoluteStrokeWidth
       reducedMotion="user"
       className={className}
     />

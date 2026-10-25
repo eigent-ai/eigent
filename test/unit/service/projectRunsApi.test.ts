@@ -18,6 +18,11 @@ import {
   cancelProjectRun,
   fetchActiveProjectRuns,
   fetchProjectRuns,
+  getResolvedRunModels,
+  parseResolvedRunModel,
+  projectResolvedRunModels,
+  resetResolvedRunModelsForTest,
+  subscribeResolvedRunModels,
 } from '@/service/projectRunsApi';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -162,5 +167,125 @@ describe('project Runs API', () => {
       undefined,
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
+  });
+});
+
+describe('resolved Run models', () => {
+  beforeEach(() => {
+    fetchGetMock.mockReset();
+    resetResolvedRunModelsForTest();
+  });
+
+  it.each([
+    [undefined],
+    [null],
+    ['openai/gpt-4.1'],
+    [{}],
+    [{ platform: 'openai' }],
+    [{ type: 'gpt-4.1' }],
+    [{ platform: '', type: 'gpt-4.1' }],
+    [{ platform: 'openai', type: '  ' }],
+    [{ platform: 'openai', type: 41 }],
+  ])('treats a malformed model %j as unknown', (value) => {
+    expect(parseResolvedRunModel(value)).toBeNull();
+  });
+
+  it('keeps only the model identity fields', () => {
+    expect(
+      parseResolvedRunModel({
+        platform: 'openai',
+        type: 'gpt-4.1',
+        api_key: 'not-forwarded',
+      })
+    ).toEqual({ platform: 'openai', type: 'gpt-4.1' });
+  });
+
+  it('maps only Runs owned by the requested Project', () => {
+    expect(
+      projectResolvedRunModels('project-1', {
+        project_id: 'project-1',
+        runs: [
+          {
+            run_id: 'run-1',
+            project_id: 'project-1',
+            resolved_model: { platform: 'openai', type: 'gpt-4.1' },
+          },
+          { run_id: 'run-2', project_id: 'project-1', resolved_model: null },
+          { run_id: 'run-3', project_id: 'project-1' },
+          {
+            run_id: 'run-other',
+            project_id: 'project-2',
+            resolved_model: { platform: 'openai', type: 'gpt-4.1' },
+          },
+          { project_id: 'project-1', resolved_model: null },
+        ],
+      })
+    ).toEqual({
+      'run-1': { platform: 'openai', type: 'gpt-4.1' },
+      'run-2': null,
+      'run-3': null,
+    });
+    expect(
+      projectResolvedRunModels('project-1', {
+        project_id: 'project-2',
+        runs: [{ run_id: 'run-1', project_id: 'project-1' }],
+      })
+    ).toEqual({});
+  });
+
+  it('records models from existing Run-list reads and merges bounded reads', async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeResolvedRunModels('project-1', listener);
+    fetchGetMock.mockResolvedValueOnce({
+      project_id: 'project-1',
+      runs: [
+        {
+          run_id: 'run-1',
+          project_id: 'project-1',
+          resolved_model: { platform: 'openai', type: 'gpt-4.1' },
+        },
+        { run_id: 'run-2', project_id: 'project-1', resolved_model: null },
+      ],
+    });
+    await fetchProjectRuns('project-1', 100);
+    expect(getResolvedRunModels('project-1')).toEqual({
+      'run-1': { platform: 'openai', type: 'gpt-4.1' },
+      'run-2': null,
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    // The newest Run's model arrives once its attempt has been bound.
+    fetchGetMock.mockResolvedValueOnce({
+      project_id: 'project-1',
+      runs: [
+        {
+          run_id: 'run-2',
+          project_id: 'project-1',
+          resolved_model: { platform: 'anthropic', type: 'claude-sonnet-4' },
+        },
+      ],
+    });
+    await fetchProjectRuns('project-1', 1);
+    expect(getResolvedRunModels('project-1')).toEqual({
+      'run-1': { platform: 'openai', type: 'gpt-4.1' },
+      'run-2': { platform: 'anthropic', type: 'claude-sonnet-4' },
+    });
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    // An identical read does not wake subscribers.
+    fetchGetMock.mockResolvedValueOnce({
+      project_id: 'project-1',
+      runs: [
+        {
+          run_id: 'run-2',
+          project_id: 'project-1',
+          resolved_model: { platform: 'anthropic', type: 'claude-sonnet-4' },
+        },
+      ],
+    });
+    await fetchProjectRuns('project-1', 1);
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(getResolvedRunModels('project-2')).toEqual({});
+    unsubscribe();
   });
 });

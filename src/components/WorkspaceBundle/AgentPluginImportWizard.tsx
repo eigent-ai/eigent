@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { useHost } from '@/host';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
@@ -419,8 +420,11 @@ export function AgentPluginImportWizard({
     return (
       <Card className="mx-auto w-full max-w-2xl">
         <CardHeader>
-          <CheckCircle2
-            className="mb-3 h-10 w-10 text-ds-text-success-default-default"
+          <DsIcon
+            icon={CheckCircle2}
+            recipe="illustration"
+            illustrationSize={40}
+            className="mb-3 text-ds-text-success-default-default"
             aria-hidden
           />
           <CardTitle>
@@ -457,7 +461,7 @@ export function AgentPluginImportWizard({
             className="inline-flex items-center gap-1 text-ds-text-base text-ds-ink-muted-default hover:text-ds-ink-default-default"
             onClick={() => navigate(-1)}
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden />{' '}
+            <DsIcon icon={ArrowLeft} aria-hidden />{' '}
             {t('layout.back', { defaultValue: 'Back' })}
           </button>
 
@@ -515,9 +519,9 @@ export function AgentPluginImportWizard({
             disabled={busy !== null}
           >
             {busy === 'inspect' ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              <DsIcon icon={Loader2} className="animate-spin" aria-hidden />
             ) : (
-              <FolderOpen className="h-4 w-4" aria-hidden />
+              <DsIcon icon={FolderOpen} aria-hidden />
             )}
             {t('layout.agent-plugin-import-select-action', {
               defaultValue: 'Select directory or archive',
@@ -575,7 +579,7 @@ export function AgentPluginImportWizard({
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-xl bg-ds-neutral-subtle-default p-3">
-                  <Puzzle className="h-4 w-4" aria-hidden />
+                  <DsIcon icon={Puzzle} aria-hidden />
                   <strong className="mt-2 block text-ds-text-base">
                     {t('agents.skills', { defaultValue: 'Skills' })}
                   </strong>
@@ -584,7 +588,7 @@ export function AgentPluginImportWizard({
                   </span>
                 </div>
                 <div className="rounded-xl bg-ds-neutral-subtle-default p-3">
-                  <Server className="h-4 w-4" aria-hidden />
+                  <DsIcon icon={Server} aria-hidden />
                   <strong className="mt-2 block text-ds-text-base">
                     {t('setting.mcp-servers-title', {
                       defaultValue: 'MCP servers',
@@ -595,7 +599,7 @@ export function AgentPluginImportWizard({
                   </span>
                 </div>
                 <div className="rounded-xl bg-ds-neutral-subtle-default p-3">
-                  <PackageSearch className="h-4 w-4" aria-hidden />
+                  <DsIcon icon={PackageSearch} aria-hidden />
                   <strong className="mt-2 block text-ds-text-base">
                     {t('chat.files', { defaultValue: 'Files' })}
                   </strong>
@@ -803,7 +807,7 @@ export function AgentPluginImportWizard({
                     key={requirement.requirement_key}
                     className="flex items-start gap-3 rounded-xl border p-3"
                   >
-                    <FileKey2 className="mt-0.5 h-4 w-4" aria-hidden />
+                    <DsIcon icon={FileKey2} className="mt-0.5" aria-hidden />
                     <div>
                       <strong className="text-ds-text-base">
                         {requirement.label || requirement.requirement_key}
@@ -851,7 +855,7 @@ export function AgentPluginImportWizard({
                     key={`${warning.code}:${warning.message}`}
                     className="flex gap-3 rounded-xl border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-ds-text-base"
                   >
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <DsIcon icon={AlertTriangle} className="mt-0.5 shrink-0" />
                     <div>
                       <strong>{warning.severity}</strong>
                       <p>{warning.message}</p>
@@ -1069,7 +1073,7 @@ export function AgentPluginImportWizard({
                 </div>
               ) : null}
               <div className="flex items-center gap-3 rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-meta text-ds-ink-muted-default">
-                <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={ShieldCheck} className="shrink-0" aria-hidden />
                 {t('layout.agent-plugin-import-secret-handling', {
                   defaultValue:
                     'Standard MCP env and header literals are public plugin data and are copied. Values explicitly declared as secret requirements are omitted and configured separately after conversion.',
@@ -1089,7 +1093,7 @@ export function AgentPluginImportWizard({
                 }
               >
                 {busy === 'convert' ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  <DsIcon icon={Loader2} className="animate-spin" aria-hidden />
                 ) : null}
                 {t('layout.agent-plugin-import-convert-action', {
                   defaultValue: 'Convert to local draft',
