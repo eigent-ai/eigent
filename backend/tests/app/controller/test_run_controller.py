@@ -282,6 +282,7 @@ async def test_run_snapshot_keeps_failed_attempt_and_canonical_elapsed():
     journal.list_approvals.return_value = []
     journal.list_human_interactions.return_value = []
     journal.list_tool_calls.return_value = []
+    journal.browser_tool_attempts.return_value = frozenset()
     with (
         patch(
             "app.controller.run_controller.get_default_run_journal",
@@ -303,6 +304,7 @@ async def test_run_snapshot_keeps_failed_attempt_and_canonical_elapsed():
         "list_approvals",
         "list_human_interactions",
         "list_tool_calls",
+        "browser_tool_attempts",
     }
 
 
@@ -601,3 +603,77 @@ async def test_stream_resumes_from_last_event_id_on_transport_reconnect():
         "run-1", after_sequence=1, limit=500
     )
     await coordinator.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("evidence", ["tool", "manifest", "prompt_only"])
+async def test_run_summary_exposes_recorded_browser_evidence(
+    tmp_path, evidence
+):
+    with SQLiteRunJournal(tmp_path / "browser.sqlite3") as journal:
+        journal.ensure_run(run_id="browser-run", project_id="session")
+        attempt = journal.create_run_attempt(
+            "browser-run",
+            request_id="start",
+            reason="initial_execution",
+            activate=True,
+        )
+        if evidence == "tool":
+            journal.checkpoint_tool_call(
+                tool_call_id="browser-call",
+                run_id="browser-run",
+                attempt_id=attempt.attempt_id,
+                tool_name="browser_open",
+                status="prepared",
+                safety_class=ToolSafetyClass.SAFE_READ,
+                request={},
+            )
+        else:
+            journal.start_model_invocation(
+                invocation_id="invocation",
+                run_id="browser-run",
+                attempt_id=attempt.attempt_id,
+                agent_id="agent",
+                logical_call_id="call",
+                provider="openai",
+                model="fixture",
+                transport="chat_completions",
+                thinking_effort=None,
+                request={
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "browser_open is only text",
+                        }
+                    ],
+                    "model_config_dict": {
+                        "tools": [
+                            {
+                                "type": "function",
+                                "function": {"name": "browser_open"},
+                            }
+                        ]
+                        if evidence == "manifest"
+                        else []
+                    },
+                },
+            )
+        journal.ensure_run(run_id="unrelated", project_id="session-other")
+        assert journal.browser_tool_attempts("unrelated") == frozenset()
+        coordinator = RunCoordinator(journal)
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.controller.run_controller.get_default_run_coordinator",
+                return_value=coordinator,
+            ),
+        ):
+            result = await get_run("browser-run")
+        assert result["used_browser"] is (evidence != "prompt_only")
+        assert result["latest_attempt"]["used_browser"] is (
+            evidence != "prompt_only"
+        )
+        await coordinator.close()

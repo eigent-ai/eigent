@@ -209,7 +209,11 @@ import {
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
 import { ExecutionStatus } from '../../../src/types';
-import { AgentStep, ChatTaskStatus } from '../../../src/types/constants';
+import {
+  AgentStep,
+  ChatTaskStatus,
+  SessionMode,
+} from '../../../src/types/constants';
 import completedRunDisplay from '../../fixtures/completed-run-display.json';
 import completedSingleAgentDisplay from '../../fixtures/completed-single-agent-display.json';
 
@@ -1535,7 +1539,7 @@ describe('ChatStore - Core Functionality', () => {
           resume ? undefined : ([file('submitted.txt')] as any),
           undefined,
           'project-1',
-          'single' as any,
+          SessionMode.SINGLE_AGENT,
           replay
             ? undefined
             : {
@@ -1663,6 +1667,82 @@ describe('ChatStore - Core Functionality', () => {
           window.localStorage.getItem('eigent.trigger-run-bindings.v1')
         ).toContain(executionId);
       });
+
+      it.each([
+        ['Open it in the browser', false, true, false],
+        ['Read the heading', true, true, false],
+        ['Read the heading', true, false, false],
+        ['Read the heading', true, true, true],
+      ] as const)(
+        'restores Resume browser access for %s (recorded=%s, available=%s)',
+        async (prompt, usedBrowser, available, foreign) => {
+          const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+          const invoke = vi.fn(async (channel: string) => {
+            if (channel === 'get-browser-port') return 9222;
+            if (channel === 'get-embedded-browser-runtime')
+              return {
+                port: 9222,
+                targetAvailable: available,
+                targets: available
+                  ? [
+                      {
+                        url: 'about:blank#eigent-browser-toolkit=resume',
+                        webContentsId: 7,
+                      },
+                    ]
+                  : [],
+              };
+            if (channel === 'get-env-path') return '';
+            return undefined;
+          });
+          injectHost({ ipcRenderer: { invoke } } as any);
+          try {
+            vi.mocked(fetchGet).mockResolvedValue({
+              run_id: 'attachment-run',
+              project_id: foreign ? 'foreign-session' : 'project-1',
+              used_browser: usedBrowser,
+            });
+            const startup = beginStartup({ resume: true });
+            startup.owner.getState().addMessages(startup.runId, {
+              id: 'original',
+              role: 'user',
+              content: prompt,
+            });
+            startup.releaseReady();
+            const stream = await startup.getStream();
+            const body = JSON.parse(stream.body);
+            if (foreign)
+              expect(invoke).not.toHaveBeenCalledWith(
+                'get-embedded-browser-runtime'
+              );
+            else
+              expect(invoke).toHaveBeenCalledWith(
+                'get-embedded-browser-runtime'
+              );
+            expect(body.cdp_browsers).toEqual(
+              available && !foreign
+                ? [
+                    expect.objectContaining({
+                      managedBy: 'electron',
+                      targetUrl: 'about:blank#eigent-browser-toolkit=resume',
+                    }),
+                  ]
+                : []
+            );
+            expect(body.browser_unavailable_on_resume).toBe(
+              !available && !foreign
+            );
+            await stream.onopen(response());
+            await startup.admission;
+            startup.finishStream();
+          } finally {
+            injectHost(null);
+            vi.mocked(fetchGet).mockReset();
+            if (originalFetch)
+              vi.mocked(fetchGet).mockImplementation(originalFetch);
+          }
+        }
+      );
 
       it('preserves draft files added after task preparation but before readiness and first open', async () => {
         const startup = beginStartup();
@@ -3678,6 +3758,7 @@ describe('ChatStore - Core Functionality', () => {
               let journalSignal!: AbortSignal;
               vi.mocked(fetchGet).mockImplementation(
                 (_path, _params, _headers, options) => {
+                  if (!_path.endsWith('/events')) return Promise.resolve({});
                   journalSignal = options!.signal!;
                   return new Promise((resolve) => {
                     resolvePage = resolve;

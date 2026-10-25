@@ -741,7 +741,7 @@ function includesBrowserAgent(workerList: Agent[]): boolean {
   });
 }
 
-function shouldEnsureBrowserForRequest(
+export function shouldEnsureBrowserForRequest(
   workerList: Agent[],
   sessionMode: SessionModeType,
   messageContent?: string
@@ -751,7 +751,7 @@ function shouldEnsureBrowserForRequest(
 
   const content = messageContent || '';
   const explicitBrowserIntent =
-    /\b(?:browser agent|use\s+(?:the\s+)?browser|open\s+(?:the\s+)?(?:browser|url|page|website|site)|visit\s+(?:the\s+)?(?:url|page|website|site))\b/i;
+    /\b(?:in\s+the\s+browser|browser\s+to\s+(?:check|open|view)|open\s+(?:the\s+)?preview|browser agent|use\s+(?:the\s+)?browser|open\s+(?:the\s+)?(?:browser|url|page|website|site)|visit\s+(?:the\s+)?(?:url|page|website|site))\b/i;
   return /https?:\/\//i.test(content) || explicitBrowserIntent.test(content);
 }
 
@@ -3840,18 +3840,52 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       let browser_port: number | undefined;
       let cdp_browsers: any[] = [];
+      let browserUnavailableOnResume = false;
       if (!type) {
-        try {
-          ({ browser_port, cdp_browsers } = await resolveCdpBrowsersForRequest(
-            shouldEnsureBrowserForRequest(
-              workerList,
-              sessionModeForRequest,
-              messageContent
-            )
-          ));
-        } catch {
-          // Web mode: no CDP
+        let previouslyUsedBrowser = false;
+        if (startOptions.resumeRequestId) {
+          try {
+            const priorRun = await fetchGet(
+              `/runs/${encodeURIComponent(newTaskId)}`
+            );
+            previouslyUsedBrowser =
+              priorRun?.run_id === newTaskId &&
+              priorRun?.project_id === project_id &&
+              (priorRun?.used_browser === true ||
+                priorRun?.latest_attempt?.used_browser === true);
+          } catch (error) {
+            finishStartupFailure();
+            throw error;
+          }
         }
+        const originalPrompt = targetChatStore
+          .getState()
+          .tasks[newTaskId]?.messages.find(
+            (message) =>
+              message.role === 'user' && !message.interactionResponseTo
+          )?.content;
+        const browserQuestion =
+          messageContent ??
+          (startOptions.resumeRequestId ? originalPrompt : undefined);
+        const needsBrowser =
+          previouslyUsedBrowser ||
+          shouldEnsureBrowserForRequest(
+            workerList,
+            sessionModeForRequest,
+            browserQuestion
+          );
+        try {
+          ({ browser_port, cdp_browsers } =
+            await resolveCdpBrowsersForRequest(needsBrowser));
+        } catch {
+          // The request below reports an unavailable browser on Resume.
+        }
+        browserUnavailableOnResume = Boolean(
+          startOptions.resumeRequestId &&
+          needsBrowser &&
+          getHostIpcRenderer()?.invoke &&
+          !cdp_browsers.length
+        );
       }
 
       // Persist identity after local preflight but BEFORE either admission
@@ -4388,6 +4422,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             new_agents: [...addWorkers],
             browser_port: browser_port,
             cdp_browsers: cdp_browsers,
+            browser_unavailable_on_resume: browserUnavailableOnResume,
             env_path: envPath,
             search_config: searchConfig,
             server_url: getDirectServerApiBaseUrl(),
