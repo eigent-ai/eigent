@@ -20,6 +20,7 @@ import {
   proxyFetchPut,
 } from '@/api/http';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ensureMonacoWorkers } from '@/lib/monacoWorkers';
@@ -280,13 +281,13 @@ export default function AddCustomConnectorPage({
               <Tabs value={customType} onValueChange={changeCustomType}>
                 <TabsList appearance="default">
                   <TabsTrigger value="local">
-                    <Wrench aria-hidden />
+                    <DsIcon icon={Wrench} aria-hidden />
                     <span className="!text-ds-text-base !font-bold !text-ds-ink-default-default">
                       {t('connectors.source-local')}
                     </span>
                   </TabsTrigger>
                   <TabsTrigger value="remote">
-                    <Server aria-hidden />
+                    <DsIcon icon={Server} aria-hidden />
                     <span className="!text-ds-text-base !font-bold !text-ds-ink-default-default">
                       {t('connectors.source-remote')}
                     </span>
@@ -344,7 +345,7 @@ export default function AddCustomConnectorPage({
                 value={remoteName}
                 onChange={(event) => setRemoteName(event.target.value)}
                 placeholder={t('connectors.remote-name-placeholder')}
-                leadingIcon={<Wrench className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Wrench} />}
               />
               <Input
                 title={t('connectors.remote-url')}
@@ -352,7 +353,7 @@ export default function AddCustomConnectorPage({
                 value={remoteUrl}
                 onChange={(event) => setRemoteUrl(event.target.value)}
                 placeholder="https://example.com/mcp"
-                leadingIcon={<Server className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Server} />}
                 note={t('connectors.remote-url-note')}
               />
             </div>

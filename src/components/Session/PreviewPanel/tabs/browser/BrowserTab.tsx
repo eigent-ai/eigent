@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
@@ -190,7 +191,7 @@ export function BrowserTab({
             onClick={() => getPreviewWebview(tab.webviewId)?.goBack?.()}
             aria-label={t('layout.browser-back', { defaultValue: 'Back' })}
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
+            <DsIcon icon={ArrowLeft} aria-hidden />
           </Button>
         </TooltipSimple>
         <TooltipSimple
@@ -207,7 +208,7 @@ export function BrowserTab({
               defaultValue: 'Forward',
             })}
           >
-            <ArrowRight className="h-4 w-4" aria-hidden />
+            <DsIcon icon={ArrowRight} aria-hidden />
           </Button>
         </TooltipSimple>
         <TooltipSimple
@@ -225,8 +226,9 @@ export function BrowserTab({
             }}
             aria-label={t('layout.browser-reload', { defaultValue: 'Reload' })}
           >
-            <RefreshCw
-              className={cn('h-4 w-4', nav?.isLoading && 'animate-spin')}
+            <DsIcon
+              icon={RefreshCw}
+              className={cn('', nav?.isLoading && 'animate-spin')}
               aria-hidden
             />
           </Button>
@@ -280,7 +282,7 @@ export function BrowserTab({
               defaultValue: 'Open externally',
             })}
           >
-            <ExternalLink className="h-4 w-4" aria-hidden />
+            <DsIcon icon={ExternalLink} aria-hidden />
           </Button>
         </TooltipSimple>
       </div>

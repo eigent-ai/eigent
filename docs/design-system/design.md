@@ -196,26 +196,48 @@ Rules:
 
 ## 7. Icons
 
-Use Lucide through `DsIcon` from `src/components/ui/ds-icon.tsx` when the icon
-is not already owned by a primitive.
+Every icon renders through `DsIcon` from `src/components/ui/ds-icon.tsx`,
+including icons inside primitives. Never render a Lucide component directly
+(`<Search />`); pass it to `DsIcon` instead. `npm run check:icon-usage` enforces
+this in CI and on commit.
 
-| Recipe         | Size | Stroke | Use                                        |
-| -------------- | ---: | -----: | ------------------------------------------ |
-| `main-compact` | 12px | 1.25px | Intentionally dense metadata/action        |
-| `main`         | 16px | 1.25px | Default controls, rows, fields, navigation |
-| `detailed`     | 24px |  1.5px | Roomy feature or empty-state moment        |
+There are two base styles. Both use the same 1.25px stroke, measured in screen
+pixels at any size (`DsIcon` sets Lucide's `absoluteStrokeWidth`), so every icon
+in a view has the same line weight.
+
+| Recipe         |    Size | Stroke | Use                                                                      |
+| -------------- | ------: | -----: | ------------------------------------------------------------------------ |
+| `main`         |    16px | 1.25px | **Standard.** Controls, rows, fields, menus, navigation                  |
+| `main-compact` |    12px | 1.25px | Dense metadata only: file chips, badges, inline status/meta              |
+| `illustration` | 24–48px |  1.5px | Exception for empty states and onboarding art; never in rows or controls |
 
 ```tsx
-<DsIcon icon={Search} recipe="main" />
+<DsIcon icon={Search} />                       // standard 16px
+<DsIcon icon={FileText} recipe="main-compact" /> // dense 12px
+<DsIcon icon={Inbox} recipe="illustration" illustrationSize={40} />
 ```
 
 Rules:
 
+- Default to `main`. Use `main-compact` only when 16px would crowd dense
+  metadata.
+- One control, one size: every icon inside the same button, trigger, menu item
+  or tab uses the same recipe (for example, a Space switcher's folder and its
+  chevron are both `main`). The check rejects a control that mixes 12px and
+  16px icons.
+- Match the button: prefer `main-compact` inside `Button size="xs"`, since the
+  xs icon slot is 12px; every other button size uses `main`.
+- Do not set `size`, `strokeWidth`, `width`, `height`, or `h-*` / `w-*` /
+  `size-*` classes on an icon. Pick a recipe. The check rejects local overrides.
+- A glyph that is not an icon (for example a check mark drawn inside a custom
+  badge) may stay raw only with a `ds-icon:allow <reason>` comment on or above
+  its line.
+- Icons passed as values (`icon: Search`, `const Icon = …`) are rendered with
+  `<DsIcon icon={Icon} />` too.
 - Use `currentColor`; the parent primitive owns semantic color.
 - Decorative icons are hidden from assistive technology.
 - Icon-only controls require an accessible name.
-- Do not repair icon sizing with local `w-*`, `h-*`, stroke, margin, or
-  translate overrides.
+- Do not repair icon alignment with margin or translate overrides.
 - Icon size never defines the interaction target.
 - Use morphing icons only for one persistent control whose state changes in
   place. Update its accessible state and respect reduced motion.

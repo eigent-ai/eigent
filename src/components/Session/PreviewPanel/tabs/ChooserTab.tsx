@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
@@ -73,7 +74,7 @@ export function ChooserTab({ onChoose, kinds }: ChooserTabProps) {
                   )}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-subtle-default text-ds-ink-default-default">
-                    <Icon className="h-[18px] w-[18px]" aria-hidden />
+                    <DsIcon icon={Icon} />
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="text-sm font-medium text-ds-ink-default-default">

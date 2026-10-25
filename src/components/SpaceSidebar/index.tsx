@@ -29,6 +29,7 @@ import {
 } from '@/components/Session/DeleteSessionDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { useSessionNavStatuses } from '@/hooks/useSessionNavStatuses';
@@ -783,7 +784,7 @@ export default function SpaceSidebar({
                 active={activeWorkspaceTab === 'workforce'}
                 onClick={() => setActiveWorkspaceTab('workforce')}
                 leading={
-                  <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
+                  <DsIcon icon={LayoutGrid} className="shrink-0" aria-hidden />
                 }
                 label={t('layout.workspace-tab')}
                 tooltip={
@@ -803,7 +804,7 @@ export default function SpaceSidebar({
                 disabled={isActiveSpaceUnbound}
                 leading={
                   <span className="relative inline-flex h-4 w-4 shrink-0">
-                    <Inbox className="h-4 w-4 shrink-0" aria-hidden />
+                    <DsIcon icon={Inbox} className="shrink-0" aria-hidden />
                     {filesTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                       <span
                         className="absolute -top-1 -right-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
@@ -855,12 +856,11 @@ export default function SpaceSidebar({
                     ? AUTOMATION_ICON
                     : AUTOMATION_OFF_ICON;
                   return (
-                    <ListenerIcon
-                      className={cn(
-                        'h-4 w-4 shrink-0',
-                        triggerListenerLeadIconClass(wsConnectionStatus)
+                    <DsIcon
+                      icon={ListenerIcon}
+                      className={triggerListenerLeadIconClass(
+                        wsConnectionStatus
                       )}
-                      aria-hidden
                     />
                   );
                 })()}
@@ -894,8 +894,9 @@ export default function SpaceSidebar({
                         if (canOpenAutomations()) requestOpenTriggerAddDialog();
                       }}
                     >
-                      <Plus
-                        className="h-4 w-4 text-ds-ink-muted-default"
+                      <DsIcon
+                        icon={Plus}
+                        className="text-ds-ink-muted-default"
                         aria-hidden
                       />
                     </Button>
@@ -912,7 +913,9 @@ export default function SpaceSidebar({
               <NavTab
                 active={activeWorkspaceTab === 'dispatch'}
                 onClick={() => setActiveWorkspaceTab('dispatch')}
-                leading={<Cast className="h-4 w-4 shrink-0" aria-hidden />}
+                leading={
+                  <DsIcon icon={Cast} className="shrink-0" aria-hidden />
+                }
                 label={t('layout.dispatch-tab')}
                 tooltip={
                   <ShortcutTooltipContent
@@ -929,7 +932,9 @@ export default function SpaceSidebar({
                 active={isConfigurationActive}
                 onClick={openSpaceConfiguration}
                 disabled={!activeSpaceId}
-                leading={<ToolCase className="h-4 w-4 shrink-0" aria-hidden />}
+                leading={
+                  <DsIcon icon={ToolCase} className="shrink-0" aria-hidden />
+                }
                 label={t('layout.configuration-tab')}
                 tooltip={
                   <ShortcutTooltipContent

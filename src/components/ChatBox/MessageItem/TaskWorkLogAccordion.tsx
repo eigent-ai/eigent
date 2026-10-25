@@ -15,6 +15,7 @@
 import { callIcon } from '@/components/ChatBox/TimelineModes/actionIcon';
 import { TaskLogIcon } from '@/components/ChatBox/TimelineModes/TaskLog';
 import { Badge } from '@/components/ui/badge';
+import { DsIcon } from '@/components/ui/ds-icon';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import {
@@ -1228,8 +1229,8 @@ const ToolDetailRow = memo(function ToolDetailRow({
             {presentation.title.text}
           </span>
         )}
-        <ChevronRight
-          size={16}
+        <DsIcon
+          icon={ChevronRight}
           aria-hidden
           data-work-log-chevron
           className={cn(
@@ -1329,8 +1330,8 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
             {rowTitle}
           </span>
         )}
-        <ChevronRight
-          size={16}
+        <DsIcon
+          icon={ChevronRight}
           aria-hidden
           data-work-log-chevron
           className={cn(
@@ -1544,14 +1545,14 @@ const AgentBlockRow = memo(function AgentBlockRow({
           )}
         </span>
         {open ? (
-          <ChevronDown
-            size={16}
+          <DsIcon
+            icon={ChevronDown}
             aria-hidden
             className="shrink-0 text-ds-ink-subtle-default"
           />
         ) : (
-          <ChevronRight
-            size={16}
+          <DsIcon
+            icon={ChevronRight}
             aria-hidden
             className="shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           />
@@ -1676,7 +1677,7 @@ function getGroupHeaderParts(group: AgentGroup): GroupHeaderParts {
 }
 
 const DEFAULT_BOT_ICON = (
-  <Bot size={16} className="text-ds-ink-default-default" />
+  <DsIcon icon={Bot} className="text-ds-ink-default-default" />
 );
 
 const AgentGroupRow = memo(function AgentGroupRow({
@@ -1814,8 +1815,8 @@ const AgentGroupRow = memo(function AgentGroupRow({
         )}
 
         {open ? (
-          <ChevronDown
-            size={16}
+          <DsIcon
+            icon={ChevronDown}
             aria-hidden
             className={cn(
               'shrink-0 text-ds-ink-subtle-default',
@@ -1823,8 +1824,8 @@ const AgentGroupRow = memo(function AgentGroupRow({
             )}
           />
         ) : (
-          <ChevronRight
-            size={16}
+          <DsIcon
+            icon={ChevronRight}
             aria-hidden
             className={cn(
               'shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100',
@@ -2136,16 +2137,14 @@ export function TaskWorkLogAccordion({
           )}
         </span>
         {outerOpen ? (
-          <ChevronDown
-            size={16}
-            strokeWidth={2}
+          <DsIcon
+            icon={ChevronDown}
             aria-hidden
             className="shrink-0 text-ds-ink-muted-default"
           />
         ) : (
-          <ChevronRight
-            size={16}
-            strokeWidth={2}
+          <DsIcon
+            icon={ChevronRight}
             aria-hidden
             className="shrink-0 text-ds-ink-muted-default opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           />

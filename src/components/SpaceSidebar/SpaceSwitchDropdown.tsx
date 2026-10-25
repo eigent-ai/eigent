@@ -23,6 +23,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -278,7 +279,7 @@ export function SpaceSwitchDropdown({
             value={searchQuery}
             placeholder={t('layout.search-spaces')}
             leadingIcon={
-              <Search className="h-4 w-4 text-ds-ink-muted-default" />
+              <DsIcon icon={Search} className="text-ds-ink-muted-default" />
             }
             className="w-full"
             onChange={(event) => setSearchQuery(event.target.value)}
@@ -311,13 +312,15 @@ export function SpaceSwitchDropdown({
                     {getSpaceLabel(space, t)}
                   </span>
                   {switchingSpaceId === space.id ? (
-                    <Loader2
-                      className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none"
+                    <DsIcon
+                      icon={Loader2}
+                      className="shrink-0 animate-spin motion-reduce:animate-none"
                       aria-hidden
                     />
                   ) : activeSpaceId === space.id ? (
-                    <Check
-                      className="h-4 w-4 shrink-0 text-ds-accent-default-default"
+                    <DsIcon
+                      icon={Check}
+                      className="shrink-0 text-ds-accent-default-default"
                       aria-hidden
                     />
                   ) : null}
@@ -336,7 +339,7 @@ export function SpaceSwitchDropdown({
             onOpenCreateSpace();
           }}
         >
-          <Plus className="h-4 w-4" aria-hidden />
+          <DsIcon icon={Plus} aria-hidden />
           {t('layout.spaces-create-new-space')}
         </DropdownMenuItem>
 
@@ -352,14 +355,15 @@ export function SpaceSwitchDropdown({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-2">
               {pendingChangesMenu.loading ? (
-                <Loader2
-                  className="h-4 w-4 shrink-0 animate-spin"
+                <DsIcon
+                  icon={Loader2}
+                  className="shrink-0 animate-spin"
                   aria-hidden
                 />
               ) : pendingChangesMenu.loadFailed ? (
-                <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={TriangleAlert} className="shrink-0" aria-hidden />
               ) : (
-                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={CheckCircle2} className="shrink-0" aria-hidden />
               )}
               {t('layout.workspace-pending-changes')}
               {pendingChangesMenu.overlayCount > 0
@@ -373,8 +377,9 @@ export function SpaceSwitchDropdown({
             >
               {pendingChangesMenu.loadFailed ? (
                 <div className="flex items-start gap-2 px-2 py-2 text-ds-text-base text-ds-ink-muted-default">
-                  <TriangleAlert
-                    className="mt-0.5 h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
+                  <DsIcon
+                    icon={TriangleAlert}
+                    className="mt-0.5 shrink-0 text-ds-icon-warning-default-default"
                     aria-hidden
                   />
                   <span>{t('layout.workspace-pending-load-stale')}</span>
@@ -388,7 +393,7 @@ export function SpaceSwitchDropdown({
                   void pendingChangesMenu.onApply();
                 }}
               >
-                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={CheckCircle2} className="shrink-0" aria-hidden />
                 {pendingChangesMenu.applyProgress
                   ? t('layout.workspace-apply-progress', {
                       current: pendingChangesMenu.applyProgress.current,
@@ -404,7 +409,7 @@ export function SpaceSwitchDropdown({
                   pendingChangesMenu.onDiscard();
                 }}
               >
-                <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={Trash2} className="shrink-0" aria-hidden />
                 {t('layout.workspace-discard-pending-changes')}
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -415,7 +420,7 @@ export function SpaceSwitchDropdown({
                   void pendingChangesMenu.onRefresh();
                 }}
               >
-                <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={RefreshCw} className="shrink-0" aria-hidden />
                 {t('layout.workspace-refresh-workdir')}
               </DropdownMenuItem>
             </DropdownMenuSubContent>
@@ -442,14 +447,15 @@ export function SpaceSwitchDropdown({
               }}
             >
               {savePointMenu.loading || savePointMenu.saving ? (
-                <Loader2
-                  className="h-4 w-4 shrink-0 animate-spin"
+                <DsIcon
+                  icon={Loader2}
+                  className="shrink-0 animate-spin"
                   aria-hidden
                 />
               ) : savePointMenu.needsAttention ? (
-                <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={TriangleAlert} className="shrink-0" aria-hidden />
               ) : (
-                <Save className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={Save} className="shrink-0" aria-hidden />
               )}
               <span className="min-w-0 flex-1 truncate">
                 {savePointMenu.loading
@@ -481,7 +487,7 @@ export function SpaceSwitchDropdown({
                   savePointMenu.onOpenHistory?.();
                 }}
               >
-                <GitBranch className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={GitBranch} className="shrink-0" aria-hidden />
                 {t('layout.workspace-version-history', {
                   defaultValue: 'Version history',
                 })}
@@ -507,7 +513,7 @@ export function SpaceSwitchDropdown({
             onRenameSpace();
           }}
         >
-          <Pencil className="h-4 w-4" aria-hidden />
+          <DsIcon icon={Pencil} aria-hidden />
           <span>{t('layout.spaces-rename-space')}</span>
         </DropdownMenuItem>
 
@@ -520,7 +526,7 @@ export function SpaceSwitchDropdown({
               onOpenSpaceSettings();
             }}
           >
-            <Settings className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Settings} aria-hidden />
             <span>
               {t('layout.space-settings', { defaultValue: 'Space settings' })}
             </span>
@@ -536,7 +542,7 @@ export function SpaceSwitchDropdown({
               onOpenMemorySettings();
             }}
           >
-            <Brain className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Brain} aria-hidden />
             <span>
               {t('setting.memory-settings', {
                 defaultValue: 'Memory settings',

@@ -277,8 +277,11 @@ export default function SpaceDetail({
           }
         />
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-          <FolderOpen
-            className="h-10 w-10 text-ds-ink-muted-default"
+          <DsIcon
+            icon={FolderOpen}
+            recipe="illustration"
+            illustrationSize={40}
+            className="text-ds-ink-muted-default"
             aria-hidden
           />
           <span className="block !text-ds-text-base text-ds-ink-muted-default">
@@ -287,7 +290,7 @@ export default function SpaceDetail({
             })}
           </span>
           <Button type="button" variant="secondary" size="sm" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4" aria-hidden />
+            <DsIcon icon={ArrowLeft} aria-hidden />
             {t('layout.back')}
           </Button>
         </div>

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import i18n from '@/i18n';
 import { Bird, Bot, CodeXml, FileText, Globe, Image } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -41,7 +42,7 @@ export interface AgentDisplayInfo {
 export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   developer_agent: {
     name: 'Developer Agent',
-    icon: <CodeXml size={16} className="text-ds-ink-default-default" />,
+    icon: <DsIcon icon={CodeXml} className="text-ds-ink-default-default" />,
     textColor: 'text-ds-text-terminal-default-default',
     bgColor: 'bg-ds-bg-terminal-default-default',
     shapeColor: 'bg-ds-bg-terminal-subtle-default',
@@ -50,7 +51,7 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   browser_agent: {
     name: 'Browser Agent',
-    icon: <Globe size={16} className="text-ds-ink-default-default" />,
+    icon: <DsIcon icon={Globe} className="text-ds-ink-default-default" />,
     textColor: 'text-blue-700',
     bgColor: 'bg-ds-bg-browser-default-default',
     shapeColor: 'bg-ds-bg-browser-subtle-default',
@@ -59,7 +60,7 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   document_agent: {
     name: 'Document Agent',
-    icon: <FileText size={16} className="text-ds-ink-default-default" />,
+    icon: <DsIcon icon={FileText} className="text-ds-ink-default-default" />,
     textColor: 'text-yellow-700',
     bgColor: 'bg-ds-bg-document-default-default',
     shapeColor: 'bg-ds-bg-document-subtle-default',
@@ -68,7 +69,7 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   multi_modal_agent: {
     name: 'Multi Modal Agent',
-    icon: <Image size={16} className="text-ds-ink-default-default" />,
+    icon: <DsIcon icon={Image} className="text-ds-ink-default-default" />,
     textColor: 'text-fuchsia-700',
     bgColor: 'bg-ds-neutral-default-default',
     shapeColor: 'bg-ds-neutral-subtle-default',
@@ -77,7 +78,7 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   social_media_agent: {
     name: 'Social Media Agent',
-    icon: <Bird size={16} className="text-ds-ink-default-default" />,
+    icon: <DsIcon icon={Bird} className="text-ds-ink-default-default" />,
     textColor: 'text-purple-700',
     bgColor: 'bg-violet-700',
     shapeColor: 'bg-violet-300',
@@ -137,7 +138,7 @@ export const SKILL_SCOPE_AGENT_LIST: {
         defaultValue: 'Single Agent',
       });
     },
-    icon: <Bot size={16} className="text-ds-ink-default-default" />,
+    icon: <DsIcon icon={Bot} className="text-ds-ink-default-default" />,
   },
   ...WORKFLOW_AGENT_LIST,
 ];

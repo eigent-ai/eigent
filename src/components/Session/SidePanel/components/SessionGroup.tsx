@@ -18,6 +18,7 @@ import {
   type SessionNavItem,
 } from '@/components/SpaceSidebar/SessionNavListRows';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';
@@ -96,7 +97,7 @@ export default function Sessions({
               className="no-drag shrink-0 rounded-lg text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
               aria-label={backToWorkspaceTooltip}
             >
-              <ArrowLeft className="h-4 w-4" aria-hidden />
+              <DsIcon icon={ArrowLeft} aria-hidden />
             </Button>
           </TooltipSimple>
         }

@@ -36,7 +36,7 @@ export default function HomeHubEmptyState({
       {icon ? (
         <DsIcon
           icon={icon}
-          recipe="detailed"
+          recipe="illustration"
           className="mb-ds-12 text-ds-ink-muted-default"
         />
       ) : null}

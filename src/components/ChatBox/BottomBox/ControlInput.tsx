@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import { Textarea } from '@/components/ui/textarea';
@@ -283,7 +284,11 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
                 )}
               >
                 {isSelected && (
-                  <Check className="size-3 text-ds-success-on-default" />
+                  <DsIcon
+                    icon={Check}
+                    recipe="main-compact"
+                    className="text-ds-success-on-default"
+                  />
                 )}
               </span>
               <span className="flex min-w-0 flex-col">
@@ -479,7 +484,7 @@ function BlockedInput({ variant }: { variant: BottomBoxBlockedVariant }) {
   return (
     <div className={controlSurfaceClassName} role="alert">
       <div className="flex items-start gap-2 text-ds-text-base text-ds-text-warning-default-default">
-        <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+        <DsIcon icon={TriangleAlert} aria-hidden className="mt-0.5 shrink-0" />
         <span className="block font-normal">{variant.message}</span>
       </div>
       {variant.onRecover ? (
