@@ -19,6 +19,7 @@ import {
   DialogContentSection,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -254,7 +255,7 @@ export function WorkspaceVersionHistoryDialog({
         <DialogContentSection className="flex min-h-0 flex-1 flex-col gap-5 overflow-hidden p-5">
           {loading && !history ? (
             <div className="flex min-h-40 items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+              <DsIcon icon={Loader2} className="animate-spin" aria-hidden />
             </div>
           ) : null}
 
@@ -285,14 +286,18 @@ export function WorkspaceVersionHistoryDialog({
                       defaultValue: 'Refresh',
                     })}
                   >
-                    <RefreshCw className={loading ? 'animate-spin' : ''} />
+                    <DsIcon
+                      icon={RefreshCw}
+                      className={loading ? 'animate-spin' : ''}
+                    />
                   </Button>
                 </div>
                 {versionView.currentSpace ? (
                   <div className="flex items-center gap-3 rounded-xl border border-x border-y border-ds-hairline-default-default bg-ds-neutral-subtle-default p-4">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ds-bg-success-subtle-default">
-                      <CheckCircle2
-                        className="size-5 text-ds-icon-success-default-default"
+                      <DsIcon
+                        icon={CheckCircle2}
+                        className="text-ds-icon-success-default-default"
                         aria-hidden
                       />
                     </div>
@@ -326,7 +331,11 @@ export function WorkspaceVersionHistoryDialog({
 
               {history.large_repository.warning ? (
                 <div className="flex shrink-0 gap-2 rounded-xl border border-x border-y border-ds-border-warning-default-default p-3 text-ds-text-base">
-                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                  <DsIcon
+                    icon={AlertTriangle}
+                    className="shrink-0"
+                    aria-hidden
+                  />
                   <span>
                     {t('layout.workspace-large-repository-warning', {
                       defaultValue:
@@ -409,8 +418,9 @@ export function WorkspaceVersionHistoryDialog({
                         key={branch.ref}
                         className="flex items-center gap-3 border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default py-3 last:border-x-0 last:border-t-0 last:border-b-0"
                       >
-                        <FolderGit2
-                          className="size-4 shrink-0 text-ds-ink-muted-default"
+                        <DsIcon
+                          icon={FolderGit2}
+                          className="shrink-0 text-ds-ink-muted-default"
                           aria-hidden
                         />
                         <div className="min-w-0 flex-1">
@@ -474,8 +484,9 @@ export function WorkspaceVersionHistoryDialog({
                           key={taskVersion.id}
                           className="flex items-center gap-3 border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default py-3 last:border-x-0 last:border-t-0 last:border-b-0"
                         >
-                          <History
-                            className="size-4 shrink-0 text-ds-ink-muted-default"
+                          <DsIcon
+                            icon={History}
+                            className="shrink-0 text-ds-ink-muted-default"
                             aria-hidden
                           />
                           <div className="min-w-0 flex-1">
@@ -591,7 +602,11 @@ export function WorkspaceVersionHistoryDialog({
                 >
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center gap-3 py-2">
-                      <GitBranch className="size-4 shrink-0" aria-hidden />
+                      <DsIcon
+                        icon={GitBranch}
+                        className="shrink-0"
+                        aria-hidden
+                      />
                       <div className="min-w-0">
                         <span className="block text-ds-text-base font-semibold">
                           {t('layout.workspace-technical-details', {
@@ -620,8 +635,9 @@ export function WorkspaceVersionHistoryDialog({
                           key={branch.ref}
                           className="flex min-w-0 items-center gap-3 border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default py-3 last:border-x-0 last:border-t-0 last:border-b-0"
                         >
-                          <GitBranch
-                            className="size-4 shrink-0 text-ds-ink-muted-default"
+                          <DsIcon
+                            icon={GitBranch}
+                            className="shrink-0 text-ds-ink-muted-default"
                             aria-hidden
                           />
                           <div className="min-w-0 flex-1">
@@ -660,8 +676,9 @@ export function WorkspaceVersionHistoryDialog({
 
                   <div className="space-y-3">
                     <div className="flex min-w-0 items-center gap-3 py-2">
-                      <GitCommitHorizontal
-                        className="size-4 shrink-0"
+                      <DsIcon
+                        icon={GitCommitHorizontal}
+                        className="shrink-0"
                         aria-hidden
                       />
                       <div className="min-w-0">
@@ -732,9 +749,13 @@ export function WorkspaceVersionHistoryDialog({
                         }
                       >
                         {commandBusy ? (
-                          <Loader2 className="animate-spin" aria-hidden />
+                          <DsIcon
+                            icon={Loader2}
+                            className="animate-spin"
+                            aria-hidden
+                          />
                         ) : (
-                          <Play aria-hidden />
+                          <DsIcon icon={Play} aria-hidden />
                         )}
                         {t('layout.run', { defaultValue: 'Run' })}
                       </Button>

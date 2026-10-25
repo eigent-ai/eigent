@@ -1,0 +1,183 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+/**
+ * Fails if UI source renders a Lucide icon directly instead of through
+ * `DsIcon`, or overrides a DsIcon's size or stroke locally. DsIcon owns the
+ * two base icon styles (16px standard, 12px compact) and the shared stroke.
+ *
+ * Usage:
+ *   node scripts/check-icon-usage.mjs
+ *   node scripts/check-icon-usage.mjs src/a.tsx   # lint-staged (one or more files)
+ *
+ * Exemption: put `ds-icon:allow <reason>` in a comment on the element's line or
+ * the line above it. Reserve it for glyphs that are not icons (for example a
+ * check mark drawn inside a custom badge).
+ */
+
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(__dirname, '..');
+
+const EXT = new Set(['.tsx', '.jsx']);
+const SKIP_PATHS = new Set([
+  'src/components/ui/ds-icon.tsx',
+  'src/components/ui/ds-morph-icon.tsx',
+]);
+const SKIP_PREFIXES = ['src/components/ui/animate-ui/icons/'];
+const SKIP_FILE_RE = /\.(test|spec)\.(tsx|jsx)$|\.stories\.(tsx|jsx)$/;
+
+const LUCIDE_IMPORT_RE = /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/gs;
+const DS_TAGS = ['DsIcon', 'TaskLogIcon'];
+const SIZE_CLASS_RE =
+  /(?<![\w:[-])(?:size|h|w)-(?:\d+(?:\.\d+)?|\[[^\]\s]+\])(?![\w.\]-])/;
+const SIZE_PROP_RE = /\b(?:size|strokeWidth|absoluteStrokeWidth|width|height)=/;
+
+function lucideNames(text) {
+  const names = new Set();
+  for (const m of text.matchAll(LUCIDE_IMPORT_RE)) {
+    for (const raw of m[1].split(',')) {
+      const part = raw.trim();
+      if (!part || part.startsWith('type ')) continue;
+      names.add(
+        part
+          .split(/\s+as\s+/)
+          .pop()
+          .trim()
+      );
+    }
+  }
+  return names;
+}
+
+/** Index of the `>` that closes the opening tag starting at `from`. */
+function openTagEnd(text, from) {
+  let depth = 0;
+  for (let i = from; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{') depth++;
+    else if (c === '}') depth--;
+    else if (c === '>' && depth === 0) return i;
+  }
+  return -1;
+}
+
+function lineOf(text, index) {
+  return text.slice(0, index).split('\n').length;
+}
+
+function exempt(lines, line) {
+  return [line - 1, line - 2].some(
+    (i) => i >= 0 && lines[i]?.includes('ds-icon:allow')
+  );
+}
+
+function* walk(dir) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name === 'node_modules' || e.name === 'dist') continue;
+      yield* walk(p);
+    } else if (EXT.has(e.name.slice(e.name.lastIndexOf('.')))) {
+      yield p;
+    }
+  }
+}
+
+function checkFile(abs) {
+  const rel = relative(REPO_ROOT, abs).replaceAll('\\', '/');
+  if (
+    SKIP_PATHS.has(rel) ||
+    SKIP_PREFIXES.some((p) => rel.startsWith(p)) ||
+    SKIP_FILE_RE.test(rel)
+  ) {
+    return [];
+  }
+  const text = readFileSync(abs, 'utf8');
+  const lines = text.split(/\r?\n/);
+  const out = [];
+
+  const names = lucideNames(text);
+  if (names.size > 0) {
+    const tag = new RegExp(`<(${[...names].join('|')})(?=[\\s/>])`, 'g');
+    for (const m of text.matchAll(tag)) {
+      const end = openTagEnd(text, m.index + m[0].length);
+      // TypeScript generics such as useState<File | null> are not elements.
+      if (end < 0 || /[|&,]/.test(text.slice(m.index, end).split('\n')[0]))
+        continue;
+      const line = lineOf(text, m.index);
+      if (exempt(lines, line)) continue;
+      out.push({
+        file: rel,
+        line,
+        message: `Lucide icon <${m[1]}> rendered directly. Use <DsIcon icon={${m[1]}} />.`,
+      });
+    }
+  }
+
+  for (const dsTag of DS_TAGS) {
+    for (const m of text.matchAll(new RegExp(`<${dsTag}(?=[\\s/>])`, 'g'))) {
+      const end = openTagEnd(text, m.index + m[0].length);
+      if (end < 0) continue;
+      const attrs = text.slice(m.index, end);
+      const line = lineOf(text, m.index);
+      if (exempt(lines, line)) continue;
+      const classAttr = attrs.match(/className=("[^"]*"|\{[\s\S]*?\}\s*$)/m);
+      if (SIZE_PROP_RE.test(attrs.replace(/illustrationSize=/g, ''))) {
+        out.push({
+          file: rel,
+          line,
+          message: `<${dsTag}> sets size or stroke locally. Choose a recipe instead.`,
+        });
+      } else if (classAttr && SIZE_CLASS_RE.test(classAttr[1])) {
+        out.push({
+          file: rel,
+          line,
+          message: `<${dsTag}> overrides its size with a utility class. Choose a recipe instead.`,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function main() {
+  const argv = process.argv.slice(2).filter((a) => a !== '--');
+  const explicit = argv
+    .filter((a) => !a.startsWith('-'))
+    .map((a) => resolve(REPO_ROOT, a))
+    .filter((p) => existsSync(p) && statSync(p).isFile())
+    .filter((p) => EXT.has(p.slice(p.lastIndexOf('.'))));
+  const targets =
+    argv.length > 0 ? explicit : [...walk(join(REPO_ROOT, 'src'))];
+
+  const violations = targets.flatMap(checkFile);
+  if (violations.length === 0) {
+    console.log('check-icon-usage: OK (all icons render through DsIcon).');
+    process.exit(0);
+  }
+  console.error('check-icon-usage: icon style violations:\n');
+  for (const v of violations) {
+    console.error(`  ${v.file}:${v.line}\n    ${v.message}\n`);
+  }
+  console.error(
+    `Total: ${violations.length} finding(s). See docs/design-system/design.md §7 (Icons).`
+  );
+  process.exit(1);
+}
+
+main();

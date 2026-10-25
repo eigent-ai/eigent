@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Textarea } from '@/components/ui/textarea';
 import { Check, CircleDashed, PenLine, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -75,7 +76,11 @@ export function TaskItem({
       >
         <div className="flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center pt-0.5 pr-2">
           {taskInfo.id === '' ? (
-            <CircleDashed size={13} className="text-ds-ink-muted-default" />
+            <DsIcon
+              icon={CircleDashed}
+              recipe="main-compact"
+              className="text-ds-ink-muted-default"
+            />
           ) : (
             <div className="h-2 w-2 rounded-full bg-ds-icon-information-default-default"></div>
           )}
@@ -114,7 +119,7 @@ export function TaskItem({
               size="xs"
               buttonContent="icon-only"
             >
-              <PenLine size={16} className="" />
+              <DsIcon icon={PenLine} />
             </Button>
           ) : (
             <Button
@@ -127,7 +132,7 @@ export function TaskItem({
               size="xs"
               buttonContent="icon-only"
             >
-              <Check size={16} className="text-current" />
+              <DsIcon icon={Check} className="text-current" />
             </Button>
           )}
           <Button
@@ -138,7 +143,7 @@ export function TaskItem({
             size="xs"
             buttonContent="icon-only"
           >
-            <Trash2 size={16} className="text-current" />
+            <DsIcon icon={Trash2} className="text-current" />
           </Button>
         </div>
       </div>

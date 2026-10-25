@@ -808,7 +808,7 @@ export function WorkspaceBundleSaveDialog({
         <DialogContentSection className="space-y-4 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-ds-text-base text-ds-ink-muted-default">
-              <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
+              <DsIcon icon={RefreshCw} className="animate-spin" aria-hidden />
               {t('layout.workspace-bundle-save-preparing-review', {
                 defaultValue: 'Preparing a secret-free review…',
               })}
@@ -886,7 +886,7 @@ export function WorkspaceBundleSaveDialog({
               ) : null}
               <div className="rounded-xl border border-x border-y border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-4">
                 <div className="flex items-start gap-3">
-                  <ShieldCheck className="mt-0.5 h-5 w-5" aria-hidden />
+                  <DsIcon icon={ShieldCheck} className="mt-0.5" aria-hidden />
                   <div>
                     <p className="text-ds-text-base font-bold">
                       {t('layout.workspace-bundle-save-values-stay-title', {
@@ -1052,7 +1052,7 @@ export function WorkspaceBundleSaveDialog({
                             )}
                         </span>
                       </span>
-                      <FileUp className="h-4 w-4 shrink-0" aria-hidden />
+                      <DsIcon icon={FileUp} className="shrink-0" aria-hidden />
                       <input
                         className="sr-only"
                         type="file"
@@ -1288,7 +1288,7 @@ export function WorkspaceBundleSaveDialog({
               {publishedHandle ? (
                 <div className="rounded-xl border border-x border-y border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-4">
                   <p className="flex items-center gap-2 text-ds-text-base font-bold">
-                    <Check className="h-4 w-4" aria-hidden />{' '}
+                    <DsIcon icon={Check} aria-hidden />{' '}
                     {t('layout.workspace-bundle-save-published', {
                       defaultValue: 'Published',
                     })}
@@ -1314,7 +1314,7 @@ export function WorkspaceBundleSaveDialog({
                     className="mt-3"
                     onClick={() => void copyHandle()}
                   >
-                    <Copy className="h-4 w-4" aria-hidden />
+                    <DsIcon icon={Copy} aria-hidden />
                     {copied
                       ? t('layout.workspace-bundle-save-copied', {
                           defaultValue: 'Copied',

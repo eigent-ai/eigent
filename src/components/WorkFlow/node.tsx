@@ -14,6 +14,7 @@
 
 import { AddWorker } from '@/components/AddWorker';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
@@ -436,7 +437,11 @@ export function Node({ id, data }: NodeProps) {
                 size="xs"
                 buttonContent="icon-only"
               >
-                {isExpanded ? <SquareChevronLeft /> : <SquareCode />}
+                {isExpanded ? (
+                  <DsIcon icon={SquareChevronLeft} />
+                ) : (
+                  <DsIcon icon={SquareCode} />
+                )}
               </Button>
               {!workflowAgentType &&
                 getCurrentTask()?.messages?.length === 0 && (
@@ -448,7 +453,7 @@ export function Node({ id, data }: NodeProps) {
                         size="xs"
                         buttonContent="icon-only"
                       >
-                        <Ellipsis />
+                        <DsIcon icon={Ellipsis} />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[98px] rounded-[12px] border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-strong-default p-sm">
@@ -472,8 +477,8 @@ export function Node({ id, data }: NodeProps) {
                               setWorkerList(newWorkerList);
                             }}
                           >
-                            <Trash2
-                              size={16}
+                            <DsIcon
+                              icon={Trash2}
                               className="text-ds-ink-default-default group-hover:text-ds-icon-status-error-default-default"
                             />
                             Delete
@@ -716,52 +721,47 @@ export function Node({ id, data }: NodeProps) {
                     <div className="">
                       {task.reAssignTo ? (
                         //  reassign to other agent
-                        <CircleSlash2
-                          size={16}
+                        <DsIcon
+                          icon={CircleSlash2}
                           className="text-ds-icon-status-blocked-default-default"
                         />
                       ) : (
                         // normal task
                         <>
                           {task.status === TaskStatus.RUNNING && (
-                            <LoaderCircle
-                              size={16}
-                              className={`text-ds-icon-status-running-default-default ${
-                                chatStore.tasks[
-                                  chatStore.activeTaskId as string
-                                ].status === ChatTaskStatus.RUNNING &&
-                                'animate-spin'
-                              }`}
+                            <DsIcon
+                              icon={LoaderCircle}
+                              className={`text-ds-icon-status-running-default-default ${chatStore.tasks[chatStore.activeTaskId as string].status === ChatTaskStatus.RUNNING && 'animate-spin'}`}
                             />
                           )}
                           {task.status === TaskStatus.SKIPPED && (
-                            <LoaderCircle
-                              size={16}
+                            <DsIcon
+                              icon={LoaderCircle}
                               className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
-                            <CircleCheckBig
-                              size={16}
+                            <DsIcon
+                              icon={CircleCheckBig}
                               className="text-ds-icon-status-completed-default-default"
                             />
                           )}
                           {task.status === TaskStatus.FAILED && (
-                            <CircleSlash
-                              size={16}
+                            <DsIcon
+                              icon={CircleSlash}
                               className="text-ds-icon-status-error-default-default"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
-                            <TriangleAlert
-                              size={16}
+                            <DsIcon
+                              icon={TriangleAlert}
                               className="text-ds-icon-status-blocked-default-default"
                             />
                           )}
                           {(task.status === TaskStatus.EMPTY ||
                             task.status === TaskStatus.WAITING) && (
-                            <Circle
-                              size={16}
+                            <DsIcon
+                              icon={Circle}
                               className="text-ds-icon-status-pending-default-default"
                             />
                           )}

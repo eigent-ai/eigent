@@ -14,6 +14,7 @@
 
 'use client';
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -157,7 +158,7 @@ const DialogContent = React.forwardRef<
                   className={cn('absolute top-4 right-4', closeButtonClassName)}
                   onClick={onClose}
                 >
-                  {closeButtonIcon || <X className="h-4 w-4" aria-hidden />}
+                  {closeButtonIcon || <DsIcon icon={X} aria-hidden />}
                   <span className="sr-only">{t('layout.close')}</span>
                 </Button>
               </DialogPrimitive.Close>
@@ -212,7 +213,10 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
             onClick={onBackClick}
             className="hover:bg-transparent"
           >
-            <ChevronLeft className="h-4 w-4 text-ds-ink-default-default" />
+            <DsIcon
+              icon={ChevronLeft}
+              className="text-ds-ink-default-default"
+            />
           </Button>
         )}
         <div className="flex flex-col text-center sm:text-left">
@@ -225,7 +229,10 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
               </DialogPrimitive.Title>
               {showTooltip && tooltip && (
                 <TooltipSimple content={tooltip}>
-                  <AlertCircle className="h-4 w-4 text-ds-ink-default-default" />
+                  <DsIcon
+                    icon={AlertCircle}
+                    className="text-ds-ink-default-default"
+                  />
                 </TooltipSimple>
               )}
             </div>

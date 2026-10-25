@@ -351,6 +351,7 @@ export function ProgressCircle({
       style={{ width: size, height: size }}
       aria-hidden
     >
+      {/* ds-icon:allow check mark scaled to fill a custom-sized status dot */}
       {done ? <Check size={Math.max(8, size - 6)} strokeWidth={4} /> : null}
     </span>
   );

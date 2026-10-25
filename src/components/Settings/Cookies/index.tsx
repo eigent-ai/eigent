@@ -15,6 +15,7 @@
 import { fetchDelete, fetchGet, fetchPost } from '@/api/http';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
 import { SITE_URL } from '@/lib';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
@@ -256,7 +257,7 @@ export default function Cookies() {
               onClick={handleBrowserLogin}
               disabled={loginLoading}
             >
-              <Plus className="h-4 w-4" aria-hidden />
+              <DsIcon icon={Plus} aria-hidden />
               {loginLoading ? t('layout.opening') : t('layout.open-browser')}
             </Button>
           }
@@ -298,8 +299,9 @@ export default function Cookies() {
                 disabled={cookiesLoading}
                 aria-label={t('setting.refresh')}
               >
-                <RefreshCw
-                  className={`h-4 w-4 ${cookiesLoading ? 'animate-spin' : ''}`}
+                <DsIcon
+                  icon={RefreshCw}
+                  className={`${cookiesLoading ? 'animate-spin' : ''}`}
                   aria-hidden
                 />
               </Button>
@@ -342,8 +344,9 @@ export default function Cookies() {
                       domain: group.mainDomain,
                     })}
                   >
-                    <Trash2
-                      className="h-4 w-4 text-ds-text-status-error-strong-default"
+                    <DsIcon
+                      icon={Trash2}
+                      className="text-ds-text-status-error-strong-default"
                       aria-hidden
                     />
                   </Button>
@@ -352,7 +355,12 @@ export default function Cookies() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center px-4 py-8">
-              <Cookie className="mb-4 h-12 w-12 text-ds-ink-muted-default opacity-50" />
+              <DsIcon
+                icon={Cookie}
+                recipe="illustration"
+                illustrationSize={48}
+                className="mb-4 text-ds-ink-muted-default opacity-50"
+              />
               <span className="text-center text-ds-text-base font-bold text-ds-ink-muted-default">
                 {t('layout.no-cookies-saved-yet')}
               </span>

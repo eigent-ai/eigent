@@ -32,6 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -274,7 +275,7 @@ export function QueuedBox({
                   disabled={!reorder.canMove(message)}
                   {...reorder.handleProps(message)}
                 >
-                  <GripVertical />
+                  <DsIcon icon={GripVertical} />
                 </Button>
                 <DsText
                   as="p"
@@ -325,7 +326,7 @@ export function QueuedBox({
                       void remove(message);
                     }}
                   >
-                    <Trash2 />
+                    <DsIcon icon={Trash2} />
                   </Button>
                 </TooltipSimple>
                 <DropdownMenu>
@@ -346,7 +347,7 @@ export function QueuedBox({
                         removing === message.id
                       }
                     >
-                      <MoreHorizontal />
+                      <DsIcon icon={MoreHorizontal} />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -365,7 +366,7 @@ export function QueuedBox({
                           else onSendQueuedMessageNow?.(message.id);
                         }}
                       >
-                        <CornerDownRight />
+                        <DsIcon icon={CornerDownRight} />
                         {t(
                           queueContext.busy
                             ? 'chat.queue-stop-and-start'
@@ -383,7 +384,7 @@ export function QueuedBox({
                         });
                       }}
                     >
-                      <FileText />
+                      <DsIcon icon={FileText} />
                       {t('chat.queue-view-full')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>

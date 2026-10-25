@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronRight, Circle } from 'lucide-react';
 import * as React from 'react';
@@ -50,7 +51,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
     {...props}
   >
     {children}
-    <ChevronRight className="ml-auto" />
+    <DsIcon icon={ChevronRight} className="ml-auto" />
   </DropdownMenuPrimitive.SubTrigger>
 ));
 DropdownMenuSubTrigger.displayName =
@@ -130,7 +131,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   >
     <span className="absolute inset-y-0 left-2 my-auto flex size-4 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
+        <DsIcon icon={Check} />
       </DropdownMenuPrimitive.ItemIndicator>
     </span>
     {children}
@@ -154,7 +155,7 @@ const DropdownMenuRadioItem = React.forwardRef<
   >
     <span className="absolute inset-y-0 left-2 my-auto flex size-4 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
-        <Circle className="h-2 w-2 fill-current" />
+        <DsIcon icon={Circle} className="fill-current" />
       </DropdownMenuPrimitive.ItemIndicator>
     </span>
     {children}

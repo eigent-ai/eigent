@@ -68,7 +68,7 @@ export function ArtifactChangeList({
     <section className="my-3 overflow-hidden rounded-ds-card border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default">
       <div className="flex items-center gap-3 border-x-0 border-t-0 border-b border-solid border-ds-hairline-default-default bg-ds-neutral-default-default px-4 py-3">
         <span className="flex size-ds-control-xl shrink-0 items-center justify-center rounded-ds-menu-row bg-ds-neutral-strong-default text-ds-ink-default-default">
-          <DsIcon icon={FileDiff} recipe="detailed" />
+          <DsIcon icon={FileDiff} recipe="illustration" />
         </span>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="truncate text-ds-text-base font-semibold text-ds-ink-default-default">

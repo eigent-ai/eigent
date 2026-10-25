@@ -21,6 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
@@ -121,8 +122,9 @@ function SessionNavRowMenu({
             aria-label={moreLabel}
             onClick={(e) => e.stopPropagation()}
           >
-            <MoreHorizontal
-              className="size-ds-icon-md text-ds-ink-muted-default"
+            <DsIcon
+              icon={MoreHorizontal}
+              className="text-ds-ink-muted-default"
               aria-hidden
             />
           </Button>
@@ -137,9 +139,10 @@ function SessionNavRowMenu({
             disabled={!onPinSession}
             onSelect={() => onPinSession?.(sessionId)}
           >
-            <Pin
+            <DsIcon
+              icon={Pin}
               className={cn(
-                'h-4 w-4',
+                '',
                 pinned && 'fill-current text-ds-accent-default-default'
               )}
               aria-hidden
@@ -151,7 +154,7 @@ function SessionNavRowMenu({
             disabled={!onEndSession || achieved}
             onSelect={() => onEndSession?.(sessionId)}
           >
-            <Archive className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Archive} aria-hidden />
             {achieveLabel}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -160,8 +163,9 @@ function SessionNavRowMenu({
             disabled={!onDeleteSession}
             onSelect={() => onDeleteSession?.(sessionId)}
           >
-            <Trash2
-              className="h-4 w-4 text-ds-icon-error-default-default"
+            <DsIcon
+              icon={Trash2}
+              className="text-ds-icon-error-default-default"
               aria-hidden
             />
             {deleteLabel}

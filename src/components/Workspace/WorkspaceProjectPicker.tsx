@@ -17,6 +17,7 @@ import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdo
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
@@ -568,7 +569,7 @@ export function WorkspaceProjectPicker({
         className={cn(PROJECT_PICKER_SHELL_CLASS, 'justify-center')}
         aria-label={activeSpaceTitle}
       >
-        <FolderIcon className="size-4 shrink-0" aria-hidden />
+        <DsIcon icon={FolderIcon} className="shrink-0" aria-hidden />
         <span className="min-w-0 truncate text-ds-text-base text-ds-ink-default-default">
           {activeSpaceTitle}
         </span>
@@ -671,12 +672,13 @@ export function WorkspaceProjectPicker({
             aria-expanded={menuOpen}
             aria-haspopup="menu"
           >
-            <FolderIcon className="size-4 shrink-0" aria-hidden />
+            <DsIcon icon={FolderIcon} className="shrink-0" aria-hidden />
             <span className="min-w-0 truncate text-ds-text-base text-ds-ink-default-default">
               {activeSpaceTitle}
             </span>
-            <ChevronsUpDown
-              className="size-4 shrink-0 opacity-80"
+            <DsIcon
+              icon={ChevronsUpDown}
+              className="shrink-0 opacity-80"
               aria-hidden
             />
           </Button>

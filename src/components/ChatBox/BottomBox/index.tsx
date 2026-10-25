@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { type SessionModeType } from '@/types/constants';
 import { motion, useReducedMotion } from 'framer-motion';
 import { TriangleAlert } from 'lucide-react';
@@ -462,8 +463,9 @@ export default function BottomBox({
             animate={{ opacity: 1 }}
             transition={enterTransition}
           >
-            <TriangleAlert
-              className="h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
+            <DsIcon
+              icon={TriangleAlert}
+              className="shrink-0 text-ds-icon-warning-default-default"
               aria-hidden
             />
             <span className="block text-ds-text-base font-normal text-ds-text-warning-default-default">

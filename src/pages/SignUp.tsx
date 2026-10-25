@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { SITE_URL } from '@/lib';
 import { recordSignUpFailed } from '@/lib/events/appEvents';
 import { useAuthStore } from '@/store/authStore';
@@ -429,9 +430,9 @@ export default function SignUp() {
                   note={errors.password}
                   backIcon={
                     hidePassword ? (
-                      <Eye className="h-5 w-5" />
+                      <DsIcon icon={Eye} />
                     ) : (
-                      <EyeOff className="h-5 w-5" />
+                      <DsIcon icon={EyeOff} />
                     )
                   }
                   onBackIconClick={() => setHidePassword(!hidePassword)}

@@ -427,7 +427,7 @@ export const Inputbox = ({
     >
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-x-2 border-y-2 border-dashed border-ds-hairline-strong-default bg-ds-bg-information-subtle-default text-ds-ink-default-default backdrop-blur-sm">
-          <DsIcon icon={UploadCloud} recipe="detailed" />
+          <DsIcon icon={UploadCloud} recipe="illustration" />
           <span className="block text-ds-text-base font-semibold">
             {t('chat.drop-files-to-attach')}
           </span>

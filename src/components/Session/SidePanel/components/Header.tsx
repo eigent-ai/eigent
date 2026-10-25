@@ -23,6 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Separator } from '@/components/ui/separator';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -76,9 +77,13 @@ export function SessionHistoryAction() {
           onClick={hydration.retry}
         >
           {pending ? (
-            <LoaderCircle aria-hidden className="motion-safe:animate-spin" />
+            <DsIcon
+              icon={LoaderCircle}
+              aria-hidden
+              className="motion-safe:animate-spin"
+            />
           ) : (
-            <RotateCw aria-hidden />
+            <DsIcon icon={RotateCw} aria-hidden />
           )}
         </Button>
         <span className="sr-only" role="status">
@@ -146,7 +151,7 @@ export function ActivityHeader({
                   )}
                 >
                   {scopeLabels[scope]}
-                  <ChevronDown aria-hidden />
+                  <DsIcon icon={ChevronDown} aria-hidden />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" sideOffset={8}>
@@ -162,7 +167,8 @@ export function ActivityHeader({
                         {scopeLabels[value]}
                       </span>
                       {scope === value ? (
-                        <Check
+                        <DsIcon
+                          icon={Check}
                           className="text-ds-accent-default-default"
                           aria-hidden
                         />
