@@ -691,7 +691,7 @@ class TaskLock:
         self.background_tasks.add(task)
         task.add_done_callback(lambda t: self.background_tasks.discard(t))
 
-    async def cleanup(self):
+    async def cleanup(self, *, remove_venv: bool = True):
         r"""Cancel all background tasks and clean up resources"""
         logger.info(
             "Starting task lock cleanup",
@@ -723,7 +723,19 @@ class TaskLock:
         for toolkit in self.registered_toolkits:
             try:
                 if hasattr(toolkit, "cleanup"):
-                    await asyncio.to_thread(toolkit.cleanup)
+                    if remove_venv:
+                        await asyncio.to_thread(toolkit.cleanup)
+                    else:
+                        from app.agent.toolkit.terminal_toolkit import (
+                            TerminalToolkit,
+                        )
+
+                        if isinstance(toolkit, TerminalToolkit):
+                            await asyncio.to_thread(
+                                toolkit.cleanup, remove_venv=False
+                            )
+                        else:
+                            await asyncio.to_thread(toolkit.cleanup)
                     logger.info(
                         "Toolkit cleanup completed",
                         extra={

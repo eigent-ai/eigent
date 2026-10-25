@@ -334,7 +334,7 @@ async def cleanup_resources():
     for task_id in list(task_locks.keys()):
         try:
             task_lock = task_locks[task_id]
-            await task_lock.cleanup()
+            await task_lock.cleanup(remove_venv=False)
         except Exception as e:
             app_logger.error(f"Error cleaning up task {task_id}: {e}")
 

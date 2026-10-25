@@ -528,6 +528,15 @@ async def list_project_runs(
     }
 
 
+@router.get("/runs/active")
+async def active_local_execution():
+    """One local registry read across every Space and Session."""
+    active = await asyncio.to_thread(
+        get_default_run_journal().has_active_local_execution
+    )
+    return {"active": active}
+
+
 @router.get("/runs/{run_id}")
 async def get_run(run_id: str):
     run = await _load_run_or_404(run_id)

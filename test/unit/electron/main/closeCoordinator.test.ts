@@ -296,7 +296,7 @@ describe('CloseCoordinator', () => {
     expect(coordinator.isAppQuitInProgress()).toBe(true);
   });
 
-  it('quits immediately before the renderer is ready to answer', () => {
+  it('refuses an unconfirmed quit before the renderer is ready', () => {
     const fixture = createWindow();
     const quit = vi.fn();
     const coordinator = new CloseCoordinator({
@@ -309,7 +309,7 @@ describe('CloseCoordinator', () => {
     coordinator.request('quit-app');
 
     expect(fixture.send).not.toHaveBeenCalled();
-    expect(quit).toHaveBeenCalledOnce();
+    expect(quit).not.toHaveBeenCalled();
   });
 
   it('does not strand a window after its renderer is already destroyed', () => {
@@ -326,7 +326,7 @@ describe('CloseCoordinator', () => {
     expect(coordinator.getPendingIntent()).toBeNull();
   });
 
-  it('closes anyway when the renderer never answers', () => {
+  it('refuses an unconfirmed quit when the renderer never answers', () => {
     const fixture = createWindow();
     const quit = vi.fn();
     let pending: (() => void) | null = null;
@@ -351,7 +351,7 @@ describe('CloseCoordinator', () => {
     // A crashed or hung renderer must not be able to veto the quit forever.
     pending?.();
 
-    expect(quit).toHaveBeenCalledOnce();
+    expect(quit).not.toHaveBeenCalled();
     expect(coordinator.getPendingIntent()).toBeNull();
   });
 
@@ -431,7 +431,7 @@ describe('CloseCoordinator', () => {
 
     // A second explicit Quit is now an escape instead of being swallowed.
     coordinator.request('quit-app');
-    expect(quit).toHaveBeenCalledOnce();
+    expect(quit).not.toHaveBeenCalled();
   });
 
   it('clears pending state on renderer crash and lets the next native close pass', () => {
@@ -468,4 +468,26 @@ describe('CloseCoordinator', () => {
       intent: 'close-window',
     });
   });
+});
+
+describe('native quit fallback', () => {
+  it.each([true, false])(
+    'respects the native decision %s with an unavailable renderer',
+    async (approved) => {
+      const fixture = createWindow();
+      const quit = vi.fn();
+      const confirm = vi.fn(async () => approved);
+      const coordinator = new CloseCoordinator({
+        defaultIntent: 'quit-app',
+        quit,
+        shouldGuard: () => false,
+        confirmQuitWithoutRenderer: confirm,
+      });
+      coordinator.bindWindow(fixture.window as never);
+      coordinator.request('quit-app');
+      coordinator.request('quit-app');
+      await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+      expect(quit).toHaveBeenCalledTimes(approved ? 1 : 0);
+    }
+  );
 });

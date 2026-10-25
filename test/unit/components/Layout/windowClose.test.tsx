@@ -63,7 +63,7 @@ vi.mock('@/hooks/useChatStoreAdapter', () => ({
   default: () => ({ chatStore: null }),
 }));
 vi.mock('@/service/runCloseGuard', () => ({
-  assessCloseRunState: mocks.assessCloseRunState,
+  assessGlobalCloseRunState: mocks.assessCloseRunState,
 }));
 vi.mock('@/store/chatStore', () => ({
   hasAnyActiveLegacySSEConnection: mocks.hasAnyActiveLegacySSEConnection,
@@ -160,7 +160,6 @@ describe('WindowCloseProvider', () => {
 
     await waitFor(() => expect(mocks.assessCloseRunState).toHaveBeenCalled());
     expect(mocks.assessCloseRunState).toHaveBeenCalledWith({
-      projectIds: ['project-1', 'project-2'],
       legacyActive: true,
       signal: expect.any(AbortSignal),
     });

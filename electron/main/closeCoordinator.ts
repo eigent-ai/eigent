@@ -32,6 +32,7 @@ type CoordinatedWindow = Pick<
 export interface CloseCoordinatorOptions {
   defaultIntent: CloseIntent;
   quit: () => void;
+  confirmQuitWithoutRenderer?: () => Promise<boolean>;
   /** False while no renderer exists to answer a confirmation request. */
   shouldGuard?: () => boolean;
   /**
@@ -62,6 +63,8 @@ export class CloseCoordinator {
   private readonly setTimeoutFn: (handler: () => void, ms: number) => unknown;
   private readonly clearTimeoutFn: (handle: unknown) => void;
   private readonly diagnostic: (message: string) => void;
+  private readonly confirmQuitWithoutRenderer: () => Promise<boolean>;
+  private nativeConfirmationPending = false;
   private responseTimer: unknown = null;
   private window: CoordinatedWindow | null = null;
   private webContents: CoordinatedWindow['webContents'] | null = null;
@@ -76,6 +79,7 @@ export class CloseCoordinator {
     defaultIntent,
     quit,
     shouldGuard = () => true,
+    confirmQuitWithoutRenderer = async () => false,
     responseTimeoutMs = DEFAULT_CLOSE_RESPONSE_TIMEOUT_MS,
     setTimeoutFn = (handler, ms) => setTimeout(handler, ms),
     clearTimeoutFn = (handle) => clearTimeout(handle as NodeJS.Timeout),
@@ -84,6 +88,7 @@ export class CloseCoordinator {
     this.defaultIntent = defaultIntent;
     this.quit = quit;
     this.shouldGuard = shouldGuard;
+    this.confirmQuitWithoutRenderer = confirmQuitWithoutRenderer;
     this.responseTimeoutMs = responseTimeoutMs;
     this.setTimeoutFn = setTimeoutFn;
     this.clearTimeoutFn = clearTimeoutFn;
@@ -96,15 +101,34 @@ export class CloseCoordinator {
     this.responseTimer = null;
   }
 
-  /**
-   * The user asked to close; a silent renderer must not veto that. Proceed as
-   * though they confirmed -- they saw no dialog either way.
-   */
+  private confirmNativeQuit(): void {
+    if (this.nativeConfirmationPending || this.appQuitInProgress) return;
+    this.nativeConfirmationPending = true;
+    this.clearResponseTimer();
+    this.pendingIntent = null;
+    this.pendingAcknowledged = false;
+    void this.confirmQuitWithoutRenderer()
+      .then((confirmed) => {
+        if (confirmed) {
+          this.appQuitInProgress = true;
+          this.quit();
+        }
+      })
+      .catch((error) => {
+        this.diagnostic(
+          `[WINDOW CLOSE] Native quit confirmation failed: ${String(error)}`
+        );
+      })
+      .finally(() => {
+        this.nativeConfirmationPending = false;
+      });
+  }
+
   private readonly handleResponseTimeout = () => {
     this.responseTimer = null;
-    const intent = this.pendingIntent;
-    if (!intent) return;
-    this.respond({ intent, action: 'confirm' });
+    if (this.pendingIntent === 'quit-app') this.confirmNativeQuit();
+    else if (this.pendingIntent)
+      this.respond({ intent: this.pendingIntent, action: 'confirm' });
   };
 
   private sendRequest(intent: CloseIntent): void {
@@ -137,6 +161,10 @@ export class CloseCoordinator {
       !this.window ||
       this.window.webContents.isDestroyed()
     ) {
+      if ((this.nextIntent ?? this.defaultIntent) === 'quit-app') {
+        event.preventDefault();
+        this.confirmNativeQuit();
+      }
       return;
     }
 
@@ -243,6 +271,7 @@ export class CloseCoordinator {
     this.pendingAcknowledged = false;
     this.nextIntent = null;
     this.allowNextWindowClose = false;
+    if (pendingIntent === 'quit-app') this.confirmNativeQuit();
     this.diagnostic(
       `[WINDOW CLOSE] Renderer unavailable (${reason}); cleared intent=${pendingIntent ?? 'none'} acknowledged=${acknowledged}`
     );
@@ -252,8 +281,7 @@ export class CloseCoordinator {
     const window = this.window;
     if (!window || window.isDestroyed()) {
       if (intent === 'quit-app') {
-        this.appQuitInProgress = true;
-        this.quit();
+        this.confirmNativeQuit();
       }
       return;
     }
@@ -264,8 +292,7 @@ export class CloseCoordinator {
         window.webContents.isDestroyed()) &&
       intent === 'quit-app'
     ) {
-      this.appQuitInProgress = true;
-      this.quit();
+      this.confirmNativeQuit();
       return;
     }
 

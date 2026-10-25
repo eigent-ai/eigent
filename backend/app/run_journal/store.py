@@ -8968,6 +8968,36 @@ class SQLiteRunJournal:
             ).fetchall()
         return tuple(self._attempt_evidence_gap_from_row(row) for row in rows)
 
+    def has_active_local_execution(self) -> bool:
+        """Global quit guard; bare pending rows do not own execution."""
+        with self._lock:
+            active = self._connection.execute(
+                """SELECT 1 FROM runs r
+                WHERE r.status IN ('running', 'waiting_for_user')
+                   OR (r.status = 'pending' AND EXISTS (
+                       SELECT 1 FROM run_attempts a WHERE a.run_id = r.run_id
+                       AND a.status IN ('pending', 'running', 'waiting_for_user')
+                   )) LIMIT 1"""
+            ).fetchone()
+            if active is not None:
+                return True
+            if (
+                self._connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_admission_claims'"
+                ).fetchone()
+                is None
+            ):
+                return False
+            return (
+                self._connection.execute(
+                    """SELECT 1 FROM project_admission_claims c
+                JOIN execution_requests e ON e.request_id=c.request_id
+                WHERE c.state = 'claimed' AND e.status = 'preparing'
+                LIMIT 1"""
+                ).fetchone()
+                is not None
+            )
+
     def list_runs(
         self,
         *,
