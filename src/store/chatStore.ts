@@ -207,11 +207,34 @@ export const canonicalRunEventToLegacyMessage = (
   if (!value || typeof value !== 'object') return null;
   const event = value as {
     event_id?: unknown;
+    run_id?: unknown;
     event_type?: unknown;
     legacy_step?: unknown;
     payload?: unknown;
     created_at?: unknown;
   };
+  if (event.event_type === 'interaction.requested') {
+    const payload = event.payload as Record<string, unknown> | undefined;
+    const request = payload?.request;
+    if (
+      typeof payload?.interaction_id !== 'string' ||
+      typeof payload.interaction_type !== 'string' ||
+      !request ||
+      typeof request !== 'object'
+    )
+      return null;
+    return {
+      step: AgentStep.ASK,
+      data: {
+        ...request,
+        interaction_id: payload.interaction_id,
+        interaction_type: payload.interaction_type,
+        run_id: event.run_id,
+      },
+      timestamp:
+        typeof event.created_at === 'number' ? event.created_at : undefined,
+    } as AgentMessage;
+  }
   // Interaction outcomes are canonical-only events: a decision, a system
   // cancellation (for example at restart) or an expiry. Project the durable
   // interaction id into the legacy reducer so reconnect/replay closes the
@@ -321,10 +344,15 @@ export const canonicalRunEventToLegacyMessage = (
 /** Remove only the card resolved by a durable interaction decision. */
 export function removeResolvedInteractionMessages(
   messages: Message[],
-  interactionId: string
+  interactionId: string,
+  preserveQuestions = false
 ): Message[] {
   return messages.filter(
-    (message) => message.interaction?.interaction_id !== interactionId
+    (message) =>
+      message.interaction?.interaction_id !== interactionId ||
+      (preserveQuestions &&
+        message.step === AgentStep.ASK &&
+        message.interaction?.interaction_type === 'question')
   );
 }
 
@@ -7892,7 +7920,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const alreadyResolved = resolvedInteractionIds.includes(interactionId);
         const messages = removeResolvedInteractionMessages(
           task.messages,
-          interactionId
+          interactionId,
+          true
         );
         const askList = removeResolvedInteractionMessages(
           task.askList,

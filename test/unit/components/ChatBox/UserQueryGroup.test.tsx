@@ -248,8 +248,9 @@ describe('UserQueryGroup Run work-log ownership', () => {
     renderGroups([prompt, ask, reply]);
 
     expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
-    expect(screen.queryByText('Which region?')).not.toBeInTheDocument();
-    expect(screen.queryByText('Europe')).not.toBeInTheDocument();
+    expect(screen.getByText('Which region?')).toBeInTheDocument();
+    expect(screen.getByText('Europe')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
   it('forwards message lifecycle and Run identity to every feedback card path', () => {
