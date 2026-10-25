@@ -64,4 +64,30 @@ def refresh_agent_current_time(agent, current_time: str) -> None:
             ),
             reset_memory=False,
         )
+        _replace_stored_system_message(agent)
         agent._prompt_current_time = current_time
+
+
+def _replace_stored_system_message(agent) -> None:
+    """Keep the system record the model reads in step with the agent.
+
+    ``update_system_message(reset_memory=False)`` keeps the conversation but
+    leaves the first stored record (what the model actually receives) on the
+    old text, so rewrite that record in place.
+    """
+    system_message = getattr(agent, "system_message", None)
+    block = getattr(
+        getattr(agent, "memory", None), "_chat_history_block", None
+    )
+    storage = getattr(block, "storage", None)
+    if system_message is None or storage is None:
+        return
+    records = storage.load()
+    if not records or records[0].get("role_at_backend") != "system":
+        return
+    records[0]["message"]["content"] = system_message.content
+    storage.clear()
+    storage.save(records)
+    creator = agent.memory.get_context_creator()
+    if hasattr(creator, "clear_cache"):
+        creator.clear_cache()
