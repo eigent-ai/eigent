@@ -727,9 +727,9 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 border-x-0 border-y-0 bg-transparent text-inherit hover:bg-ds-neutral-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                 >
                   {isExpanded ? (
-                    <ChevronDown className={rowIconClass} />
+                    <DsIcon icon={ChevronDown} className={rowIconClass} />
                   ) : (
-                    <ChevronRight className={rowIconClass} />
+                    <DsIcon icon={ChevronRight} className={rowIconClass} />
                   )}
                 </button>
                 <button
@@ -741,7 +741,11 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   }
                   className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border-0 border-x-0 border-y-0 bg-transparent px-1 text-left text-inherit focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                 >
-                  <FolderIcon className={rowIconClass} aria-hidden />
+                  <DsIcon
+                    icon={FolderIcon}
+                    className={rowIconClass}
+                    aria-hidden
+                  />
                   <span className="min-w-0 flex-1 truncate text-left text-ds-text-base leading-normal font-medium">
                     {child.name}
                   </span>
@@ -1660,7 +1664,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
           label: t('folder.open-in-browser', {
             defaultValue: 'Open in browser',
           }),
-          icon: <ExternalLink className="size-4" aria-hidden />,
+          icon: <DsIcon icon={ExternalLink} aria-hidden />,
           onSelect: () =>
             window.open(
               selectedBrowserTargetUrl,
@@ -1695,7 +1699,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       {
         id: 'file-manager',
         label: fileManagerLabel,
-        icon: <FolderOpen className="size-4" aria-hidden />,
+        icon: <DsIcon icon={FolderOpen} aria-hidden />,
         onSelect: () => void handleRevealLocalFile(),
       },
       ...ideOpenActions,
@@ -1824,7 +1828,11 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
           <div id={fileTreeControlsId} className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-1.5 px-2 pb-2">
               <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-ds-ink-muted-default" />
+                <DsIcon
+                  icon={Search}
+                  recipe="main-compact"
+                  className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ds-ink-muted-default"
+                />
                 <input
                   type="search"
                   value={fileSearchQuery}
@@ -1868,7 +1876,12 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
                 />
               ) : (
                 <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 text-center text-ds-text-base text-ds-ink-muted-default">
-                  <FileText className="size-7" aria-hidden />
+                  <DsIcon
+                    icon={FileText}
+                    recipe="illustration"
+                    illustrationSize={32}
+                    aria-hidden
+                  />
                   <p className="m-0">
                     {fileSearchQuery.trim()
                       ? t('folder.no-search-results', {
@@ -2689,8 +2702,9 @@ function HtmlRenderer({
       <div className="flex h-full w-full items-center justify-center bg-ds-neutral-strong-default p-6">
         <div className="w-full max-w-[36rem] rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default p-5 shadow-sm">
           <div className="flex items-start gap-3">
-            <AlertTriangle
-              className="mt-0.5 h-5 w-5 shrink-0 text-ds-icon-warning-default-default"
+            <DsIcon
+              icon={AlertTriangle}
+              className="mt-0.5 shrink-0 text-ds-icon-warning-default-default"
               aria-hidden
             />
             <div className="min-w-0">
@@ -2904,7 +2918,7 @@ function BlockedPreviewPlaceholder({ file }: { file: FileInfo }) {
           });
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-ds-stack-related p-ds-panel-inset text-center text-ds-ink-muted-default">
-      <DsIcon icon={AlertTriangle} recipe="detailed" />
+      <DsIcon icon={AlertTriangle} recipe="illustration" />
       <DsText
         role="body-large"
         weight="semibold"
@@ -3058,8 +3072,10 @@ export function FileViewerPanel({
                   return (
                     <Fragment key={`${index}-${segment}`}>
                       {index > 0 ? (
-                        <ChevronRight
-                          className="h-3.5 w-3.5 shrink-0 text-ds-ink-muted-default"
+                        <DsIcon
+                          icon={ChevronRight}
+                          recipe="main-compact"
+                          className="shrink-0 text-ds-ink-muted-default"
                           aria-hidden
                         />
                       ) : null}
@@ -3099,7 +3115,7 @@ export function FileViewerPanel({
                 aria-label={t('layout.retry')}
                 title={t('layout.retry')}
               >
-                <RotateCcw aria-hidden />
+                <DsIcon icon={RotateCcw} aria-hidden />
               </Button>
             )}
             {supportsRichView ? (
@@ -3121,7 +3137,7 @@ export function FileViewerPanel({
                       : 'cursor-pointer bg-transparent text-ds-ink-muted-default hover:text-ds-ink-default-default'
                   )}
                 >
-                  <Eye className="size-3.5" aria-hidden />
+                  <DsIcon icon={Eye} recipe="main-compact" aria-hidden />
                   {previewViewLabel}
                 </button>
                 <button
@@ -3135,7 +3151,7 @@ export function FileViewerPanel({
                       : 'cursor-pointer bg-transparent text-ds-ink-muted-default hover:text-ds-ink-default-default'
                   )}
                 >
-                  <CodeXml className="size-3.5" aria-hidden />
+                  <DsIcon icon={CodeXml} recipe="main-compact" aria-hidden />
                   {sourceViewLabel}
                 </button>
               </div>
@@ -3196,9 +3212,9 @@ export function FileViewerPanel({
                   onClick={onToggleFileTree}
                 >
                   {isFileTreeOpen ? (
-                    <PanelRightClose className="size-4" aria-hidden />
+                    <DsIcon icon={PanelRightClose} aria-hidden />
                   ) : (
-                    <PanelRight className="size-4" aria-hidden />
+                    <DsIcon icon={PanelRight} aria-hidden />
                   )}
                 </Button>
               </TooltipSimple>
@@ -3230,7 +3246,12 @@ export function FileViewerPanel({
               ) : selectedFile.isFolder ? (
                 <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
                   <div className="flex max-w-md flex-col items-center gap-2 text-center">
-                    <FolderOpen className="size-10 text-ds-ink-muted-default" />
+                    <DsIcon
+                      icon={FolderOpen}
+                      recipe="illustration"
+                      illustrationSize={40}
+                      className="text-ds-ink-muted-default"
+                    />
                     <p className="m-0 text-ds-text-body-large font-semibold text-ds-ink-default-default">
                       {selectedFile.name}
                     </p>
@@ -3327,7 +3348,12 @@ export function FileViewerPanel({
             (emptyState ?? (
               <div className="flex h-full w-full flex-1 items-center justify-center text-ds-ink-muted-default">
                 <div className="text-center">
-                  <FileText className="mx-auto mb-4 h-12 w-12 text-ds-ink-muted-default" />
+                  <DsIcon
+                    icon={FileText}
+                    recipe="illustration"
+                    illustrationSize={48}
+                    className="mx-auto mb-4 text-ds-ink-muted-default"
+                  />
                   <p className="text-sm">
                     {t('chat.select-a-file-to-view-its-contents')}
                   </p>

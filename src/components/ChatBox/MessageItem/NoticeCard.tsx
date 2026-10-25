@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -73,11 +74,10 @@ export function NoticeCard() {
         aria-expanded={isExpanded}
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <ChevronDown
-          size={16}
-          className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${
-            isExpanded ? 'rotate-180' : ''
-          }`}
+        <DsIcon
+          recipe="main-compact"
+          icon={ChevronDown}
+          className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
         />
       </Button>
       <div

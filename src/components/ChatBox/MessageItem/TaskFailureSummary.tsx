@@ -86,7 +86,11 @@ export function TaskFailureSummary({
             aria-controls={detailsId}
             onClick={() => setExpanded((value) => !value)}
           >
-            {expanded ? <ChevronUp aria-hidden /> : <ChevronDown aria-hidden />}
+            {expanded ? (
+              <DsIcon icon={ChevronUp} aria-hidden />
+            ) : (
+              <DsIcon icon={ChevronDown} aria-hidden />
+            )}
             <span
               className="min-w-0 truncate"
               title={t(

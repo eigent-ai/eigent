@@ -71,6 +71,11 @@ const CANONICAL_OWNED_LIVE_LEGACY_STEPS = new Set([
   'end',
   'decompose_text',
   'write_file',
+  // Local Run events carry the durable sequence and toolkit lifecycle. A
+  // /chat mirror has only a connection-local sequence; mixing both can move
+  // an already-rendered tool row above earlier work.
+  'activate_toolkit',
+  'deactivate_toolkit',
 ]);
 
 export function shouldProjectLegacyChatStep(

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchPut } from '@/api/http';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { useHost } from '@/host';
@@ -47,7 +48,7 @@ export default function BrowserAgentWorkspace() {
   const agentMap = {
     developer_agent: {
       name: t('layout.developer-agent'),
-      icon: <CodeXml size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={CodeXml} className="text-ds-ink-default-default" />,
       textColor: 'text-emerald-700',
       bgColor: 'bg-ds-bg-terminal-default-default',
       shapeColor: 'bg-ds-bg-terminal-subtle-default',
@@ -56,7 +57,7 @@ export default function BrowserAgentWorkspace() {
     },
     browser_agent: {
       name: t('layout.browser-agent'),
-      icon: <Globe size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={Globe} className="text-ds-ink-default-default" />,
       textColor: 'text-blue-700',
       bgColor: 'bg-ds-bg-browser-default-default',
       shapeColor: 'bg-ds-bg-browser-subtle-default',
@@ -65,7 +66,7 @@ export default function BrowserAgentWorkspace() {
     },
     document_agent: {
       name: t('layout.document-agent'),
-      icon: <FileText size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={FileText} className="text-ds-ink-default-default" />,
       textColor: 'text-yellow-700',
       bgColor: 'bg-ds-bg-document-default-default',
       shapeColor: 'bg-ds-bg-document-subtle-default',
@@ -74,7 +75,7 @@ export default function BrowserAgentWorkspace() {
     },
     multi_modal_agent: {
       name: t('layout.multi-modal-agent'),
-      icon: <Image size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={Image} className="text-ds-ink-default-default" />,
       textColor: 'text-fuchsia-700',
       bgColor: 'bg-ds-neutral-default-default',
       shapeColor: 'bg-ds-neutral-subtle-default',
@@ -83,7 +84,7 @@ export default function BrowserAgentWorkspace() {
     },
     social_media_agent: {
       name: t('layout.social-media-agent'),
-      icon: <Bird size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={Bird} className="text-ds-ink-default-default" />,
       textColor: 'text-purple-700',
       bgColor: 'bg-violet-700',
       shapeColor: 'bg-violet-300',
@@ -182,7 +183,7 @@ export default function BrowserAgentWorkspace() {
             variant="success"
             className="rounded-full"
           >
-            <ChevronLeft size={16} />
+            <DsIcon icon={ChevronLeft} />
             <span>{t('chat.give-back-to-agent')}</span>
           </Button>
         </div>
@@ -203,7 +204,7 @@ export default function BrowserAgentWorkspace() {
                 targetChatStore.setActiveWorkspace(activeTaskId, 'workflow');
               }}
             >
-              <ChevronLeft size={16} />
+              <DsIcon recipe="main-compact" icon={ChevronLeft} />
             </Button>
             <div
               className={`text-base leading-snug font-bold ${
@@ -287,7 +288,7 @@ export default function BrowserAgentWorkspace() {
                     variant="primary"
                     className="cursor-pointer rounded-full"
                   >
-                    <Hand size={24} />
+                    <DsIcon icon={Hand} />
                     <span className="text-base leading-9 font-medium">
                       {t('chat.take-control', {
                         defaultValue: 'Take Control',
@@ -338,7 +339,7 @@ export default function BrowserAgentWorkspace() {
                         variant="primary"
                         className="cursor-pointer rounded-full"
                       >
-                        <Hand size={24} />
+                        <DsIcon icon={Hand} />
                         <span className="text-base leading-9 font-medium">
                           {t('chat.take-control', {
                             defaultValue: 'Take Control',
@@ -376,7 +377,7 @@ export default function BrowserAgentWorkspace() {
                 }
               }}
             >
-              <ArrowDown size={16} />
+              <DsIcon icon={ArrowDown} />
             </Button>
             <Button
               size="xs"
@@ -398,7 +399,7 @@ export default function BrowserAgentWorkspace() {
                 }
               }}
             >
-              <ArrowUp size={16} />
+              <DsIcon icon={ArrowUp} />
             </Button>
             <Button
               size="xs"
@@ -414,7 +415,7 @@ export default function BrowserAgentWorkspace() {
                 }
               }}
             >
-              <GalleryThumbnails size={16} />
+              <DsIcon icon={GalleryThumbnails} />
             </Button>
           </div>
         )}

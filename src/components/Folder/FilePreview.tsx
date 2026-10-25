@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
 import {
   isRemotePreviewSource,
@@ -248,7 +249,12 @@ export function FilePreview({
       onToggleSourceCode={handleToggleSourceCode}
       emptyState={
         <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-ds-ink-muted-default">
-          <FileText className="h-12 w-12 text-ds-ink-muted-default" />
+          <DsIcon
+            icon={FileText}
+            recipe="illustration"
+            illustrationSize={48}
+            className="text-ds-ink-muted-default"
+          />
           <p className="text-sm">
             {t('chat.no-file-selected', {
               defaultValue: 'No file selected.',
@@ -278,7 +284,7 @@ export function FilePreview({
             aria-label={t('common.close', { defaultValue: 'Close' })}
             onClick={onClose}
           >
-            <X aria-hidden />
+            <DsIcon icon={X} aria-hidden />
           </Button>
         ) : undefined
       }

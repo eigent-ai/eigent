@@ -19,6 +19,7 @@ import {
   DialogContentSection,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import {
   ArrowRight,
@@ -94,13 +95,14 @@ function NewSpaceOption({
       <span className="flex w-full items-center justify-between gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-ds-neutral-subtle-default text-ds-ink-default-default">
           {busy ? (
-            <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden />
+            <DsIcon icon={LoaderCircle} className="animate-spin" aria-hidden />
           ) : (
-            <Icon className="h-5 w-5" aria-hidden />
+            <DsIcon icon={Icon} />
           )}
         </span>
-        <ArrowRight
-          className="h-4 w-4 text-ds-ink-muted-default transition-colors group-hover:text-ds-ink-default-default"
+        <DsIcon
+          icon={ArrowRight}
+          className="text-ds-ink-muted-default transition-colors group-hover:text-ds-ink-default-default"
           aria-hidden
         />
       </span>
@@ -307,8 +309,9 @@ export default function NewSpaceDialog({
                     role="status"
                     className="flex min-h-32 items-center justify-center text-ds-ink-muted-default"
                   >
-                    <LoaderCircle
-                      className="h-5 w-5 animate-spin"
+                    <DsIcon
+                      icon={LoaderCircle}
+                      className="animate-spin"
                       aria-hidden
                     />
                     <span className="sr-only">
@@ -349,8 +352,9 @@ export default function NewSpaceDialog({
                     role="status"
                     className="flex min-h-32 items-center justify-center text-ds-ink-muted-default"
                   >
-                    <LoaderCircle
-                      className="h-5 w-5 animate-spin"
+                    <DsIcon
+                      icon={LoaderCircle}
+                      className="animate-spin"
                       aria-hidden
                     />
                     <span className="sr-only">

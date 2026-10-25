@@ -103,4 +103,31 @@ describe('AlertDialog', () => {
     expect(onConfirm).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  it('lets an asynchronous confirmation owner keep the dialog open', () => {
+    const onClose = vi.fn();
+    const onConfirm = vi.fn();
+
+    render(
+      <AlertDialog
+        isOpen
+        onClose={onClose}
+        onConfirm={onConfirm}
+        closeOnConfirm={false}
+        title="Rename session"
+        confirmText="Save"
+      >
+        <input aria-label="Session name" defaultValue="Original name" />
+      </AlertDialog>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onConfirm).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Session name' })).toHaveValue(
+      'Original name'
+    );
+  });
 });

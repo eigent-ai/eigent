@@ -15,6 +15,7 @@
 import { fetchGet, fetchPost } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   Tooltip,
   TooltipContent,
@@ -398,7 +399,10 @@ export default function IntegrationList({
                     <div className="flex items-center">
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <CircleAlert className="h-4 w-4 text-ds-ink-muted-default" />
+                          <DsIcon
+                            icon={CircleAlert}
+                            className="text-ds-ink-muted-default"
+                          />
                         </TooltipTrigger>
                         <TooltipContent>
                           <div>{item.desc}</div>
@@ -418,7 +422,7 @@ export default function IntegrationList({
                           handleOpenConfig(item);
                         }}
                       >
-                        <Settings2 className="h-4 w-4" />
+                        <DsIcon icon={Settings2} />
                         {t('setting.setting')}
                       </Button>
                     )}

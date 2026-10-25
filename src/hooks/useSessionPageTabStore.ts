@@ -27,8 +27,13 @@ export function useSessionPageTabStore<T>(
     if (id === undefined) return {};
     const state = () => usePageTabStore.getState();
     return {
-      requestWorkspaceChatDraft: (content, source) =>
-        state().requestWorkspaceChatDraft(content, source, pane?.projectId),
+      requestWorkspaceChatDraft: (content, source, targetProjectId, options) =>
+        state().requestWorkspaceChatDraft(
+          content,
+          source,
+          targetProjectId === undefined ? pane?.projectId : targetProjectId,
+          options
+        ),
       toggleSessionPreview: (options) =>
         state().toggleSessionPreview(options, id),
       openPreviewTab: (kind, options) =>

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { NavTab, SidebarScrollArea } from '@/components/Layout/AppSidebar';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { cn } from '@/lib/utils';
 import { Plus } from 'lucide-react';
@@ -83,7 +84,7 @@ export function SessionNavList({
         <NavTab
           active={newSessionActive}
           onClick={onNewSession}
-          leading={<Plus className="h-4 w-4 shrink-0" aria-hidden />}
+          leading={<DsIcon icon={Plus} className="shrink-0" aria-hidden />}
           label={newSessionLabel}
           tooltip={
             <ShortcutTooltipContent

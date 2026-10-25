@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.workload import WorkloadProfileRecord
+from app.workspace_config.models import bound_model_identity
 
 
 @dataclass(frozen=True)
@@ -408,6 +409,20 @@ class RunAttemptRecord:
     terminal_detail: str | None = None
 
 
+def latest_environment_attempt(
+    attempts: Sequence[RunAttemptRecord],
+) -> RunAttemptRecord | None:
+    """Select the most recent bound Attempt from journal-ordered history."""
+    return next(
+        (
+            attempt
+            for attempt in reversed(attempts)
+            if attempt.environment_spec_id is not None
+        ),
+        None,
+    )
+
+
 @dataclass(frozen=True)
 class AttemptEnvironmentBinding:
     environment_spec_id: str
@@ -551,6 +566,9 @@ class EffectiveEnvironmentSpecRecord:
     permission_profile_revision: str
     provider_capability_revision: str
     created_at: float
+
+    def bound_model(self) -> dict[str, str] | None:
+        return bound_model_identity(self.spec.get("semantic_spec"))
 
 
 @dataclass(frozen=True)

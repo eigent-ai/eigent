@@ -18,12 +18,22 @@ import { motion } from 'framer-motion';
 import React from 'react';
 import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
 import { partitionLegacyMessageEvidence } from './EventTimeline/legacyReplyEvidence';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
+import {
+  ModelChangeDivider,
+  type ResolvedRunModel,
+} from './TimelineModes/ModelChangeDivider';
 import { type QueryGroup, UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   chatId: string;
   chatStore: VanillaChatStore;
   taskId?: string;
+  /** The last known model of an earlier Task in this Session. */
+  previousModel?: ResolvedRunModel | null;
+  /** The model this Task's Run ran on, when the Run read reported one. */
+  model?: ResolvedRunModel | null;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
 }
@@ -31,7 +41,8 @@ interface ProjectSectionProps {
 export const ProjectSection = React.forwardRef<
   HTMLDivElement,
   ProjectSectionProps
->(({ chatId, chatStore, taskId, activeQueryId, onQueryActive }, ref) => {
+>((props, ref) => {
+  const { chatId, chatStore, taskId, activeQueryId, onQueryActive } = props;
   // Subscribe to store changes with throttling to prevent excessive re-renders
   const [chatState, setChatState] = React.useState(() => chatStore.getState());
 
@@ -90,6 +101,11 @@ export const ProjectSection = React.forwardRef<
       transition={{ duration: 0.3 }}
       className="relative mb-8"
     >
+      <ModelChangeDivider
+        className="mb-3"
+        previous={props.previousModel}
+        current={props.model}
+      />
       {/* User Query Groups */}
       <div className="space-y-3">
         {queryGroups.map((group, index) => (
@@ -100,6 +116,7 @@ export const ProjectSection = React.forwardRef<
             queryGroup={group}
             isActive={activeQueryId === group.queryId}
             onQueryActive={onQueryActive}
+            onEditUserMessage={props.onEditUserMessage}
             index={index}
             taskId={activeTaskId}
           />

@@ -16,6 +16,7 @@ import SearchInput from '@/components/Dashboard/SearchInput';
 import { memoryEditorSearch } from '@/components/Home/memoryRoute';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getSessionDisplayName } from '@/lib/spaceLabel';
@@ -341,7 +342,13 @@ export function MemoryScopeDirectory({
           </div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center rounded-xl bg-ds-neutral-subtle-default px-6 py-10 text-center">
-            <Brain className="h-8 w-8 text-ds-ink-muted-default" aria-hidden />
+            <DsIcon
+              icon={Brain}
+              recipe="illustration"
+              illustrationSize={32}
+              className="text-ds-ink-muted-default"
+              aria-hidden
+            />
             <div className="mt-3 text-ds-text-base font-semibold">
               {isSpace
                 ? t('setting.memory-directory-none-available-spaces', {
@@ -391,7 +398,7 @@ export function MemoryScopeDirectory({
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-default-default text-ds-ink-muted-default">
-                      <ItemIcon className="h-4 w-4" aria-hidden />
+                      <DsIcon icon={ItemIcon} />
                     </div>
                     <div className="min-w-0">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -487,7 +494,7 @@ export function MemoryScopeDirectory({
                     }
                   >
                     {t('setting.manage', { defaultValue: 'Manage' })}{' '}
-                    <ArrowRight className="h-4 w-4" aria-hidden />
+                    <DsIcon icon={ArrowRight} aria-hidden />
                   </Button>
                 </article>
               );

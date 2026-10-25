@@ -25,7 +25,7 @@ export function PreviewFailure({ message }: { message?: string }) {
       className="scrollbar-always-visible flex min-h-0 min-w-0 flex-1 flex-col items-center gap-ds-stack-related overflow-y-auto p-ds-panel-inset text-center text-ds-ink-muted-default"
     >
       <div className="my-auto flex min-w-0 flex-col items-center gap-ds-stack-related">
-        <DsIcon icon={AlertTriangle} recipe="detailed" />
+        <DsIcon icon={AlertTriangle} recipe="illustration" />
         <DsText
           role="body-large"
           weight="semibold"
