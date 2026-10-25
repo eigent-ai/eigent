@@ -21,6 +21,7 @@ import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { APP_COMMAND, type AppCommandId } from '@/shared/appCommands';
 import { normalizeNativeMenuLocale } from '@/shared/nativeMenu';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { WorkspaceTab, usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings, useSettingsStore } from '@/store/settingsStore';
@@ -181,7 +182,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           setReportBugOpen(true);
           return;
         case APP_COMMAND.toggleTimelineView:
-          if (isProjectTab) {
+          // Dev mode exists only in the event-native timeline; the Session
+          // menu hides it otherwise, so the shortcut does nothing there.
+          if (isProjectTab && isChatEventTimelineEnabled()) {
             setChatTimelineDetailLevel(
               chatTimelineDetailLevel === 'trajectory'
                 ? 'narrative'
