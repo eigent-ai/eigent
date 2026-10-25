@@ -28,6 +28,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   supportsTimezone: false,
+  timezoneConfig: { schema_: { properties: { timezone: {} } } },
   proxyCreateTrigger: vi.fn(),
   proxyUpdateTrigger: vi.fn(),
   toastError: vi.fn(),
@@ -42,7 +43,9 @@ vi.mock('@/hooks/queries/useTriggerQueries', () => ({
   useTriggerCacheInvalidation: () => ({
     invalidateUserTriggerCount: vi.fn(),
   }),
-  useTriggerConfigQuery: () => ({ data: mocks.supportsTimezone ? { schema_: { properties: { timezone: {} } } } : undefined }),
+  useTriggerConfigQuery: () => ({
+    data: mocks.supportsTimezone ? mocks.timezoneConfig : undefined,
+  }),
 }));
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
@@ -284,15 +287,32 @@ describe('TriggerDialog opened from a Session', () => {
   });
 });
 
-
 it('keeps an existing UTC schedule without a zone when the server supports local schedules', async () => {
   mocks.supportsTimezone = true;
-  mocks.proxyUpdateTrigger.mockImplementation(async (id, data) => ({ id, ...data }));
+  mocks.proxyUpdateTrigger.mockImplementation(async (id, data) => ({
+    id,
+    ...data,
+  }));
   const user = userEvent.setup();
-  render(<TriggerDialog selectedTrigger={{ id: 7, name: 'Legacy', task_prompt: 'Say hello', trigger_type: TriggerType.Schedule,
-    status: TriggerStatus.Inactive, custom_cron_expression: '0 9 * * *', is_single_execution: false, config: {} } as any}
-    isOpen onOpenChange={vi.fn()} />);
-  await user.click(screen.getByRole('button', { name: 'Save' }));
+  render(
+    <TriggerDialog
+      selectedTrigger={
+        {
+          id: 7,
+          name: 'Legacy',
+          task_prompt: 'Say hello',
+          trigger_type: TriggerType.Schedule,
+          status: TriggerStatus.Inactive,
+          custom_cron_expression: '0 9 * * *',
+          is_single_execution: false,
+          config: {},
+        } as any
+      }
+      isOpen
+      onOpenChange={vi.fn()}
+    />
+  );
+  await user.click(screen.getByRole('button', { name: 'Update' }));
   await vi.waitFor(() => expect(mocks.proxyUpdateTrigger).toHaveBeenCalled());
   const submitted = mocks.proxyUpdateTrigger.mock.calls.at(-1)![1];
   expect(submitted.config?.timezone).toBeUndefined();
