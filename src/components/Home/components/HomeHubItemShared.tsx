@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { Tag } from '@/components/ui/tag';
 import { getSpaceStatusLabel } from '@/lib/spaceLabel';
@@ -427,7 +428,11 @@ export function HomeHubCardMenu({ items }: { items: HomeHubMenuItem[] }) {
           })}
           onClick={(event) => event.stopPropagation()}
         >
-          <MoreHorizontal className="h-4 w-4 text-ds-ink-default-default" />
+          <DsIcon
+            recipe="main-compact"
+            icon={MoreHorizontal}
+            className="text-ds-ink-default-default"
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -556,7 +561,7 @@ export function HomeHubSpaceCardBody({
   return (
     <HomeHubHubCardBody
       title={title}
-      icon={<Folder />}
+      icon={<DsIcon icon={Folder} />}
       menuItems={menuItems}
       statItems={statItems}
       updatedAt={updatedAt}
@@ -586,7 +591,7 @@ export function HomeHubSpaceBoardCardBody({
   return (
     <HomeHubBoardCardBody
       title={title}
-      icon={<Folder />}
+      icon={<DsIcon icon={Folder} />}
       menuItems={menuItems}
       statRows={[
         { label: t('layout.projects'), value: projectCount },
@@ -636,7 +641,7 @@ export function HomeHubProjectCardBody({
   return (
     <HomeHubHubCardBody
       title={title}
-      icon={<MessageCircle />}
+      icon={<DsIcon icon={MessageCircle} />}
       menuItems={menuItems}
       statItems={statItems}
       updatedAt={updatedAt}
@@ -665,7 +670,7 @@ export function HomeHubProjectBoardCardBody({
   return (
     <HomeHubBoardCardBody
       title={title}
-      icon={<MessageCircle />}
+      icon={<DsIcon icon={MessageCircle} />}
       menuItems={menuItems}
       statRows={[
         { label: t('layout.tasks'), value: taskCount },
@@ -708,7 +713,7 @@ export function HomeHubTaskCardBody({
   return (
     <HomeHubHubCardBody
       title={title}
-      icon={<ListChecks />}
+      icon={<DsIcon icon={ListChecks} />}
       menuItems={menuItems}
       statItems={statItems}
       updatedAt={updatedAt}
@@ -736,7 +741,7 @@ export function HomeHubTaskBoardCardBody({
   return (
     <HomeHubBoardCardBody
       title={title}
-      icon={<ListChecks />}
+      icon={<DsIcon icon={ListChecks} />}
       menuItems={menuItems}
       statRows={statRows}
       otherContent={
@@ -786,7 +791,7 @@ export function HomeHubTriggerCardBody({
   return (
     <HomeHubHubCardBody
       title={title}
-      icon={<TriggerIcon />}
+      icon={<DsIcon icon={TriggerIcon} />}
       menuItems={menuItems}
       statItems={statItems}
       updatedAt={updatedAt}
@@ -820,7 +825,7 @@ export function HomeHubTriggerBoardCardBody({
   return (
     <HomeHubBoardCardBody
       title={title}
-      icon={<TriggerIcon />}
+      icon={<DsIcon icon={TriggerIcon} />}
       menuItems={menuItems}
       statRows={[
         { label: t('layout.home-list-type'), value: triggerTypeLabel },

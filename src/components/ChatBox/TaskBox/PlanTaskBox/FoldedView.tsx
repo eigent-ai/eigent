@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
@@ -106,7 +107,7 @@ export function FoldedView({
             onClick={onExpand}
             aria-label={t('chat.expand-plan')}
           >
-            <Maximize2 className="size-ds-icon-md" />
+            <DsIcon icon={Maximize2} />
           </Button>
         ) : null}
       </div>
@@ -133,13 +134,15 @@ export function FoldedView({
               >
                 <div className="flex h-4 shrink-0 items-center justify-center pt-0.5">
                   {row.streaming ? (
-                    <Circle
-                      size={13}
+                    <DsIcon
+                      icon={Circle}
+                      recipe="main-compact"
                       className="text-ds-icon-status-splitting-default-default"
                     />
                   ) : (
-                    <CircleDashed
-                      size={13}
+                    <DsIcon
+                      icon={CircleDashed}
+                      recipe="main-compact"
                       className="text-ds-ink-muted-default"
                     />
                   )}

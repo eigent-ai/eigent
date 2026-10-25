@@ -15,6 +15,7 @@
 import { proxyFetchGet } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Check, Copy, LoaderCircle } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -108,8 +109,11 @@ export default function InviteCodeDialog({
           </span>
           <div className="flex h-full min-h-40 w-full flex-1 flex-col items-center justify-center gap-4">
             {loading ? (
-              <LoaderCircle
-                className="h-8 w-8 animate-spin text-ds-ink-muted-default"
+              <DsIcon
+                icon={LoaderCircle}
+                recipe="illustration"
+                illustrationSize={32}
+                className="animate-spin text-ds-ink-muted-default"
                 aria-label={t('layout.loading', { defaultValue: 'Loading' })}
               />
             ) : (
@@ -128,9 +132,9 @@ export default function InviteCodeDialog({
                     onClick={() => void handleCopyCode()}
                   >
                     {copied ? (
-                      <Check className="h-4 w-4 shrink-0" aria-hidden />
+                      <DsIcon icon={Check} className="shrink-0" aria-hidden />
                     ) : (
-                      <Copy className="h-4 w-4 shrink-0" aria-hidden />
+                      <DsIcon icon={Copy} className="shrink-0" aria-hidden />
                     )}
                     {copied
                       ? t('layout.invitation-code-copy-success')

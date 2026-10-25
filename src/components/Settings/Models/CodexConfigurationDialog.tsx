@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { createHost } from '@/host/createHost';
@@ -131,7 +132,7 @@ export function CodexConfigurationContent({
         <div className="flex items-center justify-between gap-ds-control-gap">
           {onBack && (
             <Button variant="ghost" disabled={busy} onClick={onBack}>
-              <ArrowLeft />
+              <DsIcon icon={ArrowLeft} />
               {t('layout.back')}
             </Button>
           )}

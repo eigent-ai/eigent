@@ -671,18 +671,18 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                     defaultValue: 'More actions',
                   })}
                 >
-                  <MoreHorizontal aria-hidden />
+                  <DsIcon icon={MoreHorizontal} aria-hidden />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => selectAt(selectedIndex - 1)}>
-                  <ArrowUp aria-hidden />
+                  <DsIcon icon={ArrowUp} aria-hidden />
                   {t('layout.review-previous-file', {
                     defaultValue: 'Previous file',
                   })}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => selectAt(selectedIndex + 1)}>
-                  <ArrowDown aria-hidden />
+                  <DsIcon icon={ArrowDown} aria-hidden />
                   {t('layout.review-next-file', {
                     defaultValue: 'Next file',
                   })}
@@ -701,7 +701,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                           })
                     }
                   >
-                    <Copy aria-hidden />
+                    <DsIcon icon={Copy} aria-hidden />
                     {notesCopied
                       ? t('layout.review-comments-copied', {
                           defaultValue: 'Copied',
@@ -720,7 +720,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                       count: commentsNeedingRebase.length,
                     })}
                   >
-                    <RefreshCw aria-hidden />
+                    <DsIcon icon={RefreshCw} aria-hidden />
                     {t('layout.review-rebase-comments-short', {
                       defaultValue: 'Rebase comments',
                     })}
@@ -733,7 +733,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                       count: pendingComments.length,
                     })}
                   >
-                    <SendHorizontal aria-hidden />
+                    <DsIcon icon={SendHorizontal} aria-hidden />
                     {commentsAddedToChat
                       ? t('layout.review-comments-added-to-chat', {
                           defaultValue: 'Added to chat',
@@ -775,7 +775,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                       })
                 }
               >
-                <WrapText aria-hidden />
+                <DsIcon icon={WrapText} aria-hidden />
               </Button>
             </TooltipSimple>
             <TooltipSimple
@@ -791,7 +791,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                   defaultValue: 'Refresh',
                 })}
               >
-                <RefreshCw aria-hidden />
+                <DsIcon icon={RefreshCw} aria-hidden />
               </Button>
             </TooltipSimple>
             <div className="h-4 w-px shrink-0 bg-ds-hairline-subtle-default" />
@@ -806,9 +806,9 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                 aria-label={treeToggleLabel}
               >
                 {treeHidden ? (
-                  <FolderClosed aria-hidden />
+                  <DsIcon icon={FolderClosed} aria-hidden />
                 ) : (
-                  <FolderOpen aria-hidden />
+                  <DsIcon icon={FolderOpen} aria-hidden />
                 )}
               </Button>
             </TooltipSimple>
@@ -868,9 +868,9 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                           }
                         >
                           {reviewedIds.has(selectedFile.id) ? (
-                            <CheckCheck aria-hidden />
+                            <DsIcon icon={CheckCheck} aria-hidden />
                           ) : (
-                            <Check aria-hidden />
+                            <DsIcon icon={Check} aria-hidden />
                           )}
                         </Button>
                       </TooltipSimple>
@@ -910,7 +910,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                                 })
                           }`}
                         >
-                          <MessageSquarePlus aria-hidden />
+                          <DsIcon icon={MessageSquarePlus} aria-hidden />
                           {addCommentLabel}
                         </Button>
                       </TooltipSimple>
@@ -957,9 +957,9 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                           }
                         >
                           {viewMode === 'inline' ? (
-                            <Columns2 aria-hidden />
+                            <DsIcon icon={Columns2} aria-hidden />
                           ) : (
-                            <Rows3 aria-hidden />
+                            <DsIcon icon={Rows3} aria-hidden />
                           )}
                         </Button>
                       </TooltipSimple>
@@ -978,7 +978,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                             defaultValue: 'Previous change',
                           })}
                         >
-                          <ArrowUp aria-hidden />
+                          <DsIcon icon={ArrowUp} aria-hidden />
                         </Button>
                       </TooltipSimple>
                       <TooltipSimple
@@ -996,7 +996,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                             defaultValue: 'Next change',
                           })}
                         >
-                          <ArrowDown aria-hidden />
+                          <DsIcon icon={ArrowDown} aria-hidden />
                         </Button>
                       </TooltipSimple>
                     </div>
@@ -1034,13 +1034,11 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                           {comment.status === 'sent' ? (
                             <DsIcon
                               icon={CheckCheck}
-                              recipe="main-compact"
                               className="mt-0.5 text-ds-icon-success-default-default"
                             />
                           ) : (
                             <DsIcon
                               icon={MessageSquarePlus}
-                              recipe="main-compact"
                               className="mt-0.5 text-ds-icon-brand-default-default"
                             />
                           )}
@@ -1089,7 +1087,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                                 defaultValue: 'Edit review comment',
                               })}
                             >
-                              <Pencil aria-hidden />
+                              <DsIcon icon={Pencil} aria-hidden />
                             </Button>
                             <Button
                               type="button"
@@ -1101,7 +1099,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                                 defaultValue: 'Delete review comment',
                               })}
                             >
-                              <Trash2 aria-hidden />
+                              <DsIcon icon={Trash2} aria-hidden />
                             </Button>
                           </div>
                         </article>
@@ -1112,10 +1110,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                   {noteComposerOpen ? (
                     <div className="border-0 border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default p-3 first:border-x-0 first:border-t-0 first:border-b-0">
                       <div className="mb-2 flex items-center gap-2 text-ds-text-meta text-ds-ink-muted-default">
-                        <DsIcon
-                          icon={MessageSquarePlus}
-                          recipe="main-compact"
-                        />
+                        <DsIcon icon={MessageSquarePlus} />
                         <span className="min-w-0 flex-1 truncate font-code">
                           {commentTarget
                             ? `${selectedFile.path}:${commentTarget.startLine}${
@@ -1198,7 +1193,7 @@ function CenteredNotice({
       <div className="flex size-12 items-center justify-center rounded-full bg-ds-neutral-subtle-default">
         <DsIcon
           icon={FileDiff}
-          recipe="detailed"
+          recipe="illustration"
           className="text-ds-ink-muted-default"
         />
       </div>

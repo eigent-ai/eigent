@@ -19,6 +19,7 @@ import { isDesktop } from '@/client/platform';
 import ContentHeader from '@/components/Layout/ContentHeader';
 import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   createRemoteControlSession,
   getRemoteControlBridgeError,
@@ -129,8 +130,9 @@ function BentoCard({
     <div className="flex h-full min-h-0 flex-col gap-2 rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-default-default p-3">
       {/* Header */}
       <div className="flex min-w-0 items-center gap-2">
-        <MonitorSmartphone
-          className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
+        <DsIcon
+          icon={MonitorSmartphone}
+          className="shrink-0 text-ds-ink-muted-default"
           aria-hidden
         />
         <span className="min-w-0 flex-1 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
@@ -144,7 +146,7 @@ function BentoCard({
           className="no-drag shrink-0 gap-1.5"
           onClick={onCopy}
         >
-          <Copy className="h-3 w-3" aria-hidden />
+          <DsIcon icon={Copy} recipe="main-compact" aria-hidden />
           {t('layout.dispatch-copy-link', { defaultValue: 'Copy link' })}
         </Button>
         <Button
@@ -158,9 +160,14 @@ function BentoCard({
           onClick={onStop}
         >
           {stopping ? (
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+            <DsIcon
+              icon={Loader2}
+              recipe="main-compact"
+              className="animate-spin"
+              aria-hidden
+            />
           ) : (
-            <Square className="h-3 w-3" aria-hidden />
+            <DsIcon icon={Square} recipe="main-compact" aria-hidden />
           )}
           {t('layout.dispatch-revoke-link', { defaultValue: 'Revoke link' })}
         </Button>
@@ -257,7 +264,12 @@ function ChannelRow({
             onClick={onStart}
           >
             {loading ? (
-              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              <DsIcon
+                icon={Loader2}
+                recipe="main-compact"
+                className="animate-spin"
+                aria-hidden
+              />
             ) : null}
             {t('layout.dispatch-start', { defaultValue: 'Start' })}
           </Button>
@@ -633,8 +645,9 @@ export function WorkspaceDispatch() {
           defaultValue: 'Remote Control',
         })}
         icon={
-          <MonitorSmartphone
-            className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
+          <DsIcon
+            icon={MonitorSmartphone}
+            className="shrink-0 text-ds-ink-muted-default"
             aria-hidden
           />
         }

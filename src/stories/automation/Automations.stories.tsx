@@ -21,6 +21,7 @@ import { scheduleToCron } from '@/components/Trigger/automationSchedule';
 import { SchedulePicker } from '@/components/Trigger/SchedulePicker';
 import { TriggerListItem } from '@/components/Trigger/TriggerListItem';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import '@/i18n';
 import {
@@ -208,7 +209,7 @@ function AutomationsPage({
           className="px-ds-16"
           actions={
             <Button variant="primary" size="sm">
-              <Plus aria-hidden />
+              <DsIcon icon={Plus} aria-hidden />
               Create
             </Button>
           }

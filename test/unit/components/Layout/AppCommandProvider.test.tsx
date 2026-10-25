@@ -27,7 +27,7 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const setActiveProject = vi.fn();
@@ -202,6 +202,10 @@ function renderProvider(
 }
 
 describe('AppCommandProvider', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.activeWorkspaceTab = 'project';
@@ -291,6 +295,7 @@ describe('AppCommandProvider', () => {
   });
 
   it('routes workspace and project shortcuts to their existing state actions', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
     let nativeCommand: ((command: AppCommandId) => void) | undefined;
     renderProvider(
       {
@@ -321,6 +326,26 @@ describe('AppCommandProvider', () => {
     ]);
     expect(mocks.toggleWorkspaceSidebar).toHaveBeenCalledOnce();
     expect(mocks.requestToggleSessionSidePanel).toHaveBeenCalledOnce();
+  });
+
+  it('ignores the Dev mode shortcut when the event timeline is off', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider(
+      {
+        onAppCommand: (callback) => {
+          nativeCommand = callback;
+          return vi.fn();
+        },
+      },
+      '/'
+    );
+
+    act(() => {
+      nativeCommand?.(APP_COMMAND.toggleTimelineView);
+    });
+
+    expect(mocks.setChatTimelineDetailLevel).not.toHaveBeenCalled();
   });
 
   it('routes Preview and Summary shortcuts on the New session page', () => {

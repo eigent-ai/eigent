@@ -28,6 +28,7 @@ import UpdateButton from '@/components/TopBar/UpdateButton';
 import { UserMenu } from '@/components/TopBar/UserMenu';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -547,9 +548,9 @@ function HeaderWin() {
                   aria-label={sidebarToggleLabel}
                 >
                   {workspaceSidebarHidden ? (
-                    <PanelLeftOpen className="h-4 w-4" aria-hidden />
+                    <DsIcon icon={PanelLeftOpen} aria-hidden />
                   ) : (
-                    <PanelLeft className="h-4 w-4" aria-hidden />
+                    <DsIcon icon={PanelLeft} aria-hidden />
                   )}
                 </Button>
               </TooltipSimple>
@@ -610,12 +611,13 @@ function HeaderWin() {
                     aria-haspopup="menu"
                     aria-label={activeSpaceTitle}
                   >
-                    <Folder className="h-4 w-4 shrink-0" aria-hidden />
+                    <DsIcon icon={Folder} className="shrink-0" aria-hidden />
                     <span className="max-w-[220px] min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
                       {activeSpaceTitle}
                     </span>
-                    <ChevronsUpDown
-                      className="h-3.5 w-3.5 shrink-0 text-ds-ink-subtle-default"
+                    <DsIcon
+                      icon={ChevronsUpDown}
+                      className="shrink-0 text-ds-ink-subtle-default"
                       aria-hidden
                     />
                   </button>
@@ -667,12 +669,13 @@ function HeaderWin() {
                 aria-label={activeSpaceTitle}
                 onClick={openWorkspace}
               >
-                <Folder className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={Folder} className="shrink-0" aria-hidden />
                 <span className="max-w-[220px] min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
                   {activeSpaceTitle}
                 </span>
-                <ChevronsUpDown
-                  className="h-3.5 w-3.5 shrink-0 text-ds-ink-subtle-default"
+                <DsIcon
+                  icon={ChevronsUpDown}
+                  className="shrink-0 text-ds-ink-subtle-default"
                   aria-hidden
                 />
               </button>
@@ -705,7 +708,7 @@ function HeaderWin() {
               onClick={() => executeAppCommand(APP_COMMAND.reportBug)}
               buttonContent="icon-only"
             >
-              <CircleHelp aria-hidden />
+              <DsIcon icon={CircleHelp} aria-hidden />
             </Button>
           </TooltipSimple>
           <UserMenu />
@@ -725,7 +728,7 @@ function HeaderWin() {
             className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
             onClick={() => host?.electronAPI?.minimizeWindow()}
           >
-            <Minus className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Minus} aria-hidden />
           </button>
           <button
             type="button"
@@ -733,7 +736,7 @@ function HeaderWin() {
             className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
             onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
-            <Square className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Square} aria-hidden />
           </button>
           <button
             type="button"
@@ -741,7 +744,7 @@ function HeaderWin() {
             className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
             onClick={() => host?.electronAPI?.closeWindow(false)}
           >
-            <X className="h-4 w-4" aria-hidden />
+            <DsIcon icon={X} aria-hidden />
           </button>
         </div>
       )}
