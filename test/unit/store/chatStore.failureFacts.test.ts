@@ -69,6 +69,29 @@ beforeEach(() => fetchGetMock.mockReset());
 afterEach(() => vi.restoreAllMocks());
 
 describe('scoped Task failure presentation hydration', () => {
+  it.each(['run.interrupted', 'runtime.interrupted'])(
+    'hydrates actions for %s without changing lifecycle',
+    async (eventType) => {
+      const owner = setup();
+      owner.getState().setDurableRunStatus('failed-run', 'interrupted');
+      const page = events();
+      page.events[1].event_type = eventType;
+      fetchGetMock.mockResolvedValue(page);
+      const before = JSON.stringify(owner.getState().tasks);
+      const facts = await readTaskFailureFacts(
+        owner,
+        'session',
+        'failed-run',
+        new AbortController().signal
+      );
+      expect(facts).toMatchObject({
+        finalResponse: 'absent',
+        actions: [{ outcome: 'outcome_unknown' }],
+      });
+      expect(JSON.stringify(owner.getState().tasks)).toBe(before);
+    }
+  );
+
   it('reads on reopen without mutating Task history, status, or execution', async () => {
     const owner = setup();
     fetchGetMock.mockResolvedValue(events());
