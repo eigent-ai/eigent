@@ -532,5 +532,12 @@
   "run-terminal-reason-error": "Задача остановлена из-за ошибки.",
   "run-terminal-reason-budget_exhausted": "Задача израсходовала доступный бюджет.",
   "tool-status-timed_out": "Время ожидания истекло",
-  "run-resume-reevaluates-hint": "При возобновлении оставшаяся работа оценивается заново; при необходимости запрос повторяется."
+  "run-resume-reevaluates-hint": "При возобновлении оставшаяся работа оценивается заново; при необходимости запрос повторяется.",
+  "automation-draft-with-skill": "Преобразовать в навык",
+  "create-automation-from-task": "Преобразовать в автоматизацию",
+  "automation-skill-unavailable": "Навык skill-creator недоступен.",
+  "automation-source-session": "Автоматизация из сессии: {{name}}",
+  "automation-schedule-review-hint": "Проверьте расписание ниже. Редактор выбирает значение по умолчанию даже без запроса на повторение.",
+  "automation-review-confirm": "Я проверил расписание и необходимые данные.",
+  "automation-review-required": "Перед созданием проверьте расписание и необходимые данные."
 }

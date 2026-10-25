@@ -528,5 +528,12 @@
   "run-terminal-reason-error": "La tâche s’est arrêtée à cause d’une erreur.",
   "run-terminal-reason-budget_exhausted": "La tâche a épuisé le budget disponible.",
   "tool-status-timed_out": "Délai dépassé",
-  "run-resume-reevaluates-hint": "La reprise réévalue le travail restant et vous sollicite à nouveau si nécessaire."
+  "run-resume-reevaluates-hint": "La reprise réévalue le travail restant et vous sollicite à nouveau si nécessaire.",
+  "automation-draft-with-skill": "Transformer en compétence",
+  "create-automation-from-task": "Transformer en automatisation",
+  "automation-skill-unavailable": "La compétence skill-creator est indisponible.",
+  "automation-source-session": "Automatisation de la session : {{name}}",
+  "automation-schedule-review-hint": "Vérifiez la planification ci-dessous. L’éditeur choisit une valeur par défaut même sans répétition demandée.",
+  "automation-review-confirm": "J’ai vérifié la planification et les données requises.",
+  "automation-review-required": "Vérifiez la planification et les données requises avant de créer."
 }

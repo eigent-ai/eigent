@@ -520,5 +520,12 @@
   "run-terminal-reason-error": "任务因错误而停止。",
   "run-terminal-reason-budget_exhausted": "任务已用尽可用预算。",
   "tool-status-timed_out": "已超时",
-  "run-resume-reevaluates-hint": "恢复时会重新评估剩余工作，并在需要时再次询问。"
+  "run-resume-reevaluates-hint": "恢复时会重新评估剩余工作，并在需要时再次询问。",
+  "automation-draft-with-skill": "转为技能",
+  "create-automation-from-task": "转为自动化",
+  "automation-skill-unavailable": "skill-creator 技能不可用。",
+  "automation-source-session": "来自会话的自动化：{{name}}",
+  "automation-schedule-review-hint": "请检查下方日程。即使未要求重复执行，编辑器也会选择默认值。",
+  "automation-review-confirm": "我已检查日程和所需输入。",
+  "automation-review-required": "创建前请检查日程和所需输入。"
 }

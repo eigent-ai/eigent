@@ -524,5 +524,12 @@
   "run-terminal-reason-error": "The task stopped because of an error.",
   "run-terminal-reason-budget_exhausted": "The task used up its available budget.",
   "tool-status-timed_out": "Timed out",
-  "run-resume-reevaluates-hint": "Resume re-evaluates the remaining work and asks again when needed."
+  "run-resume-reevaluates-hint": "Resume re-evaluates the remaining work and asks again when needed.",
+  "automation-draft-with-skill": "Turn into skill",
+  "create-automation-from-task": "Turn into automation",
+  "automation-skill-unavailable": "The skill-creator skill is unavailable.",
+  "automation-source-session": "Automation from Session: {{name}}",
+  "automation-schedule-review-hint": "Review the schedule below. The editor selects a default even when no recurrence was requested.",
+  "automation-review-confirm": "I reviewed the schedule and required inputs.",
+  "automation-review-required": "Review the schedule and required inputs before creating."
 }
