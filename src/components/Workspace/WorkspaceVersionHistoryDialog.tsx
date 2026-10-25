@@ -30,6 +30,7 @@ import {
   buildWorkspaceVersionHistoryView,
   technicalRefLabel,
 } from '@/components/Workspace/workspaceVersionHistoryView';
+import { formatAppDate } from '@/lib/appDate';
 import { getSessionDisplayName } from '@/lib/spaceLabel';
 import {
   executeAdvancedGit,
@@ -67,7 +68,12 @@ interface WorkspaceVersionHistoryDialogProps {
 }
 
 const formatDate = (seconds: number) =>
-  seconds > 0 ? new Date(seconds * 1000).toLocaleString() : '—';
+  seconds > 0
+    ? formatAppDate(new Date(seconds * 1000), {
+        dateStyle: 'short',
+        timeStyle: 'medium',
+      })
+    : '—';
 
 type VersionHistoryTab = 'projects' | 'tasks' | 'commits' | 'technical';
 

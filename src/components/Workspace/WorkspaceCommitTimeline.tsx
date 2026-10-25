@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { DsIcon } from '@/components/ui/ds-icon';
+import { formatAppDate } from '@/lib/appDate';
 import type {
   WorkspaceGitCommit,
   WorkspaceGitOperation,
@@ -37,7 +38,12 @@ export const classifyWorkspaceCommit = (
 };
 
 const formatDate = (seconds: number) =>
-  seconds > 0 ? new Date(seconds * 1000).toLocaleString() : '—';
+  seconds > 0
+    ? formatAppDate(new Date(seconds * 1000), {
+        dateStyle: 'short',
+        timeStyle: 'medium',
+      })
+    : '—';
 
 export type WorkspaceTimelineEvent =
   | {
