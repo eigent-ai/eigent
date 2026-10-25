@@ -21,7 +21,13 @@ import { useLayoutEffect, useState } from 'react';
  * rendered, so do not overlay an app-owned loading or success state.
  * Uses the existing third-party-viewports exception for native viewer chrome. */
 export function pdfPreviewUrl(url: string, name: string): string {
-  const parsed = new URL(url);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    // Leave anything that is not an absolute URL for the viewer to report.
+    return url;
+  }
   // Keep the authorized file identity in the query. The path supplies only
   // the native viewer's display name.
   if (
