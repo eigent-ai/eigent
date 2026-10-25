@@ -1974,7 +1974,11 @@ async def start_chat_stream(data: Chat, request: Request):
                 admission_request_id=request_id,
             )
         except Exception as exc:
-            if isinstance(journal, SQLiteRunJournal):
+            permanent_refusal = isinstance(
+                exc,
+                (ModelCapabilityConfigError, UnsupportedThinkingEffortError),
+            ) or (isinstance(exc, HTTPException) and exc.status_code == 422)
+            if permanent_refusal and isinstance(journal, SQLiteRunJournal):
                 detail = getattr(exc, "detail", None)
                 message = (
                     detail.get("message", str(detail))

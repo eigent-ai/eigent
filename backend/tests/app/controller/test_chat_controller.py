@@ -2472,8 +2472,9 @@ async def test_session_model_still_rejects_a_different_model(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("retry_conflict", [False, True])
 async def test_refused_initial_admission_is_durably_failed(
-    sample_chat_data, mock_request, tmp_path, monkeypatch
+    sample_chat_data, mock_request, tmp_path, monkeypatch, retry_conflict
 ):
     import app.controller.chat_controller as controller
     from app.workspace_config import UnsupportedThinkingEffortError
@@ -2487,6 +2488,10 @@ async def test_refused_initial_admission_is_durably_failed(
         journal.ensure_run(
             run_id=run_id, project_id=data.project_id, status="pending"
         )
+        if retry_conflict:
+            raise HTTPException(
+                status_code=409, detail={"code": "project_run_active"}
+            )
         raise UnsupportedThinkingEffortError("Unsupported effort")
 
     monkeypatch.setattr(controller, "get_default_run_journal", lambda: journal)
@@ -2497,6 +2502,12 @@ async def test_refused_initial_admission_is_durably_failed(
     monkeypatch.setattr(controller, "_prepare_chat_run", refuse)
     with pytest.raises(HTTPException) as error:
         await post(data, mock_request)
+    if retry_conflict:
+        assert error.value.status_code == 409
+        assert journal.get_run(run_id).status == "pending"
+        assert journal.list_events(run_id) == []
+        await coordinator.close()
+        return
     assert error.value.status_code == 422
     assert journal.get_run(run_id).status == "failed"
     assert (
