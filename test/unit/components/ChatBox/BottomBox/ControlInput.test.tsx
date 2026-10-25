@@ -62,6 +62,29 @@ describe('BottomBox feedback answer field', () => {
     expect(answer).not.toHaveClass('border-ds-hairline-default-default');
   });
 
+  it('hides the question placeholder on focus and restores it on blur', () => {
+    render(
+      <ControlInputRouter
+        variant={{
+          kind: 'feedback',
+          presentation: 'question',
+          header: { title: 'Question' },
+          placeholder: 'Type your response',
+          value: '',
+          onChange: vi.fn(),
+          onSubmit: vi.fn(),
+        }}
+        inputProps={{}}
+      />
+    );
+    const answer = screen.getByRole('textbox', { name: 'Feedback' });
+    expect(answer).toHaveAttribute('placeholder', 'Type your response');
+    fireEvent.focus(answer);
+    expect(answer).toHaveAttribute('placeholder', '');
+    fireEvent.blur(answer);
+    expect(answer).toHaveAttribute('placeholder', 'Type your response');
+  });
+
   it('keeps the framed field for feedback that is not a question', () => {
     render(
       <ControlInputRouter

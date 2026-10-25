@@ -333,6 +333,7 @@ function FeedbackInput({
   const enterLabel = getEnterKeyLabel(useDesktopShortcutPlatform());
 
   const isQuestion = variant.presentation === 'question';
+  const [isAnswerFocused, setIsAnswerFocused] = useState(false);
 
   return (
     <div
@@ -343,7 +344,7 @@ function FeedbackInput({
       <Textarea
         aria-label={t('chat.control-feedback-label')}
         value={variant.value}
-        placeholder={variant.placeholder}
+        placeholder={isQuestion && isAnswerFocused ? '' : variant.placeholder}
         variant={isQuestion ? 'plain' : 'none'}
         className={
           isQuestion
@@ -352,6 +353,8 @@ function FeedbackInput({
         }
         size="sm"
         disabled={variant.disabled || variant.submitting}
+        onFocus={() => setIsAnswerFocused(true)}
+        onBlur={() => setIsAnswerFocused(false)}
         onChange={(event) => variant.onChange(event.target.value)}
         onEnter={variant.value.trim() ? variant.onSubmit : undefined}
       />

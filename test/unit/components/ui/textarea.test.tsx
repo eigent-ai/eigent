@@ -30,7 +30,7 @@ describe('Textarea variants', () => {
       'border-0',
       'shadow-none',
       'bg-transparent',
-      'rounded-ds-field',
+      'rounded-none',
       'min-h-[var(--ds-textarea-sm-min-height)]',
       'outline-none',
       'focus-visible:ring-2',

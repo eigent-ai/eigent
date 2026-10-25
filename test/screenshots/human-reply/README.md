@@ -7,10 +7,14 @@ These are component-preview screenshots, not a live Electron task run.
 
 - [Dark, answer focused](dark-typing.png)
 - [Light, answer focused](light-typing.png)
+- [Light, empty answer focused](light-empty-focused.png)
+- [Dark, empty answer focused](dark-empty-focused.png)
 
 In both themes, the card has no shadow and its border resolves to the same
 color as the composer boundary. The question answer has no visible inner
-focus ring. Return inherits the Send feedback text color in both enabled
+focus ring. Its placeholder hides on focus and returns on blur. The plain
+textarea has square corners so the zero-padding text edge does not clip the
+caret; the outer card retains its radius. Return inherits the Send feedback text color in both enabled
 and blank-answer disabled states. Enter submission was verified in the
 browser; Shift+Enter and blank-answer handling are covered by focused tests.
 
@@ -25,7 +29,7 @@ surface override; the shared plain textarea still retains its standard ring.
 The design-system HTML viewer still labels itself a proposed plan on this base;
 the active Markdown guideline and executable tokens were authoritative.
 
-Validation: 31 focused Vitest tests; type checking; design-token checks;
+Validation: 32 focused Vitest tests; type checking; design-token checks;
 focused ESLint; Prettier; and `git diff --check` passed.
 Live Electron/backend submission, alternate theme palettes, localization,
 200% zoom and the full responsive matrix were not run. Human review is pending.
