@@ -14,6 +14,7 @@
 
 import { proxyFetchGet, proxyFetchPut } from '@/api/http';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Switch } from '@/components/ui/switch';
 import { SITE_URL } from '@/lib';
 import { ChevronDown } from 'lucide-react';
@@ -75,8 +76,10 @@ export default function SettingPrivacy() {
               aria-expanded={isHowWeHandleOpen}
               aria-controls="how-we-handle-your-data"
             >
-              <ChevronDown
-                className={`h-4 w-4 transition-transform ${isHowWeHandleOpen ? 'rotate-0' : '-rotate-90'}`}
+              <DsIcon
+                recipe="main-compact"
+                icon={ChevronDown}
+                className={`transition-transform ${isHowWeHandleOpen ? 'rotate-0' : '-rotate-90'}`}
               />
             </Button>
           }

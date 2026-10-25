@@ -92,7 +92,7 @@ export default function ConnectorDetailSidebar({
               onClick={onAddConnector}
               aria-label={t('connectors.add-connector')}
             >
-              <Plus aria-hidden />
+              <DsIcon icon={Plus} aria-hidden />
             </Button>
           </TooltipSimple>
         }

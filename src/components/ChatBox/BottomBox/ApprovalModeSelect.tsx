@@ -27,6 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { generateUniqueId } from '@/lib';
 import { cn } from '@/lib/utils';
 import {
@@ -228,10 +229,7 @@ export function ApprovalModeSelect({
         )}
       >
         <span className="inline-flex min-h-[1.25rem] min-w-0 items-center gap-1.5 overflow-hidden">
-          <CurrentIcon
-            className="h-3.5 w-3.5 shrink-0 opacity-80"
-            aria-hidden
-          />
+          <DsIcon icon={CurrentIcon} className="opacity-80" />
           {!compact && (
             <span className="min-w-0 truncate !text-ds-text-meta font-semibold">
               {current.label}
@@ -262,21 +260,14 @@ export function ApprovalModeSelect({
           )}
         >
           <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <CurrentIcon
-              className="h-3.5 w-3.5 shrink-0 opacity-80"
-              aria-hidden
-            />
+            <DsIcon icon={CurrentIcon} className="opacity-80" />
             {!compact && (
               <span className="min-w-0 flex-1 truncate text-left !text-ds-text-meta text-ds-ink-default-default">
                 {current.label}
               </span>
             )}
           </span>
-          <ChevronDown
-            className="h-3.5 w-3.5 shrink-0 opacity-80"
-            aria-hidden
-            strokeWidth={2}
-          />
+          <DsIcon icon={ChevronDown} className="opacity-80" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -296,10 +287,7 @@ export function ApprovalModeSelect({
               className="flex items-center justify-between gap-2"
             >
               <span className="flex min-w-0 items-start gap-2">
-                <OptionIcon
-                  className="mt-0.5 h-4 w-4 shrink-0 opacity-80"
-                  aria-hidden
-                />
+                <DsIcon icon={OptionIcon} className="opacity-80" />
                 <span className="min-w-0">
                   <span className="block text-ds-text-base">
                     {option.label}
@@ -310,7 +298,10 @@ export function ApprovalModeSelect({
                 </span>
               </span>
               {value === option.value && (
-                <Check className="h-4 w-4 text-ds-text-success-default-default" />
+                <DsIcon
+                  icon={Check}
+                  className="text-ds-text-success-default-default"
+                />
               )}
             </DropdownMenuItem>
           );

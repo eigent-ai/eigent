@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown, ChevronUp, CircleAlert } from 'lucide-react';
 import * as React from 'react';
@@ -97,8 +98,8 @@ const SelectTrigger = React.forwardRef<
             {required && <span className="text-ds-ink-default-default">*</span>}
             {tooltip && (
               <TooltipSimple content={tooltip}>
-                <CircleAlert
-                  size={16}
+                <DsIcon
+                  icon={CircleAlert}
                   className="text-ds-ink-default-default"
                 />
               </TooltipSimple>
@@ -133,7 +134,10 @@ const SelectTrigger = React.forwardRef<
         >
           {children}
           <SelectPrimitive.Icon asChild>
-            <ChevronDown className="h-4 w-4 text-ds-ink-default-default" />
+            <DsIcon
+              icon={ChevronDown}
+              className="text-ds-ink-default-default"
+            />
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         {note ? (
@@ -157,7 +161,7 @@ const SelectScrollUpButton = React.forwardRef<
     )}
     {...props}
   >
-    <ChevronUp className="h-4 w-4" />
+    <DsIcon icon={ChevronUp} />
   </SelectPrimitive.ScrollUpButton>
 ));
 SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName;
@@ -174,7 +178,7 @@ const SelectScrollDownButton = React.forwardRef<
     )}
     {...props}
   >
-    <ChevronDown className="h-4 w-4" />
+    <DsIcon icon={ChevronDown} />
   </SelectPrimitive.ScrollDownButton>
 ));
 SelectScrollDownButton.displayName =
@@ -257,7 +261,7 @@ const SelectItem = React.forwardRef<
   >
     <span className="absolute inset-y-0 right-2 my-auto flex size-4 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
+        <DsIcon icon={Check} />
       </SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
@@ -314,7 +318,7 @@ const SelectItemWithButton = React.forwardRef<
     >
       <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-          <Check className="h-4 w-4" />
+          <DsIcon icon={Check} />
         </SelectPrimitive.ItemIndicator>
       </span>
       <div className="flex w-full items-center justify-between">

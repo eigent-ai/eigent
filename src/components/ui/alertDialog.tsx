@@ -42,6 +42,7 @@ interface ConfirmModalProps {
   confirmTone?: ButtonTone;
   hideCancel?: boolean;
   confirmDisabled?: boolean;
+  /** Let the owner close the dialog after an asynchronous confirmation. */
   closeOnConfirm?: boolean;
   children?: ReactNode;
 }

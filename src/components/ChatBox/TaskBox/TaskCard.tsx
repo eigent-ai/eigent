@@ -19,6 +19,7 @@ import { useHost } from '@/host';
 import { TaskItem } from './TaskItem';
 
 import { TaskState, TaskStateType } from '@/components/TaskState';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import {
   useIsFocusedSessionPane,
@@ -369,7 +370,7 @@ export function TaskCard({
               <div>
                 {taskType === 1 && (
                   <Button variant="ghost" size="icon" onClick={onAddTask}>
-                    <Plus size={16} />
+                    <DsIcon icon={Plus} />
                   </Button>
                 )}
                 {taskType === 2 && (
@@ -389,11 +390,9 @@ export function TaskCard({
                       size="icon"
                       onClick={() => setIsExpanded((prev) => !prev)}
                     >
-                      <ChevronDown
-                        size={16}
-                        className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${
-                          isExpanded ? 'rotate-180' : ''
-                        }`}
+                      <DsIcon
+                        icon={ChevronDown}
+                        className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
                       />
                     </Button>
                   </div>
@@ -508,42 +507,39 @@ export function TaskCard({
                       >
                         <div className="pt-0.5">
                           {task.status === TaskStatus.RUNNING && (
-                            <LoaderCircle
-                              size={16}
-                              className={`text-ds-icon-information-default-default ${
-                                activeTaskStatus === ChatTaskStatus.RUNNING &&
-                                'animate-spin'
-                              } `}
+                            <DsIcon
+                              icon={LoaderCircle}
+                              className={`text-ds-icon-information-default-default ${activeTaskStatus === ChatTaskStatus.RUNNING && 'animate-spin'}`}
                             />
                           )}
                           {task.status === TaskStatus.SKIPPED && (
-                            <LoaderCircle
-                              size={16}
+                            <DsIcon
+                              icon={LoaderCircle}
                               className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
-                            <CircleCheckBig
-                              size={16}
+                            <DsIcon
+                              icon={CircleCheckBig}
                               className="text-ds-icon-success-default-default"
                             />
                           )}
                           {task.status === TaskStatus.FAILED && (
-                            <CircleSlash
-                              size={16}
+                            <DsIcon
+                              icon={CircleSlash}
                               className="text-ds-icon-error-default-default"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
-                            <TriangleAlert
-                              size={16}
+                            <DsIcon
+                              icon={TriangleAlert}
                               className="text-ds-icon-warning-default-default"
                             />
                           )}
                           {(task.status === TaskStatus.EMPTY ||
                             task.status === TaskStatus.WAITING) && (
-                            <Circle
-                              size={16}
+                            <DsIcon
+                              icon={Circle}
                               className="text-ds-icon-status-pending-default-default"
                             />
                           )}

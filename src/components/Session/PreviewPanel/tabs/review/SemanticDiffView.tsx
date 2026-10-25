@@ -413,7 +413,7 @@ function ImageDiff({
   ) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-ds-text-meta text-ds-ink-muted-default">
-        <DsIcon icon={FileImage} recipe="detailed" />
+        <DsIcon icon={FileImage} recipe="illustration" />
         {t('layout.review-image-preview-unavailable', {
           defaultValue:
             'Image metadata is available, but this Git-backed change has no local preview payload.',
@@ -440,7 +440,7 @@ function ImageSide({
   if (error) {
     return (
       <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-2 px-6 text-center text-ds-text-meta text-ds-ink-muted-default">
-        <DsIcon icon={AlertTriangle} recipe="detailed" />
+        <DsIcon icon={AlertTriangle} recipe="illustration" />
         {t('layout.review-file-load-failed', {
           defaultValue: 'Could not load this file: {{message}}',
           message: error,

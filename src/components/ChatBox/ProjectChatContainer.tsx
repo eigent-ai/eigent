@@ -13,11 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useResolvedRunModels } from '@/hooks/useResolvedRunModels';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import {
   useIsFocusedSessionPane,
   useSessionProjectId,
 } from '@/hooks/useSessionProjectId';
+import { ChatTaskStatus } from '@/types/constants';
 import { AnimatePresence } from 'framer-motion';
 import React, {
   useCallback,
@@ -30,9 +32,18 @@ import {
   animateChatTimelineAnchor,
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { groupMessagesByQuery, ProjectSection } from './ProjectSection';
+import { previousRecordedRunModel } from './TimelineModes/ModelChangeDivider';
+
+const ACTIVE_LEGACY_TASK_STATUSES = new Set<string>([
+  ChatTaskStatus.PENDING,
+  ChatTaskStatus.RUNNING,
+  ChatTaskStatus.PAUSE,
+]);
 
 interface ProjectChatContainerProps {
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   className?: string;
   /** Scroll viewport lives in ChatBox (full width) so the scrollbar sits on the panel edge. */
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -41,6 +52,7 @@ interface ProjectChatContainerProps {
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
+  onEditUserMessage,
   className = '',
   scrollContainerRef,
   scrollBottomInsetPx,
@@ -84,6 +96,19 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
       taskSections.push({ chatId, chatStore, taskId });
     }
   }
+  // A legacy Task id is its durable Run id.
+  const sectionRunIds = taskSections.map(({ taskId }) => taskId);
+  const resolvedModelsByRun = useResolvedRunModels(
+    activeProjectId,
+    taskSections.map(({ chatStore, taskId }) => {
+      const status = String(chatStore.getState().tasks[taskId]?.status ?? '');
+      return {
+        runId: taskId,
+        status,
+        active: ACTIVE_LEGACY_TASK_STATUSES.has(status),
+      };
+    })
+  );
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
     const scheduleRefresh = () => {
@@ -391,15 +416,26 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         <AnimatePresence mode="popLayout">
-          {taskSections.map(({ chatId, chatStore, taskId }) => {
+          {taskSections.map(({ chatId, chatStore, taskId }, index) => {
             return (
               <ProjectSection
                 key={`${chatId}-${taskId}`}
                 chatId={chatId}
                 chatStore={chatStore}
                 taskId={taskId}
+                previousModel={
+                  index > 0
+                    ? previousRecordedRunModel(
+                        sectionRunIds,
+                        index,
+                        resolvedModelsByRun
+                      )
+                    : undefined
+                }
+                model={resolvedModelsByRun[taskId]}
                 activeQueryId={activeQueryId}
                 onQueryActive={setActiveQueryId}
+                onEditUserMessage={onEditUserMessage}
               />
             );
           })}

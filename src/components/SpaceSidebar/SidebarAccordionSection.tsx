@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
@@ -47,9 +48,10 @@ export function SidebarAccordionSection({
         <span className="text-ds-text-base font-normal text-ds-ink-subtle-default">
           {label}
         </span>
-        <ChevronDown
+        <DsIcon
+          icon={ChevronDown}
           className={cn(
-            'h-4 w-4 shrink-0 !text-ds-ink-muted-default transition-[opacity,transform] duration-200',
+            'shrink-0 !text-ds-ink-muted-default transition-[opacity,transform] duration-200',
             !expanded && '-rotate-90',
             expanded && 'opacity-0 group-hover/section-header:opacity-100'
           )}

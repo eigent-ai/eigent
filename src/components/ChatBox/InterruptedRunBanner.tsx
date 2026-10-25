@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { RotateCcw, X } from 'lucide-react';
 
 export type InterruptedRunBannerAction = 'resuming' | 'cancelling' | null;
@@ -86,7 +87,7 @@ export function InterruptedRunBanner({
                 disabled={action !== null || Boolean(disabledReason)}
                 title={disabledReason}
               >
-                <X className="size-ds-icon-md" aria-hidden="true" />
+                <DsIcon icon={X} aria-hidden="true" />
                 <span>
                   {action === 'cancelling' ? cancellingLabel : cancelLabel}
                 </span>
@@ -100,7 +101,7 @@ export function InterruptedRunBanner({
                 disabled={action !== null || Boolean(resumeUnavailableReason)}
                 title={resumeUnavailableReason}
               >
-                <RotateCcw className="size-ds-icon-md" aria-hidden="true" />
+                <DsIcon icon={RotateCcw} aria-hidden="true" />
                 <span>
                   {action === 'resuming' ? resumingLabel : resumeLabel}
                 </span>

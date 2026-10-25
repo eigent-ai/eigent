@@ -514,7 +514,7 @@ export const RichChatInput = React.forwardRef<
     <div className="relative isolate w-full min-w-0 flex-1">
       <div
         aria-hidden
-        className="pointer-events-none absolute top-0 left-1 z-[1] w-[calc(100%-0.25rem)] max-w-[calc(100%-0.25rem)] select-none"
+        className="pointer-events-none absolute inset-x-0 top-0 z-[1] select-none"
       >
         {showPlaceholder ? (
           <motion.span
@@ -562,7 +562,7 @@ export const RichChatInput = React.forwardRef<
         }}
         className={cn(
           'w-full flex-1 resize-none overflow-auto outline-none',
-          'scrollbar max-h-[200px] min-h-[40px] py-0 pl-1',
+          'scrollbar max-h-[200px] min-h-[40px] p-0',
           'relative break-words whitespace-pre-wrap',
           disabled && 'cursor-not-allowed opacity-60',
           textClassName,
