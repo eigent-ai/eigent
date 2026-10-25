@@ -1,49 +1,37 @@
 # Human reply styling verification
 
-Captured on 25 October 2026 from the actual `HumanDecisionCard` component in
-an isolated Vite preview with the runtime Eigent theme contract applied.
-The lower sample uses the composer boundary recipe for comparison.
-These are component-preview screenshots, not a live Electron task run.
+Final-state screenshots captured on 25 October 2026 from the actual
+`HumanDecisionCard` and `Inputbox` components in an isolated Vite preview
+with the runtime Eigent theme contract applied:
 
-- [Dark, answer focused](dark-typing.png)
-- [Light, answer focused](light-typing.png)
-- [Light, empty answer focused](light-empty-focused.png)
-- [Dark, empty answer focused](dark-empty-focused.png)
-- [Light, matching placeholders](light-placeholders.png)
-- [Dark, matching placeholders](dark-placeholders.png)
+- [Light: highlighted question and neutral disabled composer](light-borders.png)
+- [Dark: highlighted question and neutral disabled composer](dark-borders.png)
 
-In both themes, the card has no shadow and its border resolves to the same
-color as the composer boundary. The question answer has no visible inner
-focus ring. Its placeholder hides on focus and returns on blur. The plain
-textarea has square corners so the zero-padding text edge does not clip the
-caret; the outer card retains its radius. Return inherits the Send feedback text color in both enabled
-and blank-answer disabled states. Enter submission was verified in the
-browser; Shift+Enter and blank-answer handling are covered by focused tests.
+The human-toolkit question uses `border-ds-border-information-default-default`.
+The disabled BottomBox input keeps `border-ds-hairline-default-default`, even
+with a saved draft. Resolving the question preserves the draft and restores
+the enabled composer's normal information-border treatment.
+
+Both surfaces use the existing composer `rounded-3xl` pattern (24px in the
+preview). The question has no shadow. Its answer placeholder uses
+`ink.subtle.disabled`, matching `RichChatInput`, and hides on focus/returns on
+blur. The zero-padding plain textarea has square inner corners to avoid caret
+clipping. Return inherits its button foreground.
 
 Reused primitives: `Textarea` (`plain`, `sm`), `Button` (`primary`, `sm`),
-`ShortcutKeycap` (`button`) and `Separator`. The question card reuses the composer `rounded-3xl` pattern; other
-human-decision cards keep `radius-card`. It keeps `bg-ds-neutral-subtle-default` and uses
-`border-ds-hairline-default-default`, matching the composer default border.
-No token source, generated file or registered geometry exception changed.
+`ShortcutKeycap` (`button`) and `Separator`. Both outer surfaces keep
+`bg-ds-neutral-subtle-default`. No token sources, generated files or registered
+geometry exceptions changed. The question-only ring suppression and composer
+corner pattern are the product owner's requested surface overrides.
 
-The question-only suppression of the textarea ring is the explicitly requested
-surface override; the shared plain textarea still retains its standard ring.
-The design-system HTML viewer still labels itself a proposed plan on this base;
-the active Markdown guideline and executable tokens were authoritative.
+Latest validation: 35 focused tests across InputBox, HumanDecisionCard,
+ControlInput and BottomBox; type checking; design-token checks; focused
+ESLint; Prettier; and `git diff --check` passed. Browser checks cover light/dark,
+the focused answer, a retained disabled draft and resolution back to enabled.
+Earlier screenshots in this folder record intermediate styling revisions.
 
-Validation: 32 focused Vitest tests; type checking; design-token checks;
-focused ESLint; Prettier; and `git diff --check` passed.
-Live Electron/backend submission, alternate theme palettes, localization,
-200% zoom and the full responsive matrix were not run. Human review is pending.
-
-The placeholder comparison screenshots render the real `RichChatInput` below
-the reply card. Both placeholders use `ink.subtle.disabled`: computed colors
-match exactly in light and dark modes. The question still hides its placeholder
-on focus. The shared Textarea default placeholder color is unchanged.
-
-Placeholder follow-up validation: 12 focused reply/card tests, type checking,
-design-token checks, focused ESLint, Prettier and `git diff --check` passed.
-
-The question card uses the same outer corner radius as the BottomBox composer.
-This requested composer-pattern match takes precedence over the generic card
-radius; no new geometry value or token was introduced.
+These are component previews. Live Electron/backend submission, alternate
+palettes, localization, 200% zoom and the full responsive matrix were not run.
+Human review is pending. The HTML design viewer still labels itself a proposed
+plan on this base; the active Markdown guideline and executable tokens were
+authoritative.

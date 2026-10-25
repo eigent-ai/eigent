@@ -414,7 +414,8 @@ export const Inputbox = ({
       data-bottom-box-input-surface
       className={cn(
         'relative flex w-full flex-col items-start rounded-3xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default px-ds-panel-inset py-ds-12 transition-colors',
-        (isFocused || hasContent) &&
+        !disabled &&
+          (isFocused || hasContent) &&
           'border-ds-border-information-default-default',
         isDragging &&
           'border-ds-hairline-strong-default bg-ds-bg-information-subtle-default',

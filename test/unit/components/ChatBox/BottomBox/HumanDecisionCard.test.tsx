@@ -209,7 +209,7 @@ describe('HumanDecisionCard', () => {
     expect(answer.closest('[data-human-decision-card]')).toHaveClass(
       'rounded-3xl',
       'border',
-      'border-ds-hairline-default-default'
+      'border-ds-border-information-default-default'
     );
     expect(answer.closest('[data-human-decision-card]')).not.toHaveClass(
       'shadow-ds-elevation-popover'
