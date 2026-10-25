@@ -72,7 +72,7 @@ function StatusBadge({ status }: { status: string }) {
         statusClassName(status)
       )}
     >
-      <Icon aria-hidden className="size-3 shrink-0" />
+      <DsIcon icon={Icon} recipe="main-compact" />
       {t(`chat.tool-status-${status}`, { defaultValue: displayStatus(status) })}
     </span>
   );
@@ -304,7 +304,7 @@ export function RunStatusEventRenderer({
       )}
       role="status"
     >
-      <Icon aria-hidden className="size-3.5 shrink-0" />
+      <DsIcon icon={Icon} recipe="main-compact" />
       <span className="block">
         {t('chat.timeline-run-status', {
           status: t(`chat.tool-status-${node.status}`, {

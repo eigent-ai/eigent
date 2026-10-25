@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   AudioLines,
   Bird,
@@ -130,5 +131,11 @@ export function getToolkitIcon(
   className: string = 'text-ds-ink-default-default'
 ): React.ReactNode {
   const Icon = toolkitIconComponent(toolkitName) ?? Wrench;
-  return <Icon size={size} className={className} />;
+  return (
+    <DsIcon
+      icon={Icon}
+      recipe={size <= 14 ? 'main-compact' : 'main'}
+      className={className}
+    />
+  );
 }

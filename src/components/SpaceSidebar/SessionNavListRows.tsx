@@ -200,7 +200,6 @@ function SessionNavRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const LeadIcon = session.sessionLead.Icon;
   const leadClassName = cn(
-    'h-4 w-4 shrink-0',
     session.sessionLead.iconClassName,
     session.sessionLead.spin && 'animate-spin'
   );
@@ -243,13 +242,15 @@ function SessionNavRow({
               'focus-visible:ring-2 focus-visible:ring-ds-hairline-subtle-default focus-visible:outline-none'
             )}
           >
-            <LeadIcon className={leadClassName} aria-hidden />
+            <DsIcon icon={LeadIcon} className={leadClassName} />
             <span className="min-w-0 flex-1 truncate text-ds-text-base font-medium text-ds-ink-muted-default">
               {session.title}
             </span>
             {session.source === 'trigger' ? (
-              <AUTOMATION_ICON
-                className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
+              <DsIcon
+                icon={AUTOMATION_ICON}
+                decorative={false}
+                className="text-ds-icon-warning-default-default"
                 aria-label={triggerSourceLabel}
               />
             ) : null}
@@ -328,7 +329,7 @@ export function SessionNavListRows({
                   aria-label={session.title}
                   aria-current={active ? 'true' : undefined}
                 >
-                  <LeadIcon className={leadClassName} aria-hidden />
+                  <DsIcon icon={LeadIcon} className={leadClassName} />
                 </button>
               </TooltipSimple>
             </div>

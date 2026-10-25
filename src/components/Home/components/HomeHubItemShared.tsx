@@ -791,7 +791,7 @@ export function HomeHubTriggerCardBody({
   return (
     <HomeHubHubCardBody
       title={title}
-      icon={<TriggerIcon />}
+      icon={<DsIcon icon={TriggerIcon} />}
       menuItems={menuItems}
       statItems={statItems}
       updatedAt={updatedAt}
@@ -825,7 +825,7 @@ export function HomeHubTriggerBoardCardBody({
   return (
     <HomeHubBoardCardBody
       title={title}
-      icon={<TriggerIcon />}
+      icon={<DsIcon icon={TriggerIcon} />}
       menuItems={menuItems}
       statRows={[
         { label: t('layout.home-list-type'), value: triggerTypeLabel },

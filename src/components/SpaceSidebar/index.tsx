@@ -856,12 +856,11 @@ export default function SpaceSidebar({
                     ? AUTOMATION_ICON
                     : AUTOMATION_OFF_ICON;
                   return (
-                    <ListenerIcon
-                      className={cn(
-                        'h-4 w-4 shrink-0',
-                        triggerListenerLeadIconClass(wsConnectionStatus)
+                    <DsIcon
+                      icon={ListenerIcon}
+                      className={triggerListenerLeadIconClass(
+                        wsConnectionStatus
                       )}
-                      aria-hidden
                     />
                   );
                 })()}

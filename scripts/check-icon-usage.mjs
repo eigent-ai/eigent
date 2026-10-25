@@ -21,12 +21,18 @@
  *   node scripts/check-icon-usage.mjs
  *   node scripts/check-icon-usage.mjs src/a.tsx   # lint-staged (one or more files)
  *
+ * The full run (no file arguments) also type-checks every JSX tag, so icons
+ * reached through a variable, alias or object property (`const Icon = …`,
+ * `<item.Icon />`) are caught too. The per-file run matches names imported
+ * from 'lucide-react' only, to stay fast on commit.
+ *
  * Exemption: put `ds-icon:allow <reason>` in a comment on the element's line or
  * the line above it. Reserve it for glyphs that are not icons (for example a
  * check mark drawn inside a custom badge).
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -218,6 +224,72 @@ function mixedSizeControls(text, lines, rel) {
   return out;
 }
 
+const LUCIDE_TYPE_RE =
+  /^LucideIcon$|^ForwardRefExoticComponent<Omit<LucideProps/;
+const ALLOWED_TAGS = new Set([...DS_TAGS, 'DsMorphIcon']);
+
+/**
+ * JSX tags whose own type is a Lucide icon component, however the component
+ * was reached. Wrapper components that merely accept an `icon` prop are not
+ * icons themselves and are skipped.
+ */
+function typedLucideTags() {
+  const require = createRequire(import.meta.url);
+  const ts = require('typescript');
+  const configPath = join(REPO_ROOT, 'tsconfig.build.json');
+  const config = ts.readConfigFile(configPath, ts.sys.readFile);
+  const parsed = ts.parseJsonConfigFileContent(
+    config.config,
+    ts.sys,
+    REPO_ROOT
+  );
+  const program = ts.createProgram(parsed.fileNames, parsed.options);
+  const checker = program.getTypeChecker();
+
+  const isLucideType = (type) =>
+    (type.isUnion() ? type.types : [type]).some((t) =>
+      LUCIDE_TYPE_RE.test(checker.typeToString(t))
+    );
+
+  const out = [];
+  for (const sf of program.getSourceFiles()) {
+    const rel = relative(REPO_ROOT, sf.fileName).replaceAll('\\', '/');
+    if (
+      !rel.startsWith('src/') ||
+      !EXT.has(rel.slice(rel.lastIndexOf('.'))) ||
+      SKIP_PATHS.has(rel) ||
+      SKIP_PREFIXES.some((p) => rel.startsWith(p)) ||
+      SKIP_FILE_RE.test(rel)
+    ) {
+      continue;
+    }
+    const lines = sf.text.split(/\r?\n/);
+    const visit = (node) => {
+      if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+        const name = node.tagName.getText(sf);
+        if (
+          /^[A-Z]|\./.test(name) &&
+          !ALLOWED_TAGS.has(name) &&
+          isLucideType(checker.getTypeAtLocation(node.tagName))
+        ) {
+          const line =
+            sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+          if (!exempt(lines, line)) {
+            out.push({
+              file: rel,
+              line,
+              message: `Lucide icon <${name}> rendered directly. Use <DsIcon icon={${name}} />.`,
+            });
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+  return out;
+}
+
 function main() {
   const argv = process.argv.slice(2).filter((a) => a !== '--');
   const explicit = argv
@@ -225,10 +297,17 @@ function main() {
     .map((a) => resolve(REPO_ROOT, a))
     .filter((p) => existsSync(p) && statSync(p).isFile())
     .filter((p) => EXT.has(p.slice(p.lastIndexOf('.'))));
-  const targets =
-    argv.length > 0 ? explicit : [...walk(join(REPO_ROOT, 'src'))];
+  const fullRun = argv.length === 0;
+  const targets = fullRun ? [...walk(join(REPO_ROOT, 'src'))] : explicit;
 
   const violations = targets.flatMap(checkFile);
+  if (fullRun) {
+    // The typed pass also covers direct imports; keep one finding per element.
+    const seen = new Set(violations.map((v) => `${v.file}:${v.line}`));
+    for (const v of typedLucideTags()) {
+      if (!seen.has(`${v.file}:${v.line}`)) violations.push(v);
+    }
+  }
   if (violations.length === 0) {
     console.log('check-icon-usage: OK (all icons render through DsIcon).');
     process.exit(0);
