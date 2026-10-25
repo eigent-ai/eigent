@@ -12,18 +12,18 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from app.model.chat.chat_history import ChatHistory
-from app.model.project import Project
-from sqlalchemy import or_
 """Trigger controller. Uses TriggerCrudService for business logic."""
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
 from sqlmodel import Session, select, desc, and_, delete
+from sqlalchemy import or_
 from typing import Optional
 from loguru import logger
 
+from app.model.chat.chat_history import ChatHistory
+from app.model.project import Project
 from app.model.trigger.trigger import Trigger, TriggerIn, TriggerOut, TriggerUpdate, TriggerConfigSchemaOut
 from app.model.trigger.trigger_execution import TriggerExecution, TriggerExecutionOut
 from app.model.trigger.app_configs import get_config_schema, has_config
