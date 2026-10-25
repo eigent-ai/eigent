@@ -362,7 +362,10 @@ recipe bounds the popper to its trigger and Radix collision width and lets
 option text wrap within that space.
 
 Use `Textarea variant="outlined"` for a multiline field with the same visible
-border and validation colors as `Input`.
+border and validation colors as `Input`. Use `Textarea variant="plain"` for a
+borderless response inside an existing surface: it removes field padding and
+chrome while retaining the textarea size, disabled state, and keyboard focus
+ring.
 
 ### Switch
 

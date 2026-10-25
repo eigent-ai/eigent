@@ -259,7 +259,7 @@ export function HeaderBox({
               className="no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
               aria-label={backTooltip}
             >
-              <ArrowLeft className="h-4 w-4" aria-hidden />
+              <DsIcon icon={ArrowLeft} recipe="main" />
             </Button>
           </TooltipSimple>
         ) : null}
@@ -417,7 +417,7 @@ export function HeaderBox({
             aria-label={windowPreviewTooltip}
             aria-pressed={sessionPreviewOpen}
           >
-            <GalleryThumbnails aria-hidden />
+            <DsIcon icon={GalleryThumbnails} recipe="main" />
           </Button>
         </TooltipSimple>
       </div>
