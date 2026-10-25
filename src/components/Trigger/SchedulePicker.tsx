@@ -413,7 +413,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 title={t('triggers.schedule-hour')}
                 placeholder="00"
                 required
-                leadingIcon={<Clock className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Clock} />}
                 state={hourError ? 'error' : undefined}
                 errorNote={hourError}
               />
@@ -426,7 +426,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 title={t('triggers.schedule-minute')}
                 placeholder="00"
                 required
-                leadingIcon={<Clock className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Clock} />}
                 state={minuteError ? 'error' : undefined}
                 errorNote={minuteError}
               />
@@ -444,7 +444,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 title={t('triggers.schedule-hour')}
                 placeholder="00"
                 required
-                leadingIcon={<Clock className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Clock} />}
                 state={hourError ? 'error' : undefined}
                 errorNote={hourError}
               />
@@ -457,7 +457,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 title={t('triggers.schedule-minute')}
                 placeholder="00"
                 required
-                leadingIcon={<Clock className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Clock} />}
                 state={minuteError ? 'error' : undefined}
                 errorNote={minuteError}
               />
@@ -489,7 +489,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 title={t('triggers.schedule-hour')}
                 placeholder="00"
                 required
-                leadingIcon={<Clock className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Clock} />}
                 state={hourError ? 'error' : undefined}
                 errorNote={hourError}
               />
@@ -502,7 +502,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 title={t('triggers.schedule-minute')}
                 placeholder="00"
                 required
-                leadingIcon={<Clock className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Clock} />}
                 state={minuteError ? 'error' : undefined}
                 errorNote={minuteError}
               />
@@ -619,7 +619,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 title={t('triggers.schedule-hour')}
                 required
                 placeholder="00"
-                leadingIcon={<Clock className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Clock} />}
                 state={hourError ? 'error' : undefined}
                 errorNote={hourError}
               />
@@ -632,7 +632,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 title={t('triggers.schedule-minute')}
                 required
                 placeholder="00"
-                leadingIcon={<Clock className="h-4 w-4" />}
+                leadingIcon={<DsIcon icon={Clock} />}
                 state={minuteError ? 'error' : undefined}
                 errorNote={minuteError}
               />

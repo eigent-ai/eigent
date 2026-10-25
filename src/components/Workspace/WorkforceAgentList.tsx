@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
   FoldedAgentCard,
@@ -154,7 +155,7 @@ export function WorkforceAgentList({
               onClick={onAddWorker}
               aria-label={t('triggers.add')}
             >
-              <Plus className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden />
+              <DsIcon icon={Plus} className="shrink-0" aria-hidden />
             </button>
           </TooltipSimple>
         </div>
@@ -185,7 +186,11 @@ export function WorkforceAgentList({
                   onClick={() => scrollOneAgent(-1)}
                   aria-label={scrollLeftLabel}
                 >
-                  <ChevronLeft className="h-3 w-3" aria-hidden />
+                  <DsIcon
+                    icon={ChevronLeft}
+                    recipe="main-compact"
+                    aria-hidden
+                  />
                 </Button>
               </TooltipSimple>
               <TooltipSimple
@@ -206,7 +211,11 @@ export function WorkforceAgentList({
                   onClick={() => scrollOneAgent(1)}
                   aria-label={scrollRightLabel}
                 >
-                  <ChevronRight className="h-3 w-3" aria-hidden />
+                  <DsIcon
+                    icon={ChevronRight}
+                    recipe="main-compact"
+                    aria-hidden
+                  />
                 </Button>
               </TooltipSimple>
             </div>

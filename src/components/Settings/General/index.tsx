@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
@@ -246,7 +247,7 @@ export default function SettingGeneral({
                   tone="neutral"
                   size="sm"
                 >
-                  <Settings />
+                  <DsIcon icon={Settings} />
                   {t('setting.manage')}
                 </Button>
                 <Button
@@ -266,7 +267,7 @@ export default function SettingGeneral({
                     navigate('/login');
                   }}
                 >
-                  <LogOut />
+                  <DsIcon icon={LogOut} />
                   {t('setting.log-out')}
                 </Button>
               </div>

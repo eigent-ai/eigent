@@ -17,6 +17,7 @@ import {
   SidebarCountBadge,
   SidebarNavGroup,
 } from '@/components/Layout/AppSidebar';
+import { DsIcon } from '@/components/ui/ds-icon';
 import type { LucideIcon } from 'lucide-react';
 import { Folder } from 'lucide-react';
 import { useMemo } from 'react';
@@ -68,7 +69,7 @@ export function HomeSidebarNavGroup({
             key={id}
             active={active}
             onClick={() => onSectionChange(id)}
-            leading={<Icon className="h-4 w-4 shrink-0" aria-hidden />}
+            leading={<DsIcon icon={Icon} />}
             label={label}
             trailing={<SidebarCountBadge count={count} />}
             ariaLabel={label}

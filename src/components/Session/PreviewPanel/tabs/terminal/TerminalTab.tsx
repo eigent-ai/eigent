@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
@@ -120,8 +121,11 @@ function LocalShellTerminal({ tab, viewportSettled }: TerminalTabProps) {
   if (!isDesktop) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <SquareTerminal
-          className="h-8 w-8 text-ds-ink-muted-default"
+        <DsIcon
+          icon={SquareTerminal}
+          recipe="illustration"
+          illustrationSize={32}
+          className="text-ds-ink-muted-default"
           aria-hidden
         />
         <p className="max-w-[360px] text-sm text-ds-ink-muted-default">
@@ -187,8 +191,11 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
   if (!source) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <SquareTerminal
-          className="h-8 w-8 text-ds-ink-muted-default"
+        <DsIcon
+          icon={SquareTerminal}
+          recipe="illustration"
+          illustrationSize={32}
+          className="text-ds-ink-muted-default"
           aria-hidden
         />
         <p className="max-w-[360px] text-sm text-ds-ink-muted-default">
@@ -244,9 +251,9 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
             })}
           >
             {copied ? (
-              <Check className="h-4 w-4" aria-hidden />
+              <DsIcon icon={Check} aria-hidden />
             ) : (
-              <Copy className="h-4 w-4" aria-hidden />
+              <DsIcon icon={Copy} aria-hidden />
             )}
           </Button>
         </TooltipSimple>

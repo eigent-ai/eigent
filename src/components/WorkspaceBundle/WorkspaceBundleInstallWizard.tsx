@@ -15,6 +15,7 @@
 import { fetchConnectedProviders, providerLabel } from '@/api/connectors';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { useHost } from '@/host';
@@ -258,7 +259,7 @@ function McpDestinationReview({
         </div>
         {approved ? (
           <div className="flex items-center gap-1 text-ds-text-meta text-ds-text-success-default-default">
-            <Check className="h-4 w-4" aria-hidden />{' '}
+            <DsIcon icon={Check} aria-hidden />{' '}
             {t('layout.approved', { defaultValue: 'Approved' })}
           </div>
         ) : canApprove ? (
@@ -272,7 +273,7 @@ function McpDestinationReview({
               defaultValue: 'Approve {{name}} MCP destination',
             })}
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {busy ? <DsIcon icon={Loader2} className="animate-spin" /> : null}
             {t('layout.approve', { defaultValue: 'Approve' })}
           </Button>
         ) : null}
@@ -640,7 +641,7 @@ function LocalValueRow({
         </div>
         {item.configured && item.available ? (
           <span className="inline-flex items-center gap-1 text-ds-text-meta font-semibold text-ds-text-success-default-default">
-            <Check className="h-3.5 w-3.5" aria-hidden />{' '}
+            <DsIcon icon={Check} recipe="main-compact" aria-hidden />{' '}
             {t('layout.workspace-bundle-stored-locally', {
               defaultValue: 'Stored locally',
             })}
@@ -678,7 +679,7 @@ function LocalValueRow({
         />
         <Button type="submit" size="sm" disabled={busy}>
           {busy ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            <DsIcon icon={Loader2} className="animate-spin" aria-hidden />
           ) : item.configured && item.available ? (
             t('layout.replace', { defaultValue: 'Replace' })
           ) : (
@@ -1729,7 +1730,7 @@ function WorkspaceBundleInstallContent({
               className="mt-3"
               onClick={retry}
             >
-              <RefreshCw className="h-4 w-4" aria-hidden />{' '}
+              <DsIcon icon={RefreshCw} aria-hidden />{' '}
               {t('layout.retry', { defaultValue: 'Retry' })}
             </Button>
           ) : null}
@@ -1774,7 +1775,7 @@ function WorkspaceBundleInstallContent({
                 }
               >
                 {busyKey === 'review' ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <DsIcon icon={Loader2} className="animate-spin" />
                 ) : (
                   t('layout.review', { defaultValue: 'Review' })
                 )}
@@ -1925,7 +1926,7 @@ function WorkspaceBundleInstallContent({
             </details>
             <div className="rounded-xl border border-x border-y border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-3 text-ds-text-base">
               <p className="flex items-center gap-2 font-semibold">
-                <ShieldCheck className="h-4 w-4" aria-hidden />{' '}
+                <DsIcon icon={ShieldCheck} aria-hidden />{' '}
                 {t('layout.workspace-bundle-secrets-excluded', {
                   defaultValue: 'Secrets are not part of this Bundle',
                 })}
@@ -1942,7 +1943,7 @@ function WorkspaceBundleInstallContent({
               disabled={busyKey === 'start' || !email}
             >
               {busyKey === 'start' ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <DsIcon icon={Loader2} className="animate-spin" />
               ) : (
                 t('layout.workspace-bundle-confirm-create', {
                   defaultValue: 'Confirm and create Workspace',
@@ -2085,7 +2086,11 @@ function WorkspaceBundleInstallContent({
                   disabled={busyKey === 'approval'}
                 >
                   {busyKey === 'approval' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    <DsIcon
+                      icon={Loader2}
+                      className="animate-spin"
+                      aria-hidden
+                    />
                   ) : null}
                   {t('layout.workspace-bundle-approve-installation', {
                     defaultValue: 'Approve installation',
@@ -2116,7 +2121,7 @@ function WorkspaceBundleInstallContent({
                   onClick={() => void resumeProposal(proposal.proposal_id)}
                   disabled={busyKey === 'resume'}
                 >
-                  <RefreshCw className="h-4 w-4" aria-hidden />{' '}
+                  <DsIcon icon={RefreshCw} aria-hidden />{' '}
                   {t('layout.refresh', { defaultValue: 'Refresh' })}
                 </Button>
               </CardContent>
@@ -2182,7 +2187,7 @@ function WorkspaceBundleInstallContent({
                         onClick={() => void bindPath(slotId)}
                         disabled={busyKey === slotId}
                       >
-                        <FolderOpen className="h-4 w-4" />
+                        <DsIcon icon={FolderOpen} />
                         {configuredSlots.has(slotId)
                           ? t('layout.workspace-bundle-change-folder', {
                               defaultValue: 'Change folder',
@@ -2245,7 +2250,7 @@ function WorkspaceBundleInstallContent({
                               variant="secondary"
                               onClick={() => openSettings('connectors')}
                             >
-                              <ExternalLink className="h-4 w-4" />{' '}
+                              <DsIcon icon={ExternalLink} />{' '}
                               {t('setting.connect', {
                                 defaultValue: 'Connect',
                               })}
@@ -2323,7 +2328,10 @@ function WorkspaceBundleInstallContent({
                           </p>
                         </div>
                         {configuredSlots.has(actionId) ? (
-                          <Check className="h-4 w-4 text-ds-text-success-default-default" />
+                          <DsIcon
+                            icon={Check}
+                            className="text-ds-text-success-default-default"
+                          />
                         ) : (
                           <Button
                             size="sm"
@@ -2372,9 +2380,9 @@ function WorkspaceBundleInstallContent({
                       }
                     >
                       {busyKey === 'materialize' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <DsIcon icon={Loader2} className="animate-spin" />
                       ) : (
-                        <KeyRound className="h-4 w-4" />
+                        <DsIcon icon={KeyRound} />
                       )}
                       {proposal.error_code === 'bundle_reconfiguration_pending'
                         ? t('layout.workspace-bundle-sync-local-changes', {

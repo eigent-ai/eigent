@@ -174,3 +174,30 @@ describe('Inputbox primary action', () => {
     expect(onSend).toHaveBeenCalledOnce();
   });
 });
+
+describe('Inputbox border state', () => {
+  it('keeps a disabled composer neutral while preserving and restoring its draft', () => {
+    const { container, rerender } = render(
+      <Inputbox value="A saved follow-up" />
+    );
+    const surface = () =>
+      container.querySelector('[data-bottom-box-input-surface]');
+    expect(surface()).toHaveClass(
+      'border-ds-border-information-default-default'
+    );
+
+    rerender(<Inputbox value="A saved follow-up" disabled />);
+    expect(surface()).toHaveClass('border-ds-hairline-default-default');
+    expect(surface()).not.toHaveClass(
+      'border-ds-border-information-default-default'
+    );
+    expect(
+      container.querySelector('[data-testid="rich-chat-input"]')
+    ).toHaveTextContent('A saved follow-up');
+
+    rerender(<Inputbox value="A saved follow-up" />);
+    expect(surface()).toHaveClass(
+      'border-ds-border-information-default-default'
+    );
+  });
+});

@@ -21,6 +21,7 @@ import {
 } from '@/api/http';
 import geminiImage from '@/assets/model/gemini.svg';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -269,8 +270,10 @@ export default function SubAgents() {
           </span>
         </div>
         {remoteSubAgentLoading ? (
-          <Loader2
-            className="m-0.5 h-3 w-3 shrink-0 animate-spin text-ds-ink-muted-default motion-reduce:animate-none"
+          <DsIcon
+            icon={Loader2}
+            recipe="main-compact"
+            className="m-0.5 shrink-0 animate-spin text-ds-ink-muted-default motion-reduce:animate-none"
             aria-hidden
           />
         ) : isConfigured ? (
@@ -314,8 +317,10 @@ export default function SubAgents() {
             aria-live="polite"
             className="mt-2 flex items-center gap-2 text-ds-text-base text-ds-ink-muted-default"
           >
-            <Loader2
-              className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+            <DsIcon
+              icon={Loader2}
+              recipe="main-compact"
+              className="animate-spin motion-reduce:animate-none"
               aria-hidden
             />
             <span>
@@ -341,9 +346,9 @@ export default function SubAgents() {
           className="w-full"
           backIcon={
             showRemoteSubAgentKey ? (
-              <Eye className="h-5 w-5" />
+              <DsIcon icon={Eye} />
             ) : (
-              <EyeOff className="h-5 w-5" />
+              <DsIcon icon={EyeOff} />
             )
           }
           onBackIconClick={() =>

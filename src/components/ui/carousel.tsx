@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
 } from 'embla-carousel-react';
@@ -241,7 +242,7 @@ const CarouselPrevious = React.forwardRef<
         onClick={scrollPrev}
         {...props}
       >
-        <ArrowLeft className="h-4 w-4" />
+        <DsIcon icon={ArrowLeft} />
         <span className="sr-only">
           {t('layout.previous-slide', { defaultValue: 'Previous slide' })}
         </span>
@@ -285,7 +286,7 @@ const CarouselNext = React.forwardRef<
         onClick={scrollNext}
         {...props}
       >
-        <ArrowRight className="h-4 w-4" />
+        <DsIcon icon={ArrowRight} />
         <span className="sr-only">
           {t('layout.next-slide', { defaultValue: 'Next slide' })}
         </span>

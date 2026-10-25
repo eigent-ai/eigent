@@ -165,7 +165,7 @@ export function TerminalProcessList({
                     disabled={row.status === 'stopping'}
                     onClick={() => void row.stop()}
                   >
-                    <Square aria-hidden />
+                    <DsIcon icon={Square} aria-hidden />
                   </Button>
                 </TooltipSimple>
               )}

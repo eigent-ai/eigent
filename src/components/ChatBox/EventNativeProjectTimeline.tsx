@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useResolvedRunModels } from '@/hooks/useResolvedRunModels';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import {
   isConversationAnchor,
@@ -53,8 +54,11 @@ import {
 import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
 import { partitionLegacyReplyEvidence } from './EventTimeline/legacyReplyEvidence';
 import { presentChatSemanticEntities } from './EventTimeline/presentationPolicy';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { TimelineModeRenderer } from './TimelineModes';
+import type { ResolvedRunModel } from './TimelineModes/ModelChangeDivider';
+import { isActiveRunStatus } from './TimelineModes/shared';
 
 /** Extra slack beyond the BottomBox inset so "last message visible" still counts as pinned. */
 const NEAR_BOTTOM_SLACK_PX = 48;
@@ -179,9 +183,15 @@ interface EventNativeProjectTimelineProps {
   paused?: boolean;
   floatingControl?: ReactNode;
   projectId: string;
+  /**
+   * Durable model identities supplied by Run reads. Defaults to the open
+   * Session's recorded models.
+   */
+  resolvedModelsByRun?: Readonly<Record<string, ResolvedRunModel | null>>;
   sessionMode?: SessionModeType;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   scrollBottomInsetPx: number;
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
 }
 
 /**
@@ -196,9 +206,11 @@ export function EventNativeProjectTimeline({
   paused = false,
   floatingControl,
   projectId,
+  resolvedModelsByRun,
   sessionMode,
   scrollContainerRef,
   scrollBottomInsetPx,
+  onEditUserMessage,
 }: EventNativeProjectTimelineProps) {
   const { t } = useTranslation();
   const runtime = useProjectEventRuntime();
@@ -398,6 +410,16 @@ export function EventNativeProjectTimeline({
     [visibleNodes, projectedRunsById]
   );
   const visibleRuns = allRuns;
+  const runActivity = useMemo(
+    () =>
+      allRuns.map((run) => ({
+        runId: run.runId,
+        status: run.status,
+        active: isActiveRunStatus(run.status),
+      })),
+    [allRuns]
+  );
+  const recordedModelsByRun = useResolvedRunModels(projectId, runActivity);
   const interactivePlansByRun = (() => {
     if (sessionMode !== SessionMode.WORKFORCE || !chatStore) return undefined;
     const state = chatStore.getState();
@@ -732,6 +754,8 @@ export function EventNativeProjectTimeline({
                   : undefined
               }
               runs={visibleRuns}
+              resolvedModelsByRun={resolvedModelsByRun ?? recordedModelsByRun}
+              onEditUserMessage={onEditUserMessage}
               sessionMode={sessionMode}
             />
             <HistoryEvidence entries={conversation.evidence} />
