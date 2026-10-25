@@ -9553,6 +9553,28 @@ class SQLiteRunJournal:
                 else None
             )
 
+    def get_instruction_source(
+        self, *, project_id: str, request_id: str
+    ) -> str | None:
+        """Return who submitted one queued or managed instruction.
+
+        Follow-up rows and managed execution requests keep ``local``,
+        ``remote_control`` or ``scheduled`` for any status. None means this
+        Project has no such request, so authorship stays unknown.
+        """
+
+        with self._lock:
+            row = self._connection.execute(
+                """SELECT source FROM follow_up_requests
+                WHERE request_id = ? AND project_id = ?
+                UNION ALL
+                SELECT source FROM execution_requests
+                WHERE request_id = ? AND project_id = ?
+                LIMIT 1""",
+                (request_id, project_id, request_id, project_id),
+            ).fetchone()
+        return row["source"] if row is not None else None
+
     def set_follow_up_delivery_mode(
         self,
         *,
@@ -11714,7 +11736,9 @@ class SQLiteRunJournal:
         """Read metadata only, omitting already resolved extraction receipts.
 
         Even one multi-megabyte terminal event must not be materialized just
-        to discover that the explicit-user extractor cannot use it.
+        to discover that the explicit-user extractor cannot use it. The
+        source of a user.message is metadata for the same reason: trigger
+        text is excluded before its payload is loaded.
         """
 
         self._validate_memory_scope(target_scope_type, target_scope_id)
@@ -11727,7 +11751,10 @@ class SQLiteRunJournal:
             """
             SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
                    e.created_at, r.last_error,
-                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes,
+                   CASE WHEN e.event_type = 'user.message'
+                        THEN json_extract(e.payload_json, '$.source')
+                   END AS message_source
             FROM project_history_events h
             JOIN run_events e ON e.event_id = h.event_id
             LEFT JOIN memory_extraction_receipts r
@@ -11744,7 +11771,10 @@ class SQLiteRunJournal:
             else """
             SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
                    e.created_at, r.last_error,
-                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes,
+                   CASE WHEN e.event_type = 'user.message'
+                        THEN json_extract(e.payload_json, '$.source')
+                   END AS message_source
             FROM project_history_events h
             JOIN run_events e ON e.event_id = h.event_id
             LEFT JOIN memory_extraction_receipts r

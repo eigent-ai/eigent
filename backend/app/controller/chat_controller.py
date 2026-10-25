@@ -205,6 +205,16 @@ async def _record_canonical_user_message(
 ) -> None:
     """Persist admission input against the injected journal instance."""
 
+    if source != "scheduled" and isinstance(journal, SQLiteRunJournal):
+        # A queued follow-up is admitted as the Run named by its request id.
+        # Trigger text stays labelled even when sent as a Chat or Improve.
+        queued_source = await asyncio.to_thread(
+            journal.get_instruction_source,
+            project_id=run_context.project_id,
+            request_id=run_context.run_id,
+        )
+        if queued_source == "scheduled":
+            source = "scheduled"
     await EventRecorder(journal).record_user_message(
         project_id=run_context.project_id,
         run_id=run_context.run_id,
@@ -1555,7 +1565,13 @@ async def _prepare_chat_run(
             run_context=run_context,
             request_id=request_id,
             content=data.question,
-            source="improve" if warm_admission is not None else "chat",
+            source=(
+                "scheduled"
+                if data.source == "scheduled"
+                else "improve"
+                if warm_admission is not None
+                else "chat"
+            ),
             attaches=data.attaches or [],
             review_handoff_ids=data.review_handoff_ids,
             session_model_selection=(
