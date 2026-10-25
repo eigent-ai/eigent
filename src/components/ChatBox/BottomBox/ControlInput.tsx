@@ -49,7 +49,7 @@ interface InputVariantRouterProps {
 }
 
 const controlSurfaceClassName =
-  'flex w-full flex-col gap-3 rounded-3xl border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-3';
+  'flex w-full flex-col gap-3 rounded-ds-24 border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-3';
 
 function ControlActions({ children }: { children: React.ReactNode }) {
   return (
@@ -350,6 +350,12 @@ function FeedbackInput({
         value={variant.value}
         placeholder={variant.placeholder}
         variant={isQuestion ? 'plain' : 'none'}
+        className={
+          isQuestion
+            ? // The card shows focus; the answer hides its placeholder instead of a ring.
+              'placeholder:text-ds-ink-subtle-disabled focus:placeholder:opacity-0 focus-visible:ring-0 focus-visible:ring-offset-0'
+            : undefined
+        }
         size="sm"
         disabled={variant.disabled || variant.submitting}
         onChange={(event) => variant.onChange(event.target.value)}

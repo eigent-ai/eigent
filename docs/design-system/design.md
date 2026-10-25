@@ -386,8 +386,12 @@ option text wrap within that space.
 Use `Textarea variant="outlined"` for a multiline field with the same visible
 border and validation colors as `Input`. Use `Textarea variant="plain"` for a
 borderless response inside an existing surface: it removes field padding and
-chrome while retaining the textarea size, disabled state, and keyboard focus
-ring.
+chrome, including corner rounding that would clip the caret at a zero-padding
+text edge, while retaining the textarea size, disabled state, and keyboard focus
+ring. When the surrounding surface shows focus itself, as the question card does
+with an information border while its answer has the cursor or holds text (the
+same rule as the composer), the answer may drop its inner ring and hide its
+placeholder on focus instead.
 
 ### Switch
 

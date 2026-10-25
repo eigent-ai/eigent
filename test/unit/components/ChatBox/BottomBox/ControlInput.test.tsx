@@ -35,7 +35,7 @@ function approvalVariant(
 }
 
 describe('BottomBox feedback answer field', () => {
-  it('renders a question answer as a plain field with a focus ring', () => {
+  it('renders a question answer without an inner focus ring', () => {
     render(
       <ControlInputRouter
         variant={{
@@ -56,10 +56,33 @@ describe('BottomBox feedback answer field', () => {
       'border-0',
       'shadow-none',
       'min-h-[var(--ds-textarea-sm-min-height)]',
-      'focus-visible:ring-2',
-      'focus-visible:ring-offset-2'
+      'focus-visible:ring-0',
+      'focus-visible:ring-offset-0'
     );
     expect(answer).not.toHaveClass('border-ds-hairline-default-default');
+  });
+
+  it('hides the question placeholder while the answer is focused', () => {
+    render(
+      <ControlInputRouter
+        variant={{
+          kind: 'feedback',
+          presentation: 'question',
+          header: { title: 'Question' },
+          placeholder: 'Type your response',
+          value: '',
+          onChange: vi.fn(),
+          onSubmit: vi.fn(),
+        }}
+        inputProps={{}}
+      />
+    );
+    const answer = screen.getByRole('textbox', { name: 'Feedback' });
+    // The placeholder text stays for assistive technology; CSS hides it on focus.
+    expect(answer).toHaveAttribute('placeholder', 'Type your response');
+    expect(answer).toHaveClass('focus:placeholder:opacity-0');
+    fireEvent.focus(answer);
+    expect(answer).toHaveAttribute('placeholder', 'Type your response');
   });
 
   it('keeps the framed field for feedback that is not a question', () => {
@@ -176,7 +199,7 @@ describe('BottomBox approval keyboard safety', () => {
       'bg-transparent',
       'rounded-full',
       '!text-ds-text-meta',
-      '!text-ds-ink-inverse',
+      '!text-inherit',
       'ring-ds-hairline-muted-default'
     );
 

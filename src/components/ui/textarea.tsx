@@ -89,7 +89,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             className={cn(
               variant === 'plain'
                 ? cn(
-                    'flex w-full [scrollbar-gutter:stable] rounded-ds-field border-0 border-x-0 border-y-0 bg-transparent p-0 text-ds-text-base text-ds-ink-default-default shadow-none placeholder:text-ds-ink-muted-default disabled:cursor-not-allowed disabled:opacity-50',
+                    'flex w-full [scrollbar-gutter:stable] rounded-none border-0 border-x-0 border-y-0 bg-transparent p-0 text-ds-text-base text-ds-ink-default-default shadow-none placeholder:text-ds-ink-muted-default disabled:cursor-not-allowed disabled:opacity-50',
                     size === 'sm'
                       ? 'min-h-[var(--ds-textarea-sm-min-height)]'
                       : 'min-h-[var(--ds-textarea-md-min-height)]',

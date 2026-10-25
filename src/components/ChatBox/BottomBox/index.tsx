@@ -307,7 +307,7 @@ export default function BottomBox({
   return (
     <div
       data-bottom-box
-      className={`relative z-50 flex w-full flex-col ${showQueuedBox ? 'gap-0' : 'gap-1 rounded-3xl bg-ds-neutral-default-default'}`}
+      className={`relative z-50 flex w-full flex-col ${showQueuedBox ? 'gap-0' : 'gap-1 rounded-ds-24 bg-ds-neutral-default-default'}`}
     >
       {/* QueryBox — queued user requests remain separate from BoxMain. */}
       {showQueuedBox && (
@@ -356,7 +356,7 @@ export default function BottomBox({
         layout={instantLayout ? false : 'size'}
         data-bottom-box-main
         data-layout-motion={instantLayout ? 'instant' : 'smooth'}
-        className={`relative z-[1] flex w-full flex-col rounded-3xl ${backgroundClass}`}
+        className={`relative z-[1] flex w-full flex-col rounded-ds-24 ${backgroundClass}`}
         transition={{
           layout: instantLayout ? INSTANT_TRANSITION : LAYOUT_TRANSITION,
         }}
@@ -457,7 +457,7 @@ export default function BottomBox({
         normalizedVariant.kind === 'input' ? (
           <motion.div
             key="no-model-overlay"
-            className="absolute inset-0 z-[15] flex flex-row items-center justify-center gap-3 rounded-3xl bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg"
+            className="absolute inset-0 z-[15] flex flex-row items-center justify-center gap-3 rounded-ds-24 bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg"
             role="alert"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
