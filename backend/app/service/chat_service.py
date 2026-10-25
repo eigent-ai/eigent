@@ -13,7 +13,6 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
-import datetime
 import logging
 import platform
 from functools import partial
@@ -58,6 +57,7 @@ from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
+from app.agent.utils import agent_current_time, refresh_agent_current_time
 from app.hands.interface import IHands
 from app.memory import (
     build_durable_context_projection_for_task_lock,
@@ -681,6 +681,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         )
 
     question_agent = task_lock.question_agent
+    refresh_agent_current_time(question_agent, agent_current_time(options))
 
     # Other variables
     camel_task = None
@@ -820,6 +821,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"'{question[:100]}...'"
                     )
 
+                refresh_agent_current_time(
+                    question_agent,
+                    agent_current_time(
+                        options, task_id=getattr(item, "new_task_id", None)
+                    ),
+                )
                 start_event_loop = False
 
                 is_exceeded, total_length = check_conversation_history_length(
@@ -2804,7 +2811,7 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 {remote_sub_agent_planning_notice}
@@ -2818,7 +2825,7 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 {remote_sub_agent_planning_notice}
@@ -2866,7 +2873,7 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
         """
@@ -3081,7 +3088,7 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 """

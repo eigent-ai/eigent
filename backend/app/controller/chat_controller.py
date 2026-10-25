@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
+from app.agent.utils import current_time_str
 from app.auth import require_local_control_principal
 from app.auth.local_control import LocalControlPrincipal
 from app.component import code
@@ -1130,6 +1131,8 @@ def _build_run_context(
         model_parameters=dict(data.model_config_dict or {}),
         permissions=frozenset(permissions),
         credential_sources=credential_sources,
+        prompt_current_time=current_time_str(data.timezone),
+        timezone=data.timezone,
     )
 
 
@@ -2572,6 +2575,9 @@ async def _prepare_improve_chat(
                         camel_log_dir=camel_log,
                         binding_source=frozen_dirs.binding_source,
                         attempt_id=None,
+                        prompt_current_time=current_time_str(
+                            current_context.timezone
+                        ),
                         browser_port=int(
                             getattr(request.state, "browser_port", port)
                         ),
