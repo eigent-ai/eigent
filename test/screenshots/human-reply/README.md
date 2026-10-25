@@ -21,8 +21,8 @@ and blank-answer disabled states. Enter submission was verified in the
 browser; Shift+Enter and blank-answer handling are covered by focused tests.
 
 Reused primitives: `Textarea` (`plain`, `sm`), `Button` (`primary`, `sm`),
-`ShortcutKeycap` (`button`) and `Separator`. The card keeps `radius-card`
-and `bg-ds-neutral-subtle-default` and uses
+`ShortcutKeycap` (`button`) and `Separator`. The question card reuses the composer `rounded-3xl` pattern; other
+human-decision cards keep `radius-card`. It keeps `bg-ds-neutral-subtle-default` and uses
 `border-ds-hairline-default-default`, matching the composer default border.
 No token source, generated file or registered geometry exception changed.
 
@@ -43,3 +43,7 @@ on focus. The shared Textarea default placeholder color is unchanged.
 
 Placeholder follow-up validation: 12 focused reply/card tests, type checking,
 design-token checks, focused ESLint, Prettier and `git diff --check` passed.
+
+The question card uses the same outer corner radius as the BottomBox composer.
+This requested composer-pattern match takes precedence over the generic card
+radius; no new geometry value or token was introduced.

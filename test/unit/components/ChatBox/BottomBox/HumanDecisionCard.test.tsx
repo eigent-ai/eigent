@@ -207,6 +207,7 @@ describe('HumanDecisionCard', () => {
     );
     const answer = screen.getByRole('textbox', { name: 'Feedback' });
     expect(answer.closest('[data-human-decision-card]')).toHaveClass(
+      'rounded-3xl',
       'border',
       'border-ds-hairline-default-default'
     );

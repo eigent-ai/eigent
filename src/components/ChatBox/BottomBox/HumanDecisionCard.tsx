@@ -54,8 +54,8 @@ export function HumanDecisionCard({
       data-human-decision-card
       data-request-key={requestKey}
       className={cn(
-        'mb-ds-12 w-full rounded-ds-card border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default',
-        isQuestion ? 'px-ds-16 py-ds-12' : 'p-ds-12'
+        'mb-ds-12 w-full border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default',
+        isQuestion ? 'rounded-3xl px-ds-16 py-ds-12' : 'rounded-ds-card p-ds-12'
       )}
       role="region"
       aria-label={t('chat.control-region-label')}
