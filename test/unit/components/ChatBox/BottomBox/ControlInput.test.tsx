@@ -35,7 +35,7 @@ function approvalVariant(
 }
 
 describe('BottomBox feedback answer field', () => {
-  it('renders a question answer as a plain field with a focus ring', () => {
+  it('renders a question answer without an inner focus ring', () => {
     render(
       <ControlInputRouter
         variant={{
@@ -56,8 +56,8 @@ describe('BottomBox feedback answer field', () => {
       'border-0',
       'shadow-none',
       'min-h-[var(--ds-textarea-sm-min-height)]',
-      'focus-visible:ring-2',
-      'focus-visible:ring-offset-2'
+      'focus-visible:ring-0',
+      'focus-visible:ring-offset-0'
     );
     expect(answer).not.toHaveClass('border-ds-hairline-default-default');
   });
@@ -176,7 +176,7 @@ describe('BottomBox approval keyboard safety', () => {
       'bg-transparent',
       'rounded-full',
       '!text-ds-text-meta',
-      '!text-ds-ink-inverse',
+      '!text-inherit',
       'ring-ds-hairline-muted-default'
     );
 

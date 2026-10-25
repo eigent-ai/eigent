@@ -345,6 +345,11 @@ function FeedbackInput({
         value={variant.value}
         placeholder={variant.placeholder}
         variant={isQuestion ? 'plain' : 'none'}
+        className={
+          isQuestion
+            ? 'focus-visible:ring-0 focus-visible:ring-offset-0'
+            : undefined
+        }
         size="sm"
         disabled={variant.disabled || variant.submitting}
         onChange={(event) => variant.onChange(event.target.value)}

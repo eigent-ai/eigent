@@ -1,0 +1,31 @@
+# Human reply styling verification
+
+Captured on 25 October 2026 from the actual `HumanDecisionCard` component in
+an isolated Vite preview with the runtime Eigent theme contract applied.
+The lower sample uses the composer boundary recipe for comparison.
+These are component-preview screenshots, not a live Electron task run.
+
+- [Dark, answer focused](dark-typing.png)
+- [Light, answer focused](light-typing.png)
+
+In both themes, the card has no shadow and its border resolves to the same
+color as the composer boundary. The question answer has no visible inner
+focus ring. Return inherits the Send feedback text color in both enabled
+and blank-answer disabled states. Enter submission was verified in the
+browser; Shift+Enter and blank-answer handling are covered by focused tests.
+
+Reused primitives: `Textarea` (`plain`, `sm`), `Button` (`primary`, `sm`),
+`ShortcutKeycap` (`button`) and `Separator`. The card keeps `radius-card`
+and `bg-ds-neutral-subtle-default` and uses
+`border-ds-hairline-default-default`, matching the composer default border.
+No token source, generated file or registered geometry exception changed.
+
+The question-only suppression of the textarea ring is the explicitly requested
+surface override; the shared plain textarea still retains its standard ring.
+The design-system HTML viewer still labels itself a proposed plan on this base;
+the active Markdown guideline and executable tokens were authoritative.
+
+Validation: 31 focused Vitest tests; type checking; design-token checks;
+focused ESLint; Prettier; and `git diff --check` passed.
+Live Electron/backend submission, alternate theme palettes, localization,
+200% zoom and the full responsive matrix were not run. Human review is pending.

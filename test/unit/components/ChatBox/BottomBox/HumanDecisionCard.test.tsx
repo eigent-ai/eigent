@@ -95,9 +95,12 @@ describe('HumanDecisionCard', () => {
     expect(screen.getByText('single_agent')).toBeInTheDocument();
     expect(screen.getByText('Review details')).toBeInTheDocument();
     const card = container.querySelector('[data-human-decision-card]');
-    // A floating card uses elevation alone, not a boundary as well.
-    expect(card).toHaveClass('rounded-ds-card', 'shadow-ds-elevation-popover');
-    expect(card).not.toHaveClass('border');
+    expect(card).toHaveClass(
+      'rounded-ds-card',
+      'border',
+      'border-ds-hairline-default-default'
+    );
+    expect(card).not.toHaveClass('shadow-ds-elevation-popover');
     const approvalSurface = container.querySelector('[data-approval-surface]');
     expect(approvalSurface).not.toHaveClass('border');
     expect(approvalSurface).not.toHaveClass('border-x');
@@ -203,6 +206,13 @@ describe('HumanDecisionCard', () => {
       <HumanDecisionCard requestKey="run:question-1" variant={variant} />
     );
     const answer = screen.getByRole('textbox', { name: 'Feedback' });
+    expect(answer.closest('[data-human-decision-card]')).toHaveClass(
+      'border',
+      'border-ds-hairline-default-default'
+    );
+    expect(answer.closest('[data-human-decision-card]')).not.toHaveClass(
+      'shadow-ds-elevation-popover'
+    );
     fireEvent.change(answer, { target: { value: 'A detailed report' } });
     expect(onChange).toHaveBeenCalledWith('A detailed report');
     fireEvent.keyDown(answer, { key: 'Enter', shiftKey: true });
