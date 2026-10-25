@@ -23,19 +23,14 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import Overview, { type OverviewProps } from '@/components/Trigger/Triggers';
+import { useSpaceStore } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { type Trigger, TriggerStatus, TriggerType } from '@/types';
 
 const mocks = vi.hoisted(() => ({
   fetchSpaceTriggers: vi.fn(),
-  spaceId: null as string | null,
   projectState: { activeProjectId: null as string | null },
   toastError: vi.fn(),
-}));
-
-vi.mock('@/store/spaceStore', () => ({
-  useSpaceStore: (selector: (state: unknown) => unknown) =>
-    selector({ activeSpaceId: mocks.spaceId }),
 }));
 
 vi.mock('@/service/triggerApi', () => ({
@@ -103,7 +98,7 @@ describe('Workspace automations list', () => {
       .mockImplementation(() => new Promise(() => {}));
     mocks.toastError.mockReset();
     mocks.projectState = { activeProjectId: null };
-    mocks.spaceId = null;
+    useSpaceStore.setState({ activeSpaceId: null });
     useTriggerStore.setState({ triggers: [] });
   });
 
@@ -126,7 +121,7 @@ describe('Workspace automations list', () => {
   });
 
   it('shows loading instead of the empty list while the list loads', async () => {
-    mocks.spaceId = 'space-1';
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
 
     render(<Overview {...props} />);
     await act(async () => {});
@@ -138,7 +133,7 @@ describe('Workspace automations list', () => {
 
   it('shows a load failure with retry instead of the empty list', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    mocks.spaceId = 'space-1';
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
     mocks.fetchSpaceTriggers
       .mockRejectedValueOnce(new Error('network down'))
       .mockResolvedValueOnce({ items: [automation] });
@@ -163,7 +158,7 @@ describe('Workspace automations list', () => {
 
   it('lists an automation created after the list failed to load', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    mocks.spaceId = 'space-1';
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
     mocks.fetchSpaceTriggers.mockRejectedValueOnce(new Error('network down'));
 
     render(<Overview {...props} />);
@@ -178,7 +173,7 @@ describe('Workspace automations list', () => {
   });
 
   it('loads Space automations once across Session changes', async () => {
-    mocks.spaceId = 'space-1';
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
     mocks.fetchSpaceTriggers.mockResolvedValueOnce({ items: [] });
 
     const { rerender } = render(<Overview {...props} />);
@@ -205,12 +200,12 @@ describe('Workspace automations list', () => {
           })
       )
       .mockResolvedValueOnce({ items: [] });
-    mocks.spaceId = 'space-1';
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
 
     const { rerender } = render(<Overview {...props} />);
     await act(async () => {});
 
-    mocks.spaceId = 'space-2';
+    useSpaceStore.setState({ activeSpaceId: 'space-2' });
     rerender(<Overview {...props} />);
     expect(await screen.findByText(EMPTY_LIST)).toBeInTheDocument();
 
