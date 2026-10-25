@@ -11081,7 +11081,7 @@ class SQLiteRunJournal:
                 clear_active_attempt=True,
             )
             connection.execute(
-                """UPDATE follow_up_requests SET status='rejected', last_error=?, updated_at=?
+                """UPDATE follow_up_requests SET status='cancelled', last_error=?, updated_at=?
                 WHERE request_id=? AND project_id=? AND status='pending'""",
                 (message, draft.created_at, run_id, project_id),
             )
