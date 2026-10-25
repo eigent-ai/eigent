@@ -204,7 +204,7 @@ export default function BrowserAgentWorkspace() {
                 targetChatStore.setActiveWorkspace(activeTaskId, 'workflow');
               }}
             >
-              <DsIcon icon={ChevronLeft} />
+              <DsIcon recipe="main-compact" icon={ChevronLeft} />
             </Button>
             <div
               className={`text-base leading-snug font-bold ${

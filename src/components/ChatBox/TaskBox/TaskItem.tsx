@@ -119,7 +119,7 @@ export function TaskItem({
               size="xs"
               buttonContent="icon-only"
             >
-              <DsIcon icon={PenLine} />
+              <DsIcon recipe="main-compact" icon={PenLine} />
             </Button>
           ) : (
             <Button
@@ -132,7 +132,11 @@ export function TaskItem({
               size="xs"
               buttonContent="icon-only"
             >
-              <DsIcon icon={Check} className="text-current" />
+              <DsIcon
+                recipe="main-compact"
+                icon={Check}
+                className="text-current"
+              />
             </Button>
           )}
           <Button
@@ -143,7 +147,11 @@ export function TaskItem({
             size="xs"
             buttonContent="icon-only"
           >
-            <DsIcon icon={Trash2} className="text-current" />
+            <DsIcon
+              recipe="main-compact"
+              icon={Trash2}
+              className="text-current"
+            />
           </Button>
         </div>
       </div>

@@ -308,7 +308,7 @@ const SidebarTrigger = React.forwardRef<
       }}
       {...props}
     >
-      <DsIcon icon={PanelLeft} />
+      <DsIcon icon={PanelLeft} recipe="main-compact" />
       <span className="sr-only">
         {t('layout.toggle-sidebar', { defaultValue: 'Toggle sidebar' })}
       </span>

@@ -85,11 +85,12 @@ export function FeedbackCard({
         >
           {copied ? (
             <DsIcon
+              recipe="main-compact"
               icon={Check}
               className="text-ds-text-success-default-default"
             />
           ) : (
-            <DsIcon icon={Copy} />
+            <DsIcon recipe="main-compact" icon={Copy} />
           )}
         </Button>
       </div>

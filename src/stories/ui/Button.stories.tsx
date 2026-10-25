@@ -222,7 +222,7 @@ export const AllSizes: Story = {
         XL
       </Button>
       <Button variant="primary" size="xs" buttonContent="icon-only">
-        <DsIcon icon={Trash2} />
+        <DsIcon icon={Trash2} recipe="main-compact" />
       </Button>
     </div>
   ),

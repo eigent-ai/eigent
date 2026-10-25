@@ -213,7 +213,7 @@ export default function Skills() {
                     count: compactNoticeCount,
                   })}
                 >
-                  <DsIcon icon={Bell} />
+                  <DsIcon icon={Bell} recipe="main-compact" />
                   {compactNoticeCount}
                 </Button>
               </TooltipSimple>

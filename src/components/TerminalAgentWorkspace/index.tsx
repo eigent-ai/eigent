@@ -161,7 +161,7 @@ export default function TerminalAgentWorkspace() {
                 );
               }}
             >
-              <DsIcon icon={ChevronLeft} />
+              <DsIcon recipe="main-compact" icon={ChevronLeft} />
             </Button>
             <div
               className={`flex h-[26px] items-center gap-xs rounded-lg px-2 py-0.5 ${
@@ -189,7 +189,7 @@ export default function TerminalAgentWorkspace() {
             </div>
           </div>
           <Button size="xs" buttonContent="icon-only" variant="ghost">
-            <DsIcon icon={Settings2} />
+            <DsIcon recipe="main-compact" icon={Settings2} />
           </Button>
         </div>
 

@@ -910,7 +910,7 @@ export default function ConnectorBrowserPage({
           size="xs"
           onClick={() => setBrowseSource('open')}
         >
-          <DsIcon icon={PlugZap} aria-hidden />
+          <DsIcon icon={PlugZap} recipe="main-compact" aria-hidden />
           {t('connectors.gateway-connectors')}
         </Button>
       ) : null}
@@ -921,7 +921,7 @@ export default function ConnectorBrowserPage({
           size="xs"
           onClick={() => setBrowseSource('builtin')}
         >
-          <DsIcon icon={Server} aria-hidden />
+          <DsIcon icon={Server} recipe="main-compact" aria-hidden />
           {t('connectors.source-built-in')}
         </Button>
       ) : null}
@@ -1020,7 +1020,6 @@ export default function ConnectorBrowserPage({
                                     </span>
                                     <DsIcon
                                       icon={BadgeCheck}
-                                      recipe="main-compact"
                                       className={`shrink-0 ${installed ? 'text-ds-icon-success-default-default' : 'text-ds-ink-muted-default'}`}
                                     />
                                     {provider.recommended ? (

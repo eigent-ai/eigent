@@ -126,7 +126,7 @@ export default function SearchInput({
                   onClick={expand}
                   aria-label={searchLabel}
                 >
-                  <DsIcon icon={Search} />
+                  <DsIcon icon={Search} recipe="main-compact" />
                 </Button>
               </TooltipSimple>
             </motion.div>

@@ -288,6 +288,7 @@ export function WorkspaceVersionHistoryDialog({
                   >
                     <DsIcon
                       icon={RefreshCw}
+                      recipe="main-compact"
                       className={loading ? 'animate-spin' : ''}
                     />
                   </Button>

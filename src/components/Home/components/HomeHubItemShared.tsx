@@ -429,6 +429,7 @@ export function HomeHubCardMenu({ items }: { items: HomeHubMenuItem[] }) {
           onClick={(event) => event.stopPropagation()}
         >
           <DsIcon
+            recipe="main-compact"
             icon={MoreHorizontal}
             className="text-ds-ink-default-default"
           />

@@ -438,9 +438,9 @@ export function Node({ id, data }: NodeProps) {
                 buttonContent="icon-only"
               >
                 {isExpanded ? (
-                  <DsIcon icon={SquareChevronLeft} />
+                  <DsIcon icon={SquareChevronLeft} recipe="main-compact" />
                 ) : (
-                  <DsIcon icon={SquareCode} />
+                  <DsIcon icon={SquareCode} recipe="main-compact" />
                 )}
               </Button>
               {!workflowAgentType &&
@@ -453,7 +453,7 @@ export function Node({ id, data }: NodeProps) {
                         size="xs"
                         buttonContent="icon-only"
                       >
-                        <DsIcon icon={Ellipsis} />
+                        <DsIcon icon={Ellipsis} recipe="main-compact" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[98px] rounded-[12px] border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-strong-default p-sm">

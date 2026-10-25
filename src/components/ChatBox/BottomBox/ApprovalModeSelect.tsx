@@ -267,11 +267,7 @@ export function ApprovalModeSelect({
               </span>
             )}
           </span>
-          <DsIcon
-            icon={ChevronDown}
-            recipe="main-compact"
-            className="opacity-80"
-          />
+          <DsIcon icon={ChevronDown} className="opacity-80" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

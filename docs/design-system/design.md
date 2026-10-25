@@ -220,7 +220,13 @@ in a view has the same line weight.
 Rules:
 
 - Default to `main`. Use `main-compact` only when 16px would crowd dense
-  metadata; never mix both sizes in one row of controls.
+  metadata.
+- One control, one size: every icon inside the same button, trigger, menu item
+  or tab uses the same recipe (for example, a Space switcher's folder and its
+  chevron are both `main`). The check rejects a control that mixes 12px and
+  16px icons.
+- Match the button: prefer `main-compact` inside `Button size="xs"`, since the
+  xs icon slot is 12px; every other button size uses `main`.
 - Do not set `size`, `strokeWidth`, `width`, `height`, or `h-*` / `w-*` /
   `size-*` classes on an icon. Pick a recipe. The check rejects local overrides.
 - A glyph that is not an icon (for example a check mark drawn inside a custom

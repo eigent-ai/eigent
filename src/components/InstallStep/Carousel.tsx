@@ -247,7 +247,11 @@ export const CarouselStep: React.FC = () => {
               : t('layout.pause', { defaultValue: 'Pause' })
           }
         >
-          {isPaused ? <DsIcon icon={Play} /> : <DsIcon icon={Pause} />}
+          {isPaused ? (
+            <DsIcon recipe="main-compact" icon={Play} />
+          ) : (
+            <DsIcon recipe="main-compact" icon={Pause} />
+          )}
         </Button>
       </div>
     </div>

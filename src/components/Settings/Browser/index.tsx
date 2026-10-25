@@ -430,6 +430,7 @@ export default function CDP() {
                     aria-label={t('layout.remove-browser')}
                   >
                     <DsIcon
+                      recipe="main-compact"
                       icon={Trash2}
                       className="text-ds-text-error-default-default"
                       aria-hidden

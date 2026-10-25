@@ -617,7 +617,6 @@ function HeaderWin() {
                     </span>
                     <DsIcon
                       icon={ChevronsUpDown}
-                      recipe="main-compact"
                       className="shrink-0 text-ds-ink-subtle-default"
                       aria-hidden
                     />
@@ -676,7 +675,6 @@ function HeaderWin() {
                 </span>
                 <DsIcon
                   icon={ChevronsUpDown}
-                  recipe="main-compact"
                   className="shrink-0 text-ds-ink-subtle-default"
                   aria-hidden
                 />

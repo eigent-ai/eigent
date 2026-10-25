@@ -152,6 +152,69 @@ function checkFile(abs) {
       }
     }
   }
+
+  out.push(...mixedSizeControls(text, lines, rel));
+  return out;
+}
+
+const CONTROL_TAG_RE =
+  /^(button|a|label|Button|[A-Z]\w*(Trigger|Item|Button|Toggle|Tab|Chip|Pill|Link|Option))$/;
+const JSX_TAG_RE =
+  /<(\/?)([A-Za-z][\w.]*)((?:[^<>{}]|\{(?:[^{}]|\{[^{}]*\})*\})*?)(\/?)>/gs;
+const DS_ICON_ELEMENT_RE =
+  /<DsIcon\b((?:[^<>{}]|\{(?:[^{}]|\{[^{}]*\})*\})*?)\/>/gs;
+
+/**
+ * One control, one icon size: a button or menu item must not mix the compact
+ * (12px) and standard (16px) styles.
+ */
+function mixedSizeControls(text, lines, rel) {
+  const stack = [];
+  const controls = [];
+  for (const m of text.matchAll(JSX_TAG_RE)) {
+    const [, closing, name, , selfClosing] = m;
+    if (closing) {
+      while (stack.length > 0) {
+        const open = stack.pop();
+        if (open.name === name) {
+          if (CONTROL_TAG_RE.test(name)) {
+            controls.push({ name, start: open.start, end: m.index });
+          }
+          break;
+        }
+      }
+    } else if (!selfClosing) {
+      stack.push({ name, start: m.index });
+    }
+  }
+
+  const sizesByControl = new Map();
+  for (const m of text.matchAll(DS_ICON_ELEMENT_RE)) {
+    const recipe = /recipe="([\w-]+)"/.exec(m[1])?.[1] ?? 'main';
+    if (recipe === 'illustration') continue;
+    const inner = controls
+      .filter((c) => c.start < m.index && c.end > m.index)
+      .sort((a, b) => b.start - a.start)[0];
+    if (!inner) continue;
+    const entry = sizesByControl.get(inner) ?? {
+      recipes: new Set(),
+      at: m.index,
+    };
+    entry.recipes.add(recipe);
+    sizesByControl.set(inner, entry);
+  }
+
+  const out = [];
+  for (const [control, { recipes }] of sizesByControl) {
+    if (recipes.size < 2) continue;
+    const line = lineOf(text, control.start);
+    if (exempt(lines, line)) continue;
+    out.push({
+      file: rel,
+      line,
+      message: `<${control.name}> mixes 12px and 16px icons. Use one recipe for every icon in a control.`,
+    });
+  }
   return out;
 }
 

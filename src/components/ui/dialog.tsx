@@ -214,6 +214,7 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
             className="hover:bg-transparent"
           >
             <DsIcon
+              recipe="main-compact"
               icon={ChevronLeft}
               className="text-ds-ink-default-default"
             />

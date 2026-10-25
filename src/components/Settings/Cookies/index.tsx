@@ -345,6 +345,7 @@ export default function Cookies() {
                     })}
                   >
                     <DsIcon
+                      recipe="main-compact"
                       icon={Trash2}
                       className="text-ds-text-status-error-strong-default"
                       aria-hidden

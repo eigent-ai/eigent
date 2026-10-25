@@ -75,6 +75,7 @@ export function NoticeCard() {
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <DsIcon
+          recipe="main-compact"
           icon={ChevronDown}
           className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
         />

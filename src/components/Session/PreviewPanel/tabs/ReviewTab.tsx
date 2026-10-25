@@ -1034,13 +1034,11 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                           {comment.status === 'sent' ? (
                             <DsIcon
                               icon={CheckCheck}
-                              recipe="main-compact"
                               className="mt-0.5 text-ds-icon-success-default-default"
                             />
                           ) : (
                             <DsIcon
                               icon={MessageSquarePlus}
-                              recipe="main-compact"
                               className="mt-0.5 text-ds-icon-brand-default-default"
                             />
                           )}
@@ -1112,10 +1110,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                   {noteComposerOpen ? (
                     <div className="border-0 border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default p-3 first:border-x-0 first:border-t-0 first:border-b-0">
                       <div className="mb-2 flex items-center gap-2 text-ds-text-meta text-ds-ink-muted-default">
-                        <DsIcon
-                          icon={MessageSquarePlus}
-                          recipe="main-compact"
-                        />
+                        <DsIcon icon={MessageSquarePlus} />
                         <span className="min-w-0 flex-1 truncate font-code">
                           {commentTarget
                             ? `${selectedFile.path}:${commentTarget.startLine}${

@@ -275,7 +275,7 @@ export function QueuedBox({
                   disabled={!reorder.canMove(message)}
                   {...reorder.handleProps(message)}
                 >
-                  <DsIcon icon={GripVertical} />
+                  <DsIcon icon={GripVertical} recipe="main-compact" />
                 </Button>
                 <DsText
                   as="p"
@@ -326,7 +326,7 @@ export function QueuedBox({
                       void remove(message);
                     }}
                   >
-                    <DsIcon icon={Trash2} />
+                    <DsIcon icon={Trash2} recipe="main-compact" />
                   </Button>
                 </TooltipSimple>
                 <DropdownMenu>
@@ -347,7 +347,7 @@ export function QueuedBox({
                         removing === message.id
                       }
                     >
-                      <DsIcon icon={MoreHorizontal} />
+                      <DsIcon icon={MoreHorizontal} recipe="main-compact" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">

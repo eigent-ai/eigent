@@ -77,6 +77,7 @@ export default function SettingPrivacy() {
               aria-controls="how-we-handle-your-data"
             >
               <DsIcon
+                recipe="main-compact"
                 icon={ChevronDown}
                 className={`transition-transform ${isHowWeHandleOpen ? 'rotate-0' : '-rotate-90'}`}
               />

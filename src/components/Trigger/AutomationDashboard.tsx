@@ -509,7 +509,6 @@ export function AutomationDashboardView({
                     >
                       <DsIcon
                         icon={style.icon}
-                        recipe="main-compact"
                         aria-hidden
                         className={style.iconClass}
                       />

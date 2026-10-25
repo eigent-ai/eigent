@@ -176,7 +176,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             })}
             onClick={(event) => event.stopPropagation()}
           >
-            <DsIcon icon={MoreHorizontal} aria-hidden />
+            <DsIcon icon={MoreHorizontal} recipe="main-compact" aria-hidden />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
