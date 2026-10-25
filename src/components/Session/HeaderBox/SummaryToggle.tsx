@@ -14,6 +14,7 @@
 
 import { SUMMARY_WIDTH } from '@/components/Session/layout/sessionColumns';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   Popover,
   PopoverContent,
@@ -67,7 +68,7 @@ export function SummaryToggle({
         pressed && 'bg-ds-neutral-strong-default text-ds-ink-default-default'
       )}
     >
-      <SquareMenu aria-hidden />
+      <DsIcon icon={SquareMenu} aria-hidden />
     </Button>
   );
   const trigger = (

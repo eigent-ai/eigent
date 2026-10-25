@@ -30,6 +30,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { useTriggerCacheInvalidation } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -331,7 +332,7 @@ export default function Overview({
           className="px-ds-16"
           actions={
             <Button variant="primary" size="sm" onClick={() => openDialog({})}>
-              <Plus aria-hidden />
+              <DsIcon icon={Plus} aria-hidden />
               {t('triggers.create')}
             </Button>
           }

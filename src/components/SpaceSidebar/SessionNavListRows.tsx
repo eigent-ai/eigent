@@ -21,6 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
@@ -121,8 +122,9 @@ function SessionNavRowMenu({
             aria-label={moreLabel}
             onClick={(e) => e.stopPropagation()}
           >
-            <MoreHorizontal
-              className="size-ds-icon-md text-ds-ink-muted-default"
+            <DsIcon
+              icon={MoreHorizontal}
+              className="text-ds-ink-muted-default"
               aria-hidden
             />
           </Button>
@@ -137,9 +139,10 @@ function SessionNavRowMenu({
             disabled={!onPinSession}
             onSelect={() => onPinSession?.(sessionId)}
           >
-            <Pin
+            <DsIcon
+              icon={Pin}
               className={cn(
-                'h-4 w-4',
+                '',
                 pinned && 'fill-current text-ds-accent-default-default'
               )}
               aria-hidden
@@ -151,7 +154,7 @@ function SessionNavRowMenu({
             disabled={!onEndSession || achieved}
             onSelect={() => onEndSession?.(sessionId)}
           >
-            <Archive className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Archive} aria-hidden />
             {achieveLabel}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -160,8 +163,9 @@ function SessionNavRowMenu({
             disabled={!onDeleteSession}
             onSelect={() => onDeleteSession?.(sessionId)}
           >
-            <Trash2
-              className="h-4 w-4 text-ds-icon-error-default-default"
+            <DsIcon
+              icon={Trash2}
+              className="text-ds-icon-error-default-default"
               aria-hidden
             />
             {deleteLabel}
@@ -196,7 +200,6 @@ function SessionNavRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const LeadIcon = session.sessionLead.Icon;
   const leadClassName = cn(
-    'h-4 w-4 shrink-0',
     session.sessionLead.iconClassName,
     session.sessionLead.spin && 'animate-spin'
   );
@@ -239,13 +242,15 @@ function SessionNavRow({
               'focus-visible:ring-2 focus-visible:ring-ds-hairline-subtle-default focus-visible:outline-none'
             )}
           >
-            <LeadIcon className={leadClassName} aria-hidden />
+            <DsIcon icon={LeadIcon} className={leadClassName} />
             <span className="min-w-0 flex-1 truncate text-ds-text-base font-medium text-ds-ink-muted-default">
               {session.title}
             </span>
             {session.source === 'trigger' ? (
-              <AUTOMATION_ICON
-                className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
+              <DsIcon
+                icon={AUTOMATION_ICON}
+                decorative={false}
+                className="text-ds-icon-warning-default-default"
                 aria-label={triggerSourceLabel}
               />
             ) : null}
@@ -324,7 +329,7 @@ export function SessionNavListRows({
                   aria-label={session.title}
                   aria-current={active ? 'true' : undefined}
                 >
-                  <LeadIcon className={leadClassName} aria-hidden />
+                  <DsIcon icon={LeadIcon} className={leadClassName} />
                 </button>
               </TooltipSimple>
             </div>

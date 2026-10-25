@@ -27,6 +27,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { ListFilter } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -185,7 +186,7 @@ export function ReviewFileTree({
               })}
               aria-pressed={hasActiveFilters}
             >
-              <ListFilter aria-hidden />
+              <DsIcon icon={ListFilter} aria-hidden />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

@@ -14,6 +14,7 @@
 
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import {
   getSessionDisplayName,
@@ -152,7 +153,7 @@ function SpaceItemContent({
   const menuItems = [
     {
       label: t('layout.spaces-rename-space'),
-      icon: <Pencil className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Pencil} aria-hidden />,
       onSelect: () => {
         setRenameValue(space.name?.trim() || '');
         setRenameDialogOpen(true);
@@ -161,7 +162,9 @@ function SpaceItemContent({
     },
     {
       label: t('layout.delete'),
-      icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
+      icon: (
+        <DsIcon icon={Trash2} className="text-ds-icon-error-default-default" />
+      ),
       onSelect: () => setDeleteDialogOpen(true),
       disabled: !canManage,
       destructive: true,
@@ -218,7 +221,7 @@ function SpaceItemContent({
           <>
             <HomeHubItemBody
               title={title}
-              nameIcon={<Folder className="h-4 w-4" />}
+              nameIcon={<DsIcon icon={Folder} />}
               listCells={[
                 { id: 'type', content: spaceKindLabel },
                 {
@@ -323,7 +326,7 @@ function ProjectItemContent({
       label: t('layout.rename-project', {
         defaultValue: 'Rename session',
       }),
-      icon: <Pencil className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Pencil} aria-hidden />,
       onSelect: () => {
         setRenameValue(
           !project.nameSource &&
@@ -337,7 +340,9 @@ function ProjectItemContent({
     },
     {
       label: t('layout.delete'),
-      icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
+      icon: (
+        <DsIcon icon={Trash2} className="text-ds-icon-error-default-default" />
+      ),
       onSelect: () => onProjectDelete?.(project.project_id),
       disabled: !onProjectDelete,
       destructive: true,
@@ -378,13 +383,16 @@ function ProjectItemContent({
       >
         {loading ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-ds-ink-default-default" />
+            <DsIcon
+              icon={Loader2}
+              className="animate-spin text-ds-ink-default-default"
+            />
           </div>
         ) : null}
         {layout === 'list' ? (
           <HomeHubItemBody
             title={title}
-            nameIcon={<MessageCircle className="h-4 w-4" />}
+            nameIcon={<DsIcon icon={MessageCircle} />}
             listCells={[
               { id: 'space', content: spaceLabel || '—' },
               {
@@ -468,9 +476,9 @@ function TaskItemContent({
                 : t('layout.resume', { defaultValue: 'Resume' }),
             icon:
               controlAction === 'pause' ? (
-                <Pause className="h-4 w-4" aria-hidden />
+                <DsIcon icon={Pause} aria-hidden />
               ) : (
-                <Play className="h-4 w-4" aria-hidden />
+                <DsIcon icon={Play} aria-hidden />
               ),
             onSelect: onControl,
             disabled: controlPending,
@@ -479,12 +487,14 @@ function TaskItemContent({
       : []),
     {
       label: t('layout.share', { defaultValue: 'Share' }),
-      icon: <Share2 className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Share2} aria-hidden />,
       onSelect: onShare,
     },
     {
       label: t('layout.delete'),
-      icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
+      icon: (
+        <DsIcon icon={Trash2} className="text-ds-icon-error-default-default" />
+      ),
       onSelect: onDelete,
       destructive: true,
     },
@@ -500,13 +510,16 @@ function TaskItemContent({
     >
       {loading ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-ds-ink-default-default" />
+          <DsIcon
+            icon={Loader2}
+            className="animate-spin text-ds-ink-default-default"
+          />
         </div>
       ) : null}
       {layout === 'list' ? (
         <HomeHubItemBody
           title={title}
-          nameIcon={<ListChecks className="h-4 w-4" />}
+          nameIcon={<DsIcon icon={ListChecks} />}
           listCells={[
             { id: 'space', content: spaceLabel || '—' },
             {
@@ -559,19 +572,21 @@ function TriggerItemContent({
   const menuItems = [
     {
       label: t('triggers.edit'),
-      icon: <Pencil className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Pencil} aria-hidden />,
       onSelect: () => onEdit(trigger),
     },
     {
       label: isActive
         ? t('triggers.deactivate', { defaultValue: 'Deactivate' })
         : t('triggers.activate', { defaultValue: 'Activate' }),
-      icon: <Power className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Power} aria-hidden />,
       onSelect: () => onToggleActive(trigger),
     },
     {
       label: t('triggers.delete'),
-      icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
+      icon: (
+        <DsIcon icon={Trash2} className="text-ds-icon-error-default-default" />
+      ),
       onSelect: () => onDelete(trigger),
       destructive: true,
     },
@@ -589,7 +604,7 @@ function TriggerItemContent({
       {layout === 'list' ? (
         <HomeHubItemBody
           title={trigger.name}
-          nameIcon={<TriggerIcon className="h-4 w-4" />}
+          nameIcon={<DsIcon icon={TriggerIcon} />}
           listCells={[
             { id: 'space', content: spaceLabel || '—' },
             { id: 'type', content: triggerTypeLabel },

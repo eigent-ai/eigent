@@ -14,10 +14,15 @@
 
 import KeyboardShortcutsDialog from '@/components/Dialog/KeyboardShortcutsDialog';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('KeyboardShortcutsDialog', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('renders macOS key symbols and platform-specific window commands', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
     render(
       <KeyboardShortcutsDialog open onOpenChange={vi.fn()} platform="darwin" />
     );
@@ -35,9 +40,7 @@ describe('KeyboardShortcutsDialog', () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Minimize: ⌘+M')).toBeInTheDocument();
     expect(screen.getByLabelText('Quit Eigent: ⌘+Q')).toBeInTheDocument();
-    expect(
-      screen.getByLabelText('Toggle Chat / Trajectory View: ⌘+⇧+L')
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Toggle Dev Mode: ⌘+⇧+L')).toBeInTheDocument();
     expect(
       screen.getByLabelText('Open Browser in Preview: ⌘+⇧+B')
     ).toBeInTheDocument();
@@ -65,6 +68,20 @@ describe('KeyboardShortcutsDialog', () => {
       'GotoConfiguration⌘5',
       'Newsession⌘N',
     ]);
+  });
+
+  it('hides the Dev mode shortcut when the event timeline is off', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
+    render(
+      <KeyboardShortcutsDialog open onOpenChange={vi.fn()} platform="darwin" />
+    );
+
+    expect(
+      screen.queryByLabelText('Toggle Dev Mode: ⌘+⇧+L')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Open Browser in Preview: ⌘+⇧+B')
+    ).toBeInTheDocument();
   });
 
   it('renders Windows redo and full-screen shortcuts without mac-only rows', () => {

@@ -14,6 +14,7 @@
 
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { motion } from 'framer-motion';
 import { Plus, X } from 'lucide-react';
 import React, { useState } from 'react';
@@ -56,7 +57,7 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
             className="pointer-events-none absolute -top-2 -right-2 z-10 shrink-0 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
             aria-label={t('chat.close')}
           >
-            <X />
+            <DsIcon icon={X} />
           </Button>
         )}
         <div
@@ -75,7 +76,7 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
           onClick={handleAddTrigger}
           className="h-fit rounded-lg"
         >
-          <Plus className="h-4 w-4" />
+          <DsIcon icon={Plus} />
           {t('triggers.add-trigger')}
         </Button>
       </motion.div>

@@ -213,7 +213,7 @@ export default function Skills() {
                     count: compactNoticeCount,
                   })}
                 >
-                  <Bell />
+                  <DsIcon icon={Bell} recipe="main-compact" />
                   {compactNoticeCount}
                 </Button>
               </TooltipSimple>
@@ -298,7 +298,7 @@ export default function Skills() {
           onClick={refresh}
           aria-label={t('agents.library-refresh')}
         >
-          <RefreshCw />
+          <DsIcon icon={RefreshCw} />
         </Button>
         <Button
           variant="primary"
@@ -341,7 +341,7 @@ export default function Skills() {
                 }}
                 aria-label={t('agents.library-dismiss-notice')}
               >
-                <X />
+                <DsIcon icon={X} />
               </Button>
             </div>
           )}
@@ -585,7 +585,7 @@ export default function Skills() {
           )}
           {!loading && !profilesLoading && !visible.length && (
             <div className="flex flex-col items-center gap-ds-12 py-ds-40 text-center">
-              <DsIcon icon={Folder} recipe="detailed" />
+              <DsIcon icon={Folder} recipe="illustration" />
               <DsText className="m-0">
                 {entries.length
                   ? t('agents.library-no-results')

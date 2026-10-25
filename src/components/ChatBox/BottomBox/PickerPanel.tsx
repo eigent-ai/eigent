@@ -16,6 +16,7 @@ import { fetchConnectedProviders, providerLabel } from '@/api/connectors';
 import { proxyFetchGet } from '@/api/http';
 import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   useIntegrationManagement,
   type IntegrationItem,
@@ -194,10 +195,13 @@ function PickerPanelItem({
       </span>
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">
         {added ? (
-          <Check size={16} className="text-ds-icon-success-default-default" />
+          <DsIcon
+            icon={Check}
+            className="text-ds-icon-success-default-default"
+          />
         ) : (
-          <Plus
-            size={16}
+          <DsIcon
+            icon={Plus}
             className="text-ds-ink-muted-default opacity-0 transition-opacity group-hover:opacity-100"
           />
         )}
@@ -370,7 +374,7 @@ export function ConnectorPickerPanel({
           );
         }
         if (!item.id.startsWith('builtin-')) {
-          return <Wrench size={16} className="text-ds-ink-muted-default" />;
+          return <DsIcon icon={Wrench} className="text-ds-ink-muted-default" />;
         }
         const iconUrl = integrationLeadingIconUrl(item.name);
         return iconUrl ? (

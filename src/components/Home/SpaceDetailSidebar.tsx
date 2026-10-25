@@ -86,8 +86,9 @@ function SpaceRowMenu({
           aria-label={`${moreLabel}: ${space.name}`}
           onClick={(event) => event.stopPropagation()}
         >
-          <MoreHorizontal
-            className="size-ds-icon-md text-ds-ink-muted-default"
+          <DsIcon
+            icon={MoreHorizontal}
+            className="text-ds-ink-muted-default"
             aria-hidden
           />
         </Button>
@@ -98,7 +99,7 @@ function SpaceRowMenu({
         onClick={(event) => event.stopPropagation()}
       >
         <DropdownMenuItem className="gap-2" onSelect={() => onRename(space)}>
-          <Pencil className="h-4 w-4" aria-hidden />
+          <DsIcon icon={Pencil} aria-hidden />
           {t('layout.spaces-rename-space')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -106,8 +107,9 @@ function SpaceRowMenu({
           className="gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default"
           onSelect={() => onDelete(space)}
         >
-          <Trash2
-            className="h-4 w-4 text-ds-icon-error-default-default"
+          <DsIcon
+            icon={Trash2}
+            className="text-ds-icon-error-default-default"
             aria-hidden
           />
           {t('layout.delete')}
@@ -300,7 +302,7 @@ export default function SpaceDetailSidebar({
                 })}
                 onClick={() => setNewSpaceDialogOpen(true)}
               >
-                <Plus aria-hidden />
+                <DsIcon icon={Plus} aria-hidden />
               </Button>
             </TooltipSimple>
           }

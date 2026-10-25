@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { Maximize, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -56,9 +57,9 @@ export function WorkforceHeaderAction({
         }
       >
         {isExpandedOverlayOpen ? (
-          <X className="h-4 w-4" />
+          <DsIcon icon={X} />
         ) : (
-          <Maximize className="h-4 w-4" />
+          <DsIcon icon={Maximize} />
         )}
       </Button>
     </TooltipSimple>

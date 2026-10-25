@@ -23,6 +23,7 @@ import {
 } from '@/types';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -55,7 +56,11 @@ vi.mock('@/hooks/useChatStoreAdapter', () => ({
 
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: (selector: (state: unknown) => unknown) =>
-    selector({ activeSpaceId: 'space-1', getProjectMeta: () => null }),
+    selector({
+      activeSpaceId: 'space-1',
+      getProjectMeta: (id: string) =>
+        id === 'source-project' ? { spaceId: 'source-space' } : null,
+    }),
 }));
 
 vi.mock('@/store/triggerStore', () => ({
@@ -189,4 +194,104 @@ describe('TriggerDialog saving a schedule the editor cannot show', () => {
       );
     }
   );
+});
+
+describe('TriggerDialog opened from a Session', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.proxyCreateTrigger.mockImplementation(async (data) => ({
+      id: 2,
+      ...data,
+    }));
+  });
+
+  it('returns keyboard focus to its source control after Escape', async () => {
+    const user = userEvent.setup();
+    function SessionAutomation() {
+      const [open, setOpen] = useState(false);
+      const source = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={source} onClick={() => setOpen(true)}>
+            Session menu
+          </button>
+          <TriggerDialog
+            selectedTrigger={null}
+            isOpen={open}
+            onOpenChange={setOpen}
+            sourceProjectId="source-project"
+            initialTaskPrompt="Original request"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              source.current?.focus();
+            }}
+          />
+        </>
+      );
+    }
+    render(<SessionAutomation />);
+    const source = screen.getByRole('button', { name: 'Session menu' });
+    await user.click(source);
+    await vi.waitFor(() =>
+      expect(screen.getByPlaceholderText('Enter automation name')).toHaveFocus()
+    );
+    await user.keyboard('{Escape}');
+    await vi.waitFor(() => expect(source).toHaveFocus());
+    expect(mocks.proxyCreateTrigger).not.toHaveBeenCalled();
+  });
+
+  it('prefills the draft and creates a dedicated Session in the source Space after review', async () => {
+    const user = userEvent.setup();
+    render(
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen
+        onOpenChange={vi.fn()}
+        sourceProjectId="source-project"
+        initialTaskPrompt="Original request"
+        initialDraft={{
+          version: 1,
+          kind: 'automation-draft',
+          name: 'Weekly digest',
+          description: 'Summarize the week',
+          taskPrompt: 'Summarize this week',
+          schedule: { text: 'Every Monday at 9:00' },
+          requiredInputs: [{ name: 'Inbox', description: 'Which inbox' }],
+          unresolved: [],
+        }}
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Enter automation name')).toHaveValue(
+      'Weekly digest'
+    );
+    expect(
+      screen.getByPlaceholderText('What should this automation do?')
+    ).toHaveValue('Summarize this week');
+    expect(screen.getByText('Every Monday at 9:00')).toBeInTheDocument();
+    expect(screen.getByText('Inbox: Which inbox')).toBeInTheDocument();
+
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).toBeDisabled();
+
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: 'I reviewed the schedule and required inputs.',
+      })
+    );
+    expect(create).toBeEnabled();
+    await user.click(create);
+
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.proxyCreateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Weekly digest',
+        task_prompt: 'Summarize this week',
+        project_id: 'automation-session',
+        space_id: 'source-space',
+      })
+    );
+  });
 });

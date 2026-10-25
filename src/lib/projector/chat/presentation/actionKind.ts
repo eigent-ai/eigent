@@ -33,7 +33,17 @@ function containsAny(identity: string, terms: readonly string[]): boolean {
  * authored copy, not a UI contract.
  */
 export function actionKindForActivities(
-  nodes: readonly ChatActivityNode[]
+  nodes: readonly Partial<
+    Pick<
+      ChatActivityNode,
+      | 'subagentInvocation'
+      | 'semanticKind'
+      | 'methodName'
+      | 'toolName'
+      | 'toolkitName'
+      | 'activityType'
+    >
+  >[]
 ): TimelineActionKind {
   if (nodes.some((node) => node.subagentInvocation === true)) {
     return 'subagent';

@@ -67,7 +67,7 @@ function DetailCardHeading({
     <div className="flex flex-col items-start gap-ds-12">
       <DsIcon
         icon={icon}
-        recipe="detailed"
+        recipe="illustration"
         aria-hidden
         className="text-ds-ink-muted-default"
       />
@@ -462,7 +462,7 @@ export function AutomationDashboardView({
           </DsText>
         ) : runs.length === 0 ? (
           <div className="flex flex-col items-center gap-ds-4 px-ds-16 py-ds-40 text-center text-ds-ink-muted-default">
-            <DsIcon icon={Terminal} recipe="detailed" aria-hidden />
+            <DsIcon icon={Terminal} recipe="illustration" aria-hidden />
             <DsText as="p" role="base">
               {t('triggers.no-executions-yet')}
             </DsText>
@@ -530,7 +530,6 @@ export function AutomationDashboardView({
                     >
                       <DsIcon
                         icon={style.icon}
-                        recipe="main-compact"
                         aria-hidden
                         className={style.iconClass}
                       />

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Download, Plus, Trash2 } from 'lucide-react';
 import { expect, fn, userEvent, within } from 'storybook/test';
@@ -138,7 +139,7 @@ export const Disabled: Story = {
 export const WithIcon: Story = {
   render: (args) => (
     <Button {...args}>
-      <Plus /> Add Item
+      <DsIcon icon={Plus} /> Add Item
     </Button>
   ),
   args: {
@@ -149,7 +150,7 @@ export const WithIcon: Story = {
 export const IconOnly: Story = {
   render: (args) => (
     <Button {...args}>
-      <Download />
+      <DsIcon icon={Download} />
     </Button>
   ),
   args: {
@@ -221,7 +222,7 @@ export const AllSizes: Story = {
         XL
       </Button>
       <Button variant="primary" size="xs" buttonContent="icon-only">
-        <Trash2 />
+        <DsIcon icon={Trash2} recipe="main-compact" />
       </Button>
     </div>
   ),

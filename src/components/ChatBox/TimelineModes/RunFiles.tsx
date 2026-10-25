@@ -17,6 +17,7 @@ import {
   type ArtifactChangeListProps,
 } from '@/components/ChatBox/MessageItem/ArtifactChangeList';
 import { useSessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
@@ -348,10 +349,7 @@ export function FilesChangedSummaryRow({
       )}
       data-files-changed-summary
     >
-      <FileText
-        aria-hidden
-        className="size-4 shrink-0 text-ds-ink-subtle-default"
-      />
+      <DsIcon icon={FileText} className="text-ds-ink-subtle-default" />
       <span className="min-w-0 flex-1 text-ds-text-base font-normal text-ds-ink-default-default">
         {t('chat.files-changed')}
       </span>

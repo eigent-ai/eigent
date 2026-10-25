@@ -1918,6 +1918,58 @@ describe('ChatStore - Core Functionality', () => {
         return { store, streamContaining };
       };
 
+      it.each([
+        AgentStep.PROJECT_METADATA,
+        AgentStep.TO_SUB_TASKS,
+        AgentStep.DEACTIVATE_AGENT,
+        AgentStep.END,
+      ])(
+        'preserves a renamed Session in history writes from %s',
+        async (step) => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const project = {
+            id: 'project-1',
+            name: 'My saved title',
+            metadata: { nameSource: 'manual' },
+          };
+          const current = projectStoreState();
+          projectStoreState.mockReturnValue({
+            ...current,
+            getProjectById: () => project,
+          } as any);
+          store
+            .getState()
+            .setSummaryTask('live-run', 'Generated task title|Task summary');
+          store
+            .getState()
+            .setTaskAssigning('live-run', [
+              { agent_id: 'agent-1', agent_name: 'worker', tasks: [], log: [] },
+            ] as any);
+          vi.mocked(proxyFetchPut).mockClear();
+
+          await streamContaining('/chat').onmessage({
+            data: JSON.stringify({
+              step,
+              data: {
+                task_id: 'live-run',
+                project_name: 'Generated task title',
+                summary_task: 'Generated task title|Task summary',
+                sub_tasks: [],
+                agent_id: 'agent-1',
+                agent_name: 'worker',
+                content: 'Done',
+              },
+            }),
+          });
+
+          expect(proxyFetchPut).toHaveBeenCalledWith(
+            expect.stringContaining('/api/v1/chat/history/'),
+            expect.objectContaining({ project_name: 'My saved title' })
+          );
+          expect(project.name).toBe('My saved title');
+        }
+      );
+
       const switchLegacyStreamToFollowUp = async ({
         store,
         streamContaining,
