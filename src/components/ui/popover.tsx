@@ -15,6 +15,7 @@
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import * as React from 'react';
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, CircleAlert } from 'lucide-react';
@@ -101,8 +102,8 @@ const PopoverTrigger = React.forwardRef<
             {required && <span className="text-ds-ink-default-default">*</span>}
             {tooltip && (
               <TooltipSimple content={tooltip}>
-                <CircleAlert
-                  size={16}
+                <DsIcon
+                  icon={CircleAlert}
                   className="text-ds-ink-default-default"
                 />
               </TooltipSimple>
@@ -138,7 +139,10 @@ const PopoverTrigger = React.forwardRef<
             <span className="truncate">{children}</span>
           </div>
           {showChevron && (
-            <ChevronDown className="h-4 w-4 shrink-0 text-ds-ink-default-default" />
+            <DsIcon
+              icon={ChevronDown}
+              className="shrink-0 text-ds-ink-default-default"
+            />
           )}
         </PopoverPrimitive.Trigger>
         {note ? (
@@ -266,7 +270,7 @@ const PopoverItem = React.forwardRef<HTMLDivElement, PopoverItemProps>(
     >
       {selected && (
         <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
-          <Check className="h-4 w-4" />
+          <DsIcon icon={Check} />
         </span>
       )}
       {children}

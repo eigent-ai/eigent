@@ -22,6 +22,7 @@ import {
   CarouselContent,
   CarouselItem,
 } from '@/components/ui/carousel';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useAuthStore } from '@/store/authStore';
 import { Pause, Play } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
@@ -247,9 +248,9 @@ export const CarouselStep: React.FC = () => {
           }
         >
           {isPaused ? (
-            <Play className="h-4 w-4" />
+            <DsIcon recipe="main-compact" icon={Play} />
           ) : (
-            <Pause className="h-4 w-4" />
+            <DsIcon recipe="main-compact" icon={Pause} />
           )}
         </Button>
       </div>

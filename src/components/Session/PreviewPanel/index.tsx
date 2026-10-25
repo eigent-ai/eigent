@@ -269,7 +269,7 @@ export function PreviewPanel({
                       'bg-ds-neutral-subtle-default hover:bg-ds-neutral-muted-default'
                     )}
                   >
-                    <X className="h-3.5 w-3.5" aria-hidden />
+                    <DsIcon icon={X} recipe="main-compact" aria-hidden />
                   </button>
                 </div>
               );
@@ -312,7 +312,7 @@ export function PreviewPanel({
             })}
             className="shrink-0"
           >
-            <Plus aria-hidden />
+            <DsIcon icon={Plus} aria-hidden />
           </Button>
         </TooltipSimple>
       </ContentHeader>

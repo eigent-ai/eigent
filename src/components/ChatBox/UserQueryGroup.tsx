@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
@@ -89,8 +90,9 @@ const AgentResultCard: React.FC<{
         onClick={() => setIsOpen((v) => !v)}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        <ChevronDown
-          size={14}
+        <DsIcon
+          icon={ChevronDown}
+          recipe="main-compact"
           aria-hidden
           className={`shrink-0 text-ds-ink-default-default transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
         />
@@ -745,7 +747,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           animate={{ opacity: 1, y: 0 }}
           className="mx-2 flex flex-row items-center gap-2 rounded-xl bg-ds-neutral-default-default px-4 py-3 text-ds-text-base text-ds-ink-muted-default"
         >
-          <InfoIcon className="size-4 text-ds-ink-default-default" />
+          <DsIcon icon={InfoIcon} className="text-ds-ink-default-default" />
           {t('chat.run-no-final-response')}
         </motion.div>
       ) : null}

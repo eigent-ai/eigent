@@ -14,6 +14,7 @@
 
 import { useState } from 'react';
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Calculator, Calendar, Search, Smile } from 'lucide-react';
 
 import {
@@ -56,15 +57,15 @@ export function GlobalSearchDialog({
         <CommandEmpty>{t('dashboard.no-results')}</CommandEmpty>
         <CommandGroup heading={t('dashboard.today', { defaultValue: 'Today' })}>
           <CommandItem>
-            <Calendar />
+            <DsIcon icon={Calendar} />
             <span>{t('dashboard.calendar')}</span>
           </CommandItem>
           <CommandItem>
-            <Smile />
+            <DsIcon icon={Smile} />
             <span>{t('dashboard.search-emoji')}</span>
           </CommandItem>
           <CommandItem>
-            <Calculator />
+            <DsIcon icon={Calculator} />
             <span>{t('dashboard.calculator')}</span>
           </CommandItem>
         </CommandGroup>
@@ -83,7 +84,7 @@ export function GlobalSearch() {
         className="no-drag flex h-6 w-60 items-center justify-center space-x-2 rounded-lg bg-ds-neutral-subtle-default"
         onClick={() => setOpen(true)}
       >
-        <Search className="h-4 w-4 text-ds-ink-muted-default"></Search>
+        <DsIcon icon={Search} className="text-ds-ink-muted-default" />
         <span className="font-inter text-[10px] leading-4 text-ds-ink-muted-default">
           {t('dashboard.search-for-a-task-or-document')}
         </span>

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Puzzle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import SettingsSection from '../SettingsSection';
@@ -26,7 +27,12 @@ export default function Extension() {
         title={t('layout.coming-soon')}
         boxClassName="min-h-[200px] items-center justify-center py-16"
       >
-        <Puzzle className="mb-4 h-12 w-12 text-ds-ink-muted-default opacity-50" />
+        <DsIcon
+          icon={Puzzle}
+          recipe="illustration"
+          illustrationSize={48}
+          className="mb-4 text-ds-ink-muted-default opacity-50"
+        />
         <div className="text-center text-ds-text-base font-bold text-ds-ink-muted-default">
           {t('layout.coming-soon')}
         </div>

@@ -32,6 +32,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -602,7 +603,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 className="flex-1 gap-2 text-ds-text-base"
                 disabled={!!selectedTrigger}
               >
-                <AlarmClockIcon className="h-4 w-4" />
+                <DsIcon icon={AlarmClockIcon} />
                 {t('triggers.schedule-trigger')}
               </TabsTrigger>
               <TabsTrigger
@@ -610,7 +611,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 className="flex-1 gap-2 text-ds-text-base"
                 disabled={!!selectedTrigger}
               >
-                <CableIcon className="h-4 w-4" />
+                <DsIcon icon={CableIcon} />
                 {t('triggers.app-trigger')}
               </TabsTrigger>
             </TabsList>
@@ -668,7 +669,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         setTriggerConfigSchema(null);
                       }}
                     >
-                      <WebhookIcon className="h-5 w-5" />
+                      <DsIcon icon={WebhookIcon} />
                       <span className="text-ds-text-body-large font-semibold text-ds-ink-default-default">
                         Webhook
                       </span>
@@ -711,9 +712,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 <div className="space-y-4">
                   <div className="mb-4 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      {selectedApp === 'slack' && <Slack className="h-5 w-5" />}
+                      {selectedApp === 'slack' && <DsIcon icon={Slack} />}
                       {selectedApp === 'webhook' && (
-                        <WebhookIcon className="h-5 w-5" />
+                        <DsIcon icon={WebhookIcon} />
                       )}
                       <Label className="font-bold">
                         {selectedApp.charAt(0).toUpperCase() +
@@ -749,7 +750,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                           <TooltipSimple
                             content={t('triggers.verification-required')}
                           >
-                            <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-600" />
+                            <DsIcon
+                              icon={AlertTriangle}
+                              className="shrink-0 text-yellow-600"
+                            />
                           </TooltipSimple>
                         )}
                         {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
@@ -759,7 +763,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         size="sm"
                         onClick={handleCopyWebhookUrl}
                       >
-                        <Copy />
+                        <DsIcon icon={Copy} />
                         {t('triggers.copy')}
                       </Button>
                     </div>
@@ -995,7 +999,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
               }}
               className="flex h-16 w-16 items-center justify-center rounded-full bg-ds-bg-status-completed-subtle-default shadow-sm"
             >
-              <WebhookIcon className="h-8 w-8 text-ds-icon-status-completed-default-default" />
+              <DsIcon
+                icon={WebhookIcon}
+                recipe="illustration"
+                illustrationSize={32}
+                className="text-ds-icon-status-completed-default-default"
+              />
             </motion.div>
             <motion.div
               initial={
@@ -1034,8 +1043,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 {t('triggers.your-webhook-url')}
               </Label>
               <TooltipSimple content={t('triggers.webhook-instructions')}>
-                <CircleAlert
-                  className="h-4 w-4 cursor-pointer text-ds-ink-default-default"
+                <DsIcon
+                  icon={CircleAlert}
+                  className="cursor-pointer text-ds-ink-default-default"
                   onClick={(e) => e.stopPropagation()}
                 />
               </TooltipSimple>
@@ -1050,7 +1060,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 size="sm"
                 onClick={handleCopyWebhookUrl}
               >
-                <Copy />
+                <DsIcon icon={Copy} />
                 {t('triggers.copy')}
               </Button>
             </div>
@@ -1126,7 +1136,7 @@ export const TriggerDialogButton: React.FC<TriggerDialogButtonProps> = ({
       className={className}
       disabled={disabled}
     >
-      {buttonIcon || <Plus className="mr-2 h-4 w-4" />}
+      {buttonIcon || <DsIcon icon={Plus} className="mr-2" />}
       {buttonText || t('triggers.add-trigger')}
     </Button>
   );

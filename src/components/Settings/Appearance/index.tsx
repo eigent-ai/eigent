@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { ColorPicker, normalizeHexColor } from '@/components/ui/colorPicker';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import {
   Popover,
@@ -416,19 +417,19 @@ export default function AppearanceSettings() {
               <TabsList appearance="default" className="w-full">
                 <TabsTrigger value="light" className="flex-1">
                   <span className="flex items-center gap-1 text-ds-text-base">
-                    <Sun size={16} />
+                    <DsIcon icon={Sun} />
                     <span>{t('setting.light')}</span>
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="dark" className="flex-1">
                   <span className="flex items-center gap-1 text-ds-text-base">
-                    <Moon size={16} />
+                    <DsIcon icon={Moon} />
                     <span>{t('setting.dark')}</span>
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="system" className="flex-1">
                   <span className="flex items-center gap-1 text-ds-text-base">
-                    <Monitor size={16} />
+                    <DsIcon icon={Monitor} />
                     <span>{t('setting.system-default')}</span>
                   </span>
                 </TabsTrigger>
@@ -490,7 +491,7 @@ export default function AppearanceSettings() {
               onClick={resetActiveTheme}
             >
               <span className="flex items-center gap-1 text-ds-text-base">
-                <RotateCcw />
+                <DsIcon icon={RotateCcw} />
                 <span>{t('setting.reset')}</span>
               </span>
             </Button>

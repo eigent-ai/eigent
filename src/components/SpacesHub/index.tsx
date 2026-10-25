@@ -14,6 +14,7 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Tag } from '@/components/ui/tag';
 import {
   buildTaskQuestionsById,
@@ -246,8 +247,11 @@ export default function SpacesHub() {
     return (
       <div className="flex h-full min-h-0 items-center justify-center px-6">
         <div className="flex max-w-md flex-col items-center gap-3 text-center">
-          <FolderKanban
-            className="h-10 w-10 text-ds-ink-muted-default"
+          <DsIcon
+            icon={FolderKanban}
+            recipe="illustration"
+            illustrationSize={40}
+            className="text-ds-ink-muted-default"
             aria-hidden
           />
           <div className="text-ds-text-display font-semibold text-ds-ink-default-default">
@@ -273,7 +277,7 @@ export default function SpacesHub() {
           </p>
         </div>
         <div className="hidden shrink-0 items-center gap-2 text-ds-text-base text-ds-ink-subtle-default md:flex">
-          <FolderKanban className="h-4 w-4" aria-hidden />
+          <DsIcon icon={FolderKanban} aria-hidden />
           <span>
             {t('layout.spaces-hub-space-count', {
               count: spaceSections.length,
@@ -307,7 +311,10 @@ export default function SpacesHub() {
                     onClick={() => openSpace(space.id)}
                   >
                     <span className="flex max-w-full min-w-0 items-center gap-2">
-                      <Folder className="h-4 w-4 shrink-0 text-ds-ink-muted-default" />
+                      <DsIcon
+                        icon={Folder}
+                        className="shrink-0 text-ds-ink-muted-default"
+                      />
                       <span className="truncate text-ds-text-body-large font-semibold text-ds-ink-default-default">
                         {space.name?.trim() || t('layout.spaces-untitled')}
                       </span>
@@ -335,9 +342,9 @@ export default function SpacesHub() {
                       onClick={() => void createProject(space)}
                     >
                       {creatingInSpaceId === space.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <DsIcon icon={Loader2} className="animate-spin" />
                       ) : (
-                        <Plus className="h-4 w-4" />
+                        <DsIcon icon={Plus} />
                       )}
                     </Button>
                   ) : null}
@@ -351,7 +358,7 @@ export default function SpacesHub() {
                         className="flex min-h-20 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-x border-y border-dashed border-ds-hairline-subtle-default px-4 py-5 text-center text-ds-text-base text-ds-ink-muted-default transition-colors hover:bg-ds-neutral-subtle-default"
                         onClick={() => void createProject(space)}
                       >
-                        <Plus className="h-4 w-4" aria-hidden />
+                        <DsIcon icon={Plus} aria-hidden />
                         <span>
                           {t('layout.spaces-hub-create-first-project')}
                         </span>
@@ -384,13 +391,15 @@ export default function SpacesHub() {
                           onClick={() => void openProject(space.id, project)}
                         >
                           {isProjectLoading ? (
-                            <Loader2
-                              className="h-4 w-4 shrink-0 animate-spin text-ds-ink-muted-default"
+                            <DsIcon
+                              icon={Loader2}
+                              className="shrink-0 animate-spin text-ds-ink-muted-default"
                               aria-hidden
                             />
                           ) : (
-                            <History
-                              className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
+                            <DsIcon
+                              icon={History}
+                              className="shrink-0 text-ds-ink-muted-default"
                               aria-hidden
                             />
                           )}
@@ -400,8 +409,9 @@ export default function SpacesHub() {
                               t('layout.sessions-start-new')
                             )}
                           </span>
-                          <ArrowRight
-                            className="h-4 w-4 shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity group-hover:opacity-100"
+                          <DsIcon
+                            icon={ArrowRight}
+                            className="shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity group-hover:opacity-100"
                             aria-hidden
                           />
                         </button>

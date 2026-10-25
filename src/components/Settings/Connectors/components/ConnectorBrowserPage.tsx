@@ -247,14 +247,9 @@ export function ProviderIcon({
           onError={() => setIconFailed(true)}
         />
       ) : (
-        <PlugZap
-          className={`${
-            size === 'list'
-              ? 'h-5 w-5'
-              : size === 'profile'
-                ? 'h-6 w-6'
-                : 'h-4 w-4'
-          } text-ds-ink-muted-default`}
+        <DsIcon
+          icon={PlugZap}
+          className={`${size === 'list' ? ' ' : size === 'profile' ? ' ' : ' '} text-ds-ink-muted-default`}
         />
       )}
     </div>
@@ -306,7 +301,7 @@ function CatalogLoadingBanner({ label }: { label: string }) {
       className="overflow-hidden"
     >
       <div className="flex flex-col items-center justify-center gap-2 py-3 text-ds-ink-muted-default">
-        <Loader2 className="h-5 w-5 animate-spin" />
+        <DsIcon icon={Loader2} className="animate-spin" />
         <span className="text-ds-text-meta">{label}</span>
       </div>
     </motion.div>
@@ -915,7 +910,7 @@ export default function ConnectorBrowserPage({
           size="xs"
           onClick={() => setBrowseSource('open')}
         >
-          <PlugZap aria-hidden />
+          <DsIcon icon={PlugZap} recipe="main-compact" aria-hidden />
           {t('connectors.gateway-connectors')}
         </Button>
       ) : null}
@@ -926,7 +921,7 @@ export default function ConnectorBrowserPage({
           size="xs"
           onClick={() => setBrowseSource('builtin')}
         >
-          <Server aria-hidden />
+          <DsIcon icon={Server} recipe="main-compact" aria-hidden />
           {t('connectors.source-built-in')}
         </Button>
       ) : null}
@@ -980,7 +975,7 @@ export default function ConnectorBrowserPage({
                         void loadCatalogPage(1, false, { bypassCache: true })
                       }
                     >
-                      <RefreshCw className="h-4 w-4" />
+                      <DsIcon icon={RefreshCw} />
                       {t('connectors.try-again')}
                     </Button>
                   </div>
@@ -1023,12 +1018,9 @@ export default function ConnectorBrowserPage({
                                     <span className="truncate text-ds-text-base font-bold text-ds-ink-default-default">
                                       {providerLabel(provider)}
                                     </span>
-                                    <BadgeCheck
-                                      className={`h-3.5 w-3.5 shrink-0 ${
-                                        installed
-                                          ? 'text-ds-icon-success-default-default'
-                                          : 'text-ds-ink-muted-default'
-                                      }`}
+                                    <DsIcon
+                                      icon={BadgeCheck}
+                                      className={`shrink-0 ${installed ? 'text-ds-icon-success-default-default' : 'text-ds-ink-muted-default'}`}
                                     />
                                     {provider.recommended ? (
                                       <span className="shrink-0 text-ds-text-meta font-bold text-ds-text-warning-strong-default">
@@ -1043,9 +1035,15 @@ export default function ConnectorBrowserPage({
                                   ) : null}
                                 </div>
                                 {installed ? (
-                                  <Settings className="h-4 w-4 shrink-0 text-ds-ink-muted-default" />
+                                  <DsIcon
+                                    icon={Settings}
+                                    className="shrink-0 text-ds-ink-muted-default"
+                                  />
                                 ) : (
-                                  <Plus className="h-4 w-4 shrink-0 text-ds-ink-muted-default" />
+                                  <DsIcon
+                                    icon={Plus}
+                                    className="shrink-0 text-ds-ink-muted-default"
+                                  />
                                 )}
                               </button>
                             );
@@ -1059,7 +1057,10 @@ export default function ConnectorBrowserPage({
                             {loadingMore ? (
                               <>
                                 <div className="flex flex-col items-center gap-2 text-ds-text-meta text-ds-ink-muted-default">
-                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <DsIcon
+                                    icon={Loader2}
+                                    className="animate-spin"
+                                  />
                                   {t('connectors.loading-more')}
                                 </div>
                                 <CatalogLoadingGrid count={2} />
@@ -1098,7 +1099,10 @@ export default function ConnectorBrowserPage({
                         className="group flex h-20 items-center gap-3 rounded-2xl border border-x border-y border-solid border-transparent bg-ds-neutral-subtle-default px-4 py-3 text-left transition-colors hover:border-ds-hairline-default-default hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                       >
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default">
-                          <Server className="h-5 w-5 text-ds-ink-muted-default" />
+                          <DsIcon
+                            icon={Server}
+                            className="text-ds-ink-muted-default"
+                          />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-1.5">
@@ -1116,9 +1120,15 @@ export default function ConnectorBrowserPage({
                           </span>
                         </div>
                         {installed ? (
-                          <Settings className="h-4 w-4 shrink-0 text-ds-ink-muted-default" />
+                          <DsIcon
+                            icon={Settings}
+                            className="shrink-0 text-ds-ink-muted-default"
+                          />
                         ) : (
-                          <Plus className="h-4 w-4 shrink-0 text-ds-ink-muted-default" />
+                          <DsIcon
+                            icon={Plus}
+                            className="shrink-0 text-ds-ink-muted-default"
+                          />
                         )}
                       </button>
                     );
@@ -1439,7 +1449,7 @@ export default function ConnectorBrowserPage({
             >
               <DocumentContentRail className="flex flex-wrap items-start gap-ds-16">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-ds-card bg-ds-neutral-default-default text-ds-ink-muted-default shadow-ds-elevation-control">
-                  <DsIcon icon={Server} recipe="detailed" />
+                  <DsIcon icon={Server} recipe="illustration" />
                 </div>
                 <div className="min-w-0 flex-1 basis-64">
                   <DsText
