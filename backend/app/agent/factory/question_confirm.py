@@ -22,14 +22,12 @@ from app.model.chat import Chat
 
 
 def question_confirm_agent(options: Chat):
-    prompt_time = agent_current_time(options)
-    agent = agent_model(
+    return agent_model(
         "question_confirm_agent",
         append_connected_app_mcp_notice(
-            QUESTION_CONFIRM_SYS_PROMPT.format(now_str=prompt_time)
+            QUESTION_CONFIRM_SYS_PROMPT.format(
+                now_str=agent_current_time(options)
+            )
         ),
         options,
     )
-
-    agent._prompt_current_time = prompt_time
-    return agent

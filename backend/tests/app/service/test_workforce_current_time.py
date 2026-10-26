@@ -18,9 +18,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from camel.agents import ChatAgent
-from camel.models import ModelFactory
-from camel.types import ModelPlatformType, ModelType
 
 import app.agent.utils as clock_utils
 import app.service.chat_service as service
@@ -72,12 +69,7 @@ async def test_warm_follow_up_keeps_all_workers_on_attempt_clock(
         task_id="follow-up-run",
         prompt_current_time=follow_up_time,
     )
-    question_agent = ChatAgent(
-        system_message=f"The current date is {initial_time}.",
-        model=ModelFactory.create(ModelPlatformType.STUB, ModelType.STUB),
-    )
-    question_agent._prompt_current_time = initial_time
-    mock_task_lock.question_agent = question_agent
+    mock_task_lock.question_agent = MagicMock()
     mock_task_lock.conversation_history = []
     mock_task_lock.agent_memory_history = []
     queue = asyncio.Queue()
@@ -194,8 +186,6 @@ async def test_warm_follow_up_keeps_all_workers_on_attempt_clock(
         with run_context_scope(follow_up):
             assert '"confirmed"' in await asyncio.wait_for(anext(stream), 5)
             assert "workers ready" in await asyncio.wait_for(anext(stream), 5)
-        question_context, _ = question_agent.memory.get_context()
-        assert follow_up_time in question_context[0]["content"]
         assert set(factory_times) == {
             "browser_agent",
             "multi_modal_agent",

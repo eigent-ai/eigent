@@ -52,42 +52,15 @@ def agent_current_time(options, *, task_id: str | None = None) -> str:
 def refresh_agent_current_time(agent, current_time: str) -> None:
     """Refresh a retained agent only at a new Run boundary, before reset."""
     previous = getattr(agent, "_prompt_current_time", None)
-    original = getattr(agent, "_original_system_message", None)
+    prompt = getattr(agent, "_prompt_system_message", None)
     if (
         isinstance(previous, str)
         and previous != current_time
-        and original is not None
+        and prompt is not None
     ):
-        agent.update_system_message(
-            original.create_new_instance(
-                original.content.replace(previous, current_time)
-            ),
-            reset_memory=False,
+        prompt = prompt.create_new_instance(
+            prompt.content.replace(previous, current_time)
         )
-        _replace_stored_system_message(agent)
+        agent.update_system_message(prompt, reset_memory=False)
+        agent._prompt_system_message = prompt
         agent._prompt_current_time = current_time
-
-
-def _replace_stored_system_message(agent) -> None:
-    """Keep the system record the model reads in step with the agent.
-
-    ``update_system_message(reset_memory=False)`` keeps the conversation but
-    leaves the first stored record (what the model actually receives) on the
-    old text, so rewrite that record in place.
-    """
-    system_message = getattr(agent, "system_message", None)
-    block = getattr(
-        getattr(agent, "memory", None), "_chat_history_block", None
-    )
-    storage = getattr(block, "storage", None)
-    if system_message is None or storage is None:
-        return
-    records = storage.load()
-    if not records or records[0].get("role_at_backend") != "system":
-        return
-    records[0]["message"]["content"] = system_message.content
-    storage.clear()
-    storage.save(records)
-    creator = agent.memory.get_context_creator()
-    if hasattr(creator, "clear_cache"):
-        creator.clear_cache()

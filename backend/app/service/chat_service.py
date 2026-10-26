@@ -57,7 +57,7 @@ from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
-from app.agent.utils import agent_current_time, refresh_agent_current_time
+from app.agent.utils import agent_current_time
 from app.hands.interface import IHands
 from app.memory import (
     build_durable_context_projection_for_task_lock,
@@ -681,7 +681,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         )
 
     question_agent = task_lock.question_agent
-    refresh_agent_current_time(question_agent, agent_current_time(options))
 
     # Other variables
     camel_task = None
@@ -829,9 +828,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "task_id": getattr(item, "new_task_id", None)
                         or options.task_id
                     }
-                )
-                refresh_agent_current_time(
-                    question_agent, agent_current_time(workforce_options)
                 )
                 start_event_loop = False
 

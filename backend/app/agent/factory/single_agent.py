@@ -104,13 +104,14 @@ async def single_agent(
         if bundle_context:
             system_message = f"{system_message}\n\n{bundle_context}"
 
+    system_prompt = BaseMessage.make_assistant_message(
+        role_name="Single Agent",
+        content=system_message,
+    )
     try:
         agent = agent_model(
             Agents.single_agent,
-            BaseMessage.make_assistant_message(
-                role_name="Single Agent",
-                content=system_message,
-            ),
+            system_prompt,
             options,
             assembly.tools,
             tool_names=assembly.tool_names,
@@ -137,6 +138,7 @@ async def single_agent(
             )
         raise
     agent._prompt_current_time = prompt_time
+    agent._prompt_system_message = system_prompt
     if pause_event is not None:
         agent.pause_event = pause_event
     if assembly.observable_todo_toolkit is not None:

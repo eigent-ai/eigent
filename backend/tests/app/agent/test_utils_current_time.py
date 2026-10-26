@@ -143,7 +143,7 @@ def test_retained_agent_updates_only_the_clock_without_resetting_memory():
     new = "2026-07-02 02:00:00 Europe/London (BST, UTC+01:00)"
     agent = SimpleNamespace(
         _prompt_current_time=old,
-        _original_system_message=BaseMessage.make_assistant_message(
+        _prompt_system_message=BaseMessage.make_assistant_message(
             role_name="Single Agent",
             content=f"Instructions\nCurrent date/time: {old}\nTools",
         ),
@@ -154,33 +154,37 @@ def test_retained_agent_updates_only_the_clock_without_resetting_memory():
     refresh_agent_current_time(agent, new)
     message = agent.update_system_message.call_args.args[0]
     assert message.content == f"Instructions\nCurrent date/time: {new}\nTools"
+    assert message.role_name == "Single Agent"
     assert agent.update_system_message.call_args.kwargs == {
         "reset_memory": False
     }
+    assert agent._prompt_system_message is message
+    assert agent._prompt_current_time == new
 
 
-def test_refreshed_time_reaches_the_model_context_of_a_retained_agent():
+def test_refreshed_time_reaches_the_model_after_run_reset():
     from camel.agents import ChatAgent
     from camel.messages import BaseMessage
     from camel.models import ModelFactory
-    from camel.types import ModelPlatformType, ModelType, OpenAIBackendRole
+    from camel.types import ModelPlatformType, ModelType
 
     from app.agent.utils import refresh_agent_current_time
 
+    prompt = BaseMessage.make_assistant_message(
+        role_name="Single Agent",
+        content="The current date is 2026-10-21 14:00:00 UTC.",
+    )
     agent = ChatAgent(
-        system_message="The current date is 2026-10-21 14:00:00 UTC.",
+        system_message=prompt,
         model=ModelFactory.create(ModelPlatformType.STUB, ModelType.STUB),
     )
     agent._prompt_current_time = "2026-10-21 14:00:00 UTC"
-    agent.update_memory(
-        BaseMessage.make_user_message("user", "hello"),
-        OpenAIBackendRole.USER,
-    )
+    agent._prompt_system_message = prompt
 
     refresh_agent_current_time(agent, "2026-10-22 16:00:00 UTC")
+    agent.reset()
 
     context, _ = agent.memory.get_context()
     assert context[0]["content"] == (
         "The current date is 2026-10-22 16:00:00 UTC."
     )
-    assert context[-1]["content"] == "hello"
