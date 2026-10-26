@@ -18,6 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
@@ -444,7 +445,18 @@ def test_stream_file_supports_byte_ranges(monkeypatch, tmp_path):
     assert head.headers["accept-ranges"] == "bytes"
 
 
-def test_stream_file_can_be_framed_by_the_app_only(monkeypatch, tmp_path):
+@pytest.mark.parametrize("prefix", ["", "/api/v1"])
+@pytest.mark.parametrize(
+    "route",
+    [
+        "/files/stream",
+        "/files/stream/display.pdf",
+        "/files/stream/中文 report.pdf",
+    ],
+)
+def test_stream_file_can_be_framed_by_the_app_only(
+    monkeypatch, tmp_path, prefix, route
+):
     project_root = tmp_path / "project"
     project_root.mkdir()
     (project_root / "report.pdf").write_bytes(b"%PDF-1.4\n")
@@ -456,14 +468,14 @@ def test_stream_file_can_be_framed_by_the_app_only(monkeypatch, tmp_path):
 
     app = FastAPI()
     app.add_middleware(SecurityHeadersMiddleware)
-    app.include_router(file_controller.router)
+    app.include_router(file_controller.router, prefix=prefix)
     client = TestClient(app)
     params = {"project_id": "project-1", "email": "user@example.com"}
 
     # The Files PDF preview loads this URL in an iframe. X-Frame-Options: DENY
     # makes Chromium replace the frame with a blank error page.
     stream = client.get(
-        "/files/stream", params={**params, "path": "report.pdf"}
+        prefix + route, params={**params, "path": "report.pdf"}
     )
     assert stream.status_code == 200
     assert "x-frame-options" not in stream.headers
@@ -474,10 +486,15 @@ def test_stream_file_can_be_framed_by_the_app_only(monkeypatch, tmp_path):
     assert {"'self'", "http://localhost:*", "file:"} <= sources
     assert "*" not in sources
 
-    listing = client.get("/files", params=params)
+    listing = client.get(prefix + "/files", params=params)
     assert listing.status_code == 200
     assert listing.headers["x-frame-options"] == "DENY"
     assert "content-security-policy" not in listing.headers
+
+    for unrelated in ("/files/streaming", "/files/stream-other"):
+        response = client.get(prefix + unrelated, params=params)
+        assert response.headers["x-frame-options"] == "DENY"
+        assert "content-security-policy" not in response.headers
 
 
 def test_task_changes_endpoint_requires_local_capability(
@@ -523,3 +540,46 @@ def test_task_changes_endpoint_requires_local_capability(
         "scan_status": "complete",
         "truncated": False,
     }
+
+
+def test_named_pdf_preview_preserves_authorized_identity_and_byte_ranges(
+    monkeypatch, tmp_path
+):
+    (tmp_path / "actual.pdf").write_bytes(b"0123456789")
+    monkeypatch.setattr(
+        file_controller, "_resolve_file_root", lambda *_a, **_k: tmp_path
+    )
+    app = FastAPI()
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.include_router(file_controller.router)
+    client = TestClient(app)
+    params = {
+        "path": "actual.pdf",
+        "project_id": "project-1",
+        "email": "user@example.com",
+    }
+    response = client.get(
+        "/files/stream/display.pdf",
+        params=params,
+        headers={"Range": "bytes=2-5"},
+    )
+    assert response.status_code == 206
+    assert response.content == b"2345"
+    assert "actual.pdf" in response.headers["content-disposition"]
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-range"] == "bytes 2-5/10"
+    assert "x-frame-options" not in response.headers
+    assert response.headers["content-security-policy"].startswith(
+        "frame-ancestors "
+    )
+
+    head = client.head("/files/stream/display.pdf", params=params)
+    assert head.status_code == 200
+    assert head.content == b""
+    assert head.headers["content-length"] == "10"
+    assert "actual.pdf" in head.headers["content-disposition"]
+    assert "x-frame-options" not in head.headers
+    assert (
+        head.headers["content-security-policy"]
+        == response.headers["content-security-policy"]
+    )
