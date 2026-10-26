@@ -1182,7 +1182,7 @@ class RunCoordinator:
                     }:
                         raise
                     # An interruption stays resumable only once committed.
-                    # Resume, Cancel or startup recovery finalizes outputs.
+                    # A later Resume or Cancel finalizes its outputs.
                     logger.exception(
                         "Interrupted Run artifact finalization needs attention",
                         extra={"run_id": run_id},
