@@ -371,15 +371,19 @@ They are not dead code, but nothing exercises them yet:
   `EventNativeProjectTimeline` has no caller that passes it, so `'detailed'` is
   always in force until a detail-level control is wired up.
 - `VITE_CHATBOX_EVENT_BUS` gates the ChatBox event-native renderer and control
-  path and is unset in every checked-in env file, so the legacy conversation
-  renderer ships by default. It does **not** gate the Session-level Project
-  event runtime or the new SidePanel.
+  path. The event-native timeline is the default: the variable is unset in
+  every checked-in env file, and only `VITE_CHATBOX_EVENT_BUS=false` switches a
+  build back to the legacy conversation renderer for an emergency rollback. The
+  value is read at build time, so a rollback needs a new build. CI runs the
+  ChatBox tests with `false` so the rollback renderer stays green. The flag
+  does **not** gate the Session-level Project event runtime or the new
+  SidePanel.
 
 ### Project runtime cutover
 
 `ProjectEventRuntimeProvider` is mounted by the Session shell whenever a
 Project is active. The SidePanel uses that durable snapshot as its Run and
-activity source even while ChatBox still renders its legacy path. This runtime
+activity source whichever ChatBox renderer a build uses. This runtime
 ownership is therefore an intentional default cutover, not a staged surface
 behind `VITE_CHATBOX_EVENT_BUS`.
 
@@ -448,7 +452,8 @@ After the dependencies above are resolved:
 4. Make `EventNativeProjectTimeline` the only conversation renderer.
 5. Remove the legacy/event-native conditional state and handlers from
    `ChatBox/index.tsx`.
-6. Retire `VITE_CHATBOX_EVENT_BUS` after event-native rendering is the default.
+6. Retire `VITE_CHATBOX_EVENT_BUS` and its rollback CI step once no rollback
+   build is needed.
 7. Remove legacy projection normalization only after the event store no longer
    relies on legacy `/chat` frames as an ingestion source.
 8. Delete or update the corresponding legacy tests.
