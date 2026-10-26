@@ -1664,6 +1664,21 @@ describe('ChatStore - Core Functionality', () => {
         ).toContain(executionId);
       });
 
+      it.each([false, true])(
+        'sends the local timezone for resume=%s',
+        async (resume) => {
+          const startup = beginStartup({ resume });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          expect(JSON.parse(stream.body).timezone).toBe(
+            Intl.DateTimeFormat().resolvedOptions().timeZone
+          );
+          await stream.onopen(response());
+          await startup.admission;
+          startup.finishStream();
+        }
+      );
+
       it('preserves draft files added after task preparation but before readiness and first open', async () => {
         const startup = beginStartup();
         const nextDraft = [file('next-turn.txt')];
