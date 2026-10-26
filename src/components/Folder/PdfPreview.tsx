@@ -33,7 +33,9 @@ export function pdfPreviewUrl(url: string, name: string): string {
   if (
     parsed.protocol === 'localfile:' &&
     parsed.hostname === 'preview' &&
-    parsed.searchParams.has('path')
+    // Match the host: an empty path falls back to the URL path, which must
+    // stay the file path rather than become the display name.
+    parsed.searchParams.get('path')
   ) {
     parsed.pathname = '/' + encodeURIComponent(name);
   } else if (/\/files\/stream$/.test(parsed.pathname)) {

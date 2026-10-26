@@ -80,7 +80,7 @@ import {
 } from './commands/nativeMenuMessages';
 import { copyBrowserData } from './copy';
 import { getOrCreateDesktopInstanceId } from './desktopIdentity';
-import { resolveFileByteRange } from './fileRange';
+import { inlineContentDisposition, resolveFileByteRange } from './fileRange';
 import { FileReader } from './fileReader';
 import {
   checkToolInstalled,
@@ -4008,7 +4008,9 @@ app.whenReady().then(async () => {
         'Accept-Ranges': 'bytes',
         'Content-Type': contentType,
         'Content-Length': contentLength.toString(),
-        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(path.basename(authorizedFilePath))}`,
+        'Content-Disposition': inlineContentDisposition(
+          path.basename(authorizedFilePath)
+        ),
       };
       if (status === 206) {
         headers['Content-Range'] = `bytes ${start}-${end}/${stats.size}`;

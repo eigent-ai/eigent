@@ -41,3 +41,20 @@ it('leaves a URL it cannot parse unchanged', () => {
     'relative/report.pdf'
   );
 });
+it('names local previews only when the query carries the file path', () => {
+  const named = new URL(
+    pdfPreviewUrl(
+      'localfile://preview/?path=%2Fdocs%2Factual.pdf',
+      "Bob's report.pdf"
+    )
+  );
+  expect(decodeURIComponent(named.pathname)).toBe("/Bob's report.pdf");
+  expect(named.searchParams.get('path')).toBe('/docs/actual.pdf');
+
+  // The host reads an empty path as "use the URL path", so the display name
+  // must not take its place.
+  const empty = new URL(
+    pdfPreviewUrl('localfile://preview/docs/actual.pdf?path=', 'other.pdf')
+  );
+  expect(empty.pathname).toBe('/docs/actual.pdf');
+});
