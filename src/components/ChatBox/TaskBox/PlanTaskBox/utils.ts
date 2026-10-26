@@ -66,6 +66,12 @@ export function parseStreamingTasks(text: string): {
 /** True while the task is between user-prompt and `to_sub_tasks` arrival. */
 export function isPlanSplittingPhase(task: any): boolean {
   if (!task) return false;
+  // A persisted request is not evidence that task planning started.
+  if (
+    task.durableRunStatus === 'pending' &&
+    !task.messages?.some((message: any) => message.role !== 'user')
+  )
+    return false;
   const anyToSubTasks = task.messages?.find(
     (m: any) => m.step === AgentStep.TO_SUB_TASKS
   );

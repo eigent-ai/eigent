@@ -1976,7 +1976,42 @@ async def start_chat_stream(data: Chat, request: Request):
                 request,
                 admission_request_id=request_id,
             )
-        except Exception:
+        except Exception as exc:
+            capability_refusal = isinstance(
+                exc,
+                (ModelCapabilityConfigError, UnsupportedThinkingEffortError),
+            )
+            permanent_refusal = capability_refusal or (
+                isinstance(exc, HTTPException) and exc.status_code == 422
+            )
+            if permanent_refusal and isinstance(journal, SQLiteRunJournal):
+                detail = (
+                    _model_capability_http_error(exc).detail
+                    if capability_refusal
+                    else getattr(exc, "detail", None)
+                )
+                message = (
+                    detail.get("message", str(detail))
+                    if isinstance(detail, dict)
+                    else str(detail or exc)
+                )
+                await asyncio.to_thread(
+                    journal.reject_unstarted_run,
+                    run_id,
+                    project_id=data.project_id,
+                    message=message,
+                    request_id=request_id,
+                    question=data.question,
+                    attachment_names=[
+                        Path(path).name for path in data.attaches or []
+                    ],
+                    review_handoff_ids=data.review_handoff_ids,
+                    error_code=(
+                        detail.get("code")
+                        if isinstance(detail, dict)
+                        else None
+                    ),
+                )
             if _is_weak_continuation(data.question):
                 await asyncio.to_thread(
                     journal.release_unadmitted_continuation,
