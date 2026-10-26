@@ -4378,6 +4378,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             auth_source: apiModel.auth_source,
             installed_mcp: connectorGatewayMcpConfig || { mcpServers: {} },
             language: systemLanguage,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             allow_local_system: true,
             attaches: (
               messageAttaches ||
