@@ -1522,7 +1522,6 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               preserveTaskId: true,
               awaitAdmission: true,
               deferPresentationUntilAdmission: true,
-              skipHistoryCreate: true,
               ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
             }
           );

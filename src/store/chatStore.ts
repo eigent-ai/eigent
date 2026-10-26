@@ -3210,12 +3210,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : '/chat';
 
       const { tasks: _tasks } = get();
-      let historyId: string | null =
-        startOptions.historyId != null
+      const deferHistoryCreate =
+        !type &&
+        !startOptions.skipHistoryCreate &&
+        !!startOptions.deferPresentationUntilAdmission;
+      const previousHistoryId = project_id
+        ? projectStore.getHistoryId(project_id)
+        : null;
+      let historyId: string | null = deferHistoryCreate
+        ? null
+        : startOptions.historyId != null
           ? String(startOptions.historyId)
-          : project_id
-            ? projectStore.getHistoryId(project_id)
-            : null;
+          : previousHistoryId;
       let snapshots: any = [];
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;
@@ -3821,7 +3827,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const spaceRootPath = isLocalWorkspaceSpace(requestSpace)
         ? requestSpace?.rootPath || undefined
         : undefined;
-      if (!type && !startOptions.skipHistoryCreate) {
+      let deferredHistoryCreation: Promise<void> | undefined;
+      const createInitialHistory = async (deferred = false) => {
         const authStore = getAuthStore();
 
         const obj = {
@@ -3850,16 +3857,34 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           status: 1,
           tokens: 0,
         };
-        await proxyFetchPost(`/api/v1/chat/history`, obj).then((res) => {
+        const controller = deferred ? new AbortController() : null;
+        const timer = controller
+          ? setTimeout(() => controller.abort(), 5000)
+          : undefined;
+        try {
+          const res = deferred
+            ? await proxyFetchPost('/api/v1/chat/history', obj, undefined, {
+                signal: controller!.signal,
+                expectedAccountKey: triggerAccountKey,
+              })
+            : await proxyFetchPost('/api/v1/chat/history', obj);
+          if (deferred && !res?.id)
+            throw new Error('Accepted task history did not return an ID');
           historyId = res.id;
-
-          /**Save history id for replay reuse purposes.
-           * TODO(history): Remove historyId handling to support per projectId
-           * instead in history api
-           */
-          if (project_id && historyId)
+          if (
+            project_id &&
+            historyId &&
+            (!deferred ||
+              (getAccountEnvironmentKey(getAuthStore()) === triggerAccountKey &&
+                projectStore.getHistoryId(project_id) === previousHistoryId))
+          )
             projectStore.setHistoryId(project_id, historyId);
-        });
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
+      };
+      if (!type && !startOptions.skipHistoryCreate && !deferHistoryCreate) {
+        await createInitialHistory();
       } else if (!type && project_id && historyId) {
         projectStore.setHistoryId(project_id, historyId);
       }
@@ -7511,6 +7536,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
+          if (deferHistoryCreate) {
+            // Acceptance owns the queue acknowledgement even if history fails.
+            // Wait before reading SSE frames so they can only update this Run's
+            // history; reconnects share the same bounded creation request.
+            deferredHistoryCreation ??= createInitialHistory(true).catch(
+              (error) =>
+                console.warn('Accepted task history unavailable:', error)
+            );
+            await deferredHistoryCreation;
+          }
           if (!type && project_id) {
             observeCanonicalTerminal(lockedChatStore, lockedTaskId);
           }
