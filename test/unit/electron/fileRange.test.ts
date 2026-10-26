@@ -13,7 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { describe, expect, it } from 'vitest';
-import { resolveFileByteRange } from '../../../electron/main/fileRange';
+import {
+  inlineContentDisposition,
+  resolveFileByteRange,
+} from '../../../electron/main/fileRange';
 
 describe('resolveFileByteRange', () => {
   it('returns the full file when Range is absent', () => {
@@ -43,5 +46,16 @@ describe('resolveFileByteRange', () => {
       status: 416,
     });
     expect(resolveFileByteRange('bytes=0-1', 0)).toEqual({ status: 416 });
+  });
+});
+
+describe('inlineContentDisposition', () => {
+  it('percent-encodes characters RFC 5987 does not allow', () => {
+    expect(inlineContentDisposition("Bob's (draft)*.pdf")).toBe(
+      "inline; filename*=UTF-8''Bob%27s%20%28draft%29%2A.pdf"
+    );
+    expect(inlineContentDisposition('报告 1.pdf')).toBe(
+      "inline; filename*=UTF-8''%E6%8A%A5%E5%91%8A%201.pdf"
+    );
   });
 });

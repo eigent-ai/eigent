@@ -49,7 +49,12 @@ _frame_ancestors = " ".join(
 )
 # File responses the app shows inside a frame: HTML previews, and the file
 # stream that the built-in PDF viewer loads. Every other route stays DENY.
-_framed_file_path_prefixes = ("/files/preview/", "/api/v1/files/preview/")
+_framed_file_path_prefixes = (
+    "/files/preview/",
+    "/api/v1/files/preview/",
+    "/files/stream/",
+    "/api/v1/files/stream/",
+)
 _framed_file_paths = ("/files/stream", "/api/v1/files/stream")
 
 

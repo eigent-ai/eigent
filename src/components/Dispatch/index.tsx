@@ -20,6 +20,7 @@ import ContentHeader from '@/components/Layout/ContentHeader';
 import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { formatAppDate } from '@/lib/appDate';
 import {
   createRemoteControlSession,
   getRemoteControlBridgeError,
@@ -287,7 +288,7 @@ const LOG_STATUS_STYLE: Record<RemoteControlLogStatus, string> = {
 
 function formatLogTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString([], {
+  return formatAppDate(d, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',

@@ -2982,7 +2982,8 @@ export function FileViewerPanel({
   const pdfFrameFailed = usePdfFrameLoadFailed(
     selectedType === 'pdf' && typeof selectedFile?.content === 'string'
       ? selectedFile.content
-      : undefined
+      : undefined,
+    selectedFile?.name
   );
   const supportsRichView =
     Boolean(selectedFile) &&
@@ -3225,7 +3226,7 @@ export function FileViewerPanel({
 
       {/* content */}
       <div
-        className={`flex min-h-0 flex-1 flex-col ${
+        className={`flex min-h-0 min-w-0 flex-1 flex-col ${
           showsHtmlPreview || showsCodeSource || selectedType === 'pdf'
             ? 'overflow-hidden'
             : 'scrollbar-always-visible overflow-y-auto'
