@@ -19,6 +19,7 @@ import pytest
 
 from app.agent.agent_model import (
     _configure_responses_instructions,
+    _ensure_additional_props_false_for_groq,
     agent_model,
 )
 from app.model.chat import AgentModelConfig, Chat
@@ -803,3 +804,64 @@ class TestAgentIntegration:
             agent.step = MagicMock(return_value=mock_response)
             result = agent.step("Test message")
             assert result is mock_response
+
+
+def _unclosed_object_paths(schema: object, path: str = "root") -> list[str]:
+    """Return every object schema that does not set additionalProperties: false."""
+    if isinstance(schema, dict):
+        unclosed = []
+        if (
+            schema.get("type") == "object"
+            and schema.get("additionalProperties") is not False
+        ):
+            unclosed.append(path)
+        for key, value in schema.items():
+            unclosed.extend(_unclosed_object_paths(value, f"{path}.{key}"))
+        return unclosed
+    if isinstance(schema, list):
+        unclosed = []
+        for index, value in enumerate(schema):
+            unclosed.extend(_unclosed_object_paths(value, f"{path}[{index}]"))
+        return unclosed
+    return []
+
+
+def _search_tool():
+    from camel.toolkits import FunctionTool
+
+    def search_web(
+        query: str,
+        filters: dict | None = None,
+        modes: list[str] | None = None,
+    ) -> str:
+        """Search the web."""
+        return ""
+
+    return FunctionTool(search_web)
+
+
+def test_groq_closes_every_nested_object_schema():
+    tools = [_search_tool()]
+    schema = _ensure_additional_props_false_for_groq(tools, "groq")[0]
+    parameters = schema.get_openai_tool_schema()["function"]["parameters"]
+
+    assert _unclosed_object_paths(parameters) == []
+
+
+def test_groq_does_not_mutate_the_original_tool():
+    tools = [_search_tool()]
+    before = tools[0].get_openai_tool_schema()
+    _ensure_additional_props_false_for_groq(tools, "groq")
+
+    assert tools[0].get_openai_tool_schema() == before
+
+
+def test_non_groq_platform_leaves_tools_untouched():
+    tools = [_search_tool()]
+
+    assert _ensure_additional_props_false_for_groq(tools, "anthropic") == tools
+
+
+@pytest.mark.parametrize("tools", [None, []])
+def test_groq_handles_missing_tools(tools):
+    assert _ensure_additional_props_false_for_groq(tools, "groq") == tools
