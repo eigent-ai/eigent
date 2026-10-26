@@ -291,14 +291,15 @@ async def test_active_previous_run_keeps_its_writer_on_rejected_follow_up(
         "workspace-writer:first"
     )
     handle = await warm.runtime.get_handle("first")
-    with pytest.raises(
-        InvalidRunTransitionError, match="already executes Run"
-    ):
+    with pytest.raises(HTTPException) as conflict:
         await controller.improve(
             "session",
             SupplementChat(question="write second", task_id="second"),
             warm.request,
         )
+    assert conflict.value.status_code == 409
+    assert conflict.value.detail["code"] == "project_run_active"
+    assert conflict.value.detail["run_id"] == "first"
     assert warm.lock.run_context == old_context
     assert await warm.runtime.get_handle("first") is handle
     assert await warm.runtime.get_handle("second") is None
