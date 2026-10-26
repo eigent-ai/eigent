@@ -29,7 +29,7 @@ import {
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
 import { useAuthStore } from '@/store/authStore';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -348,6 +348,63 @@ describe('useInterruptedRunStatus', () => {
       await Promise.resolve();
     });
     expect(fetchGetMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps queue settlement false until reconciliation finishes and an interruption is resolved', async () => {
+    let release!: (value: unknown) => void;
+    fetchGetMock.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+    expect(result.current.settled).toBe(false);
+    await act(async () => {
+      release({ runs: [] });
+    });
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const interrupted = {
+      run_id: 'failed-task',
+      version: 1,
+      project_id: 'project_one',
+      status: 'interrupted',
+      updated_at: 100,
+      latest_attempt: { attempt_number: 1, status: 'interrupted' },
+    };
+    act(() =>
+      runProjectionStore.upsertRunSummaries('project_one', [interrupted])
+    );
+    expect(result.current.settled).toBe(false);
+    act(() =>
+      runProjectionStore.upsertRunSummaries('project_one', [
+        {
+          ...interrupted,
+          version: 2,
+          status: 'cancelled',
+          updated_at: 200,
+          latest_attempt: { attempt_number: 1, status: 'cancelled' },
+        },
+      ])
+    );
+    expect(result.current.settled).toBe(true);
+    fetchGetMock.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    let refresh!: Promise<void>;
+    act(() => {
+      refresh = result.current.refresh();
+    });
+    expect(result.current.settled).toBe(false);
+    await act(async () => {
+      release({ runs: [] });
+      await refresh;
+    });
+    expect(result.current.settled).toBe(true);
   });
 
   it('coalesces overlapping refreshes for the same Project', async () => {

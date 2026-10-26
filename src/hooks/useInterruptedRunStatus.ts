@@ -35,6 +35,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
@@ -136,6 +137,9 @@ export function useInterruptedRunStatus(projectId: string | null) {
     resumeRequestsRevision,
     resumeRequestsRevision
   );
+  const refreshRevision = useRef(0);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const scope = JSON.stringify([accountKey, projectId]);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const selectInterrupted = useCallback(
     (state: import('@/lib/projector').ProjectViewState | null) => {
@@ -206,9 +210,20 @@ export function useInterruptedRunStatus(projectId: string | null) {
         setDismissed(null);
         return Promise.resolve();
       }
+      const revision = ++refreshRevision.current;
+      const refreshAccountKey = getAccountEnvironmentKey(getAuthStore());
+      setLoadedScope(null);
       return runEventIngressRegistry
         .reconcileProject(projectId)
-        .then(() => setDismissed(null))
+        .then(() => {
+          if (
+            refreshRevision.current !== revision ||
+            getAccountEnvironmentKey(getAuthStore()) !== refreshAccountKey
+          )
+            return;
+          setDismissed(null);
+          setLoadedScope(JSON.stringify([accountKey, projectId]));
+        })
         .catch((error) => {
           // Brain can still be booting while the Project shell is visible. Keep
           // the last canonical state until backend-ready/focus retries it.
@@ -217,7 +232,7 @@ export function useInterruptedRunStatus(projectId: string | null) {
           }
         });
     },
-    [projectId]
+    [projectId, accountKey]
   );
 
   useEffect(() => {
@@ -249,5 +264,11 @@ export function useInterruptedRunStatus(projectId: string | null) {
     };
   }, [host?.ipcRenderer, projectId, refresh]);
 
-  return { run, setRun, refresh };
+  const settled =
+    loadedScope === scope &&
+    (!summary ||
+      ['completed', 'failed', 'cancelled', 'timed_out'].includes(
+        summary.status
+      ));
+  return { run, setRun, refresh, settled };
 }

@@ -1300,6 +1300,8 @@ export interface StartTaskOptions {
   replaySource?: 'cloud' | 'local_durable';
   /** Resolve only after Brain has accepted the initial SSE request. */
   awaitAdmission?: boolean;
+  /** Queued sends publish their message and selection only after acceptance. */
+  deferPresentationUntilAdmission?: boolean;
   /** Stable review handoffs durably admitted with this user message. */
   reviewHandoffIds?: string[];
   /**
@@ -1319,7 +1321,7 @@ export interface ChatStore {
   activeTaskId: string | null;
   nextTaskId: string | null;
   tasks: { [key: string]: Task };
-  create: (id?: string, type?: any) => string;
+  create: (id?: string, type?: any, activate?: boolean) => string;
   /**
    * Replace a task's full state in one commit — used by the IDB-backed
    * project cache to skip the SSE replay path when we already have a
@@ -2715,11 +2717,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    create(id?: string, type?: any) {
+    create(id?: string, type?: any, activate = true) {
       const taskId = id ? id : generateUniqueId();
       console.log('Create Task', taskId);
       set((state) => ({
-        activeTaskId: taskId,
+        activeTaskId: activate ? taskId : state.activeTaskId,
         tasks: {
           ...state.tasks,
           [taskId]: {
@@ -2979,11 +2981,30 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       //Create a new chatStore on Start
       let newTaskId = taskId;
+      let queuedPresentationCommitted = false;
+      let queuedCandidateOwned = false;
       let targetChatStore = { getState: () => get() }; // Default to current store
       /**
        * Replay creates its own chatStore for each task with replayProject
        */
-      if (project_id && type !== 'replay' && startOptions.resumeRequestId) {
+      if (project_id && !type && startOptions.deferPresentationUntilAdmission) {
+        const owner = projectStore.getChatStore(project_id);
+        if (!owner)
+          throw createLocalError(
+            i18next.t('chat.selected-session-unavailable', {
+              defaultValue: 'The selected session is not available.',
+            })
+          );
+        targetChatStore = owner;
+        if (!owner.getState().tasks[taskId]) {
+          owner.getState().create(taskId, undefined, false);
+          queuedCandidateOwned = true;
+        }
+      } else if (
+        project_id &&
+        type !== 'replay' &&
+        startOptions.resumeRequestId
+      ) {
         const existing = projectStore
           .getAllChatStores(project_id)
           .find(({ chatStore }) => chatStore.getState().tasks[taskId]);
@@ -3103,6 +3124,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         }
         const targetState = targetChatStore.getState();
+        if (queuedCandidateOwned && !queuedPresentationCommitted) {
+          targetState.removeTask(newTaskId);
+          return;
+        }
         const task = targetState.tasks[newTaskId];
         if (!task) return;
         cleanupTaskSSEResources(newTaskId);
@@ -4511,6 +4536,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           forgetRejectedTriggerRun(triggerExecutionId, project_id, newTaskId);
         }
         finishStartupFailure();
+        if (
+          startOptions.deferPresentationUntilAdmission &&
+          !queuedPresentationCommitted
+        )
+          return;
         const failureState = targetChatStore.getState();
         const failureTask = failureState.tasks[newTaskId];
         const userMessage =
@@ -7451,6 +7481,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           // A reconnect may fall back to the window's own fetch.
           sseConnection.relayed = isRelayedEventStreamResponse(respond);
           const firstOpen = !resumeStreamOpened;
+          if (firstOpen && startOptions.deferPresentationUntilAdmission) {
+            queuedPresentationCommitted = true;
+            const state = targetChatStore.getState();
+            state.addMessages(newTaskId, {
+              id: newTaskId,
+              role: 'user',
+              content: messageContent || '',
+              attaches: messageAttaches || [],
+            });
+            state.setActiveTaskId(newTaskId);
+            state.setStatus(newTaskId, ChatTaskStatus.PENDING);
+            state.setIsPending(newTaskId, true);
+            state.setHasMessages(newTaskId, true);
+          }
           if (resumeStreamOpened) {
             reconcileStreamRun();
             // Let waiting cards re-check Brain now instead of at their backoff.
@@ -7837,7 +7881,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            messages: [...state.tasks[taskId].messages, message],
+            messages: state.tasks[taskId].messages.some(
+              (existing) => existing.id === message.id
+            )
+              ? state.tasks[taskId].messages.map((existing) =>
+                  existing.id === message.id ? message : existing
+                )
+              : [...state.tasks[taskId].messages, message],
           },
         },
       }));

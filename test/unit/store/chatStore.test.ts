@@ -1456,6 +1456,7 @@ describe('ChatStore - Core Functionality', () => {
 
       const beginStartup = ({
         separateOwner = false,
+        deferred = false,
         replay = false,
         resume = false,
         triggerExecutionId = undefined as string | undefined,
@@ -1465,6 +1466,16 @@ describe('ChatStore - Core Functionality', () => {
         stores.push(caller, ...(separateOwner ? [owner] : []));
         const runId = owner.getState().create('attachment-run');
         owner.getState().setAttaches(runId, [file('submitted.txt')] as any);
+        if (deferred) {
+          owner.getState().removeTask(runId);
+          owner.getState().create('previous-run');
+          owner.getState().addMessages('previous-run', {
+            id: 'original',
+            role: 'user',
+            content: 'Original task',
+          });
+        }
+
         if (resume) {
           owner.getState().setStatus(runId, ChatTaskStatus.FINISHED);
           owner.getState().setDurableRunStatus(runId, 'interrupted');
@@ -1541,6 +1552,12 @@ describe('ChatStore - Core Functionality', () => {
             : {
                 preserveTaskId: true,
                 awaitAdmission: true,
+                ...(deferred
+                  ? {
+                      deferPresentationUntilAdmission: true,
+                      skipHistoryCreate: true,
+                    }
+                  : {}),
                 ...(resume
                   ? {
                       resumeRequestId: 'resume-existing-draft',
@@ -1679,6 +1696,57 @@ describe('ChatStore - Core Functionality', () => {
         }
       );
 
+      it('keeps queued admission invisible and leaves the previous task selected after a busy refusal', async () => {
+        const startup = beginStartup({ deferred: true });
+        const outcome = startup.admission.catch((error) => error);
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        expect(
+          startup.owner.getState().tasks[startup.runId]?.messages ?? []
+        ).toEqual([]);
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        const rejection = new Response(
+          JSON.stringify({
+            detail: { code: 'project_run_active', message: 'Still running' },
+          }),
+          { status: 409, headers: { 'content-type': 'application/json' } }
+        );
+        await expect(stream.onopen(rejection)).rejects.toMatchObject({
+          code: 'project_run_active',
+        });
+        startup.finishStream();
+        await outcome;
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        expect(startup.owner.getState().tasks[startup.runId]).toBeUndefined();
+        expect(
+          startup.owner
+            .getState()
+            .tasks['previous-run'].messages.map((m) => m.content)
+        ).toEqual(['Original task']);
+      });
+
+      it('publishes a queued message once only after successful admission', async () => {
+        const startup = beginStartup({ deferred: true });
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        await startup.admission;
+        await stream.onopen(response());
+        const state = startup.owner.getState();
+        expect(state.activeTaskId).toBe(startup.runId);
+        expect(
+          state.tasks[startup.runId].messages.filter(
+            (message) => message.role === 'user'
+          )
+        ).toEqual([
+          expect.objectContaining({
+            id: startup.runId,
+            content: 'Submit this task',
+          }),
+        ]);
+        startup.finishStream();
+      });
       it('preserves draft files added after task preparation but before readiness and first open', async () => {
         const startup = beginStartup();
         const nextDraft = [file('next-turn.txt')];
@@ -1770,9 +1838,9 @@ describe('ChatStore - Core Functionality', () => {
         expect(startup.owner.getState().tasks[startup.runId].attaches).toBe(
           originalDraft
         );
-        expect(startup.owner.getState().tasks[startup.runId].messages).toEqual(
-          []
-        );
+        expect(
+          startup.owner.getState().tasks[startup.runId]?.messages ?? []
+        ).toEqual([]);
       });
 
       it('does not clear an unrelated active draft when replay opens', async () => {

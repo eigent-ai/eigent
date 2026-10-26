@@ -1737,12 +1737,13 @@ async def start_chat_stream(data: Chat, request: Request):
                 existing_task_lock.queue
             )
             if queue_owner is not None:
-                raise UserException(
-                    code.error,
-                    "This Project already has a live chat consumer. "
-                    "Submit the new Run through the follow-up endpoint or "
-                    "retire the idle runtime first.",
-                    error_code="project_consumer_active",
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "project_consumer_active",
+                        "message": "This Session still has a live task consumer.",
+                        "run_id": queue_owner.run_id,
+                    },
                 )
 
         if data.resume_request_id:
@@ -2354,6 +2355,20 @@ async def mark_follow_up_admitted(
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def improve(id: str, data: SupplementChat, request: Request):
+    try:
+        return await _admit_improve(id, data, request)
+    except ProjectExecutionLeaseConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_run_active",
+                "message": "Another task in this Session must finish before the next one starts.",
+                "run_id": exc.owner_run_id,
+            },
+        ) from exc
+
+
+async def _admit_improve(id: str, data: SupplementChat, request: Request):
     await guard_legacy_execution_entry(
         get_default_run_journal(), project_id=id, run_id=data.task_id
     )
