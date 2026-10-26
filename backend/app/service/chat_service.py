@@ -686,6 +686,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Other variables
     camel_task = None
     workforce = None
+    workforce_options = options
     mcp = None
     last_completed_task_result = ""  # Track the last completed task result
     summary_task_content = ""  # Track task summary
@@ -821,11 +822,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"'{question[:100]}...'"
                     )
 
+                # Warm streams keep the initial Chat; factories need the
+                # admitted task identity to use its immutable clock snapshot.
+                workforce_options = options.model_copy(
+                    update={
+                        "task_id": getattr(item, "new_task_id", None)
+                        or options.task_id
+                    }
+                )
                 refresh_agent_current_time(
-                    question_agent,
-                    agent_current_time(
-                        options, task_id=getattr(item, "new_task_id", None)
-                    ),
+                    question_agent, agent_current_time(workforce_options)
                 )
                 start_event_loop = False
 
@@ -1019,13 +1025,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             "[NEW-QUESTION] Creating NEW workforce instance"
                         )
                         (workforce, mcp) = await construct_workforce(
-                            options, hands=hands
+                            workforce_options, hands=hands
                         )
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
                                 format_agent_description(new_agent),
                                 await new_agent_model(
-                                    new_agent, options, hands=hands
+                                    new_agent, workforce_options, hands=hands
                                 ),
                             )
                     task_lock.status = Status.confirmed
@@ -1977,7 +1983,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.pause()
                     workforce.add_single_agent_worker(
                         format_agent_description(item),
-                        await new_agent_model(item, options, hands=hands),
+                        await new_agent_model(
+                            item, workforce_options, hands=hands
+                        ),
                     )
                     workforce.resume()
             elif item.action == Action.timeout:
