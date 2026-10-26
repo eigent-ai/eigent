@@ -1200,7 +1200,7 @@ class TestChatController:
         self, sample_chat_data, mock_request, mock_task_lock
     ):
         """Run-scoped values stay in RunContext; CAMEL path keys are published."""
-        chat_data = Chat(**sample_chat_data)
+        chat_data = Chat(**sample_chat_data, timezone="America/New_York")
 
         with (
             patch(
@@ -1232,6 +1232,8 @@ class TestChatController:
             assert run_context.api_key == "test_key"
             assert run_context.api_base_url == "https://api.openai.com/v1"
             assert run_context.browser_port == 8080
+            assert run_context.timezone == "America/New_York"
+            assert "America/New_York" in run_context.prompt_current_time
             assert os.environ.get("CAMEL_LOG_DIR") == str(
                 run_context.camel_log_dir
             )
@@ -2469,3 +2471,52 @@ async def test_session_model_still_rejects_a_different_model(
         with pytest.raises(HTTPException) as error:
             await _prepare_chat_run(chat_data, MagicMock())
     assert error.value.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retry_conflict", [False, True])
+async def test_refused_initial_admission_is_durably_failed(
+    sample_chat_data, mock_request, tmp_path, monkeypatch, retry_conflict
+):
+    import app.controller.chat_controller as controller
+    from app.workspace_config import UnsupportedThinkingEffortError
+
+    journal = SQLiteRunJournal(tmp_path / "refused.db")
+    coordinator = RunCoordinator(journal=journal)
+    data = Chat(**sample_chat_data)
+    run_id = data.run_id or data.task_id
+
+    async def refuse(*args, **kwargs):
+        journal.ensure_run(
+            run_id=run_id, project_id=data.project_id, status="pending"
+        )
+        if retry_conflict:
+            raise HTTPException(
+                status_code=409, detail={"code": "project_run_active"}
+            )
+        raise UnsupportedThinkingEffortError("Unsupported effort")
+
+    monkeypatch.setattr(controller, "get_default_run_journal", lambda: journal)
+    monkeypatch.setattr(
+        controller, "get_default_run_coordinator", lambda: coordinator
+    )
+    monkeypatch.setattr(controller, "get_task_lock_if_exists", lambda _: None)
+    monkeypatch.setattr(controller, "_prepare_chat_run", refuse)
+    with pytest.raises(HTTPException) as error:
+        await post(data, mock_request)
+    if retry_conflict:
+        assert error.value.status_code == 409
+        assert journal.get_run(run_id).status == "pending"
+        assert journal.list_events(run_id) == []
+        await coordinator.close()
+        return
+    assert error.value.status_code == 422
+    assert journal.get_run(run_id).status == "failed"
+    prompt, notice, failure = journal.list_events(run_id)
+    assert prompt.event_type == "user.message"
+    assert prompt.payload["content"] == data.question
+    assert notice.event_type == "legacy.error"
+    assert notice.payload["code"] == "unsupported_thinking_effort"
+    assert failure.event_type == "run.failed"
+    assert failure.payload["message"] == "Unsupported effort"
+    await coordinator.close()
