@@ -290,8 +290,10 @@ describe('EventNativeProjectTimeline', () => {
       ).toBeVisible();
       const refusal =
         'This model doesn’t support the selected thinking effort.';
-      await waitFor(() => expect(container.textContent).toContain(refusal));
-      expect(screen.getAllByText(new RegExp(refusal))[0]).toBeVisible();
+      // The work log body fades in after the projection settles.
+      await waitFor(() =>
+        expect(screen.getAllByText(new RegExp(refusal))[0]).toBeVisible()
+      );
       expect(container.textContent).toContain('Set thinking effort to Default');
       expect(container.textContent).not.toContain('modelcap_internal');
       expect(container.textContent).not.toContain('Splitting Tasks');
