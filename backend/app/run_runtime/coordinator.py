@@ -1169,11 +1169,24 @@ class RunCoordinator:
             }:
                 from app.artifacts import finalize_run_artifacts
 
-                await asyncio.to_thread(
-                    finalize_run_artifacts,
-                    self._journal,
-                    run,
-                )
+                try:
+                    await asyncio.to_thread(
+                        finalize_run_artifacts,
+                        self._journal,
+                        run,
+                    )
+                except Exception:
+                    if event_type not in {
+                        "run.interrupted",
+                        "runtime.interrupted",
+                    }:
+                        raise
+                    # An interruption stays resumable only once committed.
+                    # Resume, Cancel or startup recovery finalizes outputs.
+                    logger.exception(
+                        "Interrupted Run artifact finalization needs attention",
+                        extra={"run_id": run_id},
+                    )
                 result_event = await asyncio.to_thread(
                     self._journal.get_run_final_result_event,
                     run_id,

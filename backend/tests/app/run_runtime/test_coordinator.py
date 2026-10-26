@@ -753,11 +753,37 @@ async def test_warm_turn_cancel_never_becomes_success_on_legacy_end(tmp_path):
         journal.close()
 
 
+async def _interrupt_run(coordinator: RunCoordinator, event_type: str) -> None:
+    if event_type == "run.interrupted":
+        await coordinator._commit_run_terminal(
+            run_id="run-1",
+            started_at=1,
+            event_type=event_type,
+            payload={"reason": "provider_error"},
+        )
+        return
+
+    # Production path: a retryable execution stop reaches the pump.
+    from app.run_runtime.coordinator import RunInterruptedError
+
+    async def source():
+        raise RunInterruptedError("provider failed", reason="provider_error")
+        yield  # pragma: no cover
+
+    subscription = await coordinator.start_with_subscription(
+        run_id="run-1",
+        stream_factory=source,
+    )
+    await subscription.handle.wait()
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_type", ["run.interrupted", "runtime.interrupted"]
+)
 async def test_interrupted_run_keeps_written_file_in_manifest(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, event_type
 ):
-    from types import SimpleNamespace
     from unittest.mock import MagicMock
 
     from app import artifacts
@@ -782,12 +808,8 @@ async def test_interrupted_run_keeps_written_file_in_manifest(
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
         coordinator = RunCoordinator(journal)
-        await coordinator._commit_run_terminal(
-            run_id="run-1",
-            started_at=1,
-            event_type="run.interrupted",
-            payload={"reason": "provider_error"},
-        )
+        await _interrupt_run(coordinator, event_type)
+        await coordinator.close()
         assert journal.get_run("run-1").status == "interrupted"
         manifest = journal.get_run_artifact_manifest_event("run-1")
         assert manifest is not None
@@ -795,3 +817,25 @@ async def test_interrupted_run_keeps_written_file_in_manifest(
             file["relativePath"] == "saved.txt"
             for file in manifest.payload["artifacts"]
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_type", ["run.interrupted", "runtime.interrupted"]
+)
+async def test_interrupted_run_commits_when_artifact_finalization_fails(
+    tmp_path, monkeypatch, event_type
+):
+    from app import artifacts
+
+    def fail_finalization(*_args, **_kwargs):
+        raise OSError("workspace scan failed")
+
+    monkeypatch.setattr(artifacts, "finalize_run_artifacts", fail_finalization)
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        coordinator = RunCoordinator(journal)
+        await _interrupt_run(coordinator, event_type)
+        await coordinator.close()
+        assert journal.get_run("run-1").status == "interrupted"
+        assert journal.get_run_artifact_manifest_event("run-1") is None
