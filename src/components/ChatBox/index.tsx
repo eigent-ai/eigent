@@ -211,6 +211,11 @@ function selectLatestReadOnlyEventNativeRun(
   );
 }
 
+/** Longest wait between admissions while a Session is still busy. */
+const QUEUE_WAIT_RETRY_MAX_MS = 30_000;
+/** Busy refusals after which the queued message explains its wait. */
+const QUEUE_WAIT_NOTICE_ATTEMPTS = 4;
+
 function getCurrentTimestamp() {
   return Date.now();
 }
@@ -592,6 +597,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const queuedDispatchRef = useRef<string | null>(null);
   const [queueRetryAt, setQueueRetryAt] = useState(0);
   const [queueRetryRevision, setQueueRetryRevision] = useState(0);
+  const queueWaitRef = useRef<{ key: string; attempts: number } | null>(null);
   // Shared across mounts: a composer remounted by a Session switch must still
   // see an admission that an earlier mount has not finished.
   const followUpAdmissionsRef = useRef(followUpAdmissionClaims);
@@ -2350,6 +2356,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       next.reviewHandoffIds
     )
       .then(() => {
+        queueWaitRef.current = null;
         setAdmittedQueuedRun({ projectId, runId: next.task_id });
         acknowledgeQueuedRequest(projectId, next.task_id);
       })
@@ -2362,7 +2369,27 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         )
           return;
         if (isQueueAdmissionWait(error)) {
-          setQueueRetryAt(Date.now() + 1000);
+          // Back off while the Session stays busy, and explain the wait once
+          // per queued message instead of on every retry.
+          const waitKey = JSON.stringify([projectId, next.task_id]);
+          const wait =
+            queueWaitRef.current?.key === waitKey
+              ? queueWaitRef.current
+              : { key: waitKey, attempts: 0 };
+          wait.attempts += 1;
+          queueWaitRef.current = wait;
+          setQueueRetryAt(
+            Date.now() +
+              Math.min(1000 * 2 ** (wait.attempts - 1), QUEUE_WAIT_RETRY_MAX_MS)
+          );
+          if (wait.attempts === QUEUE_WAIT_NOTICE_ATTEMPTS)
+            toast.info(
+              t('chat.message-queued', {
+                defaultValue:
+                  'Message queued. Eigent will send it when the current task finishes.',
+              }),
+              { id: `queue-wait:${waitKey}` }
+            );
           projectStore.setQueuedMessageProcessing(
             projectId,
             next.task_id,
@@ -2370,9 +2397,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           );
           if (chatStore.nextTaskId === next.task_id)
             chatStore.setNextTaskId(null);
-          void refreshInterruptedRun();
           return;
         }
+        queueWaitRef.current = null;
         console.error('[FollowUpQueue] Failed to admit queued message', error);
         const rejection = terminalContinuationAdmissionRejection(error);
         if (rejection) {
@@ -2404,10 +2431,10 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     interruptedRunSettled,
     queueRetryAt,
     queueRetryRevision,
-    refreshInterruptedRun,
     chatStore,
     projectStore,
     queuedMessages,
+    t,
     queueAction,
     followUpAdmissionRevision,
     sessionProjectId,

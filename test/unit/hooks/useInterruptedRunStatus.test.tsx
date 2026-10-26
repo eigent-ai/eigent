@@ -407,6 +407,54 @@ describe('useInterruptedRunStatus', () => {
     expect(result.current.settled).toBe(true);
   });
 
+  it('keeps the last settled state when a later status check fails', async () => {
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    fetchGetMock.mockRejectedValueOnce(new Error('Brain timed out'));
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.settled).toBe(true);
+  });
+
+  it('retries a failed first status check with backoff', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchGetMock
+        .mockRejectedValueOnce(new Error('Brain timed out'))
+        .mockRejectedValueOnce(new Error('Brain timed out'))
+        .mockResolvedValue({ runs: [] });
+      const { result } = renderHook(
+        () => useInterruptedRunStatus('project_one'),
+        { wrapper }
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.settled).toBe(false);
+      expect(fetchGetMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(fetchGetMock).toHaveBeenCalledTimes(2);
+      expect(result.current.settled).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1999);
+      });
+      expect(fetchGetMock).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(fetchGetMock).toHaveBeenCalledTimes(3);
+      expect(result.current.settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('coalesces overlapping refreshes for the same Project', async () => {
     let resolveRequest!: (value: unknown) => void;
     fetchGetMock.mockReturnValue(

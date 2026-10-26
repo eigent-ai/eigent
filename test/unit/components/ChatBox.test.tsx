@@ -3910,6 +3910,133 @@ describe('ChatBox Component', async () => {
       expect(toast.error).not.toHaveBeenCalled();
     });
 
+    it('holds a queued message until the Session run status is reconciled', async () => {
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-held',
+            content: 'Follow up once',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'finished',
+            },
+          },
+        } as any,
+      });
+      let releaseRuns!: (value: unknown) => void;
+      const runs = new Promise((resolve) => {
+        releaseRuns = resolve;
+      });
+      mockFetchGet.mockImplementation((url: string) =>
+        url === '/runs'
+          ? runs
+          : Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? {
+                    has_lock: true,
+                    status: 'done',
+                    run_id: 'test-task-id',
+                    consumer_alive: true,
+                    subscriber_count: 1,
+                  }
+                : { runs: [] }
+            )
+      );
+      _mockFetchPost.mockResolvedValue({ success: true });
+      renderChatBox();
+      await waitFor(() =>
+        expect(mockFetchGet).toHaveBeenCalledWith('/runs', expect.anything())
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(_mockFetchPost).not.toHaveBeenCalled();
+      expect(
+        defaultProjectStoreState.setQueuedMessageProcessing
+      ).not.toHaveBeenCalledWith('test-project-id', 'queued-held', true);
+      await act(async () => {
+        releaseRuns({ runs: [] });
+      });
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(1));
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.objectContaining({ task_id: 'queued-held' })
+      );
+    });
+
+    it('backs off a busy queued admission and explains the wait once', async () => {
+      vi.useFakeTimers();
+      try {
+        defaultProjectStoreState.getProjectById.mockReturnValue({
+          queuedMessages: [
+            {
+              task_id: 'queued-busy',
+              content: 'Follow up once',
+              timestamp: 1,
+              attaches: [],
+            },
+          ],
+        } as any);
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: {
+            ...defaultChatStoreState,
+            tasks: {
+              'test-task-id': {
+                ...defaultChatStoreState.tasks['test-task-id'],
+                status: 'finished',
+              },
+            },
+          } as any,
+        });
+        _mockFetchPost.mockRejectedValue(
+          Object.assign(new Error('Still finishing'), {
+            response: { data: { detail: { code: 'project_run_active' } } },
+          })
+        );
+        const advance = (ms: number) =>
+          act(async () => {
+            await vi.advanceTimersByTimeAsync(ms);
+          });
+        const waitNotices = () =>
+          vi
+            .mocked(toast.info)
+            .mock.calls.filter(([, options]) =>
+              String((options as any)?.id ?? '').startsWith('queue-wait:')
+            );
+        renderChatBox();
+        await advance(50);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(1);
+        await advance(1050);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(2);
+        // The second wait is longer than the first.
+        await advance(1500);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(2);
+        await advance(600);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(3);
+        expect(waitNotices()).toHaveLength(0);
+        await advance(4100);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(4);
+        expect(waitNotices()).toHaveLength(1);
+        await advance(8100);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(5);
+        expect(waitNotices()).toHaveLength(1);
+        expect(toast.error).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('keeps an unstarted queue row available when admission fails', async () => {
       defaultProjectStoreState.getProjectById.mockReturnValue({
         queuedMessages: [
