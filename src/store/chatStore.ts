@@ -8139,9 +8139,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             .getState()
             .getAllChatStores(projectId)
             .some((entry) => entry.chatStore === store) ||
-          !UNSUCCESSFUL_RUN_STATUSES.has(
-            get().tasks[taskId]?.durableRunStatus!
-          ) ||
+          !RUN_RECEIPT_STATUSES.has(get().tasks[taskId]?.durableRunStatus!) ||
           get().tasks[taskId]?.status !== ChatTaskStatus.FINISHED ||
           get().tasks[taskId]?.executionId !== executionId
         ) {
@@ -8149,19 +8147,48 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           onFacts(undefined);
         }
       };
+      let reading = false;
+      let refreshRequested = false;
+      const refresh = async () => {
+        refreshRequested = true;
+        if (reading) return;
+        reading = true;
+        try {
+          while (refreshRequested && !controller.signal.aborted) {
+            refreshRequested = false;
+            const facts = await readTaskFailureFacts(
+              store,
+              projectId,
+              taskId,
+              controller.signal
+            );
+            if (!controller.signal.aborted && facts) onFacts(facts);
+          }
+        } finally {
+          reading = false;
+        }
+      };
       const unsubscribe = [
         useAuthStore.subscribe(invalidate),
         useProjectStore.subscribe(invalidate),
         store.subscribe(invalidate),
+        // A legacy error may finish the UI before the durable receipt exists.
+        // Refresh when its committed boundary arrives, including mid-read.
+        runDomainEventHub.subscribe(
+          {
+            projectId,
+            runId: taskId,
+            eventTypes: [
+              'run.failed',
+              'run.deadline_reached',
+              'run.interrupted',
+              'runtime.interrupted',
+            ],
+          },
+          () => void refresh()
+        ),
       ];
-      void readTaskFailureFacts(
-        store,
-        projectId,
-        taskId,
-        controller.signal
-      ).then((facts) => {
-        if (!controller.signal.aborted && facts) onFacts(facts);
-      });
+      void refresh();
       return () => {
         controller.abort();
         unsubscribe.forEach((dispose) => dispose());
