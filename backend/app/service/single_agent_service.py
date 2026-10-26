@@ -24,6 +24,7 @@ from camel.responses import ChatAgentResponse
 from fastapi import Request
 
 from app.agent.factory.single_agent import single_agent
+from app.agent.utils import agent_current_time, refresh_agent_current_time
 from app.hands.interface import IHands
 from app.memory import (
     build_durable_context_projection_for_task_lock,
@@ -478,6 +479,9 @@ async def single_agent_solve(
             agent_run_id = task_id
             agent_runtime_key = current_runtime_key
         elif agent_run_id != task_id:
+            refresh_agent_current_time(
+                agent, agent_current_time(options, task_id=task_id)
+            )
             await _reset_agent_for_run(agent, task_id=task_id)
             agent_run_id = task_id
         observable_todo = getattr(agent, "_observable_todo_toolkit", None)

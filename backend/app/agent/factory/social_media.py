@@ -38,7 +38,7 @@ from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.twitter_toolkit import TwitterToolkit
 from app.agent.toolkit.whatsapp_toolkit import WhatsAppToolkit
-from app.agent.utils import NOW_STR
+from app.agent.utils import agent_current_time
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
@@ -118,7 +118,8 @@ async def social_media_agent(options: Chat):
         agent_name=Agents.social_media_agent,
     )
     system_message = SOCIAL_MEDIA_SYS_PROMPT.format(
-        working_directory=working_directory, now_str=NOW_STR
+        working_directory=working_directory,
+        now_str=agent_current_time(options),
     )
     system_message = append_connected_app_mcp_notice(system_message)
     system_message = attach_remote_sub_agent_if_enabled(

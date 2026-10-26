@@ -1200,7 +1200,7 @@ class TestChatController:
         self, sample_chat_data, mock_request, mock_task_lock
     ):
         """Run-scoped values stay in RunContext; CAMEL path keys are published."""
-        chat_data = Chat(**sample_chat_data)
+        chat_data = Chat(**sample_chat_data, timezone="America/New_York")
 
         with (
             patch(
@@ -1232,6 +1232,8 @@ class TestChatController:
             assert run_context.api_key == "test_key"
             assert run_context.api_base_url == "https://api.openai.com/v1"
             assert run_context.browser_port == 8080
+            assert run_context.timezone == "America/New_York"
+            assert "America/New_York" in run_context.prompt_current_time
             assert os.environ.get("CAMEL_LOG_DIR") == str(
                 run_context.camel_log_dir
             )
