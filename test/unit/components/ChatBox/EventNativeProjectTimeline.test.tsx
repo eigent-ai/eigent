@@ -232,6 +232,72 @@ describe('isChatTimelineNearBottom', () => {
 });
 
 describe('EventNativeProjectTimeline', () => {
+  it.each(['narrative', 'trajectory'] as const)(
+    'restores a refused admission from durable events without optimistic messages in %s',
+    async (detailLevel) => {
+      const events = [
+        {
+          event_type: 'user.message',
+          legacy_step: null,
+          payload: {
+            content: 'Reply with the single word ok.',
+            source: 'chat',
+          },
+        },
+        {
+          event_type: 'legacy.error',
+          legacy_step: 'error',
+          payload: {
+            code: 'unsupported_thinking_effort',
+            message:
+              "effort 'max' is not supported by capability 'modelcap_internal'",
+          },
+        },
+        {
+          event_type: 'run.failed',
+          legacy_step: 'error',
+          payload: {
+            reason: 'admission_refused',
+            terminal_reason: 'error',
+            message:
+              "effort 'max' is not supported by capability 'modelcap_internal'",
+          },
+        },
+      ].map((event, index) =>
+        normalizeLocalRunEvent(
+          {
+            ...event,
+            event_id: `refused-${index}`,
+            run_id: 'run-1',
+            sequence: index + 1,
+            run_version: index + 1,
+            created_at: 1000 + index,
+          },
+          'project-1'
+        )
+      );
+      mocks.projection = projectChatEvents('project-1', events);
+      const { container } = render(
+        <EventNativeProjectTimeline
+          projectId="project-1"
+          detailLevel={detailLevel}
+          sessionMode={SessionMode.SINGLE_AGENT}
+          scrollBottomInsetPx={128}
+        />
+      );
+      expect(
+        screen.getAllByText('Reply with the single word ok.')[0]
+      ).toBeVisible();
+      const refusal =
+        'This model doesn’t support the selected thinking effort.';
+      await waitFor(() => expect(container.textContent).toContain(refusal));
+      expect(screen.getAllByText(new RegExp(refusal))[0]).toBeVisible();
+      expect(container.textContent).toContain('Set thinking effort to Default');
+      expect(container.textContent).not.toContain('modelcap_internal');
+      expect(container.textContent).not.toContain('Splitting Tasks');
+    }
+  );
+
   it.each([false, true])(
     'handles a paginated linked mirror in trajectory without its request (conflict: %s)',
     (conflict) => {

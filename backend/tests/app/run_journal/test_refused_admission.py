@@ -21,15 +21,34 @@ def test_refused_run_replays_reason_and_releases_the_lane(tmp_path):
         run_id="refused", project_id="session", status="pending"
     )
     assert journal.reject_unstarted_run(
-        "refused", project_id="session", message="Unsupported thinking effort"
+        "refused",
+        project_id="session",
+        message="Unsupported thinking effort",
+        question="reply with ok",
+        request_id="initial-request",
+        attachment_names=["notes.txt"],
+        error_code="unsupported_thinking_effort",
     )
-    assert journal.get_run("refused").status == "failed"
-    event = journal.list_events("refused")[0]
+    restored = SQLiteRunJournal(tmp_path / "journal.db")
+    assert restored.get_run("refused").status == "failed"
+    prompt, notice, event = restored.list_events("refused")
+    assert prompt.event_type == "user.message"
+    assert prompt.event_id == "user-message:initial-request"
+    assert prompt.payload["content"] == "reply with ok"
+    assert prompt.payload["attachment_names"] == ["notes.txt"]
+    assert notice.event_type == "legacy.error"
+    assert notice.payload == {
+        "message": "Unsupported thinking effort",
+        "code": "unsupported_thinking_effort",
+    }
+    assert restored.list_run_attempts("refused") == []
     assert event.event_type == "run.failed" and event.legacy_step == "error"
     assert event.payload["message"] == "Unsupported thinking effort"
+    restored.close()
     assert not journal.reject_unstarted_run(
         "refused", project_id="session", message="duplicate"
     )
+    assert len(journal.list_events("refused")) == 3
     journal.ensure_run(run_id="next", project_id="session", status="pending")
     journal.create_run_attempt(
         "next", request_id="next", reason="initial_execution"
@@ -43,13 +62,16 @@ def test_rejection_cannot_close_an_admitted_or_foreign_run(tmp_path):
     assert not journal.reject_unstarted_run(
         "run", project_id="other", message="bad"
     )
+    assert journal.list_events("run") == []
     journal.create_run_attempt(
         "run", request_id="run", reason="initial_execution"
     )
+    admitted_events = journal.list_events("run")
     assert not journal.reject_unstarted_run(
         "run", project_id="session", message="bad"
     )
     assert journal.get_run("run").status == "pending"
+    assert journal.list_events("run") == admitted_events
 
 
 def test_refusing_a_queued_follow_up_closes_its_queue_row(tmp_path):

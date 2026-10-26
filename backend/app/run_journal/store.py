@@ -11051,7 +11051,16 @@ class SQLiteRunJournal:
             )
 
     def reject_unstarted_run(
-        self, run_id: str, *, project_id: str, message: str
+        self,
+        run_id: str,
+        *,
+        project_id: str,
+        message: str,
+        request_id: str | None = None,
+        question: str | None = None,
+        attachment_names: list[str] | None = None,
+        review_handoff_ids: list[str] | None = None,
+        error_code: str | None = None,
     ) -> bool:
         """Close a refused admission without touching a consumer-owned Run."""
         with self._write_transaction() as connection:
@@ -11066,6 +11075,41 @@ class SQLiteRunJournal:
                 (run_id,),
             ).fetchone():
                 return False
+            if (
+                question is not None
+                and not connection.execute(
+                    "SELECT 1 FROM run_events WHERE run_id = ? AND event_type = 'user.message' LIMIT 1",
+                    (run_id,),
+                ).fetchone()
+            ):
+                self._append_event_in_transaction(
+                    connection,
+                    run_id,
+                    RunEventDraft(
+                        event_id=f"user-message:{request_id or run_id}",
+                        event_type="user.message",
+                        payload={
+                            "content": question,
+                            "source": "chat",
+                            "attachment_names": list(attachment_names or []),
+                            "review_handoff_ids": list(
+                                review_handoff_ids or []
+                            ),
+                        },
+                    ),
+                )
+            # A terminal event controls lifecycle; the error receipt supplies
+            # the message rendered by both timeline readers after a reload.
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=f"admission:{run_id}:error",
+                    event_type="legacy.error",
+                    legacy_step="error",
+                    payload={"message": message, "code": error_code},
+                ),
+            )
             draft = RunEventDraft(
                 event_id=f"admission:{run_id}:refused",
                 event_type="run.failed",

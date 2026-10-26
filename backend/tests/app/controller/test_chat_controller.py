@@ -2510,8 +2510,11 @@ async def test_refused_initial_admission_is_durably_failed(
         return
     assert error.value.status_code == 422
     assert journal.get_run(run_id).status == "failed"
-    assert (
-        journal.list_events(run_id)[0].payload["message"]
-        == "Unsupported effort"
-    )
+    prompt, notice, failure = journal.list_events(run_id)
+    assert prompt.event_type == "user.message"
+    assert prompt.payload["content"] == data.question
+    assert notice.event_type == "legacy.error"
+    assert notice.payload["code"] == "unsupported_thinking_effort"
+    assert failure.event_type == "run.failed"
+    assert failure.payload["message"] == "Unsupported effort"
     await coordinator.close()
