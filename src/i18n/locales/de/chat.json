@@ -569,6 +569,8 @@
   "task-failure-outcome-outcome_unknown": "Ergebnis unbekannt",
   "task-failure-outcome-unverified": "Ergebnis nicht überprüft",
   "task-failure-timed-out": "Die Zeit für die Aufgabe ist abgelaufen, bevor eine abschließende Antwort aufgezeichnet wurde.",
+  "task-failure-interrupted": "Die Aufgabe wurde unterbrochen, bevor eine abschließende Antwort aufgezeichnet wurde.",
+  "task-failure-interrupted-effects": "Eine Unterbrechung belegt nicht, ob Dateien oder externe Dienste verändert wurden.",
   "task-failure-no-actions-recorded": "Es wurden keine Aktionen aufgezeichnet.",
   "task-failure-more-actions": "{{count}} weitere Aktionen werden nicht angezeigt.",
   "approval-expired-title": "Genehmigung abgelaufen",

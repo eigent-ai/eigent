@@ -573,6 +573,8 @@
   "task-failure-outcome-outcome_unknown": "Resultado desconocido",
   "task-failure-outcome-unverified": "Resultado sin verificar",
   "task-failure-timed-out": "La tarea agotó el tiempo de espera antes de que se registrara una respuesta final.",
+  "task-failure-interrupted": "La tarea se interrumpió antes de que se registrara una respuesta final.",
+  "task-failure-interrupted-effects": "Una interrupción no permite determinar si se modificaron archivos o servicios externos.",
   "task-failure-no-actions-recorded": "No se registró ninguna acción.",
   "task-failure-more-actions": "{{count}} acciones más no se muestran.",
   "approval-expired-title": "Aprobación caducada",

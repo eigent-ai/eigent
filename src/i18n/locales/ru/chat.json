@@ -577,6 +577,8 @@
   "task-failure-outcome-outcome_unknown": "Результат неизвестен",
   "task-failure-outcome-unverified": "Результат не проверен",
   "task-failure-timed-out": "Время выполнения задачи истекло до записи окончательного ответа.",
+  "task-failure-interrupted": "Задача была прервана до записи окончательного ответа.",
+  "task-failure-interrupted-effects": "Прерывание не позволяет определить, были ли изменены файлы или внешние сервисы.",
   "task-failure-no-actions-recorded": "Действия не были записаны.",
   "task-failure-more-actions": "Ещё не показано действий: {{count}}.",
   "approval-expired-title": "Срок одобрения истёк",

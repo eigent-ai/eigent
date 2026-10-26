@@ -346,11 +346,18 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       typeof message?.content === 'string' &&
       message.content.trim().length > 0
   );
+  // The Task receipt already states that no final reply was recorded.
+  const showsFailureReceipt = Boolean(
+    ownsFailureSummary &&
+    failureFacts &&
+    failureFacts.finalResponse !== 'present'
+  );
   const showMissingFinalResponse = Boolean(
     task?.status === ChatTaskStatus.FINISHED &&
     activeTask?.durableRunStatus !== 'failed' &&
     runDisplayStatus &&
-    !hasVisibleAgentOutput
+    !hasVisibleAgentOutput &&
+    !showsFailureReceipt
   );
 
   // Set up intersection observer for this query group
