@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
+from app.agent.utils import current_time_str
 from app.auth import require_local_control_principal
 from app.auth.local_control import LocalControlPrincipal
 from app.component import code
@@ -1130,6 +1131,8 @@ def _build_run_context(
         model_parameters=dict(data.model_config_dict or {}),
         permissions=frozenset(permissions),
         credential_sources=credential_sources,
+        prompt_current_time=current_time_str(data.timezone),
+        timezone=data.timezone,
     )
 
 
@@ -1734,12 +1737,13 @@ async def start_chat_stream(data: Chat, request: Request):
                 existing_task_lock.queue
             )
             if queue_owner is not None:
-                raise UserException(
-                    code.error,
-                    "This Project already has a live chat consumer. "
-                    "Submit the new Run through the follow-up endpoint or "
-                    "retire the idle runtime first.",
-                    error_code="project_consumer_active",
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "project_consumer_active",
+                        "message": "This Session still has a live task consumer.",
+                        "run_id": queue_owner.run_id,
+                    },
                 )
 
         if data.resume_request_id:
@@ -1973,7 +1977,42 @@ async def start_chat_stream(data: Chat, request: Request):
                 request,
                 admission_request_id=request_id,
             )
-        except Exception:
+        except Exception as exc:
+            capability_refusal = isinstance(
+                exc,
+                (ModelCapabilityConfigError, UnsupportedThinkingEffortError),
+            )
+            permanent_refusal = capability_refusal or (
+                isinstance(exc, HTTPException) and exc.status_code == 422
+            )
+            if permanent_refusal and isinstance(journal, SQLiteRunJournal):
+                detail = (
+                    _model_capability_http_error(exc).detail
+                    if capability_refusal
+                    else getattr(exc, "detail", None)
+                )
+                message = (
+                    detail.get("message", str(detail))
+                    if isinstance(detail, dict)
+                    else str(detail or exc)
+                )
+                await asyncio.to_thread(
+                    journal.reject_unstarted_run,
+                    run_id,
+                    project_id=data.project_id,
+                    message=message,
+                    request_id=request_id,
+                    question=data.question,
+                    attachment_names=[
+                        Path(path).name for path in data.attaches or []
+                    ],
+                    review_handoff_ids=data.review_handoff_ids,
+                    error_code=(
+                        detail.get("code")
+                        if isinstance(detail, dict)
+                        else None
+                    ),
+                )
             if _is_weak_continuation(data.question):
                 await asyncio.to_thread(
                     journal.release_unadmitted_continuation,
@@ -2316,6 +2355,20 @@ async def mark_follow_up_admitted(
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def improve(id: str, data: SupplementChat, request: Request):
+    try:
+        return await _admit_improve(id, data, request)
+    except ProjectExecutionLeaseConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_run_active",
+                "message": "Another task in this Session must finish before the next one starts.",
+                "run_id": exc.owner_run_id,
+            },
+        ) from exc
+
+
+async def _admit_improve(id: str, data: SupplementChat, request: Request):
     await guard_legacy_execution_entry(
         get_default_run_journal(), project_id=id, run_id=data.task_id
     )
@@ -2572,6 +2625,9 @@ async def _prepare_improve_chat(
                         camel_log_dir=camel_log,
                         binding_source=frozen_dirs.binding_source,
                         attempt_id=None,
+                        prompt_current_time=current_time_str(
+                            current_context.timezone
+                        ),
                         browser_port=int(
                             getattr(request.state, "browser_port", port)
                         ),

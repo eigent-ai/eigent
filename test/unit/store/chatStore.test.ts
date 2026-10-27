@@ -1460,6 +1460,8 @@ describe('ChatStore - Core Functionality', () => {
 
       const beginStartup = ({
         separateOwner = false,
+        deferred = false,
+        previousHistoryId = null as string | null,
         replay = false,
         resume = false,
         triggerExecutionId = undefined as string | undefined,
@@ -1469,6 +1471,16 @@ describe('ChatStore - Core Functionality', () => {
         stores.push(caller, ...(separateOwner ? [owner] : []));
         const runId = owner.getState().create('attachment-run');
         owner.getState().setAttaches(runId, [file('submitted.txt')] as any);
+        if (deferred) {
+          owner.getState().removeTask(runId);
+          owner.getState().create('previous-run');
+          owner.getState().addMessages('previous-run', {
+            id: 'original',
+            role: 'user',
+            content: 'Original task',
+          });
+        }
+
         if (resume) {
           owner.getState().setStatus(runId, ChatTaskStatus.FINISHED);
           owner.getState().setDurableRunStatus(runId, 'interrupted');
@@ -1519,7 +1531,7 @@ describe('ChatStore - Core Functionality', () => {
             mode: 'single',
             spaceId: 'space-1',
           }),
-          getHistoryId: () => null,
+          getHistoryId: () => previousHistoryId,
           getAllChatStores: () => [{ chatId: 'primary', chatStore: owner }],
           setActiveChatStore: vi.fn(),
           getProjectModel: () => null,
@@ -1545,6 +1557,11 @@ describe('ChatStore - Core Functionality', () => {
             : {
                 preserveTaskId: true,
                 awaitAdmission: true,
+                ...(deferred
+                  ? {
+                      deferPresentationUntilAdmission: true,
+                    }
+                  : {}),
                 ...(resume
                   ? {
                       resumeRequestId: 'resume-existing-draft',
@@ -1744,6 +1761,249 @@ describe('ChatStore - Core Functionality', () => {
         }
       );
 
+      it.each([false, true])(
+        'sends the local timezone for resume=%s',
+        async (resume) => {
+          const startup = beginStartup({ resume });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          expect(JSON.parse(stream.body).timezone).toBe(
+            Intl.DateTimeFormat().resolvedOptions().timeZone
+          );
+          await stream.onopen(response());
+          await startup.admission;
+          startup.finishStream();
+        }
+      );
+
+      it('keeps queued admission invisible and leaves the previous task selected after a busy refusal', async () => {
+        const startup = beginStartup({ deferred: true });
+        const outcome = startup.admission.catch((error) => error);
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        expect(
+          startup.owner.getState().tasks[startup.runId]?.messages ?? []
+        ).toEqual([]);
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        const rejection = new Response(
+          JSON.stringify({
+            detail: { code: 'project_run_active', message: 'Still running' },
+          }),
+          { status: 409, headers: { 'content-type': 'application/json' } }
+        );
+        await expect(stream.onopen(rejection)).rejects.toMatchObject({
+          code: 'project_run_active',
+        });
+        startup.finishStream();
+        await outcome;
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        expect(
+          vi
+            .mocked(proxyFetchPost)
+            .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+        ).toHaveLength(0);
+        expect(startup.owner.getState().tasks[startup.runId]).toBeUndefined();
+        expect(
+          startup.owner
+            .getState()
+            .tasks['previous-run'].messages.map((m) => m.content)
+        ).toEqual(['Original task']);
+      });
+
+      it('creates a queued cold task history after acceptance and never updates its predecessor', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        const project = projectStoreState();
+        const getProject = project.getProjectById;
+        project.getProjectById = (id: string) => ({
+          ...getProject(id),
+          name: 'Existing Session',
+        });
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        expect(
+          vi
+            .mocked(proxyFetchPost)
+            .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+        ).toHaveLength(0);
+        expect(project.setHistoryId).not.toHaveBeenCalled();
+        await stream.onopen(response());
+        await startup.admission;
+        await stream.onmessage({
+          data: JSON.stringify({
+            step: AgentStep.CONFIRMED,
+            data: { task_id: startup.runId, question: 'Submit this task' },
+          }),
+        });
+        await stream.onmessage({
+          data: JSON.stringify({
+            step: AgentStep.PROJECT_METADATA,
+            data: {
+              task_id: startup.runId,
+              project_name: 'Existing Session',
+              project_summary: 'Follow-up summary',
+            },
+          }),
+        });
+        expect(proxyFetchPost).toHaveBeenCalledWith(
+          '/api/v1/chat/history',
+          expect.objectContaining({
+            task_id: startup.runId,
+            run_id: startup.runId,
+            question: 'Submit this task',
+          }),
+          undefined,
+          expect.objectContaining({ signal: expect.any(AbortSignal) })
+        );
+        expect(project.setHistoryId).toHaveBeenCalledWith(
+          'project-1',
+          'mock-history-id'
+        );
+        expect(proxyFetchPut).toHaveBeenCalledWith(
+          '/api/v1/chat/history/mock-history-id',
+          expect.objectContaining({ summary: 'Follow-up summary' })
+        );
+        expect(proxyFetchPut).not.toHaveBeenCalledWith(
+          '/api/v1/chat/history/previous-history',
+          expect.anything()
+        );
+        await stream.onopen(response());
+        expect(
+          vi
+            .mocked(proxyFetchPost)
+            .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+        ).toHaveLength(1);
+        startup.finishStream();
+      });
+
+      it('acknowledges an accepted queue request while its history is delayed', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        let resolveHistory!: (value: unknown) => void;
+        const originalPost = vi.mocked(proxyFetchPost).getMockImplementation()!;
+        vi.mocked(proxyFetchPost).mockImplementation((url, ...args) =>
+          url === '/api/v1/chat/history'
+            ? new Promise((resolve) => {
+                resolveHistory = resolve;
+              })
+            : originalPost(url, ...args)
+        );
+        try {
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          const opening = stream.onopen(response());
+          await startup.admission;
+          expect(startup.owner.getState().activeTaskId).toBe(startup.runId);
+          expect(projectStoreState().setHistoryId).not.toHaveBeenCalled();
+          resolveHistory({ id: 'queued-history' });
+          await opening;
+          expect(projectStoreState().setHistoryId).toHaveBeenCalledWith(
+            'project-1',
+            'queued-history'
+          );
+          startup.finishStream();
+        } finally {
+          vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+        }
+      });
+
+      it('keeps accepted queued work admitted when history fails and never falls back to the previous history', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        const project = projectStoreState();
+        const getProject = project.getProjectById;
+        project.getProjectById = (id: string) => ({
+          ...getProject(id),
+          name: 'Existing Session',
+        });
+        const originalPost = vi.mocked(proxyFetchPost).getMockImplementation()!;
+        vi.mocked(proxyFetchPost).mockRejectedValueOnce(
+          new Error('history service unavailable')
+        );
+        try {
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          await expect(stream.onopen(response())).resolves.toBeUndefined();
+          await expect(startup.admission).resolves.toBeUndefined();
+          await stream.onmessage({
+            data: JSON.stringify({
+              step: AgentStep.PROJECT_METADATA,
+              data: {
+                task_id: startup.runId,
+                project_name: 'Existing Session',
+                project_summary: 'Follow-up summary',
+              },
+            }),
+          });
+          await stream.onopen(response());
+          expect(startup.owner.getState().activeTaskId).toBe(startup.runId);
+          expect(
+            startup.owner
+              .getState()
+              .tasks[startup.runId].messages.filter(
+                (message) => message.role === 'user'
+              )
+          ).toHaveLength(1);
+          expect(project.setHistoryId).not.toHaveBeenCalled();
+          expect(proxyFetchPut).not.toHaveBeenCalled();
+          expect(
+            vi
+              .mocked(proxyFetchPost)
+              .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+          ).toHaveLength(1);
+          startup.finishStream();
+        } finally {
+          vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+        }
+      });
+
+      it.each([false, true])(
+        'binds delayed history independently of viewed tasks and preserves a newer history (newer=%s)',
+        async (newer) => {
+          const startup = beginStartup({
+            deferred: true,
+            previousHistoryId: 'previous-history',
+          });
+          const project = projectStoreState();
+          let resolveHistory!: (value: unknown) => void;
+          const originalPost = vi
+            .mocked(proxyFetchPost)
+            .getMockImplementation()!;
+          vi.mocked(proxyFetchPost).mockImplementation((url, ...args) =>
+            url === '/api/v1/chat/history'
+              ? new Promise((resolve) => {
+                  resolveHistory = resolve;
+                })
+              : originalPost(url, ...args)
+          );
+          try {
+            startup.releaseReady();
+            const stream = await startup.getStream();
+            const opening = stream.onopen(response());
+            await startup.admission;
+            startup.owner.getState().setActiveTaskId('previous-run');
+            if (newer) project.getHistoryId = () => 'newer-history';
+            resolveHistory({ id: 'queued-history' });
+            await opening;
+            if (newer) expect(project.setHistoryId).not.toHaveBeenCalled();
+            else
+              expect(project.setHistoryId).toHaveBeenCalledWith(
+                'project-1',
+                'queued-history'
+              );
+            startup.finishStream();
+          } finally {
+            vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+          }
+        }
+      );
+
       it('still resumes when the earlier browser use cannot be read', async () => {
         const originalFetch = vi.mocked(fetchGet).getMockImplementation();
         const invoke = vi.fn(async (channel: string) => {
@@ -1789,6 +2049,63 @@ describe('ChatStore - Core Functionality', () => {
         }
       });
 
+      it('bounds a stalled accepted-task history request without undoing admission', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        const originalPost = vi.mocked(proxyFetchPost).getMockImplementation()!;
+        vi.mocked(proxyFetchPost).mockImplementation((url, ...args) =>
+          url === '/api/v1/chat/history'
+            ? new Promise((_, reject) => {
+                const options = args[2] as { signal: AbortSignal };
+                options.signal.addEventListener(
+                  'abort',
+                  () => reject(new Error('history timed out')),
+                  { once: true }
+                );
+              })
+            : originalPost(url, ...args)
+        );
+        try {
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          vi.useFakeTimers();
+          const opening = stream.onopen(response());
+          await expect(startup.admission).resolves.toBeUndefined();
+          await vi.advanceTimersByTimeAsync(5000);
+          await expect(opening).resolves.toBeUndefined();
+          expect(startup.owner.getState().activeTaskId).toBe(startup.runId);
+          expect(projectStoreState().setHistoryId).not.toHaveBeenCalled();
+          startup.finishStream();
+        } finally {
+          vi.useRealTimers();
+          vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+        }
+      });
+
+      it('publishes a queued message once only after successful admission', async () => {
+        const startup = beginStartup({ deferred: true });
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        await startup.admission;
+        await stream.onopen(response());
+        const state = startup.owner.getState();
+        expect(state.activeTaskId).toBe(startup.runId);
+        expect(
+          state.tasks[startup.runId].messages.filter(
+            (message) => message.role === 'user'
+          )
+        ).toEqual([
+          expect.objectContaining({
+            id: startup.runId,
+            content: 'Submit this task',
+          }),
+        ]);
+        startup.finishStream();
+      });
       it('preserves draft files added after task preparation but before readiness and first open', async () => {
         const startup = beginStartup();
         const nextDraft = [file('next-turn.txt')];
@@ -1880,9 +2197,9 @@ describe('ChatStore - Core Functionality', () => {
         expect(startup.owner.getState().tasks[startup.runId].attaches).toBe(
           originalDraft
         );
-        expect(startup.owner.getState().tasks[startup.runId].messages).toEqual(
-          []
-        );
+        expect(
+          startup.owner.getState().tasks[startup.runId]?.messages ?? []
+        ).toEqual([]);
       });
 
       it('does not clear an unrelated active draft when replay opens', async () => {

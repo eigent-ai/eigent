@@ -22,10 +22,7 @@ import { isSupersededRunError } from '@/lib/taskLifecycleUi';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
-import {
-  UNSUCCESSFUL_RUN_STATUSES,
-  type VanillaChatStore,
-} from '@/store/chatStore';
+import { RUN_RECEIPT_STATUSES, type VanillaChatStore } from '@/store/chatStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
@@ -256,7 +253,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       : activeTask?.durableRunStatus;
   const ownsFailureSummary =
     queryGroup.ownsRunWorkLog === true &&
-    UNSUCCESSFUL_RUN_STATUSES.has(activeTask?.durableRunStatus!) &&
+    RUN_RECEIPT_STATUSES.has(activeTask?.durableRunStatus!) &&
     activeTask?.status === ChatTaskStatus.FINISHED;
   const [failureEvidence, setFailureEvidence] = useState<{
     taskId: string;
@@ -349,11 +346,18 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       typeof message?.content === 'string' &&
       message.content.trim().length > 0
   );
+  // The Task receipt already states that no final reply was recorded.
+  const showsFailureReceipt = Boolean(
+    ownsFailureSummary &&
+    failureFacts &&
+    failureFacts.finalResponse !== 'present'
+  );
   const showMissingFinalResponse = Boolean(
     task?.status === ChatTaskStatus.FINISHED &&
     activeTask?.durableRunStatus !== 'failed' &&
     runDisplayStatus &&
-    !hasVisibleAgentOutput
+    !hasVisibleAgentOutput &&
+    !showsFailureReceipt
   );
 
   // Set up intersection observer for this query group

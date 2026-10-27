@@ -834,6 +834,11 @@ export const UNSUCCESSFUL_RUN_STATUSES = new Set<DurableRunDisplayStatus>([
   'timed_out',
 ]);
 
+export const RUN_RECEIPT_STATUSES = new Set<DurableRunDisplayStatus>([
+  ...UNSUCCESSFUL_RUN_STATUSES,
+  'interrupted',
+]);
+
 interface Task {
   source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
@@ -1300,6 +1305,8 @@ export interface StartTaskOptions {
   replaySource?: 'cloud' | 'local_durable';
   /** Resolve only after Brain has accepted the initial SSE request. */
   awaitAdmission?: boolean;
+  /** Queued sends publish their message and selection only after acceptance. */
+  deferPresentationUntilAdmission?: boolean;
   /** Stable review handoffs durably admitted with this user message. */
   reviewHandoffIds?: string[];
   /**
@@ -1319,7 +1326,7 @@ export interface ChatStore {
   activeTaskId: string | null;
   nextTaskId: string | null;
   tasks: { [key: string]: Task };
-  create: (id?: string, type?: any) => string;
+  create: (id?: string, type?: any, activate?: boolean) => string;
   /**
    * Replace a task's full state in one commit — used by the IDB-backed
    * project cache to skip the SSE replay path when we already have a
@@ -2481,7 +2488,8 @@ export async function readTaskFailureFacts(
         task &&
         current &&
         current.executionId === task.executionId &&
-        UNSUCCESSFUL_RUN_STATUSES.has(current.durableRunStatus!) &&
+        RUN_RECEIPT_STATUSES.has(current.durableRunStatus!) &&
+        !current.isPending &&
         current.status === ChatTaskStatus.FINISHED
       )
     );
@@ -2510,11 +2518,38 @@ export async function readTaskFailureFacts(
     const result = await readTerminalRunResult({
       projectId,
       runId: taskId,
-      terminalEventTypes: ['run.failed', 'run.deadline_reached'],
+      terminalEventTypes: [
+        'run.failed',
+        'run.deadline_reached',
+        'run.interrupted',
+        'runtime.interrupted',
+      ],
       signal: controller.signal,
       expectedAccountKey: accountKey,
       includeFailureFacts: true,
     });
+    if (
+      isCurrent() &&
+      task.durableRunStatus === 'interrupted' &&
+      !task.artifactManifestFinalized
+    ) {
+      const artifacts = await loadRecoveredTaskArtifactFileList(
+        {
+          taskId,
+          projectId,
+          email: getAuthStore().email || undefined,
+          userId: getAuthStore().user_id,
+        },
+        controller.signal
+      );
+      if (isCurrent() && artifacts.canonical)
+        owner.getState().setArtifactManifest(taskId, {
+          files: artifacts.files,
+          finalized: true,
+          scanStatus: artifacts.scanStatus || 'complete',
+          truncated: artifacts.truncated,
+        });
+    }
     return isCurrent()
       ? withRunTerminalReason(
           result.failureFacts ?? unverifiedTaskFailureFacts()
@@ -2715,11 +2750,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    create(id?: string, type?: any) {
+    create(id?: string, type?: any, activate = true) {
       const taskId = id ? id : generateUniqueId();
       console.log('Create Task', taskId);
       set((state) => ({
-        activeTaskId: taskId,
+        activeTaskId: activate ? taskId : state.activeTaskId,
         tasks: {
           ...state.tasks,
           [taskId]: {
@@ -2979,11 +3014,30 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       //Create a new chatStore on Start
       let newTaskId = taskId;
+      let queuedPresentationCommitted = false;
+      let queuedCandidateOwned = false;
       let targetChatStore = { getState: () => get() }; // Default to current store
       /**
        * Replay creates its own chatStore for each task with replayProject
        */
-      if (project_id && type !== 'replay' && startOptions.resumeRequestId) {
+      if (project_id && !type && startOptions.deferPresentationUntilAdmission) {
+        const owner = projectStore.getChatStore(project_id);
+        if (!owner)
+          throw createLocalError(
+            i18next.t('chat.selected-session-unavailable', {
+              defaultValue: 'The selected session is not available.',
+            })
+          );
+        targetChatStore = owner;
+        if (!owner.getState().tasks[taskId]) {
+          owner.getState().create(taskId, undefined, false);
+          queuedCandidateOwned = true;
+        }
+      } else if (
+        project_id &&
+        type !== 'replay' &&
+        startOptions.resumeRequestId
+      ) {
         const existing = projectStore
           .getAllChatStores(project_id)
           .find(({ chatStore }) => chatStore.getState().tasks[taskId]);
@@ -3103,6 +3157,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         }
         const targetState = targetChatStore.getState();
+        if (queuedCandidateOwned && !queuedPresentationCommitted) {
+          targetState.removeTask(newTaskId);
+          return;
+        }
         const task = targetState.tasks[newTaskId];
         if (!task) return;
         cleanupTaskSSEResources(newTaskId);
@@ -3185,12 +3243,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : '/chat';
 
       const { tasks: _tasks } = get();
-      let historyId: string | null =
-        startOptions.historyId != null
+      const deferHistoryCreate =
+        !type &&
+        !startOptions.skipHistoryCreate &&
+        !!startOptions.deferPresentationUntilAdmission;
+      const previousHistoryId = project_id
+        ? projectStore.getHistoryId(project_id)
+        : null;
+      let historyId: string | null = deferHistoryCreate
+        ? null
+        : startOptions.historyId != null
           ? String(startOptions.historyId)
-          : project_id
-            ? projectStore.getHistoryId(project_id)
-            : null;
+          : previousHistoryId;
       let snapshots: any = [];
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;
@@ -3796,7 +3860,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const spaceRootPath = isLocalWorkspaceSpace(requestSpace)
         ? requestSpace?.rootPath || undefined
         : undefined;
-      if (!type && !startOptions.skipHistoryCreate) {
+      let deferredHistoryCreation: Promise<void> | undefined;
+      const createInitialHistory = async (deferred = false) => {
         const authStore = getAuthStore();
 
         const obj = {
@@ -3825,16 +3890,34 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           status: 1,
           tokens: 0,
         };
-        await proxyFetchPost(`/api/v1/chat/history`, obj).then((res) => {
+        const controller = deferred ? new AbortController() : null;
+        const timer = controller
+          ? setTimeout(() => controller.abort(), 5000)
+          : undefined;
+        try {
+          const res = deferred
+            ? await proxyFetchPost('/api/v1/chat/history', obj, undefined, {
+                signal: controller!.signal,
+                expectedAccountKey: triggerAccountKey,
+              })
+            : await proxyFetchPost('/api/v1/chat/history', obj);
+          if (deferred && !res?.id)
+            throw new Error('Accepted task history did not return an ID');
           historyId = res.id;
-
-          /**Save history id for replay reuse purposes.
-           * TODO(history): Remove historyId handling to support per projectId
-           * instead in history api
-           */
-          if (project_id && historyId)
+          if (
+            project_id &&
+            historyId &&
+            (!deferred ||
+              (getAccountEnvironmentKey(getAuthStore()) === triggerAccountKey &&
+                projectStore.getHistoryId(project_id) === previousHistoryId))
+          )
             projectStore.setHistoryId(project_id, historyId);
-        });
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
+      };
+      if (!type && !startOptions.skipHistoryCreate && !deferHistoryCreate) {
+        await createInitialHistory();
       } else if (!type && project_id && historyId) {
         projectStore.setHistoryId(project_id, historyId);
       }
@@ -4413,6 +4496,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             auth_source: apiModel.auth_source,
             installed_mcp: connectorGatewayMcpConfig || { mcpServers: {} },
             language: systemLanguage,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             allow_local_system: true,
             attaches: (
               messageAttaches ||
@@ -4546,6 +4630,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           forgetRejectedTriggerRun(triggerExecutionId, project_id, newTaskId);
         }
         finishStartupFailure();
+        if (
+          startOptions.deferPresentationUntilAdmission &&
+          !queuedPresentationCommitted
+        )
+          return;
         const failureState = targetChatStore.getState();
         const failureTask = failureState.tasks[newTaskId];
         const userMessage =
@@ -7486,6 +7575,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           // A reconnect may fall back to the window's own fetch.
           sseConnection.relayed = isRelayedEventStreamResponse(respond);
           const firstOpen = !resumeStreamOpened;
+          if (firstOpen && startOptions.deferPresentationUntilAdmission) {
+            queuedPresentationCommitted = true;
+            const state = targetChatStore.getState();
+            state.addMessages(newTaskId, {
+              id: newTaskId,
+              role: 'user',
+              content: messageContent || '',
+              attaches: messageAttaches || [],
+            });
+            state.setActiveTaskId(newTaskId);
+            state.setStatus(newTaskId, ChatTaskStatus.PENDING);
+            state.setIsPending(newTaskId, true);
+            state.setHasMessages(newTaskId, true);
+          }
           if (resumeStreamOpened) {
             reconcileStreamRun();
             // Let waiting cards re-check Brain now instead of at their backoff.
@@ -7502,6 +7605,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
+          if (deferHistoryCreate) {
+            // Acceptance owns the queue acknowledgement even if history fails.
+            // Wait before reading SSE frames so they can only update this Run's
+            // history; reconnects share the same bounded creation request.
+            deferredHistoryCreation ??= createInitialHistory(true).catch(
+              (error) =>
+                console.warn('Accepted task history unavailable:', error)
+            );
+            await deferredHistoryCreation;
+          }
           if (!type && project_id) {
             observeCanonicalTerminal(lockedChatStore, lockedTaskId);
           }
@@ -7872,7 +7985,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            messages: [...state.tasks[taskId].messages, message],
+            messages: state.tasks[taskId].messages.some(
+              (existing) => existing.id === message.id
+            )
+              ? state.tasks[taskId].messages.map((existing) =>
+                  existing.id === message.id ? message : existing
+                )
+              : [...state.tasks[taskId].messages, message],
           },
         },
       }));
@@ -8142,9 +8261,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             .getState()
             .getAllChatStores(projectId)
             .some((entry) => entry.chatStore === store) ||
-          !UNSUCCESSFUL_RUN_STATUSES.has(
-            get().tasks[taskId]?.durableRunStatus!
-          ) ||
+          !RUN_RECEIPT_STATUSES.has(get().tasks[taskId]?.durableRunStatus!) ||
           get().tasks[taskId]?.status !== ChatTaskStatus.FINISHED ||
           get().tasks[taskId]?.executionId !== executionId
         ) {
@@ -8152,19 +8269,48 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           onFacts(undefined);
         }
       };
+      let reading = false;
+      let refreshRequested = false;
+      const refresh = async () => {
+        refreshRequested = true;
+        if (reading) return;
+        reading = true;
+        try {
+          while (refreshRequested && !controller.signal.aborted) {
+            refreshRequested = false;
+            const facts = await readTaskFailureFacts(
+              store,
+              projectId,
+              taskId,
+              controller.signal
+            );
+            if (!controller.signal.aborted && facts) onFacts(facts);
+          }
+        } finally {
+          reading = false;
+        }
+      };
       const unsubscribe = [
         useAuthStore.subscribe(invalidate),
         useProjectStore.subscribe(invalidate),
         store.subscribe(invalidate),
+        // A legacy error may finish the UI before the durable receipt exists.
+        // Refresh when its committed boundary arrives, including mid-read.
+        runDomainEventHub.subscribe(
+          {
+            projectId,
+            runId: taskId,
+            eventTypes: [
+              'run.failed',
+              'run.deadline_reached',
+              'run.interrupted',
+              'runtime.interrupted',
+            ],
+          },
+          () => void refresh()
+        ),
       ];
-      void readTaskFailureFacts(
-        store,
-        projectId,
-        taskId,
-        controller.signal
-      ).then((facts) => {
-        if (!controller.signal.aborted && facts) onFacts(facts);
-      });
+      void refresh();
       return () => {
         controller.abort();
         unsubscribe.forEach((dispose) => dispose());

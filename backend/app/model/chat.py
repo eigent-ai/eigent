@@ -97,6 +97,7 @@ class Chat(BaseModel):
     # no behavior change). See docs/models/codex-subscription-auth-review.md.
     auth_source: Literal["codex_subscription"] | None = None
     language: str = "en"
+    timezone: str | None = None
     browser_port: int = 9222
     cdp_browsers: list[dict] = Field(default_factory=list)
     browser_unavailable_on_resume: bool = False

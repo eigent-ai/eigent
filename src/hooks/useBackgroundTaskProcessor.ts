@@ -14,7 +14,6 @@
 
 import { fetchGet } from '@/api/http';
 import i18n from '@/i18n';
-import { generateUniqueId } from '@/lib';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
   type LegacyChatRuntimeStatus,
@@ -384,7 +383,8 @@ export function useBackgroundTaskProcessor() {
       if (!pendingMessage || pendingMessage.processing) return;
       if (getIdleProjectTaskIds(projectId) === null) return;
 
-      const newTaskId = generateUniqueId();
+      // The durable queue uses this identity to admit and deduplicate the Run.
+      const newTaskId = task_id;
       // Preflight can fail before a Run binding exists. Its failure receipt
       // must still retain the account that submitted this execution.
       const executionAccountKey = getAccountEnvironmentKey(getAuthStore());

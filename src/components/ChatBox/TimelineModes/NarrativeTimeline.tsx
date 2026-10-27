@@ -982,7 +982,16 @@ function NarrativeRunWorkLog({
   // A Run the reader opened stays open across its terminal receipt; only an
   // untouched log folds itself away when the Run ends.
   const [manualOpen, setOpen] = useState<boolean | null>(null);
-  const open = manualOpen ?? !isTerminalRunStatus(run.status);
+  // A refusal has no work to collapse; keep its recovery notice visible.
+  const onlyFailureNotices =
+    run.status === 'failed' &&
+    items.length > 0 &&
+    items.every((item) => item.kind === 'notice') &&
+    items.some(
+      (item) => item.kind === 'notice' && item.node.severity === 'error'
+    );
+  const open =
+    manualOpen ?? (!isTerminalRunStatus(run.status) || onlyFailureNotices);
   const lastAgentIndex = entries.findLastIndex(
     (entry) => entry.kind === 'agent'
   );
