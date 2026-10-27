@@ -282,7 +282,6 @@ async def test_run_snapshot_keeps_failed_attempt_and_canonical_elapsed():
     journal.list_approvals.return_value = []
     journal.list_human_interactions.return_value = []
     journal.list_tool_calls.return_value = []
-    journal.browser_tool_attempts.return_value = frozenset()
     with (
         patch(
             "app.controller.run_controller.get_default_run_journal",
@@ -304,7 +303,6 @@ async def test_run_snapshot_keeps_failed_attempt_and_canonical_elapsed():
         "list_approvals",
         "list_human_interactions",
         "list_tool_calls",
-        "browser_tool_attempts",
     }
 
 
@@ -671,9 +669,10 @@ async def test_run_summary_exposes_recorded_browser_evidence(
                 return_value=coordinator,
             ),
         ):
-            result = await get_run("browser-run")
+            result = await get_run(
+                "browser-run", include_browser_evidence=True
+            )
+            default = await get_run("browser-run")
         assert result["used_browser"] is (evidence != "prompt_only")
-        assert result["latest_attempt"]["used_browser"] is (
-            evidence != "prompt_only"
-        )
+        assert "used_browser" not in default
         await coordinator.close()

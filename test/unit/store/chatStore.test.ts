@@ -2028,6 +2028,12 @@ describe('ChatStore - Core Functionality', () => {
             startup.releaseReady();
             const stream = await startup.getStream();
             const body = JSON.parse(stream.body);
+            expect(fetchGet).toHaveBeenCalledWith(
+              '/runs/attachment-run',
+              { include_browser_evidence: true },
+              undefined,
+              expect.objectContaining({ signal: expect.any(AbortSignal) })
+            );
             if (foreign)
               expect(invoke).not.toHaveBeenCalledWith(
                 'get-embedded-browser-runtime'

@@ -3943,7 +3943,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             const priorRun = await Promise.race([
               fetchGet(
                 `/runs/${encodeURIComponent(newTaskId)}`,
-                undefined,
+                { include_browser_evidence: true },
                 undefined,
                 {
                   signal: controller.signal,
@@ -3956,8 +3956,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             previouslyUsedBrowser =
               priorRun?.run_id === newTaskId &&
               priorRun?.project_id === project_id &&
-              (priorRun?.used_browser === true ||
-                priorRun?.latest_attempt?.used_browser === true);
+              priorRun?.used_browser === true;
           } catch (error) {
             // The earlier browser use is only a hint; Resume continues
             // without it and still checks the original request below.

@@ -529,7 +529,10 @@ async def list_project_runs(
 
 
 @router.get("/runs/{run_id}")
-async def get_run(run_id: str):
+async def get_run(
+    run_id: str,
+    include_browser_evidence: Annotated[bool, Query()] = False,
+):
     run = await _load_run_or_404(run_id)
     handle = await get_default_run_coordinator().get_handle(run_id)
     journal = get_default_run_journal()
@@ -548,25 +551,21 @@ async def get_run(run_id: str):
         if bound_attempt and bound_attempt.environment_spec_id is not None
         else None
     )
-    browser_attempts = await asyncio.to_thread(
-        journal.browser_tool_attempts, run_id
+    # Only Resume reads browser evidence; other summary readers skip the scan.
+    browser_evidence = (
+        {
+            "used_browser": bool(
+                await asyncio.to_thread(journal.browser_tool_attempts, run_id)
+            )
+        }
+        if include_browser_evidence
+        else {}
     )
     return {
         **asdict(run),
-        "used_browser": bool(browser_attempts),
-        "attempts": [
-            {
-                **asdict(attempt),
-                "used_browser": attempt.attempt_id in browser_attempts,
-            }
-            for attempt in attempts
-        ],
-        "latest_attempt": {
-            **asdict(attempts[-1]),
-            "used_browser": attempts[-1].attempt_id in browser_attempts,
-        }
-        if attempts
-        else None,
+        **browser_evidence,
+        "attempts": [asdict(attempt) for attempt in attempts],
+        "latest_attempt": asdict(attempts[-1]) if attempts else None,
         "resolved_model": _resolved_model_for_attempt(spec, bound_attempt),
         "total_attempt_elapsed_ms": (
             _total_attempt_elapsed_ms(
