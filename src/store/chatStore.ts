@@ -84,7 +84,10 @@ import {
   type ResolvedSpaceModel,
   type SpaceModelSelection,
 } from '@/lib/spaceModelBinding';
-import { settleTaskElapsedMs } from '@/lib/taskDuration';
+import {
+  createPlaybackUserWaitTracker,
+  settleTaskElapsedMs,
+} from '@/lib/taskDuration';
 import {
   classifyError as classifyUsageError,
   errorCopy,
@@ -3226,6 +3229,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;
       let playbackLastStepTimeMs: number | null = null;
+      const playbackUserWaits = createPlaybackUserWaitTracker();
       let localDurableLegacyEventCount = 0;
 
       // replay or share request
@@ -4786,6 +4790,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (stepTimeMs !== null) {
               playbackFirstStepTimeMs ??= stepTimeMs;
               playbackLastStepTimeMs = stepTimeMs;
+              playbackUserWaits.observe(
+                agentMessages?.step,
+                agentMessages?.data?.interaction_id,
+                stepTimeMs
+              );
             }
           }
 
@@ -6654,7 +6663,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 playbackLastStepTimeMs !== null
                   ? Math.max(
                       0,
-                      playbackLastStepTimeMs - playbackFirstStepTimeMs
+                      playbackLastStepTimeMs -
+                        playbackFirstStepTimeMs -
+                        playbackUserWaits.waitedMs()
                     )
                   : null;
               const settledElapsed =
@@ -7016,7 +7027,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               !replayCaughtUp &&
               playbackFirstStepTimeMs !== null &&
               playbackLastStepTimeMs !== null
-                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
+                ? Math.max(
+                    0,
+                    playbackLastStepTimeMs -
+                      playbackFirstStepTimeMs -
+                      playbackUserWaits.waitedMs()
+                  )
                 : null;
             if (playbackElapsed !== null) {
               completedElapsed = playbackElapsed;
