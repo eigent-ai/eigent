@@ -186,6 +186,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
   //Get projectStore for the active project's task
   const { projectStore } = useChatStoreAdapter();
+  const removeProject = projectStore.removeProject;
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const activeProjectId = projectStore.activeProjectId;
   const targetProjectId = selectedTrigger
@@ -207,6 +208,11 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   useEffect(() => {
     if (!isOpen) {
       initializedForOpenRef.current = false;
+      // Closing without a saved Automation leaves its Session empty.
+      if (automationSessionRef.current) {
+        removeProject(automationSessionRef.current);
+        automationSessionRef.current = null;
+      }
       return;
     }
     if (initializedForOpenRef.current) return;
@@ -283,7 +289,14 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         setActiveTab('schedule');
       }
     }
-  }, [isOpen, selectedTrigger, draft, initialTaskPrompt, initialDraft]); // React to dialog state and trigger changes
+  }, [
+    isOpen,
+    selectedTrigger,
+    draft,
+    initialTaskPrompt,
+    initialDraft,
+    removeProject,
+  ]); // React to dialog state and trigger changes
 
   // Update schema when query data changes
   useEffect(() => {
@@ -458,6 +471,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyCreateTrigger(createData);
+        // The saved Automation owns its Session from here on.
+        automationSessionRef.current = null;
 
         // Add trigger to store
         addTrigger(response);

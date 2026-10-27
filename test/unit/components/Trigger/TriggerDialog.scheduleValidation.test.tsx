@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   proxyUpdateTrigger: vi.fn(),
   toastError: vi.fn(),
   createProject: vi.fn(() => 'automation-session'),
+  removeProject: vi.fn(),
 }));
 
 vi.mock('@/service/triggerApi', () => ({
@@ -51,6 +52,7 @@ vi.mock('@/hooks/useChatStoreAdapter', () => ({
     projectStore: {
       activeProjectId: 'project-1',
       createProject: mocks.createProject,
+      removeProject: mocks.removeProject,
     },
   }),
 }));
@@ -351,5 +353,80 @@ describe('TriggerDialog opened from a Session', () => {
         space_id: 'space-1',
       })
     );
+  });
+});
+
+describe('TriggerDialog when creating an Automation fails', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function ClosableDialog() {
+    const [open, setOpen] = useState(true);
+    return (
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen={open}
+        onOpenChange={setOpen}
+        sourceProjectId="source-project"
+        initialTaskPrompt="Original request"
+        initialDraft={WEEKLY_DRAFT}
+      />
+    );
+  }
+
+  it('reuses its Session across retries and removes it when the dialog closes unsaved', async () => {
+    mocks.proxyCreateTrigger.mockRejectedValue(new Error('offline'));
+    const user = userEvent.setup();
+    render(<ClosableDialog />);
+
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(2)
+    );
+
+    expect(mocks.createProject).toHaveBeenCalledTimes(1);
+    for (const [data] of mocks.proxyCreateTrigger.mock.calls) {
+      expect(data).toEqual(
+        expect.objectContaining({ project_id: 'automation-session' })
+      );
+    }
+    expect(mocks.removeProject).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+
+    await vi.waitFor(() =>
+      expect(mocks.removeProject).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.removeProject).toHaveBeenCalledWith('automation-session');
+  });
+
+  it('keeps the Session once a retry saves the Automation', async () => {
+    mocks.proxyCreateTrigger
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementation(async (data) => ({ id: 3, ...data }));
+    const user = userEvent.setup();
+    render(<ClosableDialog />);
+
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByPlaceholderText('Enter automation name')
+      ).not.toBeInTheDocument()
+    );
+
+    expect(mocks.createProject).toHaveBeenCalledTimes(1);
+    expect(mocks.proxyCreateTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({ project_id: 'automation-session' })
+    );
+    expect(mocks.removeProject).not.toHaveBeenCalled();
   });
 });
