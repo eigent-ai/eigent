@@ -30,12 +30,14 @@ const mocks = vi.hoisted(() => ({
   supportsTimezone: false,
   timezoneConfig: { schema_: { properties: { timezone: {} } } },
   proxyCreateTrigger: vi.fn(),
+  proxyDeleteTrigger: vi.fn(),
   proxyUpdateTrigger: vi.fn(),
   toastError: vi.fn(),
 }));
 
 vi.mock('@/service/triggerApi', () => ({
   proxyCreateTrigger: mocks.proxyCreateTrigger,
+  proxyDeleteTrigger: mocks.proxyDeleteTrigger,
   proxyUpdateTrigger: mocks.proxyUpdateTrigger,
 }));
 
@@ -318,4 +320,39 @@ it('keeps an existing UTC schedule without a zone when the server supports local
   expect(submitted.config?.timezone).toBeUndefined();
   expect(submitted.custom_cron_expression).toBe('0 9 * * *');
   mocks.supportsTimezone = false;
+});
+
+it('removes a new Automation whose zone the server dropped when the UTC rewrite fails', async () => {
+  vi.clearAllMocks();
+  mocks.supportsTimezone = true;
+  mocks.proxyCreateTrigger.mockImplementation(async (data) => ({
+    id: 3,
+    ...data,
+    config: {},
+  }));
+  mocks.proxyUpdateTrigger.mockRejectedValue(new Error('offline'));
+  mocks.proxyDeleteTrigger.mockResolvedValue(undefined);
+  const user = userEvent.setup();
+  render(
+    <TriggerDialog selectedTrigger={null} isOpen onOpenChange={vi.fn()} />
+  );
+  await user.type(
+    screen.getByPlaceholderText('Enter automation name'),
+    'Nightly'
+  );
+  await user.type(
+    screen.getByPlaceholderText('What should this automation do?'),
+    'Say hello'
+  );
+  await user.click(screen.getByRole('button', { name: 'Create' }));
+  await vi.waitFor(() =>
+    expect(mocks.toastError).toHaveBeenCalledWith('Failed to create automation')
+  );
+  expect(mocks.proxyCreateTrigger.mock.calls[0][0].config?.timezone).toBe(
+    Intl.DateTimeFormat().resolvedOptions().timeZone
+  );
+  expect(mocks.proxyUpdateTrigger).toHaveBeenCalledTimes(1);
+  expect(mocks.proxyDeleteTrigger).toHaveBeenCalledWith(3);
+  mocks.supportsTimezone = false;
+  mocks.proxyUpdateTrigger.mockReset();
 });

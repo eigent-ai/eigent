@@ -13,66 +13,75 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  nextOccurrenceInZone,
+  isOneTimeTooFarAhead,
   parseCron,
+  scheduleToCron,
 } from '@/components/Trigger/automationSchedule';
+import { localTimeToUTC } from '@/lib/utils';
 import type { Trigger, TriggerInput, TriggerUpdate } from '@/types';
+import { format } from 'date-fns';
 
-/** A server must echo the zone; otherwise restore the legacy UTC contract. */
+type SubmittedSchedule = Pick<
+  TriggerInput,
+  'custom_cron_expression' | 'config'
+>;
+
+/**
+ * A server must echo the zone; otherwise restore the legacy UTC contract.
+ * The first save already stored wall-time fields without a zone, which the
+ * server reads as UTC, so `undo` removes them when the rewrite fails.
+ */
 export async function confirmScheduleTimezone(
   saved: Trigger,
-  submitted: Pick<TriggerInput, 'custom_cron_expression' | 'config'>,
-  update: (id: number, payload: TriggerUpdate) => Promise<Trigger>
+  submitted: SubmittedSchedule,
+  update: (id: number, payload: TriggerUpdate) => Promise<Trigger>,
+  undo: () => Promise<unknown>
 ): Promise<Trigger> {
   const zone = submitted.config?.timezone;
   if (!zone || saved.config?.timezone === zone) return saved;
+  try {
+    return await update(saved.id, legacyUtcSchedule(submitted, zone));
+  } catch (error) {
+    await undo().catch((undoError) =>
+      console.error('Failed to undo the schedule:', undoError)
+    );
+    throw error;
+  }
+}
+
+/** Builds the schedule the way SchedulePicker does without a zone. */
+function legacyUtcSchedule(
+  submitted: SubmittedSchedule,
+  zone: string
+): TriggerUpdate {
+  // The legacy contract converts with this machine's offset.
+  if (zone !== Intl.DateTimeFormat().resolvedOptions().timeZone)
+    throw new Error('Schedule could not be saved by this server');
   const config = { ...submitted.config };
   delete config.timezone;
-  const now = new Date();
   const schedule = parseCron(
     submitted.custom_cron_expression,
-    now,
+    new Date(),
     config.date,
     zone
   );
-  const next = schedule && nextOccurrenceInZone(schedule, zone, now);
-  if (!schedule || !next)
+  if (
+    !schedule ||
+    (schedule.frequency === 'once' && isOneTimeTooFarAhead(schedule))
+  )
     throw new Error('Schedule could not be saved by this server');
-  const localDate = new Intl.DateTimeFormat('en-CA', {
-    timeZone: zone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(next);
-  const local = new Date(`${localDate}T00:00:00Z`);
-  const utcDay = Date.UTC(
-    next.getUTCFullYear(),
-    next.getUTCMonth(),
-    next.getUTCDate()
-  );
-  const shift = Math.round((utcDay - local.getTime()) / 86400000);
-  let day = '*',
-    month = '*',
-    weekdays = '*';
-  if (schedule.frequency === 'once') {
-    day = String(next.getUTCDate());
-    month = String(next.getUTCMonth() + 1);
-    config.date = next.toISOString().slice(0, 10);
-  } else if (schedule.frequency === 'weekly') {
-    weekdays = (schedule.weekdays ?? [1])
-      .map((value) => (value + shift + 7) % 7)
-      .join(',');
-  } else if (schedule.frequency === 'monthly') {
-    const shifted = (schedule.dayOfMonth ?? 1) + shift;
-    day = shifted === 0 ? 'L' : String(shifted);
-  }
-  if (config.expirationDate && shift) {
-    const expiration = new Date(`${config.expirationDate}T00:00:00Z`);
-    expiration.setUTCDate(expiration.getUTCDate() + shift);
-    config.expirationDate = expiration.toISOString().slice(0, 10);
-  }
-  return update(saved.id, {
-    custom_cron_expression: `${next.getUTCMinutes()} ${next.getUTCHours()} ${day} ${month} ${weekdays}`,
-    config,
-  });
+  // Throws for a monthly day a single UTC cron cannot repeat on.
+  const cron = scheduleToCron(schedule);
+  const utcDate = (localDate: Date) => {
+    const date = new Date(localDate);
+    const { dayOffset } = localTimeToUTC(schedule.hour, schedule.minute, date);
+    date.setDate(date.getDate() + dayOffset);
+    return format(date, 'yyyy-MM-dd');
+  };
+  if (schedule.frequency === 'once') config.date = utcDate(schedule.date);
+  if (config.expirationDate)
+    config.expirationDate = utcDate(
+      new Date(`${config.expirationDate.slice(0, 10)}T00:00:00`)
+    );
+  return { custom_cron_expression: cron, config };
 }

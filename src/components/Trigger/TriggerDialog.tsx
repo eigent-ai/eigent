@@ -51,7 +51,11 @@ import {
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import type { AutomationDraftV1 } from '@/lib/automationDraft';
 import { confirmScheduleTimezone } from '@/lib/triggerScheduleCompatibility';
-import { proxyCreateTrigger, proxyUpdateTrigger } from '@/service/triggerApi';
+import {
+  proxyCreateTrigger,
+  proxyDeleteTrigger,
+  proxyUpdateTrigger,
+} from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
@@ -396,10 +400,17 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
+        const previous = selectedTrigger;
         response = await confirmScheduleTimezone(
           response,
           updateData,
-          proxyUpdateTrigger
+          proxyUpdateTrigger,
+          () =>
+            proxyUpdateTrigger(previous.id, {
+              custom_cron_expression: previous.custom_cron_expression,
+              is_single_execution: previous.is_single_execution,
+              config: previous.config ?? {},
+            })
         );
 
         // Update trigger in store
@@ -453,10 +464,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyCreateTrigger(createData);
+        const created = response;
         response = await confirmScheduleTimezone(
-          response,
+          created,
           createData,
-          proxyUpdateTrigger
+          proxyUpdateTrigger,
+          () => proxyDeleteTrigger(created.id)
         );
 
         // Add trigger to store
