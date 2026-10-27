@@ -1432,6 +1432,80 @@ describe('ChatBox Component', async () => {
       });
     });
 
+    describe('question still waiting in a reopened Session', () => {
+      const restoredQuestionState = (durableRunStatus: string) => ({
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            type: 'replay',
+            status: 'finished',
+            durableRunStatus,
+            activeAsk: 'single_agent',
+            hasMessages: true,
+            messages: [
+              { id: 'prompt', role: 'user', content: 'Save my colour' },
+              {
+                id: 'ask',
+                role: 'agent',
+                step: 'ask',
+                content: 'Which colour?',
+                agent_name: 'single_agent',
+                interaction: {
+                  interaction_id: 'question-1',
+                  interaction_type: 'question',
+                  run_id: 'test-task-id',
+                  question: 'Which colour?',
+                  agent: 'single_agent',
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      it('answers it above the composer', async () => {
+        const user = userEvent.setup();
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: restoredQuestionState('waiting_for_user') as any,
+        });
+
+        renderChatBox();
+
+        expect(screen.getByText('Which colour?')).toBeInTheDocument();
+        await user.type(
+          screen.getByRole('textbox', { name: /feedback/i }),
+          'teal'
+        );
+        await user.click(
+          screen.getByRole('button', { name: /send.feedback/i })
+        );
+
+        await waitFor(() =>
+          expect(_mockFetchPost).toHaveBeenCalledWith(
+            '/chat/test-project-id/human-reply',
+            expect.objectContaining({
+              agent: 'single_agent',
+              reply: 'teal',
+              interaction_id: 'question-1',
+            })
+          )
+        );
+      });
+
+      it('offers nothing once the Run no longer waits', () => {
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: restoredQuestionState('completed') as any,
+        });
+
+        renderChatBox();
+
+        expect(screen.queryByRole('textbox', { name: /feedback/i })).toBeNull();
+      });
+    });
+
     it('should handle message sending', async () => {
       const user = userEvent.setup();
 

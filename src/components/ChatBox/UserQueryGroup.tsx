@@ -553,9 +553,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           }
         }
 
+        // A waiting question is answered above the composer, as when live.
         const isDurablyWaitingReplay =
           message.step === AgentStep.ASK &&
           message.interaction &&
+          message.interaction.interaction_type !== 'question' &&
           activeTask?.type === 'replay' &&
           !isHumanInteractionReadOnly({
             interaction: message.interaction,

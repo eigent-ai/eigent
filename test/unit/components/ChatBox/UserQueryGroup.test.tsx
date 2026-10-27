@@ -902,4 +902,30 @@ describe('UserQueryGroup restored Run requests', () => {
 
     expect(card()).toBeNull();
   });
+
+  it('leaves a waiting question to the control above the composer', () => {
+    renderGroups(
+      [
+        messages[0],
+        {
+          id: 'ask-question',
+          role: 'agent',
+          step: AgentStep.ASK,
+          content: 'Which colour?',
+          agent_name: 'single_agent',
+          interaction: {
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            run_id: 'run-1',
+            question: 'Which colour?',
+            agent: 'single_agent',
+          },
+        },
+      ],
+      { type: 'replay', durableRunStatus: 'waiting_for_user' }
+    );
+
+    expect(screen.queryByText('Which colour?')).toBeNull();
+    expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+  });
 });

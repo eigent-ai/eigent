@@ -784,13 +784,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       ? legacyApprovalCheck.pending
       : undefined;
   const isLegacyApproval = activeInteraction?.interaction_type === 'approval';
+  // A reopened Session restores its Run for playback. When that Run still
+  // waits for this question, it is answered here like a live one.
+  const isRestoredQuestionWaiting =
+    activeAskTask?.type === 'replay' &&
+    activeInteraction?.interaction_type === 'question' &&
+    !activeInteractionReadOnly;
   const canAnswerActiveAsk =
     !legacyInteractionExpired &&
     !activeInteractionReadOnly &&
     !!activeAskTask &&
-    activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
-    activeAskTask.status !== ChatTaskStatus.FINISHED;
+    (isRestoredQuestionWaiting ||
+      (activeAskTask.type !== 'replay' &&
+        activeAskTask.status !== ChatTaskStatus.FINISHED));
   const isInteractiveHumanReply =
     canAnswerActiveAsk && (!isLegacyApproval || legacyApprovalPending === true);
   const isLegacyApprovalUnconfirmed =
