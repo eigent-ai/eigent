@@ -327,10 +327,12 @@ class TestChatController:
                     return_value=coordinator,
                 ),
             ):
-                with pytest.raises(UserException) as error:
+                with pytest.raises(HTTPException) as error:
                     await start_chat_stream(chat_data, mock_request)
 
-            assert error.value.error_code == "project_consumer_active"
+            assert error.value.status_code == 409
+            assert error.value.detail["code"] == "project_consumer_active"
+            assert error.value.detail["run_id"] == "existing-run"
         finally:
             release.set()
             await subscription.aclose()
@@ -2520,3 +2522,28 @@ async def test_refused_initial_admission_is_durably_failed(
     assert failure.event_type == "run.failed"
     assert failure.payload["message"] == "Unsupported effort"
     await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_warm_follow_up_lease_conflict_is_a_typed_409(
+    sample_chat_data, mock_request, monkeypatch
+):
+    import app.controller.chat_controller as controller
+    from app.model.chat import SupplementChat
+    from app.run_journal import ProjectExecutionLeaseConflictError
+
+    async def busy(*args, **kwargs):
+        raise ProjectExecutionLeaseConflictError(
+            project_id="session", owner_run_id="owner"
+        )
+
+    monkeypatch.setattr(controller, "_admit_improve", busy)
+    with pytest.raises(HTTPException) as error:
+        await controller.improve(
+            "session",
+            SupplementChat(question="queued", task_id="next"),
+            mock_request,
+        )
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "project_run_active"
+    assert error.value.detail["run_id"] == "owner"

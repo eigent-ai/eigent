@@ -71,6 +71,7 @@ import {
   cancelFollowUpRequest,
   createFollowUpRequest,
   invalidatePendingFollowUps,
+  isQueueAdmissionWait,
   listPendingFollowUpRequests,
   prioritizeFollowUpRequest,
   terminalContinuationAdmissionRejection,
@@ -209,6 +210,11 @@ function selectLatestReadOnlyEventNativeRun(
       .sort(compareProjectedRunsByRecency)[0] ?? null
   );
 }
+
+/** Longest wait between admissions while a Session is still busy. */
+const QUEUE_WAIT_RETRY_MAX_MS = 30_000;
+/** Busy refusals after which the queued message explains its wait. */
+const QUEUE_WAIT_NOTICE_ATTEMPTS = 4;
 
 function getCurrentTimestamp() {
   return Date.now();
@@ -413,6 +419,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     run: interruptedRun,
     setRun: setInterruptedRun,
     refresh: refreshInterruptedRun,
+    settled: interruptedRunSettled,
   } = useInterruptedRunStatus(activeProjectId);
   const pendingModelAdmission =
     activeProject?.metadata?.spaceModelAdmissionRunId;
@@ -588,6 +595,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
+  const [queueRetryAt, setQueueRetryAt] = useState(0);
+  const [queueRetryRevision, setQueueRetryRevision] = useState(0);
+  const queueWaitRef = useRef<{ key: string; attempts: number } | null>(null);
   // Shared across mounts: a composer remounted by a Session switch must still
   // see an admission that an earlier mount has not finished.
   const followUpAdmissionsRef = useRef(followUpAdmissionClaims);
@@ -1475,8 +1485,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               targetProjectId,
               projectStore.getProjectById(targetProjectId)
             );
+        if (admissionMode === 'busy') {
+          throw Object.assign(
+            new Error('Session is still finishing its current task.'),
+            { code: 'project_run_active' }
+          );
+        }
         if (admissionMode !== 'cold') {
-          // A busy consumer still takes the follow-up on its queue, as before.
+          // An idle consumer observed by this window admits the follow-up warm.
           chatStore.setNextTaskId(queuedRequestId);
           chatStore.setNextExecutionId(_taskId, undefined);
           await fetchPost(`/chat/${targetProjectId}`, {
@@ -1511,11 +1527,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             {
               preserveTaskId: true,
               awaitAdmission: true,
+              deferPresentationUntilAdmission: true,
               ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
             }
           );
-          // Queued payloads do not own the user's current composer. Move
-          // that draft when cold startup synchronously selects its new Run.
+          await admission;
+          // Admission selects the new Run; move the current composer draft
+          // afterward without changing the submitted queued payload.
           const draftTask = draftStore?.getState().tasks[_taskId];
           const nextState = projectStore
             .getChatStore(targetProjectId)
@@ -1539,7 +1557,6 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             if (draftStore.getState().tasks[_taskId]?.attaches === draftFiles)
               draftStore.getState().setAttaches(_taskId, []);
           }
-          await admission;
         }
         messageAccepted = true;
       } else if (requiresHumanReply) {
@@ -1960,7 +1977,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
-      if (startsAfterInterruption || followUpAdmission)
+      if (!queuedRequestId && (startsAfterInterruption || followUpAdmission))
         notifyError(
           error instanceof Error ? error.message : t('chat.run-resume-failed')
         );
@@ -2299,6 +2316,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       !projectId ||
       !activeId ||
       queueExecution.busy ||
+      !interruptedRunSettled ||
+      Date.now() < queueRetryAt ||
       interruptedRun ||
       activeAsk ||
       !canUseSessionModel ||
@@ -2337,6 +2356,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       next.reviewHandoffIds
     )
       .then(() => {
+        queueWaitRef.current = null;
         setAdmittedQueuedRun({ projectId, runId: next.task_id });
         acknowledgeQueuedRequest(projectId, next.task_id);
       })
@@ -2348,6 +2368,38 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           )
         )
           return;
+        if (isQueueAdmissionWait(error)) {
+          // Back off while the Session stays busy, and explain the wait once
+          // per queued message instead of on every retry.
+          const waitKey = JSON.stringify([projectId, next.task_id]);
+          const wait =
+            queueWaitRef.current?.key === waitKey
+              ? queueWaitRef.current
+              : { key: waitKey, attempts: 0 };
+          wait.attempts += 1;
+          queueWaitRef.current = wait;
+          setQueueRetryAt(
+            Date.now() +
+              Math.min(1000 * 2 ** (wait.attempts - 1), QUEUE_WAIT_RETRY_MAX_MS)
+          );
+          if (wait.attempts === QUEUE_WAIT_NOTICE_ATTEMPTS)
+            toast.info(
+              t('chat.message-queued', {
+                defaultValue:
+                  'Message queued. Eigent will send it when the current task finishes.',
+              }),
+              { id: `queue-wait:${waitKey}` }
+            );
+          projectStore.setQueuedMessageProcessing(
+            projectId,
+            next.task_id,
+            false
+          );
+          if (chatStore.nextTaskId === next.task_id)
+            chatStore.setNextTaskId(null);
+          return;
+        }
+        queueWaitRef.current = null;
         console.error('[FollowUpQueue] Failed to admit queued message', error);
         const rejection = terminalContinuationAdmissionRejection(error);
         if (rejection) {
@@ -2376,12 +2428,29 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     isCloudUsageLimited,
     queueExecution.busy,
     interruptedRun,
+    interruptedRunSettled,
+    queueRetryAt,
+    queueRetryRevision,
+    chatStore,
     projectStore,
     queuedMessages,
+    t,
     queueAction,
     followUpAdmissionRevision,
     sessionProjectId,
   ]);
+
+  useEffect(() => {
+    if (!queueRetryAt) return;
+    const timer = window.setTimeout(
+      () => {
+        setQueueRetryRevision((value) => value + 1);
+        void refreshInterruptedRun();
+      },
+      Math.max(0, queueRetryAt - Date.now())
+    );
+    return () => window.clearTimeout(timer);
+  }, [queueRetryAt, refreshInterruptedRun]);
 
   useEffect(() => {
     if (share_token && isConfigLoaded) {
