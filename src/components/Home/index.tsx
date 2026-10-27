@@ -20,7 +20,7 @@ import {
 } from '@/components/Session/DeleteSessionDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
+import { SessionStopError, stopSessionForDeletion } from '@/lib/sessionStop';
 import { share } from '@/lib/share';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import {
@@ -147,9 +147,12 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
 
     setDeleteProjectPhase('stopping');
     try {
-      await stopSessionAndWait(projectId);
+      const deferLocalCleanup = await stopSessionForDeletion(projectId);
       setDeleteProjectPhase('deleting');
-      await projectDeleteCallback({ deleteWorkdir: deleteProjectWorkdir });
+      await projectDeleteCallback({
+        deleteWorkdir: deleteProjectWorkdir,
+        deferLocalCleanup,
+      });
       setCurProjectId('');
       setProjectDeleteCallback(null);
       setDeleteProjectModalOpen(false);

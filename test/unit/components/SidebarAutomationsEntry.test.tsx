@@ -119,7 +119,7 @@ vi.mock('@/service/workspaceApi', () => ({
   deleteWorkspaceProjectWorkdir: mocks.deleteWorkdir,
 }));
 vi.mock('@/lib/sessionStop', () => ({
-  stopSessionAndWait: mocks.stop,
+  stopSessionForDeletion: mocks.stop,
   SessionStopError: mocks.SessionStopError,
 }));
 vi.mock('@/lib/projectAchievement', () => ({

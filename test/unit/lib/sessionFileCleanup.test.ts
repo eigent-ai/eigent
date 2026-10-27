@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchDelete, proxyFetchGet } from '@/api/http';
+import { fetchDelete, proxyFetchDelete, proxyFetchGet } from '@/api/http';
 import { deleteSessionTaskData } from '@/lib/sessionFileCleanup';
 import { deleteWorkspaceProjectWorkdir } from '@/service/workspaceApi';
 import { app } from 'electron';
@@ -24,6 +24,7 @@ import { FileReader } from '../../../electron/main/fileReader';
 
 const auth = vi.hoisted(() => ({ email: 'alex@example.com', user_id: 42 }));
 vi.mock('@/api/http', () => ({
+  fetchDelete: vi.fn(),
   proxyFetchGet: vi.fn(),
   proxyFetchDelete: vi.fn(),
 }));
@@ -81,6 +82,42 @@ function fixture(root: string, taskId = 'task_a') {
 }
 
 describe('Session deletion orchestration', () => {
+  it('deletes offline history without touching any potentially active local files', async () => {
+    const dir = fixture('eigent');
+    await deleteSessionTaskData({
+      ...input,
+      deferLocalCleanup: true,
+      ipcRenderer: { invoke },
+    });
+    expect(fs.existsSync(dir)).toBe(true);
+    expect(invoke).not.toHaveBeenCalled();
+    expect(fetchDelete).not.toHaveBeenCalled();
+    expect(deleteWorkspaceProjectWorkdir).not.toHaveBeenCalled();
+    expect(proxyFetchDelete).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps history for retry when explicit workdir deletion cannot be fulfilled offline', async () => {
+    await expect(
+      deleteSessionTaskData({
+        ...input,
+        deferLocalCleanup: true,
+        deleteWorkdir: true,
+        ipcRenderer: { invoke },
+      })
+    ).rejects.toThrow('requires the backend');
+    expect(invoke).not.toHaveBeenCalled();
+    expect(proxyFetchDelete).not.toHaveBeenCalled();
+  });
+
+  it('requests exact-owner runtime cleanup without blocking history deletion on retention failure', async () => {
+    vi.mocked(fetchDelete).mockRejectedValue(new Error('offline'));
+    await run();
+    expect(fetchDelete).toHaveBeenCalledWith(
+      '/projects/session-a/runtime?email=alex%40example.com&user_id=42'
+    );
+    expect(proxyFetchDelete).toHaveBeenCalledWith('/api/v1/chat/history/1');
+  });
+
   it('passes exact user/Session/Space identity and cleans all files before deleting history', async () => {
     const dirs = [
       fixture('eigent'),

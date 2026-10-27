@@ -181,6 +181,20 @@ async function accountResponse<T>(
   return result;
 }
 
+/** Tag only fetch transport rejection, never HTTP or response parsing errors. */
+async function fetchBrainResponse(url: string, options: RequestInit) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw Object.assign(new Error('Brain is unreachable', { cause: error }), {
+        code: 'BRAIN_UNREACHABLE',
+      });
+    }
+    throw error;
+  }
+}
+
 async function fetchRequest(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
@@ -213,7 +227,11 @@ async function fetchRequest(
     });
     const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
     return accountResponse(
-      handleResponse(fetch(fullUrl + query, options), data, requestOptions),
+      handleResponse(
+        fetchBrainResponse(fullUrl + query, options),
+        data,
+        requestOptions
+      ),
       requestOptions
     );
   }
@@ -223,7 +241,7 @@ async function fetchRequest(
   }
 
   return accountResponse(
-    handleResponse(fetch(fullUrl, options), data, requestOptions),
+    handleResponse(fetchBrainResponse(fullUrl, options), data, requestOptions),
     requestOptions
   );
 }

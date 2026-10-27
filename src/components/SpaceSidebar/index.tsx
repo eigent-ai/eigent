@@ -46,7 +46,7 @@ import {
 } from '@/lib/sessionFileCleanup';
 import { resolveSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { renameSession } from '@/lib/sessionRename';
-import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
+import { SessionStopError, stopSessionForDeletion } from '@/lib/sessionStop';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getFilesTabBindingLabel,
@@ -599,7 +599,7 @@ export default function SpaceSidebar({
       const spaceId = projectMeta?.spaceId ?? activeSpaceId ?? undefined;
       const wasActive = projectStore.activeProjectId === projectId;
 
-      await stopSessionAndWait(projectId);
+      const deferLocalCleanup = await stopSessionForDeletion(projectId);
       setDeleteProjectPhase('deleting');
       const chatState = projectStore.peekActiveChatStore(projectId)?.getState();
       await deleteSessionTaskData({
@@ -611,6 +611,7 @@ export default function SpaceSidebar({
           project_id: projectId,
         })),
         deleteWorkdir: deleteProjectWorkdir,
+        deferLocalCleanup,
         ipcRenderer,
       });
 

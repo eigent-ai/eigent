@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -618,8 +619,16 @@ async def test_completed_run_quiesces_background_terminal_mutations(
     coordinator = RunCoordinator(journal)
     release = asyncio.Event()
     calls: list[str] = []
+    released: list[str] = []
+    removing = threading.Event()
 
     class _TerminalToolkit:
+        def release_run_environment(self, run_id):
+            assert journal.get_run(run_id).status == "completed"
+            # Environment removal must not hold back the terminal answer.
+            assert removing.wait(5)
+            released.append(run_id)
+
         def quiesce_run_background_sessions(self, run_id):
             calls.append(run_id)
             return ()
@@ -651,8 +660,13 @@ async def test_completed_run_quiesces_background_terminal_mutations(
             assistant_data="Done",
         )
         assert calls == ["run-turn"]
+        assert released == []
+        removing.set()
+        await asyncio.gather(*coordinator._environment_releases.values())
+        assert released == ["run-turn"]
         assert journal.get_run("run-turn").status == "completed"
     finally:
+        removing.set()
         release.set()
         await coordinator.close()
         journal.close()

@@ -12,11 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
 import { CallRow } from '@/components/ChatBox/TimelineModes/CallRow';
+import { normalizeLocalRunEvent } from '@/lib/projector';
+import { adaptChatProjectionEvent } from '@/lib/projector/chat';
 import {
   timelineCallTitle,
   type TimelineCall,
 } from '@/lib/projector/chat/presentation';
+import { toTimelineCall } from '@/lib/projector/chat/presentation/timelineCalls';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -49,6 +53,61 @@ describe('CallRow', () => {
 
     rerender(<CallRow call={humanCall('completed')} runActive reducedMotion />);
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('explains an approval closed by a restart instead of showing a rejection', () => {
+    // The approval receipt exactly as startup recovery records it.
+    const nodes = [
+      ['approval.requested', { prompt: { question: 'Allow write?' } }],
+      [
+        'approval.cancelled',
+        {
+          decision: 'rejected',
+          reason: 'brain_restart_before_dispatch',
+          source: 'recovery',
+          terminal_reason: 'brain_restart',
+          terminal_detail: 'brain_restart_before_dispatch',
+        },
+      ],
+    ].flatMap(([type, payload], index) => {
+      const projected = adaptChatProjectionEvent(
+        normalizeLocalRunEvent(
+          {
+            event_id: `event-${index + 1}`,
+            run_id: 'run-1',
+            sequence: index + 1,
+            run_version: index + 1,
+            event_type: type as string,
+            payload: {
+              approval_id: 'approval:tool-1',
+              interaction_id: 'approval:tool-1',
+              ...(payload as object),
+            },
+            created_at: index + 1,
+          },
+          'project-1'
+        )
+      );
+      return projected.kind === 'display' ? [projected.node] : [];
+    });
+    const [node] = presentChatSemanticEntities(nodes).filter(
+      (item) => item.kind === 'interaction'
+    );
+    const call = toTimelineCall({
+      kind: 'node',
+      id: node!.id,
+      runSequence: node!.runSequence,
+      node: node!,
+    })!;
+
+    render(<CallRow call={call} runActive={false} reducedMotion />);
+    const trigger = screen.getByRole('button', { name: /Approval cancelled/ });
+    fireEvent.click(trigger);
+    expect(
+      screen.getByText('Eigent restarted while this task was running.')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Allow write?')).toBeInTheDocument();
+    expect(screen.queryByText('rejected')).toBeNull();
   });
 
   it('keeps a manual choice on a call that was never pending', () => {

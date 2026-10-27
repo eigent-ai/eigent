@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { fetchGet } from '@/api/http';
 import {
   ACTIVE_DURABLE_RUN_STATUSES,
   fetchActiveProjectRuns,
@@ -66,6 +67,32 @@ export async function assessCloseRunState({
 
   if (canonicalActive && legacyActive) return 'mixed';
   if (canonicalActive) return 'canonical-durable';
+  if (legacyActive) return 'legacy-stream';
+  return 'idle';
+}
+
+export async function fetchActiveLocalExecution(
+  signal?: AbortSignal
+): Promise<{ active: boolean }> {
+  return fetchGet('/runs/active', undefined, undefined, { signal });
+}
+
+/** A failed or malformed registry read is unknown; callers must confirm. */
+export async function assessGlobalCloseRunState({
+  legacyActive,
+  signal,
+  fetchRuns = fetchActiveLocalExecution,
+}: {
+  legacyActive: boolean;
+  signal?: AbortSignal;
+  fetchRuns?: typeof fetchActiveLocalExecution;
+}): Promise<CloseRunAssessment> {
+  const response = await fetchRuns(signal);
+  if (typeof response?.active !== 'boolean') {
+    throw new Error('Canonical Run registry returned an invalid response');
+  }
+  if (response.active && legacyActive) return 'mixed';
+  if (response.active) return 'canonical-durable';
   if (legacyActive) return 'legacy-stream';
   return 'idle';
 }

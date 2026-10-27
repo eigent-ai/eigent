@@ -68,6 +68,7 @@ from app.run_runtime import (
 from app.run_runtime.tool_checkpoint import build_tool_display_projection
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
+from app.workspace_runtime.runtime import get_default_execution_service
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 logger = logging.getLogger("run_controller")
@@ -526,6 +527,17 @@ async def list_project_runs(
             is_default_cloud_history_bootstrap_pending()
         ),
     }
+
+
+@router.get("/runs/active")
+async def active_local_execution():
+    """One local registry read across every Space and Session."""
+    service = get_default_execution_service()
+    active = await asyncio.to_thread(
+        get_default_run_journal().has_active_local_execution,
+        admission_owner_id=service.owner_id if service is not None else None,
+    )
+    return {"active": active}
 
 
 @router.get("/runs/{run_id}")
