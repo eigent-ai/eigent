@@ -8616,6 +8616,23 @@ class SQLiteRunJournal:
             ).fetchone()
         return self._model_invocation_from_row(row) if row else None
 
+    def browser_tool_attempts(self, run_id: str) -> frozenset[str | None]:
+        """Historical browser evidence is a reconnect hint, never authority."""
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT attempt_id FROM tool_calls
+                WHERE run_id = ? AND substr(tool_name, 1, 8) = 'browser_'
+                UNION
+                SELECT invocation.attempt_id FROM model_invocations AS invocation,
+                     json_tree(invocation.request_json, '$.model_config_dict.tools') AS schema
+                WHERE invocation.run_id = ? AND schema.key = 'name'
+                    AND schema.type = 'text' AND substr(schema.value, 1, 8) = 'browser_'
+                """,
+                (run_id, run_id),
+            ).fetchall()
+        return frozenset(row["attempt_id"] for row in rows)
+
     def list_model_invocations(
         self, run_id: str
     ) -> tuple[ModelInvocationRecord, ...]:

@@ -732,6 +732,8 @@ function getHostIpcRenderer() {
   return _host?.ipcRenderer ?? null;
 }
 
+const RESUME_BROWSER_HINT_TIMEOUT_MS = 1500;
+
 function includesBrowserAgent(workerList: Agent[]): boolean {
   return workerList.some((worker) => {
     if (worker.type === 'browser_agent' || worker.agent_id === 'browser_agent')
@@ -741,7 +743,7 @@ function includesBrowserAgent(workerList: Agent[]): boolean {
   });
 }
 
-function shouldEnsureBrowserForRequest(
+export function shouldEnsureBrowserForRequest(
   workerList: Agent[],
   sessionMode: SessionModeType,
   messageContent?: string
@@ -3923,18 +3925,75 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       let browser_port: number | undefined;
       let cdp_browsers: any[] = [];
+      let browserUnavailableOnResume = false;
       if (!type) {
-        try {
-          ({ browser_port, cdp_browsers } = await resolveCdpBrowsersForRequest(
-            shouldEnsureBrowserForRequest(
-              workerList,
-              sessionModeForRequest,
-              messageContent
-            )
-          ));
-        } catch {
-          // Web mode: no CDP
+        let previouslyUsedBrowser = false;
+        if (startOptions.resumeRequestId) {
+          const controller = new AbortController();
+          let timeout: ReturnType<typeof setTimeout> | undefined;
+          try {
+            // Bound the optional hint even when transport setup or
+            // cancellation stalls.
+            const expired = new Promise<undefined>((resolve) => {
+              timeout = setTimeout(() => {
+                controller.abort();
+                resolve(undefined);
+              }, RESUME_BROWSER_HINT_TIMEOUT_MS);
+            });
+            const priorRun = await Promise.race([
+              fetchGet(
+                `/runs/${encodeURIComponent(newTaskId)}`,
+                { include_browser_evidence: true },
+                undefined,
+                {
+                  signal: controller.signal,
+                  expectedAccountKey: triggerAccountKey,
+                  beforeRequest: assertAdmissionCurrent,
+                }
+              ),
+              expired,
+            ]);
+            previouslyUsedBrowser =
+              priorRun?.run_id === newTaskId &&
+              priorRun?.project_id === project_id &&
+              priorRun?.used_browser === true;
+          } catch (error) {
+            // The earlier browser use is only a hint; Resume continues
+            // without it and still checks the original request below.
+            console.warn('[Resume] Could not read earlier browser use', error);
+          } finally {
+            clearTimeout(timeout);
+          }
+          assertAdmissionCurrent();
         }
+        const originalPrompt = targetChatStore
+          .getState()
+          .tasks[newTaskId]?.messages.find(
+            (message) =>
+              message.role === 'user' && !message.interactionResponseTo
+          )?.content;
+        const browserQuestion =
+          messageContent ??
+          (startOptions.resumeRequestId ? originalPrompt : undefined);
+        const needsBrowser =
+          previouslyUsedBrowser ||
+          shouldEnsureBrowserForRequest(
+            workerList,
+            sessionModeForRequest,
+            browserQuestion
+          );
+        try {
+          ({ browser_port, cdp_browsers } =
+            await resolveCdpBrowsersForRequest(needsBrowser));
+        } catch {
+          // The request below reports an unavailable browser on Resume.
+        }
+        browserUnavailableOnResume = Boolean(
+          startOptions.resumeRequestId &&
+          needsBrowser &&
+          getHostIpcRenderer()?.invoke &&
+          !cdp_browsers.length
+        );
       }
 
       // Persist identity after local preflight but BEFORE either admission
@@ -4472,6 +4531,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             new_agents: [...addWorkers],
             browser_port: browser_port,
             cdp_browsers: cdp_browsers,
+            browser_unavailable_on_resume: browserUnavailableOnResume,
             env_path: envPath,
             search_config: searchConfig,
             server_url: getDirectServerApiBaseUrl(),
