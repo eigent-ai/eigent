@@ -298,6 +298,12 @@ async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
     app_logger.info("Starting graceful shutdown process")
 
+    from app.run_runtime.runtime import mark_process_shutting_down
+
+    # Quitting is not a tool outcome: undispatched tools and their approvals
+    # stay open so restart recovery records the interruption.
+    mark_process_shutting_down()
+
     from app.workspace_runtime.runtime import close_default_execution_service
 
     # Stop new claims and drain owned preparation/execution before the shared

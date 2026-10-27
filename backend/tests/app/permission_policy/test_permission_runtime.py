@@ -21,7 +21,11 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from camel.agents._types import ToolCallRequest
+from camel.toolkits import FunctionTool
 
+import app.permission_policy.runtime as permission_runtime
+from app.agent.listen_chat_agent import ListenChatAgent
 from app.permission_policy import (
     ToolPermissionRejectedError,
     authorize_tool_checkpoint,
@@ -29,6 +33,11 @@ from app.permission_policy import (
 from app.permission_policy.service import PermissionPolicyService
 from app.run_context import RunContext, run_context_scope
 from app.run_journal import SQLiteRunJournal
+from app.run_journal.context_projection import (
+    build_project_execution_context_projection,
+)
+from app.run_journal.models import RunEventDraft
+from app.run_runtime import runtime as run_runtime, tool_checkpoint
 from app.run_runtime.active_timeout import ActiveExecutionTimeout
 from app.run_runtime.tool_checkpoint import (
     dispatch_tool_checkpoint,
@@ -559,3 +568,94 @@ async def test_quit_at_approval_is_cancellation_and_restart_is_resumable(
         assert run.terminal_reason == "brain_restart"
         assert journal.list_tool_calls("run-1")[0].status != "dispatched"
         assert journal.list_run_attempts("run-1")[0].status == "interrupted"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("quitting", [True, False])
+async def test_quit_while_a_tool_waits_for_approval_is_a_restart(
+    tmp_path, monkeypatch, quitting
+):
+    async def write_file(path: str, content: str) -> str:
+        """Write content to a file."""
+        raise AssertionError("an unapproved tool must not run")
+
+    path = tmp_path / "journal.sqlite3"
+    journal = SQLiteRunJournal(path)
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_type="user.message", payload={"content": "Write it"}
+        ),
+    )
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+    for module in (tool_checkpoint, permission_runtime):
+        monkeypatch.setattr(module, "get_default_run_journal", lambda: journal)
+    monkeypatch.setattr(tool_checkpoint, "_notify_cloud_sync", lambda: None)
+    task_lock = TaskLock("project-1", asyncio.Queue(), {})
+    monkeypatch.setattr(
+        "app.agent.listen_chat_agent.get_task_lock", lambda _id: task_lock
+    )
+    monkeypatch.setattr(run_runtime, "_process_shutting_down", False)
+    agent = object.__new__(ListenChatAgent)
+    agent._internal_tools = {"write_file": FunctionTool(write_file)}
+    agent.api_task_id = "project-1"
+    agent.agent_name = "worker"
+    agent.process_task_id = "project-1"
+    request = ToolCallRequest(
+        tool_name="write_file",
+        args={"path": "report.md", "content": "hello"},
+        tool_call_id="quit-approval",
+    )
+
+    with run_context_scope(_context(tmp_path)):
+        step = asyncio.create_task(agent._aexecute_tool(request))
+        await asyncio.wait_for(task_lock.get_queue(), timeout=5)
+        if quitting:
+            run_runtime.mark_process_shutting_down()
+        # RunCoordinator.close() cancels live executions the same way.
+        step.cancel()
+        await asyncio.gather(step, return_exceptions=True)
+
+    [tool] = journal.list_tool_calls("run-1")
+    [approval] = journal.list_approvals("run-1")
+    if not quitting:
+        # Any other cancel still closes the tool before it can run.
+        assert tool.status == "failed"
+        assert approval.status == "rejected"
+        journal.close()
+        return
+    assert tool.status == "prepared"
+    assert approval.status == "pending"
+    journal.close()
+
+    with SQLiteRunJournal(path) as restarted:
+        restarted.reconcile_startup()
+        run = restarted.get_run("run-1")
+        assert run.status == "interrupted"
+        assert run.terminal_reason == "brain_restart"
+        [tool] = restarted.list_tool_calls("run-1")
+        assert tool.dispatched_at is None
+        [approval] = restarted.list_approvals("run-1")
+        assert approval.decision["reason"] == "brain_restart_before_dispatch"
+        resume = restarted.create_run_attempt(
+            "run-1", request_id="resume-1", reason="explicit_resume"
+        )
+        text = build_project_execution_context_projection(
+            restarted,
+            project_id="project-1",
+            current_run_id="run-1",
+            current_attempt_id=resume.attempt_id,
+        ).text
+    [cancelled] = [
+        line
+        for line in text.splitlines()
+        if line.startswith("Checkpoint [approval.cancelled]")
+    ]
+    assert "brain_restart_before_dispatch" in cancelled
+    assert "rejected" not in cancelled
