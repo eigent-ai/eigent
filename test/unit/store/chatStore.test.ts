@@ -1685,82 +1685,6 @@ describe('ChatStore - Core Functionality', () => {
         ).toContain(executionId);
       });
 
-      it.each([
-        ['Open it in the browser', false, true, false],
-        ['Read the heading', true, true, false],
-        ['Read the heading', true, false, false],
-        ['Read the heading', true, true, true],
-      ] as const)(
-        'restores Resume browser access for %s (recorded=%s, available=%s)',
-        async (prompt, usedBrowser, available, foreign) => {
-          const originalFetch = vi.mocked(fetchGet).getMockImplementation();
-          const invoke = vi.fn(async (channel: string) => {
-            if (channel === 'get-browser-port') return 9222;
-            if (channel === 'get-embedded-browser-runtime')
-              return {
-                port: 9222,
-                targetAvailable: available,
-                targets: available
-                  ? [
-                      {
-                        url: 'about:blank#eigent-browser-toolkit=resume',
-                        webContentsId: 7,
-                      },
-                    ]
-                  : [],
-              };
-            if (channel === 'get-env-path') return '';
-            return undefined;
-          });
-          injectHost({ ipcRenderer: { invoke } } as any);
-          try {
-            vi.mocked(fetchGet).mockResolvedValue({
-              run_id: 'attachment-run',
-              project_id: foreign ? 'foreign-session' : 'project-1',
-              used_browser: usedBrowser,
-            });
-            const startup = beginStartup({ resume: true });
-            startup.owner.getState().addMessages(startup.runId, {
-              id: 'original',
-              role: 'user',
-              content: prompt,
-            });
-            startup.releaseReady();
-            const stream = await startup.getStream();
-            const body = JSON.parse(stream.body);
-            if (foreign)
-              expect(invoke).not.toHaveBeenCalledWith(
-                'get-embedded-browser-runtime'
-              );
-            else
-              expect(invoke).toHaveBeenCalledWith(
-                'get-embedded-browser-runtime'
-              );
-            expect(body.cdp_browsers).toEqual(
-              available && !foreign
-                ? [
-                    expect.objectContaining({
-                      managedBy: 'electron',
-                      targetUrl: 'about:blank#eigent-browser-toolkit=resume',
-                    }),
-                  ]
-                : []
-            );
-            expect(body.browser_unavailable_on_resume).toBe(
-              !available && !foreign
-            );
-            await stream.onopen(response());
-            await startup.admission;
-            startup.finishStream();
-          } finally {
-            injectHost(null);
-            vi.mocked(fetchGet).mockReset();
-            if (originalFetch)
-              vi.mocked(fetchGet).mockImplementation(originalFetch);
-          }
-        }
-      );
-
       it.each([false, true])(
         'sends the local timezone for resume=%s',
         async (resume) => {
@@ -2004,51 +1928,6 @@ describe('ChatStore - Core Functionality', () => {
         }
       );
 
-      it('still resumes when the earlier browser use cannot be read', async () => {
-        const originalFetch = vi.mocked(fetchGet).getMockImplementation();
-        const invoke = vi.fn(async (channel: string) => {
-          if (channel === 'get-browser-port') return 9222;
-          if (channel === 'get-embedded-browser-runtime')
-            return {
-              port: 9222,
-              targetAvailable: true,
-              targets: [
-                {
-                  url: 'about:blank#eigent-browser-toolkit=resume',
-                  webContentsId: 7,
-                },
-              ],
-            };
-          if (channel === 'get-env-path') return '';
-          return undefined;
-        });
-        injectHost({ ipcRenderer: { invoke } } as any);
-        try {
-          vi.mocked(fetchGet).mockRejectedValue(new Error('Brain busy'));
-          const startup = beginStartup({ resume: true });
-          startup.owner.getState().addMessages(startup.runId, {
-            id: 'original',
-            role: 'user',
-            content: 'Open it in the browser',
-          });
-          startup.releaseReady();
-          const stream = await startup.getStream();
-          const body = JSON.parse(stream.body);
-          expect(body.cdp_browsers).toEqual([
-            expect.objectContaining({ managedBy: 'electron' }),
-          ]);
-          expect(body.browser_unavailable_on_resume).toBe(false);
-          await stream.onopen(response());
-          await startup.admission;
-          startup.finishStream();
-        } finally {
-          injectHost(null);
-          vi.mocked(fetchGet).mockReset();
-          if (originalFetch)
-            vi.mocked(fetchGet).mockImplementation(originalFetch);
-        }
-      });
-
       it('bounds a stalled accepted-task history request without undoing admission', async () => {
         const startup = beginStartup({
           deferred: true,
@@ -2106,6 +1985,238 @@ describe('ChatStore - Core Functionality', () => {
         ]);
         startup.finishStream();
       });
+      it.each([
+        ['Open it in the browser', false, true, false],
+        ['Read the heading', true, true, false],
+        ['Read the heading', true, false, false],
+        ['Read the heading', true, true, true],
+      ] as const)(
+        'restores Resume browser access for %s (recorded=%s, available=%s)',
+        async (prompt, usedBrowser, available, foreign) => {
+          const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+          const invoke = vi.fn(async (channel: string) => {
+            if (channel === 'get-browser-port') return 9222;
+            if (channel === 'get-embedded-browser-runtime')
+              return {
+                port: 9222,
+                targetAvailable: available,
+                targets: available
+                  ? [
+                      {
+                        url: 'about:blank#eigent-browser-toolkit=resume',
+                        webContentsId: 7,
+                      },
+                    ]
+                  : [],
+              };
+            if (channel === 'get-env-path') return '';
+            return undefined;
+          });
+          injectHost({ ipcRenderer: { invoke } } as any);
+          try {
+            vi.mocked(fetchGet).mockResolvedValue({
+              run_id: 'attachment-run',
+              project_id: foreign ? 'foreign-session' : 'project-1',
+              used_browser: usedBrowser,
+            });
+            const startup = beginStartup({ resume: true });
+            startup.owner.getState().addMessages(startup.runId, {
+              id: 'original',
+              role: 'user',
+              content: prompt,
+            });
+            startup.releaseReady();
+            const stream = await startup.getStream();
+            const body = JSON.parse(stream.body);
+            if (foreign)
+              expect(invoke).not.toHaveBeenCalledWith(
+                'get-embedded-browser-runtime'
+              );
+            else
+              expect(invoke).toHaveBeenCalledWith(
+                'get-embedded-browser-runtime'
+              );
+            expect(body.cdp_browsers).toEqual(
+              available && !foreign
+                ? [
+                    expect.objectContaining({
+                      managedBy: 'electron',
+                      targetUrl: 'about:blank#eigent-browser-toolkit=resume',
+                    }),
+                  ]
+                : []
+            );
+            expect(body.browser_unavailable_on_resume).toBe(
+              !available && !foreign
+            );
+            await stream.onopen(response());
+            await startup.admission;
+            startup.finishStream();
+          } finally {
+            injectHost(null);
+            vi.mocked(fetchGet).mockReset();
+            if (originalFetch)
+              vi.mocked(fetchGet).mockImplementation(originalFetch);
+          }
+        }
+      );
+
+      it.each([
+        ['Open it in the browser', true, 'resolve'],
+        ['Read the heading', false, 'resolve'],
+        ['Read the heading', false, 'reject'],
+      ] as const)(
+        'bounds a stalled Resume browser hint for %s (browser=%s), ignores late %s',
+        async (prompt, needsBrowser, lateOutcome) => {
+          const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+          let resolveHint!: (value: unknown) => void;
+          let rejectHint!: (error: Error) => void;
+          let lookupSignal: AbortSignal | undefined;
+          let lookupOptions: Parameters<typeof fetchGet>[3];
+          let lookupStarted!: () => void;
+          const requested = new Promise<void>((resolve) => {
+            lookupStarted = resolve;
+          });
+          const hint = new Promise((resolve, reject) => {
+            resolveHint = resolve;
+            rejectHint = reject;
+          });
+          const invoke = vi.fn(async (channel: string) => {
+            if (channel === 'get-browser-port') return 9222;
+            if (channel === 'get-embedded-browser-runtime')
+              return {
+                port: 9222,
+                targetAvailable: true,
+                targets: [
+                  {
+                    url: 'about:blank#eigent-browser-toolkit=resume',
+                    webContentsId: 7,
+                  },
+                ],
+              };
+            if (channel === 'get-env-path') return '';
+            return undefined;
+          });
+          injectHost({ ipcRenderer: { invoke } } as any);
+          vi.mocked(fetchGet).mockImplementationOnce(
+            (_path, _params, _headers, options) => {
+              lookupOptions = options;
+              lookupSignal = options?.signal;
+              lookupStarted();
+              return hint;
+            }
+          );
+          const startup = beginStartup({ resume: true });
+          startup.owner.getState().addMessages(startup.runId, {
+            id: 'original',
+            role: 'user',
+            content: prompt,
+          });
+          let stream: any;
+          try {
+            vi.useFakeTimers();
+            startup.releaseReady();
+            await requested;
+            expect(lookupOptions).toMatchObject({
+              expectedAccountKey: expect.any(String),
+              beforeRequest: expect.any(Function),
+            });
+            expect(lookupSignal?.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(1499);
+            expect(fetchPost).not.toHaveBeenCalledWith(
+              expect.stringContaining('/resume'),
+              expect.anything(),
+              expect.anything(),
+              expect.anything()
+            );
+            await vi.advanceTimersByTimeAsync(1);
+            expect(lookupSignal?.aborted).toBe(true);
+            vi.useRealTimers();
+            stream = await startup.getStream();
+            const sentBody = stream.body;
+            const body = JSON.parse(sentBody);
+            expect(body.cdp_browsers).toEqual(
+              needsBrowser
+                ? [expect.objectContaining({ managedBy: 'electron' })]
+                : []
+            );
+            expect(body.browser_unavailable_on_resume).toBe(false);
+            await stream.onopen(response());
+            await startup.admission;
+            const callsAfterAdmission = invoke.mock.calls.length;
+            if (lateOutcome === 'resolve')
+              resolveHint({
+                run_id: startup.runId,
+                project_id: 'project-1',
+                used_browser: !needsBrowser,
+              });
+            else rejectHint(new Error('late history failure'));
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(stream.body).toBe(sentBody);
+            expect(invoke).toHaveBeenCalledTimes(callsAfterAdmission);
+          } finally {
+            vi.useRealTimers();
+            resolveHint({});
+            if (!stream) {
+              stream = await startup.getStream();
+              await stream.onopen(response());
+              await startup.admission;
+            }
+            startup.finishStream();
+            injectHost(null);
+            vi.mocked(fetchGet).mockReset();
+            if (originalFetch)
+              vi.mocked(fetchGet).mockImplementation(originalFetch);
+          }
+        }
+      );
+
+      it('still resumes when the earlier browser use cannot be read', async () => {
+        const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+        const invoke = vi.fn(async (channel: string) => {
+          if (channel === 'get-browser-port') return 9222;
+          if (channel === 'get-embedded-browser-runtime')
+            return {
+              port: 9222,
+              targetAvailable: true,
+              targets: [
+                {
+                  url: 'about:blank#eigent-browser-toolkit=resume',
+                  webContentsId: 7,
+                },
+              ],
+            };
+          if (channel === 'get-env-path') return '';
+          return undefined;
+        });
+        injectHost({ ipcRenderer: { invoke } } as any);
+        try {
+          vi.mocked(fetchGet).mockRejectedValue(new Error('Brain busy'));
+          const startup = beginStartup({ resume: true });
+          startup.owner.getState().addMessages(startup.runId, {
+            id: 'original',
+            role: 'user',
+            content: 'Open it in the browser',
+          });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          const body = JSON.parse(stream.body);
+          expect(body.cdp_browsers).toEqual([
+            expect.objectContaining({ managedBy: 'electron' }),
+          ]);
+          expect(body.browser_unavailable_on_resume).toBe(false);
+          await stream.onopen(response());
+          await startup.admission;
+          startup.finishStream();
+        } finally {
+          injectHost(null);
+          vi.mocked(fetchGet).mockReset();
+          if (originalFetch)
+            vi.mocked(fetchGet).mockImplementation(originalFetch);
+        }
+      });
+
       it('preserves draft files added after task preparation but before readiness and first open', async () => {
         const startup = beginStartup();
         const nextDraft = [file('next-turn.txt')];

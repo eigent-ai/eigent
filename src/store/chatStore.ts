@@ -732,6 +732,8 @@ function getHostIpcRenderer() {
   return _host?.ipcRenderer ?? null;
 }
 
+const RESUME_BROWSER_HINT_TIMEOUT_MS = 1500;
+
 function includesBrowserAgent(workerList: Agent[]): boolean {
   return workerList.some((worker) => {
     if (worker.type === 'browser_agent' || worker.agent_id === 'browser_agent')
@@ -3927,10 +3929,30 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (!type) {
         let previouslyUsedBrowser = false;
         if (startOptions.resumeRequestId) {
+          const controller = new AbortController();
+          let timeout: ReturnType<typeof setTimeout> | undefined;
           try {
-            const priorRun = await fetchGet(
-              `/runs/${encodeURIComponent(newTaskId)}`
-            );
+            // Bound the optional hint even when transport setup or
+            // cancellation stalls.
+            const expired = new Promise<undefined>((resolve) => {
+              timeout = setTimeout(() => {
+                controller.abort();
+                resolve(undefined);
+              }, RESUME_BROWSER_HINT_TIMEOUT_MS);
+            });
+            const priorRun = await Promise.race([
+              fetchGet(
+                `/runs/${encodeURIComponent(newTaskId)}`,
+                undefined,
+                undefined,
+                {
+                  signal: controller.signal,
+                  expectedAccountKey: triggerAccountKey,
+                  beforeRequest: assertAdmissionCurrent,
+                }
+              ),
+              expired,
+            ]);
             previouslyUsedBrowser =
               priorRun?.run_id === newTaskId &&
               priorRun?.project_id === project_id &&
@@ -3940,7 +3962,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // The earlier browser use is only a hint; Resume continues
             // without it and still checks the original request below.
             console.warn('[Resume] Could not read earlier browser use', error);
+          } finally {
+            clearTimeout(timeout);
           }
+          assertAdmissionCurrent();
         }
         const originalPrompt = targetChatStore
           .getState()
