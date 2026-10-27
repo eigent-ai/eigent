@@ -216,9 +216,12 @@ export const canonicalRunEventToLegacyMessage = (
   if (event.event_type === 'interaction.requested') {
     const payload = event.payload as Record<string, unknown> | undefined;
     const request = payload?.request;
+    // Only a question is fully described by its request. Other types keep
+    // options, schema or display arguments outside it, so their legacy ASK
+    // frame stays the source.
     if (
       typeof payload?.interaction_id !== 'string' ||
-      typeof payload.interaction_type !== 'string' ||
+      payload.interaction_type !== 'question' ||
       !request ||
       typeof request !== 'object'
     )

@@ -690,6 +690,23 @@ describe('question history projection', () => {
       },
     });
   });
+  it.each(['memory_change_review', 'merge_conflict'])(
+    'leaves a %s request to its legacy frame',
+    (interactionType) => {
+      expect(
+        canonicalRunEventToLegacyMessage({
+          event_type: 'interaction.requested',
+          run_id: 'run-1',
+          payload: {
+            interaction_id: 'review',
+            interaction_type: interactionType,
+            request: { question: 'Allow this change?' },
+            options: [{ id: 'keep_run', label: 'Keep Run version' }],
+          },
+        })
+      ).toBeNull();
+    }
+  );
   it('retains resolved questions in history while removing their actionable queue entry', () => {
     const ask = {
       id: 'ask',

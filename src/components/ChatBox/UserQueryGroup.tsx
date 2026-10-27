@@ -539,32 +539,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
-        const response = queryGroup.interactionResponses?.[message.id];
-        const resolved =
-          message.interaction &&
-          activeTask?.resolvedInteractionIds?.includes(
-            message.interaction.interaction_id
-          );
-        if (message.step === AgentStep.ASK && (response || resolved)) {
-          return message.interaction ? (
-            <HumanInteractionCard
-              key={`interaction-${message.id}`}
-              interaction={message.interaction}
-              response={response?.content}
-              readOnly
-              timelineReceipt
-            />
-          ) : (
-            <div
-              key={`interaction-${message.id}`}
-              className="flex flex-col gap-3"
-            >
-              <AgentMessageCard id={message.id} content={message.content} />
-              {response && (
-                <UserMessageCard id={response.id} content={response.content} />
-              )}
-            </div>
-          );
+        if (message.step === AgentStep.ASK && message.interaction) {
+          if (
+            activeTask?.resolvedInteractionIds?.includes(
+              message.interaction.interaction_id
+            )
+          ) {
+            return null;
+          }
         }
 
         const isDurablyWaitingReplay =
