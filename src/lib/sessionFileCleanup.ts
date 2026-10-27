@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchDelete, proxyFetchGet } from '@/api/http';
+import { fetchDelete, proxyFetchDelete, proxyFetchGet } from '@/api/http';
 import { deleteWorkspaceProjectWorkdir } from '@/service/workspaceApi';
 import { getAuthStore } from '@/store/authStore';
 
@@ -34,7 +34,7 @@ export function assertSessionCleanupIdentity(identity: CleanupIdentity) {
   }
 }
 
-/** Keep history available for retry until every local cleanup has succeeded. */
+/** Keep history for retry on cleanup failure; offline deletion retains local files. */
 export async function deleteSessionTaskData({
   projectId,
   spaceId,
@@ -42,6 +42,7 @@ export async function deleteSessionTaskData({
   userId,
   knownTasks = [],
   deleteWorkdir = false,
+  deferLocalCleanup = false,
   ipcRenderer,
 }: CleanupIdentity & {
   projectId: string;
@@ -49,10 +50,15 @@ export async function deleteSessionTaskData({
   knownTasks?: SessionHistoryTask[];
   /** Also delete the Session's copy/worktree workdir through Brain. */
   deleteWorkdir?: boolean;
+  /** Backend transport failed: leave all potentially active local files intact. */
+  deferLocalCleanup?: boolean;
   ipcRenderer?: { invoke: (...args: unknown[]) => Promise<unknown> } | null;
 }) {
   const identity = { email, userId };
   assertSessionCleanupIdentity(identity);
+  if (deferLocalCleanup && deleteWorkdir) {
+    throw new Error('Session workdir deletion requires the backend');
+  }
   let tasks = knownTasks;
   let resolvedSpaceId = spaceId;
   try {
@@ -87,7 +93,7 @@ export async function deleteSessionTaskData({
       throw new Error('Task does not identify the selected Session');
     }
   }
-  if (ipcRenderer) {
+  if (ipcRenderer && !deferLocalCleanup) {
     if (!email && userId == null) throw new Error('Missing account identity');
     for (const taskId of new Set(tasks.map((task) => task.task_id))) {
       assertSessionCleanupIdentity(identity);
@@ -114,6 +120,24 @@ export async function deleteSessionTaskData({
       email,
       userId
     );
+  }
+  assertSessionCleanupIdentity(identity);
+  if (!deferLocalCleanup) {
+    try {
+      await fetchDelete(
+        `/projects/${encodeURIComponent(projectId)}/runtime?${new URLSearchParams(
+          {
+            email: email ?? '',
+            ...(userId != null ? { user_id: String(userId) } : {}),
+          }
+        )}`
+      );
+    } catch (error) {
+      console.warn(
+        'Session runtime cleanup will retry during retention',
+        error
+      );
+    }
   }
   assertSessionCleanupIdentity(identity);
   const historyIds = new Set(

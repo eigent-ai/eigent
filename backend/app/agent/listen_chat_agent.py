@@ -58,6 +58,7 @@ from app.run_runtime.owned_tasks import (
     get_task_lock_if_exists,
     run_owned_thread,
 )
+from app.run_runtime.runtime import process_shutting_down
 from app.run_runtime.step_coordinator import step_scope
 from app.run_runtime.timeout_config import (
     normalize_optional_timeout_seconds,
@@ -1444,12 +1445,17 @@ class ListenChatAgent(ChatAgent):
                         result = await result
 
         except asyncio.CancelledError as error:
-            await run_owned_thread(
-                finish_tool_checkpoint,
-                checkpoint,
-                error=TimeoutError("tool execution cancelled or timed out"),
-                outcome_known=not dispatched,
-            )
+            # A quit is not this tool's outcome. Restart recovery closes an
+            # undispatched call and its approval as interrupted, not failed.
+            if dispatched or not process_shutting_down():
+                await run_owned_thread(
+                    finish_tool_checkpoint,
+                    checkpoint,
+                    error=TimeoutError(
+                        "tool execution cancelled or timed out"
+                    ),
+                    outcome_known=not dispatched,
+                )
             raise error
         except ToolPermissionRejectedError as error:
             execution_error = error

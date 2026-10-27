@@ -73,3 +73,28 @@ export function applyNativeMenuLocaleChange(
   onChange(next);
   return true;
 }
+
+export function getNativeQuitMessages(locale: string, unknown: boolean) {
+  const layouts = {
+    'en-US': enLayout,
+    'zh-Hans': zhHansLayout,
+    'zh-Hant': zhHantLayout,
+    de: deLayout,
+    ko: koLayout,
+    ja: jaLayout,
+    fr: frLayout,
+    ru: ruLayout,
+    it: itLayout,
+    ar: arLayout,
+    es: esLayout,
+  };
+  const layout = layouts[resolveNativeMenuLocale(locale)];
+  return {
+    title: layout.shortcuts.quit,
+    cancel: layout.cancel,
+    message:
+      layout[
+        unknown ? 'close-unknown-quit-message' : 'close-durable-quit-message'
+      ],
+  };
+}

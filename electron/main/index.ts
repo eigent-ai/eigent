@@ -76,6 +76,7 @@ import {
 import {
   applyNativeMenuLocaleChange,
   getNativeMenuMessages,
+  getNativeQuitMessages,
   resolveNativeMenuLocale,
 } from './commands/nativeMenuMessages';
 import { copyBrowserData } from './copy';
@@ -108,6 +109,7 @@ import {
   revealWorkspaceLocalNode,
 } from './localPathActions';
 import { setRoundedCorners } from './native/macos-window';
+import { confirmNativeQuit } from './nativeQuitGuard';
 import { RendererAppCommandCoordinator } from './rendererAppCommandCoordinator';
 import { registerReviewChangesIpcHandlers } from './reviewChanges';
 import {
@@ -197,6 +199,39 @@ const closeCoordinator = new CloseCoordinator({
   defaultIntent: 'quit-app',
   quit: () => app.quit(),
   shouldGuard: () => rendererAppCommands.isReady(),
+  // Main spawns the only Brain; without it no task or stream can be running.
+  mayHaveRunningWork: () => isPythonProcessRunning(),
+  confirmQuitWithoutRenderer: () =>
+    confirmNativeQuit({
+      lookup: async () => {
+        if (!isPythonProcessRunning()) throw new Error('Brain unavailable');
+        const response = await axios.get(
+          `http://127.0.0.1:${backendPort}/runs/active`,
+          {
+            timeout: 2500,
+            headers: { 'X-Eigent-Local-Capability': localControlCapability },
+          }
+        );
+        return response.data;
+      },
+      confirm: async (unknown) => {
+        const text = getNativeQuitMessages(
+          nativeMenuLocale ?? app.getLocale(),
+          unknown
+        );
+        const result = await dialog.showMessageBox({
+          type: 'question',
+          title: text.title,
+          message: text.title,
+          detail: text.message,
+          buttons: [text.cancel, text.title],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        });
+        return result.response === 1;
+      },
+    }),
   diagnostic: (message) => log.info(message),
 });
 let isQuitCleanupInProgress = false;
@@ -4096,12 +4131,7 @@ app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
 
-  if (
-    !closeCoordinator.isAppQuitInProgress() &&
-    rendererAppCommands.isReady() &&
-    win &&
-    !win.isDestroyed()
-  ) {
+  if (!closeCoordinator.isAppQuitInProgress()) {
     event.preventDefault();
     closeCoordinator.request('quit-app');
     return;

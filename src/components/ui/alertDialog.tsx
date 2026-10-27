@@ -18,9 +18,9 @@ import {
   type ButtonTone,
   type ButtonVariant,
 } from '@/components/ui/button';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useId, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 type ConfirmVariant = ButtonVariant | ButtonLegacyVariant;
@@ -64,8 +64,21 @@ export default function ConfirmModal({
 }: ConfirmModalProps) {
   const { t } = useTranslation();
   const shouldReduceMotion = Boolean(useReducedMotion());
-  const titleId = useId();
-  const descriptionId = useId();
+  // Read the focused element while rendering the open state: an autoFocus
+  // field inside the dialog takes focus before any effect could see it.
+  const [opening, setOpening] = useState<{
+    open: boolean;
+    returnFocus: Element | null;
+  }>({ open: false, returnFocus: null });
+  if (opening.open !== isOpen) {
+    setOpening({
+      open: isOpen,
+      returnFocus:
+        isOpen && typeof document !== 'undefined'
+          ? document.activeElement
+          : opening.returnFocus,
+    });
+  }
   const title = titleProp ?? t('layout.confirm');
   const message = messageProp ?? t('layout.confirm-content');
   const confirmText = confirmTextProp ?? t('layout.confirm');
@@ -78,90 +91,102 @@ export default function ConfirmModal({
       ? (confirmTone ?? 'error')
       : confirmTone;
 
-  if (typeof document === 'undefined') return null;
+  // Radix owns Escape, outside press, the focus trap and stacking with other
+  // dialogs; forceMount lets AnimatePresence play the exit.
+  return (
+    <DialogPrimitive.Root
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <AnimatePresence>
+        {isOpen && (
+          <DialogPrimitive.Portal forceMount>
+            <DialogPrimitive.Overlay asChild forceMount>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={ALERT_DIALOG_TRANSITION}
+                className="alert-dialog fixed inset-0 z-[99] bg-dialog-overlay-scrim"
+              />
+            </DialogPrimitive.Overlay>
 
-  return createPortal(
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Background overlay */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={ALERT_DIALOG_TRANSITION}
-            className="alert-dialog fixed inset-0 z-[99] bg-dialog-overlay-scrim"
-            onClick={onClose}
-          />
-
-          {/* Viewport-sized layer owns centering; the card only scales/fades. */}
-          <div
-            data-alert-dialog-viewport
-            className="pointer-events-none fixed inset-0 z-[100] grid place-items-center p-4"
-          >
-            <motion.div
-              initial={{
-                opacity: 0,
-                transform: shouldReduceMotion ? 'scale(1)' : 'scale(0.95)',
-              }}
-              animate={{ opacity: 1, transform: 'scale(1)' }}
-              exit={{
-                opacity: 0,
-                transform: shouldReduceMotion ? 'scale(1)' : 'scale(0.95)',
-              }}
-              transition={ALERT_DIALOG_TRANSITION}
-              style={{ transformOrigin: 'center' }}
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby={titleId}
-              aria-describedby={descriptionId}
-              className="alert-dialog-wrapper pointer-events-auto w-full max-w-[400px] overflow-hidden rounded-xl"
+            {/* Viewport-sized layer owns centering; the card only scales/fades. */}
+            <div
+              data-alert-dialog-viewport
+              className="pointer-events-none fixed inset-0 z-[100] grid place-items-center p-4"
             >
-              <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-6 shadow-ds-elevation-dialog">
-                <span
-                  id={titleId}
-                  className="mb-2 block !text-ds-text-section font-bold text-ds-ink-default-default"
+              <DialogPrimitive.Content
+                asChild
+                forceMount
+                role="alertdialog"
+                onCloseAutoFocus={(event) => {
+                  // There is no trigger; go back to where the user was.
+                  event.preventDefault();
+                  const { returnFocus } = opening;
+                  if (returnFocus instanceof HTMLElement) returnFocus.focus();
+                }}
+              >
+                <motion.div
+                  initial={{
+                    opacity: 0,
+                    transform: shouldReduceMotion ? 'scale(1)' : 'scale(0.95)',
+                  }}
+                  animate={{ opacity: 1, transform: 'scale(1)' }}
+                  exit={{
+                    opacity: 0,
+                    transform: shouldReduceMotion ? 'scale(1)' : 'scale(0.95)',
+                  }}
+                  transition={ALERT_DIALOG_TRANSITION}
+                  style={{ transformOrigin: 'center' }}
+                  className="alert-dialog-wrapper pointer-events-auto w-full max-w-[400px] overflow-hidden rounded-xl"
                 >
-                  {title}
-                </span>
-                {children ? (
-                  <div id={descriptionId} className="mb-6">
-                    {children}
-                  </div>
-                ) : (
-                  <span
-                    id={descriptionId}
-                    className="mb-6 block !text-ds-text-body-large text-ds-ink-muted-default"
-                  >
-                    {message}
-                  </span>
-                )}
+                  <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-6 shadow-ds-elevation-dialog">
+                    <DialogPrimitive.Title asChild>
+                      <span className="mb-2 block !text-ds-text-section font-bold text-ds-ink-default-default">
+                        {title}
+                      </span>
+                    </DialogPrimitive.Title>
+                    {children ? (
+                      <DialogPrimitive.Description asChild>
+                        <div className="mb-6">{children}</div>
+                      </DialogPrimitive.Description>
+                    ) : (
+                      <DialogPrimitive.Description asChild>
+                        <span className="mb-6 block !text-ds-text-body-large text-ds-ink-muted-default">
+                          {message}
+                        </span>
+                      </DialogPrimitive.Description>
+                    )}
 
-                <div className="flex justify-end gap-3">
-                  {!hideCancel && (
-                    <Button variant="ghost" onClick={onClose}>
-                      {cancelText}
-                    </Button>
-                  )}
-                  <Button
-                    variant={resolvedVariant}
-                    tone={resolvedTone}
-                    disabled={confirmDisabled}
-                    onClick={() => {
-                      if (confirmDisabled) return;
-                      onConfirm();
-                      if (closeOnConfirm) onClose();
-                    }}
-                  >
-                    {confirmText}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>,
-    document.body
+                    <div className="flex justify-end gap-3">
+                      {!hideCancel && (
+                        <Button variant="ghost" onClick={onClose}>
+                          {cancelText}
+                        </Button>
+                      )}
+                      <Button
+                        variant={resolvedVariant}
+                        tone={resolvedTone}
+                        disabled={confirmDisabled}
+                        onClick={() => {
+                          if (confirmDisabled) return;
+                          onConfirm();
+                          if (closeOnConfirm) onClose();
+                        }}
+                      >
+                        {confirmText}
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              </DialogPrimitive.Content>
+            </div>
+          </DialogPrimitive.Portal>
+        )}
+      </AnimatePresence>
+    </DialogPrimitive.Root>
   );
 }
