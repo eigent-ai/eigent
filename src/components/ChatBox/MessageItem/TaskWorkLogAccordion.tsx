@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isLegacyConfirmationInteraction } from '@/components/ChatBox/BottomBox/legacyHumanControl';
 import { callIcon } from '@/components/ChatBox/TimelineModes/actionIcon';
 import { TaskLogIcon } from '@/components/ChatBox/TimelineModes/TaskLog';
 import { Badge } from '@/components/ui/badge';
@@ -924,12 +925,15 @@ export function injectHumanInputReceipts(
   messages: HumanControlMessage[],
   resolvedInteractionIds: readonly string[] = []
 ): GroupedEntry[] {
+  // Approvals and reviews are decided above the composer, or in the chat
+  // after a reload; a second card here would only duplicate them.
   const asks = messages
     .map((message, index) => ({ message, index }))
     .filter(
       ({ message }) =>
         message.step === AgentStep.ASK &&
-        message.interaction?.interaction_type !== 'approval'
+        message.interaction?.interaction_type !== 'approval' &&
+        !isLegacyConfirmationInteraction(message.interaction)
     );
   if (!asks.length) return entries;
 

@@ -767,6 +767,37 @@ describe('injectHumanInputReceipts question history', () => {
     });
   });
 
+  it('leaves a pending Memory change review to its own control', () => {
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: [],
+      status: 'running',
+      doneToolCount: 0,
+      totalToolCount: 0,
+    };
+    const review: Message = {
+      id: 'ask-review',
+      role: 'agent',
+      content: 'Allow the Agent to update Memory?',
+      step: AgentStep.ASK,
+      agent_name: 'single_agent',
+      interaction: {
+        interaction_id: 'review-1',
+        interaction_type: 'memory_change_review',
+        run_id: 'task-1',
+        question: 'Allow the Agent to update Memory?',
+      },
+    };
+
+    const [result] = injectHumanInputReceipts([group], [review], []);
+
+    expect(result!.items).toEqual([]);
+  });
+
   it('keeps a pending question without an answer', () => {
     const group: AgentGroup = {
       kind: 'agent-group',

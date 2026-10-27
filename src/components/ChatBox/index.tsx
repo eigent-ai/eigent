@@ -123,7 +123,11 @@ import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
 import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
-import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
+import {
+  createLegacyApprovalVariant,
+  createLegacyConfirmationVariant,
+  isLegacyConfirmationInteraction,
+} from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
   BottomBoxFeedbackVariant,
@@ -817,7 +821,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     const taskId = activeTaskId;
     if (
       !interaction ||
-      interaction.interaction_type !== 'approval' ||
+      (interaction.interaction_type !== 'approval' &&
+        !isLegacyConfirmationInteraction(interaction)) ||
       !taskId ||
       legacyApprovalSubmitting ||
       !isInteractiveHumanReply
@@ -871,7 +876,10 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         return;
       await decideHumanInteraction(interaction, {
         decisionRequestId: generateUniqueId(),
-        decision: { decision, scope },
+        decision:
+          interaction.interaction_type === 'approval'
+            ? { decision, scope }
+            : { decision },
         actorId: user_id,
         projectId: projectId ?? undefined,
       });
@@ -1334,7 +1342,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return;
     }
     const requiresApprovalDecision =
-      activeInteraction?.interaction_type === 'approval';
+      activeInteraction?.interaction_type === 'approval' ||
+      isLegacyConfirmationInteraction(activeInteraction);
     const isTaskBusy =
       (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
       task.status === ChatTaskStatus.PAUSE ||
@@ -2941,10 +2950,37 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   ) {
     legacyApprovalVariant.disabled = true;
   }
+  const legacyConfirmationVariant =
+    !eventNativeTimelineEnabled &&
+    activeAsk &&
+    isInteractiveHumanReply &&
+    activeAskMessage
+      ? createLegacyConfirmationVariant({
+          interaction: activeInteraction,
+          fallbackQuestion: activeAskMessage.content.trim(),
+          submitting: legacyApprovalSubmitting,
+          t,
+          onConfirm: () =>
+            void handleLegacyApprovalDecision('approved', 'once'),
+          onReject: () => void handleLegacyApprovalDecision('rejected', 'once'),
+        })
+      : null;
+  if (
+    legacyConfirmationVariant &&
+    controlOperations.some(
+      (op) =>
+        op.kind === 'interaction' &&
+        op.runId === activeInteraction?.run_id &&
+        op.interactionId === activeInteraction?.interaction_id
+    )
+  ) {
+    legacyConfirmationVariant.disabled = true;
+  }
   const legacyQuestionVariant: BottomBoxFeedbackVariant | null =
     !eventNativeTimelineEnabled &&
     activeAsk &&
     !isLegacyApproval &&
+    !isLegacyConfirmationInteraction(activeInteraction) &&
     isInteractiveHumanReply &&
     activeAskMessage
       ? {
@@ -2967,7 +3003,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const bottomBoxControl = selectBottomBoxControl({
     humanInteractionVariant: eventNativeTimelineEnabled
       ? eventNativeHumanControl.variant
-      : (legacyApprovalVariant ?? legacyQuestionVariant),
+      : (legacyApprovalVariant ??
+        legacyConfirmationVariant ??
+        legacyQuestionVariant),
     runControlVariant: eventNativeTimelineEnabled
       ? eventNativeRunControlVariant
       : null,

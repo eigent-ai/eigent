@@ -1432,6 +1432,76 @@ describe('ChatBox Component', async () => {
       });
     });
 
+    it('asks to confirm a Memory change review instead of a text answer', async () => {
+      const user = userEvent.setup();
+      const review = {
+        interaction_id: 'review-1',
+        interaction_type: 'memory_change_review',
+        run_id: 'test-task-id',
+        version: 0,
+        title: 'Review Memory change',
+        question: "Allow the Agent to update Memory 'Favourite drink: coffee'?",
+        agent: 'single_agent',
+        display_arguments: {
+          before: { content: 'Favourite drink: coffee' },
+          after: { content: 'Favourite drink: tea' },
+        },
+      };
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.includes('/interactions?status=pending')
+            ? {
+                interactions: [
+                  {
+                    interaction_id: 'review-1',
+                    status: 'requested',
+                    version: 0,
+                  },
+                ],
+              }
+            : { runs: [] }
+        )
+      );
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'single_agent',
+              hasMessages: true,
+              messages: [
+                { id: 'prompt', role: 'user', content: 'Update my drink' },
+                {
+                  id: 'ask-review',
+                  role: 'agent',
+                  step: 'ask',
+                  content: review.question,
+                  agent_name: 'single_agent',
+                  interaction: review,
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+
+      renderChatBox();
+
+      expect(screen.getByText('Review Memory change')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /feedback/i })).toBeNull();
+      await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+      await waitFor(() =>
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/runs/test-task-id/interactions/review-1/decisions',
+          expect.objectContaining({ decision: { decision: 'approved' } })
+        )
+      );
+    });
+
     describe('question still waiting in a reopened Session', () => {
       const restoredQuestionState = (durableRunStatus: string) => ({
         ...defaultChatStoreState,
