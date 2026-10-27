@@ -28,7 +28,10 @@ import { useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  supportsTimezone: false,
+  timezoneConfig: { schema_: { properties: { timezone: {} } } },
   proxyCreateTrigger: vi.fn(),
+  proxyDeleteTrigger: vi.fn(),
   proxyUpdateTrigger: vi.fn(),
   toastError: vi.fn(),
   createProject: vi.fn(() => 'automation-session'),
@@ -37,6 +40,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/service/triggerApi', () => ({
   proxyCreateTrigger: mocks.proxyCreateTrigger,
+  proxyDeleteTrigger: mocks.proxyDeleteTrigger,
   proxyUpdateTrigger: mocks.proxyUpdateTrigger,
 }));
 
@@ -44,7 +48,9 @@ vi.mock('@/hooks/queries/useTriggerQueries', () => ({
   useTriggerCacheInvalidation: () => ({
     invalidateUserTriggerCount: vi.fn(),
   }),
-  useTriggerConfigQuery: () => ({ data: undefined }),
+  useTriggerConfigQuery: () => ({
+    data: mocks.supportsTimezone ? mocks.timezoneConfig : undefined,
+  }),
 }));
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
@@ -429,4 +435,72 @@ describe('TriggerDialog when creating an Automation fails', () => {
     );
     expect(mocks.removeProject).not.toHaveBeenCalled();
   });
+});
+
+it('keeps an existing UTC schedule without a zone when the server supports local schedules', async () => {
+  mocks.supportsTimezone = true;
+  mocks.proxyUpdateTrigger.mockImplementation(async (id, data) => ({
+    id,
+    ...data,
+  }));
+  const user = userEvent.setup();
+  render(
+    <TriggerDialog
+      selectedTrigger={
+        {
+          id: 7,
+          name: 'Legacy',
+          task_prompt: 'Say hello',
+          trigger_type: TriggerType.Schedule,
+          status: TriggerStatus.Inactive,
+          custom_cron_expression: '0 9 * * *',
+          is_single_execution: false,
+          config: {},
+        } as any
+      }
+      isOpen
+      onOpenChange={vi.fn()}
+    />
+  );
+  await user.click(screen.getByRole('button', { name: 'Update' }));
+  await vi.waitFor(() => expect(mocks.proxyUpdateTrigger).toHaveBeenCalled());
+  const submitted = mocks.proxyUpdateTrigger.mock.calls.at(-1)![1];
+  expect(submitted.config?.timezone).toBeUndefined();
+  expect(submitted.custom_cron_expression).toBe('0 9 * * *');
+  mocks.supportsTimezone = false;
+});
+
+it('removes a new Automation whose zone the server dropped when the UTC rewrite fails', async () => {
+  vi.clearAllMocks();
+  mocks.supportsTimezone = true;
+  mocks.proxyCreateTrigger.mockImplementation(async (data) => ({
+    id: 3,
+    ...data,
+    config: {},
+  }));
+  mocks.proxyUpdateTrigger.mockRejectedValue(new Error('offline'));
+  mocks.proxyDeleteTrigger.mockResolvedValue(undefined);
+  const user = userEvent.setup();
+  render(
+    <TriggerDialog selectedTrigger={null} isOpen onOpenChange={vi.fn()} />
+  );
+  await user.type(
+    screen.getByPlaceholderText('Enter automation name'),
+    'Nightly'
+  );
+  await user.type(
+    screen.getByPlaceholderText('What should this automation do?'),
+    'Say hello'
+  );
+  await user.click(screen.getByRole('button', { name: 'Create' }));
+  await vi.waitFor(() =>
+    expect(mocks.toastError).toHaveBeenCalledWith('Failed to create automation')
+  );
+  expect(mocks.proxyCreateTrigger.mock.calls[0][0].config?.timezone).toBe(
+    Intl.DateTimeFormat().resolvedOptions().timeZone
+  );
+  expect(mocks.proxyUpdateTrigger).toHaveBeenCalledTimes(1);
+  expect(mocks.proxyDeleteTrigger).toHaveBeenCalledWith(3);
+  mocks.supportsTimezone = false;
+  mocks.proxyUpdateTrigger.mockReset();
 });

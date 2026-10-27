@@ -50,7 +50,12 @@ import {
 } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import type { AutomationDraftV1 } from '@/lib/automationDraft';
-import { proxyCreateTrigger, proxyUpdateTrigger } from '@/service/triggerApi';
+import { confirmScheduleTimezone } from '@/lib/triggerScheduleCompatibility';
+import {
+  proxyCreateTrigger,
+  proxyDeleteTrigger,
+  proxyUpdateTrigger,
+} from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
@@ -412,6 +417,18 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
+        const previous = selectedTrigger;
+        response = await confirmScheduleTimezone(
+          response,
+          updateData,
+          proxyUpdateTrigger,
+          () =>
+            proxyUpdateTrigger(previous.id, {
+              custom_cron_expression: previous.custom_cron_expression,
+              is_single_execution: previous.is_single_execution,
+              config: previous.config ?? {},
+            })
+        );
 
         // Update trigger in store
         updateTrigger(selectedTrigger.id, response);
@@ -471,6 +488,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyCreateTrigger(createData);
+        const created = response;
+        response = await confirmScheduleTimezone(
+          created,
+          createData,
+          proxyUpdateTrigger,
+          () => proxyDeleteTrigger(created.id)
+        );
         // The saved Automation owns its Session from here on.
         automationSessionRef.current = null;
 
@@ -643,6 +667,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             </TabsList>
             <TabsContent value="schedule" className="px-6 py-4">
               <SchedulePicker
+                timezone={
+                  selectedTrigger
+                    ? selectedTrigger.config?.timezone
+                    : configData?.schema_?.properties?.timezone
+                      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+                      : undefined
+                }
                 isEditing={!!selectedTrigger}
                 useDefaultTime={!selectedTrigger && !draft}
                 value={formData.custom_cron_expression || DEFAULT_CRON}
