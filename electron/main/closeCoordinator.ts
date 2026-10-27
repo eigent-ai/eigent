@@ -33,6 +33,8 @@ export interface CloseCoordinatorOptions {
   defaultIntent: CloseIntent;
   quit: () => void;
   confirmQuitWithoutRenderer?: () => Promise<boolean>;
+  /** False when no process exists that could be running work. */
+  mayHaveRunningWork?: () => boolean;
   /** False while no renderer exists to answer a confirmation request. */
   shouldGuard?: () => boolean;
   /**
@@ -64,6 +66,7 @@ export class CloseCoordinator {
   private readonly clearTimeoutFn: (handle: unknown) => void;
   private readonly diagnostic: (message: string) => void;
   private readonly confirmQuitWithoutRenderer: () => Promise<boolean>;
+  private readonly mayHaveRunningWork: () => boolean;
   private nativeConfirmationPending = false;
   private responseTimer: unknown = null;
   private window: CoordinatedWindow | null = null;
@@ -80,6 +83,7 @@ export class CloseCoordinator {
     quit,
     shouldGuard = () => true,
     confirmQuitWithoutRenderer = async () => false,
+    mayHaveRunningWork = () => true,
     responseTimeoutMs = DEFAULT_CLOSE_RESPONSE_TIMEOUT_MS,
     setTimeoutFn = (handler, ms) => setTimeout(handler, ms),
     clearTimeoutFn = (handle) => clearTimeout(handle as NodeJS.Timeout),
@@ -89,6 +93,7 @@ export class CloseCoordinator {
     this.quit = quit;
     this.shouldGuard = shouldGuard;
     this.confirmQuitWithoutRenderer = confirmQuitWithoutRenderer;
+    this.mayHaveRunningWork = mayHaveRunningWork;
     this.responseTimeoutMs = responseTimeoutMs;
     this.setTimeoutFn = setTimeoutFn;
     this.clearTimeoutFn = clearTimeoutFn;
@@ -101,8 +106,20 @@ export class CloseCoordinator {
     this.responseTimer = null;
   }
 
+  /** With nothing able to run, "could not check" would be a false warning. */
+  private quitIfNoWorkCanRun(): boolean {
+    if (this.appQuitInProgress || this.mayHaveRunningWork()) return false;
+    this.clearResponseTimer();
+    this.pendingIntent = null;
+    this.pendingAcknowledged = false;
+    this.appQuitInProgress = true;
+    this.quit();
+    return true;
+  }
+
   private confirmNativeQuit(): void {
     if (this.nativeConfirmationPending || this.appQuitInProgress) return;
+    if (this.quitIfNoWorkCanRun()) return;
     this.nativeConfirmationPending = true;
     this.clearResponseTimer();
     this.pendingIntent = null;
@@ -171,6 +188,7 @@ export class CloseCoordinator {
     event.preventDefault();
 
     const intent = this.nextIntent ?? this.defaultIntent;
+    if (intent === 'quit-app' && this.quitIfNoWorkCanRun()) return;
     if (this.pendingIntent) return;
 
     this.pendingIntent = intent;
@@ -278,6 +296,7 @@ export class CloseCoordinator {
   }
 
   request(intent: CloseIntent): void {
+    if (intent === 'quit-app' && this.quitIfNoWorkCanRun()) return;
     const window = this.window;
     if (!window || window.isDestroyed()) {
       if (intent === 'quit-app') {

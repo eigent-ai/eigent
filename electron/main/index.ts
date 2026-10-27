@@ -199,6 +199,8 @@ const closeCoordinator = new CloseCoordinator({
   defaultIntent: 'quit-app',
   quit: () => app.quit(),
   shouldGuard: () => rendererAppCommands.isReady(),
+  // Main spawns the only Brain; without it no task or stream can be running.
+  mayHaveRunningWork: () => isPythonProcessRunning(),
   confirmQuitWithoutRenderer: () =>
     confirmNativeQuit({
       lookup: async () => {

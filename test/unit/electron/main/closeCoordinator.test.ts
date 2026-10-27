@@ -491,3 +491,75 @@ describe('native quit fallback', () => {
     }
   );
 });
+
+describe('quit with no process able to run work', () => {
+  function create(rendererReady: boolean) {
+    const fixture = createWindow();
+    const quit = vi.fn();
+    const confirm = vi.fn(async () => false);
+    const coordinator = new CloseCoordinator({
+      defaultIntent: 'quit-app',
+      quit,
+      shouldGuard: () => rendererReady,
+      mayHaveRunningWork: () => false,
+      confirmQuitWithoutRenderer: confirm,
+    });
+    coordinator.bindWindow(fixture.window as never);
+    return { fixture, quit, confirm, coordinator };
+  }
+
+  it.each([true, false])(
+    'quits without any dialog when the renderer ready state is %s',
+    (rendererReady) => {
+      const { fixture, quit, confirm, coordinator } = create(rendererReady);
+
+      coordinator.request('quit-app');
+
+      expect(quit).toHaveBeenCalledOnce();
+      expect(confirm).not.toHaveBeenCalled();
+      expect(fixture.send).not.toHaveBeenCalled();
+      expect(coordinator.isAppQuitInProgress()).toBe(true);
+    }
+  );
+
+  it('quits from the native window close without asking the renderer', () => {
+    const { fixture, quit, confirm } = create(true);
+
+    fixture.close();
+
+    expect(fixture.closeEvents[0].preventDefault).toHaveBeenCalledOnce();
+    expect(quit).toHaveBeenCalledOnce();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(fixture.send).not.toHaveBeenCalled();
+  });
+
+  it('quits when the work owner stops while the renderer is silent', () => {
+    let running = true;
+    let timeout: (() => void) | null = null;
+    const fixture = createWindow();
+    const quit = vi.fn();
+    const confirm = vi.fn(async () => false);
+    const coordinator = new CloseCoordinator({
+      defaultIntent: 'quit-app',
+      quit,
+      mayHaveRunningWork: () => running,
+      confirmQuitWithoutRenderer: confirm,
+      setTimeoutFn: (handler) => {
+        timeout = handler;
+        return 1;
+      },
+      clearTimeoutFn: () => {
+        timeout = null;
+      },
+    });
+    coordinator.bindWindow(fixture.window as never);
+
+    coordinator.request('quit-app');
+    expect(fixture.send).toHaveBeenCalledOnce();
+    running = false;
+    timeout?.();
+
+    expect(quit).toHaveBeenCalledOnce();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+});
