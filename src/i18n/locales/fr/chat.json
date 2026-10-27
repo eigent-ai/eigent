@@ -573,6 +573,8 @@
   "task-failure-outcome-outcome_unknown": "Résultat inconnu",
   "task-failure-outcome-unverified": "Résultat non vérifié",
   "task-failure-timed-out": "Le délai de la tâche a expiré avant qu’une réponse finale soit enregistrée.",
+  "task-failure-interrupted": "La tâche a été interrompue avant qu’une réponse finale soit enregistrée.",
+  "task-failure-interrupted-effects": "Une interruption ne permet pas de déterminer si des fichiers ou des services externes ont été modifiés.",
   "task-failure-no-actions-recorded": "Aucune action n’a été enregistrée.",
   "task-failure-more-actions": "{{count}} autres actions ne sont pas affichées.",
   "approval-expired-title": "Approbation expirée",

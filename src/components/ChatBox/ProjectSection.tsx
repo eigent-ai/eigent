@@ -143,22 +143,30 @@ export function groupMessagesByQuery(messages: readonly any[]): QueryGroup[] {
     if (message.role === 'user') {
       const previousMessage = messages[index - 1];
 
-      // An explicit ASK is an interruption inside the current Run, not a new
-      // query turn. Structured replies correlate by interaction id; legacy
-      // ASK frames use only strict adjacency so an ordinary follow-up can
-      // never be guessed into a human-input receipt.
-      if (
-        currentGroup &&
-        previousMessage?.role === 'agent' &&
-        previousMessage?.step === AgentStep.ASK &&
-        (!message.interactionResponseTo ||
-          (previousMessage?.interaction?.interaction_id &&
-            message.interactionResponseTo ===
-              previousMessage.interaction.interaction_id))
-      ) {
-        currentGroup.interactionResponses = {
-          ...currentGroup.interactionResponses,
-          [previousMessage.id]: message,
+      const replyId = message.interactionResponseTo;
+      const askGroup = replyId
+        ? [...groups, ...(currentGroup ? [currentGroup] : [])].find((group) =>
+            group.otherMessages.some(
+              (candidate: Message) =>
+                candidate.step === AgentStep.ASK &&
+                candidate.interaction?.interaction_id === replyId
+            )
+          )
+        : previousMessage?.role === 'agent' &&
+            previousMessage.step === AgentStep.ASK
+          ? currentGroup
+          : undefined;
+      const ask = replyId
+        ? askGroup?.otherMessages.find(
+            (candidate: Message) =>
+              candidate.step === AgentStep.ASK &&
+              candidate.interaction?.interaction_id === replyId
+          )
+        : previousMessage;
+      if (askGroup && ask) {
+        askGroup.interactionResponses = {
+          ...askGroup.interactionResponses,
+          [ask.id]: message,
         };
         return;
       }

@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { formatAppDate } from '@/lib/appDate';
 import {
   completeProjectViewResync,
   importLegacyChatSteps,
@@ -147,7 +148,9 @@ export default function RemoteControlPage() {
         defaultValue: 'History resync required',
       });
     const syncedAt = projectView.lastSyncedAt
-      ? new Date(projectView.lastSyncedAt).toLocaleTimeString(
+      ? formatAppDate(
+          new Date(projectView.lastSyncedAt),
+          { timeStyle: 'medium' },
           i18n.resolvedLanguage || i18n.language
         )
       : t('layout.remote-control-not-synced', {

@@ -17,7 +17,7 @@ from app.agent.prompt import (
     QUESTION_CONFIRM_SYS_PROMPT,
     append_connected_app_mcp_notice,
 )
-from app.agent.utils import NOW_STR
+from app.agent.utils import agent_current_time
 from app.model.chat import Chat
 
 
@@ -25,7 +25,9 @@ def question_confirm_agent(options: Chat):
     return agent_model(
         "question_confirm_agent",
         append_connected_app_mcp_notice(
-            QUESTION_CONFIRM_SYS_PROMPT.format(now_str=NOW_STR)
+            QUESTION_CONFIRM_SYS_PROMPT.format(
+                now_str=agent_current_time(options)
+            )
         ),
         options,
     )

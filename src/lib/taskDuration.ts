@@ -1,5 +1,19 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 // Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+
+import { AgentStep } from '@/types/constants';
 
 export interface TaskDurationState {
   taskTime: number;
@@ -65,4 +79,37 @@ export function resolveHistoricalRunElapsedMs({
     return undefined;
   }
   return Math.max(0, epochToMs(updatedAt) - epochToMs(createdAt));
+}
+
+/**
+ * Track the time a played-back Run spent waiting for the user.
+ *
+ * Playback measures a Run by the span of its recorded steps, which includes
+ * every wait for an answer or approval. A request opens a wait at its first
+ * recorded step (the journal can carry the same request twice) and its first
+ * recorded outcome closes it. Overlapping waits count once; a wait still open
+ * when playback ends is not counted.
+ */
+export function createPlaybackUserWaitTracker() {
+  const open = new Set<string>();
+  const closed = new Set<string>();
+  let waitingSinceMs: number | null = null;
+  let waitedMs = 0;
+  return {
+    observe(step: unknown, interactionId: unknown, atMs: number) {
+      if (typeof interactionId !== 'string' || !interactionId) return;
+      if (closed.has(interactionId)) return;
+      if (step === AgentStep.ASK && !open.has(interactionId)) {
+        if (open.size === 0) waitingSinceMs = atMs;
+        open.add(interactionId);
+      } else if (step === AgentStep.HUMAN_REPLY && open.delete(interactionId)) {
+        closed.add(interactionId);
+        if (open.size === 0 && waitingSinceMs !== null) {
+          waitedMs += Math.max(0, atMs - waitingSinceMs);
+          waitingSinceMs = null;
+        }
+      }
+    },
+    waitedMs: () => waitedMs,
+  };
 }

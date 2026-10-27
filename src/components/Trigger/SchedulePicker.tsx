@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/input-select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { formatAppDate } from '@/lib/appDate';
 import { cn, localTimeToUTC } from '@/lib/utils';
 import { addYears, format, parse, subDays } from 'date-fns';
 import { Clock, TriangleAlert } from 'lucide-react';
@@ -344,7 +345,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
 
   // Format date for display
   const formatScheduledTime = (date: Date): string => {
-    return date.toLocaleString('en-US', {
+    return formatAppDate(date, {
       month: 'long',
       day: 'numeric',
       year: 'numeric',

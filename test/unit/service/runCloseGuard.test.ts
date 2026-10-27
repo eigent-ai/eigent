@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { assessCloseRunState } from '@/service/runCloseGuard';
+import {
+  assessCloseRunState,
+  assessGlobalCloseRunState,
+} from '@/service/runCloseGuard';
 import { describe, expect, it, vi } from 'vitest';
 
 const response = (status?: string) => ({
@@ -69,5 +72,38 @@ describe('close Run guard', () => {
         fetchRuns: vi.fn().mockResolvedValue(response('completed')),
       })
     ).rejects.toThrow('ignored its active-status filter');
+  });
+});
+
+describe('global close Run guard', () => {
+  it.each([
+    [false, false, 'idle'],
+    [true, false, 'canonical-durable'],
+    [true, true, 'mixed'],
+    [false, true, 'legacy-stream'],
+  ])(
+    'classifies global execution %s and legacy %s',
+    async (active, legacyActive, expected) => {
+      const fetchRuns = vi.fn().mockResolvedValue({ active });
+      await expect(
+        assessGlobalCloseRunState({ legacyActive, fetchRuns })
+      ).resolves.toBe(expected);
+      expect(fetchRuns).toHaveBeenCalledOnce();
+      expect(fetchRuns).toHaveBeenCalledWith(undefined);
+    }
+  );
+  it('fails closed on malformed or unavailable registry data', async () => {
+    await expect(
+      assessGlobalCloseRunState({
+        legacyActive: false,
+        fetchRuns: vi.fn().mockResolvedValue({}),
+      })
+    ).rejects.toThrow('invalid response');
+    await expect(
+      assessGlobalCloseRunState({
+        legacyActive: false,
+        fetchRuns: vi.fn().mockRejectedValue(new Error('offline')),
+      })
+    ).rejects.toThrow('offline');
   });
 });

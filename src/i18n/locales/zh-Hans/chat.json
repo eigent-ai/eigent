@@ -565,6 +565,8 @@
   "task-failure-outcome-outcome_unknown": "结果未知",
   "task-failure-outcome-unverified": "结果未核实",
   "task-failure-timed-out": "任务已超时，未记录最终回复。",
+  "task-failure-interrupted": "任务已中断，未记录最终回复。",
+  "task-failure-interrupted-effects": "中断并不能证明文件或外部服务是否发生了变化。",
   "task-failure-no-actions-recorded": "未记录任何操作。",
   "task-failure-more-actions": "另有 {{count}} 个操作未显示。",
   "approval-expired-title": "审批已到期",

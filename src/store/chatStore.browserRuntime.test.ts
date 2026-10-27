@@ -12,9 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { SessionMode } from '@/types/constants';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { injectHost, resolveCdpBrowsersForRequest } from './chatStore';
+import {
+  injectHost,
+  resolveCdpBrowsersForRequest,
+  shouldEnsureBrowserForRequest,
+} from './chatStore';
 
 describe('Electron embedded browser runtime', () => {
   afterEach(() => {
@@ -82,5 +87,25 @@ describe('Electron embedded browser runtime', () => {
     });
     expect(invoke).not.toHaveBeenCalledWith('get-embedded-browser-runtime');
     expect(invoke).not.toHaveBeenCalledWith('launch-cdp-browser');
+  });
+});
+
+describe('browser request intent', () => {
+  it.each([
+    'Use the browser to read the heading',
+    'Go to https://example.test',
+  ])('recognizes %s', (prompt) => {
+    expect(
+      shouldEnsureBrowserForRequest([], SessionMode.SINGLE_AGENT, prompt)
+    ).toBe(true);
+  });
+  it('does not reserve a browser for an ordinary text task', () => {
+    expect(
+      shouldEnsureBrowserForRequest(
+        [],
+        SessionMode.SINGLE_AGENT,
+        'Summarize this paragraph'
+      )
+    ).toBe(false);
   });
 });

@@ -192,8 +192,8 @@ async def authorize_tool_checkpoint(
                 pass
             reply = None
         if reply == TASK_LOCK_CLEANUP_SENTINEL:
-            raise ToolPermissionRejectedError(
-                "approval wait was interrupted before tool dispatch"
+            raise asyncio.CancelledError(
+                "Task cleanup interrupted approval before tool dispatch"
             )
         approval = next(
             (

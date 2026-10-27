@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isLegacyConfirmationInteraction } from '@/components/ChatBox/BottomBox/legacyHumanControl';
 import { callIcon } from '@/components/ChatBox/TimelineModes/actionIcon';
 import { TaskLogIcon } from '@/components/ChatBox/TimelineModes/TaskLog';
 import { Badge } from '@/components/ui/badge';
@@ -921,14 +922,18 @@ function safeHumanResponse(
  */
 export function injectHumanInputReceipts(
   entries: GroupedEntry[],
-  messages: HumanControlMessage[]
+  messages: HumanControlMessage[],
+  resolvedInteractionIds: readonly string[] = []
 ): GroupedEntry[] {
+  // Approvals and reviews are decided above the composer, or in the chat
+  // after a reload; a second card here would only duplicate them.
   const asks = messages
     .map((message, index) => ({ message, index }))
     .filter(
       ({ message }) =>
         message.step === AgentStep.ASK &&
-        message.interaction?.interaction_type !== 'approval'
+        message.interaction?.interaction_type !== 'approval' &&
+        !isLegacyConfirmationInteraction(message.interaction)
     );
   if (!asks.length) return entries;
 
@@ -970,6 +975,12 @@ export function injectHumanInputReceipts(
         ? adjacent
         : undefined;
     const response = explicitlyCorrelated || adjacentReply;
+    // A question cancelled or expired without an answer (for example at
+    // Resume) keeps its tool position but shows no receipt.
+    const closedUnanswered =
+      Boolean(
+        interactionId && resolvedInteractionIds.includes(interactionId)
+      ) && !response;
     const requestedBy = normalizedAgentIdentity(
       ask.agent_name || ask.interaction?.agent
     );
@@ -990,7 +1001,7 @@ export function injectHumanInputReceipts(
     if (toolIndex !== -1) {
       const [{ entryIndex, itemIndex }] = unusedHumanTools.splice(toolIndex, 1);
       const tool = result[entryIndex]!.items[itemIndex];
-      if (tool?.kind === 'tool') {
+      if (tool?.kind === 'tool' && !closedUnanswered) {
         result[entryIndex]!.items[itemIndex] = {
           ...tool,
           humanInput: receipt,
@@ -998,6 +1009,7 @@ export function injectHumanInputReceipts(
       }
       continue;
     }
+    if (closedUnanswered) continue;
 
     // Compatibility fallback for old histories where toolkit logs were
     // filtered out: retain the receipt in the matching agent's work log.
@@ -1124,7 +1136,8 @@ function useTaskWorkStoreSnapshot(
             `${message.id}:${message.step ?? ''}:${message.interaction?.interaction_id ?? ''}:${message.interactionResponseTo ?? ''}:${message.content}`
         )
         .join('>');
-      return `${t.status}|${t.durableRunStatus ?? ''}|${t.taskTime}|${t.elapsed}|${logDigest}|${activeFormDigest}|${humanInputDigest}`;
+      const resolvedDigest = (t.resolvedInteractionIds ?? []).join('>');
+      return `${t.status}|${t.durableRunStatus ?? ''}|${t.taskTime}|${t.elapsed}|${logDigest}|${activeFormDigest}|${humanInputDigest}|${resolvedDigest}`;
     },
     () => ''
   );
@@ -1145,7 +1158,8 @@ function useTaskWorkLogData(
   const blocks = buildAgentBlocks(tagged, isSingleAgent);
   const groups = injectHumanInputReceipts(
     groupBlocksByAgent(blocks, isSingleAgent),
-    t?.messages ?? []
+    t?.messages ?? [],
+    t?.resolvedInteractionIds
   );
   return { task: t, groups };
 }

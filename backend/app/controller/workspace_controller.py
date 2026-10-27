@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -673,3 +674,34 @@ async def workspace_project_workdir_delete(
         "project_id": project_id,
         "deleted": deleted,
     }
+
+
+@router.delete("/projects/{project_id}/runtime")
+async def project_runtime_delete(
+    project_id: str,
+    email: str = Query(...),
+    user_id: str | None = Query(None),
+) -> dict[str, Any]:
+    # TODO(brain-auth): Phase B must derive the owner from
+    # request.state.brain_auth.user_id instead of trusting the email query.
+    if _project_has_active_run(project_id):
+        raise HTTPException(
+            status_code=409, detail={"code": "project_running"}
+        )
+    try:
+        from app.utils.runtime_environment_cleanup import (
+            delete_project_runtime,
+        )
+
+        lock = get_task_lock_if_exists(project_id)
+        if lock is not None:
+            await lock.cleanup()
+        deleted = await asyncio.to_thread(
+            delete_project_runtime, email, user_id, project_id
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "runtime_cleanup_unsafe", "message": str(exc)},
+        ) from exc
+    return {"project_id": project_id, "deleted": deleted}

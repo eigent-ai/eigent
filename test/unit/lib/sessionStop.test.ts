@@ -13,7 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchDelete, fetchGet, fetchPost } from '@/api/http';
-import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
+import {
+  SessionStopError,
+  stopSessionAndWait,
+  stopSessionForDeletion,
+} from '@/lib/sessionStop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/http', () => ({
@@ -173,5 +177,33 @@ describe('stopSessionAndWait', () => {
       '/executions/execution-open'
     );
     expect(fetchPost).not.toHaveBeenCalled();
+  });
+});
+
+describe('stopSessionForDeletion', () => {
+  it('defers local cleanup only for a Brain transport rejection', async () => {
+    vi.mocked(fetchGet).mockRejectedValueOnce(
+      Object.assign(new Error('unreachable'), { code: 'BRAIN_UNREACHABLE' })
+    );
+    await expect(stopSessionForDeletion(project)).resolves.toBe(true);
+  });
+
+  it.each([401, 403, 409, 500, 503])(
+    'does not bypass HTTP %s failures',
+    async (status) => {
+      vi.mocked(fetchGet).mockRejectedValueOnce(httpError(status));
+      await expect(stopSessionForDeletion(project)).rejects.toBeInstanceOf(
+        SessionStopError
+      );
+    }
+  );
+
+  it('does not mistake a validation or account error for being offline', async () => {
+    vi.mocked(fetchGet).mockRejectedValueOnce(
+      new TypeError('invalid configuration')
+    );
+    await expect(stopSessionForDeletion(project)).rejects.toBeInstanceOf(
+      SessionStopError
+    );
   });
 });

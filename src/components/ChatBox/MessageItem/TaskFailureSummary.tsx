@@ -39,20 +39,36 @@ export function TaskFailureSummary({
   if (!facts || facts.finalResponse === 'present') return null;
   const { actions } = facts;
   const noActionsRecorded = facts.actionsVerified && !actions.length;
+  // An interrupted Run is resumable, so its receipt matches the warning
+  // banner and never reports the Task as failed.
+  const interrupted = status === 'interrupted';
   return (
     <aside
       data-task-failure-summary
-      className="flex min-w-0 flex-col gap-ds-12 rounded-ds-card border border-x border-y border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-ds-card-inset"
+      data-run-status={status}
+      className={`flex min-w-0 flex-col gap-ds-12 rounded-ds-card border border-x border-y p-ds-card-inset ${
+        interrupted
+          ? 'border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default'
+          : 'border-ds-border-error-default-default bg-ds-bg-error-subtle-default'
+      }`}
     >
-      <div className="flex items-start gap-ds-8 text-ds-text-error-strong-default">
+      <div
+        className={`flex items-start gap-ds-8 ${
+          interrupted
+            ? 'text-ds-text-warning-strong-default'
+            : 'text-ds-text-error-strong-default'
+        }`}
+      >
         <DsIcon icon={CircleAlert} recipe="main" />
         <DsText as="p" role="base" weight="medium">
           {t(
-            status === 'timed_out'
-              ? 'chat.task-failure-timed-out'
-              : facts.finalResponse === 'absent'
-                ? 'chat.task-failure-confirmed'
-                : 'chat.task-failure-status'
+            interrupted
+              ? 'chat.task-failure-interrupted'
+              : status === 'timed_out'
+                ? 'chat.task-failure-timed-out'
+                : facts.finalResponse === 'absent'
+                  ? 'chat.task-failure-confirmed'
+                  : 'chat.task-failure-status'
           )}
         </DsText>
       </div>
@@ -72,7 +88,11 @@ export function TaskFailureSummary({
         </DsText>
       )}
       <DsText as="p" role="base" className="text-ds-ink-muted-default">
-        {t('chat.task-failure-effects')}
+        {t(
+          interrupted
+            ? 'chat.task-failure-interrupted-effects'
+            : 'chat.task-failure-effects'
+        )}
       </DsText>
       {!noActionsRecorded && (
         <div>
