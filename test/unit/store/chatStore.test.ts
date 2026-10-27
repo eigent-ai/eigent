@@ -1986,7 +1986,7 @@ describe('ChatStore - Core Functionality', () => {
         startup.finishStream();
       });
       it.each([
-        ['Open it in the browser', false, true, false],
+        ['Use the browser to read the heading', false, true, false],
         ['Read the heading', true, true, false],
         ['Read the heading', true, false, false],
         ['Read the heading', true, true, true],
@@ -2068,7 +2068,7 @@ describe('ChatStore - Core Functionality', () => {
       );
 
       it.each([
-        ['Open it in the browser', true, 'resolve'],
+        ['Use the browser to read the heading', true, 'resolve'],
         ['Read the heading', false, 'resolve'],
         ['Read the heading', false, 'reject'],
       ] as const)(
@@ -2203,7 +2203,7 @@ describe('ChatStore - Core Functionality', () => {
           startup.owner.getState().addMessages(startup.runId, {
             id: 'original',
             role: 'user',
-            content: 'Open it in the browser',
+            content: 'Use the browser to read the heading',
           });
           startup.releaseReady();
           const stream = await startup.getStream();

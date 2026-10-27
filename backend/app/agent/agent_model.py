@@ -123,8 +123,8 @@ def append_resume_browser_notice(
         return system_message
     notice = (
         "\nThe browser could not be reconnected for this resumed task. "
-        "Tell the user that browser actions are unavailable; do not claim "
-        "to have opened or checked a page."
+        "If your remaining work needs the browser, tell the user it is "
+        "unavailable. Do not claim to have opened or checked a page."
     )
     if isinstance(system_message, str):
         return system_message + notice

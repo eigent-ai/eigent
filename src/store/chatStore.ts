@@ -753,7 +753,7 @@ export function shouldEnsureBrowserForRequest(
 
   const content = messageContent || '';
   const explicitBrowserIntent =
-    /\b(?:in\s+the\s+browser|browser\s+to\s+(?:check|open|view)|open\s+(?:the\s+)?preview|browser agent|use\s+(?:the\s+)?browser|open\s+(?:the\s+)?(?:browser|url|page|website|site)|visit\s+(?:the\s+)?(?:url|page|website|site))\b/i;
+    /\b(?:browser agent|use\s+(?:the\s+)?browser|open\s+(?:the\s+)?(?:browser|url|page|website|site)|visit\s+(?:the\s+)?(?:url|page|website|site))\b/i;
   return /https?:\/\//i.test(content) || explicitBrowserIntent.test(content);
 }
 

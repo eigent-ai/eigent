@@ -92,9 +92,7 @@ describe('Electron embedded browser runtime', () => {
 
 describe('browser request intent', () => {
   it.each([
-    'Open it in the browser',
-    'Use a browser to check the heading',
-    'Open the preview',
+    'Use the browser to read the heading',
     'Go to https://example.test',
   ])('recognizes %s', (prompt) => {
     expect(

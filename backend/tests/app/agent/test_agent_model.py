@@ -829,6 +829,7 @@ def test_resume_without_browser_informs_the_agent(
     text = result.content if as_message else result
     assert "Existing instructions" in text
     assert "browser could not be reconnected" in text
-    assert "do not claim" in text
+    assert "If your remaining work needs the browser" in text
+    assert "Do not claim to have opened or checked a page" in text
     options.resume_request_id = None
     assert append_resume_browser_notice(original, options) is original
