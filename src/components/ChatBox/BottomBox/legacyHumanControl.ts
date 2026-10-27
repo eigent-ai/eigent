@@ -17,6 +17,8 @@ import type {
   BottomBoxApprovalOption,
   BottomBoxApprovalScope,
   BottomBoxApprovalVariant,
+  BottomBoxConfirmationVariant,
+  BottomBoxHeaderDetail,
 } from './types';
 
 /** Minimal shape of the i18next `t` returned by `useTranslation`. */
@@ -92,6 +94,68 @@ export function createLegacyApprovalVariant(input: {
     submitting: input.submitting,
     options: approvalOptions(input.interaction, input.t),
     onApprove: input.onApprove,
+    onReject: input.onReject,
+  };
+}
+
+/**
+ * Requests answered with Confirm or Reject, such as a Memory change review.
+ * A text reply cannot satisfy their decision, so they never use the question
+ * composer.
+ */
+export function isLegacyConfirmationInteraction(
+  interaction?: HumanInteractionPayload
+): boolean {
+  return (
+    interaction?.interaction_type === 'memory_change_review' ||
+    interaction?.interaction_type === 'confirmation'
+  );
+}
+
+function reviewDetails(
+  interaction: HumanInteractionPayload,
+  t: HumanControlTranslate
+): BottomBoxHeaderDetail[] | undefined {
+  const displayArguments = interaction.display_arguments;
+  if (!displayArguments || Object.keys(displayArguments).length === 0)
+    return undefined;
+  let content: string;
+  try {
+    content = JSON.stringify(displayArguments, null, 2);
+  } catch {
+    content = t('chat.control-arguments-unavailable');
+  }
+  return [
+    {
+      id: 'display-arguments',
+      label: t('chat.control-review-arguments'),
+      content,
+    },
+  ];
+}
+
+export function createLegacyConfirmationVariant(input: {
+  interaction?: HumanInteractionPayload;
+  fallbackQuestion?: string;
+  submitting?: boolean;
+  t: HumanControlTranslate;
+  onConfirm: () => void;
+  onReject: () => void;
+}): BottomBoxConfirmationVariant | null {
+  const { interaction } = input;
+  if (!interaction || !isLegacyConfirmationInteraction(interaction))
+    return null;
+
+  return {
+    kind: 'confirmation',
+    header: {
+      eyebrow: input.t('chat.control-input-required'),
+      title: interaction.title || input.t('chat.control-input-required'),
+      description: interaction.question || input.fallbackQuestion,
+      details: reviewDetails(interaction, input.t),
+    },
+    submitting: input.submitting,
+    onConfirm: input.onConfirm,
     onReject: input.onReject,
   };
 }
