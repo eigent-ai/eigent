@@ -359,10 +359,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     onTriggerCreating?.(formData);
 
     try {
-      //Make sure we have an active project
-      const targetSpaceId =
-        targetProjectMeta?.spaceId ||
-        (sourceProjectId ? undefined : activeSpaceId);
+      // A source Session not yet indexed by its Space is opened from the
+      // active Space, so it belongs there.
+      const targetSpaceId = targetProjectMeta?.spaceId || activeSpaceId;
       if (!selectedTrigger && !targetSpaceId) {
         toast.error(t('triggers.project-id-required'));
         return;
@@ -431,9 +430,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         const createData: TriggerInput = {
           name: formData.name,
           description: formData.description,
-          space_id:
-            targetProjectMeta?.spaceId ||
-            (sourceProjectId ? undefined : activeSpaceId || undefined),
+          space_id: targetSpaceId || undefined,
           trigger_type: formData.trigger_type,
           custom_cron_expression: formData.custom_cron_expression,
           is_single_execution: isSingleExecution,

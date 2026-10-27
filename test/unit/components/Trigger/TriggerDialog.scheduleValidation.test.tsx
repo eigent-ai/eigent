@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
+import type { AutomationDraftV1 } from '@/lib/automationDraft';
 import { localTimeToUTC } from '@/lib/utils';
 import {
   ListenerType,
@@ -78,6 +79,27 @@ function field(label: string): HTMLInputElement {
   const input = title.parentElement?.parentElement?.querySelector('input');
   if (!input) throw new Error(`No input rendered for ${label}`);
   return input;
+}
+
+const WEEKLY_DRAFT: AutomationDraftV1 = {
+  version: 1,
+  kind: 'automation-draft',
+  name: 'Weekly digest',
+  description: 'Summarize the week',
+  taskPrompt: 'Summarize this week',
+  schedule: { text: 'Every Monday at 9:00' },
+  requiredInputs: [],
+  unresolved: [],
+};
+
+async function reviewAndCreate(user: ReturnType<typeof userEvent.setup>) {
+  const reviewed = screen.getByRole('checkbox', {
+    name: 'I reviewed the schedule and required inputs.',
+  });
+  if (reviewed.getAttribute('aria-checked') !== 'true') {
+    await user.click(reviewed);
+  }
+  await user.click(screen.getByRole('button', { name: 'Create' }));
 }
 
 describe('TriggerDialog schedule time validation', () => {
@@ -291,6 +313,42 @@ describe('TriggerDialog opened from a Session', () => {
         task_prompt: 'Summarize this week',
         project_id: 'automation-session',
         space_id: 'source-space',
+      })
+    );
+  });
+
+  it('creates in the active Space when the source Session is not indexed by a Space yet', async () => {
+    const user = userEvent.setup();
+    render(
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen
+        onOpenChange={vi.fn()}
+        sourceProjectId="unindexed-project"
+        initialTaskPrompt="Original request"
+        initialDraft={WEEKLY_DRAFT}
+      />
+    );
+
+    await reviewAndCreate(user);
+
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(mocks.createProject).toHaveBeenCalledWith(
+      'Automation: Weekly digest',
+      '',
+      undefined,
+      undefined,
+      undefined,
+      false,
+      { spaceId: 'space-1' }
+    );
+    expect(mocks.proxyCreateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: 'automation-session',
+        space_id: 'space-1',
       })
     );
   });
