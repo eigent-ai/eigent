@@ -8968,8 +8968,14 @@ class SQLiteRunJournal:
             ).fetchall()
         return tuple(self._attempt_evidence_gap_from_row(row) for row in rows)
 
-    def has_active_local_execution(self) -> bool:
-        """Global quit guard; bare pending rows do not own execution."""
+    def has_active_local_execution(
+        self, *, admission_owner_id: str | None = None
+    ) -> bool:
+        """Global quit guard; bare pending rows do not own execution.
+
+        Only the live execution service prepares work. A claim left by an
+        earlier process stays until recovery and is not running anything.
+        """
         with self._lock:
             active = self._connection.execute(
                 """SELECT 1 FROM runs r
@@ -8982,7 +8988,8 @@ class SQLiteRunJournal:
             if active is not None:
                 return True
             if (
-                self._connection.execute(
+                admission_owner_id is None
+                or self._connection.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_admission_claims'"
                 ).fetchone()
                 is None
@@ -8992,8 +8999,10 @@ class SQLiteRunJournal:
                 self._connection.execute(
                     """SELECT 1 FROM project_admission_claims c
                 JOIN execution_requests e ON e.request_id=c.request_id
-                WHERE c.state = 'claimed' AND e.status = 'preparing'
-                LIMIT 1"""
+                WHERE c.state = 'claimed' AND c.owner_id = ?
+                AND e.status = 'preparing'
+                LIMIT 1""",
+                    (admission_owner_id,),
                 ).fetchone()
                 is not None
             )
