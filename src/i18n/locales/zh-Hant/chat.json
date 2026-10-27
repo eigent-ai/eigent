@@ -565,6 +565,8 @@
   "task-failure-outcome-outcome_unknown": "結果未知",
   "task-failure-outcome-unverified": "結果未核實",
   "task-failure-timed-out": "任務已逾時，未記錄最終回覆。",
+  "task-failure-interrupted": "任務已中斷，未記錄最終回覆。",
+  "task-failure-interrupted-effects": "中斷並不能證明檔案或外部服務是否發生了變化。",
   "task-failure-no-actions-recorded": "未記錄任何操作。",
   "task-failure-more-actions": "另有 {{count}} 個操作未顯示。",
   "approval-expired-title": "審批已到期",

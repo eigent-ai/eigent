@@ -13,11 +13,16 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet } from '@/api/http';
-import { runProjectionStore } from '@/lib/runEvents';
+import {
+  runDomainEventHub,
+  runProjectionStore,
+  type RunDomainEvent,
+} from '@/lib/runEvents';
 import { retainSessionPane } from '@/lib/sessionPaneLifetime';
 import { useAuthStore } from '@/store/authStore';
 import {
   createChatStoreInstance,
+  injectHost,
   readTaskFailureFacts,
 } from '@/store/chatStore';
 import { useProjectStore } from '@/store/projectStore';
@@ -62,13 +67,296 @@ function setup() {
   vi.spyOn(useProjectStore.getState(), 'getAllChatStores').mockImplementation(
     (id) => (id === 'session' ? [{ chatId: 'chat', chatStore: owner }] : [])
   );
-  useAuthStore.setState({ user_id: 21 });
+  useAuthStore.setState({ user_id: 21, email: '' });
   return owner;
 }
+
+function receiptEvent(eventType = 'runtime.interrupted'): RunDomainEvent {
+  return {
+    schemaVersion: 1,
+    deliveryMode: 'live',
+    origin: 'local',
+    category: 'lifecycle',
+    eventId: 'receipt-terminal',
+    projectId: 'session',
+    runId: 'failed-run',
+    runSequence: 2,
+    runVersion: 2,
+    cloudCursor: null,
+    eventType,
+    payload: {},
+    legacyStep: null,
+    createdAt: new Date().toISOString(),
+    source: 'canonical',
+    raw: null,
+  };
+}
 beforeEach(() => fetchGetMock.mockReset());
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  injectHost(null);
+  vi.restoreAllMocks();
+});
 
 describe('scoped Task failure presentation hydration', () => {
+  it.each([
+    ['run.failed', 'failed'],
+    ['run.deadline_reached', 'timed_out'],
+    ['run.interrupted', 'interrupted'],
+    ['runtime.interrupted', 'interrupted'],
+  ] as const)(
+    'refreshes the live receipt when %s arrives after the legacy error',
+    async (eventType, status) => {
+      const owner = setup();
+      owner.getState().setDurableRunStatus('failed-run', status);
+      const complete = events();
+      complete.events[0].event_type = 'tool.completed';
+      complete.events[1].event_type = eventType;
+      fetchGetMock.mockResolvedValueOnce({
+        ...complete,
+        events: complete.events.slice(0, 1),
+        next_sequence: 1,
+      });
+      const onFacts = vi.fn();
+      const stop = owner
+        .getState()
+        .observeTaskFailureFacts('failed-run', onFacts);
+      try {
+        await vi.waitFor(() =>
+          expect(onFacts).toHaveBeenCalledWith(
+            expect.objectContaining({ finalResponse: 'unverified' })
+          )
+        );
+        fetchGetMock.mockResolvedValue(complete);
+        runDomainEventHub.publish({
+          ...receiptEvent(eventType),
+          projectId: 'other-session',
+        });
+        runDomainEventHub.publish({
+          ...receiptEvent(eventType),
+          runId: 'other-run',
+        });
+        expect(fetchGetMock).toHaveBeenCalledTimes(1);
+        runDomainEventHub.publish(receiptEvent(eventType));
+        await vi.waitFor(() =>
+          expect(onFacts).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+              finalResponse: 'absent',
+              actions: [expect.objectContaining({ outcome: 'completed' })],
+            })
+          )
+        );
+        expect(fetchGetMock).toHaveBeenCalledTimes(2);
+      } finally {
+        stop();
+      }
+    }
+  );
+
+  it('rereads a receipt if the durable interruption arrives during the initial read', async () => {
+    const owner = setup();
+    owner.getState().setDurableRunStatus('failed-run', 'interrupted');
+    const complete = events();
+    complete.events[1].event_type = 'runtime.interrupted';
+    let resolve!: (value: unknown) => void;
+    fetchGetMock
+      .mockImplementationOnce(() => new Promise((done) => (resolve = done)))
+      .mockResolvedValue(complete);
+    const onFacts = vi.fn();
+    const stop = owner
+      .getState()
+      .observeTaskFailureFacts('failed-run', onFacts);
+    try {
+      runDomainEventHub.publish(receiptEvent());
+      expect(fetchGetMock).toHaveBeenCalledTimes(1);
+      resolve({
+        ...complete,
+        events: complete.events.slice(0, 1),
+        next_sequence: 1,
+      });
+      await vi.waitFor(() =>
+        expect(onFacts).toHaveBeenLastCalledWith(
+          expect.objectContaining({ finalResponse: 'absent' })
+        )
+      );
+      expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    } finally {
+      stop();
+    }
+  });
+
+  it.each(['account', 'navigation', 'resume', 'unmount'])(
+    'does not refresh or publish a late receipt after %s',
+    async (change) => {
+      const owner = setup();
+      owner.getState().setDurableRunStatus('failed-run', 'interrupted');
+      const page = events();
+      page.events[1].event_type = 'runtime.interrupted';
+      let resolve!: (value: unknown) => void;
+      fetchGetMock.mockImplementation(
+        () => new Promise((done) => (resolve = done))
+      );
+      const onFacts = vi.fn();
+      const stop = owner
+        .getState()
+        .observeTaskFailureFacts('failed-run', onFacts);
+      try {
+        if (change === 'account') useAuthStore.setState({ user_id: 22 });
+        if (change === 'navigation')
+          useProjectStore.setState({ activeProjectId: 'other' });
+        if (change === 'resume')
+          owner.getState().setDurableRunStatus('failed-run', 'running');
+        if (change === 'unmount') stop();
+        onFacts.mockClear();
+        runDomainEventHub.publish(receiptEvent());
+        resolve(page);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(fetchGetMock).toHaveBeenCalledTimes(1);
+        expect(onFacts).not.toHaveBeenCalled();
+      } finally {
+        stop();
+      }
+    }
+  );
+
+  it.each(['run.interrupted', 'runtime.interrupted'])(
+    'delivers %s action facts while recovering its file manifest',
+    async (eventType) => {
+      const owner = setup();
+      owner.getState().setDurableRunStatus('failed-run', 'interrupted');
+      useAuthStore.setState({ email: 'review@example.test' });
+      injectHost({ electronAPI: null, ipcRenderer: { invoke: vi.fn() } });
+      const page = events();
+      page.events[0].event_type = 'tool.completed';
+      page.events[0].payload = {
+        tool_call_id: 'write',
+        tool_name: 'shell_write_content_to_file',
+      };
+      page.events[1].event_type = eventType;
+      fetchGetMock.mockImplementation(async (path) => {
+        if (path === '/runs/failed-run/events') return page;
+        if (path === '/files/changes')
+          return {
+            artifacts: [
+              {
+                path: '/workspace/u15/act.txt',
+                relativePath: 'u15/act.txt',
+              },
+            ],
+            scan_status: 'complete',
+          };
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      const onFacts = vi.fn();
+      const stop = owner
+        .getState()
+        .observeTaskFailureFacts('failed-run', onFacts);
+      try {
+        await vi.waitFor(() =>
+          expect(onFacts).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+              finalResponse: 'absent',
+              actions: [
+                expect.objectContaining({ id: 'write', outcome: 'completed' }),
+              ],
+            })
+          )
+        );
+        expect(onFacts).not.toHaveBeenCalledWith(undefined);
+        expect(owner.getState().tasks['failed-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'interrupted',
+          artifactManifestFinalized: true,
+          artifactManifestFiles: [
+            expect.objectContaining({ relativePath: 'u15/act.txt' }),
+          ],
+        });
+      } finally {
+        stop();
+      }
+    }
+  );
+
+  it('retains interrupted action facts across unrelated store updates', async () => {
+    const owner = setup();
+    owner.getState().setDurableRunStatus('failed-run', 'interrupted');
+    const page = events();
+    page.events[1].event_type = 'runtime.interrupted';
+    fetchGetMock.mockResolvedValue(page);
+    const onFacts = vi.fn();
+    const stop = owner
+      .getState()
+      .observeTaskFailureFacts('failed-run', onFacts);
+    try {
+      await vi.waitFor(() =>
+        expect(onFacts).toHaveBeenCalledWith(
+          expect.objectContaining({ finalResponse: 'absent' })
+        )
+      );
+      onFacts.mockClear();
+      owner.getState().setTaskInfo('failed-run', []);
+      useProjectStore.setState({ activeProjectId: 'session' });
+      expect(onFacts).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
+  });
+
+  it.each(['account', 'navigation', 'resume', 'execution'])(
+    'clears interrupted action facts after %s changes',
+    async (change) => {
+      const owner = setup();
+      owner.getState().setDurableRunStatus('failed-run', 'interrupted');
+      const page = events();
+      page.events[1].event_type = 'runtime.interrupted';
+      fetchGetMock.mockResolvedValue(page);
+      const onFacts = vi.fn();
+      const stop = owner
+        .getState()
+        .observeTaskFailureFacts('failed-run', onFacts);
+      try {
+        await vi.waitFor(() =>
+          expect(onFacts).toHaveBeenCalledWith(
+            expect.objectContaining({ finalResponse: 'absent' })
+          )
+        );
+        if (change === 'account') useAuthStore.setState({ user_id: 22 });
+        if (change === 'navigation')
+          useProjectStore.setState({ activeProjectId: 'other' });
+        if (change === 'resume')
+          owner.getState().setDurableRunStatus('failed-run', 'running');
+        if (change === 'execution')
+          owner.getState().setExecutionId('failed-run', 'new-execution');
+        expect(onFacts).toHaveBeenLastCalledWith(undefined);
+      } finally {
+        stop();
+      }
+    }
+  );
+
+  it.each(['run.interrupted', 'runtime.interrupted'])(
+    'hydrates actions for %s without changing lifecycle',
+    async (eventType) => {
+      const owner = setup();
+      owner.getState().setDurableRunStatus('failed-run', 'interrupted');
+      const page = events();
+      page.events[1].event_type = eventType;
+      fetchGetMock.mockResolvedValue(page);
+      const before = JSON.stringify(owner.getState().tasks);
+      const facts = await readTaskFailureFacts(
+        owner,
+        'session',
+        'failed-run',
+        new AbortController().signal
+      );
+      expect(facts).toMatchObject({
+        finalResponse: 'absent',
+        actions: [{ outcome: 'outcome_unknown' }],
+      });
+      expect(JSON.stringify(owner.getState().tasks)).toBe(before);
+    }
+  );
+
   it('reads on reopen without mutating Task history, status, or execution', async () => {
     const owner = setup();
     fetchGetMock.mockResolvedValue(events());

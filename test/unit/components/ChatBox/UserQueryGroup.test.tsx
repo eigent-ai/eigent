@@ -73,7 +73,8 @@ vi.mock('@/lib/projectRuntimeHydration', () => ({
 }));
 
 vi.mock('@/components/ChatBox/MessageItem/TaskWorkLogAccordion', () => ({
-  getTaskRunDisplayStatus: () => undefined,
+  getTaskRunDisplayStatus: (task: { durableRunStatus?: string }) =>
+    task.durableRunStatus,
   TaskWorkLogAccordion: ({ taskId }: { taskId: string }) => (
     <div data-testid="task-work-log" data-task-id={taskId} />
   ),
@@ -581,6 +582,79 @@ describe('Task failure summary ownership', () => {
       expect(container.querySelector('[data-task-failure-summary]')).toBeNull()
     );
   });
+
+  it.each([
+    ['absent', 'No actions were recorded.'],
+    ['unverified', 'Action outcomes could not be verified.'],
+  ] as const)(
+    'reports an interrupted Run as interrupted, never failed (%s reply)',
+    async (finalResponse, detail) => {
+      const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+        onFacts({
+          terminalReason: 'runtime_lost',
+          finalResponse,
+          actionsVerified: finalResponse === 'absent',
+          actions: [],
+        });
+        return () => {};
+      });
+      const { container } = renderGroups(
+        [{ id: 'user', role: 'user', content: 'Request' }],
+        {
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'interrupted',
+          observeTaskFailureFacts,
+        }
+      );
+      expect(
+        await screen.findByText(
+          'Task interrupted before a final reply was recorded.'
+        )
+      ).toBeInTheDocument();
+      expect(screen.getByText(detail)).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'An interruption does not establish whether files or external services changed.'
+        )
+      ).toBeInTheDocument();
+      expect(container).not.toHaveTextContent(/fail/i);
+      const summary = container.querySelector('[data-task-failure-summary]');
+      expect(summary).toHaveAttribute('data-run-status', 'interrupted');
+      expect(summary?.className).toContain('bg-ds-bg-warning-subtle-default');
+      expect(summary?.className).not.toContain('error');
+    }
+  );
+
+  it.each(['interrupted', 'timed_out'])(
+    'states a missing final reply once for a %s Run',
+    async (durableRunStatus) => {
+      let deliver: (facts: unknown) => void = () => {};
+      const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+        deliver = onFacts;
+        return () => {};
+      });
+      renderGroups([{ id: 'user', role: 'user', content: 'Request' }], {
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus,
+        observeTaskFailureFacts,
+      });
+      const notice = 'This task ended before Eigent sent a final reply.';
+      // Until the receipt is read, the plain notice still explains the gap.
+      expect(screen.getByText(notice)).toBeInTheDocument();
+      act(() =>
+        deliver({
+          terminalReason: null,
+          finalResponse: 'absent',
+          actionsVerified: true,
+          actions: [],
+        })
+      );
+      expect(
+        await screen.findByText('No actions were recorded.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(notice)).not.toBeInTheDocument();
+    }
+  );
 });
 
 describe('UserQueryGroup Space writer wait', () => {

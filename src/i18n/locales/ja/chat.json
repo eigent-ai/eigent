@@ -565,6 +565,8 @@
   "task-failure-outcome-outcome_unknown": "結果不明",
   "task-failure-outcome-unverified": "結果未確認",
   "task-failure-timed-out": "最終返信が記録される前にタスクがタイムアウトしました。",
+  "task-failure-interrupted": "最終返信が記録される前にタスクが中断されました。",
+  "task-failure-interrupted-effects": "中断されたという事実だけでは、ファイルや外部サービスが変更されたかは判断できません。",
   "task-failure-no-actions-recorded": "操作は記録されていません。",
   "task-failure-more-actions": "ほか {{count}} 件の操作は表示されていません。",
   "approval-expired-title": "承認の有効期限切れ",
