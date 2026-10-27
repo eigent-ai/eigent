@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
+import type { AutomationDraftV1 } from '@/lib/automationDraft';
 import { localTimeToUTC } from '@/lib/utils';
 import {
   ListenerType,
@@ -30,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   proxyCreateTrigger: vi.fn(),
   proxyUpdateTrigger: vi.fn(),
   toastError: vi.fn(),
+  createProject: vi.fn(() => 'automation-session'),
+  removeProject: vi.fn(),
 }));
 
 vi.mock('@/service/triggerApi', () => ({
@@ -45,12 +48,22 @@ vi.mock('@/hooks/queries/useTriggerQueries', () => ({
 }));
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
-  default: () => ({ projectStore: { activeProjectId: 'project-1' } }),
+  default: () => ({
+    projectStore: {
+      activeProjectId: 'project-1',
+      createProject: mocks.createProject,
+      removeProject: mocks.removeProject,
+    },
+  }),
 }));
 
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: (selector: (state: unknown) => unknown) =>
-    selector({ activeSpaceId: 'space-1', getProjectMeta: () => null }),
+    selector({
+      activeSpaceId: 'space-1',
+      getProjectMeta: (id: string) =>
+        id === 'source-project' ? { spaceId: 'source-space' } : null,
+    }),
 }));
 
 vi.mock('@/store/triggerStore', () => ({
@@ -68,6 +81,27 @@ function field(label: string): HTMLInputElement {
   const input = title.parentElement?.parentElement?.querySelector('input');
   if (!input) throw new Error(`No input rendered for ${label}`);
   return input;
+}
+
+const WEEKLY_DRAFT: AutomationDraftV1 = {
+  version: 1,
+  kind: 'automation-draft',
+  name: 'Weekly digest',
+  description: 'Summarize the week',
+  taskPrompt: 'Summarize this week',
+  schedule: { text: 'Every Monday at 9:00' },
+  requiredInputs: [],
+  unresolved: [],
+};
+
+async function reviewAndCreate(user: ReturnType<typeof userEvent.setup>) {
+  const reviewed = screen.getByRole('checkbox', {
+    name: 'I reviewed the schedule and required inputs.',
+  });
+  if (reviewed.getAttribute('aria-checked') !== 'true') {
+    await user.click(reviewed);
+  }
+  await user.click(screen.getByRole('button', { name: 'Create' }));
 }
 
 describe('TriggerDialog schedule time validation', () => {
@@ -120,6 +154,8 @@ describe('TriggerDialog schedule time validation', () => {
     expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1);
     expect(mocks.proxyCreateTrigger).toHaveBeenCalledWith(
       expect.objectContaining({
+        project_id: 'automation-session',
+        space_id: 'space-1',
         name: 'Nightly',
         task_prompt: 'Say hello',
         custom_cron_expression: `${utcMinute} ${utcHour} * * *`,
@@ -228,7 +264,7 @@ describe('TriggerDialog opened from a Session', () => {
     expect(mocks.proxyCreateTrigger).not.toHaveBeenCalled();
   });
 
-  it('prefills the draft and creates it for the source Session only after review', async () => {
+  it('prefills the draft and creates a dedicated Session in the source Space after review', async () => {
     const user = userEvent.setup();
     render(
       <TriggerDialog
@@ -277,8 +313,120 @@ describe('TriggerDialog opened from a Session', () => {
       expect.objectContaining({
         name: 'Weekly digest',
         task_prompt: 'Summarize this week',
-        project_id: 'source-project',
+        project_id: 'automation-session',
+        space_id: 'source-space',
       })
     );
+  });
+
+  it('creates in the active Space when the source Session is not indexed by a Space yet', async () => {
+    const user = userEvent.setup();
+    render(
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen
+        onOpenChange={vi.fn()}
+        sourceProjectId="unindexed-project"
+        initialTaskPrompt="Original request"
+        initialDraft={WEEKLY_DRAFT}
+      />
+    );
+
+    await reviewAndCreate(user);
+
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(mocks.createProject).toHaveBeenCalledWith(
+      'Automation: Weekly digest',
+      '',
+      undefined,
+      undefined,
+      undefined,
+      false,
+      { spaceId: 'space-1' }
+    );
+    expect(mocks.proxyCreateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: 'automation-session',
+        space_id: 'space-1',
+      })
+    );
+  });
+});
+
+describe('TriggerDialog when creating an Automation fails', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function ClosableDialog() {
+    const [open, setOpen] = useState(true);
+    return (
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen={open}
+        onOpenChange={setOpen}
+        sourceProjectId="source-project"
+        initialTaskPrompt="Original request"
+        initialDraft={WEEKLY_DRAFT}
+      />
+    );
+  }
+
+  it('reuses its Session across retries and removes it when the dialog closes unsaved', async () => {
+    mocks.proxyCreateTrigger.mockRejectedValue(new Error('offline'));
+    const user = userEvent.setup();
+    render(<ClosableDialog />);
+
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(2)
+    );
+
+    expect(mocks.createProject).toHaveBeenCalledTimes(1);
+    for (const [data] of mocks.proxyCreateTrigger.mock.calls) {
+      expect(data).toEqual(
+        expect.objectContaining({ project_id: 'automation-session' })
+      );
+    }
+    expect(mocks.removeProject).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+
+    await vi.waitFor(() =>
+      expect(mocks.removeProject).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.removeProject).toHaveBeenCalledWith('automation-session');
+  });
+
+  it('keeps the Session once a retry saves the Automation', async () => {
+    mocks.proxyCreateTrigger
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementation(async (data) => ({ id: 3, ...data }));
+    const user = userEvent.setup();
+    render(<ClosableDialog />);
+
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByPlaceholderText('Enter automation name')
+      ).not.toBeInTheDocument()
+    );
+
+    expect(mocks.createProject).toHaveBeenCalledTimes(1);
+    expect(mocks.proxyCreateTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({ project_id: 'automation-session' })
+    );
+    expect(mocks.removeProject).not.toHaveBeenCalled();
   });
 });

@@ -129,6 +129,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   const { addTrigger, updateTrigger } = useTriggerStore();
   const { addLog } = useActivityLogStore();
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
+  const automationSessionRef = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isWebhookSuccessOpen, setIsWebhookSuccessOpen] = useState(false);
   const [createdWebhookUrl, setCreatedWebhookUrl] = useState<string>('');
@@ -185,6 +186,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
   //Get projectStore for the active project's task
   const { projectStore } = useChatStoreAdapter();
+  const removeProject = projectStore.removeProject;
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const activeProjectId = projectStore.activeProjectId;
   const targetProjectId = selectedTrigger
@@ -206,11 +208,17 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   useEffect(() => {
     if (!isOpen) {
       initializedForOpenRef.current = false;
+      // Closing without a saved Automation leaves its Session empty.
+      if (automationSessionRef.current) {
+        removeProject(automationSessionRef.current);
+        automationSessionRef.current = null;
+      }
       return;
     }
     if (initializedForOpenRef.current) return;
     initializedForOpenRef.current = true;
     if (isOpen) {
+      automationSessionRef.current = null;
       // Clear validation errors when dialog opens
       setNameError('');
       setTaskPromptError('');
@@ -281,7 +289,14 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         setActiveTab('schedule');
       }
     }
-  }, [isOpen, selectedTrigger, draft, initialTaskPrompt, initialDraft]); // React to dialog state and trigger changes
+  }, [
+    isOpen,
+    selectedTrigger,
+    draft,
+    initialTaskPrompt,
+    initialDraft,
+    removeProject,
+  ]); // React to dialog state and trigger changes
 
   // Update schema when query data changes
   useEffect(() => {
@@ -357,8 +372,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
     onTriggerCreating?.(formData);
 
     try {
-      //Make sure we have an active project
-      if (!targetProjectId) {
+      // A source Session not yet indexed by its Space is opened from the
+      // active Space, so it belongs there.
+      const targetSpaceId = targetProjectMeta?.spaceId || activeSpaceId;
+      if (!selectedTrigger && !targetSpaceId) {
         toast.error(t('triggers.project-id-required'));
         return;
       }
@@ -413,13 +430,20 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
         toast.success(t('triggers.updated-successfully'));
       } else {
-        // Creating new trigger
+        // Capture a dedicated Session once, including retries of this form.
+        automationSessionRef.current ??= projectStore.createProject(
+          t('triggers.automation-project-name', { name: formData.name }),
+          '',
+          undefined,
+          undefined,
+          undefined,
+          false,
+          { spaceId: targetSpaceId || undefined }
+        );
         const createData: TriggerInput = {
           name: formData.name,
           description: formData.description,
-          space_id:
-            targetProjectMeta?.spaceId ||
-            (sourceProjectId ? undefined : activeSpaceId || undefined),
+          space_id: targetSpaceId || undefined,
           trigger_type: formData.trigger_type,
           custom_cron_expression: formData.custom_cron_expression,
           is_single_execution: isSingleExecution,
@@ -429,7 +453,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           task_prompt: formData.task_prompt,
           max_executions_per_hour: formData.max_executions_per_hour,
           max_executions_per_day: formData.max_executions_per_day,
-          project_id: targetProjectId || undefined,
+          project_id: automationSessionRef.current || undefined,
         };
 
         // Include config based on trigger type
@@ -447,6 +471,8 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyCreateTrigger(createData);
+        // The saved Automation owns its Session from here on.
+        automationSessionRef.current = null;
 
         // Add trigger to store
         addTrigger(response);
