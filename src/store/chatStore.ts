@@ -84,7 +84,10 @@ import {
   type ResolvedSpaceModel,
   type SpaceModelSelection,
 } from '@/lib/spaceModelBinding';
-import { settleTaskElapsedMs } from '@/lib/taskDuration';
+import {
+  createPlaybackUserWaitTracker,
+  settleTaskElapsedMs,
+} from '@/lib/taskDuration';
 import {
   classifyError as classifyUsageError,
   errorCopy,
@@ -207,11 +210,37 @@ export const canonicalRunEventToLegacyMessage = (
   if (!value || typeof value !== 'object') return null;
   const event = value as {
     event_id?: unknown;
+    run_id?: unknown;
     event_type?: unknown;
     legacy_step?: unknown;
     payload?: unknown;
     created_at?: unknown;
   };
+  if (event.event_type === 'interaction.requested') {
+    const payload = event.payload as Record<string, unknown> | undefined;
+    const request = payload?.request;
+    // Only a question is fully described by its request. Other types keep
+    // options, schema or display arguments outside it, so their legacy ASK
+    // frame stays the source.
+    if (
+      typeof payload?.interaction_id !== 'string' ||
+      payload.interaction_type !== 'question' ||
+      !request ||
+      typeof request !== 'object'
+    )
+      return null;
+    return {
+      step: AgentStep.ASK,
+      data: {
+        ...request,
+        interaction_id: payload.interaction_id,
+        interaction_type: payload.interaction_type,
+        run_id: event.run_id,
+      },
+      timestamp:
+        typeof event.created_at === 'number' ? event.created_at : undefined,
+    } as AgentMessage;
+  }
   // Interaction outcomes are canonical-only events: a decision, a system
   // cancellation (for example at restart) or an expiry. Project the durable
   // interaction id into the legacy reducer so reconnect/replay closes the
@@ -321,10 +350,15 @@ export const canonicalRunEventToLegacyMessage = (
 /** Remove only the card resolved by a durable interaction decision. */
 export function removeResolvedInteractionMessages(
   messages: Message[],
-  interactionId: string
+  interactionId: string,
+  preserveQuestions = false
 ): Message[] {
   return messages.filter(
-    (message) => message.interaction?.interaction_id !== interactionId
+    (message) =>
+      message.interaction?.interaction_id !== interactionId ||
+      (preserveQuestions &&
+        message.step === AgentStep.ASK &&
+        message.interaction?.interaction_type === 'question')
   );
 }
 
@@ -3261,6 +3295,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;
       let playbackLastStepTimeMs: number | null = null;
+      const playbackUserWaits = createPlaybackUserWaitTracker();
       let localDurableLegacyEventCount = 0;
 
       // replay or share request
@@ -4904,6 +4939,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (stepTimeMs !== null) {
               playbackFirstStepTimeMs ??= stepTimeMs;
               playbackLastStepTimeMs = stepTimeMs;
+              playbackUserWaits.observe(
+                agentMessages?.step,
+                agentMessages?.data?.interaction_id,
+                stepTimeMs
+              );
             }
           }
 
@@ -6772,7 +6812,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 playbackLastStepTimeMs !== null
                   ? Math.max(
                       0,
-                      playbackLastStepTimeMs - playbackFirstStepTimeMs
+                      playbackLastStepTimeMs -
+                        playbackFirstStepTimeMs -
+                        playbackUserWaits.waitedMs()
                     )
                   : null;
               const settledElapsed =
@@ -7134,7 +7176,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               !replayCaughtUp &&
               playbackFirstStepTimeMs !== null &&
               playbackLastStepTimeMs !== null
-                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
+                ? Math.max(
+                    0,
+                    playbackLastStepTimeMs -
+                      playbackFirstStepTimeMs -
+                      playbackUserWaits.waitedMs()
+                  )
                 : null;
             if (playbackElapsed !== null) {
               completedElapsed = playbackElapsed;
@@ -8071,7 +8118,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const alreadyResolved = resolvedInteractionIds.includes(interactionId);
         const messages = removeResolvedInteractionMessages(
           task.messages,
-          interactionId
+          interactionId,
+          true
         );
         const askList = removeResolvedInteractionMessages(
           task.askList,

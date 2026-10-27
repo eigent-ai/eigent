@@ -253,6 +253,55 @@ describe('UserQueryGroup Run work-log ownership', () => {
     expect(screen.queryByText('Europe')).not.toBeInTheDocument();
   });
 
+  it('leaves an answered question to the work log after the Run completes', () => {
+    const prompt = { id: 'user-1', role: 'user', content: 'Build a report' };
+    const ask = {
+      id: 'ask-1',
+      role: 'agent',
+      step: AgentStep.ASK,
+      content: 'Which region?',
+      interaction: {
+        interaction_id: 'interaction-1',
+        interaction_type: 'question',
+        run_id: 'run-1',
+        question: 'Which region?',
+      },
+    };
+    const tool = {
+      id: 'tool-1',
+      role: 'agent',
+      step: AgentStep.ACTIVATE_TOOLKIT,
+      content: '',
+    };
+    const reply = {
+      id: 'reply-1',
+      role: 'user',
+      content: 'Europe',
+      interactionResponseTo: 'interaction-1',
+    };
+    const end = {
+      id: 'end-1',
+      role: 'agent',
+      step: AgentStep.END,
+      content: 'Done',
+    };
+
+    renderGroups([prompt, ask, tool, reply, end], {
+      status: ChatTaskStatus.FINISHED,
+      durableRunStatus: 'completed',
+      activeAsk: '',
+      resolvedInteractionIds: ['interaction-1'],
+    });
+
+    expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+    expect(screen.queryByText('Which region?')).not.toBeInTheDocument();
+    expect(screen.queryByText('Europe')).not.toBeInTheDocument();
+    expect(screen.getByText('Done')).toBeInTheDocument();
+    expect(
+      screen.queryByText('This task ended before Eigent sent a final reply.')
+    ).not.toBeInTheDocument();
+  });
+
   it('forwards message lifecycle and Run identity to every feedback card path', () => {
     const messages = [
       { id: 'user-1', role: 'user', content: 'Build a report' },

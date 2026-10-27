@@ -25,22 +25,20 @@ export function isUserMessageReplyToAsk(
   if (userMessageIndex <= 0) return false;
 
   const userMessage = messages[userMessageIndex];
-  const previousMessage = messages[userMessageIndex - 1];
-  if (
-    userMessage?.role !== 'user' ||
-    previousMessage?.role !== 'agent' ||
-    previousMessage.step !== AgentStep.ASK
-  ) {
-    return false;
+  if (userMessage?.role !== 'user') return false;
+  if (userMessage.interactionResponseTo) {
+    return messages.some(
+      (message) =>
+        message.role === 'agent' &&
+        message.step === AgentStep.ASK &&
+        message.interaction?.interaction_id ===
+          userMessage.interactionResponseTo
+    );
   }
-
-  const askInteractionId = previousMessage.interaction?.interaction_id;
-  return userMessage.interactionResponseTo
-    ? Boolean(
-        askInteractionId &&
-        askInteractionId === userMessage.interactionResponseTo
-      )
-    : true;
+  const previousMessage = messages[userMessageIndex - 1];
+  return (
+    previousMessage?.role === 'agent' && previousMessage.step === AgentStep.ASK
+  );
 }
 
 /** Interaction IDs answered by explicit correlation or direct adjacency. */

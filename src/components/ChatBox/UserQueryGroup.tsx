@@ -340,8 +340,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       ? chatState.tasks[activeTaskId]
       : null;
   const runDisplayStatus = task ? getTaskRunDisplayStatus(task) : undefined;
-  const hasVisibleAgentOutput = queryGroup.otherMessages.some(
+  const hasVisibleAgentOutput = activeTask?.messages.some(
     (message) =>
+      message?.role === 'agent' &&
       message?.step !== AgentStep.ASK &&
       typeof message?.content === 'string' &&
       message.content.trim().length > 0
@@ -353,6 +354,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     failureFacts.finalResponse !== 'present'
   );
   const showMissingFinalResponse = Boolean(
+    queryGroup.ownsRunWorkLog &&
     task?.status === ChatTaskStatus.FINISHED &&
     activeTask?.durableRunStatus !== 'failed' &&
     runDisplayStatus &&
