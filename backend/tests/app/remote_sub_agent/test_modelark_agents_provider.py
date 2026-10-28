@@ -637,3 +637,27 @@ async def test_missing_settings_fail_before_any_request():
         await _collect(provider)
 
     assert fake.requests == []
+
+
+@pytest.mark.asyncio
+async def test_network_error_while_sending_fails_instead_of_waiting():
+    fake = FakeModelArk([[HANG]])
+    original = fake.handle
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path.endswith("/events"):
+            raise httpx.ConnectError("connection refused")
+        return await original(request)
+
+    provider = ModelArkAgentsProvider(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+        agent_id="agent-1",
+        environment_id="env-1",
+        transport=httpx.MockTransport(handle),
+    )
+
+    with pytest.raises(RuntimeError, match="Could not send the task"):
+        await asyncio.wait_for(_collect(provider), timeout=5)
+
+    assert fake.log.count("open_stream") == 1

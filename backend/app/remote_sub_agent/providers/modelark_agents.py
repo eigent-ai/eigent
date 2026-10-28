@@ -314,20 +314,28 @@ class ModelArkAgentsProvider:
         state: _TurnState,
         prompt: str,
     ) -> None:
-        state.sent_at = datetime.now(UTC)
-        data = await self._request_json(
-            client,
-            "POST",
-            f"/sessions/{state.session_id}/events",
-            json={
-                "events": [
-                    {
-                        "type": "user.message",
-                        "content": [{"type": "text", "text": prompt}],
-                    }
-                ]
-            },
-        )
+        sending_at = datetime.now(UTC)
+        try:
+            data = await self._request_json(
+                client,
+                "POST",
+                f"/sessions/{state.session_id}/events",
+                json={
+                    "events": [
+                        {
+                            "type": "user.message",
+                            "content": [{"type": "text", "text": prompt}],
+                        }
+                    ]
+                },
+            )
+        except httpx.TransportError as exc:
+            # Not a dropped stream: the task may never have reached ModelArk,
+            # so waiting for its turn could hang until the time limit.
+            raise RuntimeError(
+                f"Could not send the task to ModelArk: {type(exc).__name__}"
+            ) from exc
+        state.sent_at = sending_at
         accepted = data.get("data")
         if isinstance(accepted, list) and accepted:
             first = accepted[0]
