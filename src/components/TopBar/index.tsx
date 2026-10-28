@@ -96,7 +96,7 @@ function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
   return (
     <div
       className={cn(
-        'drag absolute top-0 right-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
+        'window-chrome-safe-area drag absolute top-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
         // Support is a 28px ghost button: 10px puts its 16px icon 16px from
         // the edge, in line with the page headers' end.
         platform === 'darwin' && 'pr-ds-10'
