@@ -661,3 +661,129 @@ async def test_network_error_while_sending_fails_instead_of_waiting():
         await asyncio.wait_for(_collect(provider), timeout=5)
 
     assert fake.log.count("open_stream") == 1
+
+
+@pytest.fixture(autouse=True)
+def no_reconnect_delay(monkeypatch):
+    monkeypatch.setattr(
+        "app.remote_sub_agent.providers.modelark_agents."
+        "_RECONNECT_DELAY_SECONDS",
+        0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_parallel_hand_off_gets_its_own_session():
+    fake = FakeModelArk(
+        [[_message("ok", "m1"), _idle("end_turn")]], session_status="running"
+    )
+    session = _session(
+        remote_interaction_id="sesn-old",
+        remote_environment_id="env-1",
+        metadata={
+            "modelark_agent_id": "agent-1",
+            "modelark_active_turn": "other-hand-off",
+        },
+    )
+
+    events = await _collect(_provider(fake), session=session)
+
+    assert fake.log == ["create_session", "open_stream", "send:user.message"]
+    assert "send:user.interrupt" not in fake.log
+    assert events[0].interaction_id == "sesn-new"
+    assert session.metadata["modelark_active_turn"] == "other-hand-off"
+
+
+@pytest.mark.asyncio
+async def test_turn_marker_is_cleared_after_the_hand_off():
+    fake = FakeModelArk([[_idle("requires_action")]])
+    session = _session()
+
+    await _collect(_provider(fake), session=session)
+
+    assert "modelark_active_turn" not in session.metadata
+
+
+@pytest.mark.asyncio
+async def test_drops_with_progress_do_not_fail_a_long_run():
+    fake = FakeModelArk(
+        [
+            [_message("step 1", "m1"), DROP],
+            [_message("step 2", "m2"), DROP],
+            [_message("step 3", "m3"), DROP],
+            [_message("step 4", "m4"), DROP],
+            [_message("step 5", "m5"), DROP],
+            [_message("done", "m6"), _idle("end_turn")],
+        ]
+    )
+
+    events = await _collect(_provider(fake))
+
+    assert fake.log.count("open_stream") == 6
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+    assert _output(events).endswith("step 5\n\ndone")
+
+
+@pytest.mark.asyncio
+async def test_toolkit_hand_off_from_task_start_settings(monkeypatch):
+    """Same settings shape the app sends at task start, through the tool."""
+    from app.agent.toolkit.remote_sub_agent_toolkit import (
+        RemoteSubAgentToolkit,
+    )
+    from app.remote_sub_agent.config import RemoteSubAgentConfig
+
+    fake = FakeModelArk(
+        [
+            [
+                {"id": "e1", "type": "session.status_running"},
+                {"id": "e2", "type": "agent.tool_use", "name": "bash"},
+                _message("Fibonacci saved to fib.txt", "m1"),
+                {
+                    "id": "e3",
+                    "type": "span.model_request_end",
+                    "model_usage": {"input_tokens": 40, "output_tokens": 2},
+                },
+                _idle("end_turn"),
+            ]
+        ]
+    )
+    real_provider = ModelArkAgentsProvider
+
+    def with_fake_transport(**kwargs):
+        return real_provider(**kwargs, transport=fake.transport())
+
+    monkeypatch.setattr(
+        "app.remote_sub_agent.provider_registry.ModelArkAgentsProvider",
+        with_fake_transport,
+    )
+    config = RemoteSubAgentConfig.model_validate(
+        {
+            "enabled": True,
+            "provider": "modelark_agents",
+            "modelark_agents": {
+                "api_key": API_KEY,
+                "base_url": BASE_URL,
+                "agent_name": "agent-1",
+                "environment_id": "env-1",
+                "max_wall_time_seconds": 900,
+            },
+        }
+    )
+    toolkit = RemoteSubAgentToolkit(
+        api_task_id="toolkit-task",
+        working_directory="/tmp/work",
+        remote_sub_agent_config=config,
+    )
+
+    result = await toolkit.run_remote_sub_agent(
+        "Write the first 20 Fibonacci numbers to fib.txt",
+        system_instruction="Keep it short.",
+    )
+
+    assert result.startswith("Fibonacci saved to fib.txt")
+    assert "provider: modelark_agents" in result
+    assert "interaction_id: sesn-new" in result
+    assert "total_tokens: 42" in result
+    sent = fake.sent_events[0]["content"][0]["text"]
+    assert "Keep it short." in sent
+    assert sent.endswith("Write the first 20 Fibonacci numbers to fib.txt")

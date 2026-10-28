@@ -30,6 +30,7 @@ If the stream drops, a new stream is opened first and the gap is filled from
 import asyncio
 import json
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -50,9 +51,13 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODELARK_BASE_URL = "https://ark.ap-southeast.bytepluses.com/api/v3"
 _DEFAULT_TIMEOUT_SECONDS = 60.0
 _INTERRUPT_TIMEOUT_SECONDS = 10.0
+# Consecutive drops with no new events before the hand-off fails. A drop
+# after progress (long quiet tool runs behind a proxy) resets the count.
 _MAX_STREAM_RECONNECTS = 3
+_RECONNECT_DELAY_SECONDS = 1.0
 _MAX_HISTORY_PAGES = 50
 _SESSION_AGENT_KEY = "modelark_agent_id"
+_ACTIVE_TURN_KEY = "modelark_active_turn"
 _ENDED_SESSION_STATUSES = {"terminated", "failed"}
 _BUSY_SESSION_STATUSES = {"running", "rescheduling"}
 _TOOL_USE_EVENTS = {
@@ -121,33 +126,45 @@ class ModelArkAgentsProvider:
         session: RemoteSubAgentSession,
     ) -> AsyncIterator[RemoteSubAgentEvent]:
         self._ensure_configured()
-        async with self._client() as client:
-            session_id, status = await self._resolve_session(
-                client, request, session
-            )
-            yield RemoteSubAgentEvent(
-                event_type=RemoteSubAgentEventType.SESSION_UPDATED,
-                interaction_id=session_id,
-                environment_id=self.environment_id,
-                status=status,
-            )
+        # A ModelArk session runs one turn at a time. When the agent hands off
+        # two tasks at once in the same Eigent Session, the second one gets a
+        # session of its own instead of interrupting the first.
+        turn_token = uuid.uuid4().hex
+        owns_session = (
+            session.metadata.setdefault(_ACTIVE_TURN_KEY, turn_token)
+            == turn_token
+        )
+        try:
+            async with self._client() as client:
+                session_id, status = await self._resolve_session(
+                    client, request, session, allow_reuse=owns_session
+                )
+                yield RemoteSubAgentEvent(
+                    event_type=RemoteSubAgentEventType.SESSION_UPDATED,
+                    interaction_id=session_id,
+                    environment_id=self.environment_id,
+                    status=status,
+                )
 
-            state = _TurnState(session_id=session_id)
-            try:
-                async for event in self._run_turn(
-                    client,
-                    state,
-                    self._build_prompt(request),
-                    interrupt_first=status in _BUSY_SESSION_STATUSES,
-                ):
-                    yield event
-            except asyncio.CancelledError:
-                # The hand-off timed out or was stopped. Stop the remote turn
-                # too, so it does not keep running and the next hand-off finds
-                # the session idle.
-                if state.sent_at is not None and not state.done:
-                    await self._interrupt_quietly(client, session_id)
-                raise
+                state = _TurnState(session_id=session_id)
+                try:
+                    async for event in self._run_turn(
+                        client,
+                        state,
+                        self._build_prompt(request),
+                        interrupt_first=status in _BUSY_SESSION_STATUSES,
+                    ):
+                        yield event
+                except asyncio.CancelledError:
+                    # The hand-off timed out or was stopped. Stop the remote
+                    # turn too, so it does not keep running and the next
+                    # hand-off finds the session idle.
+                    if state.sent_at is not None and not state.done:
+                        await self._interrupt_quietly(client, session_id)
+                    raise
+        finally:
+            if owns_session:
+                session.metadata.pop(_ACTIVE_TURN_KEY, None)
 
     async def validate_connection(self) -> dict[str, Any]:
         """Check the API key, agent ID and environment ID.
@@ -177,10 +194,19 @@ class ModelArkAgentsProvider:
         client: httpx.AsyncClient,
         request: RemoteSubAgentRequest,
         session: RemoteSubAgentSession,
+        *,
+        allow_reuse: bool,
     ) -> tuple[str, str | None]:
         existing_id = session.remote_interaction_id
+        if existing_id and not allow_reuse:
+            logger.info(
+                "ModelArk session busy with another hand-off; creating a "
+                "separate one: session_id=%s",
+                existing_id,
+            )
         if (
             request.reuse_session
+            and allow_reuse
             and existing_id
             and session.metadata.get(_SESSION_AGENT_KEY) == self.agent_id
             and session.remote_environment_id == self.environment_id
@@ -232,8 +258,9 @@ class ModelArkAgentsProvider:
         *,
         interrupt_first: bool,
     ) -> AsyncIterator[RemoteSubAgentEvent]:
-        reconnects = 0
+        drops_without_progress = 0
         while True:
+            seen_before = len(state.seen_event_ids)
             try:
                 async with self._open_stream(client, state.session_id) as (
                     payloads
@@ -269,8 +296,10 @@ class ModelArkAgentsProvider:
                     type(exc).__name__,
                 )
 
-            reconnects += 1
-            if reconnects > _MAX_STREAM_RECONNECTS:
+            if len(state.seen_event_ids) > seen_before:
+                drops_without_progress = 0
+            drops_without_progress += 1
+            if drops_without_progress > _MAX_STREAM_RECONNECTS:
                 yield self._failed(
                     state,
                     "Lost the connection to the ModelArk event stream "
@@ -280,7 +309,10 @@ class ModelArkAgentsProvider:
             logger.info(
                 "ModelArk event stream reconnecting: session_id=%s attempt=%s",
                 state.session_id,
-                reconnects,
+                drops_without_progress,
+            )
+            await asyncio.sleep(
+                _RECONNECT_DELAY_SECONDS * drops_without_progress
             )
 
     @asynccontextmanager
