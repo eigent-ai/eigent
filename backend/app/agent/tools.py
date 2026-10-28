@@ -179,7 +179,9 @@ async def get_mcp_tools(
             if is_mcp_auth_failure(exc)
             else "connection_failed"
         )
-        logger.warning("MCP connector %r failed (%s)", name, reason)
+        # The name shares a config with injected credentials; the Task notice
+        # carries it to the user instead of the log.
+        logger.warning("MCP connector failed (%s)", reason)
         await emit_mcp_notice(project_id, name, reason)
 
     async def disconnect(toolkit) -> None:
