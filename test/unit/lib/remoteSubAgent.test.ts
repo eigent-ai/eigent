@@ -18,6 +18,8 @@ import {
   hasRemoteSubAgentSettings,
   MODELARK_REMOTE_SUB_AGENT_DEFAULT_BASE_URL,
   normalizeRemoteSubAgentProviders,
+  rememberSentRemoteSubAgentProvider,
+  remoteSubAgentProviderForActivity,
   toRemoteSubAgentProviderPayload,
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
@@ -141,5 +143,30 @@ describe('remoteSubAgent', () => {
       ])?.provider
     ).toBe('gemini_agents');
     expect(enabledRemoteSubAgentRuntimeConfig([geminiRecord])).toBeNull();
+  });
+
+  it('names the provider behind a remote hand-off in the timeline', () => {
+    expect(remoteSubAgentProviderForActivity(undefined, 'plain text')).toBe(
+      'gemini_agents'
+    );
+    expect(
+      remoteSubAgentProviderForActivity(
+        'Done.\n\n[RemoteSubAgent: provider: modelark_agents; session_id: x]'
+      )
+    ).toBe('modelark_agents');
+
+    rememberSentRemoteSubAgentProvider('modelark_agents');
+    expect(remoteSubAgentProviderForActivity(undefined)).toBe(
+      'modelark_agents'
+    );
+    expect(
+      remoteSubAgentProviderForActivity(
+        '[RemoteSubAgent: provider: gemini_agents; session_id: y]'
+      )
+    ).toBe('gemini_agents');
+    rememberSentRemoteSubAgentProvider(null);
+    expect(remoteSubAgentProviderForActivity(undefined)).toBe(
+      'modelark_agents'
+    );
   });
 });

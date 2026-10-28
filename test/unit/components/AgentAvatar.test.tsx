@@ -81,6 +81,22 @@ describe('AgentAvatar', () => {
     );
   });
 
+  it('uses the ModelArk provider logo for ModelArk-backed subagents', () => {
+    const { container } = render(
+      <AgentAvatar
+        agentType="subagent"
+        agentName="Researcher"
+        provider="modelark_agents"
+        avatarSeed="remote-call"
+        size="sm"
+      />
+    );
+
+    expect(
+      container.querySelector('[data-agent-avatar="modelark"]')
+    ).toHaveClass('size-4', 'object-contain');
+  });
+
   it('uses the camel image in the single-agent list', () => {
     const { container } = render(<SingleAgentList />);
     const surface = container.firstElementChild;

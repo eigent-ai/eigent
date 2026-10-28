@@ -57,7 +57,10 @@ import { buildAgentModelConfigFromProvider } from '@/lib/modelConfig';
 import { reportError } from '@/lib/notifyError';
 import { isTerminalHumanControlEvent } from '@/lib/projector/control/adapter';
 import { isStoppedRunStatus } from '@/lib/projector/runSummary';
-import { enabledRemoteSubAgentRuntimeConfig } from '@/lib/remoteSubAgent';
+import {
+  enabledRemoteSubAgentRuntimeConfig,
+  rememberSentRemoteSubAgentProvider,
+} from '@/lib/remoteSubAgent';
 import { createSSEAdmissionError } from '@/lib/responseError';
 import {
   runDomainEventHub,
@@ -3793,6 +3796,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : providersRes.items || [];
           remoteSubAgentConfig =
             enabledRemoteSubAgentRuntimeConfig(providerList);
+          rememberSentRemoteSubAgentProvider(remoteSubAgentConfig?.provider);
         } catch (error) {
           console.error(
             'Failed to load remote sub agent configuration:',

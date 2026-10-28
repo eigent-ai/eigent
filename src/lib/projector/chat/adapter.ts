@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { resolveSourceMessageId } from '@/lib/messageIdentity';
+import { remoteSubAgentProviderForActivity } from '@/lib/remoteSubAgent';
 import { runTerminalReason } from '@/lib/runTerminalReason';
 import i18next from 'i18next';
 import { projectWriterWait } from '../reduce';
@@ -1259,12 +1260,7 @@ function activityNode(
         request.providerName,
         result.provider,
         result.provider_name,
-        result.providerName,
-        // The only currently registered remote provider. Explicit producer
-        // metadata above wins as soon as additional providers are introduced.
-        normalizedToolName === 'run_remote_sub_agent'
-          ? 'gemini_agents'
-          : undefined
+        result.providerName
       )
     : '';
   const agentModel = subagentTool
@@ -1409,7 +1405,16 @@ function activityNode(
           result.taskId
         ) || undefined
       : undefined,
-    agentProvider: agentProvider || undefined,
+    agentProvider:
+      agentProvider ||
+      (normalizedToolName === 'run_remote_sub_agent'
+        ? remoteSubAgentProviderForActivity(
+            result.value,
+            payload.result,
+            result.preview,
+            output
+          )
+        : undefined),
     agentModel: agentModel || undefined,
     activityId: semantic?.subject.id || undefined,
     ...(semantic?.subject.type === 'activity_stream' ||

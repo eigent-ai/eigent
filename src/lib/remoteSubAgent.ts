@@ -282,3 +282,31 @@ export function enabledRemoteSubAgentRuntimeConfig(
   }
   return null;
 }
+
+const REMOTE_SUB_AGENT_RESULT_PROVIDER =
+  /\[RemoteSubAgent:[^\]]*\bprovider:\s*([a-z_]+)/;
+
+let lastSentRemoteSubAgentProvider: RemoteSubAgentProviderName | null = null;
+
+/** Record the provider sent with the latest task start in this window. */
+export function rememberSentRemoteSubAgentProvider(
+  provider: RemoteSubAgentProviderName | null | undefined
+) {
+  if (provider) lastSentRemoteSubAgentProvider = provider;
+}
+
+/**
+ * The provider behind a remote hand-off shown in the timeline. The tool
+ * result names it once the hand-off ends; while it runs, the provider sent at
+ * task start is the best answer. Gemini stays the default for older history.
+ */
+export function remoteSubAgentProviderForActivity(
+  ...texts: unknown[]
+): RemoteSubAgentProviderName {
+  for (const text of texts) {
+    if (typeof text !== 'string') continue;
+    const provider = REMOTE_SUB_AGENT_RESULT_PROVIDER.exec(text)?.[1];
+    if (isRemoteSubAgentProviderName(provider)) return provider;
+  }
+  return lastSentRemoteSubAgentProvider ?? GEMINI_REMOTE_SUB_AGENT_PROVIDER;
+}
