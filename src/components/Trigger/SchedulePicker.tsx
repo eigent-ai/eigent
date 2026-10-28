@@ -29,7 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { formatAppDate } from '@/lib/appDate';
 import { cn, localTimeToUTC } from '@/lib/utils';
-import { addYears, format, parse, subDays } from 'date-fns';
+import { addYears, endOfDay, format, parse, subDays } from 'date-fns';
 import { Clock, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -299,6 +299,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     // The server would not use a date a year or more ahead; do not preview it.
     if (!selectedSchedule || !cron || oneTimeTooFarAhead) return [];
     const times: Date[] = [];
+    // No run is due after the end date's last local minute.
+    const lastRunDay = expiredAt ? endOfDay(expiredAt) : null;
     let cursor = new Date();
     for (let index = 0; index < 5; index++) {
       const next = timezone
@@ -306,12 +308,12 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         : selectedSchedule.frequency === 'once'
           ? nextOccurrence(selectedSchedule, cursor)
           : getNextRun({ custom_cron_expression: cron }, cursor);
-      if (!next) break;
+      if (!next || (lastRunDay && next > lastRunDay)) break;
       times.push(next);
       cursor = next;
     }
     return times;
-  }, [selectedSchedule, cron, oneTimeTooFarAhead, timezone]);
+  }, [selectedSchedule, cron, oneTimeTooFarAhead, timezone, expiredAt]);
 
   const firstRun = unsupportedMonthlyTime
     ? null
