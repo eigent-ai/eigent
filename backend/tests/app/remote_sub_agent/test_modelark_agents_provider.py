@@ -38,6 +38,19 @@ BASE_URL = "https://ark.example.test/api/v3"
 API_KEY = "test-ark-key"
 DROP = object()
 HANG = object()
+STALL = object()
+MODULE = "app.remote_sub_agent.providers.modelark_agents"
+
+
+class Gap:
+    """An event produced while the current stream was not delivering.
+
+    It is written to the session history but not sent on the stream, so only
+    a history backfill can find it.
+    """
+
+    def __init__(self, event: dict[str, Any]) -> None:
+        self.event = event
 
 
 def _idle(reason: str | None, event_id: str = "evt-idle") -> dict[str, Any]:
@@ -61,6 +74,12 @@ class FakeModelArk:
     Each opened event stream plays the next script. Events after ``: ready``
     on the first stream are held until the client sends its message, which
     is how the real stream behaves.
+
+    ``history`` is the session's persisted event history: ``history`` passed
+    in (earlier turns), then every event the client sends and every event a
+    stream plays. The event list endpoint serves it with the documented
+    query parameters only (``order``, ``limit``, ``page``) and ignores any
+    other parameter, as the real API does.
     """
 
     def __init__(
@@ -68,19 +87,22 @@ class FakeModelArk:
         streams: list[list[Any]],
         *,
         session_status: str | None = "idle",
-        history_pages: list[dict[str, Any]] | None = None,
+        history: list[dict[str, Any]] | None = None,
+        receipt_ids: bool = True,
         resource_status: dict[str, int] | None = None,
         stream_status: int = 200,
     ) -> None:
         self.streams = list(streams)
         self.session_status = session_status
-        self.history_pages = list(history_pages or [])
+        self.history = list(history or [])
+        self.receipt_ids = receipt_ids
         self.resource_status = resource_status or {}
         self.stream_status = stream_status
         self.requests: list[httpx.Request] = []
         self.log: list[str] = []
         self.sent_events: list[dict[str, Any]] = []
         self.history_params: list[dict[str, str]] = []
+        self.stream_read_timeouts: list[float | None] = []
         self.message_sent = asyncio.Event()
 
     def transport(self) -> httpx.MockTransport:
@@ -98,6 +120,9 @@ class FakeModelArk:
             )
         if method == "GET" and path.endswith("/events/stream"):
             self.log.append("open_stream")
+            self.stream_read_timeouts.append(
+                request.extensions.get("timeout", {}).get("read")
+            )
             if self.stream_status != 200:
                 return httpx.Response(self.stream_status, text="unauthorized")
             script = self.streams.pop(0) if self.streams else []
@@ -107,21 +132,28 @@ class FakeModelArk:
             self.sent_events.extend(events)
             kinds = [event["type"] for event in events]
             self.log.append(f"send:{','.join(kinds)}")
+            accepted = [
+                {"id": f"evt-user-{len(self.sent_events)}", **event}
+                for event in events
+            ]
+            self.history.extend(accepted)
             if "user.message" in kinds:
                 self.message_sent.set()
-            return httpx.Response(
-                200,
-                json={
-                    "data": [
-                        {"id": f"evt-user-{len(self.sent_events)}", **event}
-                        for event in events
-                    ]
-                },
-            )
+            if not self.receipt_ids:
+                accepted = [dict(event) for event in events]
+            return httpx.Response(200, json={"data": accepted})
         if method == "GET" and path.endswith("/events"):
             self.log.append("list_events")
-            self.history_params.append(dict(request.url.params))
-            page = self.history_pages.pop(0) if self.history_pages else {}
+            params = dict(request.url.params)
+            self.history_params.append(params)
+            events = list(self.history)
+            if params.get("order", "asc") == "desc":
+                events.reverse()
+            limit = min(int(params.get("limit", "50")), 200)
+            start = int(params.get("page", "0"))
+            page: dict[str, Any] = {"data": events[start : start + limit]}
+            if start + limit < len(events):
+                page["next_page"] = str(start + limit)
             return httpx.Response(200, json=page)
         if method == "GET" and path.startswith("/sessions/"):
             self.log.append("get_session")
@@ -154,11 +186,18 @@ class FakeModelArk:
         for item in script:
             if item is DROP:
                 raise httpx.ReadError("stream dropped")
+            if item is STALL:
+                # What httpx raises when no heartbeat arrives in time.
+                raise httpx.ReadTimeout("no data within the read timeout")
             if item is HANG:
                 await asyncio.sleep(3600)
+            if isinstance(item, Gap):
+                self.history.append(item.event)
+                continue
             if isinstance(item, str):
                 yield item.encode()
                 continue
+            self.history.append(item)
             yield f"data: {json.dumps(item)}\n\n".encode()
 
 
@@ -500,16 +539,20 @@ async def test_retrying_error_keeps_reading_until_the_turn_ends():
 
 
 @pytest.mark.asyncio
-async def test_dropped_stream_reconnects_and_backfills_without_duplicates():
+async def test_dropped_stream_reconnects_and_backfills_without_duplicates(
+    monkeypatch,
+):
+    monkeypatch.setattr(f"{MODULE}._HISTORY_PAGE_SIZE", 2)
     fake = FakeModelArk(
         [
-            [_message("part one", "m1"), DROP],
-            [_message("part two", "m2"), _idle("end_turn")],
-        ],
-        history_pages=[
-            {"data": [_message("part one", "m1")], "next_page": "p2"},
-            {"data": [_message("part two", "m2")]},
-        ],
+            [
+                _message("part one", "m1"),
+                Gap({"id": "t1", "type": "agent.tool_use", "name": "bash"}),
+                Gap(_message("part two", "m2")),
+                DROP,
+            ],
+            [_idle("end_turn")],
+        ]
     )
 
     events = await _collect(_provider(fake))
@@ -522,22 +565,140 @@ async def test_dropped_stream_reconnects_and_backfills_without_duplicates():
         "list_events",
         "list_events",
     ]
-    assert fake.history_params[0] == {"order": "asc", "after": "evt-user-1"}
-    assert fake.history_params[1]["page"] == "p2"
+    assert fake.history_params[0] == {"order": "desc", "limit": "2"}
+    assert fake.history_params[1] == {
+        "order": "desc",
+        "limit": "2",
+        "page": "2",
+    }
     assert _output(events) == "part one\n\npart two"
+    assert any(event.status == "tool_use" for event in events)
     assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
 
 
 @pytest.mark.asyncio
 async def test_backfill_can_finish_the_turn():
     fake = FakeModelArk(
-        [[_message("answer", "m1")], [HANG]],
-        history_pages=[{"data": [_idle("end_turn")]}],
+        [[_message("answer", "m1"), Gap(_idle("end_turn"))], [HANG]]
     )
 
     events = await _collect(_provider(fake))
 
     assert _output(events) == "answer"
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("receipt_ids", [True, False])
+async def test_follow_up_backfill_ignores_earlier_turns(receipt_ids):
+    """A reused session's history starts with earlier turns.
+
+    Their answer and end_turn must not end this hand-off after a drop.
+    """
+    fake = FakeModelArk(
+        [
+            [
+                _message("new part one", "m1"),
+                Gap(_message("new part two", "m2")),
+                DROP,
+            ],
+            [_idle("end_turn", "new-idle")],
+        ],
+        history=[
+            {
+                "id": "old-user",
+                "type": "user.message",
+                "content": [{"type": "text", "text": "earlier task"}],
+            },
+            _message("old answer", "old-1"),
+            _idle("end_turn", "old-idle"),
+        ],
+        receipt_ids=receipt_ids,
+    )
+    session = _session(
+        remote_interaction_id="sesn-old",
+        remote_environment_id="env-1",
+        metadata={"modelark_agent_id": "agent-1"},
+    )
+
+    events = await _collect(_provider(fake), session=session)
+
+    assert "create_session" not in fake.log
+    assert _output(events) == "new part one\n\nnew part two"
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+    assert events[-1].provider_event_id == "new-idle"
+
+
+@pytest.mark.asyncio
+async def test_backfill_skips_history_without_this_turns_message():
+    """If an earlier message is the newest one, nothing is this turn's."""
+    fake = FakeModelArk(
+        [[_message("new answer", "m1"), DROP], [_idle("end_turn", "i2")]],
+        history=[
+            {"id": "old-user", "type": "user.message", "content": []},
+            _message("old answer", "old-1"),
+            _idle("end_turn", "old-idle"),
+        ],
+    )
+    original = fake.handle
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        response = await original(request)
+        if request.method == "POST" and request.url.path.endswith("/events"):
+            # The message was accepted but is not in the history yet.
+            fake.history = [
+                event
+                for event in fake.history
+                if event.get("type") != "user.message"
+                or event["id"] == "old-user"
+            ]
+        return response
+
+    provider = ModelArkAgentsProvider(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+        agent_id="agent-1",
+        environment_id="env-1",
+        transport=httpx.MockTransport(handle),
+    )
+    session = _session(
+        remote_interaction_id="sesn-old",
+        remote_environment_id="env-1",
+        metadata={"modelark_agent_id": "agent-1"},
+    )
+
+    events = await _collect(provider, session=session)
+
+    assert _output(events) == "new answer"
+    assert events[-1].provider_event_id == "i2"
+
+
+@pytest.mark.asyncio
+async def test_event_stream_has_a_read_timeout():
+    fake = FakeModelArk([[_message("ok", "m1"), _idle("end_turn")]])
+
+    await _collect(_provider(fake))
+
+    assert fake.stream_read_timeouts == [45.0]
+
+
+@pytest.mark.asyncio
+async def test_stalled_stream_reconnects_instead_of_waiting():
+    fake = FakeModelArk(
+        [
+            [
+                _message("part one", "m1"),
+                Gap(_message("part two", "m2")),
+                STALL,
+            ],
+            [_idle("end_turn")],
+        ]
+    )
+
+    events = await _collect(_provider(fake))
+
+    assert fake.log.count("open_stream") == 2
+    assert _output(events) == "part one\n\npart two"
     assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
 
 

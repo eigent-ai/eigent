@@ -24,7 +24,9 @@ is one turn in that session:
    "end_turn"`` is a normal end; every other end state fails the hand-off.
 
 If the stream drops, a new stream is opened first and the gap is filled from
-``GET /sessions/{id}/events``, skipping events already handled.
+``GET /sessions/{id}/events``, skipping events already handled. That history
+holds every turn of the session, so it is read newest first and only back to
+this turn's ``user.message``.
 """
 
 import asyncio
@@ -55,6 +57,11 @@ _INTERRUPT_TIMEOUT_SECONDS = 10.0
 # after progress (long quiet tool runs behind a proxy) resets the count.
 _MAX_STREAM_RECONNECTS = 3
 _RECONNECT_DELAY_SECONDS = 1.0
+# The stream sends a heartbeat comment about every 15 seconds. A read that
+# waits longer than a few of them means the connection is gone, so it is
+# treated as a drop and reconnected instead of waiting for the time limit.
+_STREAM_READ_TIMEOUT_SECONDS = 45.0
+_HISTORY_PAGE_SIZE = 200
 _MAX_HISTORY_PAGES = 50
 _SESSION_AGENT_KEY = "modelark_agent_id"
 _ACTIVE_TURN_KEY = "modelark_active_turn"
@@ -325,9 +332,11 @@ class ModelArkAgentsProvider:
             "GET",
             f"{self.base_url}/sessions/{session_id}/events/stream",
             headers={**self._headers(), "Accept": "text/event-stream"},
-            # Agents can work for minutes between events; the runtime's wall
-            # time limit bounds the whole hand-off instead.
-            timeout=httpx.Timeout(self.timeout, read=None),
+            # Agents can work for minutes between events, but heartbeats keep
+            # the stream alive; the runtime's wall time limit bounds the turn.
+            timeout=httpx.Timeout(
+                self.timeout, read=_STREAM_READ_TIMEOUT_SECONDS
+            ),
         ) as response:
             if response.is_error:
                 await response.aread()
@@ -439,13 +448,20 @@ class ModelArkAgentsProvider:
         client: httpx.AsyncClient,
         state: _TurnState,
     ) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {"order": "asc"}
-        if state.user_event_id:
-            params["after"] = state.user_event_id
-        elif state.sent_at is not None:
-            params["created_after"] = state.sent_at.isoformat()
+        """This turn's persisted events, oldest first.
 
-        events: list[dict[str, Any]] = []
+        The history API cannot start after a given event, and a reused session
+        also holds earlier turns, whose messages and ``end_turn`` would end
+        this hand-off with the wrong answer. So the history is read newest
+        first and stops at this turn's ``user.message``. Without a receipt id
+        that is the newest ``user.message``: only this hand-off sends to the
+        session while it runs.
+        """
+        params: dict[str, Any] = {
+            "order": "desc",
+            "limit": _HISTORY_PAGE_SIZE,
+        }
+        newest_first: list[dict[str, Any]] = []
         for _ in range(_MAX_HISTORY_PAGES):
             data = await self._request_json(
                 client,
@@ -454,13 +470,37 @@ class ModelArkAgentsProvider:
                 params=params,
             )
             page = data.get("data")
-            if isinstance(page, list):
-                events.extend(item for item in page if isinstance(item, dict))
+            for item in page if isinstance(page, list) else []:
+                if not isinstance(item, dict):
+                    continue
+                is_this_turn = (
+                    state.user_event_id is not None
+                    and item.get("id") == state.user_event_id
+                )
+                if is_this_turn or item.get("type") == "user.message":
+                    if is_this_turn or state.user_event_id is None:
+                        newest_first.reverse()
+                        return newest_first
+                    # An earlier turn's message came first, so this turn's
+                    # message is not in the history yet and none of these
+                    # events can be trusted to belong to this turn.
+                    logger.warning(
+                        "ModelArk history has no message for this turn yet; "
+                        "relying on the live stream: session_id=%s",
+                        state.session_id,
+                    )
+                    return []
+                newest_first.append(item)
             next_page = data.get("next_page")
             if not next_page:
                 break
             params = {**params, "page": next_page}
-        return events
+        logger.warning(
+            "ModelArk history did not reach this turn's message; relying on "
+            "the live stream: session_id=%s",
+            state.session_id,
+        )
+        return []
 
     def _map_event(
         self,
