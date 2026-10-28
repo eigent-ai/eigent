@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { McpConnectorNotice } from '@/components/ChatBox/McpConnectorNotice';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { mcpConnectorIssue } from '@/lib/mcpOAuth';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -131,6 +133,8 @@ function noticeTone(severity: string): string {
 export function NoticeEventRenderer({
   node,
 }: EventRendererProps<ChatProjectionNodeOfKind<'notice'>>) {
+  const connectorIssue = mcpConnectorIssue(node.content);
+  if (connectorIssue) return <McpConnectorNotice issue={connectorIssue} />;
   const reason = taskErrorReason(node);
   if (reason) return <TaskErrorNotice reason={reason} />;
   return (

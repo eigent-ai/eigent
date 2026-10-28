@@ -236,6 +236,24 @@ def _workspace_bundle_admission_error(
 def _environment_setup_error(
     exc: EnvironmentSetupRequiredError,
 ) -> UserException:
+    oauth_issues = [
+        issue
+        for issue in exc.issues
+        if issue.startswith(
+            (
+                "mcp_oauth_required:",
+                "mcp_oauth_unavailable:",
+                "mcp_auth_failed:",
+            )
+        )
+    ]
+    if oauth_issues:
+        return UserException(
+            code.error,
+            "A connector needs attention before this Task can start. "
+            f"({', '.join(oauth_issues)})",
+            error_code=exc.code,
+        )
     return UserException(
         code.error,
         "This Workspace needs local setup before the Run can start. Open "

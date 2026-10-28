@@ -48,7 +48,11 @@ async def mcp_agent(options: Chat):
     tool_names = [McpSearchToolkit.toolkit_name()]
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
-            mcp_tools = await get_mcp_tools(options.installed_mcp)
+            mcp_tools = await get_mcp_tools(
+                options.installed_mcp,
+                account=options.email,
+                project_id=options.project_id,
+            )
             logger.info(
                 f"Retrieved {len(mcp_tools)} MCP tools "
                 f"for task {options.project_id}"

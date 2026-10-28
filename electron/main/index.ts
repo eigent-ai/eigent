@@ -108,6 +108,7 @@ import {
   revealUserVisibleLocalNode,
   revealWorkspaceLocalNode,
 } from './localPathActions';
+import { registerMcpOAuthIpc } from './mcpOAuth';
 import { setRoundedCorners } from './native/macos-window';
 import { confirmNativeQuit } from './nativeQuitGuard';
 import { RendererAppCommandCoordinator } from './rendererAppCommandCoordinator';
@@ -1092,6 +1093,7 @@ const checkManagerInstance = (manager: any, name: string) => {
 
 function registerIpcHandlers() {
   registerCodexSubscriptionAuthIpcHandlers(ipcMain);
+  registerMcpOAuthIpc(ipcMain, assertMainRendererSender);
   registerTerminalIpcHandlers();
   registerReviewChangesIpcHandlers();
   registerWorkspaceSecretIpcHandlers(

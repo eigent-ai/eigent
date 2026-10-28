@@ -1936,7 +1936,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         },
                     )
                     continue
-                task = asyncio.create_task(install_mcp(mcp, item))
+                task = asyncio.create_task(install_mcp(mcp, item, options))
                 task_lock.add_background_task(task)
             elif item.action == Action.terminal:
                 yield sse_json(
@@ -2308,11 +2308,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 async def install_mcp(
     mcp: ListenChatAgent,
     install_mcp: ActionInstallMcpData,
+    options: Chat,
 ):
     mcp_keys = list(install_mcp.data.get("mcpServers", {}).keys())
     logger.info(f"Installing MCP tools: {mcp_keys}")
     try:
-        mcp.add_tools(await get_mcp_tools(install_mcp.data))
+        mcp.add_tools(
+            await get_mcp_tools(
+                install_mcp.data,
+                account=options.email,
+                project_id=options.project_id,
+            )
+        )
         logger.info("MCP tools installed successfully")
     except Exception as e:
         logger.error(f"Error installing MCP tools: {e}", exc_info=True)
@@ -3075,7 +3082,15 @@ async def new_agent_model(
         tools.extend(terminal_toolkit.get_tools())
         tool_names.append(titleize("terminal_toolkit"))
     if data.mcp_tools is not None:
-        tools = [*tools, *await get_mcp_tools(data.mcp_tools, hands=hands)]
+        tools = [
+            *tools,
+            *await get_mcp_tools(
+                data.mcp_tools,
+                hands=hands,
+                account=options.email,
+                project_id=options.project_id,
+            ),
+        ]
         for item in data.mcp_tools["mcpServers"].keys():
             tool_names.append(titleize(item))
     for item in tools:

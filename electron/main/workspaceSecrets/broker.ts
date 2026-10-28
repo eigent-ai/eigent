@@ -14,6 +14,10 @@
 
 import crypto from 'node:crypto';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import { getMcpOAuthService } from '../mcpOAuth';
+import { identityKey } from '../mcpOAuth/store';
+import type { McpOAuthIdentity } from '../mcpOAuth/types';
+import { errorCode } from '../mcpOAuth/types';
 import type {
   WorkspaceSecretBrokerRuntime,
   WorkspaceSecretLookup,
@@ -125,6 +129,7 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
     });
     request.on('error', fail);
     request.on('end', () => {
+      request.setTimeout(0);
       if (settled) return;
       settled = true;
       try {
@@ -214,13 +219,27 @@ export class WorkspaceSecretBroker {
     const isBatchVerify = request.url === '/v1/workspace-secrets/verify-batch';
     const isBatchResolve =
       request.url === '/v1/workspace-secrets/resolve-batch';
-    if (!isSingleVerify && !isBatchVerify && !isBatchResolve) {
+    const isMcpToken = request.url === '/mcp-oauth/token';
+    if (!isSingleVerify && !isBatchVerify && !isBatchResolve && !isMcpToken) {
       sendJson(response, 404, { error_code: 'not_found' });
       return;
     }
     try {
       const body = await readJsonBody(request);
-      if (isBatchResolve) {
+      if (isMcpToken) {
+        try {
+          const identity = body as McpOAuthIdentity;
+          identityKey(identity);
+          const credential =
+            await getMcpOAuthService().tokens.getAccessToken(identity);
+          sendJson(response, 200, {
+            access_token: credential.access_token,
+            expires_at: credential.expires_at,
+          });
+        } catch (error) {
+          sendJson(response, 200, { error: errorCode(error) });
+        }
+      } else if (isBatchResolve) {
         const resolutions = parseLookupBatch(body).map((lookup) => ({
           ...lookup,
           value: this.vault.resolve(lookup),

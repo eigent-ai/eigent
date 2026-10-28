@@ -69,6 +69,7 @@ import {
   useIntegrationManagement,
   type IntegrationItem,
 } from '@/hooks/useIntegrationManagement';
+import { useHost } from '@/host';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { shouldExposeBuiltInConnector } from '@/lib/builtInConnectorPolicy';
 import { integrationLeadingIconUrl } from '@/lib/connectorIcons';
@@ -124,6 +125,7 @@ import ConnectorSourceTag, {
 } from './components/ConnectorSourceTag';
 import MCPConfigDialog from './components/MCPConfigDialog';
 import MCPDeleteDialog from './components/MCPDeleteDialog';
+import { McpOAuthControls } from './components/McpOAuthControls';
 import { SearchSettingsPanel } from './components/SearchSettingsPanel';
 import type {
   ConnectorInstallHint,
@@ -405,11 +407,12 @@ async function resolveOpenProviderByName(
 
 export default function ConnectorGateway() {
   const { t, i18n } = useTranslation();
+  const oauth = useHost()?.electronAPI as Window['electronAPI'] | undefined;
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const publishItems = usePublishConnectorsNavigation();
-  const { checkAgentTool, modelType } = useAuthStore();
+  const { checkAgentTool, modelType, email } = useAuthStore();
   const capabilityStatus = useServerCapabilityStore((state) => state.status);
   const connectorGatewayEnabled = useServerCapabilityStore((state) =>
     state.isConnectorGatewayEnabled()
@@ -1060,7 +1063,14 @@ export default function ConnectorGateway() {
       const key = item.mcp_key || item.mcp_name;
       if (checked) {
         if (Number(item.type) === 2) {
-          await mcpInstall(key, { url: item.server_url || '' });
+          const url = item.server_url || '';
+          const probe = oauth?.mcpOAuthProbe
+            ? await oauth.mcpOAuthProbe(url)
+            : { requiresAuth: false };
+          await mcpInstall(key, {
+            url,
+            ...(probe.requiresAuth ? { auth: { type: 'oauth' } } : {}),
+          });
         } else {
           await mcpInstall(key, {
             description: item.mcp_desc || '',
@@ -1119,9 +1129,25 @@ export default function ConnectorGateway() {
           };
       await proxyFetchPut(`/api/v1/mcp/users/${showConfig.id}`, payload);
       if (isRemote) {
-        await mcpUpdate(showConfig.mcp_key || showConfig.mcp_name, {
-          url: configForm.server_url,
-        });
+        if (
+          showConfig.server_url &&
+          showConfig.server_url !== configForm.server_url &&
+          oauth?.mcpOAuthSignOut
+        ) {
+          await oauth.mcpOAuthSignOut({
+            account: email || '',
+            name: showConfig.mcp_key || showConfig.mcp_name,
+            url: showConfig.server_url,
+          });
+        }
+        const probe = oauth?.mcpOAuthProbe
+          ? await oauth.mcpOAuthProbe(configForm.server_url)
+          : { requiresAuth: false };
+        if (showConfig.status === 1)
+          await mcpUpdate(showConfig.mcp_key || showConfig.mcp_name, {
+            url: configForm.server_url,
+            ...(probe.requiresAuth ? { auth: { type: 'oauth' } } : {}),
+          });
       } else {
         const brainPayload: Record<string, unknown> = {
           description: configForm.mcp_desc,
@@ -1154,6 +1180,13 @@ export default function ConnectorGateway() {
       await proxyFetchDelete(`/api/v1/mcp/users/${deleteTarget.id}`);
       const key = deleteTarget.mcp_key || deleteTarget.mcp_name;
       if (key) await mcpRemove(key);
+      if (deleteTarget.server_url && oauth?.mcpOAuthSignOut) {
+        await oauth.mcpOAuthSignOut({
+          account: email || '',
+          name: key,
+          url: deleteTarget.server_url,
+        });
+      }
       setDeleteTarget(null);
       await loadCustomMcps();
       toast.success(t('connectors.deleted'));
@@ -1270,6 +1303,13 @@ export default function ConnectorGateway() {
 
   const renderDetailActions = (item: ConnectorListItem) => (
     <>
+      {item.source === 'custom' && item.subtype === 'remote' ? (
+        <McpOAuthControls
+          name={item.item.mcp_key || item.item.mcp_name}
+          url={item.item.server_url || ''}
+          enabled={item.active}
+        />
+      ) : null}
       {item.source === 'custom' ? (
         <Switch
           variant="outline"
@@ -1738,6 +1778,13 @@ export default function ConnectorGateway() {
                       <span className="text-ds-text-base whitespace-nowrap text-ds-ink-muted-default">
                         {statusLabel}
                       </span>
+                      {item.source === 'custom' && item.subtype === 'remote' ? (
+                        <McpOAuthControls
+                          name={item.item.mcp_key || item.item.mcp_name}
+                          url={item.item.server_url || ''}
+                          enabled={item.active}
+                        />
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell>

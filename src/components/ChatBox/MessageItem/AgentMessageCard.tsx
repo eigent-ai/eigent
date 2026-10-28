@@ -13,6 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { mcpConnectorIssue } from '@/lib/mcpOAuth';
+import { McpConnectorNotice } from '../McpConnectorNotice';
+
 import {
   recordMessageFeedback,
   type MessageFeedbackRating,
@@ -202,6 +205,9 @@ export function AgentMessageCard({
     () => submitFeedback('down'),
     [submitFeedback]
   );
+
+  const connectorIssue = mcpConnectorIssue(content);
+  if (connectorIssue) return <McpConnectorNotice issue={connectorIssue} />;
 
   if (errorReason || isLegacyTaskError(content)) {
     // Keep request-time ownership (cloud vs custom) when it was known. Only

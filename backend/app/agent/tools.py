@@ -132,6 +132,9 @@ async def get_toolkits(
 async def get_mcp_tools(
     mcp_server: McpServers,
     hands: IHands | None = None,
+    *,
+    account: str = "",
+    project_id: str | None = None,
 ):
     logger.info(
         f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers"
@@ -154,42 +157,60 @@ async def get_mcp_tools(
             return []
         mcp_server = {**mcp_server, "mcpServers": filtered}
 
-    # Ensure unified auth directory for all mcp-remote servers to avoid
-    # re-authentication on each task
-    config_dict = {**mcp_server}
-    for server_config in config_dict["mcpServers"].values():
-        if "env" not in server_config:
-            server_config["env"] = {}
-        # Set global auth directory to persist authentication across tasks
-        if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
-            server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env(
-                "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")
+    from app.service.mcp_oauth import (
+        connect_mcp_toolkit,
+        emit_mcp_notice,
+        is_mcp_auth_failure,
+        prepare_mcp_oauth,
+    )
+    from app.service.task import get_task_lock_if_exists
+
+    config_dict = await prepare_mcp_oauth(
+        mcp_server,
+        account=account,
+        project_id=project_id,
+        strict=False,
+    )
+    tools = []
+    for name, server_config in config_dict["mcpServers"].items():
+        if server_config.get("command"):
+            server_config.setdefault("env", {}).setdefault(
+                "MCP_REMOTE_CONFIG_DIR",
+                env(
+                    "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")
+                ),
             )
-
-    mcp_toolkit = None
-    try:
-        mcp_toolkit = MCPToolkit(config_dict=config_dict, timeout=180)
-        await mcp_toolkit.connect()
-
-        logger.info(
-            f"Successfully connected to MCP toolkit with "
-            f"{len(mcp_server['mcpServers'])} servers"
-        )
-        tools = mcp_toolkit.get_tools()
-        if tools:
-            tool_names = [
-                (
-                    tool.get_function_name()
-                    if hasattr(tool, "get_function_name")
-                    else str(tool)
-                )
-                for tool in tools
-            ]
-            logging.debug(f"MCP tool names: {tool_names}")
-        return tools
-    except asyncio.CancelledError:
-        logger.info("MCP connection cancelled during get_mcp_tools")
-        return []
-    except Exception as e:
-        logger.error(f"Failed to connect MCP toolkit: {e}", exc_info=True)
-        return []
+        toolkit = None
+        try:
+            toolkit = MCPToolkit(
+                config_dict={"mcpServers": {name: server_config}},
+                timeout=180,
+                skip_failed=False,
+            )
+            task_lock = (
+                get_task_lock_if_exists(project_id) if project_id else None
+            )
+            if task_lock is not None:
+                task_lock.register_toolkit(toolkit)
+            await connect_mcp_toolkit(toolkit)
+            tools.extend(toolkit.get_tools())
+        except asyncio.CancelledError:
+            if toolkit is not None:
+                await toolkit.disconnect()
+            raise
+        except Exception as exc:
+            reason = (
+                "mcp_auth_failed"
+                if is_mcp_auth_failure(exc)
+                else "connection_failed"
+            )
+            logger.warning("MCP connector failed (%s)", reason)
+            await emit_mcp_notice(project_id, name, reason)
+            if toolkit is not None:
+                try:
+                    await toolkit.disconnect()
+                except Exception:
+                    logger.warning(
+                        "Failed to disconnect unavailable MCP connector"
+                    )
+    return tools

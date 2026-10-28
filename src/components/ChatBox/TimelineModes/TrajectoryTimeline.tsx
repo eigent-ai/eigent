@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { McpConnectorNotice } from '@/components/ChatBox/McpConnectorNotice';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
@@ -21,6 +22,7 @@ import { DsText } from '@/components/ui/ds-text';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { approvalRecordedReason } from '@/lib/approvalPresentation';
+import { mcpConnectorIssue } from '@/lib/mcpOAuth';
 import type {
   TimelineRunView,
   TimelineToolInvocation,
@@ -531,6 +533,8 @@ function NodeTraceDetails({
     );
   }
   if (node.kind === 'notice') {
+    const connectorIssue = mcpConnectorIssue(node.content);
+    if (connectorIssue) return <McpConnectorNotice issue={connectorIssue} />;
     const reason = taskErrorReason(node);
     if (reason) return <TaskErrorNotice reason={reason} />;
     if (node.writerWait) return <SpaceWaitNotice wait={node.writerWait} />;

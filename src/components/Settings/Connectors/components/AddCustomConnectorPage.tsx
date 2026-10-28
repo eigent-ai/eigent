@@ -12,6 +12,21 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { mcpInstall, mcpRemove } from '@/api/brain';
 import {
   proxyFetchDelete,
@@ -24,6 +39,7 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ensureMonacoWorkers } from '@/lib/monacoWorkers';
+import { useAuthStore } from '@/store/authStore';
 import loader from '@monaco-editor/loader';
 import MonacoEditor from '@monaco-editor/react';
 import { Server, Wrench } from 'lucide-react';
@@ -70,6 +86,7 @@ export default function AddCustomConnectorPage({
   onInstalled,
 }: AddCustomConnectorPageProps) {
   const { t } = useTranslation();
+  const oauth = useHost()?.electronAPI as Window['electronAPI'] | undefined;
   const customHeaderTitle = t('connectors.custom-title');
   const { setHeaderOverride } = useSettingsHeader();
   const [internalCustomType, setInternalCustomType] = useState<
@@ -80,6 +97,8 @@ export default function AddCustomConnectorPage({
   const [remoteName, setRemoteName] = useState('');
   const [remoteUrl, setRemoteUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const [authorizing, setAuthorizing] = useState(false);
+  const account = useAuthStore((state) => state.email) ?? '';
   const [formError, setFormError] = useState<string | null>(null);
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -189,6 +208,11 @@ export default function AddCustomConnectorPage({
         throw new Error(t('connectors.remote-url-protocol'));
       }
 
+      const probe = oauth?.mcpOAuthProbe
+        ? await oauth
+            .mcpOAuthProbe(url)
+            .catch(() => ({ error: 'network' as const }))
+        : { requiresAuth: false };
       const response = await proxyFetchPost('/api/v1/mcp/import/remote', {
         server_name: name,
         server_url: url,
@@ -212,7 +236,10 @@ export default function AddCustomConnectorPage({
         throw error;
       }
       try {
-        await mcpInstall(name, { url });
+        await mcpInstall(name, {
+          url,
+          ...(probe.requiresAuth ? { auth: { type: 'oauth' } } : {}),
+        });
       } catch (installError) {
         try {
           await proxyFetchDelete(`/api/v1/mcp/users/${importedId}`);
@@ -220,6 +247,22 @@ export default function AddCustomConnectorPage({
           // Preserve the runtime install error; cleanup is best-effort.
         }
         throw installError;
+      }
+      if (probe.requiresAuth && oauth?.mcpOAuthSignIn) {
+        setAuthorizing(true);
+        try {
+          const result = await oauth.mcpOAuthSignIn({
+            name,
+            url,
+            account,
+          });
+          if (result.error && result.error !== 'cancelled')
+            toast.error(t(`connectors.oauth-error-${result.error}`));
+        } finally {
+          setAuthorizing(false);
+        }
+      } else if (probe.error) {
+        toast.error(t('connectors.oauth-probe-failed'));
       }
       toast.success(t('connectors.installed-toast', { name }));
       await onInstalled({ source: 'custom', key: name });
@@ -231,12 +274,14 @@ export default function AddCustomConnectorPage({
     }
   }, [
     closePage,
+    account,
     customMcps,
     customType,
     localJson,
     onInstalled,
     remoteName,
     remoteUrl,
+    oauth,
     t,
   ]);
 
@@ -342,6 +387,7 @@ export default function AddCustomConnectorPage({
               <Input
                 title={t('connectors.connector-name')}
                 required
+                disabled={saving}
                 value={remoteName}
                 onChange={(event) => setRemoteName(event.target.value)}
                 placeholder={t('connectors.remote-name-placeholder')}
@@ -350,6 +396,7 @@ export default function AddCustomConnectorPage({
               <Input
                 title={t('connectors.remote-url')}
                 required
+                disabled={saving}
                 value={remoteUrl}
                 onChange={(event) => setRemoteUrl(event.target.value)}
                 placeholder="https://example.com/mcp"
@@ -365,7 +412,20 @@ export default function AddCustomConnectorPage({
             </div>
           ) : null}
           <div className="mt-auto flex items-center justify-end gap-2 pt-2">
-            <Button variant="ghost" size="sm" onClick={closePage}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (authorizing)
+                  void oauth?.mcpOAuthCancel({
+                    account,
+                    name: remoteName.trim(),
+                    url: remoteUrl.trim(),
+                  });
+                else if (!saving) closePage();
+              }}
+              disabled={saving && !authorizing}
+            >
               {t('connectors.cancel')}
             </Button>
             <Button
@@ -374,7 +434,11 @@ export default function AddCustomConnectorPage({
               disabled={saving}
               onClick={() => void installCustom()}
             >
-              {saving ? t('connectors.installing') : t('connectors.install')}
+              {authorizing
+                ? t('connectors.oauth-pending')
+                : saving
+                  ? t('connectors.installing')
+                  : t('connectors.install')}
             </Button>
           </div>
         </div>

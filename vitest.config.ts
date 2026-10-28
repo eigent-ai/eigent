@@ -17,9 +17,18 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+      // Monaco has a browser module entry but no Node main entry. Resolve the
+      // exact package import before tests mock the editor used by Settings.
+      {
+        find: /^monaco-editor$/,
+        replacement: path.resolve(
+          __dirname,
+          'node_modules/monaco-editor/esm/vs/editor/editor.api.js'
+        ),
+      },
+    ],
   },
   test: {
     root: __dirname,

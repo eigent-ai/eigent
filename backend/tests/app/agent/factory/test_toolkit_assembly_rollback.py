@@ -312,3 +312,31 @@ async def test_rollback_runs_sync_cleanup_off_the_event_loop(
     assert len(cleanup_threads) == 1
     assert cleanup_threads[0] != loop_thread
     assert disconnect_threads == [loop_thread]
+
+
+@pytest.mark.asyncio
+async def test_empty_pinned_mcp_does_not_fall_back_to_global_connectors(
+    sample_chat_data, monkeypatch, tmp_path, cdp_pool
+):
+    from types import SimpleNamespace
+
+    options = _options(sample_chat_data, "mcp")
+    events = []
+    _install_toolkits(
+        monkeypatch, tmp_path, options.project_id, events, cdp_pool
+    )
+    runtime = SimpleNamespace(
+        pinned_skill_sources=lambda *_: {},
+        mcp_config_without_secrets=lambda: None,
+    )
+    assembly = await assemble_single_agent_toolkits(
+        options,
+        task_id=options.task_id,
+        working_directory=str(tmp_path),
+        hands=None,
+        can_delegate=False,
+        runtime_environment=runtime,
+    )
+    assert "MCPToolkit" not in assembly.tool_names
+    assert assembly.cleanup_toolkits == []
+    assert events == []

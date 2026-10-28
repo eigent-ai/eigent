@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { McpConnectorNotice } from '@/components/ChatBox/McpConnectorNotice';
 import { AgentMessageCard } from '@/components/ChatBox/MessageItem/AgentMessageCard';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
@@ -20,6 +21,7 @@ import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInp
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
 import { itemFadeMotion } from '@/components/ui/motion';
 import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
+import { mcpConnectorIssue } from '@/lib/mcpOAuth';
 import {
   callDescription,
   callSubject,
@@ -774,6 +776,8 @@ function NarrativeNotice({
   item: Extract<TimelineNarrativeItem, { kind: 'notice' }>;
 }) {
   const { node } = item;
+  const connectorIssue = mcpConnectorIssue(node.content);
+  if (connectorIssue) return <McpConnectorNotice issue={connectorIssue} />;
   const reason = taskErrorReason(node);
   if (reason) return <TaskErrorNotice reason={reason} />;
   if (node.writerWait) return <SpaceWaitNotice wait={node.writerWait} />;
