@@ -20,6 +20,7 @@ import asyncio
 import copy
 import json
 import logging
+import re
 from urllib.parse import quote
 
 from app.workspace_bundle.secrets import (
@@ -27,22 +28,29 @@ from app.workspace_bundle.secrets import (
     WorkspaceSecretBrokerError,
 )
 
+_CREDENTIAL_MARKERS = ("authorization", "bearer ")
+_exception_formatter = logging.Formatter()
+
 
 class _McpTransportLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        # Third-party exceptions can embed complete configs or HTTP headers.
-        # Keep our attributed, typed notices as the diagnostic boundary.
-        if record.levelno >= logging.WARNING:
-            record.msg = "MCP transport failed; see connector status"
+        # Third-party messages and exceptions can embed complete configs or
+        # HTTP headers. Redact only records that carry credential material so
+        # unrelated connector failures keep their diagnostics.
+        text = record.getMessage()
+        if record.exc_info:
+            text += _exception_formatter.formatException(record.exc_info)
+        elif record.exc_text:
+            text += record.exc_text
+        if any(marker in text.lower() for marker in _CREDENTIAL_MARKERS):
+            record.msg = (
+                "MCP transport failed; see connector status"
+                if record.levelno >= logging.WARNING
+                else "MCP transport diagnostic redacted"
+            )
             record.args = ()
             record.exc_info = None
             record.exc_text = None
-        elif (
-            "authorization" in record.getMessage().lower()
-            or "bearer " in record.getMessage().lower()
-        ):
-            record.msg = "MCP transport diagnostic redacted"
-            record.args = ()
         return True
 
 
@@ -79,6 +87,21 @@ async def connect_mcp_toolkit(toolkit) -> None:
         toolkit._connect_single_client = connect_client
 
 
+async def connect_mcp_toolkits(toolkits) -> list[BaseException | None]:
+    """Connect independent toolkits concurrently, returning each failure."""
+    results = await asyncio.gather(
+        *(connect_mcp_toolkit(toolkit) for toolkit in toolkits),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, asyncio.CancelledError):
+            raise result
+    return [
+        result if isinstance(result, BaseException) else None
+        for result in results
+    ]
+
+
 class McpAuthFailed(RuntimeError):
     status_code = 401
 
@@ -99,17 +122,29 @@ class McpOAuthUnavailable(RuntimeError):
         )
 
 
+def mcp_connector_name(name: str, server: object) -> str:
+    """Return the connector identity a notice or sign-in should refer to."""
+    if isinstance(server, dict):
+        connector_name = server.get("_oauth_connector_name")
+        if isinstance(connector_name, str) and connector_name:
+            return connector_name
+    return name
+
+
 def apply_mcp_oauth(config: dict, *, account: str) -> dict:
     result = copy.deepcopy(config)
     for name, server in result.get("mcpServers", {}).items():
-        connector_name = server.pop("_oauth_connector_name", name)
+        connector_name = mcp_connector_name(name, server)
+        server.pop("_oauth_connector_name", None)
         auth = server.pop("auth", None)
         if auth is None:
             continue
+        configured_headers = server.get("headers") or {}
         if (
             auth != {"type": "oauth"}
             or not server.get("url")
             or server.get("command")
+            or not isinstance(configured_headers, dict)
         ):
             raise McpOAuthUnavailable(connector_name, "invalid_request")
         try:
@@ -146,12 +181,19 @@ def apply_mcp_oauth(config: dict, *, account: str) -> dict:
             raise McpOAuthUnavailable(connector_name, "broker_unavailable")
         headers = {
             key: value
-            for key, value in server.get("headers", {}).items()
-            if key.lower() != "authorization"
+            for key, value in configured_headers.items()
+            if str(key).lower() != "authorization"
         }
         headers["Authorization"] = f"Bearer {token}"
         server["headers"] = headers
     return result
+
+
+_HTTP_401_MESSAGE = re.compile(
+    r"(?<![\w.:/-])401\s+unauthorized\b"
+    r"|\bstatus(?:[\s_-]?code)?\s*[:=]?\s*401(?![\w.])",
+    re.IGNORECASE,
+)
 
 
 def is_mcp_auth_failure(error: BaseException) -> bool:
@@ -166,11 +208,9 @@ def is_mcp_auth_failure(error: BaseException) -> bool:
     cause = error.__cause__ or error.__context__
     if cause is not None and cause is not error and is_mcp_auth_failure(cause):
         return True
-    # CAMEL wraps transport exceptions in RuntimeError in some versions.
-    return "401" in str(error) and any(
-        word in str(error).lower()
-        for word in ("unauthorized", "status", "http")
-    )
+    # CAMEL wraps transport exceptions in RuntimeError in some versions. Match
+    # only an HTTP 401 status, not any URL, port or identifier containing 401.
+    return _HTTP_401_MESSAGE.search(str(error)) is not None
 
 
 async def emit_mcp_notice(
@@ -209,12 +249,20 @@ async def prepare_mcp_oauth(
                 account=account,
             )
             result["mcpServers"].update(resolved["mcpServers"])
+            continue
         except (McpOAuthRequired, McpOAuthUnavailable) as exc:
-            if strict:
-                from app.workspace_bundle.runtime import (
-                    EnvironmentSetupRequiredError,
-                )
+            failure = exc
+        except Exception:
+            # A malformed entry must not abort the other connectors. The
+            # exception text may echo the config, so keep only its identity.
+            failure = McpOAuthUnavailable(
+                mcp_connector_name(name, server), "invalid_request"
+            )
+        if strict:
+            from app.workspace_bundle.runtime import (
+                EnvironmentSetupRequiredError,
+            )
 
-                raise EnvironmentSetupRequiredError([str(exc)]) from None
-            await emit_mcp_notice(project_id, exc.name, exc.reason)
+            raise EnvironmentSetupRequiredError([str(failure)]) from None
+        await emit_mcp_notice(project_id, failure.name, failure.reason)
     return result

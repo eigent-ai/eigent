@@ -726,9 +726,10 @@ async def _assemble_single_agent_toolkits(
 
     if _enabled(config, "mcp") or pinned_mcp_config is not None:
         from app.service.mcp_oauth import (
-            connect_mcp_toolkit,
+            connect_mcp_toolkits,
             emit_mcp_notice,
             is_mcp_auth_failure,
+            mcp_connector_name,
             prepare_mcp_oauth,
         )
 
@@ -740,46 +741,73 @@ async def _assemble_single_agent_toolkits(
             else None,
         )
         if mcp_config is not None:
+            # A Bundle alias must still report the global connector identity,
+            # which prepare_mcp_oauth removes from the resolved config.
+            connector_names = {
+                name: mcp_connector_name(name, server)
+                for name, server in mcp_config.get("mcpServers", {}).items()
+            }
             resolved = await prepare_mcp_oauth(
                 mcp_config,
                 account=options.email,
                 project_id=options.project_id,
                 strict=runtime_environment is not None,
             )
-            # Connect separately so a failed connector cannot hide another's
-            # tools, and every failure can be attributed without logging headers.
-            for name, server in resolved["mcpServers"].items():
-                mcp_options = {
-                    "timeout": 180,
-                    **_options(config, "mcp"),
-                    "config_dict": {"mcpServers": {name: server}},
-                    "skip_failed": False,
-                }
-                try:
-                    toolkit = MCPToolkit(**mcp_options)
-                    assembly.cleanup_toolkits.append(toolkit)
-                    await connect_mcp_toolkit(toolkit)
-                except Exception as exc:
-                    reason = (
-                        "mcp_auth_failed"
-                        if is_mcp_auth_failure(exc)
-                        else "connection_failed"
+
+            async def connector_failed(name: str, exc: BaseException) -> None:
+                connector_name = connector_names.get(name, name)
+                reason = (
+                    "mcp_auth_failed"
+                    if is_mcp_auth_failure(exc)
+                    else "connection_failed"
+                )
+                if runtime_environment is not None:
+                    from urllib.parse import quote
+
+                    from app.workspace_bundle.runtime import (
+                        EnvironmentSetupRequiredError,
                     )
-                    if runtime_environment is not None:
-                        from urllib.parse import quote
 
-                        from app.workspace_bundle.runtime import (
-                            EnvironmentSetupRequiredError,
-                        )
+                    issue = (
+                        f"mcp_auth_failed:{quote(connector_name, safe='')}"
+                        if reason == "mcp_auth_failed"
+                        else "bundle_mcp_start_failed"
+                    )
+                    raise EnvironmentSetupRequiredError([issue]) from None
+                logger.warning(
+                    "MCP connector %r failed (%s)", connector_name, reason
+                )
+                await emit_mcp_notice(
+                    options.project_id, connector_name, reason
+                )
 
-                        issue = (
-                            f"mcp_auth_failed:{quote(name, safe='')}"
-                            if reason == "mcp_auth_failed"
-                            else "bundle_mcp_start_failed"
-                        )
-                        raise EnvironmentSetupRequiredError([issue]) from None
-                    logger.warning("MCP connector failed (%s)", reason)
-                    await emit_mcp_notice(options.project_id, name, reason)
+            # Connect separately so a failed connector cannot hide another's
+            # tools, and every failure can be attributed without logging
+            # headers. Independent connectors still start concurrently.
+            started = []
+            for name, server in resolved["mcpServers"].items():
+                try:
+                    toolkit = MCPToolkit(
+                        **{
+                            "timeout": 180,
+                            **_options(config, "mcp"),
+                            "config_dict": {"mcpServers": {name: server}},
+                            "skip_failed": False,
+                        }
+                    )
+                except Exception as exc:
+                    await connector_failed(name, exc)
+                    continue
+                # connect() can partially allocate subprocesses before it
+                # raises. Include it in rollback before attempting startup.
+                assembly.cleanup_toolkits.append(toolkit)
+                started.append((name, toolkit))
+            failures = await connect_mcp_toolkits(
+                [toolkit for _, toolkit in started]
+            )
+            for (name, toolkit), failure in zip(started, failures):
+                if failure is not None:
+                    await connector_failed(name, failure)
                 else:
                     assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
 

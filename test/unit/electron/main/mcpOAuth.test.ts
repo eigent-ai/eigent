@@ -294,6 +294,42 @@ describe('remote MCP OAuth', () => {
     expect(store.read(identity)).toBeNull();
   });
 
+  it('requires sign-in again when the registered client is rejected', async () => {
+    const store = new McpOAuthStore(directory);
+    store.write(identity, { ...credential(), expires_at: 0 });
+    vi.stubGlobal('fetch', async () => json({ error: 'invalid_client' }, 401));
+    const tokens = new McpOAuthTokens(store);
+    await expect(tokens.getAccessToken(identity)).rejects.toMatchObject({
+      message: 'signin_required',
+    });
+    expect(tokens.status(identity)).toEqual({ state: 'signin_required' });
+  });
+
+  it('keeps credentials and reports refresh failure for non-JSON server errors', async () => {
+    const store = new McpOAuthStore(directory);
+    store.write(identity, { ...credential(), expires_at: 0 });
+    vi.stubGlobal(
+      'fetch',
+      async () => new Response('<html>Bad gateway</html>', { status: 502 })
+    );
+    await expect(
+      new McpOAuthTokens(store).getAccessToken(identity)
+    ).rejects.toMatchObject({ message: 'refresh_failed' });
+    expect(store.read(identity)).not.toBeNull();
+  });
+
+  it('does not treat a legacy SSE endpoint rejecting POST as a probe failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      async () => new Response('Method Not Allowed', { status: 405 })
+    );
+    await expect(probeMcpOAuth(identity.url)).resolves.toEqual({
+      requiresAuth: false,
+      resource: identity.url,
+      scopes: [],
+    });
+  });
+
   it('cannot restore tokens from an in-flight refresh after sign-out', async () => {
     const store = new McpOAuthStore(directory);
     store.write(identity, { ...credential(), expires_at: 0 });

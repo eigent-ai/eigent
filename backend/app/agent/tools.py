@@ -158,7 +158,7 @@ async def get_mcp_tools(
         mcp_server = {**mcp_server, "mcpServers": filtered}
 
     from app.service.mcp_oauth import (
-        connect_mcp_toolkit,
+        connect_mcp_toolkits,
         emit_mcp_notice,
         is_mcp_auth_failure,
         prepare_mcp_oauth,
@@ -171,7 +171,24 @@ async def get_mcp_tools(
         project_id=project_id,
         strict=False,
     )
-    tools = []
+    task_lock = get_task_lock_if_exists(project_id) if project_id else None
+
+    async def connector_failed(name: str, exc: BaseException) -> None:
+        reason = (
+            "mcp_auth_failed"
+            if is_mcp_auth_failure(exc)
+            else "connection_failed"
+        )
+        logger.warning("MCP connector %r failed (%s)", name, reason)
+        await emit_mcp_notice(project_id, name, reason)
+
+    async def disconnect(toolkit) -> None:
+        try:
+            await toolkit.disconnect()
+        except Exception:
+            logger.warning("Failed to disconnect unavailable MCP connector")
+
+    started = []
     for name, server_config in config_dict["mcpServers"].items():
         if server_config.get("command"):
             server_config.setdefault("env", {}).setdefault(
@@ -180,37 +197,34 @@ async def get_mcp_tools(
                     "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")
                 ),
             )
-        toolkit = None
         try:
             toolkit = MCPToolkit(
                 config_dict={"mcpServers": {name: server_config}},
                 timeout=180,
                 skip_failed=False,
             )
-            task_lock = (
-                get_task_lock_if_exists(project_id) if project_id else None
-            )
-            if task_lock is not None:
-                task_lock.register_toolkit(toolkit)
-            await connect_mcp_toolkit(toolkit)
-            tools.extend(toolkit.get_tools())
-        except asyncio.CancelledError:
-            if toolkit is not None:
-                await toolkit.disconnect()
-            raise
         except Exception as exc:
-            reason = (
-                "mcp_auth_failed"
-                if is_mcp_auth_failure(exc)
-                else "connection_failed"
-            )
-            logger.warning("MCP connector failed (%s)", reason)
-            await emit_mcp_notice(project_id, name, reason)
-            if toolkit is not None:
-                try:
-                    await toolkit.disconnect()
-                except Exception:
-                    logger.warning(
-                        "Failed to disconnect unavailable MCP connector"
-                    )
+            await connector_failed(name, exc)
+            continue
+        if task_lock is not None:
+            task_lock.register_toolkit(toolkit)
+        started.append((name, toolkit))
+
+    # Each connector connects separately so one failure cannot hide another's
+    # tools, but independent connectors still start concurrently.
+    try:
+        failures = await connect_mcp_toolkits(
+            [toolkit for _, toolkit in started]
+        )
+    except asyncio.CancelledError:
+        for _, toolkit in started:
+            await disconnect(toolkit)
+        raise
+    tools = []
+    for (name, toolkit), failure in zip(started, failures):
+        if failure is None:
+            tools.extend(toolkit.get_tools())
+            continue
+        await connector_failed(name, failure)
+        await disconnect(toolkit)
     return tools

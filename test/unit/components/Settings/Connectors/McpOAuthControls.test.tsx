@@ -14,7 +14,7 @@
 
 import { McpConnectorNotice } from '@/components/ChatBox/McpConnectorNotice';
 import { McpOAuthControls } from '@/components/Settings/Connectors/components/McpOAuthControls';
-import { mcpConnectorIssue } from '@/lib/mcpOAuth';
+import { clearMcpOAuthProbeCache, mcpConnectorIssue } from '@/lib/mcpOAuth';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,6 +51,7 @@ const identity = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  clearMcpOAuthProbeCache();
   mocks.list.mockResolvedValue({
     mcpServers: { Astrocade: { url: props.url, auth: { type: 'oauth' } } },
   });
@@ -114,29 +115,38 @@ describe('MCP OAuth connector actions', () => {
     ).toBeEnabled();
   });
 
-  it('does not open sign-in after cancellation during configuration loading', async () => {
+  it('never offers or marks OAuth when a 401 has no usable OAuth metadata', async () => {
+    mocks.list.mockResolvedValue({
+      mcpServers: {
+        Astrocade: {
+          url: props.url,
+          headers: { Authorization: 'Bearer api-key' },
+        },
+      },
+    });
+    mocks.probe.mockResolvedValue({
+      requiresAuth: true,
+      error: 'invalid_metadata',
+    });
     render(<McpOAuthControls {...props} />);
-    await screen.findByRole('button', { name: 'Sign in' });
-    let finish!: (value: object) => void;
-    mocks.list.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Cancel' })
-    );
-    await act(async () =>
-      finish({
-        mcpServers: { Astrocade: { url: props.url, auth: { type: 'oauth' } } },
-      })
-    );
-    expect(
-      await screen.findByRole('button', { name: 'Sign in' })
-    ).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeEnabled();
+    expect(mocks.update).not.toHaveBeenCalled();
     expect(mocks.signin).not.toHaveBeenCalled();
+  });
+
+  it('shares one probe between list and detail controls', async () => {
+    mocks.list.mockResolvedValue({ mcpServers: {} });
+    mocks.probe.mockResolvedValue({ requiresAuth: false });
+    render(
+      <>
+        <McpOAuthControls {...props} />
+        <McpOAuthControls {...props} />
+      </>
+    );
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
+    act(() => window.dispatchEvent(new Event('mcp-oauth-changed')));
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(4));
+    expect(mocks.probe).toHaveBeenCalledTimes(1);
   });
 
   it('explains unavailable encryption and offers reconnect', async () => {
@@ -206,6 +216,57 @@ describe('Task connector notices', () => {
       )
     ).toBeVisible();
     expect(mocks.signin).toHaveBeenCalledWith(identity);
+  });
+
+  it('does not convert a static-key connector to OAuth after a 401', async () => {
+    mocks.list.mockResolvedValue({
+      mcpServers: {
+        Internal: {
+          url: 'https://internal.example.com/mcp',
+          headers: { Authorization: 'Bearer api-key' },
+        },
+      },
+    });
+    mocks.probe.mockResolvedValue({ requiresAuth: false });
+    render(
+      <McpConnectorNotice
+        issue={{ name: 'Internal', reason: 'mcp_auth_failed' }}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(
+      await screen.findByText(/does not support automatic client registration/)
+    ).toBeVisible();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.signin).not.toHaveBeenCalled();
+  });
+
+  it('marks the connector as OAuth only after a successful sign-in', async () => {
+    mocks.list.mockResolvedValue({
+      mcpServers: { Astrocade: { url: props.url } },
+    });
+    mocks.signin.mockResolvedValueOnce({
+      state: 'error',
+      error: 'unsupported_provider',
+    });
+    render(
+      <McpConnectorNotice
+        issue={{ name: 'Astrocade', reason: 'mcp_auth_failed' }}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(mocks.signin).toHaveBeenCalledTimes(1));
+    expect(mocks.update).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(
+      await screen.findByText(
+        'Astrocade is connected. Resume the Task to use its tools.'
+      )
+    ).toBeVisible();
+    expect(mocks.update).toHaveBeenCalledWith('Astrocade', {
+      url: props.url,
+      auth: { type: 'oauth' },
+    });
   });
 
   it('retains an actionable local-device explanation for cloud or missing configurations', async () => {

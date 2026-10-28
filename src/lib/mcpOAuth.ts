@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { mcpList } from '@/api/brain';
+import { mcpList, mcpUpdate } from '@/api/brain';
 import type { McpOAuthIdentity } from '../../electron/main/mcpOAuth/types';
 
 export type McpConnectorIssue = { name: string; reason: string };
@@ -67,4 +67,56 @@ export async function resolveMcpIdentity(
   )
     return null;
   return { name, account, url: server.url };
+}
+
+type McpOAuthProbeResult = Awaited<
+  ReturnType<Window['electronAPI']['mcpOAuthProbe']>
+>;
+
+// Connector rows mount in both the list and the detail view, and every
+// sign-in change refreshes them. Share settled probes so opening Connectors
+// does not send a new initialize request to every remote server each time.
+const PROBE_TTL_MS = 5 * 60_000;
+const probeCache = new Map<
+  string,
+  { at: number; result: Promise<McpOAuthProbeResult> }
+>();
+
+export function probeMcpOAuth(
+  api: Pick<Window['electronAPI'], 'mcpOAuthProbe'>,
+  url: string,
+  { force = false }: { force?: boolean } = {}
+): Promise<McpOAuthProbeResult> {
+  const cached = probeCache.get(url);
+  if (!force && cached && Date.now() - cached.at < PROBE_TTL_MS)
+    return cached.result;
+  const result = api.mcpOAuthProbe(url).then(
+    (value: McpOAuthProbeResult) => {
+      // Failures are retried rather than remembered.
+      if (value.error && probeCache.get(url)?.result === result)
+        probeCache.delete(url);
+      return value;
+    },
+    (error: unknown) => {
+      if (probeCache.get(url)?.result === result) probeCache.delete(url);
+      throw error;
+    }
+  );
+  probeCache.set(url, { at: Date.now(), result });
+  return result;
+}
+
+export function clearMcpOAuthProbeCache(): void {
+  probeCache.clear();
+}
+
+// Mark a connector as OAuth only once its server has proven OAuth support or
+// sign-in has succeeded. The backend then replaces any Authorization header.
+export async function markMcpOAuth(name: string, url: string): Promise<void> {
+  const config = await mcpList();
+  const server = config.mcpServers[name] as Record<string, unknown> | undefined;
+  if (!server || server.url !== url) return;
+  const auth = server.auth as { type?: unknown } | undefined;
+  if (auth?.type === 'oauth') return;
+  await mcpUpdate(name, { ...server, auth: { type: 'oauth' } });
 }

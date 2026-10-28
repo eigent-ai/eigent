@@ -1332,12 +1332,19 @@ class TestChatServiceAgentOperations:
             data={"mcpServers": {"notion": {"config": "test"}}}
         )
 
+        options = MagicMock(email="alice@example.com", project_id="project")
+
         with patch(
             "app.service.chat_service.get_mcp_tools", return_value=mock_tools
-        ):
-            await install_mcp(mock_camel_agent, install_data)
+        ) as get_mcp_tools:
+            await install_mcp(mock_camel_agent, install_data, options)
 
             mock_camel_agent.add_tools.assert_called_once_with(mock_tools)
+            get_mcp_tools.assert_called_once_with(
+                install_data.data,
+                account="alice@example.com",
+                project_id="project",
+            )
 
 
 @pytest.mark.integration

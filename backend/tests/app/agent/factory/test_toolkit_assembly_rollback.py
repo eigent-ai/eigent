@@ -340,3 +340,51 @@ async def test_empty_pinned_mcp_does_not_fall_back_to_global_connectors(
     assert "MCPToolkit" not in assembly.tool_names
     assert assembly.cleanup_toolkits == []
     assert events == []
+
+
+@pytest.mark.asyncio
+async def test_pinned_alias_auth_failure_names_the_global_connector(
+    sample_chat_data, monkeypatch, tmp_path, cdp_pool
+):
+    from types import SimpleNamespace
+
+    import httpx
+
+    from app.workspace_bundle.runtime import EnvironmentSetupRequiredError
+
+    options = _options(sample_chat_data, "mcp")
+    fake_mcp = _install_toolkits(
+        monkeypatch, tmp_path, options.project_id, [], cdp_pool
+    )
+
+    class UnauthorizedMCPToolkit(fake_mcp):
+        async def connect(self):
+            response = httpx.Response(
+                401, request=httpx.Request("POST", "https://example.com/mcp")
+            )
+            raise httpx.HTTPStatusError(
+                "unauthorized", request=response.request, response=response
+            )
+
+    monkeypatch.setattr(assembler, "MCPToolkit", UnauthorizedMCPToolkit)
+    runtime = SimpleNamespace(
+        pinned_skill_sources=lambda *_: {},
+        mcp_config_without_secrets=lambda: {
+            "mcpServers": {
+                "bundle-alias": {
+                    "url": "https://example.com/mcp",
+                    "_oauth_connector_name": "Astrocade",
+                }
+            }
+        },
+    )
+    with pytest.raises(EnvironmentSetupRequiredError) as raised:
+        await assemble_single_agent_toolkits(
+            options,
+            task_id=options.task_id,
+            working_directory=str(tmp_path),
+            hands=None,
+            can_delegate=False,
+            runtime_environment=runtime,
+        )
+    assert raised.value.issues == ("mcp_auth_failed:Astrocade",)
