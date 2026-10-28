@@ -25,7 +25,16 @@ class GeminiRemoteSubAgentConfig(BaseModel):
     poll_interval_seconds: float | None = None
 
 
+class ModelArkRemoteSubAgentConfig(BaseModel):
+    api_key: str | None = None
+    base_url: str | None = None
+    agent_name: str | None = None
+    environment_id: str | None = None
+    max_wall_time_seconds: int | None = None
+
+
 class RemoteSubAgentConfig(BaseModel):
     enabled: bool = False
     provider: str = DEFAULT_REMOTE_SUB_AGENT_PROVIDER
     gemini_agents: GeminiRemoteSubAgentConfig | None = None
+    modelark_agents: ModelArkRemoteSubAgentConfig | None = None

@@ -21,6 +21,9 @@ from app.remote_sub_agent.provider_registry import (
     is_remote_sub_agent_provider_configured,
 )
 from app.remote_sub_agent.providers.gemini_agents import GeminiAgentsProvider
+from app.remote_sub_agent.providers.modelark_agents import (
+    ModelArkAgentsProvider,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -79,3 +82,40 @@ def test_registry_rejects_unknown_provider():
 
 def test_registry_reads_max_wall_time_from_selected_provider_config():
     assert get_provider_max_wall_time_seconds(_config()) == 900
+
+
+def _modelark_config() -> dict:
+    return {
+        "enabled": True,
+        "provider": "modelark_agents",
+        "modelark_agents": {
+            "api_key": "test-key",
+            "base_url": "https://ark.example.test/api/v3",
+            "agent_name": "agent-1",
+            "environment_id": "env-1",
+            "max_wall_time_seconds": 1200,
+        },
+    }
+
+
+def test_registry_builds_modelark_provider_from_provider_config():
+    provider = build_remote_sub_agent_provider(_modelark_config())
+
+    assert isinstance(provider, ModelArkAgentsProvider)
+    assert provider.api_key == "test-key"
+    assert provider.base_url == "https://ark.example.test/api/v3"
+    assert provider.agent_id == "agent-1"
+    assert provider.environment_id == "env-1"
+    assert get_provider_max_wall_time_seconds(_modelark_config()) == 1200
+
+
+def test_registry_requires_modelark_environment_id():
+    assert is_remote_sub_agent_provider_configured(_modelark_config()) is True
+
+    incomplete = _modelark_config()
+    incomplete["modelark_agents"] = {
+        **incomplete["modelark_agents"],
+        "environment_id": " ",
+    }
+
+    assert is_remote_sub_agent_provider_configured(incomplete) is False
