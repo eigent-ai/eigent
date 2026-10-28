@@ -226,6 +226,20 @@ export const proxyUpdateTrigger = async (
   }
 };
 
+/**
+ * Creating an Automation for a Session the server has not seen yet names that
+ * Session after the bare Automation name. Save the name the app shows instead,
+ * so the next sidebar sync keeps it.
+ */
+export const proxySaveAutomationSessionName = async (
+  projectId: string,
+  name: string
+): Promise<void> => {
+  await proxyFetchPut(
+    `/api/v1/chat/project/${projectId}/name?new_name=${encodeURIComponent(name)}`
+  );
+};
+
 export const proxyDeleteTrigger = async (triggerId: number): Promise<void> => {
   try {
     await proxyFetchDelete(`/api/v1/trigger/${triggerId}`);

@@ -54,6 +54,7 @@ import { confirmScheduleTimezone } from '@/lib/triggerScheduleCompatibility';
 import {
   proxyCreateTrigger,
   proxyDeleteTrigger,
+  proxySaveAutomationSessionName,
   proxyUpdateTrigger,
 } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
@@ -495,8 +496,20 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           proxyUpdateTrigger,
           () => proxyDeleteTrigger(created.id)
         );
+        const automationSessionId = automationSessionRef.current;
         // The saved Automation owns its Session from here on.
         automationSessionRef.current = null;
+        const automationSessionName = automationSessionId
+          ? projectStore.getProjectById(automationSessionId)?.name
+          : undefined;
+        if (automationSessionId && automationSessionName) {
+          void proxySaveAutomationSessionName(
+            automationSessionId,
+            automationSessionName
+          ).catch((error) => {
+            console.warn('Failed to save the Automation Session name:', error);
+          });
+        }
 
         // Add trigger to store
         addTrigger(response);

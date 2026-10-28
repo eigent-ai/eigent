@@ -963,3 +963,15 @@ describe('Space trigger listing on older servers', () => {
     expect(get).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('Automation Session name', () => {
+  it('saves the shown name through the Session name route', async () => {
+    mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+    const { proxySaveAutomationSessionName } =
+      await import('@/service/triggerApi');
+    await proxySaveAutomationSessionName('session-1', 'Automation: A & B');
+    expect(mocks.proxyFetchPut).toHaveBeenCalledWith(
+      '/api/v1/chat/project/session-1/name?new_name=Automation%3A%20A%20%26%20B'
+    );
+  });
+});

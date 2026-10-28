@@ -33,14 +33,19 @@ const mocks = vi.hoisted(() => ({
   proxyCreateTrigger: vi.fn(),
   proxyDeleteTrigger: vi.fn(),
   proxyUpdateTrigger: vi.fn(),
+  proxySaveAutomationSessionName: vi.fn(async () => undefined),
   toastError: vi.fn(),
   createProject: vi.fn(() => 'automation-session'),
+  getProjectById: vi.fn((id: string) =>
+    id === 'automation-session' ? { name: 'Automation: Weekly digest' } : null
+  ),
   removeProject: vi.fn(),
 }));
 
 vi.mock('@/service/triggerApi', () => ({
   proxyCreateTrigger: mocks.proxyCreateTrigger,
   proxyDeleteTrigger: mocks.proxyDeleteTrigger,
+  proxySaveAutomationSessionName: mocks.proxySaveAutomationSessionName,
   proxyUpdateTrigger: mocks.proxyUpdateTrigger,
 }));
 
@@ -58,6 +63,7 @@ vi.mock('@/hooks/useChatStoreAdapter', () => ({
     projectStore: {
       activeProjectId: 'project-1',
       createProject: mocks.createProject,
+      getProjectById: mocks.getProjectById,
       removeProject: mocks.removeProject,
     },
   }),
@@ -359,6 +365,10 @@ describe('TriggerDialog opened from a Session', () => {
         space_id: 'space-1',
       })
     );
+    expect(mocks.proxySaveAutomationSessionName).toHaveBeenCalledWith(
+      'automation-session',
+      'Automation: Weekly digest'
+    );
   });
 });
 
@@ -409,6 +419,7 @@ describe('TriggerDialog when creating an Automation fails', () => {
       expect(mocks.removeProject).toHaveBeenCalledTimes(1)
     );
     expect(mocks.removeProject).toHaveBeenCalledWith('automation-session');
+    expect(mocks.proxySaveAutomationSessionName).not.toHaveBeenCalled();
   });
 
   it('keeps the Session once a retry saves the Automation', async () => {

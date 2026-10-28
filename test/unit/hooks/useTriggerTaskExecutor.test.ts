@@ -543,6 +543,77 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     }
   });
 
+  it('gives a Session restored without a chat one for the run, without opening it', async () => {
+    const store = useProjectStore.getState();
+    store.createProject(
+      'Automation: Daily',
+      '',
+      'proj-shell',
+      undefined,
+      undefined,
+      false
+    );
+    useProjectStore.setState((state) => ({
+      projects: {
+        ...state.projects,
+        'proj-shell': {
+          ...state.projects['proj-shell'],
+          chatStores: {},
+          chatStoreTimestamps: {},
+          activeChatId: null,
+        },
+      },
+    }));
+    const activeBefore = useProjectStore.getState().activeProjectId;
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+
+    await act(async () => {
+      await result.current.executeTask(
+        makeTask({ projectId: 'proj-shell', executionId: 'exec-shell' })
+      );
+    });
+
+    const state = useProjectStore.getState();
+    expect(state.getChatStore('proj-shell')).not.toBeNull();
+    expect(
+      state.getProjectById('proj-shell')!.metadata
+        ?.remoteHistoryHydrationPending
+    ).toBe(true);
+    expect(state.getProjectById('proj-shell')!.queuedMessages).toHaveLength(1);
+    expect(state.activeProjectId).toBe(activeBefore);
+  });
+
+  it('names a Session whose only history is the server placeholder after the Automation', async () => {
+    const http = await import('@/api/http');
+    vi.mocked(http.proxyFetchGet).mockResolvedValueOnce({
+      tasks: [
+        {
+          id: 7,
+          task_id: 'proj-placeholder',
+          question: 'Project created via trigger: Daily',
+        },
+      ],
+      last_prompt: 'Project created via trigger: Daily',
+    });
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+
+    await act(async () => {
+      await result.current.executeTask(
+        makeTask({
+          projectId: 'proj-placeholder',
+          triggerName: 'Daily',
+          executionId: 'exec-placeholder',
+        })
+      );
+    });
+
+    const project = useProjectStore
+      .getState()
+      .getProjectById('proj-placeholder');
+    expect(project?.name).toBe('Automation: Daily');
+    expect(project?.queuedMessages).toHaveLength(1);
+  });
+
   // ╔═══════════════════════════════════════════════════════════════╗
   // ║  Edge cases                                                 ║
   // ╚═══════════════════════════════════════════════════════════════╝

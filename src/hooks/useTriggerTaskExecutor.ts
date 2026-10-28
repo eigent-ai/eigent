@@ -15,11 +15,13 @@
 import { proxyFetchGet } from '@/api/http';
 import i18n from '@/i18n';
 import { notifyExecutionError } from '@/lib/notifyError';
+import { withoutTriggerPlaceholderTasks } from '@/lib/projectRuntimeHydration';
 import { executionScope } from '@/service/executionApi';
 import { createFollowUpRequest } from '@/service/followUpQueueApi';
 import {
   ProjectType,
   useProjectRuntimeStore,
+  type ProjectRuntimeStore,
 } from '@/store/projectRuntimeStore';
 import { requireLegacyExecution } from '@/store/sessionExecutionStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -33,6 +35,22 @@ import { toast } from 'sonner';
 
 function automationProjectName(task: TriggeredTask): string {
   return i18n.t('triggers.automation-project-name', { name: task.triggerName });
+}
+
+/**
+ * A Session restored from the sidebar has no chat until it is opened. Give the
+ * run one without opening the Session; its saved history is merged when the
+ * user opens it.
+ */
+export function ensureRunChatStore(
+  store: ProjectRuntimeStore,
+  projectId: string
+): void {
+  if (store.getChatStore(projectId)) return;
+  store.updateProject(projectId, {
+    metadata: { remoteHistoryHydrationPending: true },
+  });
+  store.createChatStore(projectId);
 }
 
 function automationProjectDescription(task: TriggeredTask): string {
@@ -85,7 +103,12 @@ export function useTriggerTaskExecutor() {
           `/api/v1/chat/histories/grouped/${projectId}?include_tasks=true`
         );
 
-        if (!historyProject) {
+        const tasks = withoutTriggerPlaceholderTasks<{
+          id?: string | number | null;
+          task_id?: string | null;
+          question?: string | null;
+        }>(historyProject?.tasks, projectId);
+        if (tasks.length === 0) {
           console.warn(
             '[TriggerTaskExecutor] Project not found in history:',
             projectId
@@ -94,14 +117,12 @@ export function useTriggerTaskExecutor() {
         }
 
         // Get task IDs and question from history
-        const taskIdsList = historyProject.tasks.map(
-          (task: any) => task.task_id
-        );
+        const taskIdsList = tasks.map((task) => task.task_id);
         const question =
           historyProject.last_prompt ||
-          historyProject.tasks[0]?.question ||
+          tasks[0]?.question ||
           i18n.t('triggers.trigger-label');
-        const historyId = String(historyProject.tasks[0]?.id || '');
+        const historyId = String(tasks[0]?.id || '');
 
         console.log('[TriggerTaskExecutor] Loading project from history:', {
           projectId,
@@ -200,8 +221,11 @@ export function useTriggerTaskExecutor() {
                 { spaceId: task.spaceId || activeSpaceId || undefined }
               );
             }
-          } else if (task.spaceId && !existingProject.spaceId) {
-            store.setProjectSpace(targetProjectId, task.spaceId);
+          } else {
+            if (task.spaceId && !existingProject.spaceId) {
+              store.setProjectSpace(targetProjectId, task.spaceId);
+            }
+            ensureRunChatStore(store, targetProjectId);
           }
         }
 
