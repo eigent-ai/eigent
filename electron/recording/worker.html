@@ -1,0 +1,243 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; media-src blob:; connect-src 'none'"
+    />
+    <title>Eigent recorder</title>
+  </head>
+  <body>
+    <canvas></canvas><video muted></video>
+    <script>
+      'use strict';
+      let recording = null;
+      let chain = Promise.resolve();
+      let pendingBytes = 0;
+      let watchdog = null;
+      const mime = 'video/mp4;codecs=avc1';
+      const canvas = document.querySelector('canvas');
+      const context = canvas.getContext('2d', { alpha: false });
+      const images = new Map();
+      let layout = null;
+      let drawTimer = null;
+      compositor.onLayout((value) => {
+        layout = value;
+        const visible = new Set(value.layers.map((layer) => layer.id));
+        for (const [id, image] of images)
+          if (!visible.has(id)) {
+            image.close();
+            images.delete(id);
+          }
+      });
+      compositor.onFrame(async (frame) => {
+        try {
+          const image = await createImageBitmap(
+            new Blob([frame.bytes], { type: 'image/png' })
+          );
+          images.get(frame.id)?.close();
+          images.set(frame.id, image);
+        } finally {
+          compositor.acknowledge(frame.id);
+        }
+      });
+      compositor.onSourceEnded(() => void stop('source_ended'));
+      function draw() {
+        if (!layout) return;
+        const scale = Math.min(
+          canvas.width / layout.width,
+          canvas.height / layout.height
+        );
+        const x = (canvas.width - layout.width * scale) / 2;
+        const y = (canvas.height - layout.height * scale) / 2;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        for (const layer of layout.layers) {
+          const image = images.get(layer.id);
+          if (!image) continue;
+          const b = layer.bounds;
+          context.drawImage(
+            image,
+            x + b.x * scale,
+            y + b.y * scale,
+            b.width * scale,
+            b.height * scale
+          );
+        }
+      }
+
+      async function start(command) {
+        if (recording) return;
+        if (!MediaRecorder.isTypeSupported(mime)) {
+          await recorder.report({
+            state: 'failed',
+            reason: 'encoder_unavailable',
+          });
+          return;
+        }
+        const capture = {
+          command,
+          stream: null,
+          encoder: null,
+          sequence: 0,
+          started: performance.now(),
+          frames: 0,
+          lastFrame: performance.now(),
+          stopping: false,
+          lease: command.lease_expires_at * 1000,
+        };
+        recording = capture;
+        try {
+          if (!layout) throw new Error('source unavailable');
+          const ratio = Math.min(1, 1920 / layout.width, 1080 / layout.height);
+          canvas.width = Math.max(
+            2,
+            Math.floor((layout.width * ratio) / 2) * 2
+          );
+          canvas.height = Math.max(
+            2,
+            Math.floor((layout.height * ratio) / 2) * 2
+          );
+          draw();
+          drawTimer = setInterval(draw, 1000 / 24);
+          const stream = canvas.captureStream(24);
+          capture.stream = stream;
+          if (capture.stopping) {
+            stream.getTracks().forEach((track) => track.stop());
+            recording = null;
+            return;
+          }
+          const video = document.querySelector('video');
+          video.srcObject = stream;
+          await video.play();
+          const track = stream.getVideoTracks()[0];
+          capture.settings = track.getSettings();
+          const encoder = new MediaRecorder(stream, {
+            mimeType: mime,
+            videoBitsPerSecond: command.profile.bitrate,
+          });
+          capture.encoder = encoder;
+          const frame = () => {
+            if (recording !== capture || capture.stopping) return;
+            capture.frames++;
+            if (capture.frames === 1)
+              void recorder
+                .report({
+                  state: 'recording',
+                  media: { started_at: capture.startedWall },
+                })
+                .catch(() => void stop('provider_disconnected'));
+            capture.lastFrame = performance.now();
+            video.requestVideoFrameCallback(frame);
+          };
+          video.requestVideoFrameCallback(frame);
+          track.onended = () => stop('source_ended');
+          encoder.ondataavailable = (event) => {
+            if (!event.data.size) return;
+            pendingBytes += event.data.size;
+            if (
+              pendingBytes > 16 * 1024 * 1024 ||
+              event.data.size > 8 * 1024 * 1024
+            ) {
+              capture.failedReason = 'disk_limit';
+              void stop('disk_limit');
+              return;
+            }
+            chain = chain
+              .then(async () => {
+                const bytes = await event.data.arrayBuffer();
+                await recorder.chunk({ sequence: capture.sequence++, bytes });
+                pendingBytes -= event.data.size;
+              })
+              .catch(() => {
+                capture.failedReason = 'disk_limit';
+                void stop('disk_limit');
+              });
+          };
+          encoder.onerror = () => stop('source_ended');
+          encoder.onstop = async () => {
+            clearInterval(watchdog);
+            clearInterval(drawTimer);
+            stream.getTracks().forEach((track) => track.stop());
+            video.srcObject = null;
+            const duration = (performance.now() - capture.started) / 1000;
+            try {
+              await chain;
+              await recorder.report({
+                state: capture.failedReason ? 'failed' : 'completed',
+                reason: capture.failedReason || capture.reason,
+                media: {
+                  duration,
+                  width: capture.settings.width,
+                  height: capture.settings.height,
+                  fps: capture.frames / duration,
+                },
+              });
+            } finally {
+              recording = null;
+            }
+          };
+          capture.started = performance.now();
+          capture.startedWall = Date.now() / 1000;
+          encoder.start(1000);
+          watchdog = setInterval(async () => {
+            if (Date.now() > capture.lease)
+              return void stop('provider_disconnected');
+            if (performance.now() - capture.lastFrame > 12000)
+              return void stop('capture_stalled');
+            if (
+              performance.now() - capture.started >=
+              command.profile.max_seconds * 1000
+            )
+              return void stop('clip_limit');
+            // Reachability alone is not frame progress.
+            if (capture.frames > (capture.reportedFrames || 0)) {
+              capture.reportedFrames = capture.frames;
+              try {
+                await recorder.report({ state: 'recording' });
+              } catch {
+                void stop('provider_disconnected');
+              }
+            }
+          }, 2000);
+        } catch (error) {
+          clearInterval(drawTimer);
+          capture.stream?.getTracks().forEach((track) => track.stop());
+          recording = null;
+          await recorder.report({
+            state: error.name === 'NotAllowedError' ? 'denied' : 'failed',
+            reason:
+              error.name === 'NotAllowedError'
+                ? 'permission_denied'
+                : 'source_ended',
+          });
+        }
+      }
+
+      async function stop(reason) {
+        const capture = recording;
+        if (!capture || capture.stopping) return;
+        capture.stopping = true;
+        capture.reason = reason;
+        clearInterval(watchdog);
+        await recorder.report({ state: 'finalizing', reason }).catch(() => {});
+        if (capture.encoder && capture.encoder.state !== 'inactive')
+          capture.encoder.stop();
+        else {
+          capture.stream?.getTracks().forEach((track) => track.stop());
+          recording = null;
+        }
+      }
+
+      recorder.onCommand((command) => {
+        if (
+          recording &&
+          command.recording_id === recording.command.recording_id
+        ) {
+          recording.lease = command.lease_expires_at * 1000;
+          if (command.action === 'stop') void stop(command.reason);
+        } else if (command.action === 'start') void start(command);
+      });
+    </script>
+  </body>
+</html>

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { createHost } from '@/host/createHost';
 import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
 import {
   recordModelConfigured,
@@ -183,6 +184,10 @@ const clearAuthForCurrentEnvironment = (
   }
 
   const hadAuth = Boolean(state.token || state.email || state.user_id != null);
+  if (hadAuth)
+    void createHost()
+      .recording?.revoke()
+      .catch(() => {});
   if (state.user_id != null) {
     void clearAllCachedProjects(state.user_id);
   }
@@ -243,6 +248,10 @@ const authStore = create<AuthState>()(
       setAuth: ({ token, username, email, user_id }) => {
         const resolvedUserId = user_id ?? userIdFromToken(token);
         const previousUserId = get().user_id;
+        if (previousUserId !== resolvedUserId || get().email !== email)
+          void createHost()
+            .recording?.revoke()
+            .catch(() => {});
         if (previousUserId != null && previousUserId !== resolvedUserId) {
           void clearAllCachedProjects(previousUserId);
         }
@@ -259,6 +268,9 @@ const authStore = create<AuthState>()(
       },
 
       logout: () => {
+        void createHost()
+          .recording?.revoke()
+          .catch(() => {});
         const previousUserId = get().user_id;
         if (previousUserId != null) {
           // Drop this account's IDB-backed project cache so signing in as a

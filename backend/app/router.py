@@ -32,6 +32,7 @@ from app.controller import (
     message_controller,
     model_controller,
     permission_controller,
+    recording_controller,
     remote_command_controller,
     remote_sub_agent_controller,
     run_controller,
@@ -61,6 +62,12 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
         prefix: Optional global prefix for all routes (e.g., "/api")
     """
     routers_config = [
+        {
+            "router": recording_controller.router,
+            "tags": ["Recordings"],
+            "description": "Optional local recording and isolated desktop adapter",
+            "self_authenticated": True,
+        },
         {
             "router": health_controller.router,
             "tags": ["Health"],

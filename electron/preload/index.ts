@@ -261,6 +261,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke(BRAIN_STREAM_RELAY_CANCEL_CHANNEL, streamId),
   getDesktopInstanceId: (legacyRendererId?: string) =>
     ipcRenderer.invoke('get-desktop-instance-id', legacyRendererId),
+  recording: {
+    authorize: (runId: string) =>
+      ipcRenderer.invoke('recording-authorize', runId),
+    revoke: () => ipcRenderer.invoke('recording-revoke'),
+  },
   restartBackend: () => ipcRenderer.invoke('restart-backend'),
   onInstallDependenciesStart: (callback: () => void) => {
     ipcRenderer.on('install-dependencies-start', callback);

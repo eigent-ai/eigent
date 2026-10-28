@@ -87,6 +87,22 @@ export default defineConfig(({ command, mode }) => {
             }
           },
           vite: {
+            plugins: [
+              {
+                name: 'eigent-recording-worker',
+                generateBundle() {
+                  for (const filename of ['worker.html', 'preload.cjs']) {
+                    this.emitFile({
+                      type: 'asset',
+                      fileName: `recording/${filename}`,
+                      source: readFileSync(
+                        path.join(__dirname, 'electron/recording', filename)
+                      ),
+                    });
+                  }
+                },
+              },
+            ],
             build: {
               sourcemap,
               minify: isBuild,

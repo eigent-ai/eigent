@@ -20,6 +20,7 @@ export function createHost(): AppHost {
     return { electronAPI: null, ipcRenderer: null };
   }
   return {
+    recording: window.electronAPI?.recording ?? null,
     electronAPI: window.electronAPI ?? null,
     ipcRenderer: window.ipcRenderer ?? null,
   };

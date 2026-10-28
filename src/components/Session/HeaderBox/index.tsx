@@ -16,6 +16,7 @@ import tokenDarkIcon from '@/assets/custom/token-dark.svg';
 import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
+import { SessionRecordingControl } from '@/components/Recording/SessionRecordingControl';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -388,6 +389,9 @@ export function HeaderBox({
               <AnimatedTokenNumber value={totalTokens} />
             </span>
           </div>
+        ) : null}
+        {projectId ? (
+          <SessionRecordingControl sessionId={projectId} compact={compact} />
         ) : null}
         {summary ? <SummaryToggle {...summary} /> : null}
         <TooltipSimple
