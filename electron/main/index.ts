@@ -58,6 +58,11 @@ import {
   subframeLoadFailureFromEvent,
 } from '../../src/shared/subframeLoadFailure';
 import {
+  getWindowsTitleBarOverlay,
+  isWindowChromeTheme,
+  WINDOW_CHROME_THEME_CHANNEL,
+} from '../../src/shared/windowChrome';
+import {
   isWindowCloseResponse,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
 } from '../../src/shared/windowClose';
@@ -142,6 +147,7 @@ import {
   isBinaryExists,
 } from './utils/process';
 import { WebViewManager } from './webview';
+import { getMainWindowChromeOptions } from './windowChrome';
 import {
   loadWindowStartupState,
   persistWindowState,
@@ -2247,6 +2253,13 @@ function registerIpcHandlers() {
       );
     }
   });
+  ipcMain.on(WINDOW_CHROME_THEME_CHANNEL, (event, theme: unknown) => {
+    if (process.platform !== 'win32' || !isWindowChromeTheme(theme)) return;
+    // Main and Session windows each sync their own caption-button colors.
+    appWindowForSender(event.sender)?.setTitleBarOverlay(
+      getWindowsTitleBarOverlay(theme)
+    );
+  });
   ipcMain.on('window-minimize', (event) =>
     appWindowForSender(event.sender)?.minimize()
   );
@@ -3392,38 +3405,18 @@ async function createWindow() {
 
 /**
  * Frame, background and renderer settings shared by the main window and Session
- * windows, so both look and behave like the same app.
+ * windows, so both look and behave like the same app. Windows keeps its native
+ * frame and caption buttons, overlaid into the app-owned 40px header; macOS and
+ * Linux stay frameless, with the macOS corner radius applied by a native hook.
  */
 function appWindowChromeOptions(): Electron.BrowserWindowConstructorOptions {
-  const isMac = process.platform === 'darwin';
-  const isWindows = process.platform === 'win32';
   return {
-    // Use native frame on Windows for better native integration
-    frame: isWindows ? true : false,
+    ...getMainWindowChromeOptions(
+      process.platform,
+      nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+    ),
     show: false, // Don't show until content is ready to avoid white screen
-    // Only use transparency on macOS and Linux (not supported well on Windows)
-    transparent: !isWindows,
-    // Solid on Windows; macOS solid without vibrancy; Linux unchanged semi-transparent tint
-    backgroundColor: isWindows
-      ? nativeTheme.shouldUseDarkColors
-        ? '#1e1e1e'
-        : '#ffffff'
-      : isMac
-        ? nativeTheme.shouldUseDarkColors
-          ? '#1e1e1e'
-          : '#f5f5f5'
-        : '#f5f5f580',
-    // macOS-specific title bar styling
-    titleBarStyle: isMac ? 'hidden' : undefined,
-    trafficLightPosition: isMac ? { x: 10, y: 12 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
-    // Rounded corners on macOS and Linux (as original)
-    roundedCorners: !isWindows,
-    // Keep the Windows/Linux menu discoverable through Alt without changing
-    // the existing clean shell chrome.
-    ...(!isMac && {
-      autoHideMenuBar: true,
-    }),
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
@@ -3471,8 +3464,7 @@ async function createWindowInternal() {
     )}`
   );
 
-  // Platform-specific window configuration
-  // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
+  // Platform-specific frame options live in appWindowChromeOptions().
   appShellReadinessGate.markDocumentLoading();
   rendererAppCommands.markNotReady('window-created');
   win = new BrowserWindow({
