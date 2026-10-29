@@ -52,6 +52,7 @@ import {
   sessionDraftKey,
   useSessionDraftStore,
 } from '@/store/sessionDraftStore';
+import { useSessionStartStore } from '@/store/sessionStartStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { SessionMode, type SessionModeType } from '@/types/constants';
@@ -456,6 +457,8 @@ export default function Workspace({
           openedChatStore.setHasMessages(openedChatStore.activeTaskId, true);
           usePageTabStore.getState().markSessionTaskStarted(projectId);
           openedSession.projectId = projectId;
+          // The opened Session's composer waits until this start settles.
+          useSessionStartStore.getState().markSessionStarting(projectId);
           setDraftFiles([]);
           setMessage('');
           handOffNewSessionDraft(projectId);
@@ -540,6 +543,11 @@ export default function Workspace({
         );
       }
     } finally {
+      if (openedSession.projectId) {
+        useSessionStartStore
+          .getState()
+          .clearSessionStarting(openedSession.projectId);
+      }
       if (activeSubmission.current === submission) {
         activeSubmission.current = null;
         directProjectStartRef.current = false;

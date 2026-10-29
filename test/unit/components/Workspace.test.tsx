@@ -24,6 +24,7 @@ import {
   sessionDraftKey,
   useSessionDraftStore,
 } from '@/store/sessionDraftStore';
+import { isSessionStarting } from '@/store/sessionStartStore';
 import {
   setUsageAccount,
   setUsageModelType,
@@ -646,13 +647,17 @@ describe('Workspace', () => {
     );
     expect(screen.getByLabelText('workspace-message')).toHaveValue('');
     expect(screen.queryByText('draft.txt')).not.toBeInTheDocument();
+    // The opened Session's own composer waits for this start.
+    expect(isSessionStarting('new-project')).toBe(true);
 
     await act(async () => created());
     await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
     expect(mocks.newStartTask.mock.calls[0][5]).toEqual([
       { fileName: 'draft.txt', filePath: '/draft.txt' },
     ]);
+    expect(isSessionStarting('new-project')).toBe(true);
     await act(async () => accept());
+    expect(isSessionStarting('new-project')).toBe(false);
     expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledTimes(1);
     expect(mocks.newSetAttaches).toHaveBeenLastCalledWith('new-task', []);
   });
@@ -808,6 +813,7 @@ describe('Workspace', () => {
     );
     // Back on the New session tab, so the page did not select another Session.
     expect(mocks.projectState.activeProjectId).toBeNull();
+    expect(isSessionStarting('new-project')).toBe(false);
     renderWorkspace({ variant: 'new-project' });
     expect(screen.getByLabelText('workspace-message')).toHaveValue(
       'Bring this back'
