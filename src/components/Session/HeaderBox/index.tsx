@@ -369,8 +369,10 @@ export function HeaderBox({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : projectName ? (
+          // Same inset as the Session title button, so the label lines up
+          // with a Session's title and the Space switch above it.
           <span
-            className="max-w-[200px] min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default"
+            className="max-w-[200px] min-w-0 truncate px-[var(--ds-button-sm-padding-inline)] text-ds-text-base font-semibold text-ds-ink-default-default"
             title={projectName}
           >
             {projectName}

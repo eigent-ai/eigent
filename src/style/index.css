@@ -336,7 +336,7 @@ body {
     --spacing-lg: var(--ds-ref-space-32);
     --spacing-xl: var(--ds-ref-space-64);
     --spacing-multi-value: 8 64;
-    /* Tailwind spacing-2 / `px-2` — always-visible scrollbar track. */
+    /* Tailwind spacing-2 / `px-2` — scrollbar track of every product recipe. */
     --scrollbar-size: 0.5rem;
     --borderRadius-sm: var(--ds-ref-radius-4);
     --borderRadius-lg: var(--ds-ref-radius-8);
@@ -406,26 +406,39 @@ body {
 
 /* scroll Style */
 
+/*
+ * Product scrollbars share one geometry: an 8px track (--scrollbar-size) with
+ * a 6px thumb centered in it by a 1px transparent border. The thumb is muted
+ * at rest and shows its full color while the pointer is on it.
+ *
+ * Chromium ignores every ::-webkit-scrollbar rule on an element that sets the
+ * standard scrollbar-width or scrollbar-color, and draws its own wider thin
+ * bar instead. Those properties therefore apply only where ::-webkit-scrollbar
+ * is unsupported (Firefox), in the block after these recipes.
+ */
+
 .scrollbar {
   scrollbar-gutter: stable;
 }
 
 .scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: var(--scrollbar-size);
 }
 
 .scrollbar::-webkit-scrollbar-thumb {
   background-color: transparent;
-  border-radius: 3px;
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
   transition: background-color 0.3s ease;
 }
 
 .scrollbar.scrolling::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.2);
+  background-color: rgba(156, 163, 175, 0.5);
 }
 
 .scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.2);
+  background-color: rgb(156, 163, 175);
 }
 
 .scrollbar::-webkit-scrollbar-track {
@@ -434,8 +447,6 @@ body {
 
 .scrollbar-always-visible {
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
 }
 
 .scrollbar-always-visible::-webkit-scrollbar {
@@ -444,14 +455,15 @@ body {
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.6);
+  background-color: rgba(156, 163, 175, 0.5);
+  background-clip: padding-box;
+  border: 1px solid transparent;
   border-radius: 4px;
-  opacity: 0.5;
-  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb:hover {
-  opacity: 1;
+  background-color: rgb(156, 163, 175);
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-track {
@@ -461,16 +473,10 @@ body {
 /* Overlay scrollbar - sits on top of content without taking space */
 .scrollbar-overlay {
   overflow-y: scroll;
-  scrollbar-width: thin; /* Firefox */
-  scrollbar-color: transparent transparent; /* Firefox - invisible by default */
-}
-
-.scrollbar-overlay:hover {
-  scrollbar-color: rgba(0, 0, 0, 0.3) transparent; /* Firefox - show on hover */
 }
 
 .scrollbar-overlay::-webkit-scrollbar {
-  width: 8px;
+  width: var(--scrollbar-size);
   background: transparent;
 }
 
@@ -479,17 +485,19 @@ body {
 }
 
 .scrollbar-overlay::-webkit-scrollbar-thumb {
-  background: transparent;
+  background-color: transparent;
+  background-clip: padding-box;
+  border: 1px solid transparent;
   border-radius: 4px;
-  transition: background 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 .scrollbar-overlay:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.3);
+  background-color: rgba(156, 163, 175, 0.5);
 }
 
 .scrollbar-overlay::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.5);
+  background-color: rgb(156, 163, 175);
 }
 
 .terminal-scrollbar::-webkit-scrollbar {
@@ -590,18 +598,10 @@ body {
   font-size: 12px; /* text-sm */
 }
 
-/* Hover-style scrollbar - appears only on hover with 20% opacity */
-.hover-style-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.hover-style-scrollbar:hover {
-  scrollbar-color: rgba(0, 0, 0, 0.4) transparent;
-}
+/* Hover-style scrollbar - appears only while the container is hovered */
 
 .hover-style-scrollbar::-webkit-scrollbar {
-  width: 8px;
+  width: var(--scrollbar-size);
 }
 
 .hover-style-scrollbar::-webkit-scrollbar-track {
@@ -609,14 +609,38 @@ body {
 }
 
 .hover-style-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--ds-text-neutral-muted-default, rgba(0, 0, 0, 0.4));
-  opacity: 0;
-  border-radius: 9999px;
-  transition: opacity 0.2s ease;
+  background-color: transparent;
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
 }
 
 .hover-style-scrollbar:hover::-webkit-scrollbar-thumb {
-  opacity: 0.2;
+  background-color: rgba(156, 163, 175, 0.5);
+}
+
+.hover-style-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(156, 163, 175);
+}
+
+/* Firefox: the standard properties stand in for the ::-webkit-scrollbar rules. */
+@supports not selector(::-webkit-scrollbar) {
+  .scrollbar-always-visible {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
+
+  .scrollbar-overlay,
+  .hover-style-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .scrollbar-overlay:hover,
+  .hover-style-scrollbar:hover {
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
 }
 
 /* Scoped file viewer: prevent file content CSS from affecting sidebar and app layout */
