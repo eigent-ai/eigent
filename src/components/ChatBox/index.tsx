@@ -3145,7 +3145,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               onEditUserMessage={handleEditUserMessage}
             />
           ) : (
-            <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+            <div className="mx-auto flex min-h-full w-full max-w-[736px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
               {interruptedRun && !eventNativeTimelineEnabled && (
@@ -3250,7 +3250,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             data-bottom-box-overlay
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+            <div className="pointer-events-auto mx-auto w-full max-w-[736px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
               <HumanDecisionCard
                 key={activeProjectId ?? 'no-session'}
                 requestKey={humanDecisionKey}

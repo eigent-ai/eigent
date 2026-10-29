@@ -1000,13 +1000,12 @@ function NarrativeRunWorkLog({
     // Lifecycle/time belongs to the Task, not to the availability of tool
     // rows. Keep its receipt visible even before older work-log pages arrive.
     return isTerminalRunStatus(run.status) ? (
-      <div
-        className="w-full border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-ds-panel-inset py-ds-4"
-        data-narrative-run-summary
-      >
-        <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
-          <NarrativeWorkLogSummary paused={paused} run={run} />
-        </span>
+      <div className="w-full px-ds-panel-inset" data-narrative-run-summary>
+        <div className="w-full border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default py-ds-4">
+          <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
+            <NarrativeWorkLogSummary paused={paused} run={run} />
+          </span>
+        </div>
       </div>
     ) : null;
   }
@@ -1038,7 +1037,8 @@ function NarrativeRunWorkLog({
         </TaskLogTrigger>
         <TaskLogContent
           indent={false}
-          className="gap-ds-stack-related py-ds-8"
+          blockInset="even"
+          className="gap-ds-stack-related"
           data-narrative-timeline
         >
           <AnimatePresence initial={false}>
@@ -1116,6 +1116,7 @@ export function NarrativeTimeline({
           >
             {index > 0 ? (
               <ModelChangeDivider
+                className="px-ds-panel-inset"
                 previous={previousRecordedRunModel(
                   runIds,
                   index,
@@ -1127,6 +1128,7 @@ export function NarrativeTimeline({
             {run.userQuery ? (
               <UserMessageCard
                 attaches={run.userQuery.attachments}
+                className="pr-ds-panel-inset"
                 content={run.userQuery.content}
                 id={run.userQuery.id}
                 createdAt={run.userQuery.createdAt}
@@ -1143,7 +1145,9 @@ export function NarrativeTimeline({
               />
             ) : null}
             {isActiveRunStatus(run.status) && !hasWorkBand ? (
-              <PreparingToExecuteTasks />
+              <div className="px-ds-panel-inset">
+                <PreparingToExecuteTasks />
+              </div>
             ) : null}
             <NarrativeRunWorkLog
               items={narrativeItems}
@@ -1177,13 +1181,15 @@ export function NarrativeTimeline({
               />
             ) : null}
             {!run.finalAssistantResponse && showFiles ? (
-              <RunFilesGroup
-                artifactNodes={run.artifacts}
-                projectedArtifacts={projectedArtifacts}
-                artifactManifest={artifactManifest}
-                projectId={run.projectId}
-                runId={run.runId}
-              />
+              <div className="px-ds-panel-inset">
+                <RunFilesGroup
+                  artifactNodes={run.artifacts}
+                  projectedArtifacts={projectedArtifacts}
+                  artifactManifest={artifactManifest}
+                  projectId={run.projectId}
+                  runId={run.runId}
+                />
+              </div>
             ) : null}
           </section>
         );
