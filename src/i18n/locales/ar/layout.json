@@ -1684,8 +1684,21 @@
   "bundle-reference-recheck": "فحص المراجع مجددًا",
   "open-in": "فتح في",
   "open-in-split-view": "عرض مقسّم",
+  "open-in-new-window": "نافذة جديدة",
+  "open-in-new-tab": "علامة تبويب جديدة",
+  "open-in-new-window-failed": "تعذّر فتح الجلسة في نافذة جديدة",
   "close-pane": "إغلاق اللوحة",
+  "split-view-unavailable-window": "مفتوحة في نافذة مستقلة",
   "split-view-unavailable-no-session": "افتح جلسة أولاً",
   "split-view-unavailable-same": "مفتوحة بالفعل",
-  "split-view-unavailable-full": "حتى {{count}} جلسات جنبًا إلى جنب"
+  "split-view-unavailable-full": "حتى {{count}} جلسات جنبًا إلى جنب",
+  "open-in-main-window": "فتح في النافذة الرئيسية",
+  "session-open-in-window": "هذه الجلسة مفتوحة في نافذة مستقلة",
+  "session-open-in-tab": "هذه الجلسة مفتوحة في علامة تبويب أخرى",
+  "show-session-window": "إظهار النافذة",
+  "show-session-tab": "إظهار علامة التبويب",
+  "bring-session-back": "إعادتها إلى هنا",
+  "session-window-loading": "جارٍ فتح الجلسة…",
+  "session-window-missing": "لم تعد هذه الجلسة متاحة",
+  "session-window-close": "إغلاق النافذة"
 }

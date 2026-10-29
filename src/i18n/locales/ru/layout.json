@@ -1640,8 +1640,21 @@
   "bundle-reference-recheck": "Проверить ссылки снова",
   "open-in": "Открыть",
   "open-in-split-view": "Разделённый вид",
+  "open-in-new-window": "Новое окно",
+  "open-in-new-tab": "Новая вкладка",
+  "open-in-new-window-failed": "Не удалось открыть сессию в новом окне",
   "close-pane": "Закрыть панель",
+  "split-view-unavailable-window": "Открыта в отдельном окне",
   "split-view-unavailable-no-session": "Сначала откройте сессию",
   "split-view-unavailable-same": "Уже открыта",
-  "split-view-unavailable-full": "Не более {{count}} сессий рядом"
+  "split-view-unavailable-full": "Не более {{count}} сессий рядом",
+  "open-in-main-window": "Открыть в главном окне",
+  "session-open-in-window": "Эта сессия открыта в отдельном окне",
+  "session-open-in-tab": "Эта сессия открыта в другой вкладке",
+  "show-session-window": "Показать окно",
+  "show-session-tab": "Показать вкладку",
+  "bring-session-back": "Вернуть сюда",
+  "session-window-loading": "Открытие сессии…",
+  "session-window-missing": "Эта сессия больше недоступна",
+  "session-window-close": "Закрыть окно"
 }

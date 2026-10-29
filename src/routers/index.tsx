@@ -23,6 +23,7 @@ import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
+import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
 import { LegacyRouteRedirect } from './LegacyRouteCompatibility';
 import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
@@ -32,6 +33,7 @@ const Workspace = lazy(() => import('@/pages/Workspace'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
+const SessionWindow = lazy(() => import('@/pages/SessionWindow'));
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 const ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK = isDesktop();
@@ -196,6 +198,8 @@ const AppRoutes = () => (
       <Route path="/remote-control/:sessionId" element={<RemoteControl />} />
     ) : null}
     <Route element={<ProtectedRoute />}>
+      {/* A Session in its own window: no app shell, sidebar or top bar. */}
+      <Route path={SESSION_WINDOW_ROUTE} element={<SessionWindow />} />
       <Route element={<Layout />}>
         <Route
           element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}

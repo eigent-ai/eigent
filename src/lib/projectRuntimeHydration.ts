@@ -107,7 +107,8 @@ export async function ensureProjectRuntimeLoaded(
     options.onHydrationStarted?.();
     await loadPromise;
   } catch (error) {
-    console.error(`Failed to load Project ${projectId} from history:`, error);
+    // Keep the format string fixed: the id can come from a window's URL.
+    console.error('Failed to load Project from history:', projectId, error);
     if (!projectStore.peekActiveChatStore(projectId)) {
       projectStore.appendInitChatStore(projectId);
     }

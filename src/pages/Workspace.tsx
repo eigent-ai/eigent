@@ -52,10 +52,10 @@ import { useSpaceStore } from '@/store/spaceStore';
 import Session from '@/components/Session';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
 import { SessionSplitView } from '@/components/Session/SplitView';
-import {
-  useForgetDeletedSplitSessions,
-  useSessionSplitFocusTracking,
-} from '@/hooks/useSessionSplitView';
+import { SessionInOwnWindow } from '@/components/SessionWindow/SessionInOwnWindow';
+import { useSessionSplitFocusTracking } from '@/hooks/useSessionSplitView';
+import { useMainWindowSessionWindows } from '@/hooks/useSessionWindows';
+import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
 
 export default function WorkspacePage() {
   const { t } = useTranslation();
@@ -91,8 +91,11 @@ export default function WorkspacePage() {
     (s) => s.workspaceMainBackground
   );
 
+  const activeProjectWindowed = useSessionWindowsStore((s) =>
+    activeProjectId ? s.openProjectIds.includes(activeProjectId) : false
+  );
   useSessionSplitFocusTracking();
-  useForgetDeletedSplitSessions();
+  useMainWindowSessionWindows();
 
   const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
@@ -417,7 +420,16 @@ export default function WorkspacePage() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <div className={workspaceMainForegroundClass}>
-              <SessionSplitView />
+              {activeProjectWindowed && activeProjectId && activeSpaceId ? (
+                <SessionInOwnWindow
+                  target={{
+                    spaceId: activeSpaceId,
+                    projectId: activeProjectId,
+                  }}
+                />
+              ) : (
+                <SessionSplitView />
+              )}
             </div>
           </div>
         );

@@ -18,11 +18,9 @@ import {
   selectSessionPanes,
   useSessionSplitViewStore,
 } from '@/store/sessionSplitViewStore';
+import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import { useEffect } from 'react';
-
-/** How long a Session may be missing before it counts as deleted. */
-export const DELETE_CONFIRM_DELAY_MS = 2000;
+import { useEffect, useMemo } from 'react';
 
 /**
  * Selecting a Session that is not shown replaces the focused pane, so the
@@ -48,46 +46,21 @@ export function useSessionSplitFocusTracking() {
 }
 
 /**
- * A deleted Session leaves the split. Reloading a Session's history removes
- * and recreates its entry, so a Session counts as deleted only when it is
- * still missing a moment later.
- */
-export function useForgetDeletedSplitSessions() {
-  useEffect(() => {
-    const pendingDeletes = new Map<string, ReturnType<typeof setTimeout>>();
-    const confirmDelete = (projectId: string) => {
-      pendingDeletes.delete(projectId);
-      if (useSpaceStore.getState().projectIdIndex[projectId]) return;
-      useSessionSplitViewStore.getState().forgetSession(projectId);
-    };
-    const stopWatchingDeletes = useSpaceStore.subscribe((state, previous) => {
-      if (state.projectIdIndex === previous.projectIdIndex) return;
-      for (const projectId of Object.keys(previous.projectIdIndex)) {
-        if (state.projectIdIndex[projectId] || pendingDeletes.has(projectId))
-          continue;
-        pendingDeletes.set(
-          projectId,
-          setTimeout(() => confirmDelete(projectId), DELETE_CONFIRM_DELAY_MS)
-        );
-      }
-    });
-    return () => {
-      stopWatchingDeletes();
-      pendingDeletes.forEach((timer) => clearTimeout(timer));
-    };
-  }, []);
-}
-
-/**
- * Saved panes of the Space. Deleted Sessions leave the split through
- * `forgetSession`; panes are not filtered by the Space index, which briefly
- * drops a Session while its history reloads.
+ * Saved panes of the Space that are not open in their own window. Deleted
+ * Sessions leave the split through `forgetSession`; panes are not filtered by
+ * the Space index, which briefly drops a Session while its history reloads.
  */
 export function useVisibleSessionPanes(spaceId: string | null | undefined) {
-  return useSessionSplitViewStore(selectSessionPanes(spaceId));
+  const panes = useSessionSplitViewStore(selectSessionPanes(spaceId));
+  const windowedIds = useSessionWindowsStore((s) => s.openProjectIds);
+  return useMemo(
+    () => panes.filter((id) => !windowedIds.includes(id)),
+    [panes, windowedIds]
+  );
 }
 
-export type SplitViewUnavailableReason = 'no-session' | 'same' | 'full';
+export type SplitViewUnavailableReason =
+  'in-window' | 'no-session' | 'same' | 'full';
 
 /**
  * Why "Open in split view" is unavailable for `projectId`, or null when it is
@@ -98,11 +71,14 @@ export function getSplitViewUnavailableReason({
   projectId,
   anchorId,
   panes,
+  windowedIds,
 }: {
   projectId: string;
   anchorId: string | null;
   panes: readonly string[];
+  windowedIds: readonly string[];
 }): SplitViewUnavailableReason | null {
+  if (windowedIds.includes(projectId)) return 'in-window';
   if (panes.includes(projectId)) return null;
   if (!anchorId) return 'no-session';
   if (projectId === anchorId) return 'same';

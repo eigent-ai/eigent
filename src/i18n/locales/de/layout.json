@@ -1596,8 +1596,21 @@
   "bundle-reference-recheck": "Referenzen erneut prüfen",
   "open-in": "Öffnen in",
   "open-in-split-view": "Geteilte Ansicht",
+  "open-in-new-window": "Neues Fenster",
+  "open-in-new-tab": "Neuer Tab",
+  "open-in-new-window-failed": "Die Sitzung konnte nicht in einem neuen Fenster geöffnet werden",
   "close-pane": "Bereich schließen",
+  "split-view-unavailable-window": "In eigenem Fenster geöffnet",
   "split-view-unavailable-no-session": "Öffne zuerst eine Sitzung",
   "split-view-unavailable-same": "Bereits geöffnet",
-  "split-view-unavailable-full": "Bis zu {{count}} Sitzungen nebeneinander"
+  "split-view-unavailable-full": "Bis zu {{count}} Sitzungen nebeneinander",
+  "open-in-main-window": "Im Hauptfenster öffnen",
+  "session-open-in-window": "Diese Sitzung ist in einem eigenen Fenster geöffnet",
+  "session-open-in-tab": "Diese Sitzung ist in einem anderen Tab geöffnet",
+  "show-session-window": "Fenster anzeigen",
+  "show-session-tab": "Tab anzeigen",
+  "bring-session-back": "Hierher zurückholen",
+  "session-window-loading": "Sitzung wird geöffnet…",
+  "session-window-missing": "Diese Sitzung ist nicht mehr verfügbar",
+  "session-window-close": "Fenster schließen"
 }

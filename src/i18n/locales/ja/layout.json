@@ -1574,8 +1574,21 @@
   "bundle-reference-recheck": "参照を再チェック",
   "open-in": "開く場所",
   "open-in-split-view": "分割表示",
+  "open-in-new-window": "新しいウィンドウ",
+  "open-in-new-tab": "新しいタブ",
+  "open-in-new-window-failed": "新しいウィンドウでセッションを開けませんでした",
   "close-pane": "ペインを閉じる",
+  "split-view-unavailable-window": "別のウィンドウで開いています",
   "split-view-unavailable-no-session": "先にセッションを開いてください",
   "split-view-unavailable-same": "すでに開いています",
-  "split-view-unavailable-full": "並べて表示できるのは {{count}} 件までです"
+  "split-view-unavailable-full": "並べて表示できるのは {{count}} 件までです",
+  "open-in-main-window": "メインウィンドウで開く",
+  "session-open-in-window": "このセッションは別のウィンドウで開いています",
+  "session-open-in-tab": "このセッションは別のタブで開いています",
+  "show-session-window": "ウィンドウを表示",
+  "show-session-tab": "タブを表示",
+  "bring-session-back": "ここに戻す",
+  "session-window-loading": "セッションを開いています…",
+  "session-window-missing": "このセッションは利用できなくなりました",
+  "session-window-close": "ウィンドウを閉じる"
 }

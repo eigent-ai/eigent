@@ -69,6 +69,7 @@ vi.mock('@/components/Session', () => ({
 
 import { SessionSplitView } from '@/components/Session/SplitView';
 import { useSessionSplitViewStore } from '@/store/sessionSplitViewStore';
+import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
 
 function renderSplit() {
   const view = render(<SessionSplitView />);
@@ -81,6 +82,7 @@ describe('SessionSplitView', () => {
   beforeEach(() => {
     runtime.listeners.clear();
     runtime.useStore.getState().setActiveProject('a');
+    useSessionWindowsStore.setState({ openProjectIds: [] });
     useSessionSplitViewStore.setState({
       panesBySpaceId: { space: ['a', 'b'] },
     });

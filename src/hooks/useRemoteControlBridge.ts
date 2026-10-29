@@ -20,6 +20,7 @@ import {
   proxyFetchGet,
 } from '@/api/http';
 import { isDesktop } from '@/client/platform';
+import { notifySessionWindowOfRun } from '@/hooks/useSessionWindows';
 import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
 import {
   getRemoteControlDesktopInstanceId,
@@ -666,6 +667,7 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
         }
       );
     scheduleRemoteProjectHistoryHydration(command);
+    notifySessionWindowOfRun(projectId);
   } catch (error: any) {
     if (error && typeof error === 'object' && !error.code) {
       error.code = 'BRIDGE_START_TASK_FAILED';
@@ -772,6 +774,7 @@ async function dispatchPersistedRemoteFollowUp(
         attaches: next.attachment_paths,
         target: command.payload?.target,
       });
+      notifySessionWindowOfRun(projectId);
     } else {
       await startLocalRemoteTask(command);
     }
