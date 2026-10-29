@@ -594,5 +594,9 @@
   "automation-source-session": "來自工作階段的自動化：{{name}}",
   "automation-schedule-review-hint": "請檢查下方排程。即使未要求重複執行，編輯器也會選擇預設值。",
   "automation-review-confirm": "我已檢查排程和所需輸入。",
-  "automation-review-required": "建立前請檢查排程和所需輸入。"
+  "automation-review-required": "建立前請檢查排程和所需輸入。",
+  "notice-start-trial": "開始 7 天免費試用",
+  "notice-use-own-api-key": "使用自己的 API 金鑰",
+  "notice-credits-new": "新增額度即可開始執行任務。",
+  "notice-credits-new-description": "開始免費試用、升級方案，或使用自己模型的 API 金鑰。"
 }

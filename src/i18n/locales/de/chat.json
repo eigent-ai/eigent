@@ -598,5 +598,9 @@
   "automation-source-session": "Automation aus Session: {{name}}",
   "automation-schedule-review-hint": "Prüfe den Zeitplan unten. Der Editor wählt eine Vorgabe, auch wenn keine Wiederholung angegeben wurde.",
   "automation-review-confirm": "Ich habe Zeitplan und erforderliche Eingaben geprüft.",
-  "automation-review-required": "Prüfe vor dem Erstellen Zeitplan und erforderliche Eingaben."
+  "automation-review-required": "Prüfe vor dem Erstellen Zeitplan und erforderliche Eingaben.",
+  "notice-start-trial": "7 Tage kostenlos testen",
+  "notice-use-own-api-key": "Eigenen API-Schlüssel verwenden",
+  "notice-credits-new": "Füge Credits hinzu, um Aufgaben auszuführen.",
+  "notice-credits-new-description": "Starte eine kostenlose Testphase, upgrade deinen Tarif oder verwende den API-Schlüssel deines eigenen Modells."
 }

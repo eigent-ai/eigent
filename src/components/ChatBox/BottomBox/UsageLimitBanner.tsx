@@ -12,9 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { CreditRecoveryActions } from '@/components/ChatBox/CreditRecoveryActions';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
+import type { CreditRecoveryAction } from '@/lib/creditRecovery';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +31,8 @@ export interface UsageLimitBannerProps {
   onAction: () => void;
   onRefresh?: () => void;
   onDismiss?: () => void;
+  /** Replaces the default buttons with purchase, Refresh, and own-key actions. */
+  recoveryAction?: CreditRecoveryAction;
 }
 
 export function UsageLimitBanner({
@@ -41,6 +45,7 @@ export function UsageLimitBanner({
   onAction,
   onRefresh,
   onDismiss,
+  recoveryAction,
 }: UsageLimitBannerProps) {
   const { t } = useTranslation();
   return (
@@ -62,15 +67,23 @@ export function UsageLimitBanner({
           {refreshError && <DsText role="meta">{refreshError}</DsText>}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!onRefresh && refreshing}
-            onClick={onAction}
-          >
-            {actionLabel}
-          </Button>
-          {onRefresh && (
+          {recoveryAction ? (
+            <CreditRecoveryActions
+              action={recoveryAction}
+              refreshing={refreshing}
+              onRefresh={onRefresh ?? onAction}
+            />
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!onRefresh && refreshing}
+              onClick={onAction}
+            >
+              {actionLabel}
+            </Button>
+          )}
+          {onRefresh && !recoveryAction && (
             <Button
               size="sm"
               variant="outline"

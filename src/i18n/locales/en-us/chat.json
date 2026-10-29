@@ -598,5 +598,9 @@
   "automation-source-session": "Automation from Session: {{name}}",
   "automation-schedule-review-hint": "Review the schedule below. The editor selects a default even when no recurrence was requested.",
   "automation-review-confirm": "I reviewed the schedule and required inputs.",
-  "automation-review-required": "Review the schedule and required inputs before creating."
+  "automation-review-required": "Review the schedule and required inputs before creating.",
+  "notice-start-trial": "Start 7-day free trial",
+  "notice-use-own-api-key": "Use your own API key",
+  "notice-credits-new": "Add credits to start running tasks.",
+  "notice-credits-new-description": "Start a free trial, upgrade, or use your own model API key."
 }

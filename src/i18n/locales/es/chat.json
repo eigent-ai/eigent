@@ -602,5 +602,9 @@
   "automation-source-session": "Automatización de la sesión: {{name}}",
   "automation-schedule-review-hint": "Revisa el horario de abajo. El editor elige uno predeterminado aunque no hayas pedido una repetición.",
   "automation-review-confirm": "He revisado el horario y los datos necesarios.",
-  "automation-review-required": "Revisa el horario y los datos necesarios antes de crearla."
+  "automation-review-required": "Revisa el horario y los datos necesarios antes de crearla.",
+  "notice-start-trial": "Iniciar prueba gratuita de 7 días",
+  "notice-use-own-api-key": "Usar tu propia clave API",
+  "notice-credits-new": "Añade créditos para empezar a ejecutar tareas.",
+  "notice-credits-new-description": "Inicia una prueba gratuita, mejora tu plan o usa la clave API de tu propio modelo."
 }

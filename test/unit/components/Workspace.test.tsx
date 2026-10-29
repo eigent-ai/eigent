@@ -26,6 +26,7 @@ import {
 } from '@/store/sessionDraftStore';
 import { isSessionStarting } from '@/store/sessionStartStore';
 import {
+  acknowledgeUsageNotice,
   setUsageAccount,
   setUsageModelType,
   useUsageNoticeStore,
@@ -1017,6 +1018,9 @@ describe('Workspace', () => {
         incidents: [{ reason: 'credits' }],
       });
       expect(toast.error).toHaveBeenCalledTimes(1);
+      // The toast is the one live notice; the composer shows it once dismissed.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      act(() => acknowledgeUsageNotice());
       expect(screen.getByRole('alert')).toHaveTextContent(errorCopy('credits'));
       // The user stays in the new Session; the message waits in its composer.
       expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
