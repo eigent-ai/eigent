@@ -34,6 +34,7 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { useTriggerCacheInvalidation } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { startRequestedExecution } from '@/lib/triggerExecutionRequests';
 import { cn } from '@/lib/utils';
 import {
   proxyActivateTrigger,
@@ -195,7 +196,9 @@ export default function Overview({
   const handleRunNow = async (trigger: Trigger) => {
     if (!beginAction(trigger.id)) return;
     try {
-      await proxyRunTriggerNow(trigger.id);
+      const execution = await proxyRunTriggerNow(trigger.id);
+      // Start it now rather than waiting for the websocket to announce it.
+      startRequestedExecution(trigger, execution.execution_id);
       toast.success(t('triggers.action-run-queued'));
     } catch (error) {
       console.error('Failed to request automation run:', error);

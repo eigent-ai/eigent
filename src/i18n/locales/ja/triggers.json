@@ -165,7 +165,7 @@
   "execution-in-progress": "実行中...",
   "waiting-to-execute": "実行待機中...",
   "execution-cancelled": "実行はキャンセルされました",
-  "execution-missed": "実行はスキップされました",
+  "execution-missed": "Eigent がこの実行を時間内に受け取れなかったため、開始されませんでした。Eigent を開いてサインインしたままにして、もう一度お試しください。",
   "unknown-status": "不明なステータス",
   "trigger-label": "オートメーション",
   "execution-started-toast": "実行を開始しました：{{name}}",

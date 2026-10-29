@@ -165,7 +165,7 @@
   "execution-in-progress": "التنفيذ جارٍ...",
   "waiting-to-execute": "في انتظار التنفيذ...",
   "execution-cancelled": "أُلغي التنفيذ",
-  "execution-missed": "فات موعد التنفيذ",
+  "execution-missed": "لم يتلقَّ Eigent هذا التشغيل في الوقت المناسب، لذا لم يبدأ. أبقِ Eigent مفتوحًا ومسجَّل الدخول، ثم حاول مرة أخرى.",
   "unknown-status": "حالة غير معروفة",
   "trigger-label": "الأتمتة",
   "execution-started-toast": "بدأ التنفيذ: {{name}}",

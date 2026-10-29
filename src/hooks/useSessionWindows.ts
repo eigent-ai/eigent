@@ -172,7 +172,8 @@ export function useSessionWindowLink(target: SessionWindowTarget | null) {
 
     const stopListening = onSessionWindowMessage((message) => {
       if (message.type === 'who-is-open') announce();
-      else if (message.projectId !== projectId) return;
+      else if (!('projectId' in message) || message.projectId !== projectId)
+        return;
       else if (message.type === 'close-window') window.close();
       else if (message.type === 'reload-session') reloadSession();
     });
