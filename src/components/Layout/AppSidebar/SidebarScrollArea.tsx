@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 
 export interface SidebarScrollAreaProps {
   children: ReactNode;
@@ -24,9 +24,10 @@ export interface SidebarScrollAreaProps {
 }
 
 /**
- * Scrolling region for app-sidebar content. The scrollbar (and the gutter it
- * reserves) only exists while the content actually overflows, so rows keep the
- * rail's full width instead of losing a strip down the right edge.
+ * Scrolling region for app-sidebar content. It extends into the rail's right
+ * padding, which is as wide as the scrollbar track, and always reserves that
+ * track there. Rows keep the same inset on both sides whether or not the
+ * content overflows, and never shift when the scrollbar appears.
  */
 export function SidebarScrollArea({
   children,
@@ -34,49 +35,13 @@ export function SidebarScrollArea({
   role,
   ariaLabel,
 }: SidebarScrollAreaProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [overflowing, setOverflowing] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const checkOverflow = () => {
-      setOverflowing(el.scrollHeight > el.clientHeight + 1);
-    };
-
-    // Children are observed individually so a row growing — not just the list
-    // gaining rows — re-runs the check.
-    let resizeObserver = new ResizeObserver(checkOverflow);
-    const observeAll = () => {
-      resizeObserver.disconnect();
-      resizeObserver = new ResizeObserver(checkOverflow);
-      resizeObserver.observe(el);
-      Array.from(el.children).forEach((child) => resizeObserver.observe(child));
-      checkOverflow();
-    };
-
-    observeAll();
-    const mutationObserver = new MutationObserver(observeAll);
-    mutationObserver.observe(el, { childList: true, subtree: true });
-
-    return () => {
-      resizeObserver.disconnect();
-      mutationObserver.disconnect();
-    };
-  }, []);
-
   return (
     <div
-      ref={ref}
       role={role}
       aria-label={ariaLabel}
-      data-sidebar-scroll-overflow={overflowing ? 'true' : 'false'}
+      data-sidebar-scroll-area
       className={cn(
-        'flex min-h-0 min-w-0 flex-1 flex-col',
-        overflowing
-          ? 'scrollbar-always-visible overflow-y-auto'
-          : 'overflow-hidden',
+        'scrollbar-always-visible -mr-ds-8 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto',
         className
       )}
     >

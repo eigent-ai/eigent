@@ -26,6 +26,11 @@ export interface SidebarShellProps {
  * Outer rail surface shared by every page in the app layout (workspace, home,
  * settings). Owns the panel chrome only — what goes inside is composed from
  * {@link SidebarSection}, {@link SidebarNavGroup} and `NavTab`.
+ *
+ * The inline padding matches the 8px scrollbar track, so a
+ * `SidebarScrollArea` places its track in the right padding and its rows
+ * align with the rest of the rail. Wrappers between the shell and a scroll
+ * area clip only vertically for the same reason.
  */
 export function SidebarShell({
   children,
@@ -36,11 +41,11 @@ export function SidebarShell({
     <aside
       aria-label={ariaLabel}
       className={cn(
-        'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden rounded-2xl bg-ds-neutral-default-default p-1',
+        'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden rounded-2xl bg-ds-neutral-default-default px-ds-8 py-ds-4',
         className
       )}
     >
-      <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-x-hidden">
+      <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-y-clip">
         {children}
       </div>
     </aside>
@@ -67,7 +72,7 @@ export function SidebarSection({
     <div
       className={cn(
         'flex w-full min-w-0 flex-col',
-        grow === 'fill' ? 'min-h-0 flex-1 overflow-hidden' : 'shrink-0 gap-1',
+        grow === 'fill' ? 'min-h-0 flex-1 overflow-y-clip' : 'shrink-0 gap-1',
         className
       )}
     >

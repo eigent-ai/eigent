@@ -75,7 +75,7 @@ export function SessionNavList({
   return (
     <div
       className={cn(
-        'flex min-h-0 w-full min-w-0 flex-col overflow-hidden',
+        'flex min-h-0 w-full min-w-0 flex-col overflow-y-clip',
         className
       )}
     >
@@ -100,7 +100,7 @@ export function SessionNavList({
       </div>
 
       {/* Scrollable section list */}
-      <SidebarScrollArea className="m-0 mt-1 p-0 pb-1">
+      <SidebarScrollArea className="mt-1 pb-1">
         {hasPinned && (
           <SidebarAccordionSection label={pinnedLabel}>
             <SessionNavListRows {...sharedRowProps} sessions={pinnedSessions} />
