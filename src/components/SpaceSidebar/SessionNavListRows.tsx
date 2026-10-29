@@ -30,6 +30,7 @@ import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import {
+  AppWindow,
   Archive,
   Columns2,
   MoreHorizontal,
@@ -53,6 +54,8 @@ export interface SessionNavItem {
   trailing?: string;
   /** Shown in a split pane that does not have focus. */
   openInPane?: boolean;
+  /** Open in its own window or browser tab. */
+  inOwnWindow?: boolean;
   /** Why "Open in split view" is unavailable; absent when it is available. */
   splitViewUnavailableReason?: string;
 }
@@ -60,6 +63,9 @@ export interface SessionNavItem {
 /** "Open in" actions of a Session row. */
 export interface SessionOpenInActions {
   onOpenInSplitView?: (sessionId: string) => void;
+  onOpenInNewWindow?: (sessionId: string) => void;
+  /** Desktop opens a window; the web build opens a browser tab. */
+  newWindowKind?: 'window' | 'tab';
 }
 
 export interface SessionNavListRowsProps {
@@ -124,7 +130,13 @@ function SessionNavRowMenu({
   const splitViewLabel = t('layout.open-in-split-view', {
     defaultValue: 'Split view',
   });
-  const hasOpenIn = Boolean(openIn?.onOpenInSplitView);
+  const newWindowLabel =
+    openIn?.newWindowKind === 'tab'
+      ? t('layout.open-in-new-tab', { defaultValue: 'New tab' })
+      : t('layout.open-in-new-window', { defaultValue: 'New window' });
+  const hasOpenIn = Boolean(
+    openIn?.onOpenInSplitView || openIn?.onOpenInNewWindow
+  );
 
   return (
     <div
@@ -202,6 +214,15 @@ function SessionNavRowMenu({
                     </span>
                   </DropdownMenuItem>
                 ) : null}
+                {openIn?.onOpenInNewWindow ? (
+                  <DropdownMenuItem
+                    className="gap-2"
+                    onSelect={() => openIn.onOpenInNewWindow?.(sessionId)}
+                  >
+                    <DsIcon icon={AppWindow} aria-hidden />
+                    {newWindowLabel}
+                  </DropdownMenuItem>
+                ) : null}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           ) : null}
@@ -238,6 +259,7 @@ function SessionNavRow({
   panelListHover,
   showRowMenu,
   triggerSourceLabel,
+  inOwnWindowLabel,
   openIn,
   onSessionClick,
   onPinSession,
@@ -249,6 +271,7 @@ function SessionNavRow({
   panelListHover: boolean;
   showRowMenu: boolean;
   triggerSourceLabel: string;
+  inOwnWindowLabel: string;
   openIn?: SessionOpenInActions;
   onSessionClick?: (sessionId: string) => void;
   onPinSession?: (sessionId: string) => void;
@@ -314,6 +337,14 @@ function SessionNavRow({
             >
               {session.title}
             </span>
+            {session.inOwnWindow ? (
+              <DsIcon
+                icon={AppWindow}
+                decorative={false}
+                className="text-ds-ink-muted-default"
+                aria-label={inOwnWindowLabel}
+              />
+            ) : null}
             {session.source === 'trigger' ? (
               <DsIcon
                 icon={AUTOMATION_ICON}
@@ -364,6 +395,14 @@ export function SessionNavListRows({
 }: SessionNavListRowsProps) {
   const { t } = useTranslation();
   const triggerSourceLabel = t('layout.task-source-trigger');
+  const inOwnWindowLabel =
+    openIn?.newWindowKind === 'tab'
+      ? t('layout.session-open-in-tab', {
+          defaultValue: 'This session is open in another tab',
+        })
+      : t('layout.session-open-in-window', {
+          defaultValue: 'This session is open in its own window',
+        });
   const list = maxItems != null ? sessions.slice(0, maxItems) : sessions;
 
   return (
@@ -417,6 +456,7 @@ export function SessionNavListRows({
             panelListHover={panelListHover}
             showRowMenu={showRowMenu}
             triggerSourceLabel={triggerSourceLabel}
+            inOwnWindowLabel={inOwnWindowLabel}
             openIn={openIn}
             onSessionClick={onSessionClick}
             onPinSession={onPinSession}

@@ -1574,8 +1574,21 @@
   "bundle-reference-recheck": "참조 다시 확인",
   "open-in": "열기 위치",
   "open-in-split-view": "분할 보기",
+  "open-in-new-window": "새 창",
+  "open-in-new-tab": "새 탭",
+  "open-in-new-window-failed": "새 창에서 세션을 열 수 없습니다",
   "close-pane": "창 닫기",
+  "split-view-unavailable-window": "별도 창에서 열려 있음",
   "split-view-unavailable-no-session": "먼저 세션을 여세요",
   "split-view-unavailable-same": "이미 열려 있음",
-  "split-view-unavailable-full": "최대 {{count}}개 세션을 나란히 볼 수 있습니다"
+  "split-view-unavailable-full": "최대 {{count}}개 세션을 나란히 볼 수 있습니다",
+  "open-in-main-window": "메인 창에서 열기",
+  "session-open-in-window": "이 세션은 별도 창에서 열려 있습니다",
+  "session-open-in-tab": "이 세션은 다른 탭에서 열려 있습니다",
+  "show-session-window": "창 보기",
+  "show-session-tab": "탭 보기",
+  "bring-session-back": "여기로 가져오기",
+  "session-window-loading": "세션을 여는 중…",
+  "session-window-missing": "이 세션을 더 이상 사용할 수 없습니다",
+  "session-window-close": "창 닫기"
 }

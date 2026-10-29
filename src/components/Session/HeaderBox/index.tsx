@@ -36,6 +36,7 @@ import {
   parseAutomationDraft,
   type AutomationDraftV1,
 } from '@/lib/automationDraft';
+import { getSessionWindowRole } from '@/lib/sessionWindows';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -113,6 +114,8 @@ export function HeaderBox({
   trailingActions,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
+  // A Session window has nowhere to go back to.
+  const inSessionWindow = getSessionWindowRole() === 'session';
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const titleRef = useRef<HTMLSpanElement>(null);
   const sessionMenuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -257,7 +260,7 @@ export function HeaderBox({
     >
       {/* Left: return to workspace, Session identity, and its controls. */}
       <div className="flex min-w-0 items-center gap-ds-4">
-        {showBack ? (
+        {showBack && !inSessionWindow ? (
           <TooltipSimple content={backTooltip} variant="instant" side="bottom">
             <Button
               type="button"

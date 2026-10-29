@@ -1574,8 +1574,21 @@
   "bundle-reference-recheck": "重新檢查引用",
   "open-in": "開啟方式",
   "open-in-split-view": "分割檢視",
+  "open-in-new-window": "新視窗",
+  "open-in-new-tab": "新分頁",
+  "open-in-new-window-failed": "無法在新視窗中開啟工作階段",
   "close-pane": "關閉窗格",
+  "split-view-unavailable-window": "已在獨立視窗中開啟",
   "split-view-unavailable-no-session": "請先開啟一個工作階段",
   "split-view-unavailable-same": "已經開啟",
-  "split-view-unavailable-full": "最多並排顯示 {{count}} 個工作階段"
+  "split-view-unavailable-full": "最多並排顯示 {{count}} 個工作階段",
+  "open-in-main-window": "在主視窗中開啟",
+  "session-open-in-window": "此工作階段已在獨立視窗中開啟",
+  "session-open-in-tab": "此工作階段已在另一個分頁中開啟",
+  "show-session-window": "顯示視窗",
+  "show-session-tab": "顯示分頁",
+  "bring-session-back": "移回這裡",
+  "session-window-loading": "正在開啟工作階段…",
+  "session-window-missing": "此工作階段已無法使用",
+  "session-window-close": "關閉視窗"
 }

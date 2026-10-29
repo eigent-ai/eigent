@@ -12,10 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getSessionWindowRole,
+  initSessionWindows,
+  onSessionWindowMessage,
+  openSessionWindow,
   parseSessionWindowPath,
+  postSessionWindowMessage,
   sessionWindowPath,
 } from '../../../src/lib/sessionWindows';
 
@@ -43,5 +47,56 @@ describe('Session window routes', () => {
     expect(getSessionWindowRole()).toBe('main');
     window.location.hash = '#/session-window/space/project';
     expect(getSessionWindowRole()).toBe('session');
+  });
+});
+
+describe('Session window messages on desktop', () => {
+  it('relays through the main process and drops malformed messages', async () => {
+    const handlers: Array<(event: unknown, message: unknown) => void> = [];
+    const ipcRenderer = {
+      send: vi.fn(),
+      invoke: vi.fn().mockResolvedValue({ success: true }),
+      on: vi.fn((_channel: string, handler: (e: unknown, m: unknown) => void) =>
+        handlers.push(handler)
+      ),
+      off: vi.fn(),
+    };
+    initSessionWindows({ electronAPI: {}, ipcRenderer });
+
+    const received = vi.fn();
+    const stop = onSessionWindowMessage(received);
+    // A second subscriber shares the single transport listener.
+    const other = vi.fn();
+    onSessionWindowMessage(other);
+    expect(ipcRenderer.on).toHaveBeenCalledOnce();
+
+    postSessionWindowMessage({ type: 'opened', ...target });
+    expect(ipcRenderer.send).toHaveBeenCalledWith('session-window:post', {
+      type: 'opened',
+      ...target,
+    });
+
+    const deliver = (message: unknown) =>
+      handlers.forEach((handler) => handler({}, message));
+    deliver({ type: 'closed', ...target });
+    deliver({ type: 'closed', spaceId: 1 });
+    deliver({ type: 'session-control', action: 'drop-table', ...target });
+    deliver({ type: 'nav-lead', kind: 'running', spin: true, ...target });
+    deliver({ type: 'nav-lead', kind: 'nope', ...target });
+    expect(received.mock.calls.map(([message]) => message.type)).toEqual([
+      'closed',
+      'nav-lead',
+    ]);
+
+    stop();
+    deliver({ type: 'who-is-open' });
+    expect(received).toHaveBeenCalledTimes(2);
+    expect(other).toHaveBeenCalledTimes(3);
+
+    await openSessionWindow(target);
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith(
+      'session-window:open',
+      target
+    );
   });
 });

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet } from '@/api/http';
+import { notifySessionWindowOfRun } from '@/hooks/useSessionWindows';
 import i18n from '@/i18n';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
@@ -475,6 +476,7 @@ export function useBackgroundTaskProcessor() {
             // Only remove the durable queue item after the server owns it.
             projectStore.removeQueuedMessage(projectId, task_id);
             activeTasksRef.current.delete(executionId);
+            notifySessionWindowOfRun(projectId);
           })
           .catch((err: any) => {
             console.error(

@@ -1574,8 +1574,21 @@
   "bundle-reference-recheck": "重新检查引用",
   "open-in": "打开方式",
   "open-in-split-view": "分屏视图",
+  "open-in-new-window": "新窗口",
+  "open-in-new-tab": "新标签页",
+  "open-in-new-window-failed": "无法在新窗口中打开会话",
   "close-pane": "关闭窗格",
+  "split-view-unavailable-window": "已在单独的窗口中打开",
   "split-view-unavailable-no-session": "请先打开一个会话",
   "split-view-unavailable-same": "已经打开",
-  "split-view-unavailable-full": "最多并排显示 {{count}} 个会话"
+  "split-view-unavailable-full": "最多并排显示 {{count}} 个会话",
+  "open-in-main-window": "在主窗口中打开",
+  "session-open-in-window": "此会话已在单独的窗口中打开",
+  "session-open-in-tab": "此会话已在另一个标签页中打开",
+  "show-session-window": "显示窗口",
+  "show-session-tab": "显示标签页",
+  "bring-session-back": "移回这里",
+  "session-window-loading": "正在打开会话…",
+  "session-window-missing": "此会话已不可用",
+  "session-window-close": "关闭窗口"
 }
