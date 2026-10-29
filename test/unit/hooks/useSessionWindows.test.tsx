@@ -45,6 +45,21 @@ vi.mock('@/store/spaceStore', () => ({ useSpaceStore: space.store }));
 vi.mock('@/store/projectRuntimeStore', () => ({
   useProjectRuntimeStore: { getState: () => ({ activeProjectId: null }) },
 }));
+// The hook watches the account; the real auth store would hydrate the
+// mocked Space store on load.
+vi.mock('@/store/authStore', () => {
+  const account = { token: 't', user_id: 1, email: 'a@x' };
+  return {
+    useAuthStore: {
+      getState: () => account,
+      subscribe: () => () => undefined,
+    },
+    getAuthStore: () => account,
+  };
+});
+vi.mock('@/lib/projectRuntimeHydration', () => ({
+  ensureProjectRuntimeLoaded: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('@/store/sessionControlsStore', () => ({
   useSessionControlsStore: { getState: () => ({}) },
 }));

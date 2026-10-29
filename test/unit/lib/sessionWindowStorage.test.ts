@@ -34,17 +34,18 @@ describe('Session window storage policy', () => {
   it('makes every persisted store read-only, including ones added later', async () => {
     applySessionWindowStoragePolicy({ spaceId: 'space', projectId: 'p' });
 
+    // Every store module, loaded the way Vite resolves them in the app.
+    const storeModules = import.meta.glob<Record<string, unknown>>(
+      '../../../src/store/*.ts'
+    );
     const persisted: string[] = [];
-    for (const file of fs.readdirSync(storeDir)) {
-      if (!file.endsWith('.ts')) continue;
+    for (const [modulePath, load] of Object.entries(storeModules)) {
+      const file = path.basename(modulePath);
       if (
         !fs.readFileSync(path.join(storeDir, file), 'utf8').includes('persist(')
       )
         continue;
-      const module = (await import(`../../../src/store/${file}`)) as Record<
-        string,
-        unknown
-      >;
+      const module = await load();
       for (const [exportName, value] of Object.entries(module)) {
         const api = value as Partial<PersistApi> | null;
         if (typeof value !== 'function' || !api?.persist?.getOptions) continue;
