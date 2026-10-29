@@ -17,6 +17,7 @@ import {
   CHAT_QUERY_HEADER_GAP_PX,
   CHAT_QUERY_SCROLL_DURATION_SECONDS,
   getChatTimelineAnchorScrollTop,
+  isChatTimelineNearBottom,
 } from '@/components/ChatBox/chatTimelineScroll';
 import { animate } from 'framer-motion';
 import { describe, expect, it, vi } from 'vitest';
@@ -36,13 +37,24 @@ vi.mock('framer-motion', () => ({
 }));
 
 describe('chat timeline query anchoring', () => {
-  it('places the query below the viewport top with the default 44px gap', () => {
-    expect(CHAT_QUERY_HEADER_GAP_PX).toBe(44);
+  it('places the query flush with the viewport top by default', () => {
+    expect(CHAT_QUERY_HEADER_GAP_PX).toBe(0);
     expect(
       getChatTimelineAnchorScrollTop({
         containerTop: 44,
         currentScrollTop: 500,
         targetTop: 164,
+      })
+    ).toBe(620);
+  });
+
+  it('leaves an explicit gap above the query when one is requested', () => {
+    expect(
+      getChatTimelineAnchorScrollTop({
+        containerTop: 44,
+        currentScrollTop: 500,
+        targetTop: 164,
+        topGapPx: 44,
       })
     ).toBe(576);
   });
@@ -52,7 +64,7 @@ describe('chat timeline query anchoring', () => {
       getChatTimelineAnchorScrollTop({
         containerTop: 44,
         currentScrollTop: 0,
-        targetTop: 50,
+        targetTop: 20,
       })
     ).toBe(0);
   });
@@ -71,15 +83,23 @@ describe('chat timeline query anchoring', () => {
 
     animateChatTimelineAnchor(container, target, content);
 
-    expect(content.style.minHeight).toBe('976px');
-    expect(container.scrollTop).toBe(576);
+    expect(content.style.minHeight).toBe('1020px');
+    expect(container.scrollTop).toBe(620);
     expect(animate).toHaveBeenCalledWith(
       500,
-      576,
+      620,
       expect.objectContaining({
         duration: CHAT_QUERY_SCROLL_DURATION_SECONDS,
         onUpdate: expect.any(Function),
       })
     );
+  });
+});
+
+describe('isChatTimelineNearBottom', () => {
+  it('treats the composer inset as still pinned, not a 120px padding zone', () => {
+    expect(isChatTimelineNearBottom(150, 200)).toBe(true);
+    expect(isChatTimelineNearBottom(120, 128)).toBe(true);
+    expect(isChatTimelineNearBottom(400, 200)).toBe(false);
   });
 });
