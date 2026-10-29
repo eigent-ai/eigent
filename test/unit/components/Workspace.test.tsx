@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import Workspace from '@/components/Workspace';
+import { useWorkspaceComposerRequests } from '@/components/Workspace/composerRequests';
 import { notifyError, reportError } from '@/lib/notifyError';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { errorCopy } from '@/lib/usageErrors';
@@ -102,6 +103,7 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
+    selectFile: vi.fn(),
     capability: false,
     spaceModelRef: null as string | null,
     managedSubmit: vi.fn(),
@@ -156,7 +158,7 @@ vi.mock('@/lib/notifyError', async (importOriginal) => {
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), dismiss: vi.fn() } }));
 
 vi.mock('@/host', () => ({
-  useHost: () => ({ electronAPI: {} }),
+  useHost: () => ({ electronAPI: { selectFile: mocks.selectFile } }),
 }));
 
 vi.mock('@/store/authStore', () => ({
@@ -492,6 +494,21 @@ describe('Workspace', () => {
     expect(mocks.managedSubmit).not.toHaveBeenCalled();
     expect(mocks.newStartTask).not.toHaveBeenCalled();
     expect(createSyncedProjectInSpace).not.toHaveBeenCalled();
+  });
+
+  it('attaches files picked through the Space panel request', async () => {
+    mocks.selectFile.mockResolvedValue({
+      success: true,
+      files: [{ fileName: 'brief.pdf', filePath: '/brief.pdf' }],
+    });
+    renderWorkspace();
+
+    act(() => {
+      useWorkspaceComposerRequests.getState().requestAttachFiles();
+    });
+
+    expect(await screen.findByText('brief.pdf')).toBeInTheDocument();
+    expect(mocks.selectFile).toHaveBeenCalledTimes(1);
   });
 
   it('creates a fresh project and sends only Workspace draft attachments', async () => {

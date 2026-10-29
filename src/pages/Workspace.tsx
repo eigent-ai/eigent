@@ -29,6 +29,7 @@ import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup
 import SpaceSidebar from '@/components/SpaceSidebar';
 import TriggerPanel from '@/components/Trigger';
 import Workspace from '@/components/Workspace';
+import { SpaceOverviewPanel } from '@/components/Workspace/SpaceOverview';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
@@ -395,8 +396,11 @@ export default function WorkspacePage() {
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
-            <div className={workspaceMainForegroundClass}>
-              <Workspace />
+            <div className={cn(workspaceMainForegroundClass, 'flex-row')}>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <Workspace />
+              </div>
+              <SpaceOverviewPanel />
             </div>
           </div>
         );

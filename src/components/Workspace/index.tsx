@@ -18,6 +18,7 @@ import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DsText } from '@/components/ui/ds-text';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
+import { useWorkspaceComposerRequests } from '@/components/Workspace/composerRequests';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
@@ -455,6 +456,17 @@ export default function Workspace({
       console.error('Select File Error:', error);
     }
   }, [host, t]);
+
+  // The Space panel's Add files attaches through this composer's picker.
+  const attachFilesRequestId = useWorkspaceComposerRequests(
+    (s) => s.attachFilesRequestId
+  );
+  const handledAttachFilesRequest = useRef(attachFilesRequestId);
+  useEffect(() => {
+    if (attachFilesRequestId === handledAttachFilesRequest.current) return;
+    handledAttachFilesRequest.current = attachFilesRequestId;
+    if (variant === 'workspace') void handleFileSelect();
+  }, [attachFilesRequestId, handleFileSelect, variant]);
 
   const composerInputProps = {
     value: message,

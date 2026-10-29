@@ -86,6 +86,9 @@ vi.mock('@/components/Background', () => ({
 }));
 
 vi.mock('@/components/Dispatch', () => ({ WorkspaceDispatch: () => null }));
+vi.mock('@/components/Workspace/SpaceOverview', () => ({
+  SpaceOverviewPanel: () => null,
+}));
 vi.mock('@/components/Folder', () => ({ default: () => null }));
 vi.mock('@/components/Session', () => ({ default: () => null }));
 vi.mock('@/components/Session/SidePanel/components/SessionGroup', () => ({
