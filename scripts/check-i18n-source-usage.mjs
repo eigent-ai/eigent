@@ -103,6 +103,7 @@ const PROVIDER_METADATA_DESCRIPTIONS = [
   'SambaNova model configuration.',
   'Mistral model configuration.',
   'OpenRouter model configuration.',
+  'Atlas Cloud model configuration.',
   'AWS Bedrock model configuration.',
   'AWS Bedrock Converse model configuration. Auth: API Key (Bearer Token), or Access Key ID + Secret Access Key (+Session Token).',
   'Azure OpenAI model configuration.',

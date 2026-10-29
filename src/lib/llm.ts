@@ -147,6 +147,15 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: '',
   },
   {
+    id: 'atlascloud',
+    name: 'Atlas Cloud',
+    apiKey: '',
+    apiHost: 'https://api.atlascloud.ai/v1',
+    description: 'Atlas Cloud model configuration.',
+    is_valid: false,
+    model_type: '',
+  },
+  {
     id: 'aws-bedrock',
     name: 'AWS Bedrock',
     apiKey: '',
