@@ -531,7 +531,13 @@ async def list_project_runs(
 
 @router.get("/runs/active")
 async def active_local_execution():
-    """One local registry read across every Space and Session."""
+    """One local registry read across every Space and Session.
+
+    A Run that is still being admitted has no Attempt yet, so the journal
+    alone cannot tell it apart from a row a refused admission left behind.
+    """
+    if get_default_run_coordinator().has_admission_in_progress():
+        return {"active": True}
     service = get_default_execution_service()
     active = await asyncio.to_thread(
         get_default_run_journal().has_active_local_execution,
