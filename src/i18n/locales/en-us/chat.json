@@ -396,6 +396,7 @@
   "skip": "Skip",
   "social-media-agent": "Social media agent",
   "stop-task": "Stop Task",
+  "scroll-to-bottom": "Scroll to bottom",
   "stopping-current-task-queued-next": "Stopping the current task. Your queued message will start next.",
   "take-control": "Take Control",
   "task-admission-failed": "The task could not be started. Please try again.",

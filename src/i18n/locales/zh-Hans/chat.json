@@ -393,6 +393,7 @@
   "skip": "跳过",
   "social-media-agent": "社交媒体智能体",
   "stop-task": "停止任务",
+  "scroll-to-bottom": "滚动到底部",
   "stopping-current-task-queued-next": "正在停止当前任务，排队的消息随后将开始执行。",
   "take-control": "接管操作",
   "task-admission-failed": "无法开始任务，请重试。",

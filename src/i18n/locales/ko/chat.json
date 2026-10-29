@@ -393,6 +393,7 @@
   "skip": "건너뛰기",
   "social-media-agent": "소셜 미디어 에이전트",
   "stop-task": "작업 중지",
+  "scroll-to-bottom": "맨 아래로 스크롤",
   "stopping-current-task-queued-next": "현재 작업을 중지하고 있습니다. 대기 중인 메시지가 다음에 시작됩니다.",
   "take-control": "제어권 가져오기",
   "task-admission-failed": "작업을 시작할 수 없습니다. 다시 시도해 주세요.",

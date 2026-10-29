@@ -393,6 +393,7 @@
   "skip": "スキップ",
   "social-media-agent": "ソーシャルメディアエージェント",
   "stop-task": "タスクを停止",
+  "scroll-to-bottom": "一番下までスクロール",
   "stopping-current-task-queued-next": "現在のタスクを停止しています。次にキュー内のメッセージを開始します。",
   "take-control": "操作を引き継ぐ",
   "task-admission-failed": "タスクを開始できませんでした。もう一度お試しください。",
