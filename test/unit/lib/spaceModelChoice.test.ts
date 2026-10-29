@@ -25,7 +25,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   auth: { token: 'token', email: 'a@example.test', user_id: 'account-a' },
   providers: vi.fn(),
+  toastError: vi.fn(),
 }));
+vi.mock('sonner', () => ({ toast: { error: mocks.toastError } }));
 vi.mock('@/store/authStore', () => ({ getAuthStore: () => mocks.auth }));
 vi.mock('@/lib/configuredModels', () => ({
   fetchConfiguredProviders: mocks.providers,
@@ -68,6 +70,9 @@ describe('Space model choice', () => {
           modelSelection: { modelType: 'cloud', cloud_model_type: 'gpt' },
         }),
         legacy_account: { ...space('legacy_account'), sourceType: 'legacy' },
+        'space-flagged-legacy': space('space-flagged-legacy', {
+          legacy: true,
+        }),
       },
       updateSpaceOnServer,
     } as never);
@@ -136,10 +141,35 @@ describe('Space model choice', () => {
     });
     await setSpaceModelChoice('legacy_account', byok);
     expect(getSpaceModelChoice('legacy_account')).toBeNull();
+    await setSpaceModelChoice('space-flagged-legacy', byok);
+    expect(getSpaceModelChoice('space-flagged-legacy')).toBeNull();
     const write = setSpaceModelChoice('space-a', byok);
     mocks.auth.user_id = 'account-b';
     await write;
     expect(updateSpaceOnServer).not.toHaveBeenCalled();
+  });
+
+  it('says so when the pick could not be saved', async () => {
+    updateSpaceOnServer.mockRejectedValueOnce(new Error('offline'));
+    await setSpaceModelChoice('space-a', byok);
+    expect(mocks.toastError).toHaveBeenCalledWith('Save failed');
+  });
+
+  it('does not report a failed save that a newer pick replaced', async () => {
+    let fail!: (error: Error) => void;
+    updateSpaceOnServer.mockImplementationOnce(
+      () => new Promise<void>((_resolve, reject) => (fail = reject))
+    );
+    const first = setSpaceModelChoice('space-a', byok);
+    await Promise.resolve();
+    const second = setSpaceModelChoice('space-a', {
+      modelType: 'cloud',
+      cloud_model_type: 'claude',
+    });
+    fail(new Error('offline'));
+    await Promise.all([first, second]);
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(updateSpaceOnServer).toHaveBeenCalledTimes(2);
   });
 
   it('reads malformed saved values as no saved model', () => {

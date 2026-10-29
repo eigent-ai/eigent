@@ -22,9 +22,12 @@
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { fetchConfiguredProviders } from '@/lib/configuredModels';
 import { getProviderValid } from '@/lib/providerStatus';
+import { isLegacySpace } from '@/lib/spaceLabel';
 import { getAuthStore } from '@/store/authStore';
 import { getCloudModelStore } from '@/store/cloudModelStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import i18next from 'i18next';
+import { toast } from 'sonner';
 
 export const SPACE_MODEL_METADATA_KEY = 'modelSelection';
 
@@ -70,7 +73,7 @@ export function parseSpaceModelChoice(value: unknown): SpaceModelChoice | null {
 export function isModelScopedSpace(spaceId: string | null | undefined) {
   if (!spaceId || spaceId.startsWith('legacy_')) return false;
   const space = useSpaceStore.getState().spaces?.[spaceId];
-  return Boolean(space && space.sourceType !== 'legacy');
+  return Boolean(space && !isLegacySpace(space));
 }
 
 export function getSpaceModelChoice(
@@ -126,6 +129,12 @@ export function setSpaceModelChoice(
     .then(persist)
     .catch((error) => {
       console.warn(`Failed to save the model for Space ${id}:`, error);
+      // The next Space sync replaces an unsaved choice, so say it failed.
+      if (
+        latestBySpace.get(id) === choice &&
+        getAccountEnvironmentKey(getAuthStore()) === accountKey
+      )
+        toast.error(i18next.t('setting.save-failed'));
     })
     .finally(() => {
       if (writesBySpace.get(id) !== write) return;
