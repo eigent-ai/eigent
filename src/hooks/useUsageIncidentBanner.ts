@@ -13,10 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { UsageLimitBannerProps } from '@/components/ChatBox/BottomBox/UsageLimitBanner';
-import {
-  creditRecoveryAction,
-  isCreditRecoveryReason,
-} from '@/lib/creditRecovery';
+import { isCreditRecoveryReason } from '@/lib/creditRecovery';
 import {
   activeUsageIncident,
   contactSupport,
@@ -57,8 +54,6 @@ export function useUsageIncidentBanner(
     refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
     onAction: serviceUnavailable ? contactSupport : () => void refreshUsage(),
     onRefresh: serviceUnavailable ? () => void refreshUsage() : undefined,
-    recoveryAction: isCreditRecoveryReason(incident.reason)
-      ? creditRecoveryAction(usage.subscription)
-      : undefined,
+    creditRecovery: isCreditRecoveryReason(incident.reason),
   };
 }

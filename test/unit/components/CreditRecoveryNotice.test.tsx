@@ -88,7 +88,7 @@ describe('out of credits recovery', () => {
   });
   afterEach(cleanup);
 
-  it('offers the trial to a new account in one notice at a time', async () => {
+  it('offers Upgrade plan to a new account in one notice at a time', async () => {
     respond(newAccount);
     await refreshUsage();
     const toast = lastToast();
@@ -101,12 +101,10 @@ describe('out of credits recovery', () => {
     );
     const toastBody = within(screen.getByTestId('toast'));
     expect(
-      toastBody.getByText(
-        'Start a free trial, upgrade, or use your own model API key.'
-      )
+      toastBody.getByText('Upgrade your plan or use your own model API key.')
     ).toBeVisible();
     expect(
-      toastBody.getByRole('button', { name: 'Start 7-day free trial' })
+      toastBody.getByRole('button', { name: 'Upgrade plan' })
     ).toBeVisible();
     expect(toastBody.getByRole('button', { name: 'Refresh' })).toBeVisible();
     expect(
@@ -122,11 +120,10 @@ describe('out of credits recovery', () => {
     expect(
       banner.getByText('Add credits to start running tasks.')
     ).toBeVisible();
+    expect(banner.getByRole('button', { name: 'Upgrade plan' })).toBeVisible();
+    // Plans and trials are chosen on the website; the app never offers one.
     expect(
-      banner.getByRole('button', { name: 'Start 7-day free trial' })
-    ).toBeVisible();
-    expect(
-      banner.queryByRole('button', { name: 'Upgrade plan' })
+      banner.queryByRole('button', { name: /trial/i })
     ).not.toBeInTheDocument();
   });
 
@@ -152,13 +149,13 @@ describe('out of credits recovery', () => {
         banner.getByRole('button', { name: 'Upgrade plan' })
       ).toBeVisible();
       expect(
-        banner.queryByRole('button', { name: 'Start 7-day free trial' })
+        banner.queryByRole('button', { name: /trial/i })
       ).not.toBeInTheDocument();
       expect(banner.getByRole('button', { name: 'Refresh' })).toBeVisible();
     }
   );
 
-  it('updates the open toast when trial eligibility arrives', async () => {
+  it('updates the open toast when the account details arrive', async () => {
     respond(null);
     await refreshUsage();
     expect(lastToast().message).toBe('You’re out of Eigent credits.');
@@ -172,9 +169,7 @@ describe('out of credits recovery', () => {
       undefined
     );
     render(lastToast().description);
-    expect(
-      screen.getByRole('button', { name: 'Start 7-day free trial' })
-    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Upgrade plan' })).toBeVisible();
   });
 
   it('opens pricing, model settings, and refreshes from the in-task notice', async () => {
@@ -206,9 +201,7 @@ describe('out of credits recovery', () => {
       writable: true,
     });
     try {
-      await user.click(
-        notice.getByRole('button', { name: 'Start 7-day free trial' })
-      );
+      await user.click(notice.getByRole('button', { name: 'Upgrade plan' }));
       await vi.waitFor(() =>
         expect(window.location.href).toMatch(/\/pricing$/)
       );
@@ -227,7 +220,7 @@ describe('out of credits recovery', () => {
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeVisible();
     expect(
       screen.queryByRole('button', {
-        name: /Start 7-day free trial|Upgrade plan|Use your own API key/,
+        name: /Upgrade plan|Use your own API key/,
       })
     ).not.toBeInTheDocument();
   });

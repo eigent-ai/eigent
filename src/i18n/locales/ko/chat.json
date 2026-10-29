@@ -595,8 +595,7 @@
   "automation-schedule-review-hint": "아래 일정을 확인하세요. 반복 요청이 없어도 편집기가 기본값을 선택합니다.",
   "automation-review-confirm": "일정과 필요한 입력을 확인했습니다.",
   "automation-review-required": "만들기 전에 일정과 필요한 입력을 확인하세요.",
-  "notice-start-trial": "7일 무료 체험 시작",
   "notice-use-own-api-key": "내 API 키 사용",
   "notice-credits-new": "작업을 실행하려면 크레딧을 추가하세요.",
-  "notice-credits-new-description": "무료 체험을 시작하거나, 플랜을 업그레이드하거나, 내 모델의 API 키를 사용하세요."
+  "notice-credits-new-description": "플랜을 업그레이드하거나 내 모델의 API 키를 사용하세요."
 }

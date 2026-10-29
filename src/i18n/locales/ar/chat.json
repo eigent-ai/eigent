@@ -615,8 +615,7 @@
   "automation-schedule-review-hint": "راجع الجدول أدناه. يختار المحرر وقتًا افتراضيًا حتى إن لم تحدد وقتًا للتكرار.",
   "automation-review-confirm": "راجعت الجدول والمدخلات المطلوبة.",
   "automation-review-required": "راجع الجدول والمدخلات المطلوبة قبل الإنشاء.",
-  "notice-start-trial": "ابدأ تجربة مجانية لمدة 7 أيام",
   "notice-use-own-api-key": "استخدم مفتاح API الخاص بك",
   "notice-credits-new": "أضف أرصدة لبدء تشغيل المهام.",
-  "notice-credits-new-description": "ابدأ تجربة مجانية، أو رقِّ خطتك، أو استخدم مفتاح API لنموذجك."
+  "notice-credits-new-description": "رقِّ خطتك أو استخدم مفتاح API لنموذجك."
 }

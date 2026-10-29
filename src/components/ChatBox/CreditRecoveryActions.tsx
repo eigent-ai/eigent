@@ -13,15 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
-import {
-  openModelSettings,
-  openPricing,
-  type CreditRecoveryAction,
-} from '@/lib/creditRecovery';
+import { openModelSettings, openPricing } from '@/lib/creditRecovery';
 import { useTranslation } from 'react-i18next';
 
 export interface CreditRecoveryActionsProps {
-  action: CreditRecoveryAction;
   refreshing?: boolean;
   onRefresh: () => void;
 }
@@ -31,7 +26,6 @@ export interface CreditRecoveryActionsProps {
  * the in-task notice. Refresh stays available for a purchase made in the browser.
  */
 export function CreditRecoveryActions({
-  action,
   refreshing,
   onRefresh,
 }: CreditRecoveryActionsProps) {
@@ -39,11 +33,7 @@ export function CreditRecoveryActions({
   return (
     <>
       <Button size="sm" variant="primary" onClick={openPricing}>
-        {t(
-          action === 'start-trial'
-            ? 'chat.notice-start-trial'
-            : 'chat.notice-upgrade-plan'
-        )}
+        {t('chat.notice-upgrade-plan')}
       </Button>
       <Button
         size="sm"

@@ -595,8 +595,7 @@
   "automation-schedule-review-hint": "请检查下方日程。即使未要求重复执行，编辑器也会选择默认值。",
   "automation-review-confirm": "我已检查日程和所需输入。",
   "automation-review-required": "创建前请检查日程和所需输入。",
-  "notice-start-trial": "开始 7 天免费试用",
   "notice-use-own-api-key": "使用自己的 API 密钥",
   "notice-credits-new": "添加额度即可开始运行任务。",
-  "notice-credits-new-description": "开始免费试用、升级套餐，或使用自己模型的 API 密钥。"
+  "notice-credits-new-description": "升级套餐，或使用自己模型的 API 密钥。"
 }

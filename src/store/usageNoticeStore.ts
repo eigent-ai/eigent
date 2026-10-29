@@ -15,7 +15,6 @@
 import { CreditRecoveryToastBody } from '@/components/ChatBox/CreditRecoveryActions';
 import { createHost } from '@/host/createHost';
 import {
-  creditRecoveryAction,
   isAccountWithoutCredits,
   isCreditRecoveryReason,
 } from '@/lib/creditRecovery';
@@ -162,12 +161,9 @@ function syncReminder() {
     return;
   }
   const { message, description } = liveUsageNoticeCopy(incident.reason, state);
-  const recovery = isCreditRecoveryReason(incident.reason)
-    ? creditRecoveryAction(state.subscription)
-    : null;
-  const copy = recovery ? `${message}\n${recovery}` : message;
-  if (state.presented === identity && state.presentedCopy === copy) return;
-  useUsageNoticeStore.setState({ presented: identity, presentedCopy: copy });
+  const recovery = isCreditRecoveryReason(incident.reason);
+  if (state.presented === identity && state.presentedCopy === message) return;
+  useUsageNoticeStore.setState({ presented: identity, presentedCopy: message });
   const account = state.account;
   const acknowledge = () => {
     if (useUsageNoticeStore.getState().account === account)
@@ -182,7 +178,6 @@ function syncReminder() {
       ? {
           description: createElement(CreditRecoveryToastBody, {
             description,
-            action: recovery,
             onRefresh: () => void refreshUsage(),
           }),
           // Updating a toast merges options; drop an earlier Refresh action.

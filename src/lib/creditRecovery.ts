@@ -22,19 +22,9 @@ interface RecoverySubscription {
   trial_available?: boolean | null;
 }
 
-export type CreditRecoveryAction = 'start-trial' | 'upgrade';
-
 /** Balance blockers a purchase can clear. The daily trial cap resets on its own. */
 export const isCreditRecoveryReason = (reason: ErrorReason) =>
   ['credits', 'free-credits', 'trial-total'].includes(reason);
-
-/** Only the server's own eligibility offers the trial; unknown state offers Upgrade. */
-export const creditRecoveryAction = (
-  subscription: RecoverySubscription | null | undefined
-): CreditRecoveryAction =>
-  subscription?.trial_available === true && subscription.is_trialing !== true
-    ? 'start-trial'
-    : 'upgrade';
 
 /**
  * A zero balance on an account with no plan, trial, or paid history is a
@@ -53,7 +43,7 @@ export const isAccountWithoutCredits = (
   subscription.trial_used !== true &&
   subscription.trial_available === true;
 
-/** Plans and the trial are both chosen on the pricing page. */
+/** Plans, trials, and billing are all managed on the website's pricing page. */
 export function openPricing() {
   // Loaded on use: the usage store reaches this module and must stay light.
   void import('@/lib').then(({ SITE_URL }) => {

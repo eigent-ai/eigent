@@ -603,8 +603,7 @@
   "automation-schedule-review-hint": "Controlla la pianificazione qui sotto. L’editor sceglie un valore predefinito anche senza richiesta di ripetizione.",
   "automation-review-confirm": "Ho controllato pianificazione e dati richiesti.",
   "automation-review-required": "Controlla pianificazione e dati richiesti prima di creare.",
-  "notice-start-trial": "Inizia la prova gratuita di 7 giorni",
   "notice-use-own-api-key": "Usa la tua chiave API",
   "notice-credits-new": "Aggiungi crediti per iniziare a eseguire attività.",
-  "notice-credits-new-description": "Inizia una prova gratuita, passa a un piano superiore o usa la chiave API del tuo modello."
+  "notice-credits-new-description": "Passa a un piano superiore o usa la chiave API del tuo modello."
 }
