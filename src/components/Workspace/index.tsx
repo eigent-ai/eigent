@@ -30,6 +30,7 @@ import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
+import { cn } from '@/lib/utils';
 import {
   createWorkspaceSessionDraft,
   reviseWorkspaceSessionDraft,
@@ -672,7 +673,13 @@ export default function Workspace({
             data-workspace-input-section
             className="flex min-w-0 flex-1 items-center justify-center p-4"
           >
-            <div className="flex w-full max-w-[600px] min-w-0 flex-col pb-[58px]">
+            {/* The Workspace page shares its width with the Space panel. */}
+            <div
+              className={cn(
+                'flex w-full min-w-0 flex-col pb-[58px]',
+                variant === 'new-project' ? 'max-w-[736px]' : 'max-w-[600px]'
+              )}
+            >
               {workspaceComposerTop}
               {composerInput}
             </div>

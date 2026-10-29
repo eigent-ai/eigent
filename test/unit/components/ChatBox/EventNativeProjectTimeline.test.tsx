@@ -635,7 +635,7 @@ describe('EventNativeProjectTimeline', () => {
     const timelineContent = () =>
       container.querySelector('[data-chat-timeline-content]');
 
-    expect(timelineContent()).toHaveClass('max-w-[600px]');
+    expect(timelineContent()).toHaveClass('max-w-[736px]');
 
     rerender(
       <EventNativeProjectTimeline
@@ -644,7 +644,7 @@ describe('EventNativeProjectTimeline', () => {
         scrollBottomInsetPx={128}
       />
     );
-    expect(timelineContent()).not.toHaveClass('max-w-[600px]');
+    expect(timelineContent()).not.toHaveClass('max-w-[736px]');
     expect(timelineContent()).toHaveClass('w-full');
   });
 

@@ -694,7 +694,7 @@ export function EventNativeProjectTimeline({
         ref={contentRef}
         className={cn(
           'mx-auto w-full pt-0',
-          detailLevel !== 'trajectory' && 'max-w-[600px]'
+          detailLevel !== 'trajectory' && 'max-w-[736px]'
         )}
         data-chat-timeline-content
         style={{ paddingBottom: scrollBottomInsetPx }}
