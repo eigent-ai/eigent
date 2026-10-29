@@ -165,7 +165,7 @@
   "execution-in-progress": "Ausführung in Fortschritt...",
   "waiting-to-execute": "Warten auf Ausführung...",
   "execution-cancelled": "Ausführung abgesagt",
-  "execution-missed": "Fehlende Ausführung",
+  "execution-missed": "Eigent hat diese Ausführung nicht rechtzeitig erhalten, daher wurde sie nicht gestartet. Lass Eigent geöffnet und angemeldet und versuche es dann erneut.",
   "unknown-status": "Unbekannte Status",
   "trigger-label": "Automatisierung",
   "execution-started-toast": "Ausführung gestartet: {{name}}",

@@ -35,6 +35,8 @@ export type SessionControlActionMessage = 'rename' | 'end' | 'delete';
 export type SessionWindowMessage =
   /** Main window asks every Session window to announce itself. */
   | { type: 'who-is-open' }
+  /** Run now was requested in a window that does not start runs. */
+  | { type: 'trigger-executions-requested' }
   | ({ type: 'opened' } & SessionWindowTarget)
   | ({ type: 'closed' } & SessionWindowTarget)
   /** Show the Session in the main window again. */
@@ -118,6 +120,7 @@ function isSessionWindowMessage(value: unknown): value is SessionWindowMessage {
   const message = value as Record<string, unknown>;
   switch (message.type) {
     case 'who-is-open':
+    case 'trigger-executions-requested':
       return true;
     case 'opened':
     case 'closed':

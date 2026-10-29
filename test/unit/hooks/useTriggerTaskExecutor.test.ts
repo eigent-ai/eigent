@@ -249,7 +249,7 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
   beforeEach(() => {
     // Reset stores
     useTriggerTaskStore.setState({ executionMappings: new Map() });
-    useTriggerStore.setState({ webSocketEvent: null });
+    useTriggerStore.setState({ webSocketEvents: [] });
 
     // Create test projects
     const projectStore = useProjectStore.getState();
@@ -481,7 +481,7 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
       });
     });
 
-    expect(useTriggerStore.getState().webSocketEvent).toBeNull();
+    expect(useTriggerStore.getState().webSocketEvents).toEqual([]);
   });
 
   it('should create a new project when projectId is null', async () => {

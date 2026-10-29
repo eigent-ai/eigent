@@ -84,6 +84,9 @@ const UNFINISHED_RUN_STATUSES = [
   ExecutionStatus.Failed,
   ExecutionStatus.Missed,
 ];
+// The server closes runs nobody started without telling the app; refresh the
+// list while a run is still pending or running.
+const ACTIVE_RUN_REFRESH_MS = 15 * 1000;
 
 type RunStyle = { icon: LucideIcon; iconClass: string; surfaceClass: string };
 
@@ -155,7 +158,13 @@ export function AutomationDashboard({ trigger }: AutomationDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const loadedTriggerId = useRef<number | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const activityLogs = useActivityLogStore((state) => state.logs);
+  const hasActiveRun = executions.some((execution) =>
+    [ExecutionStatus.Pending, ExecutionStatus.Running].includes(
+      execution.status
+    )
+  );
 
   // Terminal delivery can update an older log in place while a newer run exists.
   const executionActivityVersion = activityLogs
@@ -194,7 +203,16 @@ export function AutomationDashboard({ trigger }: AutomationDashboardProps) {
     return () => {
       current = false;
     };
-  }, [executionActivityVersion, trigger.id]);
+  }, [executionActivityVersion, refreshTick, trigger.id]);
+
+  useEffect(() => {
+    if (!hasActiveRun) return;
+    const timer = setTimeout(
+      () => setRefreshTick((tick) => tick + 1),
+      ACTIVE_RUN_REFRESH_MS
+    );
+    return () => clearTimeout(timer);
+  }, [hasActiveRun, executions]);
 
   return (
     <AutomationDashboardView

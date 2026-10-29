@@ -273,7 +273,7 @@ export const proxyDeactivateTrigger = async (
   }
 };
 
-/** Create a tracked manual run; the existing execution subscription admits it. */
+/** Create a tracked manual run; the caller starts it with startRequestedExecution. */
 export const proxyRunTriggerNow = (
   triggerId: number
 ): Promise<TriggerExecution> =>
@@ -285,6 +285,17 @@ export const proxyRunTriggerNow = (
   });
 
 // Trigger Executions
+/** Executions of the signed-in user's Automations that no app has started. */
+export const proxyFetchPendingExecutions = async (): Promise<
+  TriggerExecution[]
+> => {
+  const res = await proxyFetchGet('/api/v1/execution/', {
+    status: ExecutionStatus.Pending,
+    size: 50,
+  });
+  return Array.isArray(res?.items) ? res.items : [];
+};
+
 export const proxyFetchTriggerExecutions = async (
   triggerId: number,
   page: number = 1,
