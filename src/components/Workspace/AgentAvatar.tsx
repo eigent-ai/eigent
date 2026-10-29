@@ -26,6 +26,7 @@ import owlAgentImage from '@/assets/agent/owl.png';
 import socialMediaAgentImage from '@/assets/agent/social.png';
 import terminalAgentImage from '@/assets/agent/terminal.png';
 import geminiImage from '@/assets/model/gemini.svg';
+import modelarkImage from '@/assets/model/modelark.svg';
 import { cn } from '@/lib/utils';
 
 export type AgentAvatarKind =
@@ -42,6 +43,7 @@ export type AgentAvatarKind =
   | 'subagent-owl'
   | 'subagent-cat'
   | 'gemini'
+  | 'modelark'
   | 'custom';
 
 const DEFAULT_SUBAGENT_AVATARS: AgentAvatarKind[] = [
@@ -67,6 +69,7 @@ const AGENT_AVATAR_SOURCES: Record<AgentAvatarKind, string> = {
   'subagent-owl': owlAgentImage,
   'subagent-cat': catAgentImage,
   gemini: geminiImage,
+  modelark: modelarkImage,
   custom: customAgentImage,
 };
 
@@ -113,6 +116,7 @@ export function resolveAgentAvatarKind(
   if (normalizeAgentIdentity(agentType) === 'subagent') {
     const providerIdentity = normalizeAgentIdentity(`${provider} ${model}`);
     if (providerIdentity.includes('gemini')) return 'gemini';
+    if (providerIdentity.includes('modelark')) return 'modelark';
     const seed = avatarSeed || agentName || agentType || 'subagent';
     return DEFAULT_SUBAGENT_AVATARS[stableAvatarIndex(seed)] ?? 'subagent-crab';
   }
@@ -162,7 +166,9 @@ export function AgentAvatar({
       data-agent-avatar={kind}
       className={cn(
         'block shrink-0',
-        kind === 'gemini' ? 'object-contain' : 'object-cover',
+        kind === 'gemini' || kind === 'modelark'
+          ? 'object-contain'
+          : 'object-cover',
         fullBleed ? 'size-full' : AGENT_AVATAR_SIZE_CLASS[size],
         className
       )}

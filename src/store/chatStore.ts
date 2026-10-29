@@ -58,9 +58,8 @@ import { reportError } from '@/lib/notifyError';
 import { isTerminalHumanControlEvent } from '@/lib/projector/control/adapter';
 import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
-  normalizeRemoteSubAgentProvider,
-  REMOTE_SUB_AGENT_PROVIDER_ID,
-  toRemoteSubAgentRuntimeConfig,
+  enabledRemoteSubAgentRuntimeConfig,
+  rememberSentRemoteSubAgentProvider,
 } from '@/lib/remoteSubAgent';
 import { createSSEAdmissionError } from '@/lib/responseError';
 import {
@@ -3790,15 +3789,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         try {
           const providersRes = await proxyFetchGet(
             '/api/v1/remote-sub-agent-providers',
-            { provider_name: REMOTE_SUB_AGENT_PROVIDER_ID, enabled: true }
+            { enabled: true }
           );
           const providerList = Array.isArray(providersRes)
             ? providersRes
             : providersRes.items || [];
-          const remoteSubAgentProvider = providerList[0];
-          remoteSubAgentConfig = toRemoteSubAgentRuntimeConfig(
-            normalizeRemoteSubAgentProvider(remoteSubAgentProvider)
-          );
+          remoteSubAgentConfig =
+            enabledRemoteSubAgentRuntimeConfig(providerList);
+          rememberSentRemoteSubAgentProvider(remoteSubAgentConfig?.provider);
         } catch (error) {
           console.error(
             'Failed to load remote sub agent configuration:',
