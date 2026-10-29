@@ -12,6 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from pathlib import Path
+
 import pytest
 
 from app.hands import capabilities
@@ -66,3 +68,39 @@ def test_detect_capabilities_uses_terminal_shell_probe(monkeypatch):
 
     assert caps.has_terminal is True
     assert hands.can_execute_terminal() is True
+
+
+@pytest.mark.unit
+def test_environment_hands_full_scope_allows_path_outside_workspace(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    # Use the filesystem root so this path is outside both the configured
+    # workspace and the user's home directory on Windows and POSIX runners.
+    outside = Path(tmp_path.anchor) / "eigent-full-scope-test"
+
+    caps = capabilities.BrainCapabilities(
+        filesystem_scope="full",
+        workspace_root=workspace,
+    )
+    hands = EnvironmentHands(caps)
+
+    assert hands.can_access_filesystem(str(outside)) is True
+
+
+@pytest.mark.unit
+def test_environment_hands_workspace_only_stays_restricted(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    inside = workspace / "project"
+    inside.mkdir()
+    outside = Path(tmp_path.anchor) / "eigent-workspace-only-test"
+
+    caps = capabilities.BrainCapabilities(
+        filesystem_scope="workspace_only",
+        workspace_root=workspace,
+    )
+    hands = EnvironmentHands(caps)
+
+    assert hands.can_access_filesystem(str(inside)) is True
+    assert hands.can_access_filesystem(str(outside)) is False
