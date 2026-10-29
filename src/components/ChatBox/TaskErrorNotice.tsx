@@ -14,7 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
-import { SITE_URL } from '@/lib';
+import { isCreditRecoveryReason, openPricing } from '@/lib/creditRecovery';
 import { errorCopy, type ErrorReason } from '@/lib/usageErrors';
 import {
   contactSupport,
@@ -22,11 +22,16 @@ import {
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
 import { useTranslation } from 'react-i18next';
+import { CreditRecoveryActions } from './CreditRecoveryActions';
 
-/** Historical task outcome. Sonner owns the live announcement and interruption. */
+/**
+ * Historical task outcome. Sonner owns the live announcement and interruption.
+ * The copy records what happened; balance blockers offer the live notices' actions.
+ */
 export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
   const { t } = useTranslation();
   const refreshing = useUsageNoticeStore((state) => state.refreshing);
+  const creditRecovery = isCreditRecoveryReason(reason);
   const sharedRefreshError = useUsageNoticeStore((state) => state.refreshError);
   const refreshError =
     sharedRefreshError === 'chat.notice-availability-unverified'
@@ -69,29 +74,40 @@ export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
         </div>
         {(usage || reason === 'service') && (
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
-            {reason === 'service' && (
-              <Button size="sm" variant="secondary" onClick={contactSupport}>
-                {t('chat.notice-contact-support')}
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={refreshing}
-              onClick={() => void refreshUsage()}
-            >
-              {t(refreshing ? 'chat.notice-refreshing' : 'chat.notice-refresh')}
-            </Button>
-            {reason === 'model-access' && (
-              <Button
-                size="sm"
-                variant="text"
-                onClick={() => {
-                  window.location.href = `${SITE_URL}/pricing`;
-                }}
-              >
-                {t('chat.notice-upgrade-plan')}
-              </Button>
+            {creditRecovery ? (
+              <CreditRecoveryActions
+                refreshing={refreshing}
+                onRefresh={() => void refreshUsage()}
+              />
+            ) : (
+              <>
+                {reason === 'service' && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={contactSupport}
+                  >
+                    {t('chat.notice-contact-support')}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={refreshing}
+                  onClick={() => void refreshUsage()}
+                >
+                  {t(
+                    refreshing
+                      ? 'chat.notice-refreshing'
+                      : 'chat.notice-refresh'
+                  )}
+                </Button>
+                {reason === 'model-access' && (
+                  <Button size="sm" variant="text" onClick={openPricing}>
+                    {t('chat.notice-upgrade-plan')}
+                  </Button>
+                )}
+              </>
             )}
           </div>
         )}

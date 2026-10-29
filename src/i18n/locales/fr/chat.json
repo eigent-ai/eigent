@@ -602,5 +602,8 @@
   "automation-source-session": "Automatisation de la session : {{name}}",
   "automation-schedule-review-hint": "Vérifiez la planification ci-dessous. L’éditeur choisit une valeur par défaut même sans répétition demandée.",
   "automation-review-confirm": "J’ai vérifié la planification et les données requises.",
-  "automation-review-required": "Vérifiez la planification et les données requises avant de créer."
+  "automation-review-required": "Vérifiez la planification et les données requises avant de créer.",
+  "notice-use-own-api-key": "Utiliser votre propre clé API",
+  "notice-credits-new": "Ajoutez des crédits pour commencer à exécuter des tâches.",
+  "notice-credits-new-description": "Changez de forfait ou utilisez la clé API de votre propre modèle."
 }

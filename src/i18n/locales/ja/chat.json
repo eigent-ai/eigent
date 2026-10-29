@@ -594,5 +594,8 @@
   "automation-source-session": "セッションからの自動化: {{name}}",
   "automation-schedule-review-hint": "以下のスケジュールを確認してください。繰り返しの指定がなくても既定値が選ばれます。",
   "automation-review-confirm": "スケジュールと必要な入力を確認しました。",
-  "automation-review-required": "作成前にスケジュールと必要な入力を確認してください。"
+  "automation-review-required": "作成前にスケジュールと必要な入力を確認してください。",
+  "notice-use-own-api-key": "自分の API キーを使用",
+  "notice-credits-new": "タスクを実行するにはクレジットを追加してください。",
+  "notice-credits-new-description": "プランをアップグレードするか、自分のモデルの API キーを使用してください。"
 }
