@@ -98,6 +98,10 @@ import {
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
+import {
+  isSessionStarting,
+  useSessionStartStore,
+} from '@/store/sessionStartStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -254,6 +258,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const { chatStore, projectStore } = useChatStoreAdapter();
   const sessionProjectId = useSessionProjectId();
   const isFocusedPane = useIsFocusedSessionPane();
+  // Send in the Workspace composer opens this Session while its first task
+  // is still being created and admitted there.
+  const isSessionStartPending = useSessionStartStore((s) =>
+    Boolean(sessionProjectId && s.startingProjectIds[sessionProjectId])
+  );
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLDivElement>(null);
@@ -1088,6 +1097,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
 
     const task = chatStore.tasks[chatStore.activeTaskId];
 
+    // A message sent before that start settles would start the task again.
+    if (isSessionStartPending) return true;
+
     // If ask human is active, allow input
     if (task.activeAsk) return false;
 
@@ -1101,6 +1113,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   }, [
     chatStore?.activeTaskId,
     chatStore?.tasks,
+    isSessionStartPending,
     isCloudUsageLimited,
     canUseSessionModel,
     useCloudModelInDev,
@@ -1267,6 +1280,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     const composerAttachments =
       queuedAttaches || (_taskId ? chatStore.tasks[_taskId]?.attaches : []);
+    if (isSessionStarting(sessionProjectId)) return;
     if (
       message.trim() === '' &&
       !messageStr &&

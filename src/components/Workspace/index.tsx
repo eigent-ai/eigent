@@ -20,6 +20,12 @@ import { DsText } from '@/components/ui/ds-text';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { useWorkspaceComposerRequests } from '@/components/Workspace/composerRequests';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
+import {
+  clearWorkspaceSendRecovery,
+  peekWorkspaceSendRecovery,
+  setWorkspaceSendRecovery,
+  type WorkspaceSendRecovery,
+} from '@/components/Workspace/sendRecovery';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -41,6 +47,12 @@ import {
 import { getAuthStore, useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import {
+  EMPTY_SESSION_DRAFT,
+  sessionDraftKey,
+  useSessionDraftStore,
+} from '@/store/sessionDraftStore';
+import { useSessionStartStore } from '@/store/sessionStartStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { SessionMode, type SessionModeType } from '@/types/constants';
@@ -107,10 +119,19 @@ export default function Workspace({
     [onSessionModeChange]
   );
 
-  const [message, setMessage] = useState('');
+  // A failed start that already opened its Session returns its draft here.
+  const [recoveredDraft] = useState(() =>
+    peekWorkspaceSendRecovery(activeSpaceId, activeWorkspaceTab)
+  );
+  useEffect(() => {
+    if (recoveredDraft) clearWorkspaceSendRecovery(recoveredDraft);
+  }, [recoveredDraft]);
+  const [message, setMessage] = useState(recoveredDraft?.message ?? '');
   const messageRevision = useRef(0);
   const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
-  const [draftFiles, setDraftFiles] = useState<FileAttachment[]>([]);
+  const [draftFiles, setDraftFiles] = useState<FileAttachment[]>(
+    recoveredDraft?.files ?? []
+  );
   const accountKey = useAuthStore(getAccountEnvironmentKey);
   const [managedAvailable, setManagedAvailable] = useState(false);
   const [managedSelected, setManagedSelected] = useState(false);
@@ -281,6 +302,64 @@ export default function Workspace({
       getAccountEnvironmentKey(getAuthStore()) === accountKey &&
       useSpaceStore.getState().activeSpaceId === activeSpaceId &&
       usePageTabStore.getState().activeWorkspaceTab === activeWorkspaceTab;
+    // Creating the Session selects it, so the composer is owned when that new
+    // Session is the selection rather than the one Send started from.
+    const ownsComposerView = (createdProjectId: string) =>
+      mountedRef.current &&
+      activeSubmission.current === submission &&
+      composerGeneration.current === owner.generation &&
+      messageRevision.current === owner.messageRevision &&
+      useProjectRuntimeStore.getState().activeProjectId === createdProjectId &&
+      usePageTabStore.getState().workspaceChatFocusRequestId ===
+        owner.focusRequest &&
+      getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+      useSpaceStore.getState().activeSpaceId === activeSpaceId &&
+      usePageTabStore.getState().activeWorkspaceTab === activeWorkspaceTab;
+    const openedSession: { projectId: string | null } = { projectId: null };
+    let sentDraft: WorkspaceSendRecovery | null = null;
+    // A Session that failed to start stays open with its error, and the
+    // message waits in its composer for a retry.
+    const settleFailedSend = (
+      projectId: string,
+      draft: WorkspaceSendRecovery
+    ) => {
+      if (getAccountEnvironmentKey(getAuthStore()) !== accountKey) return;
+      if (!useProjectRuntimeStore.getState().projects[projectId]) return;
+      const key = sessionDraftKey(accountKey, projectId);
+      const { drafts } = useSessionDraftStore.getState();
+      if (!drafts[key]?.text) {
+        useSessionDraftStore.setState({
+          drafts: {
+            ...drafts,
+            [key]: {
+              ...(drafts[key] ?? EMPTY_SESSION_DRAFT),
+              text: draft.message,
+            },
+          },
+        });
+      }
+    };
+    // A Session the server rejected is removed, which clears the selection
+    // and lets the page select another Session. While the rejected Session
+    // is still selected, return the draft to the tab Send started from.
+    const returnRejectedDraft = (
+      projectId: string,
+      draft: WorkspaceSendRecovery
+    ) => {
+      const stillViewingSession =
+        getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+        usePageTabStore.getState().activeWorkspaceTab === 'project' &&
+        useProjectRuntimeStore.getState().activeProjectId === projectId &&
+        useSpaceStore.getState().activeSpaceId === draft.spaceId;
+      if (!stillViewingSession) return;
+      if (mountedRef.current) {
+        setMessage(draft.message);
+        setDraftFiles(draft.files);
+      } else {
+        setWorkspaceSendRecovery(draft);
+      }
+      setActiveWorkspaceTab(draft.tab);
+    };
     setIsStartingDirectProject(true);
     const startingAuth = getAuthStore();
     const startingAccount =
@@ -344,6 +423,12 @@ export default function Workspace({
         }
         return;
       }
+      sentDraft = {
+        spaceId: activeSpaceId,
+        tab: activeWorkspaceTab,
+        message,
+        files: draftFiles,
+      };
       const syncedProject = await createSyncedProjectInSpace({
         projectStore,
         spaceId: activeSpaceId,
@@ -358,9 +443,35 @@ export default function Workspace({
             ? { thinkingEffort: composerThinkingEffort }
             : {}),
         },
+        // Open the Session on Send; creation and startup continue behind it.
+        onLocalProjectCreated: ({ projectId }) => {
+          if (!ownsComposerView(projectId)) return;
+          // The Session page sends an unstarted Session back to this
+          // composer and opens Activity for a started one, so mark the first
+          // task started before opening it, as a completed start would.
+          const openedChatStore = useProjectRuntimeStore
+            .getState()
+            .getActiveChatStore(projectId)
+            ?.getState();
+          if (!openedChatStore?.activeTaskId) return;
+          openedChatStore.setHasMessages(openedChatStore.activeTaskId, true);
+          usePageTabStore.getState().markSessionTaskStarted(projectId);
+          openedSession.projectId = projectId;
+          // The opened Session's composer waits until this start settles.
+          useSessionStartStore.getState().markSessionStarting(projectId);
+          setDraftFiles([]);
+          setMessage('');
+          handOffNewSessionDraft(projectId);
+          setActiveWorkspaceTab('project');
+        },
+        onLocalProjectRejected: ({ projectId }) => {
+          if (openedSession.projectId === projectId && sentDraft) {
+            returnRejectedDraft(projectId, sentDraft);
+          }
+        },
       });
       assertStartingContext();
-      if (!mountedRef.current) return;
+      if (!openedSession.projectId && !mountedRef.current) return;
       useSpaceStore.getState().setActiveSpace(syncedProject.spaceId);
       const targetProjectId = syncedProject.projectId;
       const targetChatStore =
@@ -378,8 +489,7 @@ export default function Workspace({
       const attachesToSend = JSON.parse(JSON.stringify(draftFiles)) || [];
       targetChatStore.setAttaches(taskId, attachesToSend);
 
-      // Keep the draft mounted until the server accepts startup. Key/usage and
-      // admission failures must not navigate away from the user's composer.
+      // Key/usage and admission failures keep the user in the new Session.
       await targetChatStore.startTask(
         taskId,
         undefined,
@@ -397,6 +507,7 @@ export default function Workspace({
       // A newer New session command can clear selection without unmounting
       // this composer or changing its Space/tab. It owns the draft and view.
       if (
+        !openedSession.projectId &&
         mountedRef.current &&
         useProjectRuntimeStore.getState().activeProjectId === targetProjectId &&
         useSpaceStore.getState().activeSpaceId === activeSpaceId &&
@@ -409,6 +520,9 @@ export default function Workspace({
       }
     } catch (err: unknown) {
       console.error('Failed to start task:', err);
+      if (openedSession.projectId && sentDraft) {
+        settleFailedSend(openedSession.projectId, sentDraft);
+      }
       // Auth changes before useUsageNotices synchronizes its account. Never
       // re-report a departed account's rejection as the current user's limit.
       const currentAuth = getAuthStore();
@@ -429,6 +543,11 @@ export default function Workspace({
         );
       }
     } finally {
+      if (openedSession.projectId) {
+        useSessionStartStore
+          .getState()
+          .clearSessionStarting(openedSession.projectId);
+      }
       if (activeSubmission.current === submission) {
         activeSubmission.current = null;
         directProjectStartRef.current = false;

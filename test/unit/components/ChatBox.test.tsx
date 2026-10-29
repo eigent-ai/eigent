@@ -33,6 +33,7 @@ import { createChatStoreInstance } from '@/store/chatStore';
 import { resetConnectionConfig } from '@/store/connectionStore';
 import { resetFollowUpAdmissionClaims } from '@/store/followUpAdmissionClaims';
 import { resetSessionDrafts } from '@/store/sessionDraftStore';
+import { useSessionStartStore } from '@/store/sessionStartStore';
 import {
   acknowledgeUsageNotice,
   reportUsageIncident,
@@ -1122,6 +1123,30 @@ describe('ChatBox Component', async () => {
       );
       view.rerender(sessionView('session-a'));
       expect(screen.getByTestId('message-input')).toHaveValue('');
+    });
+
+    it('waits to send until the Session that Send opened has started', async () => {
+      const user = userEvent.setup();
+      render(sessionView('session-a'));
+      await user.type(screen.getByTestId('message-input'), 'Early message');
+
+      // Workspace opened this Session and is still creating and starting it.
+      act(() =>
+        useSessionStartStore.getState().markSessionStarting('session-a')
+      );
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      await user.click(screen.getByTestId('send-button'));
+      expect(defaultChatStoreState.startTask).not.toHaveBeenCalled();
+      expect(screen.getByTestId('message-input')).toHaveValue('Early message');
+
+      act(() =>
+        useSessionStartStore.getState().clearSessionStarting('session-a')
+      );
+      expect(screen.getByTestId('message-input')).not.toBeDisabled();
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+      );
     });
 
     it('keeps review feedback attached to a restored draft', async () => {
