@@ -762,19 +762,23 @@ describe('Workspace', () => {
     mocks.pageState.activeWorkspaceTab = 'new-project';
     let reject!: (error: Error) => void;
     vi.mocked(createSyncedProjectInSpace).mockImplementation(
-      ({ onLocalProjectCreated }) => {
+      ({ onLocalProjectCreated, onLocalProjectRejected }) => {
         addCreatedSession();
-        onLocalProjectCreated?.({
-          projectId: 'new-project',
-          spaceId: 'space-1',
-        });
+        const result = { projectId: 'new-project', spaceId: 'space-1' };
+        onLocalProjectCreated?.(result);
         return new Promise((_resolve, rejectPromise) => {
           reject = (error) => {
+            onLocalProjectRejected?.(result);
             // The helper removes the local Session, clearing the selection.
+            // On a Session tab the page then selects another Session in the
+            // Space before the rejection reaches Workspace.
             delete (mocks.projectState.projects as Record<string, unknown>)[
               'new-project'
             ];
-            mocks.projectState.activeProjectId = null;
+            mocks.projectState.activeProjectId =
+              mocks.pageState.activeWorkspaceTab === 'project'
+                ? 'another-project'
+                : null;
             rejectPromise(error);
           };
         });
@@ -802,6 +806,8 @@ describe('Workspace', () => {
     expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
       'new-project'
     );
+    // Back on the New session tab, so the page did not select another Session.
+    expect(mocks.projectState.activeProjectId).toBeNull();
     renderWorkspace({ variant: 'new-project' });
     expect(screen.getByLabelText('workspace-message')).toHaveValue(
       'Bring this back'

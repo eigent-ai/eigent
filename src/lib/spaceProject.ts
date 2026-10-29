@@ -57,6 +57,12 @@ interface CreateSyncedProjectInSpaceInput {
    * open it at once. The local Project is removed if the server rejects it.
    */
   onLocalProjectCreated?: (result: CreateSyncedProjectInSpaceResult) => void;
+  /**
+   * Runs when the server rejects a Project opened by `onLocalProjectCreated`,
+   * just before it is removed, while it is still the selection. Removing it
+   * clears the selection, and the page may select another Project at once.
+   */
+  onLocalProjectRejected?: (result: CreateSyncedProjectInSpaceResult) => void;
 }
 
 interface CreateSyncedProjectInSpaceResult {
@@ -106,6 +112,7 @@ export const createSyncedProjectInSpace = async ({
   metadata,
   setActive = true,
   onLocalProjectCreated,
+  onLocalProjectRejected,
 }: CreateSyncedProjectInSpaceInput): Promise<CreateSyncedProjectInSpaceResult> => {
   // Reject legacy Spaces before `resolveServerBackedSpaceId` runs any of its
   // ensure/remap side effects. A bare `legacy_` id is always legacy; otherwise
@@ -178,6 +185,7 @@ export const createSyncedProjectInSpace = async ({
     await createServerProject();
   } catch (error) {
     // Nothing has started in the Project yet; the server never accepted it.
+    onLocalProjectRejected?.(result);
     projectStore.removeProject(localProjectId);
     throw error;
   }

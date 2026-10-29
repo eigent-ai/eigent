@@ -317,33 +317,38 @@ export default function Workspace({
     const openedSession: { projectId: string | null } = { projectId: null };
     let sentDraft: WorkspaceSendRecovery | null = null;
     // A Session that failed to start stays open with its error, and the
-    // message waits in its composer for a retry. Only a Session the server
-    // rejected is gone (which also clears the selection); then the draft
-    // returns to this composer.
+    // message waits in its composer for a retry.
     const settleFailedSend = (
       projectId: string,
       draft: WorkspaceSendRecovery
     ) => {
       if (getAccountEnvironmentKey(getAuthStore()) !== accountKey) return;
-      if (useProjectRuntimeStore.getState().projects[projectId]) {
-        const key = sessionDraftKey(accountKey, projectId);
-        const { drafts } = useSessionDraftStore.getState();
-        if (!drafts[key]?.text) {
-          useSessionDraftStore.setState({
-            drafts: {
-              ...drafts,
-              [key]: {
-                ...(drafts[key] ?? EMPTY_SESSION_DRAFT),
-                text: draft.message,
-              },
+      if (!useProjectRuntimeStore.getState().projects[projectId]) return;
+      const key = sessionDraftKey(accountKey, projectId);
+      const { drafts } = useSessionDraftStore.getState();
+      if (!drafts[key]?.text) {
+        useSessionDraftStore.setState({
+          drafts: {
+            ...drafts,
+            [key]: {
+              ...(drafts[key] ?? EMPTY_SESSION_DRAFT),
+              text: draft.message,
             },
-          });
-        }
-        return;
+          },
+        });
       }
+    };
+    // A Session the server rejected is removed, which clears the selection
+    // and lets the page select another Session. While the rejected Session
+    // is still selected, return the draft to the tab Send started from.
+    const returnRejectedDraft = (
+      projectId: string,
+      draft: WorkspaceSendRecovery
+    ) => {
       const stillViewingSession =
+        getAccountEnvironmentKey(getAuthStore()) === accountKey &&
         usePageTabStore.getState().activeWorkspaceTab === 'project' &&
-        useProjectRuntimeStore.getState().activeProjectId === null &&
+        useProjectRuntimeStore.getState().activeProjectId === projectId &&
         useSpaceStore.getState().activeSpaceId === draft.spaceId;
       if (!stillViewingSession) return;
       if (mountedRef.current) {
@@ -455,6 +460,11 @@ export default function Workspace({
           setMessage('');
           handOffNewSessionDraft(projectId);
           setActiveWorkspaceTab('project');
+        },
+        onLocalProjectRejected: ({ projectId }) => {
+          if (openedSession.projectId === projectId && sentDraft) {
+            returnRejectedDraft(projectId, sentDraft);
+          }
         },
       });
       assertStartingContext();

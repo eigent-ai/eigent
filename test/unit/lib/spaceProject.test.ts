@@ -104,4 +104,27 @@ describe('createSyncedProjectInSpace', () => {
 
     expect(store.removeProject).toHaveBeenCalledWith('project-1');
   });
+
+  it('tells the caller about a rejection before removing the Project', async () => {
+    const { order, store, projectStore } = createProjectStore();
+    store.removeProject.mockImplementation(() => order.push('removed'));
+    mocks.createServerProject.mockRejectedValue(new Error('rejected'));
+    const onLocalProjectRejected = vi.fn(() => order.push('rejected'));
+
+    await expect(
+      createSyncedProjectInSpace({
+        projectId: 'project-1',
+        projectStore,
+        spaceId: 'space-1',
+        onLocalProjectCreated: vi.fn(),
+        onLocalProjectRejected,
+      })
+    ).rejects.toThrow('rejected');
+
+    expect(onLocalProjectRejected).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      spaceId: 'space-1',
+    });
+    expect(order).toEqual(['local', 'rejected', 'removed']);
+  });
 });
