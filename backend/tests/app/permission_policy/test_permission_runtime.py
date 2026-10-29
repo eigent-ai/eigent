@@ -639,6 +639,14 @@ async def test_quit_while_a_tool_waits_for_approval_is_a_restart(
         run = restarted.get_run("run-1")
         assert run.status == "interrupted"
         assert run.terminal_reason == "brain_restart"
+        # The approval card and its timeline row read why they closed from
+        # the Attempt and the cancellation event; quitting is not an error.
+        [attempt] = restarted.list_run_attempts("run-1")
+        assert attempt.terminal_reason == "brain_restart"
+        [cancellation] = restarted.list_events(
+            "run-1", event_type_prefix="approval.cancelled"
+        )
+        assert cancellation.payload["terminal_reason"] == "brain_restart"
         [tool] = restarted.list_tool_calls("run-1")
         assert tool.dispatched_at is None
         [approval] = restarted.list_approvals("run-1")

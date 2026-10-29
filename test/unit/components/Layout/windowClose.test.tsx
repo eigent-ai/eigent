@@ -165,6 +165,27 @@ describe('WindowCloseProvider', () => {
     });
   });
 
+  it('counts a task that is still starting in another Session', async () => {
+    const starting = {
+      tasks: {
+        run: { status: 'pending', isPending: true, activeAsk: '' },
+      },
+    };
+    mocks.runtimeState.projects = {
+      'project-2': { chatStores: { session: { getState: () => starting } } },
+    };
+    const { emitCloseRequest } = renderProvider();
+
+    act(() => emitCloseRequest('quit-app'));
+
+    await waitFor(() =>
+      expect(mocks.assessCloseRunState).toHaveBeenCalledWith({
+        legacyActive: true,
+        signal: expect.any(AbortSignal),
+      })
+    );
+  });
+
   it('preserves the intent and execution class through cancel and confirm', async () => {
     const user = userEvent.setup();
     mocks.assessCloseRunState.mockResolvedValue('canonical-durable');

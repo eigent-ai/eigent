@@ -128,3 +128,64 @@ async def test_claim_left_by_a_killed_process_does_not_block_quit(
         assert await run_controller.active_local_execution() == {
             "active": True
         }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        # Running, with or without a tool call: the first model call has none.
+        "running",
+        # Waiting at an approval card or for an answer to an Agent question.
+        "waiting_for_user",
+    ],
+)
+async def test_unfinished_run_asks_before_quit(tmp_path, monkeypatch, status):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        monkeypatch.setattr(
+            run_controller, "get_default_run_journal", lambda: journal
+        )
+        journal.ensure_run(run_id="run", project_id="session", status=status)
+        assert await run_controller.active_local_execution() == {
+            "active": True
+        }
+
+
+@pytest.mark.asyncio
+async def test_run_being_admitted_asks_before_quit(tmp_path, monkeypatch):
+    from app.run_runtime.coordinator import RunCoordinator
+
+    coordinator = RunCoordinator()
+    monkeypatch.setattr(
+        run_controller, "get_default_run_coordinator", lambda: coordinator
+    )
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        monkeypatch.setattr(
+            run_controller, "get_default_run_journal", lambda: journal
+        )
+        async with coordinator.admission_scope("run", project_id="session"):
+            # Admission writes the Run before its first Attempt exists.
+            journal.ensure_run(
+                run_id="run", project_id="session", status="pending"
+            )
+            assert await run_controller.active_local_execution() == {
+                "active": True
+            }
+        # A refused admission can leave that row; nothing is starting it.
+        assert await run_controller.active_local_execution() == {
+            "active": False
+        }
+
+
+@pytest.mark.asyncio
+async def test_finished_runs_quit_without_asking(tmp_path, monkeypatch):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        monkeypatch.setattr(
+            run_controller, "get_default_run_journal", lambda: journal
+        )
+        journal.ensure_run(run_id="run", project_id="session")
+        journal.reconcile_startup()
+        assert journal.get_run("run").status == "interrupted"
+        assert await run_controller.active_local_execution() == {
+            "active": False
+        }
