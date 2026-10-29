@@ -837,6 +837,7 @@ export const useSpaceStore = create<SpaceStore>()(
           // The list holds only the signed-in account's Spaces. One with
           // another owner means this hydration started with a placeholder or
           // stale user id, so it cannot conclude the account has no Spaces.
+          // Relies on GET /spaces returning only the caller's own Spaces.
           const listedForAnotherOwner = serverSpaces.some(
             (space) =>
               space.status === 'active' &&
