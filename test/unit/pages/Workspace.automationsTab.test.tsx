@@ -91,6 +91,13 @@ vi.mock('@/components/Workspace/SpaceOverview', () => ({
 }));
 vi.mock('@/components/Folder', () => ({ default: () => null }));
 vi.mock('@/components/Session', () => ({ default: () => null }));
+vi.mock('@/components/Session/SplitView', () => ({
+  SessionSplitView: () => null,
+}));
+vi.mock('@/hooks/useSessionSplitView', () => ({
+  useForgetDeletedSplitSessions: vi.fn(),
+  useSessionSplitFocusTracking: vi.fn(),
+}));
 vi.mock('@/components/Session/SidePanel/components/SessionGroup', () => ({
   default: () => null,
 }));

@@ -1593,5 +1593,11 @@
   "bundle-reference-bundle_asset_required": "Diese Bundle-Datei ist in diesem Speichervorgang nicht enthalten. Wählen Sie die referenzierte Datei unten aus.",
   "bundle-reference-verification_unavailable": "Diese Referenz konnte nicht geprüft werden. Prüfen Sie Verbindung und Ressourceneinstellungen und versuchen Sie es vor der Veröffentlichung erneut.",
   "bundle-reference-changed": "Referenzen oder Konfiguration haben sich geändert oder die Prüfung ist nicht verfügbar. Prüfen Sie die aktuellen Ergebnisse und bestätigen Sie erneut.",
-  "bundle-reference-recheck": "Referenzen erneut prüfen"
+  "bundle-reference-recheck": "Referenzen erneut prüfen",
+  "open-in": "Öffnen in",
+  "open-in-split-view": "Geteilte Ansicht",
+  "close-pane": "Bereich schließen",
+  "split-view-unavailable-no-session": "Öffne zuerst eine Sitzung",
+  "split-view-unavailable-same": "Bereits geöffnet",
+  "split-view-unavailable-full": "Bis zu {{count}} Sitzungen nebeneinander"
 }

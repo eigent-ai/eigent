@@ -1637,5 +1637,11 @@
   "bundle-reference-bundle_asset_required": "Этот файл Bundle не включён в текущее сохранение. Выберите указанный файл ниже.",
   "bundle-reference-verification_unavailable": "Не удалось проверить эту ссылку. Проверьте соединение и настройки ресурсов, затем повторите проверку перед публикацией.",
   "bundle-reference-changed": "Ссылки или конфигурация изменились, либо проверка недоступна. Просмотрите текущие результаты и подтвердите снова.",
-  "bundle-reference-recheck": "Проверить ссылки снова"
+  "bundle-reference-recheck": "Проверить ссылки снова",
+  "open-in": "Открыть",
+  "open-in-split-view": "Разделённый вид",
+  "close-pane": "Закрыть панель",
+  "split-view-unavailable-no-session": "Сначала откройте сессию",
+  "split-view-unavailable-same": "Уже открыта",
+  "split-view-unavailable-full": "Не более {{count}} сессий рядом"
 }

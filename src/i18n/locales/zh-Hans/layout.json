@@ -1571,5 +1571,11 @@
   "bundle-reference-bundle_asset_required": "本次保存尚未包含此 Bundle 资源。请在下方选择引用的文件。",
   "bundle-reference-verification_unavailable": "无法验证此引用。请检查连接和资源设置，然后在发布前重新检查。",
   "bundle-reference-changed": "引用或配置已更改，或无法完成验证。请查看当前检查结果并重新确认。",
-  "bundle-reference-recheck": "重新检查引用"
+  "bundle-reference-recheck": "重新检查引用",
+  "open-in": "打开方式",
+  "open-in-split-view": "分屏视图",
+  "close-pane": "关闭窗格",
+  "split-view-unavailable-no-session": "请先打开一个会话",
+  "split-view-unavailable-same": "已经打开",
+  "split-view-unavailable-full": "最多并排显示 {{count}} 个会话"
 }

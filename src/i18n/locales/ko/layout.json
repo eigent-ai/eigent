@@ -1571,5 +1571,11 @@
   "bundle-reference-bundle_asset_required": "이 Bundle 자산이 이번 저장에 포함되지 않았습니다. 아래에서 참조된 파일을 선택하세요.",
   "bundle-reference-verification_unavailable": "이 참조를 확인할 수 없습니다. 연결과 리소스 설정을 확인하고 게시 전에 다시 검사하세요.",
   "bundle-reference-changed": "참조 또는 구성이 변경되었거나 확인할 수 없습니다. 현재 결과를 검토하고 다시 확인하세요.",
-  "bundle-reference-recheck": "참조 다시 확인"
+  "bundle-reference-recheck": "참조 다시 확인",
+  "open-in": "열기 위치",
+  "open-in-split-view": "분할 보기",
+  "close-pane": "창 닫기",
+  "split-view-unavailable-no-session": "먼저 세션을 여세요",
+  "split-view-unavailable-same": "이미 열려 있음",
+  "split-view-unavailable-full": "최대 {{count}}개 세션을 나란히 볼 수 있습니다"
 }
