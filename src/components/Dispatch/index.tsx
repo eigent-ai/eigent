@@ -16,10 +16,14 @@ import larkIcon from '@/assets/icon/lark.png';
 import telegramIcon from '@/assets/icon/telegram.svg';
 import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { isDesktop } from '@/client/platform';
-import ContentHeader from '@/components/Layout/ContentHeader';
-import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
+import ContentHeader, {
+  CONTENT_HEADER_TITLE_CLASS,
+} from '@/components/Layout/ContentHeader';
+import { RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
+import { Tag } from '@/components/ui/tag';
 import { formatAppDate } from '@/lib/appDate';
 import {
   createRemoteControlSession,
@@ -41,242 +45,163 @@ import {
   type RemoteControlLogStatus,
   type RemoteControlSession,
 } from '@/store/triggerStore';
-import { AnimatePresence, motion } from 'framer-motion';
 import { Copy, Loader2, MonitorSmartphone, Square } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-interface BentoCardProps {
+// Rail rows follow the Automations list item recipe.
+const CHANNEL_ROW_CLASS =
+  'flex w-full min-w-0 items-center gap-ds-8 rounded-ds-card border border-x border-y border-solid p-ds-12 text-left';
+
+// Sections in the main panel share the Automations dashboard card shell.
+const SECTION_CARD_CLASS =
+  'flex flex-col rounded-ds-card border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default';
+
+interface ChannelListItemProps {
+  name: string;
+  leading: ReactNode;
+  status?: { text: string; tone: 'success' | 'neutral' };
+  isSelected?: boolean;
+  comingSoon?: boolean;
+}
+
+// Remote control is the only available channel, so it is always the one
+// shown; rows become selectable when a second channel ships.
+function ChannelListItem({
+  name,
+  leading,
+  status,
+  isSelected = false,
+  comingSoon = false,
+}: ChannelListItemProps) {
+  const { t } = useTranslation();
+  const tag = comingSoon
+    ? {
+        text: t('layout.dispatch-coming-soon', { defaultValue: 'Coming soon' }),
+        tone: 'neutral' as const,
+      }
+    : status;
+
+  return (
+    <div
+      aria-current={isSelected ? 'true' : undefined}
+      aria-disabled={comingSoon || undefined}
+      className={cn(
+        CHANNEL_ROW_CLASS,
+        isSelected
+          ? 'border-ds-hairline-strong-default bg-ds-neutral-default-default'
+          : 'border-transparent',
+        comingSoon && 'opacity-50 select-none'
+      )}
+    >
+      <span className="flex shrink-0 items-center text-ds-ink-muted-default">
+        {leading}
+      </span>
+      <DsText
+        as="span"
+        role="base"
+        weight="semibold"
+        className="min-w-0 flex-1 truncate"
+        title={name}
+      >
+        {name}
+      </DsText>
+      {tag ? (
+        <Tag
+          size="xs"
+          variant="primary"
+          tone={tag.tone}
+          emphasis="subtle"
+          text={tag.text}
+          className="shrink-0"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+interface RemoteControlLinkRowProps {
   session: RemoteControlSession;
-  logs: RemoteControlLogEntry[];
   stopping: boolean;
   onCopy: () => void;
   onStop: () => void;
 }
 
-interface BentoSessionGridProps {
-  sessions: RemoteControlSession[];
-  logs: RemoteControlLogEntry[];
-  stoppingSessionId: string | null;
-  onCopy: (url: string) => void;
-  onStop: (sessionId: string) => void;
-}
-
-function BentoSessionGrid({
-  sessions,
-  logs,
-  stoppingSessionId,
-  onCopy,
-  onStop,
-}: BentoSessionGridProps) {
-  const renderCard = (session: RemoteControlSession) => (
-    <BentoCard
-      session={session}
-      logs={logs}
-      stopping={stoppingSessionId === session.sessionId}
-      onCopy={() => onCopy(session.url)}
-      onStop={() => onStop(session.sessionId)}
-    />
-  );
-
-  const count = sessions.length;
-
-  if (count === 1) {
-    return (
-      <div className="flex h-full min-h-0 w-full flex-col">
-        <div className="h-1/2 min-h-0 w-full">{renderCard(sessions[0])}</div>
-      </div>
-    );
-  }
-
-  if (count === 2) {
-    return (
-      <div className="flex h-full min-h-0 w-full flex-col gap-3">
-        {sessions.map((session) => (
-          <div key={session.sessionId} className="min-h-0 flex-1">
-            {renderCard(session)}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  const gridClassName =
-    count === 3 || count === 4
-      ? 'gap-3 grid h-full min-h-0 w-full grid-cols-2 grid-rows-2'
-      : 'gap-3 grid h-full min-h-0 w-full auto-rows-fr grid-cols-2';
-
-  return (
-    <div className={gridClassName}>
-      {sessions.map((session) => (
-        <div key={session.sessionId} className="h-full min-h-0">
-          {renderCard(session)}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BentoCard({
+function RemoteControlLinkRow({
   session,
-  logs,
   stopping,
   onCopy,
   onStop,
-}: BentoCardProps) {
+}: RemoteControlLinkRowProps) {
   const { t } = useTranslation();
+  const expiresAt = session.expiresAt ? new Date(session.expiresAt) : null;
+  const expiresLabel =
+    expiresAt && !Number.isNaN(expiresAt.getTime())
+      ? t('layout.dispatch-link-expires', {
+          time: formatAppDate(expiresAt, {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+          defaultValue: 'Expires {{time}}',
+        })
+      : null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-default-default p-3">
-      {/* Header */}
-      <div className="flex min-w-0 items-center gap-2">
-        <DsIcon
-          icon={MonitorSmartphone}
-          className="shrink-0 text-ds-ink-muted-default"
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
+    <li className="flex min-w-0 items-center gap-ds-12 border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default px-ds-16 py-ds-12 first:border-x-0 first:border-y-0">
+      <div className="flex min-w-0 flex-1 flex-col gap-ds-2">
+        <DsText
+          as="span"
+          role="base"
+          weight="medium"
+          className="truncate"
+          title={session.title}
+        >
           {session.title}
-        </span>
-        <Button
-          type="button"
-          variant="primary"
-          size="xs"
-          buttonContent="text"
-          className="no-drag shrink-0 gap-1.5"
-          onClick={onCopy}
-        >
-          <DsIcon icon={Copy} recipe="main-compact" aria-hidden />
-          {t('layout.dispatch-copy-link', { defaultValue: 'Copy link' })}
-        </Button>
-        <Button
-          type="button"
-          variant="primary"
-          tone="error"
-          size="xs"
-          buttonContent="text"
-          className="no-drag shrink-0 gap-1"
-          disabled={stopping}
-          onClick={onStop}
-        >
-          {stopping ? (
-            <DsIcon
-              icon={Loader2}
-              recipe="main-compact"
-              className="animate-spin"
-              aria-hidden
-            />
-          ) : (
-            <DsIcon icon={Square} recipe="main-compact" aria-hidden />
-          )}
-          {t('layout.dispatch-revoke-link', { defaultValue: 'Revoke link' })}
-        </Button>
-      </div>
-
-      {/* Log */}
-      <div className="min-h-0 flex-1 border-x-0 border-t border-b-0 border-ds-hairline-subtle-default pt-2">
-        <LogPanel logs={logs} />
-      </div>
-    </div>
-  );
-}
-
-interface ChannelRowProps {
-  name: string;
-  icon?: React.ReactNode;
-  imgSrc?: string;
-  disabled?: boolean;
-  disabledLabel?: string;
-  comingSoon?: boolean;
-  hasActiveSessions?: boolean;
-  loading?: boolean;
-  onStart?: () => void;
-}
-
-function ChannelRow({
-  name,
-  icon,
-  imgSrc,
-  disabled,
-  disabledLabel,
-  comingSoon,
-  hasActiveSessions,
-  loading,
-  onStart,
-}: ChannelRowProps) {
-  const { t } = useTranslation();
-  const isDisabled = Boolean(disabled);
-
-  return (
-    <div
-      className={cn(
-        'group/row flex h-ds-control-xl w-full cursor-default items-center gap-3 rounded-xl select-none',
-        'border border-x border-y border-transparent bg-ds-neutral-default-default px-3',
-        'transition-colors duration-150',
-        !isDisabled && 'hover:border-ds-hairline-subtle-default',
-        hasActiveSessions && 'border-ds-hairline-subtle-default',
-        isDisabled && 'cursor-not-allowed opacity-50'
-      )}
-    >
-      <div className="flex shrink-0 items-center">
-        {icon}
-        {imgSrc && (
-          <img
-            src={imgSrc}
-            alt=""
-            className="h-4 w-4 shrink-0 object-contain"
-            aria-hidden
-          />
-        )}
-      </div>
-      <span className="flex-1 truncate text-ds-text-base font-medium text-ds-ink-default-default">
-        {name}
-      </span>
-
-      {/* Right slot — always the same reserved width so all rows stay the same height */}
-      <div className="flex h-6 w-[72px] shrink-0 items-center justify-end">
-        {comingSoon && (
-          <span className="shrink-0 rounded-full bg-ds-neutral-muted-default px-2 py-0.5 text-ds-text-meta text-ds-ink-muted-default">
-            {t('layout.dispatch-coming-soon', { defaultValue: 'Coming soon' })}
-          </span>
-        )}
-
-        {isDisabled && !comingSoon && disabledLabel && (
-          <span className="shrink-0 rounded-full bg-ds-neutral-muted-default px-2 py-0.5 text-ds-text-meta text-ds-ink-muted-default">
-            {disabledLabel}
-          </span>
-        )}
-
-        {!isDisabled && !comingSoon && hasActiveSessions && (
-          <span className="shrink-0 rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-ds-text-meta text-ds-text-success-strong-default">
-            {t('layout.dispatch-connected', { defaultValue: 'Connected' })}
-          </span>
-        )}
-
-        {!isDisabled && !comingSoon && !hasActiveSessions && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="xs"
-            buttonContent="text"
-            className="no-drag shrink-0 gap-1"
-            disabled={loading}
-            onClick={onStart}
+        </DsText>
+        {expiresLabel && (
+          <DsText
+            as="span"
+            role="meta"
+            className="truncate text-ds-ink-muted-default"
           >
-            {loading ? (
-              <DsIcon
-                icon={Loader2}
-                recipe="main-compact"
-                className="animate-spin"
-                aria-hidden
-              />
-            ) : null}
-            {t('layout.dispatch-start', { defaultValue: 'Start' })}
-          </Button>
+            {expiresLabel}
+          </DsText>
         )}
       </div>
-    </div>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="no-drag shrink-0"
+        onClick={onCopy}
+      >
+        <DsIcon icon={Copy} aria-hidden />
+        {t('layout.dispatch-copy-link', { defaultValue: 'Copy link' })}
+      </Button>
+      <Button
+        type="button"
+        variant="secondary"
+        tone="error"
+        size="sm"
+        className="no-drag shrink-0"
+        disabled={stopping}
+        onClick={onStop}
+      >
+        {stopping ? (
+          <DsIcon icon={Loader2} className="animate-spin" aria-hidden />
+        ) : (
+          <DsIcon icon={Square} aria-hidden />
+        )}
+        {t('layout.dispatch-revoke-link', { defaultValue: 'Revoke link' })}
+      </Button>
+    </li>
   );
 }
 
@@ -295,45 +220,6 @@ function formatLogTime(iso: string): string {
   });
 }
 
-function LogPanel({ logs }: { logs: RemoteControlLogEntry[] }) {
-  const { t } = useTranslation();
-
-  if (logs.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <span className="text-ds-text-meta text-ds-ink-muted-default">
-          {t('layout.dispatch-no-logs', { defaultValue: 'No activity yet' })}
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="scrollbar-always-visible flex h-full flex-col overflow-y-scroll">
-      {[...logs].reverse().map((entry) => (
-        <div
-          key={entry.id}
-          className="flex min-w-0 items-center gap-3 px-1 py-1.5 text-ds-text-meta"
-        >
-          <span className="w-[72px] shrink-0 text-ds-ink-muted-default tabular-nums">
-            {formatLogTime(entry.time)}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-ds-ink-default-default">
-            {entry.name}
-          </span>
-          <span
-            className={`shrink-0 capitalize ${LOG_STATUS_STYLE[entry.status]}`}
-          >
-            {t(`layout.dispatch-log-status-${entry.status}`, {
-              defaultValue: entry.status,
-            })}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 const REMOTE_CONTROL_TITLE_MAX_LENGTH = 80;
 
 function buildRemoteControlTitle(spaceName?: string | null): string {
@@ -343,12 +229,81 @@ function buildRemoteControlTitle(spaceName?: string | null): string {
   return `${text.slice(0, REMOTE_CONTROL_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
 }
 
-const PANEL_SPRING = {
-  type: 'spring',
-  stiffness: 380,
-  damping: 36,
-  mass: 1,
-} as const;
+const COMING_SOON_CHANNELS = [
+  {
+    id: 'telegram',
+    labelKey: 'layout.channels-telegram',
+    label: 'Telegram',
+    icon: telegramIcon,
+  },
+  {
+    id: 'lark',
+    labelKey: 'layout.channels-lark',
+    label: 'Lark',
+    icon: larkIcon,
+  },
+  {
+    id: 'whatsapp',
+    labelKey: 'layout.channels-whatsapp',
+    label: 'WhatsApp',
+    icon: whatsappIcon,
+  },
+] as const;
+
+function ActivityLog({ logs }: { logs: RemoteControlLogEntry[] }) {
+  const { t } = useTranslation();
+
+  if (logs.length === 0) {
+    return (
+      <DsText
+        as="p"
+        role="base"
+        className="px-ds-16 py-ds-24 text-center text-ds-ink-muted-default"
+      >
+        {t('layout.dispatch-no-logs', { defaultValue: 'No activity yet' })}
+      </DsText>
+    );
+  }
+
+  return (
+    <ul className="m-0 flex list-none flex-col p-0">
+      {[...logs].reverse().map((entry) => (
+        <li
+          key={entry.id}
+          className="flex min-w-0 items-center gap-ds-12 px-ds-16 py-ds-8"
+        >
+          <DsText
+            as="span"
+            role="meta"
+            className="shrink-0 text-ds-ink-muted-default tabular-nums"
+          >
+            {formatLogTime(entry.time)}
+          </DsText>
+          <DsText
+            as="span"
+            role="base"
+            className="min-w-0 flex-1 truncate"
+            title={entry.name}
+          >
+            {entry.name}
+          </DsText>
+          <DsText
+            as="span"
+            role="meta"
+            className={cn(
+              'shrink-0 capitalize',
+              LOG_STATUS_STYLE[entry.status]
+            )}
+          >
+            {t(`layout.dispatch-log-status-${entry.status}`, {
+              defaultValue: entry.status,
+            })}
+          </DsText>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function WorkspaceDispatch() {
   const { t } = useTranslation();
@@ -639,116 +594,195 @@ export function WorkspaceDispatch() {
     [t]
   );
 
-  const channelList = (
-    <div className="flex w-full flex-col gap-1">
-      <ChannelRow
-        name={t('layout.workspace-work-with-remote-control', {
-          defaultValue: 'Remote Control',
-        })}
-        icon={
-          <DsIcon
-            icon={MonitorSmartphone}
-            className="shrink-0 text-ds-ink-muted-default"
-            aria-hidden
-          />
+  const remoteControlName = t('layout.workspace-work-with-remote-control', {
+    defaultValue: 'Remote control',
+  });
+  const remoteControlStatus = hasActiveRemoteControl
+    ? {
+        text: t('layout.dispatch-connected', { defaultValue: 'Connected' }),
+        tone: 'success' as const,
+      }
+    : remoteControlUnsupportedForSpace
+      ? {
+          text: t('layout.dispatch-unavailable', {
+            defaultValue: 'Unavailable',
+          }),
+          tone: 'neutral' as const,
         }
-        hasActiveSessions={hasActiveRemoteControl}
-        disabled={remoteControlUnsupportedForSpace && !hasActiveRemoteControl}
-        disabledLabel={t('layout.dispatch-unavailable', {
-          defaultValue: 'Unavailable',
-        })}
-        loading={remoteControlLoading}
-        onStart={() => void handleCreateRemoteControl()}
-      />
+      : undefined;
 
-      <div className="mx-1 border-x-0 border-t border-b-0 border-ds-hairline-subtle-default" />
-
-      <ChannelRow
-        name={t('layout.channels-telegram', { defaultValue: 'Telegram' })}
-        imgSrc={telegramIcon}
-        disabled
-        comingSoon
-      />
-      <ChannelRow
-        name={t('layout.channels-lark', { defaultValue: 'Lark' })}
-        imgSrc={larkIcon}
-        disabled
-        comingSoon
-      />
-      <ChannelRow
-        name={t('layout.channels-whatsapp', { defaultValue: 'WhatsApp' })}
-        imgSrc={whatsappIcon}
-        disabled
-        comingSoon
-      />
-    </div>
+  const activitySection = (
+    <section
+      aria-labelledby="dispatch-activity-title"
+      className="flex flex-col gap-ds-8"
+    >
+      <DsText
+        as="h2"
+        id="dispatch-activity-title"
+        role="base"
+        weight="semibold"
+      >
+        {t('layout.session-panel-activity', { defaultValue: 'Activity' })}
+      </DsText>
+      <div className={SECTION_CARD_CLASS}>
+        <ActivityLog logs={logs} />
+      </div>
+    </section>
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      {/* Header */}
-      <ContentHeader
-        title={t('layout.workspace-work-with-title', {
-          defaultValue: 'Work with',
-        })}
-      />
-
-      {/* Body */}
-      <div className="relative flex min-h-0 w-full flex-1 overflow-hidden">
-        {/* Centered default state */}
-        <AnimatePresence initial={false}>
-          {!hasSessions && (
-            <motion.div
-              key="centered"
-              className="absolute inset-0 flex items-start justify-center overflow-y-auto p-6"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0.15 } }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="w-full max-w-2xl">{channelList}</div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Active state: bento grid + right panel */}
-        <AnimatePresence initial={false}>
-          {hasSessions && (
-            <motion.div
-              key="split"
-              className="absolute inset-0 flex overflow-hidden"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0.15 } }}
-              transition={{ duration: 0.2 }}
-            >
-              {/* Left column: dynamic bento layout by session count */}
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
-                <BentoSessionGrid
-                  sessions={activeSessions}
-                  logs={logs}
-                  stoppingSessionId={stoppingSessionId}
-                  onCopy={handleCopySession}
-                  onStop={(sessionId) => void handleStopSession(sessionId)}
-                />
-              </div>
-
-              {/* Right panel — same width as session side panel */}
-              <motion.div
-                className={cn(
-                  'flex shrink-0 flex-col gap-1 overflow-y-auto border-y-0 border-r-0 border-l border-ds-hairline-subtle-default p-3',
-                  RIGHT_RAIL_CONTENT_WIDTH_CLASS
-                )}
-                initial={{ x: 40, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                transition={PANEL_SPRING}
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col lg:flex-row">
+      <section
+        aria-label={remoteControlName}
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
+      >
+        <ContentHeader
+          border={false}
+          inset="none"
+          className="px-ds-16"
+          titleAsChild
+          title={
+            hasSessions ? (
+              <DsText as="h1" className={CONTENT_HEADER_TITLE_CLASS}>
+                {remoteControlName}
+              </DsText>
+            ) : undefined
+          }
+        />
+        <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto px-ds-24 xl:px-ds-page-gutter">
+          {hasSessions ? (
+            <div className="mx-auto flex w-full max-w-5xl flex-col gap-ds-24 py-ds-24">
+              <section
+                aria-labelledby="dispatch-active-links-title"
+                className="flex flex-col gap-ds-8"
               >
-                {channelList}
-              </motion.div>
-            </motion.div>
+                <DsText
+                  as="h2"
+                  id="dispatch-active-links-title"
+                  role="base"
+                  weight="semibold"
+                >
+                  {t('layout.dispatch-active-links', {
+                    defaultValue: 'Active links',
+                  })}
+                  <span className="ml-ds-6 font-medium text-ds-ink-subtle-default">
+                    {activeSessions.length}
+                  </span>
+                </DsText>
+                <ul className={cn(SECTION_CARD_CLASS, 'm-0 list-none p-0')}>
+                  {activeSessions.map((session) => (
+                    <RemoteControlLinkRow
+                      key={session.sessionId}
+                      session={session}
+                      stopping={stoppingSessionId === session.sessionId}
+                      onCopy={() => handleCopySession(session.url)}
+                      onStop={() => void handleStopSession(session.sessionId)}
+                    />
+                  ))}
+                </ul>
+              </section>
+              {activitySection}
+            </div>
+          ) : (
+            <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center gap-ds-24 py-ds-24">
+              <div className="flex flex-col items-center gap-ds-8 text-center">
+                <DsIcon
+                  icon={MonitorSmartphone}
+                  recipe="illustration"
+                  illustrationSize={40}
+                  className="text-ds-ink-muted-default"
+                  aria-hidden
+                />
+                <DsText as="h1" role="page" weight="semibold">
+                  {remoteControlName}
+                </DsText>
+                <DsText
+                  as="p"
+                  role="body-large"
+                  className="text-ds-ink-muted-default"
+                >
+                  {remoteControlUnsupportedForSpace
+                    ? t('layout.remote-control-legacy-space-unsupported', {
+                        defaultValue:
+                          'Legacy Spaces do not support remote control.',
+                      })
+                    : t('layout.dispatch-remote-control-description', {
+                        defaultValue:
+                          'Follow and steer the tasks in this Space from your phone or another browser with a private link. The tasks keep running on this desktop.',
+                      })}
+                </DsText>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="md"
+                  className="no-drag mt-ds-8"
+                  disabled={
+                    remoteControlUnsupportedForSpace || remoteControlLoading
+                  }
+                  onClick={() => void handleCreateRemoteControl()}
+                >
+                  {remoteControlLoading ? (
+                    <DsIcon
+                      icon={Loader2}
+                      className="animate-spin"
+                      aria-hidden
+                    />
+                  ) : null}
+                  {t('layout.dispatch-start', { defaultValue: 'Start' })}
+                </Button>
+              </div>
+              {logs.length > 0 ? activitySection : null}
+            </div>
           )}
-        </AnimatePresence>
-      </div>
+        </div>
+      </section>
+
+      <aside
+        aria-labelledby="dispatch-channels-title"
+        className={cn(
+          'flex max-h-[40%] min-h-0 shrink-0 flex-col border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default lg:max-h-none lg:border-t-0 lg:border-r-0 lg:border-b-0 lg:border-l',
+          RIGHT_RAIL_STACKED_CONTENT_WIDTH_CLASS
+        )}
+      >
+        <ContentHeader border={false} inset="none" className="px-ds-16">
+          <DsText
+            as="h2"
+            id="dispatch-channels-title"
+            role="base"
+            weight="semibold"
+          >
+            {t('layout.channels', { defaultValue: 'Channels' })}
+          </DsText>
+        </ContentHeader>
+        <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto pr-0 pb-ds-16 pl-ds-8">
+          <ul className="m-0 flex list-none flex-col gap-ds-2 p-0">
+            <li>
+              <ChannelListItem
+                name={remoteControlName}
+                leading={<DsIcon icon={MonitorSmartphone} aria-hidden />}
+                status={remoteControlStatus}
+                isSelected
+              />
+            </li>
+            {COMING_SOON_CHANNELS.map((channel) => (
+              <li key={channel.id}>
+                <ChannelListItem
+                  name={t(channel.labelKey, { defaultValue: channel.label })}
+                  leading={
+                    <img
+                      src={channel.icon}
+                      alt=""
+                      className="size-4 shrink-0 object-contain"
+                      aria-hidden
+                    />
+                  }
+                  comingSoon
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </aside>
     </div>
   );
 }
