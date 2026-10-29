@@ -20,6 +20,7 @@ import {
   ChevronLeft,
   FileText,
   MessageCircleQuestionMark,
+  SquareTerminal,
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -31,6 +32,7 @@ const contextKindLabel: Record<
   string
 > = {
   file: 'File',
+  command: 'Command',
   'external-context': 'Context',
   agent: 'Agent',
   operation: 'Operation',
@@ -124,9 +126,9 @@ export function BoxHeaderDisplay({
               key={item.id}
               className="flex max-w-full min-w-0 items-center gap-1 rounded-lg bg-ds-neutral-strong-default px-2 py-1"
             >
-              {item.kind === 'file' && (
+              {(item.kind === 'file' || item.kind === 'command') && (
                 <DsIcon
-                  icon={FileText}
+                  icon={item.kind === 'file' ? FileText : SquareTerminal}
                   recipe="main-compact"
                   aria-hidden
                   className="shrink-0 text-ds-ink-muted-default"
@@ -136,7 +138,10 @@ export function BoxHeaderDisplay({
                 {contextKindLabel[item.kind ?? 'other']}:{' '}
               </span>
               <span
-                className="truncate text-ds-text-meta font-medium text-ds-ink-default-default"
+                className={cn(
+                  'truncate text-ds-text-meta font-medium text-ds-ink-default-default',
+                  item.kind === 'command' && 'font-mono'
+                )}
                 title={item.description || item.label}
               >
                 {item.label}
