@@ -219,6 +219,27 @@ describe('application menu', () => {
     }
   );
 
+  it.each(['darwin', 'win32', 'linux'] as const)(
+    'closes a focused Session window instead of quitting on %s',
+    (platform) => {
+      const harness = createOptions(platform);
+      const closeSecondaryWindow = vi.fn().mockReturnValueOnce(true);
+      const template = buildApplicationMenuTemplate({
+        ...harness.options,
+        closeSecondaryWindow,
+      });
+
+      click(findItem(template, 'file.close-window'));
+      expect(closeSecondaryWindow).toHaveBeenCalledOnce();
+      expect(harness.requestQuit).not.toHaveBeenCalled();
+
+      // The main window has focus: Close Window keeps its quit semantics.
+      closeSecondaryWindow.mockReturnValueOnce(false);
+      click(findItem(template, 'file.close-window'));
+      expect(harness.requestQuit).toHaveBeenCalledOnce();
+    }
+  );
+
   it('localizes every visible application label without relying on role defaults', () => {
     const harness = createOptions('darwin');
     harness.options.messages = getNativeMenuMessages('zh-Hans');

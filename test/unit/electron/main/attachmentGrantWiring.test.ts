@@ -48,7 +48,7 @@ describe('chat attachment path grant wiring', () => {
     );
 
     for (const block of [selectFile, droppedFiles, pastedFile]) {
-      expect(block).toContain('assertMainRendererSender(event)');
+      expect(block).toContain('assertAppRendererSender(event)');
       expect(block).toContain('rememberUserSelectedLocalPath');
     }
     expect(selectFile).toContain('fsp.realpath(filePath)');
