@@ -33,6 +33,10 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { useSessionNavStatuses } from '@/hooks/useSessionNavStatuses';
+import {
+  getSplitViewUnavailableReason,
+  useVisibleSessionPanes,
+} from '@/hooks/useSessionSplitView';
 import { useHost } from '@/host';
 import {
   isProjectAchieved,
@@ -64,6 +68,10 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { readSessionExecutionRoute } from '@/store/sessionExecutionStore';
+import {
+  MAX_SESSION_PANES,
+  useSessionSplitViewStore,
+} from '@/store/sessionSplitViewStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
@@ -88,6 +96,8 @@ import {
   NavTabReconnectSuffix,
   triggerListenerLeadIconClass,
 } from './TriggerNavTab';
+
+const NO_PANES: string[] = [];
 
 export interface SpaceSidebarProps {
   chatStore: ChatStore | null;
@@ -126,6 +136,7 @@ export default function SpaceSidebar({
   );
   const activeProjectId = projectStore.activeProjectId;
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const visiblePanes = useVisibleSessionPanes(activeSpaceId);
   const spacesById = useSpaceStore((s) => s.spaces);
   const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
   const projectMetasForActiveSpace = useMemo(() => {
@@ -345,6 +356,68 @@ export default function SpaceSidebar({
     ]
   );
 
+  // Split view shows the focused Session's split while a Session is open.
+  const splitPanes = useMemo(
+    () =>
+      activeWorkspaceTab === 'project' &&
+      activeProjectId &&
+      visiblePanes.length >= 2 &&
+      visiblePanes.includes(activeProjectId)
+        ? visiblePanes
+        : NO_PANES,
+    [activeProjectId, activeWorkspaceTab, visiblePanes]
+  );
+
+  const splitViewUnavailableReason = useCallback(
+    (projectId: string): string | undefined => {
+      const anchorOpen =
+        activeWorkspaceTab === 'project' &&
+        activeProjectId &&
+        useSpaceStore.getState().getProjectMeta(activeProjectId)?.spaceId ===
+          activeSpaceId;
+      const reason = getSplitViewUnavailableReason({
+        projectId,
+        anchorId: anchorOpen ? activeProjectId : null,
+        panes: splitPanes,
+      });
+      switch (reason) {
+        case 'no-session':
+          return t('layout.split-view-unavailable-no-session', {
+            defaultValue: 'Open a session first',
+          });
+        case 'same':
+          return t('layout.split-view-unavailable-same', {
+            defaultValue: 'Already open',
+          });
+        case 'full':
+          return t('layout.split-view-unavailable-full', {
+            defaultValue: 'Up to {{count}} sessions side by side',
+            count: MAX_SESSION_PANES,
+          });
+        default:
+          return undefined;
+      }
+    },
+    [activeProjectId, activeSpaceId, activeWorkspaceTab, splitPanes, t]
+  );
+
+  const openInSplitView = useCallback(
+    (projectId: string) => {
+      if (!activeSpaceId || !activeProjectId) return;
+      if (splitViewUnavailableReason(projectId)) return;
+      useSessionSplitViewStore
+        .getState()
+        .openPane(activeSpaceId, activeProjectId, projectId);
+      void selectSession(projectId);
+    },
+    [activeProjectId, activeSpaceId, selectSession, splitViewUnavailableReason]
+  );
+
+  const sessionOpenIn = useMemo(
+    () => ({ onOpenInSplitView: openInSplitView }),
+    [openInSplitView]
+  );
+
   // Boot-time session resume: reopen the last visited Session (the way an
   // editor reopens its last workspace) instead of landing on the empty home
   // tab. One-shot per renderer boot (launch or reload; the flag is module
@@ -403,15 +476,24 @@ export default function SpaceSidebar({
             achieved: isProjectAchieved(project.metadata),
             pinned: pinnedProjectIds.includes(project.id),
             source: activeTask?.source,
+            openInPane:
+              splitPanes.length > 0
+                ? splitPanes.includes(project.id) &&
+                  project.id !== activeProjectId
+                : undefined,
+            splitViewUnavailableReason: splitViewUnavailableReason(project.id),
           };
         }),
     [
+      activeProjectId,
       historyLoadingProjectIds,
       navLeadByProjectId,
       pinnedProjectIds,
       projectMetasForActiveSpace,
       projectStore,
       shouldShowSessionInNavList,
+      splitPanes,
+      splitViewUnavailableReason,
       t,
     ]
   );
@@ -966,6 +1048,7 @@ export default function SpaceSidebar({
               onPinSession={handlePinSession}
               onNewSession={handleNewSession}
               newSessionActive={activeWorkspaceTab === 'new-project'}
+              openIn={sessionOpenIn}
             />
           </SidebarSection>
         </div>

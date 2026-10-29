@@ -1615,5 +1615,11 @@
   "bundle-reference-bundle_asset_required": "Questo file del Bundle non è incluso nel salvataggio. Seleziona il file indicato qui sotto.",
   "bundle-reference-verification_unavailable": "Impossibile verificare questo riferimento. Controlla la connessione e le impostazioni delle risorse, poi riprova prima di pubblicare.",
   "bundle-reference-changed": "I riferimenti o la configurazione sono cambiati, oppure la verifica non è disponibile. Esamina i risultati attuali e conferma di nuovo.",
-  "bundle-reference-recheck": "Verifica di nuovo i riferimenti"
+  "bundle-reference-recheck": "Verifica di nuovo i riferimenti",
+  "open-in": "Apri in",
+  "open-in-split-view": "Vista divisa",
+  "close-pane": "Chiudi riquadro",
+  "split-view-unavailable-no-session": "Apri prima una sessione",
+  "split-view-unavailable-same": "Già aperta",
+  "split-view-unavailable-full": "Fino a {{count}} sessioni affiancate"
 }

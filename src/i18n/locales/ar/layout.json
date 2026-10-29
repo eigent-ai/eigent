@@ -1681,5 +1681,11 @@
   "bundle-reference-bundle_asset_required": "ملف Bundle هذا غير مشمول في عملية الحفظ الحالية. اختر الملف المشار إليه أدناه.",
   "bundle-reference-verification_unavailable": "تعذر التحقق من هذا المرجع. راجع الاتصال وإعدادات الموارد، ثم أعد الفحص قبل النشر.",
   "bundle-reference-changed": "تغيرت المراجع أو الإعدادات، أو تعذر التحقق. راجع النتائج الحالية وأكّد مجددًا.",
-  "bundle-reference-recheck": "فحص المراجع مجددًا"
+  "bundle-reference-recheck": "فحص المراجع مجددًا",
+  "open-in": "فتح في",
+  "open-in-split-view": "عرض مقسّم",
+  "close-pane": "إغلاق اللوحة",
+  "split-view-unavailable-no-session": "افتح جلسة أولاً",
+  "split-view-unavailable-same": "مفتوحة بالفعل",
+  "split-view-unavailable-full": "حتى {{count}} جلسات جنبًا إلى جنب"
 }

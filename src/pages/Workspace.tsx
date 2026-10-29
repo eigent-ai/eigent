@@ -51,6 +51,11 @@ import { useSpaceStore } from '@/store/spaceStore';
 
 import Session from '@/components/Session';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
+import { SessionSplitView } from '@/components/Session/SplitView';
+import {
+  useForgetDeletedSplitSessions,
+  useSessionSplitFocusTracking,
+} from '@/hooks/useSessionSplitView';
 
 export default function WorkspacePage() {
   const { t } = useTranslation();
@@ -85,6 +90,9 @@ export default function WorkspacePage() {
   const workspaceMainBackground = useAuthStore(
     (s) => s.workspaceMainBackground
   );
+
+  useSessionSplitFocusTracking();
+  useForgetDeletedSplitSessions();
 
   const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
@@ -409,7 +417,7 @@ export default function WorkspacePage() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <div className={workspaceMainForegroundClass}>
-              <Session />
+              <SessionSplitView />
             </div>
           </div>
         );

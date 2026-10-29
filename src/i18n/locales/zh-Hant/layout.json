@@ -1571,5 +1571,11 @@
   "bundle-reference-bundle_asset_required": "本次儲存尚未包含此 Bundle 資源。請在下方選擇引用的檔案。",
   "bundle-reference-verification_unavailable": "無法驗證此引用。請檢查連線和資源設定，然後在發佈前重新檢查。",
   "bundle-reference-changed": "引用或設定已變更，或無法完成驗證。請查看目前檢查結果並重新確認。",
-  "bundle-reference-recheck": "重新檢查引用"
+  "bundle-reference-recheck": "重新檢查引用",
+  "open-in": "開啟方式",
+  "open-in-split-view": "分割檢視",
+  "close-pane": "關閉窗格",
+  "split-view-unavailable-no-session": "請先開啟一個工作階段",
+  "split-view-unavailable-same": "已經開啟",
+  "split-view-unavailable-full": "最多並排顯示 {{count}} 個工作階段"
 }

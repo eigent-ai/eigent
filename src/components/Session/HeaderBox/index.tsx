@@ -57,7 +57,13 @@ import {
   Trash2,
   WandSparkles,
 } from 'lucide-react';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
@@ -91,6 +97,8 @@ export interface HeaderBoxProps {
   showBack?: boolean;
   /** Summary column toggle, shown beside Preview when provided. */
   summary?: SummaryToggleProps;
+  /** Controls after the Preview toggle, such as closing a split pane. */
+  trailingActions?: ReactNode;
 }
 
 export function HeaderBox({
@@ -102,6 +110,7 @@ export function HeaderBox({
   showTimelineStyle = true,
   showBack = true,
   summary,
+  trailingActions,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
@@ -422,6 +431,7 @@ export function HeaderBox({
             <DsIcon icon={GalleryThumbnails} recipe="main" />
           </Button>
         </TooltipSimple>
+        {trailingActions}
       </div>
       {automationDialogContext ? (
         <TriggerDialog

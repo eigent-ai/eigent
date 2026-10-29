@@ -120,4 +120,53 @@ describe('SessionNavListRows', () => {
       container.querySelector('[data-session-tooltip-content]')
     ).not.toBeInTheDocument();
   });
+
+  it('opens a Session in split view from Open in', async () => {
+    const user = userEvent.setup();
+    const onOpenInSplitView = vi.fn();
+    render(
+      <SessionNavListRows
+        sessions={[session]}
+        activeSessionId={null}
+        folded={false}
+        onSessionClick={vi.fn()}
+        onPinSession={vi.fn()}
+        openIn={{ onOpenInSplitView }}
+      />
+    );
+
+    // Keyboard path: Radix submenus close on simulated pointer moves.
+    screen.getByRole('button', { name: 'More actions' }).focus();
+    await user.keyboard('{Enter}');
+    (await screen.findByRole('menuitem', { name: 'Open in' })).focus();
+    await user.keyboard('{ArrowRight}');
+    (await screen.findByRole('menuitem', { name: 'Split view' })).focus();
+    await user.keyboard('{Enter}');
+    expect(onOpenInSplitView).toHaveBeenCalledWith(session.id);
+  });
+
+  it('says why split view is unavailable', async () => {
+    const user = userEvent.setup();
+    const onOpenInSplitView = vi.fn();
+    render(
+      <SessionNavListRows
+        sessions={[
+          {
+            ...session,
+            openInPane: true,
+            splitViewUnavailableReason: 'Already open',
+          },
+        ]}
+        activeSessionId={null}
+        folded={false}
+        openIn={{ onOpenInSplitView }}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Open in' }));
+    const split = await screen.findByRole('menuitem', { name: /Split view/ });
+    expect(split).toHaveTextContent('Already open');
+    expect(split).toHaveAttribute('data-disabled');
+  });
 });
