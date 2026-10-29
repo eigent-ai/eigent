@@ -127,6 +127,40 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName;
  * </TooltipSimple>
  * ```
  */
+const DIALOG_LAYER_SELECTOR = '[role="dialog"], [role="alertdialog"]';
+
+const isDialogLayer = (node: Node) =>
+  node instanceof Element &&
+  (node.matches(DIALOG_LAYER_SELECTOR) ||
+    node.querySelector(DIALOG_LAYER_SELECTOR) !== null);
+
+/**
+ * Radix closes a tooltip on pointer leave or blur. A dialog that opens over
+ * the pointer, from a menu or a shortcut such as quitting, fires neither, so
+ * the tooltip would stay open above the dialog's scrim. Only dialogs added
+ * after the tooltip opened count; a tooltip inside an open dialog stays.
+ */
+function useCloseWhenDialogOpens(
+  open: boolean,
+  setOpen: (open: boolean) => void
+) {
+  React.useEffect(() => {
+    if (!open || typeof MutationObserver === 'undefined') return;
+    const observer = new MutationObserver((records) => {
+      if (
+        records.some((record) =>
+          Array.from(record.addedNodes).some(isDialogLayer)
+        )
+      ) {
+        setOpen(false);
+      }
+    });
+    // Dialogs portal straight into body, so its direct children are enough.
+    observer.observe(document.body, { childList: true });
+    return () => observer.disconnect();
+  }, [open, setOpen]);
+}
+
 interface TooltipSimpleProps extends Omit<
   React.ComponentPropsWithoutRef<typeof TooltipContent>,
   'children' | 'content'
@@ -167,6 +201,8 @@ const TooltipSimple = React.forwardRef<
         setOpen(false);
       }
     }, [enabled]);
+
+    useCloseWhenDialogOpens(open, setOpen);
 
     const tooltip = (
       <Tooltip
