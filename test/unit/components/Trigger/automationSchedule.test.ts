@@ -472,3 +472,41 @@ describe('one-time dates a year or more ahead', () => {
     );
   });
 });
+
+describe('schedules with an explicit timezone', () => {
+  it.each([
+    ['Europe/London', '2026-03-28T14:00:00Z', '2026-03-29T12:20:00.000Z'],
+    ['Europe/London', '2026-10-24T14:00:00Z', '2026-10-25T13:20:00.000Z'],
+    ['America/New_York', '2026-03-07T20:00:00Z', '2026-03-08T17:20:00.000Z'],
+    ['America/New_York', '2026-10-31T20:00:00Z', '2026-11-01T18:20:00.000Z'],
+  ])('keeps 13:20 in %s across clock changes', (timezone, from, expected) => {
+    expect(
+      getNextRun(
+        { custom_cron_expression: '20 13 * * *', config: { timezone } },
+        new Date(from)
+      )?.toISOString()
+    ).toBe(expected);
+  });
+  it('stores wall time without applying the current UTC offset', () => {
+    expect(
+      scheduleToCron(
+        { frequency: 'daily', hour: 13, minute: 20 },
+        new Date('2026-07-01'),
+        'Europe/London'
+      )
+    ).toBe('20 13 * * *');
+  });
+});
+
+it('matches the server policy for nonexistent and repeated local hours', () => {
+  const trigger = {
+    custom_cron_expression: '30 1 * * *',
+    config: { timezone: 'Europe/London' },
+  };
+  expect(
+    getNextRun(trigger, new Date('2026-03-28T02:00:00Z'))?.toISOString()
+  ).toBe('2026-03-30T00:30:00.000Z');
+  expect(
+    getNextRun(trigger, new Date('2026-10-25T00:30:00Z'))?.toISOString()
+  ).toBe('2026-10-26T01:30:00.000Z');
+});

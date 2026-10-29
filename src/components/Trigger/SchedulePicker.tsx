@@ -29,7 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { formatAppDate } from '@/lib/appDate';
 import { cn, localTimeToUTC } from '@/lib/utils';
-import { addYears, format, parse, subDays } from 'date-fns';
+import { addYears, endOfDay, format, parse, subDays } from 'date-fns';
 import { Clock, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -38,6 +38,7 @@ import {
   getNextRun,
   isOneTimeTooFarAhead,
   nextOccurrence,
+  nextOccurrenceInZone,
   parseCron,
   parseScheduleNumber,
   scheduleToCron,
@@ -52,12 +53,14 @@ const MINUTE_RANGE: ScheduleNumberRange = { min: 0, max: 59 };
 const DAY_OF_MONTH_RANGE: ScheduleNumberRange = { min: 1, max: 31 };
 
 export type ScheduleConfig = {
+  timezone?: string;
   date?: string; // YYYY-MM-DD format for one-time schedules
   expirationDate?: string; // YYYY-MM-DD format for recurring expiration
   max_failure_count?: number;
 };
 
 type SchedulePickerProps = {
+  timezone?: string;
   value: string; // cron expression
   onChange: (cronExpression: string) => void;
   onConfigChange?: (config: ScheduleConfig) => void;
@@ -108,12 +111,16 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   initialConfig,
   isEditing = false,
   useDefaultTime = false,
+  timezone,
 }) => {
   const { t, i18n } = useTranslation();
   // A stored schedule the editor cannot show selects no frequency, so it is
   // kept until the user picks one.
   const [frequency, setFrequency] = useState<FrequencyType | null>(() =>
-    value && !parseCron(value, new Date(), initialConfig?.date) ? null : 'daily'
+    value &&
+    !parseCron(value, new Date(), initialConfig?.date, initialConfig?.timezone)
+      ? null
+      : 'daily'
   );
   const [defaultStart] = useState(nextFullHour);
   const [hour, setHour] = useState<string>(
@@ -132,7 +139,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   const minuteOptions = useMemo(() => generateMinuteOptions(), []);
   const previousCronRef = useRef<string>('');
   const originalSchedule = useRef(
-    parseCron(value, new Date(), initialConfig?.date)
+    parseCron(value, new Date(), initialConfig?.date, initialConfig?.timezone)
   ).current;
 
   // One-time dates are initialized from the shared parser with the persisted UTC year.
@@ -150,7 +157,12 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   // The picker, examples and details share the same UTC conversion contract.
   useEffect(() => {
     if (!value || value === previousCronRef.current) return;
-    const parsed = parseCron(value, new Date(), initialConfig?.date);
+    const parsed = parseCron(
+      value,
+      new Date(),
+      initialConfig?.date,
+      initialConfig?.timezone
+    );
     if (!parsed) {
       setFrequency(null);
     } else if (!(useDefaultTime && value === '0 0 * * *')) {
@@ -164,7 +176,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         setDayOfMonth(String(parsed.dayOfMonth));
     }
     previousCronRef.current = value;
-  }, [value, useDefaultTime, initialConfig?.date]);
+  }, [value, useDefaultTime, initialConfig?.date, initialConfig?.timezone]);
 
   // The hour, minute and day fields accept free text, so only these parsed
   // values may build the schedule; Date would roll 25:54 over to 01:54.
@@ -210,7 +222,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   let cron: string | null = null;
   if (selectedSchedule) {
     try {
-      cron = scheduleToCron(selectedSchedule);
+      cron = scheduleToCron(selectedSchedule, new Date(), timezone);
     } catch {
       /* Cannot represent this local monthly day in a UTC cron. */
     }
@@ -231,7 +243,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     // The UTC date offsets below need a valid time; an invalid one cannot be
     // saved, and the config is emitted again once it is corrected.
     if (hourNum === null || minuteNum === null) return;
-    const config: ScheduleConfig = {};
+    const config: ScheduleConfig = timezone ? { timezone } : {};
 
     if (frequency === null) {
       // The kept schedule keeps its stored dates too.
@@ -242,7 +254,9 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
 
     if (frequency === 'one-time' && oneTimeDate) {
       // Apply UTC dayOffset so config.date matches the UTC date in the cron expression
-      const { dayOffset } = localTimeToUTC(hourNum, minuteNum, oneTimeDate);
+      const { dayOffset } = timezone
+        ? { dayOffset: 0 }
+        : localTimeToUTC(hourNum, minuteNum, oneTimeDate);
       const utcDate = new Date(oneTimeDate);
       utcDate.setDate(utcDate.getDate() + dayOffset);
       config.date = format(utcDate, 'yyyy-MM-dd');
@@ -252,7 +266,9 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
       // Apply UTC dayOffset so expiration date aligns with the UTC date the cron actually fires on.
       // e.g. if local 23:00 in UTC-5 becomes 04:00 UTC next day (dayOffset=+1),
       // the "last allowed UTC run date" must also shift forward by 1.
-      const { dayOffset } = localTimeToUTC(hourNum, minuteNum, expiredAt);
+      const { dayOffset } = timezone
+        ? { dayOffset: 0 }
+        : localTimeToUTC(hourNum, minuteNum, expiredAt);
       const utcExpiredAt = new Date(expiredAt);
       utcExpiredAt.setDate(utcExpiredAt.getDate() + dayOffset);
       config.expirationDate = format(utcExpiredAt, 'yyyy-MM-dd');
@@ -264,9 +280,18 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
 
     onConfigChange?.(config);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frequency, oneTimeDate, expiredAt, maxFailureCount, hourNum, minuteNum]);
+  }, [
+    frequency,
+    oneTimeDate,
+    expiredAt,
+    maxFailureCount,
+    hourNum,
+    minuteNum,
+    timezone,
+  ]);
 
   const oneTimeTooFarAhead =
+    !timezone &&
     selectedSchedule?.frequency === 'once' &&
     isOneTimeTooFarAhead(selectedSchedule);
 
@@ -274,18 +299,21 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     // The server would not use a date a year or more ahead; do not preview it.
     if (!selectedSchedule || !cron || oneTimeTooFarAhead) return [];
     const times: Date[] = [];
+    // No run is due after the end date's last local minute.
+    const lastRunDay = expiredAt ? endOfDay(expiredAt) : null;
     let cursor = new Date();
     for (let index = 0; index < 5; index++) {
-      const next =
-        selectedSchedule.frequency === 'once'
+      const next = timezone
+        ? nextOccurrenceInZone(selectedSchedule, timezone, cursor)
+        : selectedSchedule.frequency === 'once'
           ? nextOccurrence(selectedSchedule, cursor)
           : getNextRun({ custom_cron_expression: cron }, cursor);
-      if (!next) break;
+      if (!next || (lastRunDay && next > lastRunDay)) break;
       times.push(next);
       cursor = next;
     }
     return times;
-  }, [selectedSchedule, cron, oneTimeTooFarAhead]);
+  }, [selectedSchedule, cron, oneTimeTooFarAhead, timezone, expiredAt]);
 
   const firstRun = unsupportedMonthlyTime
     ? null
@@ -327,6 +355,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
       minute: '2-digit',
       hour12: true,
       timeZoneName: 'short',
+      ...(timezone ? { timeZone: timezone } : {}),
     });
   };
 

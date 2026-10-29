@@ -314,7 +314,7 @@ class TriggerCrudService:
 
         # Recalculate next_run_at if cron expression or status changed for scheduled triggers
         if trigger.trigger_type == TriggerType.schedule:
-            if "custom_cron_expression" in update_data or "status" in update_data:
+            if "custom_cron_expression" in update_data or "status" in update_data or "config" in update_data:
                 if trigger.status == TriggerStatus.active and trigger.custom_cron_expression:
                     schedule_service = TriggerScheduleService(s)
                     trigger.next_run_at = schedule_service.calculate_next_run_at(trigger)
