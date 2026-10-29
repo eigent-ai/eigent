@@ -110,6 +110,7 @@ import {
 } from './localPathActions';
 import { setRoundedCorners } from './native/macos-window';
 import { confirmNativeQuit } from './nativeQuitGuard';
+import { RecordingAdapter } from './recording/adapter';
 import { RendererAppCommandCoordinator } from './rendererAppCommandCoordinator';
 import { registerReviewChangesIpcHandlers } from './reviewChanges';
 import {
@@ -165,6 +166,8 @@ let backendPort: number = 5001;
 let backendStartPromise: Promise<BackendStartResult> | null = null;
 let brainStreamRelay: BrainStreamRelay | null = null;
 const localControlCapability = crypto.randomBytes(32).toString('base64url');
+const recordingBootstrap = crypto.randomBytes(32).toString('base64url');
+let recordingAdapter: RecordingAdapter | null = null;
 let desktopInstanceId: string | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
@@ -1399,6 +1402,25 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
+  ipcMain.handle('recording-authorize', async (event, runId: unknown) => {
+    if (
+      !win ||
+      !isMainRendererSender(event.sender.id, win.webContents.id) ||
+      event.senderFrame !== win.webContents.mainFrame
+    )
+      throw new Error('Recording consent requires the main renderer');
+    if (typeof runId !== 'string') throw new Error('Invalid recording scope');
+    return recordingAdapter?.authorize(runId) ?? null;
+  });
+  ipcMain.handle('recording-revoke', async (event) => {
+    if (
+      !win ||
+      !isMainRendererSender(event.sender.id, win.webContents.id) ||
+      event.senderFrame !== win.webContents.mainFrame
+    )
+      throw new Error('Recording revoke requires the main renderer');
+    await recordingAdapter?.revoke();
+  });
   ipcMain.handle('get-local-control-capability', (event) => {
     if (!win || event.sender.id !== win.webContents.id) {
       throw new Error(
@@ -3811,6 +3833,7 @@ const checkAndStartBackend = async (
             ...codexResolverEnv,
             EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
             EIGENT_LOCAL_CONTROL_CAPABILITY: localControlCapability,
+            EIGENT_RECORDING_BOOTSTRAP: recordingBootstrap,
             EIGENT_DESKTOP_INSTANCE_ID: resolveDesktopInstanceId(),
             EIGENT_ELECTRON_CDP_PORT: String(browser_port),
             EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT:
@@ -3819,6 +3842,17 @@ const checkAndStartBackend = async (
               workspaceSecretBroker.capability,
           }
         );
+
+        await recordingAdapter?.dispose();
+        recordingAdapter = win
+          ? new RecordingAdapter({
+              window: win,
+              port: backendPort,
+              bootstrap: recordingBootstrap,
+              workerDirectory: path.join(__dirname, 'recording'),
+              locale: () => nativeMenuLocale ?? 'en-US',
+            })
+          : null;
 
         // Notify frontend that backend is ready
         log.info('Backend is ready, notifying frontend...');
@@ -4138,6 +4172,7 @@ app.on('before-quit', async (event) => {
   }
 
   closeCoordinator.markAppQuitInProgress();
+  void recordingAdapter?.dispose();
 
   // Stop CDP health-check polling
   stopCdpHealthCheck();
