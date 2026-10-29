@@ -58,6 +58,10 @@ import {
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import {
+  parseSpaceModelChoice,
+  SPACE_MODEL_METADATA_KEY,
+} from '@/lib/spaceModelChoice';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { errorCopy } from '@/lib/usageErrors';
@@ -422,7 +426,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       sessionModelIdentity &&
       sessionModelIdentity.category === sessionModelSelection?.modelType
     );
-  const composerModelType = sessionModelSelection?.modelType ?? modelType;
+  // An unpinned new Session starts on its Space's saved model.
+  const spaceModelType = parseSpaceModelChoice(
+    activeProject?.metadata?.spaceModelDefaultPending === true
+      ? sessionSpace?.metadata?.[SPACE_MODEL_METADATA_KEY]
+      : null
+  )?.modelType;
+  const composerModelType =
+    sessionModelSelection?.modelType ?? spaceModelType ?? modelType;
   const usage = useUsageNoticeStore();
   const subscriptionUsage = usage.subscription;
   const currentCredits = usage.credits;

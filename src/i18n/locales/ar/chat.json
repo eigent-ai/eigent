@@ -617,5 +617,6 @@
   "automation-review-required": "راجع الجدول والمدخلات المطلوبة قبل الإنشاء.",
   "notice-use-own-api-key": "استخدم مفتاح API الخاص بك",
   "notice-credits-new": "أضف أرصدة لبدء تشغيل المهام.",
-  "notice-credits-new-description": "رقِّ خطتك أو استخدم مفتاح API لنموذجك."
+  "notice-credits-new-description": "رقِّ خطتك أو استخدم مفتاح API لنموذجك.",
+  "space-model-fallback": "نموذج هذه المساحة لم يعد متاحاً، لذا تستخدم هذه الجلسة نموذجك الافتراضي."
 }

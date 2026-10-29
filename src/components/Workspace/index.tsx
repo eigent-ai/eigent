@@ -36,6 +36,10 @@ import { useHost } from '@/host';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import {
+  parseSpaceModelChoice,
+  SPACE_MODEL_METADATA_KEY,
+} from '@/lib/spaceModelChoice';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import {
@@ -189,9 +193,16 @@ export default function Workspace({
     (!activeSpace.userId || activeSpace.userId === String(user_id))
   );
   const canStartWithModel = hasModel || canResolveSpaceModelAtLaunch;
+  const spaceModelType = useSpaceStore((state) =>
+    activeSpaceId
+      ? parseSpaceModelChoice(
+          state.spaces?.[activeSpaceId]?.metadata?.[SPACE_MODEL_METADATA_KEY]
+        )?.modelType
+      : undefined
+  );
   const modelQuota = useNewSessionModelQuota(
     canResolveSpaceModelAtLaunch ? activeSpaceId : null,
-    modelType
+    spaceModelType ?? modelType
   );
   const incidentBanner = useUsageIncidentBanner(
     modelQuota.isCurrentAccount ? (modelQuota.effectiveModelType ?? '') : ''

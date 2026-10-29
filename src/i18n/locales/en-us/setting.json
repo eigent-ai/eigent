@@ -2,7 +2,7 @@
   "model-list": {
     "all-providers": "All model providers",
     "default-model": "Default model",
-    "default-model-description": "This default model will be used for new Sessions until you change it.",
+    "default-model-description": "This default model will be used for new Spaces until you change it.",
     "add-provider": "Add provider",
     "add-model": "Add model",
     "add-more": "Add more",

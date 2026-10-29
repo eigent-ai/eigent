@@ -601,5 +601,6 @@
   "automation-review-required": "Prüfe vor dem Erstellen Zeitplan und erforderliche Eingaben.",
   "notice-use-own-api-key": "Eigenen API-Schlüssel verwenden",
   "notice-credits-new": "Füge Credits hinzu, um Aufgaben auszuführen.",
-  "notice-credits-new-description": "Upgrade deinen Tarif oder verwende den API-Schlüssel deines eigenen Modells."
+  "notice-credits-new-description": "Upgrade deinen Tarif oder verwende den API-Schlüssel deines eigenen Modells.",
+  "space-model-fallback": "Das Modell dieses Bereichs ist nicht mehr verfügbar, daher verwendet diese Sitzung dein Standardmodell."
 }
