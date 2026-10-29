@@ -59,7 +59,7 @@ const MENU_CONTENT_WIDTH_CLASS = 'w-[280px]';
 
 const triggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
-  'bg-ds-neutral-default-default text-ds-ink-default-default'
+  'bg-ds-neutral-subtle-default text-ds-ink-default-default'
 );
 
 export interface ApprovalModeSelectProps {
@@ -253,8 +253,8 @@ export function ApprovalModeSelect({
             triggerShellClass,
             'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
             'justify-between font-semibold transition-colors',
-            'hover:bg-ds-neutral-subtle-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-subtle-default',
-            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none',
+            'hover:bg-ds-neutral-default-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-default-default',
+            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-subtle-default focus-visible:outline-none',
             'disabled:pointer-events-none disabled:opacity-50',
             className
           )}

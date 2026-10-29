@@ -413,7 +413,7 @@ export const Inputbox = ({
     <div
       data-bottom-box-input-surface
       className={cn(
-        'relative flex w-full flex-col items-start rounded-ds-24 border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default px-ds-panel-inset py-ds-12 transition-colors',
+        'relative flex w-full flex-col items-start rounded-ds-24 border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default px-ds-panel-inset py-ds-12 shadow-ds-elevation-card transition-colors',
         !disabled &&
           (isFocused || hasContent) &&
           'border-ds-border-information-default-default',

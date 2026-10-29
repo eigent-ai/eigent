@@ -98,7 +98,7 @@ const THINKING_EFFORT_TRACK_PATH =
 
 const triggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-ds-8',
-  'bg-ds-neutral-default-default text-ds-ink-default-default'
+  'bg-ds-neutral-subtle-default text-ds-ink-default-default'
 );
 
 function sliderPosition(index: number) {
@@ -406,9 +406,9 @@ export function ModelAndThinkingEffortSelect({
             triggerShellClass,
             'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
             'justify-start font-semibold transition-colors',
-            'hover:bg-ds-neutral-subtle-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-subtle-default',
+            'hover:bg-ds-neutral-default-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-default-default',
             DS_FOCUS_RING,
-            'focus-visible:ring-offset-ds-neutral-default-default',
+            'focus-visible:ring-offset-ds-neutral-subtle-default',
             'disabled:pointer-events-none disabled:opacity-50',
             className
           )}

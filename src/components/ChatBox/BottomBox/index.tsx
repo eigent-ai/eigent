@@ -268,10 +268,16 @@ export default function BottomBox({
   const toggleToken = (token: string) =>
     inputValue.includes(token) ? removeToken(token) : insertToken(token);
 
-  // Background color reflects current state only
-  let backgroundClass = 'bg-ds-neutral-default-default';
-  if (state === 'confirm' || state === 'save')
-    backgroundClass = 'bg-ds-bg-status-completed-subtle-default';
+  // Background color reflects current state only. The composer tray matches
+  // the chat canvas so its footer row reads as part of the background; the
+  // queued list keeps its own surface, which is the only outline it has.
+  const isPlanState = state === 'confirm' || state === 'save';
+  const backgroundClass = isPlanState
+    ? 'bg-ds-bg-status-completed-subtle-default'
+    : 'bg-ds-neutral-subtle-default';
+  const queuedBackgroundClass = isPlanState
+    ? 'bg-ds-bg-status-completed-subtle-default'
+    : 'bg-ds-neutral-default-default';
 
   const showQueuedBox = enableQueuedBox && queuedMessages.length > 0;
   const activePickerPanel =
@@ -307,13 +313,13 @@ export default function BottomBox({
   return (
     <div
       data-bottom-box
-      className={`relative z-50 flex w-full flex-col ${showQueuedBox ? 'gap-0' : 'gap-1 rounded-ds-24 bg-ds-neutral-default-default'}`}
+      className={`relative z-50 flex w-full flex-col ${showQueuedBox ? 'gap-0' : 'gap-1 rounded-ds-24 bg-ds-neutral-subtle-default'}`}
     >
       {/* QueryBox — queued user requests remain separate from BoxMain. */}
       {showQueuedBox && (
         <QueueReveal reducedMotion={shouldReduceMotion}>
           <QueuedBox
-            className={backgroundClass}
+            className={queuedBackgroundClass}
             queuedMessages={queuedMessages}
             queueContext={queueContext}
             onRemoveQueuedMessage={onRemoveQueuedMessage}
