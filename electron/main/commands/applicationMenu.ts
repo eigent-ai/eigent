@@ -38,6 +38,11 @@ export interface ApplicationMenuOptions {
   platform: DesktopMenuPlatform;
   /** Guarded application quit request; intentionally not Electron's quit role. */
   requestQuit: () => void;
+  /**
+   * Close Window in a secondary (Session) window closes only that window.
+   * Returns false when the focused window is the main window.
+   */
+  closeSecondaryWindow?: () => boolean;
 }
 
 export interface ApplicationMenuApi<TMenu = Electron.Menu> {
@@ -432,7 +437,13 @@ function buildMacAppMenu(
 function buildFileMenu(
   options: ApplicationMenuOptions
 ): Electron.MenuItemConstructorOptions {
-  const { dispatchRendererCommand, messages, platform, requestQuit } = options;
+  const {
+    closeSecondaryWindow,
+    dispatchRendererCommand,
+    messages,
+    platform,
+    requestQuit,
+  } = options;
   const submenu: Electron.MenuItemConstructorOptions[] = [
     terminalSafe(platform, 'N', {
       id: 'file.new-project',
@@ -457,9 +468,11 @@ function buildFileMenu(
       id: 'file.close-window',
       label: messages.closeWindow,
       accelerator: platformAccelerator(platform, 'Command+W', 'Control+W'),
-      // Eigent owns a single application window. Closing it must tear down
-      // the local Brain and exit the app on every platform.
-      click: requestQuit,
+      // Closing the main window must tear down the local Brain and exit the
+      // app on every platform; a Session window just closes.
+      click: () => {
+        if (!closeSecondaryWindow?.()) requestQuit();
+      },
     })
   );
 
