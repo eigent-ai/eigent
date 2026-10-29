@@ -188,8 +188,8 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   );
 
   // The first query follows the existing bottom reveal. From the second query
-  // onward, keep the new user box at the top of the ChatBox viewport so it sits
-  // below the fixed Session header with the standard 44px top gap.
+  // onward, keep the new user box flush with the top of the ChatBox viewport,
+  // just below the fixed Session header.
   useEffect(() => {
     if (previousQueryProjectIdRef.current !== activeProjectId) {
       previousQueryProjectIdRef.current = activeProjectId;

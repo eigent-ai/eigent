@@ -49,6 +49,7 @@ import { useTranslation } from 'react-i18next';
 
 import {
   animateChatTimelineAnchor,
+  isChatTimelineNearBottom,
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
 import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
@@ -59,17 +60,6 @@ import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { TimelineModeRenderer } from './TimelineModes';
 import type { ResolvedRunModel } from './TimelineModes/ModelChangeDivider';
 import { isActiveRunStatus } from './TimelineModes/shared';
-
-/** Extra slack beyond the BottomBox inset so "last message visible" still counts as pinned. */
-const NEAR_BOTTOM_SLACK_PX = 48;
-
-export function isChatTimelineNearBottom(
-  distanceFromBottom: number,
-  bottomInsetPx: number,
-  slackPx = NEAR_BOTTOM_SLACK_PX
-): boolean {
-  return distanceFromBottom <= Math.max(0, bottomInsetPx) + slackPx;
-}
 
 interface EventNativeTimelineWindow {
   hiddenNodeCount: number;
@@ -603,23 +593,35 @@ export function EventNativeProjectTimeline({
           () => {
             ignoreAnchorScrollRef.current = false;
             pinToBottomRef.current = false;
+            // Hold the anchored query, not the pre-animation position, while
+            // the response grows beneath it.
+            captureReadingAnchor();
           }
         );
       }
     } else if (isNewUserMessage || wasNearBottom) {
       pinToBottomRef.current = true;
       container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
-    } else if (readingAnchorRef.current?.projectId === projectId) {
+    } else if (
+      !ignoreAnchorScrollRef.current &&
+      readingAnchorRef.current?.projectId === projectId
+    ) {
       restoreReadingAnchor();
     }
     previousHistoryRef.current = runtime.snapshot?.history;
     previousLatestUserQueryKeyRef.current = latestUserQueryKey;
     previousScrollHeightRef.current = container.scrollHeight;
-    captureReadingAnchor();
+    // The anchor animation owns the scroll position until it settles; a
+    // reading anchor captured or restored meanwhile would pull it back.
+    if (!ignoreAnchorScrollRef.current) captureReadingAnchor();
 
     const resizeObserver =
       content &&
       new ResizeObserver(() => {
+        if (ignoreAnchorScrollRef.current) {
+          previousScrollHeightRef.current = container.scrollHeight;
+          return;
+        }
         if (pinToBottomRef.current) {
           container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
         } else restoreReadingAnchor();
