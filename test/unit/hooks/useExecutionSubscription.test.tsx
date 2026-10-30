@@ -38,6 +38,7 @@ const {
   mockSetWsConnectionStatus,
   mockSetLastPongTimestamp,
   mockSetWsReconnectCallback,
+  mockMarkWsSubscribed,
   mockEmitWebSocketEvent,
   mockAddLog,
   mockInvalidateQueries,
@@ -47,6 +48,7 @@ const {
   mockSetWsConnectionStatus: vi.fn(),
   mockSetLastPongTimestamp: vi.fn(),
   mockSetWsReconnectCallback: vi.fn(),
+  mockMarkWsSubscribed: vi.fn(),
   mockEmitWebSocketEvent: vi.fn(),
   mockAddLog: vi.fn(),
   mockInvalidateQueries: vi.fn(),
@@ -83,18 +85,19 @@ vi.mock('@/store/triggerStore', () => ({
       setWsConnectionStatus: mockSetWsConnectionStatus,
       setLastPongTimestamp: mockSetLastPongTimestamp,
       setWsReconnectCallback: mockSetWsReconnectCallback,
+      markWsSubscribed: mockMarkWsSubscribed,
     };
     return selector ? selector(state) : state;
   }),
 }));
 
-let mockToken: string | null = 'test-auth-token';
+const authState = vi.hoisted(() => ({ token: 'test-auth-token', language: 'en' }));
 
 vi.mock('@/store/authStore', () => ({
   useAuthStore: vi.fn((selector?: any) => {
-    const state = { token: mockToken };
-    return selector ? selector(state) : state;
+    return selector ? selector(authState) : authState;
   }),
+  getAuthStore: vi.fn(() => authState),
 }));
 
 vi.mock('@/store/activityLogStore', () => ({
@@ -213,7 +216,7 @@ beforeEach(() => {
     randomUUID: vi.fn(() => 'test-session-uuid-1234'),
   });
 
-  mockToken = 'test-auth-token';
+  authState.token = 'test-auth-token';
   vi.clearAllMocks();
 });
 
@@ -306,7 +309,7 @@ describe('useExecutionSubscription', () => {
     });
 
     it('skips connection when token is null', async () => {
-      mockToken = null;
+      authState.token = null;
       renderHook(() => useExecutionSubscription(true));
       await tick(150);
 
@@ -448,7 +451,7 @@ describe('useExecutionSubscription', () => {
 
       expect(mockAddLog).toHaveBeenCalledWith(
         expect.objectContaining({
-          triggerName: 'Trigger #999',
+          triggerName: 'Automation #999',
         })
       );
     });
@@ -534,7 +537,8 @@ describe('useExecutionSubscription', () => {
         })
       );
       expect(toast.error).toHaveBeenCalledWith(
-        'Execution failed: Scheduled Trigger'
+        'Automation failed: Scheduled Trigger',
+        undefined
       );
     });
 
@@ -568,7 +572,9 @@ describe('useExecutionSubscription', () => {
 
       expect(mockInvalidateQueries).toHaveBeenCalledTimes(2);
       expect(mockPrefetchQuery).toHaveBeenCalledTimes(1);
-      expect(toast.success).toHaveBeenCalledWith('Trigger verified: #10');
+      expect(toast.success).toHaveBeenCalledWith(
+        'Automation verified: #10'
+      );
     });
 
     it('handles invalid JSON gracefully without throwing', async () => {
@@ -656,26 +662,26 @@ describe('useExecutionSubscription', () => {
       expect(newPingCalls.length).toBe(0);
     });
 
-    it('heartbeat message clears pong timeout and marks connected', async () => {
+    it('heartbeat does not clear pong timeout — only pong proves delivery', async () => {
       await connectAndWait();
 
       // Trigger ping to set pong timeout
       await tick(PING_INTERVAL + 100);
 
-      // Send heartbeat before pong timeout fires
+      // Send heartbeat; heartbeats bypass routing so they must NOT
+      // clear the pong timeout
       sendMessage({
         type: 'heartbeat',
         timestamp: '2025-01-01T00:00:00Z',
       });
 
-      // Advance past what would have been the pong timeout
+      // Pong timeout fires because no pong arrived
       await tick(PONG_TIMEOUT + 500);
 
       const unhealthyCalls = mockSetWsConnectionStatus.mock.calls.filter(
         (c: string[]) => c[0] === 'unhealthy'
       );
-      expect(unhealthyCalls.length).toBe(0);
-      expect(mockSetWsConnectionStatus).toHaveBeenCalledWith('connected');
+      expect(unhealthyCalls.length).toBe(1);
     });
   });
 
@@ -757,7 +763,8 @@ describe('useExecutionSubscription', () => {
 
       expect(mockWsConstructor.mock.calls.length).toBe(connectCount);
       expect(toast.error).toHaveBeenCalledWith(
-        'Lost connection to execution listener'
+        'Lost connection to the task listener. Reconnecting…',
+        undefined
       );
     });
 
@@ -843,7 +850,8 @@ describe('useExecutionSubscription', () => {
 
       expect(mockWsConstructor).toHaveBeenCalledTimes(1);
       expect(toast.error).toHaveBeenCalledWith(
-        'Authentication failed for execution listener'
+        "Couldn't sign in to the task listener. Try reconnecting.",
+        undefined
       );
     });
 
@@ -861,7 +869,8 @@ describe('useExecutionSubscription', () => {
 
       expect(mockWsConstructor).toHaveBeenCalledTimes(1);
       expect(toast.error).toHaveBeenCalledWith(
-        'Authentication failed for execution listener'
+        "Couldn't sign in to the task listener. Try reconnecting.",
+        undefined
       );
     });
 
@@ -893,7 +902,8 @@ describe('useExecutionSubscription', () => {
       });
 
       expect(toast.error).toHaveBeenCalledWith(
-        'Listener error: Authentication failed'
+        'Listener error: Authentication failed',
+        undefined
       );
       expect(mockWsInstance.close).toHaveBeenCalled();
     });
@@ -1090,7 +1100,8 @@ describe('useExecutionSubscription', () => {
       });
 
       expect(toast.error).toHaveBeenCalledWith(
-        'Listener error: Internal server error'
+        'Listener error: Internal server error',
+        undefined
       );
       // Should NOT close socket for non-auth errors
       expect(mockWsInstance.close).not.toHaveBeenCalled();

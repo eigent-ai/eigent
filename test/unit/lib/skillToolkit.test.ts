@@ -19,7 +19,12 @@ import {
   skillNameToDirName,
   splitFrontmatter,
 } from '@/lib/skillToolkit';
+import { getConnectionConfig } from '@/store/connectionStore';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/store/connectionStore', () => ({
+  getConnectionConfig: vi.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // splitFrontmatter
@@ -197,20 +202,19 @@ describe('hasSkillsFsApi', () => {
   afterEach(() => {
     // Restore window to jsdom default
     vi.restoreAllMocks();
+    (globalThis as any).window = originalWindow;
   });
 
-  it('returns false when electronAPI.skillsScan is missing', () => {
-    (globalThis as any).window = { electronAPI: {} };
+  it('returns false when no brainEndpoint is configured', () => {
+    vi.mocked(getConnectionConfig).mockReturnValue({} as any);
     expect(hasSkillsFsApi()).toBe(false);
-    (globalThis as any).window = originalWindow;
   });
 
-  it('returns true when window.electronAPI.skillsScan exists', () => {
-    (globalThis as any).window = {
-      electronAPI: { skillsScan: vi.fn() },
-    };
+  it('returns true when a brainEndpoint is configured', () => {
+    vi.mocked(getConnectionConfig).mockReturnValue({
+      brainEndpoint: 'http://localhost:8080',
+    } as any);
     expect(hasSkillsFsApi()).toBe(true);
-    (globalThis as any).window = originalWindow;
   });
 
   it('returns false when window is undefined', () => {

@@ -23,9 +23,25 @@ import {
   type MockedElectronAPI,
 } from '../../mocks/electronMocks';
 
+// The hook reaches Electron surfaces through useHost(); bridge it to the
+// globals that setupElectronMocks() installs in each beforeEach block
+vi.mock('@/host', () => ({
+  useHost: () => ({
+    electronAPI: (globalThis as any).electronAPI,
+    ipcRenderer: (globalThis as any).ipcRenderer,
+  }),
+}));
+
 // Mock the stores
 vi.mock('../../../src/store/installationStore');
-vi.mock('../../../src/store/authStore');
+vi.mock('../../../src/store/authStore', async (importOriginal) => {
+  const actual = await importOriginal<any>();
+  return {
+    ...actual,
+    useAuthStore: vi.fn(),
+    getAuthStore: vi.fn(() => ({ language: 'en' })),
+  };
+});
 
 describe('useInstallationSetup Hook', () => {
   let electronAPI: MockedElectronAPI;
@@ -200,14 +216,14 @@ describe('useInstallationSetup Hook', () => {
       // Get the registered callback
       const completeCallback =
         electronAPI.onInstallDependenciesComplete.mock.calls[0][0];
-      const completeData = { success: false, error: 'Installation failed' };
+      const completeData = { success: false, error: 'Installation Failed' };
 
       act(() => {
         completeCallback(completeData);
       });
 
       expect(mockInstallationStore.setError).toHaveBeenCalledWith(
-        'Installation failed'
+        'Installation Failed'
       );
       expect(mockAuthStore.setInitState).not.toHaveBeenCalledWith('done');
     });
@@ -224,7 +240,7 @@ describe('useInstallationSetup Hook', () => {
       });
 
       expect(mockInstallationStore.setError).toHaveBeenCalledWith(
-        'Installation failed'
+        'Installation Failed'
       );
     });
   });

@@ -306,7 +306,7 @@ describe('formatTriggeredTaskMessage', () => {
       const result = formatTriggeredTaskMessage(task);
 
       expect(result).toContain('Run this task');
-      expect(result).toContain('**Source:** Webhook trigger');
+      expect(result).toContain('**Source:** Webhook "');
       expect(result).toContain('**Method:** POST');
     });
   });
@@ -403,7 +403,7 @@ describe('formatTriggeredTaskMessage', () => {
 
       const result = formatTriggeredTaskMessage(task);
 
-      expect(result).toContain('**Source:** Slack trigger "Slack Bot"');
+      expect(result).toContain('**Source:** Slack event "Slack Bot"');
       expect(result).toContain('**Event Type:** message');
       expect(result).toContain('**Message:** Hello world');
       expect(result).toContain('**Channel ID:** C12345');
@@ -485,7 +485,7 @@ describe('formatTriggeredTaskMessage', () => {
 
       const result = formatTriggeredTaskMessage(task);
 
-      expect(result).toContain('**Source:** Slack trigger "Full Slack"');
+      expect(result).toContain('**Source:** Slack event "Full Slack"');
       expect(result).toContain('**Event Type:** app_mention');
       expect(result).toContain('**Message:** Hey bot');
       expect(result).toContain('**Channel ID:** C111');

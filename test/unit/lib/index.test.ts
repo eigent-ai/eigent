@@ -23,7 +23,6 @@ import {
 
 import {
   loadProjectFromHistory,
-  replayActiveTask,
   replayProject,
 } from '@/lib/replay';
 
@@ -180,7 +179,9 @@ describe('getProxyBaseURL', () => {
   it('throws when VITE_BASE_URL is empty in production', () => {
     import.meta.env.DEV = false as any;
     import.meta.env.VITE_BASE_URL = '';
-    expect(() => getProxyBaseURL()).toThrow('VITE_BASE_URL is not configured');
+    expect(() => getProxyBaseURL()).toThrow(
+      'VITE_BASE_URL or VITE_PROXY_URL is not configured'
+    );
   });
 });
 
@@ -194,10 +195,6 @@ describe('re-exports and uploadLog', () => {
 
   it('loadProjectFromHistory is a function', () => {
     expect(typeof loadProjectFromHistory).toBe('function');
-  });
-
-  it('replayActiveTask is a function', () => {
-    expect(typeof replayActiveTask).toBe('function');
   });
 
   it('replayProject is a function', () => {

@@ -13,18 +13,22 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import useAppVersion from '../../../src/hooks/use-app-version';
+
+const invokeMock = vi.fn();
+const host: { ipcRenderer?: { invoke: typeof invokeMock } } = {};
+
+vi.mock('@/host', () => ({
+  useHost: () => host,
+}));
 
 describe('useAppVersion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    host.ipcRenderer = { invoke: invokeMock };
     // Default: return a never-resolving promise so effects don't crash
-    window.ipcRenderer.invoke = vi.fn().mockReturnValue(new Promise(() => {}));
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
+    invokeMock.mockReturnValue(new Promise(() => {}));
   });
 
   it('should return an empty string initially', () => {
@@ -33,7 +37,7 @@ describe('useAppVersion', () => {
   });
 
   it('should set version on successful ipcRenderer invoke', async () => {
-    window.ipcRenderer.invoke = vi.fn().mockResolvedValue('1.2.3');
+    invokeMock.mockResolvedValue('1.2.3');
 
     const { result } = renderHook(() => useAppVersion());
 
@@ -41,13 +45,11 @@ describe('useAppVersion', () => {
       expect(result.current).toBe('1.2.3');
     });
 
-    expect(window.ipcRenderer.invoke).toHaveBeenCalledWith('get-app-version');
+    expect(invokeMock).toHaveBeenCalledWith('get-app-version');
   });
 
   it('should set "Unknown" when ipcRenderer invoke rejects', async () => {
-    window.ipcRenderer.invoke = vi
-      .fn()
-      .mockRejectedValue(new Error('IPC failure'));
+    invokeMock.mockRejectedValue(new Error('IPC failure'));
 
     const { result } = renderHook(() => useAppVersion());
 
@@ -56,32 +58,20 @@ describe('useAppVersion', () => {
     });
   });
 
-  it('should handle missing ipcRenderer — falls through to catch', async () => {
-    // When ipcRenderer is missing, ?.invoke returns undefined, then .then()
-    // throws. The hook does NOT have a try/catch, so the error propagates.
-    // Simulate the closest safe equivalent: invoke rejects immediately.
-    const original = window.ipcRenderer;
-    delete (window as any).ipcRenderer;
-
-    // Re-create minimal ipcRenderer with a rejecting invoke to simulate
-    // the "not available" scenario through the .catch() path
-    (window as any).ipcRenderer = {
-      invoke: vi.fn().mockRejectedValue(new Error('not available')),
-    };
+  it('should handle unavailable ipcRenderer through the catch path', async () => {
+    // Simulate the "not available" scenario via a rejecting invoke,
+    // exercising the same .catch() path as a missing host surface
+    invokeMock.mockRejectedValue(new Error('not available'));
 
     const { result } = renderHook(() => useAppVersion());
 
     await waitFor(() => {
       expect(result.current).toBe('Unknown');
     });
-
-    // Restore original mock
-    (window as any).ipcRenderer = original;
   });
 
   it('should only call invoke once on mount', async () => {
-    const invokeMock = vi.fn().mockResolvedValue('2.0.0');
-    window.ipcRenderer.invoke = invokeMock;
+    invokeMock.mockResolvedValue('2.0.0');
 
     renderHook(() => useAppVersion());
 
@@ -91,12 +81,12 @@ describe('useAppVersion', () => {
   });
 
   it('should call invoke with "get-app-version" channel', async () => {
-    window.ipcRenderer.invoke = vi.fn().mockResolvedValue('3.0.0');
+    invokeMock.mockResolvedValue('3.0.0');
 
     renderHook(() => useAppVersion());
 
     await waitFor(() => {
-      expect(window.ipcRenderer.invoke).toHaveBeenCalledWith('get-app-version');
+      expect(invokeMock).toHaveBeenCalledWith('get-app-version');
     });
   });
 });

@@ -49,7 +49,7 @@ describe('TriggerStore', () => {
   beforeEach(() => {
     useTriggerStore.setState({
       triggers: [],
-      webSocketEvent: null,
+      webSocketEvents: [],
       wsConnectionStatus: 'disconnected',
       lastPongTimestamp: null,
       wsReconnectCallback: null,
@@ -65,10 +65,10 @@ describe('TriggerStore', () => {
       expect(result.current.triggers).toEqual([]);
     });
 
-    it('should have null webSocketEvent', () => {
+    it('should have empty webSocketEvents queue', () => {
       const { result } = renderHook(() => useTriggerStore());
 
-      expect(result.current.webSocketEvent).toBeNull();
+      expect(result.current.webSocketEvents).toEqual([]);
     });
 
     it('should have wsConnectionStatus "disconnected"', () => {
@@ -394,68 +394,6 @@ describe('TriggerStore', () => {
     });
   });
 
-  // ─── duplicateTrigger ─────────────────────────────────────────────
-
-  describe('duplicateTrigger', () => {
-    it('should append a copy of the trigger to the array', () => {
-      const { result } = renderHook(() => useTriggerStore());
-      const original = createMockTrigger({ id: 1, name: 'Original' });
-
-      act(() => {
-        result.current.addTrigger(original);
-      });
-
-      act(() => {
-        result.current.duplicateTrigger(1);
-      });
-
-      expect(result.current.triggers).toHaveLength(2);
-      // The duplicate is a copy of the original object
-      expect(result.current.triggers[1]).toEqual(original);
-    });
-
-    it('should return the duplicated trigger', () => {
-      const { result } = renderHook(() => useTriggerStore());
-      const original = createMockTrigger({ id: 5, name: 'Dupa' });
-
-      act(() => {
-        result.current.addTrigger(original);
-      });
-
-      let returned: any;
-      act(() => {
-        returned = result.current.duplicateTrigger(5);
-      });
-
-      expect(returned).toEqual(original);
-    });
-
-    it('should return null when trigger id is not found', () => {
-      const { result } = renderHook(() => useTriggerStore());
-
-      let returned: any;
-      act(() => {
-        returned = result.current.duplicateTrigger(999);
-      });
-
-      expect(returned).toBeNull();
-    });
-
-    it('should not modify the array when trigger is not found', () => {
-      const { result } = renderHook(() => useTriggerStore());
-
-      act(() => {
-        result.current.addTrigger(createMockTrigger({ id: 1 }));
-      });
-
-      act(() => {
-        result.current.duplicateTrigger(999);
-      });
-
-      expect(result.current.triggers).toHaveLength(1);
-    });
-  });
-
   // ─── getTriggerById ───────────────────────────────────────────────
 
   describe('getTriggerById', () => {
@@ -497,7 +435,7 @@ describe('TriggerStore', () => {
   // ─── emitWebSocketEvent ───────────────────────────────────────────
 
   describe('emitWebSocketEvent', () => {
-    it('should set the webSocketEvent', () => {
+    it('should enqueue the event', () => {
       const { result } = renderHook(() => useTriggerStore());
 
       const event: WebSocketEvent = {
@@ -515,10 +453,10 @@ describe('TriggerStore', () => {
         result.current.emitWebSocketEvent(event);
       });
 
-      expect(result.current.webSocketEvent).toEqual(event);
+      expect(result.current.webSocketEvents).toEqual([event]);
     });
 
-    it('should replace the previous event when called again', () => {
+    it('should append events in order', () => {
       const { result } = renderHook(() => useTriggerStore());
 
       const event1: WebSocketEvent = {
@@ -551,14 +489,14 @@ describe('TriggerStore', () => {
         result.current.emitWebSocketEvent(event2);
       });
 
-      expect(result.current.webSocketEvent).toEqual(event2);
+      expect(result.current.webSocketEvents).toEqual([event1, event2]);
     });
   });
 
-  // ─── clearWebSocketEvent ──────────────────────────────────────────
+  // ─── takeWebSocketEvents ──────────────────────────────────────────
 
-  describe('clearWebSocketEvent', () => {
-    it('should set webSocketEvent to null', () => {
+  describe('takeWebSocketEvents', () => {
+    it('should drain the queue and empty it', () => {
       const { result } = renderHook(() => useTriggerStore());
 
       act(() => {
@@ -574,21 +512,25 @@ describe('TriggerStore', () => {
         });
       });
 
+      let taken: WebSocketEvent[] = [];
       act(() => {
-        result.current.clearWebSocketEvent();
+        taken = result.current.takeWebSocketEvents();
       });
 
-      expect(result.current.webSocketEvent).toBeNull();
+      expect(taken).toHaveLength(1);
+      expect(taken[0].triggerId).toBe(1);
+      expect(result.current.webSocketEvents).toEqual([]);
     });
 
-    it('should remain null when called with no active event', () => {
+    it('should return empty array when queue is empty', () => {
       const { result } = renderHook(() => useTriggerStore());
 
+      let taken: WebSocketEvent[] = [];
       act(() => {
-        result.current.clearWebSocketEvent();
+        taken = result.current.takeWebSocketEvents();
       });
 
-      expect(result.current.webSocketEvent).toBeNull();
+      expect(taken).toEqual([]);
     });
   });
 });
