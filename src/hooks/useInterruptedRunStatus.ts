@@ -262,11 +262,13 @@ export function useInterruptedRunStatus(projectId: string | null) {
 
   useEffect(() => {
     refreshRef.current = refresh;
+  }, [refresh]);
+
+  useEffect(() => {
     failedRefreshes.current = 0;
     void refresh();
 
     const handleFocus = () => void refresh();
-    const handleBackendReady = () => void refresh();
     const handleDurableRunStatusChanged = (event: Event) => {
       const changedProjectId = (event as CustomEvent<{ projectId?: string }>)
         .detail?.projectId;
@@ -274,23 +276,33 @@ export function useInterruptedRunStatus(projectId: string | null) {
         void refresh();
       }
     };
-    const ipcRenderer = host?.ipcRenderer;
     window.addEventListener('focus', handleFocus);
     window.addEventListener(
       DURABLE_RUN_STATUS_CHANGED_EVENT,
       handleDurableRunStatusChanged
     );
-    ipcRenderer?.on('backend-ready', handleBackendReady);
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener(
         DURABLE_RUN_STATUS_CHANGED_EVENT,
         handleDurableRunStatusChanged
       );
-      ipcRenderer?.off('backend-ready', handleBackendReady);
       clearTimeout(retryTimer.current);
     };
-  }, [host?.ipcRenderer, projectId, refresh]);
+  }, [projectId, refresh]);
+
+  // A host object that changes identity only re-subscribes to backend-ready.
+  // It must not start another load: the load marks the status as unsettled,
+  // and a render caused by that would otherwise re-run this effect forever.
+  useEffect(() => {
+    const ipcRenderer = host?.ipcRenderer;
+    if (!ipcRenderer) return;
+    const handleBackendReady = () => void refreshRef.current?.();
+    ipcRenderer.on('backend-ready', handleBackendReady);
+    return () => {
+      ipcRenderer.off('backend-ready', handleBackendReady);
+    };
+  }, [host?.ipcRenderer]);
 
   const settled =
     loadedScope === scope &&

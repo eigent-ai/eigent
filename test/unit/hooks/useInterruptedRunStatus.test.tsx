@@ -455,6 +455,51 @@ describe('useInterruptedRunStatus', () => {
     }
   });
 
+  it('only re-subscribes to backend-ready when the host object changes', async () => {
+    let host = { electronAPI: null, ipcRenderer };
+    const hostWrapper = ({ children }: { children: ReactNode }) => (
+      <HostProvider host={host}>{children}</HostProvider>
+    );
+    const { result, rerender } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper: hostWrapper }
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    const firstListener = listeners.get('backend-ready');
+    expect(firstListener).toBeDefined();
+
+    // A provider that hands out a new host object must not start another
+    // load; a load marks the status unsettled and would re-render in a loop.
+    const nextIpcRenderer = {
+      on: vi.fn((channel: string, listener: (...args: any[]) => void) => {
+        listeners.set(channel, listener);
+      }),
+      off: vi.fn(),
+    };
+    host = { electronAPI: null, ipcRenderer: nextIpcRenderer };
+    rerender();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    expect(result.current.settled).toBe(true);
+    expect(ipcRenderer.off).toHaveBeenCalledWith(
+      'backend-ready',
+      firstListener
+    );
+    expect(nextIpcRenderer.on).toHaveBeenCalledWith(
+      'backend-ready',
+      expect.any(Function)
+    );
+
+    await act(async () => {
+      listeners.get('backend-ready')?.();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(fetchGetMock).toHaveBeenCalledTimes(2));
+  });
+
   it('coalesces overlapping refreshes for the same Project', async () => {
     let resolveRequest!: (value: unknown) => void;
     fetchGetMock.mockReturnValue(
