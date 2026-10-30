@@ -17,9 +17,12 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+      // The lockfile-less install pulls the ancient `path` npm polyfill
+      // (via @quetzallabs/i18n); it must never shadow the Node builtin
+      { find: /^path$/, replacement: 'node:path' },
+    ],
   },
   test: {
     root: __dirname,

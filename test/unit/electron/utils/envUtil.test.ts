@@ -34,6 +34,17 @@ const {
   mockReadFileSync,
   mockReaddirSync,
   mockHomedir,
+  // Atomic-write surface used by writeEnvFile
+  mockLstatSync,
+  mockRealpathSync,
+  mockOpenSync,
+  mockFchmodSync,
+  mockFstatSync,
+  mockWriteFileSync,
+  mockFsyncSync,
+  mockCloseSync,
+  mockRenameSync,
+  mockRmSync,
 } = vi.hoisted(() => ({
   mockExistsSync: vi.fn<(path: string) => boolean>(),
   mockMkdirSync: vi.fn(),
@@ -42,6 +53,16 @@ const {
   mockReadFileSync: vi.fn<(path: string, encoding: string) => string>(),
   mockReaddirSync: vi.fn(),
   mockHomedir: vi.fn<() => string>(),
+  mockLstatSync: vi.fn<() => undefined>(),
+  mockRealpathSync: vi.fn((p: string) => p),
+  mockOpenSync: vi.fn(() => 1),
+  mockFchmodSync: vi.fn(),
+  mockFstatSync: vi.fn(() => ({ mode: 0o600 })),
+  mockWriteFileSync: vi.fn(),
+  mockFsyncSync: vi.fn(),
+  mockCloseSync: vi.fn(),
+  mockRenameSync: vi.fn(),
+  mockRmSync: vi.fn(),
 }));
 
 vi.mock('fs', () => ({
@@ -52,6 +73,16 @@ vi.mock('fs', () => ({
     chmodSync: mockChmodSync,
     readFileSync: mockReadFileSync,
     readdirSync: mockReaddirSync,
+    lstatSync: mockLstatSync,
+    realpathSync: mockRealpathSync,
+    openSync: mockOpenSync,
+    fchmodSync: mockFchmodSync,
+    fstatSync: mockFstatSync,
+    writeFileSync: mockWriteFileSync,
+    fsyncSync: mockFsyncSync,
+    closeSync: mockCloseSync,
+    renameSync: mockRenameSync,
+    rmSync: mockRmSync,
   },
   existsSync: mockExistsSync,
   mkdirSync: mockMkdirSync,
@@ -59,6 +90,16 @@ vi.mock('fs', () => ({
   chmodSync: mockChmodSync,
   readFileSync: mockReadFileSync,
   readdirSync: mockReaddirSync,
+  lstatSync: mockLstatSync,
+  realpathSync: mockRealpathSync,
+  openSync: mockOpenSync,
+  fchmodSync: mockFchmodSync,
+  fstatSync: mockFstatSync,
+  writeFileSync: mockWriteFileSync,
+  fsyncSync: mockFsyncSync,
+  closeSync: mockCloseSync,
+  renameSync: mockRenameSync,
+  rmSync: mockRmSync,
 }));
 
 vi.mock('os', () => ({
@@ -555,27 +596,31 @@ describe('envUtil', () => {
       expect(mockMkdirSync).not.toHaveBeenCalled();
     });
 
-    it('should copy default env and set permissions when user env does not exist', () => {
-      // existsSync calls: 1) eigentDir → true, 2) envPath → false, 3) defaultEnv → true
+    it('should write default env and set permissions when user env does not exist', () => {
+      // existsSync calls: 1) eigentDir → true, 2) envPath → false,
+      // 3) defaultEnv → true, 4) envPath again (after write) → true
       mockExistsSync
         .mockReturnValueOnce(true) // eigentDir exists
         .mockReturnValueOnce(false) // user env does not exist
-        .mockReturnValueOnce(true); // default env exists
+        .mockReturnValueOnce(true) // default env exists
+        .mockReturnValueOnce(true); // user env exists after the atomic write
 
       const result = getEnvPath('user@example.com');
 
-      expect(mockCopyFileSync).toHaveBeenCalled();
+      expect(mockReadFileSync).toHaveBeenCalled();
+      expect(mockWriteFileSync).toHaveBeenCalled();
+      expect(mockRenameSync).toHaveBeenCalled();
       expect(mockChmodSync).toHaveBeenCalledWith(result, 0o600);
     });
 
-    it('should NOT copy default env when user env already exists', () => {
+    it('should NOT write default env when user env already exists', () => {
       // existsSync calls: 1) eigentDir → true, 2) user env → true
       mockExistsSync.mockReturnValue(true);
 
       getEnvPath('user@example.com');
 
-      expect(mockCopyFileSync).not.toHaveBeenCalled();
-      expect(mockChmodSync).not.toHaveBeenCalled();
+      expect(mockWriteFileSync).not.toHaveBeenCalled();
+      expect(mockRenameSync).not.toHaveBeenCalled();
     });
 
     it('should NOT copy default env when default env does not exist', () => {

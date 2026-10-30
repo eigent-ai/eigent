@@ -38,7 +38,7 @@ const mockImplementation = {
   proxyFetchPut: vi.fn(() => Promise.resolve({ success: true })),
   proxyFetchGet: vi.fn((url, _params) => {
     // Mock user key
-    if (url.includes('/api/user/key')) {
+    if (url.includes('/user/key')) {
       return Promise.resolve({
         value: 'test-api-key',
         api_url: 'https://api.openai.com',
@@ -49,7 +49,7 @@ const mockImplementation = {
       return Promise.resolve({ items: [] });
     }
     // Mock privacy settings
-    if (url.includes('/api/user/privacy')) {
+    if (url.includes('/user/privacy')) {
       return Promise.resolve({
         dataCollection: true,
         analytics: true,
@@ -57,7 +57,7 @@ const mockImplementation = {
       });
     }
     // Mock configs
-    if (url.includes('/api/configs')) {
+    if (url.includes('/configs')) {
       return Promise.resolve([]);
     }
     // Mock snapshots - return empty array to prevent the error
@@ -68,8 +68,20 @@ const mockImplementation = {
     return Promise.resolve({});
   }),
   uploadFile: vi.fn(),
+  sseTransport: vi.fn(() => Promise.resolve()),
   fetchDelete: vi.fn(),
-  fetchGet: vi.fn(() => Promise.resolve({})),
+  fetchGet: vi.fn((url: string) => {
+    // Session execution routing — default everything to the legacy route
+    // so integration flows behave as a single-session app under test
+    const routeMatch = url.match(/\/projects\/([^/]+)\/execution-route/);
+    if (routeMatch) {
+      return Promise.resolve({
+        project_id: decodeURIComponent(routeMatch[1]),
+        route: 'legacy',
+      });
+    }
+    return Promise.resolve({});
+  }),
   waitForBackendReady: vi.fn().mockResolvedValue(true),
   proxyFetchDelete: vi.fn(),
   checkBackendHealth: vi.fn().mockResolvedValue(true),
