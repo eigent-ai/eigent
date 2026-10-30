@@ -13,11 +13,17 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import Workspace from '@/components/Workspace';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
 import { errorCopy } from '@/lib/usageErrors';
 import { closeSSEConnectionsForTasks, useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { setConnectionConfig } from '@/store/connectionStore';
+import {
+  resetSessionDrafts,
+  sessionDraftKey,
+  useSessionDraftStore,
+} from '@/store/sessionDraftStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import {
   act,
@@ -223,6 +229,7 @@ describe('Workspace quota preview through real Space creation and Chat startup',
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetSessionDrafts();
     mocks.lateHeader.mockReset();
     mocks.realTransport = false;
     mocks.input = null;
@@ -287,7 +294,9 @@ describe('Workspace quota preview through real Space creation and Chat startup',
     mocks.pageStore = {
       activeWorkspaceTab: 'workforce',
       workspaceChatFocusRequestId: 0,
-      setActiveWorkspaceTab: vi.fn(),
+      setActiveWorkspaceTab: vi.fn((tab: string) => {
+        mocks.pageStore.activeWorkspaceTab = tab;
+      }),
       markSessionTaskStarted: vi.fn(),
       handOffNewSessionDraft: vi.fn(),
     };
@@ -391,9 +400,10 @@ describe('Workspace quota preview through real Space creation and Chat startup',
     vi.unstubAllGlobals();
   });
 
+  let composerTab = 'workforce';
   function mount(variant: (typeof variants)[number] = 'workspace') {
-    mocks.pageStore.activeWorkspaceTab =
-      variant === 'new-project' ? variant : 'workforce';
+    composerTab = variant === 'new-project' ? variant : 'workforce';
+    mocks.pageStore.activeWorkspaceTab = composerTab;
     // Enter a real draft before the cached incident reaches this composer;
     // disabled inputs must not be bypassed to seed text in the blocked state.
     const incidents = useUsageNoticeStore.getState().incidents;
@@ -430,7 +440,31 @@ describe('Workspace quota preview through real Space creation and Chat startup',
     expect(screen.getByLabelText('Draft attachments')).toHaveTextContent(
       'fixture.txt'
     );
-    expect(mocks.pageStore.setActiveWorkspaceTab).not.toHaveBeenCalled();
+    // A failed start may open its Session first, then returns to this page.
+    expect(mocks.pageStore.activeWorkspaceTab).toBe(composerTab);
+  }
+  // A start that fails after its Session opened keeps the user there, with the
+  // message waiting in that Session's composer.
+  function expectStayedInFailedSession() {
+    expect(mocks.pageStore.activeWorkspaceTab).toBe('project');
+    expect(
+      useSessionDraftStore.getState().drafts[
+        sessionDraftKey(
+          getAccountEnvironmentKey(mocks.auth),
+          mocks.projectStore.activeProjectId
+        )
+      ]?.text
+    ).toBe(question);
+  }
+  // Retrying from the composer means going back to it and drafting again.
+  function redraftFromComposer() {
+    act(() => {
+      mocks.pageStore.activeWorkspaceTab = composerTab;
+    });
+    fireEvent.change(screen.getByLabelText('Session message'), {
+      target: { value: question },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Attach file' }));
   }
   const createdProject = () =>
     mocks.projectStore.projects[mocks.projectStore.activeProjectId];
@@ -475,7 +509,7 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
       await waitFor(() => expect(notifyError).toHaveBeenCalledOnce());
       expect(delivery).not.toHaveBeenCalled();
-      expectDraftRetained();
+      expectStayedInFailedSession();
       const failedProject = createdProject();
       expect(failedProject.metadata).toMatchObject({
         spaceModelDefaultPending: true,
@@ -485,12 +519,13 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       const failedRun = mocks.sse.mock.calls[0][0].body.run_id;
       expect(chat.getState().tasks[failedRun].isPending).toBe(false);
       act(() => useUsageNoticeStore.setState({ incidents: [] }));
+      redraftFromComposer();
       await waitFor(() =>
         expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
       );
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
       await waitFor(() =>
-        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenCalledWith(
+        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
           'project'
         )
       );
@@ -547,17 +582,18 @@ describe('Workspace quota preview through real Space creation and Chat startup',
           screen.getByRole('button', { name: 'Select model' })
         ).toBeEnabled()
       );
-      expectDraftRetained();
+      expectStayedInFailedSession();
       expect(mocks.projectStore.createProject).toHaveBeenCalledOnce();
       expect(mocks.sse).toHaveBeenCalledOnce();
       expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
       expect(screen.getByLabelText('Session message')).toBeEnabled();
+      redraftFromComposer();
       expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
 
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
       await waitFor(() =>
-        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenCalledWith(
+        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
           'project'
         )
       );
@@ -622,7 +658,7 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       ).toBeEnabled();
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
       await waitFor(() =>
-        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenCalledWith(
+        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
           'project'
         )
       );
@@ -730,7 +766,7 @@ describe('Workspace quota preview through real Space creation and Chat startup',
 
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
       await waitFor(() =>
-        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenCalledWith(
+        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
           'project'
         )
       );
@@ -788,7 +824,7 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       releasePreflight();
     });
     await waitFor(() =>
-      expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenCalledWith(
+      expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
         'project'
       )
     );
@@ -859,7 +895,7 @@ describe('Workspace quota preview through real Space creation and Chat startup',
         mocks.projectStore.setProjectModelAdmission
       ).not.toHaveBeenCalled();
       expect(createdProject().metadata.modelSelection).toBeUndefined();
-      expectDraftRetained();
+      expectStayedInFailedSession();
     }
   );
 
@@ -902,7 +938,7 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       expect(createdProject().metadata.spaceModelDefaultPending).toBe(true);
       expect(createdProject().metadata.spaceModelAdmissionRunId).toBeNull();
       expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
-      expectDraftRetained();
+      expectStayedInFailedSession();
     }
   );
 });

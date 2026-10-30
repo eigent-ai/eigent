@@ -18,6 +18,7 @@ import type {
   ChatInteractionNode,
 } from '../types';
 
+import { approvalRequestText } from '@/lib/approvalPresentation';
 import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import i18next from 'i18next';
 import { actionKindForActivities } from './actionKind';
@@ -178,16 +179,21 @@ export function humanCallTitle(node: ChatInteractionNode): string {
     return i18next.t('chat.timeline-input-required', {
       defaultValue: 'Input required',
     });
-  if (node.status === 'cancelled')
-    return i18next.t('chat.timeline-input-cancelled', {
-      defaultValue: 'Input cancelled',
-    });
-  if (node.status === 'expired')
-    return i18next.t('chat.timeline-input-expired', {
-      defaultValue: 'Input expired',
-    });
-
   const family = interactionFamily(node.interactionType);
+  // Same wording as the approval card, so one request never reads two ways.
+  if (node.status === 'cancelled')
+    return family === 'authorize'
+      ? i18next.t('chat.approval-cancelled-title')
+      : i18next.t('chat.timeline-input-cancelled', {
+          defaultValue: 'Input cancelled',
+        });
+  if (node.status === 'expired')
+    return family === 'authorize'
+      ? i18next.t('chat.approval-expired-title')
+      : i18next.t('chat.timeline-input-expired', {
+          defaultValue: 'Input expired',
+        });
+
   if (family === 'authorize') {
     return isRejectedDecision(node.response)
       ? i18next.t('chat.timeline-you-rejected', {
@@ -252,6 +258,13 @@ function humanCall(id: string, node: ChatInteractionNode): TimelineCall {
   const family = interactionFamily(node.interactionType);
   const labels = familyLabels(family);
   const pending = node.status === 'requested';
+  // A cancelled or expired request ended without the user deciding. Its stored
+  // decision is how Eigent closed it, so show why it closed instead.
+  const closed = node.status === 'cancelled' || node.status === 'expired';
+  const reason = runTerminalReasonText(
+    node.terminalReason,
+    i18next.t.bind(i18next)
+  );
 
   return {
     id,
@@ -260,11 +273,13 @@ function humanCall(id: string, node: ChatInteractionNode): TimelineCall {
     title: humanCallTitle(node),
     actionKind: 'message',
     status: interactionCallStatus(node),
-    input: node.prompt,
-    output: node.response,
-    detail:
-      runTerminalReasonText(node.terminalReason, i18next.t.bind(i18next)) ||
-      undefined,
+    input: approvalRequestText(node.prompt, node.targets) || undefined,
+    output: closed ? undefined : node.response,
+    detail: reason || undefined,
+    notice:
+      closed && reason
+        ? { eventId: node.eventId, content: reason, severity: 'info' }
+        : undefined,
     inputLabel: labels.input,
     outputLabel: labels.output,
     emptyOutputText: pending

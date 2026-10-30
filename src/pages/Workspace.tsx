@@ -29,6 +29,7 @@ import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup
 import SpaceSidebar from '@/components/SpaceSidebar';
 import TriggerPanel from '@/components/Trigger';
 import Workspace from '@/components/Workspace';
+import { SpaceOverviewPanel } from '@/components/Workspace/SpaceOverview';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
@@ -50,6 +51,11 @@ import { useSpaceStore } from '@/store/spaceStore';
 
 import Session from '@/components/Session';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
+import { SessionSplitView } from '@/components/Session/SplitView';
+import { SessionInOwnWindow } from '@/components/SessionWindow/SessionInOwnWindow';
+import { useSessionSplitFocusTracking } from '@/hooks/useSessionSplitView';
+import { useMainWindowSessionWindows } from '@/hooks/useSessionWindows';
+import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
 
 export default function WorkspacePage() {
   const { t } = useTranslation();
@@ -84,6 +90,12 @@ export default function WorkspacePage() {
   const workspaceMainBackground = useAuthStore(
     (s) => s.workspaceMainBackground
   );
+
+  const activeProjectWindowed = useSessionWindowsStore((s) =>
+    activeProjectId ? s.openProjectIds.includes(activeProjectId) : false
+  );
+  useSessionSplitFocusTracking();
+  useMainWindowSessionWindows();
 
   const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
@@ -395,8 +407,11 @@ export default function WorkspacePage() {
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
-            <div className={workspaceMainForegroundClass}>
-              <Workspace />
+            <div className={cn(workspaceMainForegroundClass, 'flex-row')}>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <Workspace />
+              </div>
+              <SpaceOverviewPanel />
             </div>
           </div>
         );
@@ -405,7 +420,16 @@ export default function WorkspacePage() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <div className={workspaceMainForegroundClass}>
-              <Session />
+              {activeProjectWindowed && activeProjectId && activeSpaceId ? (
+                <SessionInOwnWindow
+                  target={{
+                    spaceId: activeSpaceId,
+                    projectId: activeProjectId,
+                  }}
+                />
+              ) : (
+                <SessionSplitView />
+              )}
             </div>
           </div>
         );

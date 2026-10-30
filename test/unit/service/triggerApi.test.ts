@@ -933,3 +933,45 @@ describe('trigger execution status delivery', () => {
     expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
   });
 });
+
+describe('Space trigger listing on older servers', () => {
+  it('filters all pages locally when the server ignores space_id', async () => {
+    const http = await import('@/api/http');
+    const get = vi.mocked(http.proxyFetchGet);
+    get.mockReset();
+    const { useSpaceStore } = await import('@/store/spaceStore');
+    vi.spyOn(useSpaceStore.getState(), 'getProjectMeta').mockImplementation(
+      (id) => (id === 'legacy-session' ? ({ spaceId: 'space-1' } as any) : null)
+    );
+    get.mockResolvedValueOnce({
+      items: Array.from({ length: 100 }, (_, id) => ({
+        id,
+        space_id: 'space-2',
+      })),
+      total: 102,
+    });
+    get.mockResolvedValueOnce({
+      items: [
+        { id: 100, space_id: 'space-1' },
+        { id: 101, space_id: null, project_id: 'legacy-session' },
+      ],
+      total: 102,
+    });
+    const { proxyFetchSpaceTriggers } = await import('@/service/triggerApi');
+    const result = await proxyFetchSpaceTriggers('space-1');
+    expect(result.items.map((item) => item.id)).toEqual([100, 101]);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Automation Session name', () => {
+  it('saves the shown name through the Session name route', async () => {
+    mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+    const { proxySaveAutomationSessionName } =
+      await import('@/service/triggerApi');
+    await proxySaveAutomationSessionName('session-1', 'Automation: A & B');
+    expect(mocks.proxyFetchPut).toHaveBeenCalledWith(
+      '/api/v1/chat/project/session-1/name?new_name=Automation%3A%20A%20%26%20B'
+    );
+  });
+});

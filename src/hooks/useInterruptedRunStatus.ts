@@ -19,6 +19,7 @@ import type {
   ProjectedRun,
   ProjectedUnsafeResumeBlocker,
 } from '@/lib/projector';
+import { TERMINAL_RUN_STATUSES } from '@/lib/projector/runSummary';
 import {
   runEventIngressRegistry,
   runProjectionStore,
@@ -35,9 +36,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
+
+/** Retries after a failed load; later loads wait for focus/backend-ready. */
+const REFRESH_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
 
 export interface DurableRunSummary {
   run_id: string;
@@ -126,7 +131,9 @@ function projectedRunToDurableSummary(
  * normal path. A Brain restart while the renderer survives emits
  * `backend-ready`; returning to the app emits `focus`. Resume/cancel callers
  * also invoke `refresh` explicitly on errors. Those boundaries cover state
- * changes without a GET every five seconds for every open Project.
+ * changes without a GET every five seconds for every open Project. A failed
+ * load keeps the last reconciled state and retries a few times with backoff,
+ * then waits for the next boundary.
  */
 export function useInterruptedRunStatus(projectId: string | null) {
   const host = useHost();
@@ -136,6 +143,13 @@ export function useInterruptedRunStatus(projectId: string | null) {
     resumeRequestsRevision,
     resumeRequestsRevision
   );
+  const refreshRevision = useRef(0);
+  const lastLoadedScope = useRef<string | null>(null);
+  const failedRefreshes = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout>>();
+  const refreshRef = useRef<() => Promise<void>>();
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const scope = JSON.stringify([accountKey, projectId]);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const selectInterrupted = useCallback(
     (state: import('@/lib/projector').ProjectViewState | null) => {
@@ -206,21 +220,49 @@ export function useInterruptedRunStatus(projectId: string | null) {
         setDismissed(null);
         return Promise.resolve();
       }
+      const revision = ++refreshRevision.current;
+      const refreshAccountKey = getAccountEnvironmentKey(getAuthStore());
+      clearTimeout(retryTimer.current);
+      setLoadedScope(null);
       return runEventIngressRegistry
         .reconcileProject(projectId)
-        .then(() => setDismissed(null))
+        .then(() => {
+          if (
+            refreshRevision.current !== revision ||
+            getAccountEnvironmentKey(getAuthStore()) !== refreshAccountKey
+          )
+            return;
+          const loaded = JSON.stringify([accountKey, projectId]);
+          failedRefreshes.current = 0;
+          lastLoadedScope.current = loaded;
+          setDismissed(null);
+          setLoadedScope(loaded);
+        })
         .catch((error) => {
           // Brain can still be booting while the Project shell is visible. Keep
           // the last canonical state until backend-ready/focus retries it.
           if (error?.name !== 'AbortError') {
             console.debug('[RunControl] Run status refresh deferred', error);
           }
+          if (refreshRevision.current !== revision) return;
+          // Brain still refuses a busy Session, so a failed load must not
+          // hold queued messages until the next focus or backend-ready.
+          setLoadedScope(lastLoadedScope.current);
+          if (error?.name === 'AbortError') return;
+          const delay = REFRESH_RETRY_DELAYS_MS[failedRefreshes.current++];
+          if (delay !== undefined)
+            retryTimer.current = setTimeout(
+              () => void refreshRef.current?.(),
+              delay
+            );
         });
     },
-    [projectId]
+    [projectId, accountKey]
   );
 
   useEffect(() => {
+    refreshRef.current = refresh;
+    failedRefreshes.current = 0;
     void refresh();
 
     const handleFocus = () => void refresh();
@@ -246,8 +288,13 @@ export function useInterruptedRunStatus(projectId: string | null) {
         handleDurableRunStatusChanged
       );
       ipcRenderer?.off('backend-ready', handleBackendReady);
+      clearTimeout(retryTimer.current);
     };
   }, [host?.ipcRenderer, projectId, refresh]);
 
-  return { run, setRun, refresh };
+  const settled =
+    loadedScope === scope &&
+    (!summary ||
+      TERMINAL_RUN_STATUSES.has(summary.status as ProjectedRun['status']));
+  return { run, setRun, refresh, settled };
 }

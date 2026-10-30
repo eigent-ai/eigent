@@ -700,6 +700,129 @@ describe('injectHumanInputReceipts permission approvals', () => {
   });
 });
 
+describe('injectHumanInputReceipts question history', () => {
+  const humanTool = (id: string) =>
+    makeToolItem(id, {
+      rowTitle: 'Human Toolkit · Ask human via gui',
+      toolkitName: 'Human Toolkit',
+      method: 'Ask human via gui',
+    });
+  const question = (id: string, text: string): Message => ({
+    id: `ask-${id}`,
+    role: 'agent',
+    content: text,
+    step: AgentStep.ASK,
+    agent_name: 'single_agent',
+    interaction: {
+      interaction_id: id,
+      interaction_type: 'question',
+      run_id: 'task-1',
+      question: text,
+    },
+  });
+
+  it('keeps an answered question after Resume and drops the cancelled one', () => {
+    const tools = [humanTool('cancelled-call'), humanTool('answered-call')];
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: tools,
+      status: 'done',
+      doneToolCount: tools.length,
+      totalToolCount: tools.length,
+    };
+    const messages: Message[] = [
+      { id: 'prompt', role: 'user', content: 'Save my colour' },
+      question('cancelled', 'Which colour?'),
+      question('answered', 'Which colour?'),
+      {
+        id: 'tool-step',
+        role: 'agent',
+        content: '',
+        step: AgentStep.ACTIVATE_TOOLKIT,
+      },
+      {
+        id: 'reply',
+        role: 'user',
+        content: 'teal',
+        interactionResponseTo: 'answered',
+      },
+    ];
+
+    const [result] = injectHumanInputReceipts([group], messages, [
+      'cancelled',
+      'answered',
+    ]);
+    const items = result!.items as Array<{
+      humanInput?: { response?: string };
+    }>;
+
+    expect(items[0]?.humanInput).toBeUndefined();
+    expect(items[1]?.humanInput).toMatchObject({
+      question: 'Which colour?',
+      response: 'teal',
+    });
+  });
+
+  it('leaves a pending Memory change review to its own control', () => {
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: [],
+      status: 'running',
+      doneToolCount: 0,
+      totalToolCount: 0,
+    };
+    const review: Message = {
+      id: 'ask-review',
+      role: 'agent',
+      content: 'Allow the Agent to update Memory?',
+      step: AgentStep.ASK,
+      agent_name: 'single_agent',
+      interaction: {
+        interaction_id: 'review-1',
+        interaction_type: 'memory_change_review',
+        run_id: 'task-1',
+        question: 'Allow the Agent to update Memory?',
+      },
+    };
+
+    const [result] = injectHumanInputReceipts([group], [review], []);
+
+    expect(result!.items).toEqual([]);
+  });
+
+  it('keeps a pending question without an answer', () => {
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: [humanTool('pending-call')],
+      status: 'running',
+      doneToolCount: 0,
+      totalToolCount: 1,
+    };
+
+    const [result] = injectHumanInputReceipts(
+      [group],
+      [question('pending', 'Which colour?')],
+      []
+    );
+
+    expect(
+      (result!.items[0] as { humanInput?: { question?: string } }).humanInput
+    ).toMatchObject({ question: 'Which colour?', response: null });
+  });
+});
+
 describe('terminal Run presentation', () => {
   it('lets a recorded error override a compatibility interrupted status', () => {
     expect(

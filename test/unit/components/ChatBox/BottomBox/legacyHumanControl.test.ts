@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { createLegacyApprovalVariant } from '@/components/ChatBox/BottomBox/legacyHumanControl';
+import {
+  createLegacyApprovalVariant,
+  createLegacyConfirmationVariant,
+} from '@/components/ChatBox/BottomBox/legacyHumanControl';
 import enUsChat from '@/i18n/locales/en-us/chat.json';
 import type { HumanInteractionPayload } from '@/service/humanInteractionApi';
 import { describe, expect, it, vi } from 'vitest';
@@ -96,5 +99,67 @@ describe('legacy BottomBox human control', () => {
         onReject: vi.fn(),
       })
     ).toBeNull();
+  });
+});
+
+describe('legacy BottomBox Memory change review', () => {
+  // The legacy ask frame the Memory toolkit sends for an update.
+  const review: HumanInteractionPayload = {
+    interaction_id: 'review-1',
+    interaction_type: 'memory_change_review',
+    run_id: 'run-1',
+    version: 0,
+    title: 'Review Memory change',
+    question: "Allow the Agent to update Memory 'Favourite drink: coffee'?",
+    agent: 'single_agent',
+    display_arguments: {
+      before: { content: 'Favourite drink: coffee' },
+      after: { content: 'Favourite drink: tea' },
+      reason: 'User asked to update it',
+    },
+  };
+
+  it('asks to confirm or reject with the before and after details', () => {
+    const onConfirm = vi.fn();
+    const onReject = vi.fn();
+    const variant = createLegacyConfirmationVariant({
+      interaction: review,
+      t,
+      onConfirm,
+      onReject,
+    });
+
+    expect(variant).toMatchObject({
+      kind: 'confirmation',
+      header: {
+        eyebrow: 'Input required',
+        title: 'Review Memory change',
+        description:
+          "Allow the Agent to update Memory 'Favourite drink: coffee'?",
+      },
+    });
+    const details = variant?.header.details?.[0]?.content ?? '';
+    expect(details).toContain('Favourite drink: coffee');
+    expect(details).toContain('Favourite drink: tea');
+    variant?.onConfirm();
+    variant?.onReject();
+    expect(onConfirm).toHaveBeenCalledOnce();
+    expect(onReject).toHaveBeenCalledOnce();
+  });
+
+  it('leaves questions and approvals to their own controls', () => {
+    for (const interaction of [
+      approval,
+      { ...review, interaction_type: 'question' as const },
+    ]) {
+      expect(
+        createLegacyConfirmationVariant({
+          interaction,
+          t,
+          onConfirm: vi.fn(),
+          onReject: vi.fn(),
+        })
+      ).toBeNull();
+    }
   });
 });

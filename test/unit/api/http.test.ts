@@ -77,6 +77,29 @@ describe('api/http handleResponse', () => {
     vi.restoreAllMocks();
   });
 
+  it('distinguishes an unreachable Brain from HTTP and parsing failures', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    fetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(fetchGet('/runs')).rejects.toMatchObject({
+      code: 'BRAIN_UNREACHABLE',
+    });
+    fetch.mockResolvedValueOnce(new Response('bad', { status: 503 }));
+    await expect(fetchGet('/runs')).rejects.toMatchObject({ status: 503 });
+    fetch.mockResolvedValueOnce(
+      new Response('invalid json', {
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    await expect(fetchGet('/runs')).rejects.not.toHaveProperty(
+      'code',
+      'BRAIN_UNREACHABLE'
+    );
+    fetch.mockRejectedValueOnce(new DOMException('Aborted', 'AbortError'));
+    await expect(fetchGet('/runs')).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+  });
+
   it.each(['brain', 'brain-put', 'server'])(
     'does not send a %s request under a changed account after async URL resolution',
     async (target) => {

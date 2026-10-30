@@ -399,6 +399,7 @@
   "skip": "Saltare",
   "social-media-agent": "Agente delle piattaforme sociali",
   "stop-task": "Interrompi attività",
+  "scroll-to-bottom": "Scorri in fondo",
   "stopping-current-task-queued-next": "Interruzione dell'attività corrente. Il messaggio in coda verrà avviato subito dopo.",
   "take-control": "Prendere il controllo",
   "task-admission-failed": "Impossibile avviare l'attività. Riprova.",
@@ -573,6 +574,8 @@
   "task-failure-outcome-outcome_unknown": "Esito sconosciuto",
   "task-failure-outcome-unverified": "Esito non verificato",
   "task-failure-timed-out": "Il tempo del compito è scaduto prima che venisse registrata una risposta finale.",
+  "task-failure-interrupted": "Il compito è stato interrotto prima che venisse registrata una risposta finale.",
+  "task-failure-interrupted-effects": "Un’interruzione non permette di stabilire se file o servizi esterni siano stati modificati.",
   "task-failure-no-actions-recorded": "Non è stata registrata alcuna azione.",
   "task-failure-more-actions": "Altre {{count}} azioni non sono mostrate.",
   "approval-expired-title": "Approvazione scaduta",
@@ -599,5 +602,9 @@
   "automation-source-session": "Automazione dalla sessione: {{name}}",
   "automation-schedule-review-hint": "Controlla la pianificazione qui sotto. L’editor sceglie un valore predefinito anche senza richiesta di ripetizione.",
   "automation-review-confirm": "Ho controllato pianificazione e dati richiesti.",
-  "automation-review-required": "Controlla pianificazione e dati richiesti prima di creare."
+  "automation-review-required": "Controlla pianificazione e dati richiesti prima di creare.",
+  "notice-use-own-api-key": "Usa la tua chiave API",
+  "notice-credits-new": "Aggiungi crediti per iniziare a eseguire attività.",
+  "notice-credits-new-description": "Passa a un piano superiore o usa la chiave API del tuo modello.",
+  "space-model-fallback": "Il modello di questo spazio non è più disponibile, quindi questa sessione usa il tuo modello predefinito."
 }

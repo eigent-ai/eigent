@@ -18,13 +18,18 @@ import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { cn } from '@/lib/utils';
 import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { SessionNavListRows, type SessionNavItem } from './SessionNavListRows';
+import {
+  SessionNavListRows,
+  type SessionNavItem,
+  type SessionOpenInActions,
+} from './SessionNavListRows';
 import { SidebarAccordionSection } from './SidebarAccordionSection';
 
 export {
   NAV_LIST_SESSIONS_RECENT_MAX,
   SessionNavListRows,
   type SessionNavItem,
+  type SessionOpenInActions,
 } from './SessionNavListRows';
 
 export interface SessionNavListProps {
@@ -37,6 +42,7 @@ export interface SessionNavListProps {
   onNewSession: () => void;
   /** Selected state for the New Session row. */
   newSessionActive?: boolean;
+  openIn?: SessionOpenInActions;
   className?: string;
 }
 
@@ -50,6 +56,7 @@ export function SessionNavList({
   onPinSession,
   onNewSession,
   newSessionActive = false,
+  openIn,
   className,
 }: SessionNavListProps) {
   const { t } = useTranslation();
@@ -69,13 +76,14 @@ export function SessionNavList({
     onDeleteSession,
     onEndSession,
     onPinSession,
+    openIn,
     folded: false as const,
   };
 
   return (
     <div
       className={cn(
-        'flex min-h-0 w-full min-w-0 flex-col overflow-hidden',
+        'flex min-h-0 w-full min-w-0 flex-col overflow-y-clip',
         className
       )}
     >
@@ -100,7 +108,7 @@ export function SessionNavList({
       </div>
 
       {/* Scrollable section list */}
-      <SidebarScrollArea className="m-0 mt-1 p-0 pb-1">
+      <SidebarScrollArea className="mt-1 pb-1">
         {hasPinned && (
           <SidebarAccordionSection label={pinnedLabel}>
             <SessionNavListRows {...sharedRowProps} sessions={pinnedSessions} />

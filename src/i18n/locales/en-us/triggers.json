@@ -165,7 +165,7 @@
   "execution-in-progress": "Execution in progress...",
   "waiting-to-execute": "Waiting to execute...",
   "execution-cancelled": "Execution was cancelled",
-  "execution-missed": "Execution was missed",
+  "execution-missed": "Eigent didn't receive this run in time, so it didn't start. Keep Eigent open and signed in, then try again.",
   "unknown-status": "Unknown status",
   "trigger-label": "Automation",
   "execution-started-toast": "Execution started: {{name}}",

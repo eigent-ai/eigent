@@ -408,6 +408,7 @@
   "skip": "تخطّي",
   "social-media-agent": "وكيل وسائل التواصل الاجتماعي",
   "stop-task": "إيقاف المهمة",
+  "scroll-to-bottom": "التمرير إلى الأسفل",
   "stopping-current-task-queued-next": "جارٍ إيقاف المهمة الحالية. ستبدأ رسالتك المنتظرة بعدها.",
   "take-control": "تولّي التحكم",
   "task-admission-failed": "تعذّر بدء المهمة. يُرجى المحاولة مرة أخرى.",
@@ -585,6 +586,8 @@
   "task-failure-outcome-outcome_unknown": "النتيجة غير معروفة",
   "task-failure-outcome-unverified": "النتيجة غير متحقق منها",
   "task-failure-timed-out": "انتهت مهلة المهمة قبل تسجيل رد نهائي.",
+  "task-failure-interrupted": "توقّفت المهمة قبل تسجيل رد نهائي.",
+  "task-failure-interrupted-effects": "لا يثبت التوقّف ما إذا كانت الملفات أو الخدمات الخارجية قد تغيرت.",
   "task-failure-no-actions-recorded": "لم تُسجَّل أي إجراءات.",
   "task-failure-more-actions": "لم يتم عرض {{count}} إجراءات أخرى.",
   "approval-expired-title": "انتهت صلاحية الموافقة",
@@ -611,5 +614,9 @@
   "automation-source-session": "الأتمتة من الجلسة: {{name}}",
   "automation-schedule-review-hint": "راجع الجدول أدناه. يختار المحرر وقتًا افتراضيًا حتى إن لم تحدد وقتًا للتكرار.",
   "automation-review-confirm": "راجعت الجدول والمدخلات المطلوبة.",
-  "automation-review-required": "راجع الجدول والمدخلات المطلوبة قبل الإنشاء."
+  "automation-review-required": "راجع الجدول والمدخلات المطلوبة قبل الإنشاء.",
+  "notice-use-own-api-key": "استخدم مفتاح API الخاص بك",
+  "notice-credits-new": "أضف أرصدة لبدء تشغيل المهام.",
+  "notice-credits-new-description": "رقِّ خطتك أو استخدم مفتاح API لنموذجك.",
+  "space-model-fallback": "نموذج هذه المساحة لم يعد متاحاً، لذا تستخدم هذه الجلسة نموذجك الافتراضي."
 }

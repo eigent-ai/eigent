@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { pathBasename } from '@/lib/pathBasename';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import {
   getVisibleProjectMetasForSpace,
@@ -33,13 +34,6 @@ import {
   compareHubByTimestamp,
   matchesHubNameSearch,
 } from './utils';
-
-const pathBasename = (path?: string | null) => {
-  const value = path?.trim();
-  if (!value) return '';
-  const parts = value.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || value;
-};
 
 export default function Spaces() {
   const { t } = useTranslation();

@@ -15,14 +15,14 @@
 import CloseNoticeDialog from '@/components/Dialog/CloseNotice';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost, type AppShellElectronAPI } from '@/host';
-import { assessCloseRunState } from '@/service/runCloseGuard';
+import { hasUnfinishedLegacyTask } from '@/lib/unfinishedLegacyTask';
+import { assessGlobalCloseRunState } from '@/service/runCloseGuard';
 import {
   type CloseExecutionClass,
   type CloseIntent,
 } from '@/shared/windowClose';
 import { hasAnyActiveLegacySSEConnection } from '@/store/chatStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { useSpaceStore } from '@/store/spaceStore';
 import {
   useCallback,
   useEffect,
@@ -36,19 +36,6 @@ const CLOSE_RUN_LOOKUP_TIMEOUT_MS = 2_500;
 interface ClosePrompt {
   executionClass: CloseExecutionClass;
   intent: CloseIntent;
-}
-
-function getKnownLocalProjectIds(): string[] {
-  const projectIds = new Set(
-    useSpaceStore
-      .getState()
-      .getProjectsForSpace()
-      .map((project) => project.id)
-  );
-  Object.keys(useProjectRuntimeStore.getState().projects).forEach((projectId) =>
-    projectIds.add(projectId)
-  );
-  return [...projectIds];
 }
 
 /** Keeps Close Window and Quit guarded on every route, including auth pages. */
@@ -109,13 +96,17 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
       respond({ intent: request.intent, action: 'acknowledge' });
 
       const currentChatStore = chatStoreRef.current;
-      const currentStatus = currentChatStore?.activeTaskId
-        ? currentChatStore.tasks[currentChatStore.activeTaskId]?.status
-        : undefined;
-      const activeTaskBusy = Boolean(
-        currentStatus && ['running', 'pause'].includes(currentStatus)
-      );
-      const legacyActive = activeTaskBusy || hasAnyActiveLegacySSEConnection();
+      const legacyActive =
+        hasAnyActiveLegacySSEConnection() ||
+        hasUnfinishedLegacyTask([
+          currentChatStore,
+          ...Object.values(useProjectRuntimeStore.getState().projects).flatMap(
+            (runtime) =>
+              Object.values(runtime.chatStores ?? {}).map((store) =>
+                store.getState()
+              )
+          ),
+        ]);
       const timeout = window.setTimeout(
         () =>
           controller.abort(
@@ -126,8 +117,7 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
 
       void Promise.resolve()
         .then(() =>
-          assessCloseRunState({
-            projectIds: getKnownLocalProjectIds(),
+          assessGlobalCloseRunState({
             legacyActive,
             signal: controller.signal,
           })

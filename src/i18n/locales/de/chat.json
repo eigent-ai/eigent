@@ -396,6 +396,7 @@
   "skip": "Umschalten",
   "social-media-agent": "Soziale Agenten",
   "stop-task": "Aufgabe beenden",
+  "scroll-to-bottom": "Nach unten scrollen",
   "stopping-current-task-queued-next": "Die aktuelle Aufgabe wird beendet. Ihre Nachricht in der Warteschlange wird als Nächstes gestartet.",
   "take-control": "Automatisierung übernehmen",
   "task-admission-failed": "Die Aufgabe konnte nicht gestartet werden. Bitte noch einmal versuchen.",
@@ -569,6 +570,8 @@
   "task-failure-outcome-outcome_unknown": "Ergebnis unbekannt",
   "task-failure-outcome-unverified": "Ergebnis nicht überprüft",
   "task-failure-timed-out": "Die Zeit für die Aufgabe ist abgelaufen, bevor eine abschließende Antwort aufgezeichnet wurde.",
+  "task-failure-interrupted": "Die Aufgabe wurde unterbrochen, bevor eine abschließende Antwort aufgezeichnet wurde.",
+  "task-failure-interrupted-effects": "Eine Unterbrechung belegt nicht, ob Dateien oder externe Dienste verändert wurden.",
   "task-failure-no-actions-recorded": "Es wurden keine Aktionen aufgezeichnet.",
   "task-failure-more-actions": "{{count}} weitere Aktionen werden nicht angezeigt.",
   "approval-expired-title": "Genehmigung abgelaufen",
@@ -595,5 +598,9 @@
   "automation-source-session": "Automation aus Session: {{name}}",
   "automation-schedule-review-hint": "Prüfe den Zeitplan unten. Der Editor wählt eine Vorgabe, auch wenn keine Wiederholung angegeben wurde.",
   "automation-review-confirm": "Ich habe Zeitplan und erforderliche Eingaben geprüft.",
-  "automation-review-required": "Prüfe vor dem Erstellen Zeitplan und erforderliche Eingaben."
+  "automation-review-required": "Prüfe vor dem Erstellen Zeitplan und erforderliche Eingaben.",
+  "notice-use-own-api-key": "Eigenen API-Schlüssel verwenden",
+  "notice-credits-new": "Füge Credits hinzu, um Aufgaben auszuführen.",
+  "notice-credits-new-description": "Upgrade deinen Tarif oder verwende den API-Schlüssel deines eigenen Modells.",
+  "space-model-fallback": "Das Modell dieses Bereichs ist nicht mehr verfügbar, daher verwendet diese Sitzung dein Standardmodell."
 }

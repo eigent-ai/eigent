@@ -17,6 +17,7 @@ import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
 import { useHost, type AppShellElectronAPI } from '@/host';
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
+import { getSessionWindowRole } from '@/lib/sessionWindows';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { APP_COMMAND, type AppCommandId } from '@/shared/appCommands';
@@ -329,6 +330,15 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           active.closest('.xterm') !== null ||
           ['INPUT', 'TEXTAREA'].includes(active.tagName))
       ) {
+        return;
+      }
+
+      // A Session window only closes itself; app commands stay in the main
+      // window, which owns navigation.
+      if (getSessionWindowRole() === 'session') {
+        if (key !== 'w') return;
+        event.preventDefault();
+        window.close();
         return;
       }
 

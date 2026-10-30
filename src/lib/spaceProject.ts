@@ -52,6 +52,17 @@ interface CreateSyncedProjectInSpaceInput {
   workdirMode?: ProjectWorkdirMode | null;
   metadata?: Record<string, unknown>;
   setActive?: boolean;
+  /**
+   * Creates the local Project before the server request so the caller can
+   * open it at once. The local Project is removed if the server rejects it.
+   */
+  onLocalProjectCreated?: (result: CreateSyncedProjectInSpaceResult) => void;
+  /**
+   * Runs when the server rejects a Project opened by `onLocalProjectCreated`,
+   * just before it is removed, while it is still the selection. Removing it
+   * clears the selection, and the page may select another Project at once.
+   */
+  onLocalProjectRejected?: (result: CreateSyncedProjectInSpaceResult) => void;
 }
 
 interface CreateSyncedProjectInSpaceResult {
@@ -100,6 +111,8 @@ export const createSyncedProjectInSpace = async ({
   workdirMode,
   metadata,
   setActive = true,
+  onLocalProjectCreated,
+  onLocalProjectRejected,
 }: CreateSyncedProjectInSpaceInput): Promise<CreateSyncedProjectInSpaceResult> => {
   // Reject legacy Spaces before `resolveServerBackedSpaceId` runs any of its
   // ensure/remap side effects. A bare `legacy_` id is always legacy; otherwise
@@ -122,43 +135,59 @@ export const createSyncedProjectInSpace = async ({
     serverSynced: true,
   };
 
-  await proxyCreateSpaceProject(
-    resolvedSpaceId,
-    {
-      id: projectId,
+  const createServerProject = async () => {
+    await proxyCreateSpaceProject(
+      resolvedSpaceId,
+      {
+        id: projectId,
+        name,
+        description,
+        mode,
+        workdir_mode: workdirMode,
+        metadata: projectMetadata,
+      },
+      expectedAccountKey ? { expectedAccountKey, signal } : undefined
+    );
+
+    if (
+      expectedAccountKey &&
+      expectedAccountKey !== getAccountEnvironmentKey(getAuthStore())
+    ) {
+      throw new Error('Session account changed');
+    }
+  };
+
+  const createLocalProject = () =>
+    projectStore.createProject(
       name,
       description,
-      mode,
-      workdir_mode: workdirMode,
-      metadata: projectMetadata,
-    },
-    expectedAccountKey ? { expectedAccountKey, signal } : undefined
-  );
+      projectId,
+      undefined,
+      undefined,
+      setActive,
+      {
+        spaceId: resolvedSpaceId,
+        mode,
+        workdirMode,
+        metadata: projectMetadata,
+      }
+    );
 
-  if (
-    expectedAccountKey &&
-    expectedAccountKey !== getAccountEnvironmentKey(getAuthStore())
-  ) {
-    throw new Error('Session account changed');
+  if (!onLocalProjectCreated) {
+    await createServerProject();
+    return { projectId: createLocalProject(), spaceId: resolvedSpaceId };
   }
 
-  const localProjectId = projectStore.createProject(
-    name,
-    description,
-    projectId,
-    undefined,
-    undefined,
-    setActive,
-    {
-      spaceId: resolvedSpaceId,
-      mode,
-      workdirMode,
-      metadata: projectMetadata,
-    }
-  );
-
-  return {
-    projectId: localProjectId,
-    spaceId: resolvedSpaceId,
-  };
+  const localProjectId = createLocalProject();
+  const result = { projectId: localProjectId, spaceId: resolvedSpaceId };
+  onLocalProjectCreated(result);
+  try {
+    await createServerProject();
+  } catch (error) {
+    // Nothing has started in the Project yet; the server never accepted it.
+    onLocalProjectRejected?.(result);
+    projectStore.removeProject(localProjectId);
+    throw error;
+  }
+  return result;
 };

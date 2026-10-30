@@ -86,7 +86,7 @@ export function ExpandedOverlay({
         transformOrigin: 'bottom center',
       }}
     >
-      <div className="flex w-full max-w-[600px] flex-col">
+      <div className="flex w-full max-w-[736px] flex-col">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-disabled bg-ds-bg-splitting-subtle-default">
           <div className="flex shrink-0 items-center gap-2 px-3 pt-2">
             <div className="min-w-0 flex-1 text-ds-text-base font-bold text-ds-ink-default-default">

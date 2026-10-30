@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { approvalTargets } from '@/lib/approvalPresentation';
 import { resolveSourceMessageId } from '@/lib/messageIdentity';
+import { remoteSubAgentProviderForActivity } from '@/lib/remoteSubAgent';
 import { runTerminalReason } from '@/lib/runTerminalReason';
 import i18next from 'i18next';
 import { projectWriterWait } from '../reduce';
@@ -783,6 +785,7 @@ function interactionNode(
   const payload = asRecord(data);
   const request = asRecord(payload.request ?? payload.prompt);
   const decision = payload.decision ?? payload.response ?? payload.reply;
+  const targets = interactionTargets(payload, request);
   return {
     ...base,
     kind: 'interaction',
@@ -822,7 +825,40 @@ function interactionNode(
         request.agent
       ) || undefined,
     options: interactionOptions(payload.options),
+    targets: targets.length ? targets : undefined,
   };
+}
+
+/**
+ * The files, URLs or command lines an approval acts on. The live ask frame
+ * carries them at the top level; the durable `approval.requested` event keeps
+ * them inside its prompt. Only the derived targets are kept on the node, never
+ * the display arguments they were read from.
+ */
+function interactionTargets(
+  payload: JsonRecord,
+  request: JsonRecord
+): string[] {
+  const action = [payload.action, request.action].find(isRecord) ?? {};
+  const targetResources = [
+    payload.target_resources,
+    request.target_resources,
+    action.target_resources,
+  ].find(Array.isArray) as unknown[] | undefined;
+  const displayArguments = [
+    payload.display_arguments,
+    request.display_arguments,
+    action.normalized_arguments,
+  ].find(isRecord);
+  return approvalTargets({
+    operation:
+      firstText(payload.operation, request.operation, action.operation) ||
+      undefined,
+    targetResources: targetResources?.filter(
+      (item): item is string => typeof item === 'string'
+    ),
+    displayArguments,
+  }).map((target) => target.value);
 }
 
 function normalizePlanTaskStatus(value: unknown): ChatPlanTaskStatus {
@@ -1259,12 +1295,7 @@ function activityNode(
         request.providerName,
         result.provider,
         result.provider_name,
-        result.providerName,
-        // The only currently registered remote provider. Explicit producer
-        // metadata above wins as soon as additional providers are introduced.
-        normalizedToolName === 'run_remote_sub_agent'
-          ? 'gemini_agents'
-          : undefined
+        result.providerName
       )
     : '';
   const agentModel = subagentTool
@@ -1409,7 +1440,16 @@ function activityNode(
           result.taskId
         ) || undefined
       : undefined,
-    agentProvider: agentProvider || undefined,
+    agentProvider:
+      agentProvider ||
+      (normalizedToolName === 'run_remote_sub_agent'
+        ? remoteSubAgentProviderForActivity(
+            result.value,
+            payload.result,
+            result.preview,
+            output
+          )
+        : undefined),
     agentModel: agentModel || undefined,
     activityId: semantic?.subject.id || undefined,
     ...(semantic?.subject.type === 'activity_stream' ||

@@ -19,6 +19,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -26,7 +29,15 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
-import { Archive, MoreHorizontal, Pin, Trash2 } from 'lucide-react';
+import {
+  AppWindow,
+  Archive,
+  Columns2,
+  MoreHorizontal,
+  PanelsTopLeft,
+  Pin,
+  Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS } from './constants';
@@ -41,6 +52,20 @@ export interface SessionNavItem {
   source?: 'user' | 'trigger';
   /** e.g. relative time, shown when `showRowMenu` is false. */
   trailing?: string;
+  /** Shown in a split pane that does not have focus. */
+  openInPane?: boolean;
+  /** Open in its own window or browser tab. */
+  inOwnWindow?: boolean;
+  /** Why "Open in split view" is unavailable; absent when it is available. */
+  splitViewUnavailableReason?: string;
+}
+
+/** "Open in" actions of a Session row. */
+export interface SessionOpenInActions {
+  onOpenInSplitView?: (sessionId: string) => void;
+  onOpenInNewWindow?: (sessionId: string) => void;
+  /** Desktop opens a window; the web build opens a browser tab. */
+  newWindowKind?: 'window' | 'tab';
 }
 
 export interface SessionNavListRowsProps {
@@ -61,6 +86,7 @@ export interface SessionNavListRowsProps {
   panelListHover?: boolean;
   /** When false, hide the trailing action area (session list and workspace recent: time only). */
   showRowMenu?: boolean;
+  openIn?: SessionOpenInActions;
 }
 
 /**
@@ -72,6 +98,8 @@ function SessionNavRowMenu({
   sessionId,
   pinned,
   achieved,
+  splitViewUnavailableReason,
+  openIn,
   open,
   onOpenChange,
   onPinSession,
@@ -81,6 +109,8 @@ function SessionNavRowMenu({
   sessionId: string;
   pinned?: boolean;
   achieved?: boolean;
+  splitViewUnavailableReason?: string;
+  openIn?: SessionOpenInActions;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPinSession?: (sessionId: string) => void;
@@ -96,6 +126,17 @@ function SessionNavRowMenu({
   });
   const deleteLabel = t('layout.delete-project');
   const moreLabel = t('layout.more-actions');
+  const openInLabel = t('layout.open-in', { defaultValue: 'Open in' });
+  const splitViewLabel = t('layout.open-in-split-view', {
+    defaultValue: 'Split view',
+  });
+  const newWindowLabel =
+    openIn?.newWindowKind === 'tab'
+      ? t('layout.open-in-new-tab', { defaultValue: 'New tab' })
+      : t('layout.open-in-new-window', { defaultValue: 'New window' });
+  const hasOpenIn = Boolean(
+    openIn?.onOpenInSplitView || openIn?.onOpenInNewWindow
+  );
 
   return (
     <div
@@ -149,6 +190,42 @@ function SessionNavRowMenu({
             />
             {pinLabel}
           </DropdownMenuItem>
+          {hasOpenIn ? (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2">
+                <DsIcon icon={PanelsTopLeft} aria-hidden />
+                {openInLabel}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent sideOffset={6}>
+                {openIn?.onOpenInSplitView ? (
+                  <DropdownMenuItem
+                    className="gap-2"
+                    disabled={Boolean(splitViewUnavailableReason)}
+                    onSelect={() => openIn.onOpenInSplitView?.(sessionId)}
+                  >
+                    <DsIcon icon={Columns2} aria-hidden />
+                    <span className="flex min-w-0 flex-col">
+                      <span>{splitViewLabel}</span>
+                      {splitViewUnavailableReason ? (
+                        <span className="text-ds-text-meta text-ds-ink-muted-default">
+                          {splitViewUnavailableReason}
+                        </span>
+                      ) : null}
+                    </span>
+                  </DropdownMenuItem>
+                ) : null}
+                {openIn?.onOpenInNewWindow ? (
+                  <DropdownMenuItem
+                    className="gap-2"
+                    onSelect={() => openIn.onOpenInNewWindow?.(sessionId)}
+                  >
+                    <DsIcon icon={AppWindow} aria-hidden />
+                    {newWindowLabel}
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          ) : null}
           <DropdownMenuItem
             className="gap-2"
             disabled={!onEndSession || achieved}
@@ -182,6 +259,8 @@ function SessionNavRow({
   panelListHover,
   showRowMenu,
   triggerSourceLabel,
+  inOwnWindowLabel,
+  openIn,
   onSessionClick,
   onPinSession,
   onEndSession,
@@ -192,6 +271,8 @@ function SessionNavRow({
   panelListHover: boolean;
   showRowMenu: boolean;
   triggerSourceLabel: string;
+  inOwnWindowLabel: string;
+  openIn?: SessionOpenInActions;
   onSessionClick?: (sessionId: string) => void;
   onPinSession?: (sessionId: string) => void;
   onEndSession?: (sessionId: string) => void;
@@ -203,7 +284,9 @@ function SessionNavRow({
     session.sessionLead.iconClassName,
     session.sessionLead.spin && 'animate-spin'
   );
-  const selected = active || menuOpen;
+  // Every Session shown in a split pane is highlighted; the focused one also
+  // gets the default ink and `aria-current`, so focus is not color-only.
+  const selected = active || menuOpen || Boolean(session.openInPane);
 
   return (
     <div className="min-w-0">
@@ -237,15 +320,31 @@ function SessionNavRow({
           <button
             type="button"
             onClick={() => onSessionClick?.(session.id)}
+            aria-current={active ? 'true' : undefined}
             className={cn(
               'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
               'focus-visible:ring-2 focus-visible:ring-ds-hairline-subtle-default focus-visible:outline-none'
             )}
           >
             <DsIcon icon={LeadIcon} className={leadClassName} />
-            <span className="min-w-0 flex-1 truncate text-ds-text-base font-medium text-ds-ink-muted-default">
+            <span
+              className={cn(
+                'min-w-0 flex-1 truncate text-ds-text-base font-medium',
+                active && session.openInPane !== undefined
+                  ? 'text-ds-ink-default-default'
+                  : 'text-ds-ink-muted-default'
+              )}
+            >
               {session.title}
             </span>
+            {session.inOwnWindow ? (
+              <DsIcon
+                icon={AppWindow}
+                decorative={false}
+                className="text-ds-ink-muted-default"
+                aria-label={inOwnWindowLabel}
+              />
+            ) : null}
             {session.source === 'trigger' ? (
               <DsIcon
                 icon={AUTOMATION_ICON}
@@ -266,6 +365,8 @@ function SessionNavRow({
               sessionId={session.id}
               pinned={session.pinned}
               achieved={session.achieved}
+              splitViewUnavailableReason={session.splitViewUnavailableReason}
+              openIn={openIn}
               open={menuOpen}
               onOpenChange={setMenuOpen}
               onPinSession={onPinSession}
@@ -290,9 +391,18 @@ export function SessionNavListRows({
   maxItems,
   panelListHover = false,
   showRowMenu = true,
+  openIn,
 }: SessionNavListRowsProps) {
   const { t } = useTranslation();
   const triggerSourceLabel = t('layout.task-source-trigger');
+  const inOwnWindowLabel =
+    openIn?.newWindowKind === 'tab'
+      ? t('layout.session-open-in-tab', {
+          defaultValue: 'This session is open in another tab',
+        })
+      : t('layout.session-open-in-window', {
+          defaultValue: 'This session is open in its own window',
+        });
   const list = maxItems != null ? sessions.slice(0, maxItems) : sessions;
 
   return (
@@ -323,7 +433,9 @@ export function SessionNavListRows({
                   type="button"
                   onClick={() => onSessionClick?.(session.id)}
                   className={cn(
-                    sidebarTabButtonClass(active),
+                    sidebarTabButtonClass(
+                      active || Boolean(session.openInPane)
+                    ),
                     'w-full min-w-0 gap-0'
                   )}
                   aria-label={session.title}
@@ -344,6 +456,8 @@ export function SessionNavListRows({
             panelListHover={panelListHover}
             showRowMenu={showRowMenu}
             triggerSourceLabel={triggerSourceLabel}
+            inOwnWindowLabel={inOwnWindowLabel}
+            openIn={openIn}
             onSessionClick={onSessionClick}
             onPinSession={onPinSession}
             onEndSession={onEndSession}

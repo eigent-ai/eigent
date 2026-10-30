@@ -33,6 +33,7 @@ import { createChatStoreInstance } from '@/store/chatStore';
 import { resetConnectionConfig } from '@/store/connectionStore';
 import { resetFollowUpAdmissionClaims } from '@/store/followUpAdmissionClaims';
 import { resetSessionDrafts } from '@/store/sessionDraftStore';
+import { useSessionStartStore } from '@/store/sessionStartStore';
 import {
   acknowledgeUsageNotice,
   reportUsageIncident,
@@ -1124,6 +1125,30 @@ describe('ChatBox Component', async () => {
       expect(screen.getByTestId('message-input')).toHaveValue('');
     });
 
+    it('waits to send until the Session that Send opened has started', async () => {
+      const user = userEvent.setup();
+      render(sessionView('session-a'));
+      await user.type(screen.getByTestId('message-input'), 'Early message');
+
+      // Workspace opened this Session and is still creating and starting it.
+      act(() =>
+        useSessionStartStore.getState().markSessionStarting('session-a')
+      );
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      await user.click(screen.getByTestId('send-button'));
+      expect(defaultChatStoreState.startTask).not.toHaveBeenCalled();
+      expect(screen.getByTestId('message-input')).toHaveValue('Early message');
+
+      act(() =>
+        useSessionStartStore.getState().clearSessionStarting('session-a')
+      );
+      expect(screen.getByTestId('message-input')).not.toBeDisabled();
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+      );
+    });
+
     it('keeps review feedback attached to a restored draft', async () => {
       const user = userEvent.setup();
       const view = render(sessionView('test-project-id'));
@@ -1429,6 +1454,150 @@ describe('ChatBox Component', async () => {
           'single-agent',
           undefined
         );
+      });
+    });
+
+    it('asks to confirm a Memory change review instead of a text answer', async () => {
+      const user = userEvent.setup();
+      const review = {
+        interaction_id: 'review-1',
+        interaction_type: 'memory_change_review',
+        run_id: 'test-task-id',
+        version: 0,
+        title: 'Review Memory change',
+        question: "Allow the Agent to update Memory 'Favourite drink: coffee'?",
+        agent: 'single_agent',
+        display_arguments: {
+          before: { content: 'Favourite drink: coffee' },
+          after: { content: 'Favourite drink: tea' },
+        },
+      };
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.includes('/interactions?status=pending')
+            ? {
+                interactions: [
+                  {
+                    interaction_id: 'review-1',
+                    status: 'requested',
+                    version: 0,
+                  },
+                ],
+              }
+            : { runs: [] }
+        )
+      );
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'single_agent',
+              hasMessages: true,
+              messages: [
+                { id: 'prompt', role: 'user', content: 'Update my drink' },
+                {
+                  id: 'ask-review',
+                  role: 'agent',
+                  step: 'ask',
+                  content: review.question,
+                  agent_name: 'single_agent',
+                  interaction: review,
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+
+      renderChatBox();
+
+      expect(screen.getByText('Review Memory change')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /feedback/i })).toBeNull();
+      await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+      await waitFor(() =>
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/runs/test-task-id/interactions/review-1/decisions',
+          expect.objectContaining({ decision: { decision: 'approved' } })
+        )
+      );
+    });
+
+    describe('question still waiting in a reopened Session', () => {
+      const restoredQuestionState = (durableRunStatus: string) => ({
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            type: 'replay',
+            status: 'finished',
+            durableRunStatus,
+            activeAsk: 'single_agent',
+            hasMessages: true,
+            messages: [
+              { id: 'prompt', role: 'user', content: 'Save my colour' },
+              {
+                id: 'ask',
+                role: 'agent',
+                step: 'ask',
+                content: 'Which colour?',
+                agent_name: 'single_agent',
+                interaction: {
+                  interaction_id: 'question-1',
+                  interaction_type: 'question',
+                  run_id: 'test-task-id',
+                  question: 'Which colour?',
+                  agent: 'single_agent',
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      it('answers it above the composer', async () => {
+        const user = userEvent.setup();
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: restoredQuestionState('waiting_for_user') as any,
+        });
+
+        renderChatBox();
+
+        expect(screen.getByText('Which colour?')).toBeInTheDocument();
+        await user.type(
+          screen.getByRole('textbox', { name: /feedback/i }),
+          'teal'
+        );
+        await user.click(
+          screen.getByRole('button', { name: /send.feedback/i })
+        );
+
+        await waitFor(() =>
+          expect(_mockFetchPost).toHaveBeenCalledWith(
+            '/chat/test-project-id/human-reply',
+            expect.objectContaining({
+              agent: 'single_agent',
+              reply: 'teal',
+              interaction_id: 'question-1',
+            })
+          )
+        );
+      });
+
+      it('offers nothing once the Run no longer waits', () => {
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: restoredQuestionState('completed') as any,
+        });
+
+        renderChatBox();
+
+        expect(screen.queryByRole('textbox', { name: /feedback/i })).toBeNull();
       });
     });
 
@@ -3184,6 +3353,22 @@ describe('ChatBox Component', async () => {
             expect(screen.queryByText('chat.run-interrupted-title')).toBeNull()
           );
           for (const status of ['pending', 'running', 'completed']) {
+            act(() =>
+              runProjectionStore.upsertRunSummaries('test-project-id', [
+                {
+                  run_id: 'test-unique-id',
+                  project_id: 'test-project-id',
+                  status,
+                  version:
+                    ['pending', 'running', 'completed'].indexOf(status) + 1,
+                  updated_at:
+                    200 + ['pending', 'running', 'completed'].indexOf(status),
+                  origin: 'local',
+                  latest_attempt: { attempt_number: 1, status },
+                },
+              ])
+            );
+
             const nextChat = {
               ...interruptedChat,
               activeTaskId: 'test-unique-id',
@@ -3389,7 +3574,13 @@ describe('ChatBox Component', async () => {
         mockFetchGet.mockImplementation((url: string) =>
           Promise.resolve(
             url.endsWith('/status')
-              ? { has_lock: true, status: 'done', consumer_alive: true }
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  consumer_alive: true,
+                  run_id: 'test-task-id',
+                  subscriber_count: 1,
+                }
               : { items: [] }
           )
         );
@@ -3615,7 +3806,13 @@ describe('ChatBox Component', async () => {
         mockFetchGet.mockImplementation((url: string) =>
           Promise.resolve(
             url === '/chat/test-project-id/status'
-              ? { has_lock: true, status: 'done', consumer_alive: true }
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  consumer_alive: true,
+                  run_id: 'test-task-id',
+                  subscriber_count: 1,
+                }
               : { items: [] }
           )
         );
@@ -3755,7 +3952,13 @@ describe('ChatBox Component', async () => {
             });
           return Promise.resolve(
             url.endsWith('/status')
-              ? { has_lock: true, status: 'done', consumer_alive: true }
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  consumer_alive: true,
+                  run_id: 'test-task-id',
+                  subscriber_count: 1,
+                }
               : { items: [] }
           );
         });
@@ -3825,6 +4028,184 @@ describe('ChatBox Component', async () => {
       }
     );
 
+    it('quietly retries a busy queued admission once the Session is available', async () => {
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-busy',
+            content: 'Follow up once',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'finished',
+            },
+          },
+        } as any,
+      });
+      _mockFetchPost
+        .mockRejectedValueOnce(
+          Object.assign(new Error('Still finishing'), {
+            response: { data: { detail: { code: 'project_run_active' } } },
+          })
+        )
+        .mockResolvedValue({ success: true });
+      renderChatBox();
+      await waitFor(() =>
+        expect(
+          defaultProjectStoreState.setQueuedMessageProcessing
+        ).toHaveBeenCalledWith('test-project-id', 'queued-busy', false)
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(defaultChatStoreState.addMessages).not.toHaveBeenCalled();
+      expect(defaultChatStoreState.setActiveTaskId).not.toHaveBeenCalledWith(
+        'queued-busy'
+      );
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(2), {
+        timeout: 3000,
+      });
+      expect(defaultProjectStoreState.removeQueuedMessage).toHaveBeenCalledWith(
+        'test-project-id',
+        'queued-busy'
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('holds a queued message until the Session run status is reconciled', async () => {
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-held',
+            content: 'Follow up once',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'finished',
+            },
+          },
+        } as any,
+      });
+      let releaseRuns!: (value: unknown) => void;
+      const runs = new Promise((resolve) => {
+        releaseRuns = resolve;
+      });
+      mockFetchGet.mockImplementation((url: string) =>
+        url === '/runs'
+          ? runs
+          : Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? {
+                    has_lock: true,
+                    status: 'done',
+                    run_id: 'test-task-id',
+                    consumer_alive: true,
+                    subscriber_count: 1,
+                  }
+                : { runs: [] }
+            )
+      );
+      _mockFetchPost.mockResolvedValue({ success: true });
+      renderChatBox();
+      await waitFor(() =>
+        expect(mockFetchGet).toHaveBeenCalledWith('/runs', expect.anything())
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(_mockFetchPost).not.toHaveBeenCalled();
+      expect(
+        defaultProjectStoreState.setQueuedMessageProcessing
+      ).not.toHaveBeenCalledWith('test-project-id', 'queued-held', true);
+      await act(async () => {
+        releaseRuns({ runs: [] });
+      });
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(1));
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.objectContaining({ task_id: 'queued-held' })
+      );
+    });
+
+    it('backs off a busy queued admission and explains the wait once', async () => {
+      vi.useFakeTimers();
+      try {
+        defaultProjectStoreState.getProjectById.mockReturnValue({
+          queuedMessages: [
+            {
+              task_id: 'queued-busy',
+              content: 'Follow up once',
+              timestamp: 1,
+              attaches: [],
+            },
+          ],
+        } as any);
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: {
+            ...defaultChatStoreState,
+            tasks: {
+              'test-task-id': {
+                ...defaultChatStoreState.tasks['test-task-id'],
+                status: 'finished',
+              },
+            },
+          } as any,
+        });
+        _mockFetchPost.mockRejectedValue(
+          Object.assign(new Error('Still finishing'), {
+            response: { data: { detail: { code: 'project_run_active' } } },
+          })
+        );
+        const advance = (ms: number) =>
+          act(async () => {
+            await vi.advanceTimersByTimeAsync(ms);
+          });
+        const waitNotices = () =>
+          vi
+            .mocked(toast.info)
+            .mock.calls.filter(([, options]) =>
+              String((options as any)?.id ?? '').startsWith('queue-wait:')
+            );
+        renderChatBox();
+        await advance(50);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(1);
+        await advance(1050);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(2);
+        // The second wait is longer than the first.
+        await advance(1500);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(2);
+        await advance(600);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(3);
+        expect(waitNotices()).toHaveLength(0);
+        await advance(4100);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(4);
+        expect(waitNotices()).toHaveLength(1);
+        await advance(8100);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(5);
+        expect(waitNotices()).toHaveLength(1);
+        expect(toast.error).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('keeps an unstarted queue row available when admission fails', async () => {
       defaultProjectStoreState.getProjectById.mockReturnValue({
         queuedMessages: [
@@ -3861,7 +4242,13 @@ describe('ChatBox Component', async () => {
       mockFetchGet.mockImplementation((url: string) =>
         Promise.resolve(
           url.endsWith('/status')
-            ? { has_lock: true, status: 'done', consumer_alive: true }
+            ? {
+                has_lock: true,
+                status: 'done',
+                consumer_alive: true,
+                run_id: 'test-task-id',
+                subscriber_count: 1,
+              }
             : { items: [] }
         )
       );

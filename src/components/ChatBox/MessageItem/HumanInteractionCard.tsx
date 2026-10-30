@@ -19,7 +19,10 @@ import { Input } from '@/components/ui/input';
 import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
 import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { useHost } from '@/host';
-import { isInteractionTerminal } from '@/lib/approvalPresentation';
+import {
+  approvalTargets,
+  isInteractionTerminal,
+} from '@/lib/approvalPresentation';
 import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
 import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { controlOwner } from '@/service/controlRequest';
@@ -290,9 +293,20 @@ export function HumanInteractionCard({
       host?.ipcRenderer?.off('backend-ready', readReceipt);
     };
   }, [viewKey, receiptNeedsReason, interaction, host?.ipcRenderer]);
+  // Shared with the BottomBox card so a restored request names the same file
+  // or command line as the live one did.
   const targets = useMemo(
-    () => interaction.target_resources?.filter(Boolean) || [],
-    [interaction.target_resources]
+    () =>
+      approvalTargets({
+        operation: interaction.operation,
+        targetResources: interaction.target_resources,
+        displayArguments: interaction.display_arguments,
+      }).map((target) => target.value),
+    [
+      interaction.operation,
+      interaction.target_resources,
+      interaction.display_arguments,
+    ]
   );
 
   const deliver = (receipt: Record<string, unknown>) => {

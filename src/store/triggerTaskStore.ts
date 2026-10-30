@@ -45,6 +45,8 @@ export interface TriggeredTask {
   timestamp: number;
   /** Formatted message content for display and processing */
   formattedMessage?: string;
+  /** The app found this execution itself and must report that it started. */
+  needsClaim?: boolean;
 }
 
 /**

@@ -127,7 +127,8 @@ const SESSION_NAV_LEAD_BY_KIND: Record<
   },
 };
 
-function presentationForKind(
+/** Presentation of a lead kind, for example one reported by another window. */
+export function presentationForKind(
   kind: SessionNavLeadKind,
   spin = false
 ): SessionNavLeadPresentation {

@@ -73,7 +73,8 @@ vi.mock('@/lib/projectRuntimeHydration', () => ({
 }));
 
 vi.mock('@/components/ChatBox/MessageItem/TaskWorkLogAccordion', () => ({
-  getTaskRunDisplayStatus: () => undefined,
+  getTaskRunDisplayStatus: (task: { durableRunStatus?: string }) =>
+    task.durableRunStatus,
   TaskWorkLogAccordion: ({ taskId }: { taskId: string }) => (
     <div data-testid="task-work-log" data-task-id={taskId} />
   ),
@@ -250,6 +251,55 @@ describe('UserQueryGroup Run work-log ownership', () => {
     expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
     expect(screen.queryByText('Which region?')).not.toBeInTheDocument();
     expect(screen.queryByText('Europe')).not.toBeInTheDocument();
+  });
+
+  it('leaves an answered question to the work log after the Run completes', () => {
+    const prompt = { id: 'user-1', role: 'user', content: 'Build a report' };
+    const ask = {
+      id: 'ask-1',
+      role: 'agent',
+      step: AgentStep.ASK,
+      content: 'Which region?',
+      interaction: {
+        interaction_id: 'interaction-1',
+        interaction_type: 'question',
+        run_id: 'run-1',
+        question: 'Which region?',
+      },
+    };
+    const tool = {
+      id: 'tool-1',
+      role: 'agent',
+      step: AgentStep.ACTIVATE_TOOLKIT,
+      content: '',
+    };
+    const reply = {
+      id: 'reply-1',
+      role: 'user',
+      content: 'Europe',
+      interactionResponseTo: 'interaction-1',
+    };
+    const end = {
+      id: 'end-1',
+      role: 'agent',
+      step: AgentStep.END,
+      content: 'Done',
+    };
+
+    renderGroups([prompt, ask, tool, reply, end], {
+      status: ChatTaskStatus.FINISHED,
+      durableRunStatus: 'completed',
+      activeAsk: '',
+      resolvedInteractionIds: ['interaction-1'],
+    });
+
+    expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+    expect(screen.queryByText('Which region?')).not.toBeInTheDocument();
+    expect(screen.queryByText('Europe')).not.toBeInTheDocument();
+    expect(screen.getByText('Done')).toBeInTheDocument();
+    expect(
+      screen.queryByText('This task ended before Eigent sent a final reply.')
+    ).not.toBeInTheDocument();
   });
 
   it('forwards message lifecycle and Run identity to every feedback card path', () => {
@@ -581,6 +631,79 @@ describe('Task failure summary ownership', () => {
       expect(container.querySelector('[data-task-failure-summary]')).toBeNull()
     );
   });
+
+  it.each([
+    ['absent', 'No actions were recorded.'],
+    ['unverified', 'Action outcomes could not be verified.'],
+  ] as const)(
+    'reports an interrupted Run as interrupted, never failed (%s reply)',
+    async (finalResponse, detail) => {
+      const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+        onFacts({
+          terminalReason: 'runtime_lost',
+          finalResponse,
+          actionsVerified: finalResponse === 'absent',
+          actions: [],
+        });
+        return () => {};
+      });
+      const { container } = renderGroups(
+        [{ id: 'user', role: 'user', content: 'Request' }],
+        {
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'interrupted',
+          observeTaskFailureFacts,
+        }
+      );
+      expect(
+        await screen.findByText(
+          'Task interrupted before a final reply was recorded.'
+        )
+      ).toBeInTheDocument();
+      expect(screen.getByText(detail)).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'An interruption does not establish whether files or external services changed.'
+        )
+      ).toBeInTheDocument();
+      expect(container).not.toHaveTextContent(/fail/i);
+      const summary = container.querySelector('[data-task-failure-summary]');
+      expect(summary).toHaveAttribute('data-run-status', 'interrupted');
+      expect(summary?.className).toContain('bg-ds-bg-warning-subtle-default');
+      expect(summary?.className).not.toContain('error');
+    }
+  );
+
+  it.each(['interrupted', 'timed_out'])(
+    'states a missing final reply once for a %s Run',
+    async (durableRunStatus) => {
+      let deliver: (facts: unknown) => void = () => {};
+      const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+        deliver = onFacts;
+        return () => {};
+      });
+      renderGroups([{ id: 'user', role: 'user', content: 'Request' }], {
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus,
+        observeTaskFailureFacts,
+      });
+      const notice = 'This task ended before Eigent sent a final reply.';
+      // Until the receipt is read, the plain notice still explains the gap.
+      expect(screen.getByText(notice)).toBeInTheDocument();
+      act(() =>
+        deliver({
+          terminalReason: null,
+          finalResponse: 'absent',
+          actionsVerified: true,
+          actions: [],
+        })
+      );
+      expect(
+        await screen.findByText('No actions were recorded.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(notice)).not.toBeInTheDocument();
+    }
+  );
 });
 
 describe('UserQueryGroup Space writer wait', () => {
@@ -778,5 +901,31 @@ describe('UserQueryGroup restored Run requests', () => {
     restored(undefined);
 
     expect(card()).toBeNull();
+  });
+
+  it('leaves a waiting question to the control above the composer', () => {
+    renderGroups(
+      [
+        messages[0],
+        {
+          id: 'ask-question',
+          role: 'agent',
+          step: AgentStep.ASK,
+          content: 'Which colour?',
+          agent_name: 'single_agent',
+          interaction: {
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            run_id: 'run-1',
+            question: 'Which colour?',
+            agent: 'single_agent',
+          },
+        },
+      ],
+      { type: 'replay', durableRunStatus: 'waiting_for_user' }
+    );
+
+    expect(screen.queryByText('Which colour?')).toBeNull();
+    expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
   });
 });

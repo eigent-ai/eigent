@@ -397,6 +397,7 @@
   "skip": "Ignorer",
   "social-media-agent": "Agent de réseaux sociaux",
   "stop-task": "Arrêter la tâche",
+  "scroll-to-bottom": "Faire défiler vers le bas",
   "stopping-current-task-queued-next": "Arrêt de la tâche en cours. Votre message en attente démarrera ensuite.",
   "take-control": "Prendre le contrôle",
   "task-admission-failed": "La tâche n’a pas pu démarrer. Veuillez réessayer.",
@@ -573,6 +574,8 @@
   "task-failure-outcome-outcome_unknown": "Résultat inconnu",
   "task-failure-outcome-unverified": "Résultat non vérifié",
   "task-failure-timed-out": "Le délai de la tâche a expiré avant qu’une réponse finale soit enregistrée.",
+  "task-failure-interrupted": "La tâche a été interrompue avant qu’une réponse finale soit enregistrée.",
+  "task-failure-interrupted-effects": "Une interruption ne permet pas de déterminer si des fichiers ou des services externes ont été modifiés.",
   "task-failure-no-actions-recorded": "Aucune action n’a été enregistrée.",
   "task-failure-more-actions": "{{count}} autres actions ne sont pas affichées.",
   "approval-expired-title": "Approbation expirée",
@@ -599,5 +602,9 @@
   "automation-source-session": "Automatisation de la session : {{name}}",
   "automation-schedule-review-hint": "Vérifiez la planification ci-dessous. L’éditeur choisit une valeur par défaut même sans répétition demandée.",
   "automation-review-confirm": "J’ai vérifié la planification et les données requises.",
-  "automation-review-required": "Vérifiez la planification et les données requises avant de créer."
+  "automation-review-required": "Vérifiez la planification et les données requises avant de créer.",
+  "notice-use-own-api-key": "Utiliser votre propre clé API",
+  "notice-credits-new": "Ajoutez des crédits pour commencer à exécuter des tâches.",
+  "notice-credits-new-description": "Changez de forfait ou utilisez la clé API de votre propre modèle.",
+  "space-model-fallback": "Le modèle de cet espace n’est plus disponible : cette session utilise votre modèle par défaut."
 }

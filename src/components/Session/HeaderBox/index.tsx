@@ -36,6 +36,7 @@ import {
   parseAutomationDraft,
   type AutomationDraftV1,
 } from '@/lib/automationDraft';
+import { getSessionWindowRole } from '@/lib/sessionWindows';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -57,7 +58,13 @@ import {
   Trash2,
   WandSparkles,
 } from 'lucide-react';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
@@ -91,6 +98,8 @@ export interface HeaderBoxProps {
   showBack?: boolean;
   /** Summary column toggle, shown beside Preview when provided. */
   summary?: SummaryToggleProps;
+  /** Controls after the Preview toggle, such as closing a split pane. */
+  trailingActions?: ReactNode;
 }
 
 export function HeaderBox({
@@ -102,8 +111,11 @@ export function HeaderBox({
   showTimelineStyle = true,
   showBack = true,
   summary,
+  trailingActions,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
+  // A Session window has nowhere to go back to.
+  const inSessionWindow = getSessionWindowRole() === 'session';
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const titleRef = useRef<HTMLSpanElement>(null);
   const sessionMenuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -248,7 +260,7 @@ export function HeaderBox({
     >
       {/* Left: return to workspace, Session identity, and its controls. */}
       <div className="flex min-w-0 items-center gap-ds-4">
-        {showBack ? (
+        {showBack && !inSessionWindow ? (
           <TooltipSimple content={backTooltip} variant="instant" side="bottom">
             <Button
               type="button"
@@ -369,8 +381,10 @@ export function HeaderBox({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : projectName ? (
+          // Same inset as the Session title button, so the label lines up
+          // with a Session's title and the Space switch above it.
           <span
-            className="max-w-[200px] min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default"
+            className="max-w-[200px] min-w-0 truncate px-[var(--ds-button-sm-padding-inline)] text-ds-text-base font-semibold text-ds-ink-default-default"
             title={projectName}
           >
             {projectName}
@@ -420,6 +434,7 @@ export function HeaderBox({
             <DsIcon icon={GalleryThumbnails} recipe="main" />
           </Button>
         </TooltipSimple>
+        {trailingActions}
       </div>
       {automationDialogContext ? (
         <TriggerDialog

@@ -399,6 +399,7 @@
   "skip": "Omitir",
   "social-media-agent": "Agente de redes sociales",
   "stop-task": "Detener tarea",
+  "scroll-to-bottom": "Desplazarse al final",
   "stopping-current-task-queued-next": "Deteniendo la tarea actual. Tu mensaje en cola comenzará a continuación.",
   "take-control": "Tomar el control",
   "task-admission-failed": "No se pudo iniciar la tarea. Inténtalo de nuevo.",
@@ -573,6 +574,8 @@
   "task-failure-outcome-outcome_unknown": "Resultado desconocido",
   "task-failure-outcome-unverified": "Resultado sin verificar",
   "task-failure-timed-out": "La tarea agotó el tiempo de espera antes de que se registrara una respuesta final.",
+  "task-failure-interrupted": "La tarea se interrumpió antes de que se registrara una respuesta final.",
+  "task-failure-interrupted-effects": "Una interrupción no permite determinar si se modificaron archivos o servicios externos.",
   "task-failure-no-actions-recorded": "No se registró ninguna acción.",
   "task-failure-more-actions": "{{count}} acciones más no se muestran.",
   "approval-expired-title": "Aprobación caducada",
@@ -599,5 +602,9 @@
   "automation-source-session": "Automatización de la sesión: {{name}}",
   "automation-schedule-review-hint": "Revisa el horario de abajo. El editor elige uno predeterminado aunque no hayas pedido una repetición.",
   "automation-review-confirm": "He revisado el horario y los datos necesarios.",
-  "automation-review-required": "Revisa el horario y los datos necesarios antes de crearla."
+  "automation-review-required": "Revisa el horario y los datos necesarios antes de crearla.",
+  "notice-use-own-api-key": "Usar tu propia clave API",
+  "notice-credits-new": "Añade créditos para empezar a ejecutar tareas.",
+  "notice-credits-new-description": "Mejora tu plan o usa la clave API de tu propio modelo.",
+  "space-model-fallback": "El modelo de este espacio ya no está disponible, así que esta sesión usa tu modelo predeterminado."
 }

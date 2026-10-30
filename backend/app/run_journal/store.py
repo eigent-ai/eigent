@@ -8616,6 +8616,23 @@ class SQLiteRunJournal:
             ).fetchone()
         return self._model_invocation_from_row(row) if row else None
 
+    def browser_tool_attempts(self, run_id: str) -> frozenset[str | None]:
+        """Historical browser evidence is a reconnect hint, never authority."""
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT attempt_id FROM tool_calls
+                WHERE run_id = ? AND substr(tool_name, 1, 8) = 'browser_'
+                UNION
+                SELECT invocation.attempt_id FROM model_invocations AS invocation,
+                     json_tree(invocation.request_json, '$.model_config_dict.tools') AS schema
+                WHERE invocation.run_id = ? AND schema.key = 'name'
+                    AND schema.type = 'text' AND substr(schema.value, 1, 8) = 'browser_'
+                """,
+                (run_id, run_id),
+            ).fetchall()
+        return frozenset(row["attempt_id"] for row in rows)
+
     def list_model_invocations(
         self, run_id: str
     ) -> tuple[ModelInvocationRecord, ...]:
@@ -8967,6 +8984,45 @@ class SQLiteRunJournal:
                 (attempt_id,),
             ).fetchall()
         return tuple(self._attempt_evidence_gap_from_row(row) for row in rows)
+
+    def has_active_local_execution(
+        self, *, admission_owner_id: str | None = None
+    ) -> bool:
+        """Global quit guard; bare pending rows do not own execution.
+
+        Only the live execution service prepares work. A claim left by an
+        earlier process stays until recovery and is not running anything.
+        """
+        with self._lock:
+            active = self._connection.execute(
+                """SELECT 1 FROM runs r
+                WHERE r.status IN ('running', 'waiting_for_user')
+                   OR (r.status = 'pending' AND EXISTS (
+                       SELECT 1 FROM run_attempts a WHERE a.run_id = r.run_id
+                       AND a.status IN ('pending', 'running', 'waiting_for_user')
+                   )) LIMIT 1"""
+            ).fetchone()
+            if active is not None:
+                return True
+            if (
+                admission_owner_id is None
+                or self._connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_admission_claims'"
+                ).fetchone()
+                is None
+            ):
+                return False
+            return (
+                self._connection.execute(
+                    """SELECT 1 FROM project_admission_claims c
+                JOIN execution_requests e ON e.request_id=c.request_id
+                WHERE c.state = 'claimed' AND c.owner_id = ?
+                AND e.status = 'preparing'
+                LIMIT 1""",
+                    (admission_owner_id,),
+                ).fetchone()
+                is not None
+            )
 
     def list_runs(
         self,
@@ -11049,6 +11105,87 @@ class SQLiteRunJournal:
                 """,
                 (timestamp, project_id),
             )
+
+    def reject_unstarted_run(
+        self,
+        run_id: str,
+        *,
+        project_id: str,
+        message: str,
+        request_id: str | None = None,
+        question: str | None = None,
+        attachment_names: list[str] | None = None,
+        review_handoff_ids: list[str] | None = None,
+        error_code: str | None = None,
+    ) -> bool:
+        """Close a refused admission without touching a consumer-owned Run."""
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ? AND project_id = ?",
+                (run_id, project_id),
+            ).fetchone()
+            if run is None or run["status"] != "pending":
+                return False
+            if connection.execute(
+                "SELECT 1 FROM run_attempts WHERE run_id = ? LIMIT 1",
+                (run_id,),
+            ).fetchone():
+                return False
+            if (
+                question is not None
+                and not connection.execute(
+                    "SELECT 1 FROM run_events WHERE run_id = ? AND event_type = 'user.message' LIMIT 1",
+                    (run_id,),
+                ).fetchone()
+            ):
+                self._append_event_in_transaction(
+                    connection,
+                    run_id,
+                    RunEventDraft(
+                        event_id=f"user-message:{request_id or run_id}",
+                        event_type="user.message",
+                        payload={
+                            "content": question,
+                            "source": "chat",
+                            "attachment_names": list(attachment_names or []),
+                            "review_handoff_ids": list(
+                                review_handoff_ids or []
+                            ),
+                        },
+                    ),
+                )
+            # A terminal event controls lifecycle; the error receipt supplies
+            # the message rendered by both timeline readers after a reload.
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=f"admission:{run_id}:error",
+                    event_type="legacy.error",
+                    legacy_step="error",
+                    payload={"message": message, "code": error_code},
+                ),
+            )
+            draft = RunEventDraft(
+                event_id=f"admission:{run_id}:refused",
+                event_type="run.failed",
+                legacy_step="error",
+                payload={"reason": "admission_refused", "message": message},
+            )
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                draft,
+                payload_json=json.dumps(dict(draft.payload)),
+                run_status="failed",
+                clear_active_attempt=True,
+            )
+            connection.execute(
+                """UPDATE follow_up_requests SET status='cancelled', last_error=?, updated_at=?
+                WHERE request_id=? AND project_id=? AND status='pending'""",
+                (message, draft.created_at, run_id, project_id),
+            )
+            return True
 
     def append_event(
         self,

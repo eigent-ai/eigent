@@ -393,6 +393,7 @@
   "skip": "スキップ",
   "social-media-agent": "ソーシャルメディアエージェント",
   "stop-task": "タスクを停止",
+  "scroll-to-bottom": "一番下までスクロール",
   "stopping-current-task-queued-next": "現在のタスクを停止しています。次にキュー内のメッセージを開始します。",
   "take-control": "操作を引き継ぐ",
   "task-admission-failed": "タスクを開始できませんでした。もう一度お試しください。",
@@ -565,6 +566,8 @@
   "task-failure-outcome-outcome_unknown": "結果不明",
   "task-failure-outcome-unverified": "結果未確認",
   "task-failure-timed-out": "最終返信が記録される前にタスクがタイムアウトしました。",
+  "task-failure-interrupted": "最終返信が記録される前にタスクが中断されました。",
+  "task-failure-interrupted-effects": "中断されたという事実だけでは、ファイルや外部サービスが変更されたかは判断できません。",
   "task-failure-no-actions-recorded": "操作は記録されていません。",
   "task-failure-more-actions": "ほか {{count}} 件の操作は表示されていません。",
   "approval-expired-title": "承認の有効期限切れ",
@@ -591,5 +594,9 @@
   "automation-source-session": "セッションからの自動化: {{name}}",
   "automation-schedule-review-hint": "以下のスケジュールを確認してください。繰り返しの指定がなくても既定値が選ばれます。",
   "automation-review-confirm": "スケジュールと必要な入力を確認しました。",
-  "automation-review-required": "作成前にスケジュールと必要な入力を確認してください。"
+  "automation-review-required": "作成前にスケジュールと必要な入力を確認してください。",
+  "notice-use-own-api-key": "自分の API キーを使用",
+  "notice-credits-new": "タスクを実行するにはクレジットを追加してください。",
+  "notice-credits-new-description": "プランをアップグレードするか、自分のモデルの API キーを使用してください。",
+  "space-model-fallback": "このスペースのモデルは利用できなくなったため、このセッションではデフォルトモデルを使用します。"
 }

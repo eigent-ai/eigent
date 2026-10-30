@@ -63,7 +63,7 @@ vi.mock('@/hooks/useChatStoreAdapter', () => ({
   default: () => ({ chatStore: null }),
 }));
 vi.mock('@/service/runCloseGuard', () => ({
-  assessCloseRunState: mocks.assessCloseRunState,
+  assessGlobalCloseRunState: mocks.assessCloseRunState,
 }));
 vi.mock('@/store/chatStore', () => ({
   hasAnyActiveLegacySSEConnection: mocks.hasAnyActiveLegacySSEConnection,
@@ -160,10 +160,30 @@ describe('WindowCloseProvider', () => {
 
     await waitFor(() => expect(mocks.assessCloseRunState).toHaveBeenCalled());
     expect(mocks.assessCloseRunState).toHaveBeenCalledWith({
-      projectIds: ['project-1', 'project-2'],
       legacyActive: true,
       signal: expect.any(AbortSignal),
     });
+  });
+
+  it('counts a task that is still starting in another Session', async () => {
+    const starting = {
+      tasks: {
+        run: { status: 'pending', isPending: true, activeAsk: '' },
+      },
+    };
+    mocks.runtimeState.projects = {
+      'project-2': { chatStores: { session: { getState: () => starting } } },
+    };
+    const { emitCloseRequest } = renderProvider();
+
+    act(() => emitCloseRequest('quit-app'));
+
+    await waitFor(() =>
+      expect(mocks.assessCloseRunState).toHaveBeenCalledWith({
+        legacyActive: true,
+        signal: expect.any(AbortSignal),
+      })
+    );
   });
 
   it('preserves the intent and execution class through cancel and confirm', async () => {

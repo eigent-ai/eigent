@@ -396,6 +396,7 @@
   "skip": "Skip",
   "social-media-agent": "Social media agent",
   "stop-task": "Stop Task",
+  "scroll-to-bottom": "Scroll to bottom",
   "stopping-current-task-queued-next": "Stopping the current task. Your queued message will start next.",
   "take-control": "Take Control",
   "task-admission-failed": "The task could not be started. Please try again.",
@@ -569,6 +570,8 @@
   "task-failure-outcome-outcome_unknown": "Outcome unknown",
   "task-failure-outcome-unverified": "Outcome unverified",
   "task-failure-timed-out": "Task timed out before a final reply was recorded.",
+  "task-failure-interrupted": "Task interrupted before a final reply was recorded.",
+  "task-failure-interrupted-effects": "An interruption does not establish whether files or external services changed.",
   "task-failure-no-actions-recorded": "No actions were recorded.",
   "task-failure-more-actions": "{{count}} more actions not shown.",
   "approval-expired-title": "Approval expired",
@@ -595,5 +598,9 @@
   "automation-source-session": "Automation from Session: {{name}}",
   "automation-schedule-review-hint": "Review the schedule below. The editor selects a default even when no recurrence was requested.",
   "automation-review-confirm": "I reviewed the schedule and required inputs.",
-  "automation-review-required": "Review the schedule and required inputs before creating."
+  "automation-review-required": "Review the schedule and required inputs before creating.",
+  "notice-use-own-api-key": "Use your own API key",
+  "notice-credits-new": "Add credits to start running tasks.",
+  "notice-credits-new-description": "Upgrade your plan or use your own model API key.",
+  "space-model-fallback": "This Space's model is no longer available, so this session uses your default model."
 }

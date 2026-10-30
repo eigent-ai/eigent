@@ -58,6 +58,10 @@ import {
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import {
+  parseSpaceModelChoice,
+  SPACE_MODEL_METADATA_KEY,
+} from '@/lib/spaceModelChoice';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { errorCopy } from '@/lib/usageErrors';
@@ -71,6 +75,7 @@ import {
   cancelFollowUpRequest,
   createFollowUpRequest,
   invalidatePendingFollowUps,
+  isQueueAdmissionWait,
   listPendingFollowUpRequests,
   prioritizeFollowUpRequest,
   terminalContinuationAdmissionRejection,
@@ -97,6 +102,10 @@ import {
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
+import {
+  isSessionStarting,
+  useSessionStartStore,
+} from '@/store/sessionStartStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -122,13 +131,18 @@ import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
 import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
-import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
+import {
+  createLegacyApprovalVariant,
+  createLegacyConfirmationVariant,
+  isLegacyConfirmationInteraction,
+} from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
   BottomBoxFeedbackVariant,
   BottomBoxRunControlVariant,
 } from './BottomBox/types';
 import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
+import { isChatTimelineNearBottom } from './chatTimelineScroll';
 import { ControlRecovery, useControlOperations } from './ControlRecovery';
 import { EventNativeProjectTimeline } from './EventNativeProjectTimeline';
 import {
@@ -210,6 +224,11 @@ function selectLatestReadOnlyEventNativeRun(
   );
 }
 
+/** Longest wait between admissions while a Session is still busy. */
+const QUEUE_WAIT_RETRY_MAX_MS = 30_000;
+/** Busy refusals after which the queued message explains its wait. */
+const QUEUE_WAIT_NOTICE_ATTEMPTS = 4;
+
 function getCurrentTimestamp() {
   return Date.now();
 }
@@ -243,6 +262,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const { chatStore, projectStore } = useChatStoreAdapter();
   const sessionProjectId = useSessionProjectId();
   const isFocusedPane = useIsFocusedSessionPane();
+  // Send in the Workspace composer opens this Session while its first task
+  // is still being created and admitted there.
+  const isSessionStartPending = useSessionStartStore((s) =>
+    Boolean(sessionProjectId && s.startingProjectIds[sessionProjectId])
+  );
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLDivElement>(null);
@@ -402,7 +426,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       sessionModelIdentity &&
       sessionModelIdentity.category === sessionModelSelection?.modelType
     );
-  const composerModelType = sessionModelSelection?.modelType ?? modelType;
+  // An unpinned new Session starts on its Space's saved model.
+  const spaceModelType = parseSpaceModelChoice(
+    activeProject?.metadata?.spaceModelDefaultPending === true
+      ? sessionSpace?.metadata?.[SPACE_MODEL_METADATA_KEY]
+      : null
+  )?.modelType;
+  const composerModelType =
+    sessionModelSelection?.modelType ?? spaceModelType ?? modelType;
   const usage = useUsageNoticeStore();
   const subscriptionUsage = usage.subscription;
   const currentCredits = usage.credits;
@@ -413,6 +444,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     run: interruptedRun,
     setRun: setInterruptedRun,
     refresh: refreshInterruptedRun,
+    settled: interruptedRunSettled,
   } = useInterruptedRunStatus(activeProjectId);
   const pendingModelAdmission =
     activeProject?.metadata?.spaceModelAdmissionRunId;
@@ -470,11 +502,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const incidentBanner = useUsageIncidentBanner(composerModelType);
   const bannerId = usageLimitBannerState?.id;
   // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
-  const usageLimitBanner =
-    incidentBanner ??
-    (composerModelType !== 'cloud' ||
-    !usageLimitBannerState ||
-    bannerId === dismissedUsageLimitBannerId
+  // An open incident owns this slot even while its toast hides the banner.
+  const usageLimitBanner = incident
+    ? incidentBanner
+    : composerModelType !== 'cloud' ||
+        !usageLimitBannerState ||
+        bannerId === dismissedUsageLimitBannerId
       ? null
       : {
           message: usageLimitBannerState.message,
@@ -489,7 +522,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             setDismissedUsageLimitBannerId(bannerId ?? null);
             acknowledgeUsageNotice();
           },
-        });
+        };
 
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 
@@ -588,6 +621,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
+  const [queueRetryAt, setQueueRetryAt] = useState(0);
+  const [queueRetryRevision, setQueueRetryRevision] = useState(0);
+  const queueWaitRef = useRef<{ key: string; attempts: number } | null>(null);
   // Shared across mounts: a composer remounted by a Session switch must still
   // see an admission that an earlier mount has not finished.
   const followUpAdmissionsRef = useRef(followUpAdmissionClaims);
@@ -774,13 +810,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       ? legacyApprovalCheck.pending
       : undefined;
   const isLegacyApproval = activeInteraction?.interaction_type === 'approval';
+  // A reopened Session restores its Run for playback. When that Run still
+  // waits for this question, it is answered here like a live one.
+  const isRestoredQuestionWaiting =
+    activeAskTask?.type === 'replay' &&
+    activeInteraction?.interaction_type === 'question' &&
+    !activeInteractionReadOnly;
   const canAnswerActiveAsk =
     !legacyInteractionExpired &&
     !activeInteractionReadOnly &&
     !!activeAskTask &&
-    activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
-    activeAskTask.status !== ChatTaskStatus.FINISHED;
+    (isRestoredQuestionWaiting ||
+      (activeAskTask.type !== 'replay' &&
+        activeAskTask.status !== ChatTaskStatus.FINISHED));
   const isInteractiveHumanReply =
     canAnswerActiveAsk && (!isLegacyApproval || legacyApprovalPending === true);
   const isLegacyApprovalUnconfirmed =
@@ -800,7 +843,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     const taskId = activeTaskId;
     if (
       !interaction ||
-      interaction.interaction_type !== 'approval' ||
+      (interaction.interaction_type !== 'approval' &&
+        !isLegacyConfirmationInteraction(interaction)) ||
       !taskId ||
       legacyApprovalSubmitting ||
       !isInteractiveHumanReply
@@ -854,7 +898,10 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         return;
       await decideHumanInteraction(interaction, {
         decisionRequestId: generateUniqueId(),
-        decision: { decision, scope },
+        decision:
+          interaction.interaction_type === 'approval'
+            ? { decision, scope }
+            : { decision },
         actorId: user_id,
         projectId: projectId ?? undefined,
       });
@@ -1062,6 +1109,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
 
     const task = chatStore.tasks[chatStore.activeTaskId];
 
+    // A message sent before that start settles would start the task again.
+    if (isSessionStartPending) return true;
+
     // If ask human is active, allow input
     if (task.activeAsk) return false;
 
@@ -1075,6 +1125,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   }, [
     chatStore?.activeTaskId,
     chatStore?.tasks,
+    isSessionStartPending,
     isCloudUsageLimited,
     canUseSessionModel,
     useCloudModelInDev,
@@ -1179,6 +1230,57 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     };
   }, []);
 
+  // Whether the timeline is scrolled up from its latest content, which offers
+  // the floating scroll-to-bottom action. Content growth changes the distance
+  // without a scroll event, so resizes are observed as well.
+  const [isTimelineScrolledUp, setIsTimelineScrolledUp] = useState(false);
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+    const update = () =>
+      setIsTimelineScrolledUp(
+        !isChatTimelineNearBottom(
+          scrollContainer.scrollHeight -
+            scrollContainer.scrollTop -
+            scrollContainer.clientHeight,
+          0
+        )
+      );
+    update();
+    scrollContainer.addEventListener('scroll', update, { passive: true });
+    if (typeof ResizeObserver === 'undefined') {
+      return () => scrollContainer.removeEventListener('scroll', update);
+    }
+    const resizeObserver = new ResizeObserver(update);
+    const observeChildren = () => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(scrollContainer);
+      Array.from(scrollContainer.children).forEach((child) =>
+        resizeObserver.observe(child)
+      );
+      update();
+    };
+    observeChildren();
+    const mutationObserver = new MutationObserver(observeChildren);
+    mutationObserver.observe(scrollContainer, { childList: true });
+    return () => {
+      scrollContainer.removeEventListener('scroll', update);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, []);
+  const scrollTimelineToBottom = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+    const reducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    ).matches;
+    scrollContainer.scrollTo({
+      top: scrollContainer.scrollHeight,
+      behavior: reducedMotion ? 'auto' : 'smooth',
+    });
+  }, []);
+
   const handleSend = async (
     messageStr?: string,
     taskId?: string,
@@ -1190,6 +1292,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     const composerAttachments =
       queuedAttaches || (_taskId ? chatStore.tasks[_taskId]?.attaches : []);
+    if (isSessionStarting(sessionProjectId)) return;
     if (
       message.trim() === '' &&
       !messageStr &&
@@ -1317,7 +1420,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return;
     }
     const requiresApprovalDecision =
-      activeInteraction?.interaction_type === 'approval';
+      activeInteraction?.interaction_type === 'approval' ||
+      isLegacyConfirmationInteraction(activeInteraction);
     const isTaskBusy =
       (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
       task.status === ChatTaskStatus.PAUSE ||
@@ -1475,8 +1579,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               targetProjectId,
               projectStore.getProjectById(targetProjectId)
             );
+        if (admissionMode === 'busy') {
+          throw Object.assign(
+            new Error('Session is still finishing its current task.'),
+            { code: 'project_run_active' }
+          );
+        }
         if (admissionMode !== 'cold') {
-          // A busy consumer still takes the follow-up on its queue, as before.
+          // An idle consumer observed by this window admits the follow-up warm.
           chatStore.setNextTaskId(queuedRequestId);
           chatStore.setNextExecutionId(_taskId, undefined);
           await fetchPost(`/chat/${targetProjectId}`, {
@@ -1511,11 +1621,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             {
               preserveTaskId: true,
               awaitAdmission: true,
+              deferPresentationUntilAdmission: true,
               ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
             }
           );
-          // Queued payloads do not own the user's current composer. Move
-          // that draft when cold startup synchronously selects its new Run.
+          await admission;
+          // Admission selects the new Run; move the current composer draft
+          // afterward without changing the submitted queued payload.
           const draftTask = draftStore?.getState().tasks[_taskId];
           const nextState = projectStore
             .getChatStore(targetProjectId)
@@ -1539,7 +1651,6 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             if (draftStore.getState().tasks[_taskId]?.attaches === draftFiles)
               draftStore.getState().setAttaches(_taskId, []);
           }
-          await admission;
         }
         messageAccepted = true;
       } else if (requiresHumanReply) {
@@ -1960,7 +2071,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
-      if (startsAfterInterruption || followUpAdmission)
+      if (!queuedRequestId && (startsAfterInterruption || followUpAdmission))
         notifyError(
           error instanceof Error ? error.message : t('chat.run-resume-failed')
         );
@@ -2299,6 +2410,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       !projectId ||
       !activeId ||
       queueExecution.busy ||
+      !interruptedRunSettled ||
+      Date.now() < queueRetryAt ||
       interruptedRun ||
       activeAsk ||
       !canUseSessionModel ||
@@ -2337,6 +2450,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       next.reviewHandoffIds
     )
       .then(() => {
+        queueWaitRef.current = null;
         setAdmittedQueuedRun({ projectId, runId: next.task_id });
         acknowledgeQueuedRequest(projectId, next.task_id);
       })
@@ -2348,6 +2462,38 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           )
         )
           return;
+        if (isQueueAdmissionWait(error)) {
+          // Back off while the Session stays busy, and explain the wait once
+          // per queued message instead of on every retry.
+          const waitKey = JSON.stringify([projectId, next.task_id]);
+          const wait =
+            queueWaitRef.current?.key === waitKey
+              ? queueWaitRef.current
+              : { key: waitKey, attempts: 0 };
+          wait.attempts += 1;
+          queueWaitRef.current = wait;
+          setQueueRetryAt(
+            Date.now() +
+              Math.min(1000 * 2 ** (wait.attempts - 1), QUEUE_WAIT_RETRY_MAX_MS)
+          );
+          if (wait.attempts === QUEUE_WAIT_NOTICE_ATTEMPTS)
+            toast.info(
+              t('chat.message-queued', {
+                defaultValue:
+                  'Message queued. Eigent will send it when the current task finishes.',
+              }),
+              { id: `queue-wait:${waitKey}` }
+            );
+          projectStore.setQueuedMessageProcessing(
+            projectId,
+            next.task_id,
+            false
+          );
+          if (chatStore.nextTaskId === next.task_id)
+            chatStore.setNextTaskId(null);
+          return;
+        }
+        queueWaitRef.current = null;
         console.error('[FollowUpQueue] Failed to admit queued message', error);
         const rejection = terminalContinuationAdmissionRejection(error);
         if (rejection) {
@@ -2376,12 +2522,29 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     isCloudUsageLimited,
     queueExecution.busy,
     interruptedRun,
+    interruptedRunSettled,
+    queueRetryAt,
+    queueRetryRevision,
+    chatStore,
     projectStore,
     queuedMessages,
+    t,
     queueAction,
     followUpAdmissionRevision,
     sessionProjectId,
   ]);
+
+  useEffect(() => {
+    if (!queueRetryAt) return;
+    const timer = window.setTimeout(
+      () => {
+        setQueueRetryRevision((value) => value + 1);
+        void refreshInterruptedRun();
+      },
+      Math.max(0, queueRetryAt - Date.now())
+    );
+    return () => window.clearTimeout(timer);
+  }, [queueRetryAt, refreshInterruptedRun]);
 
   useEffect(() => {
     if (share_token && isConfigLoaded) {
@@ -2865,10 +3028,37 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   ) {
     legacyApprovalVariant.disabled = true;
   }
+  const legacyConfirmationVariant =
+    !eventNativeTimelineEnabled &&
+    activeAsk &&
+    isInteractiveHumanReply &&
+    activeAskMessage
+      ? createLegacyConfirmationVariant({
+          interaction: activeInteraction,
+          fallbackQuestion: activeAskMessage.content.trim(),
+          submitting: legacyApprovalSubmitting,
+          t,
+          onConfirm: () =>
+            void handleLegacyApprovalDecision('approved', 'once'),
+          onReject: () => void handleLegacyApprovalDecision('rejected', 'once'),
+        })
+      : null;
+  if (
+    legacyConfirmationVariant &&
+    controlOperations.some(
+      (op) =>
+        op.kind === 'interaction' &&
+        op.runId === activeInteraction?.run_id &&
+        op.interactionId === activeInteraction?.interaction_id
+    )
+  ) {
+    legacyConfirmationVariant.disabled = true;
+  }
   const legacyQuestionVariant: BottomBoxFeedbackVariant | null =
     !eventNativeTimelineEnabled &&
     activeAsk &&
     !isLegacyApproval &&
+    !isLegacyConfirmationInteraction(activeInteraction) &&
     isInteractiveHumanReply &&
     activeAskMessage
       ? {
@@ -2891,7 +3081,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const bottomBoxControl = selectBottomBoxControl({
     humanInteractionVariant: eventNativeTimelineEnabled
       ? eventNativeHumanControl.variant
-      : (legacyApprovalVariant ?? legacyQuestionVariant),
+      : (legacyApprovalVariant ??
+        legacyConfirmationVariant ??
+        legacyQuestionVariant),
     runControlVariant: eventNativeTimelineEnabled
       ? eventNativeRunControlVariant
       : null,
@@ -2959,6 +3151,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         op.runId === (eventNativeActiveRunId ?? activeTaskId) &&
         op.phase !== 'pending'
     );
+  const isFloatingTaskRunning =
+    shouldRenderChatTimeline && composerTaskControlState === 'running';
   const handleFloatingStop = () => {
     if (eventNativeActiveProjectedRun?.status === 'running') {
       void handleEventNativeStopRun(eventNativeActiveProjectedRun.runId);
@@ -3031,7 +3225,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               onEditUserMessage={handleEditUserMessage}
             />
           ) : (
-            <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+            <div className="mx-auto flex min-h-full w-full max-w-[736px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
               {interruptedRun && !eventNativeTimelineEnabled && (
@@ -3112,20 +3306,26 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           )}
         </div>
 
-        {showFloatingStop && (
-          <div
-            data-floating-stop-control
-            className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-2.5"
-            style={{ bottom: scrollBottomInsetPx }}
-          >
-            <FloatingAction
-              className="static mt-0 w-auto"
-              status={ChatTaskStatus.RUNNING}
-              onSkip={handleFloatingStop}
-              loading={isPauseResumeLoading}
-            />
-          </div>
-        )}
+        {shouldRenderChatTimeline &&
+          (showFloatingStop ||
+            isFloatingTaskRunning ||
+            isTimelineScrolledUp) && (
+            <div
+              data-floating-stop-control
+              className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-2.5"
+              style={{ bottom: scrollBottomInsetPx }}
+            >
+              <FloatingAction
+                className="w-auto"
+                showStop={showFloatingStop}
+                onStop={handleFloatingStop}
+                stopLoading={isPauseResumeLoading}
+                running={isFloatingTaskRunning}
+                scrolledUp={isTimelineScrolledUp}
+                onScrollToBottom={scrollTimelineToBottom}
+              />
+            </div>
+          )}
 
         {chatStore.activeTaskId && hasAnyMessages ? (
           <div id={overlaySlotId} className="contents" />
@@ -3136,7 +3336,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             data-bottom-box-overlay
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+            <div className="pointer-events-auto mx-auto w-full max-w-[736px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
               <HumanDecisionCard
                 key={activeProjectId ?? 'no-session'}
                 requestKey={humanDecisionKey}

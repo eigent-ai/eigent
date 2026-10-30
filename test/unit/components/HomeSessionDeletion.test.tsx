@@ -120,7 +120,7 @@ vi.mock('@/components/Home/HomeSidebarNav', () => ({
 }));
 vi.mock('@/lib/share', () => ({ share: vi.fn() }));
 vi.mock('@/lib/sessionStop', () => ({
-  stopSessionAndWait: mocks.stop,
+  stopSessionForDeletion: mocks.stop,
   SessionStopError: mocks.SessionStopError,
 }));
 vi.mock('@/service/workspaceApi', () => ({
@@ -326,6 +326,19 @@ describe('Home Session deletion', () => {
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     );
     expect(mocks.runtime.removeProject).not.toHaveBeenCalled();
+  });
+
+  it('removes offline history and closes the dialog while retaining local files', async () => {
+    mocks.stop.mockResolvedValueOnce(true);
+    const dialog = await openDialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(mocks.runtime.removeProject).toHaveBeenCalledWith('session-a')
+    );
+    expect(proxyFetchDelete).toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.deleteWorkdir).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('stops the Session first and touches nothing when it cannot be stopped', async () => {

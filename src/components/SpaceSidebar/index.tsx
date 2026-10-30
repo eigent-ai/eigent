@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchPut } from '@/api/http';
+import { isWeb } from '@/client/platform';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import {
@@ -33,6 +34,10 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { useSessionNavStatuses } from '@/hooks/useSessionNavStatuses';
+import {
+  getSplitViewUnavailableReason,
+  useVisibleSessionPanes,
+} from '@/hooks/useSessionSplitView';
 import { useHost } from '@/host';
 import {
   isProjectAchieved,
@@ -46,7 +51,8 @@ import {
 } from '@/lib/sessionFileCleanup';
 import { resolveSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { renameSession } from '@/lib/sessionRename';
-import { SessionStopError, stopSessionAndWait } from '@/lib/sessionStop';
+import { SessionStopError, stopSessionForDeletion } from '@/lib/sessionStop';
+import { openSessionWindow } from '@/lib/sessionWindows';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getFilesTabBindingLabel,
@@ -64,6 +70,11 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { readSessionExecutionRoute } from '@/store/sessionExecutionStore';
+import {
+  MAX_SESSION_PANES,
+  useSessionSplitViewStore,
+} from '@/store/sessionSplitViewStore';
+import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
@@ -88,6 +99,8 @@ import {
   NavTabReconnectSuffix,
   triggerListenerLeadIconClass,
 } from './TriggerNavTab';
+
+const NO_PANES: string[] = [];
 
 export interface SpaceSidebarProps {
   chatStore: ChatStore | null;
@@ -126,6 +139,9 @@ export default function SpaceSidebar({
   );
   const activeProjectId = projectStore.activeProjectId;
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const visiblePanes = useVisibleSessionPanes(activeSpaceId);
+  const windowedProjectIds = useSessionWindowsStore((s) => s.openProjectIds);
+  const openInMainRequest = useSessionWindowsStore((s) => s.openInMainRequest);
   const spacesById = useSpaceStore((s) => s.spaces);
   const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
   const projectMetasForActiveSpace = useMemo(() => {
@@ -277,6 +293,14 @@ export default function SpaceSidebar({
 
   const selectSession = useCallback(
     async (projectId: string) => {
+      // A Session lives in one place: bring its own window forward instead.
+      if (
+        activeSpaceId &&
+        useSessionWindowsStore.getState().openProjectIds.includes(projectId)
+      ) {
+        void openSessionWindow({ spaceId: activeSpaceId, projectId });
+        return;
+      }
       projectStore.setActiveProject(projectId);
       try {
         const route = await readSessionExecutionRoute(
@@ -338,12 +362,124 @@ export default function SpaceSidebar({
       );
     },
     [
+      activeSpaceId,
       ensureProjectLoaded,
       projectHasStarted,
       projectStore,
       setActiveWorkspaceTab,
     ]
   );
+
+  // Split view shows the focused Session's split while a Session is open.
+  const splitPanes = useMemo(
+    () =>
+      activeWorkspaceTab === 'project' &&
+      activeProjectId &&
+      visiblePanes.length >= 2 &&
+      visiblePanes.includes(activeProjectId)
+        ? visiblePanes
+        : NO_PANES,
+    [activeProjectId, activeWorkspaceTab, visiblePanes]
+  );
+
+  const splitViewUnavailableReason = useCallback(
+    (projectId: string): string | undefined => {
+      const anchorOpen =
+        activeWorkspaceTab === 'project' &&
+        activeProjectId &&
+        useSpaceStore.getState().getProjectMeta(activeProjectId)?.spaceId ===
+          activeSpaceId;
+      const reason = getSplitViewUnavailableReason({
+        projectId,
+        anchorId: anchorOpen ? activeProjectId : null,
+        panes: splitPanes,
+        windowedIds: windowedProjectIds,
+      });
+      switch (reason) {
+        case 'in-window':
+          return t('layout.split-view-unavailable-window', {
+            defaultValue: 'Open in its own window',
+          });
+        case 'no-session':
+          return t('layout.split-view-unavailable-no-session', {
+            defaultValue: 'Open a session first',
+          });
+        case 'same':
+          return t('layout.split-view-unavailable-same', {
+            defaultValue: 'Already open',
+          });
+        case 'full':
+          return t('layout.split-view-unavailable-full', {
+            defaultValue: 'Up to {{count}} sessions side by side',
+            count: MAX_SESSION_PANES,
+          });
+        default:
+          return undefined;
+      }
+    },
+    [
+      activeProjectId,
+      activeSpaceId,
+      activeWorkspaceTab,
+      splitPanes,
+      t,
+      windowedProjectIds,
+    ]
+  );
+
+  const openInSplitView = useCallback(
+    (projectId: string) => {
+      if (!activeSpaceId || !activeProjectId) return;
+      if (splitViewUnavailableReason(projectId)) return;
+      useSessionSplitViewStore
+        .getState()
+        .openPane(activeSpaceId, activeProjectId, projectId);
+      void selectSession(projectId);
+    },
+    [activeProjectId, activeSpaceId, selectSession, splitViewUnavailableReason]
+  );
+
+  const openInNewWindow = useCallback(
+    (projectId: string) => {
+      if (!activeSpaceId) return;
+      void openSessionWindow({ spaceId: activeSpaceId, projectId }).catch(
+        (error: unknown) => {
+          console.error('[SpaceSidebar] Failed to open Session window:', error);
+          toast.error(
+            t('layout.open-in-new-window-failed', {
+              defaultValue: 'Could not open the session in a new window',
+            })
+          );
+        }
+      );
+    },
+    [activeSpaceId, t]
+  );
+
+  const sessionOpenIn = useMemo(
+    () => ({
+      onOpenInSplitView: openInSplitView,
+      onOpenInNewWindow: openInNewWindow,
+      newWindowKind: isWeb() ? ('tab' as const) : ('window' as const),
+    }),
+    [openInNewWindow, openInSplitView]
+  );
+
+  // "Open in main window" from a Session window: show it here again.
+  const handledOpenInMain = useRef(openInMainRequest?.sequence ?? 0);
+  useEffect(() => {
+    if (
+      !openInMainRequest ||
+      openInMainRequest.sequence <= handledOpenInMain.current
+    )
+      return;
+    handledOpenInMain.current = openInMainRequest.sequence;
+    const { spaceId, projectId } = openInMainRequest;
+    const spaces = useSpaceStore.getState();
+    if (spaces.activeSpaceId !== spaceId && spaces.spaces[spaceId])
+      spaces.setActiveSpace(spaceId);
+    void selectSession(projectId);
+  }, [openInMainRequest, selectSession]);
 
   // Boot-time session resume: reopen the last visited Session (the way an
   // editor reopens its last workspace) instead of landing on the empty home
@@ -403,16 +539,27 @@ export default function SpaceSidebar({
             achieved: isProjectAchieved(project.metadata),
             pinned: pinnedProjectIds.includes(project.id),
             source: activeTask?.source,
+            openInPane:
+              splitPanes.length > 0
+                ? splitPanes.includes(project.id) &&
+                  project.id !== activeProjectId
+                : undefined,
+            inOwnWindow: windowedProjectIds.includes(project.id),
+            splitViewUnavailableReason: splitViewUnavailableReason(project.id),
           };
         }),
     [
+      activeProjectId,
       historyLoadingProjectIds,
       navLeadByProjectId,
       pinnedProjectIds,
       projectMetasForActiveSpace,
       projectStore,
       shouldShowSessionInNavList,
+      splitPanes,
+      splitViewUnavailableReason,
       t,
+      windowedProjectIds,
     ]
   );
 
@@ -599,7 +746,7 @@ export default function SpaceSidebar({
       const spaceId = projectMeta?.spaceId ?? activeSpaceId ?? undefined;
       const wasActive = projectStore.activeProjectId === projectId;
 
-      await stopSessionAndWait(projectId);
+      const deferLocalCleanup = await stopSessionForDeletion(projectId);
       setDeleteProjectPhase('deleting');
       const chatState = projectStore.peekActiveChatStore(projectId)?.getState();
       await deleteSessionTaskData({
@@ -611,6 +758,7 @@ export default function SpaceSidebar({
           project_id: projectId,
         })),
         deleteWorkdir: deleteProjectWorkdir,
+        deferLocalCleanup,
         ipcRenderer,
       });
 
@@ -777,7 +925,7 @@ export default function SpaceSidebar({
       />
 
       <SidebarShell className={className} ariaLabel={t('layout.workspace-tab')}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-clip">
           <SidebarSection>
             <SidebarNavGroup>
               <NavTab
@@ -965,6 +1113,7 @@ export default function SpaceSidebar({
               onPinSession={handlePinSession}
               onNewSession={handleNewSession}
               newSessionActive={activeWorkspaceTab === 'new-project'}
+              openIn={sessionOpenIn}
             />
           </SidebarSection>
         </div>

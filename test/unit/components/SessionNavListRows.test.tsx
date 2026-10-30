@@ -120,4 +120,68 @@ describe('SessionNavListRows', () => {
       container.querySelector('[data-session-tooltip-content]')
     ).not.toBeInTheDocument();
   });
+
+  it('opens a Session in split view or a new window from Open in', async () => {
+    const user = userEvent.setup();
+    const onOpenInSplitView = vi.fn();
+    const onOpenInNewWindow = vi.fn();
+    render(
+      <SessionNavListRows
+        sessions={[session]}
+        activeSessionId={null}
+        folded={false}
+        onSessionClick={vi.fn()}
+        onPinSession={vi.fn()}
+        openIn={{ onOpenInSplitView, onOpenInNewWindow }}
+      />
+    );
+
+    // Keyboard path: Radix submenus close on simulated pointer moves.
+    const openSubmenu = async () => {
+      screen.getByRole('button', { name: 'More actions' }).focus();
+      await user.keyboard('{Enter}');
+      (await screen.findByRole('menuitem', { name: 'Open in' })).focus();
+      await user.keyboard('{ArrowRight}');
+    };
+
+    await openSubmenu();
+    (await screen.findByRole('menuitem', { name: 'Split view' })).focus();
+    await user.keyboard('{Enter}');
+    expect(onOpenInSplitView).toHaveBeenCalledWith(session.id);
+
+    await openSubmenu();
+    (await screen.findByRole('menuitem', { name: 'New window' })).focus();
+    await user.keyboard('{Enter}');
+    expect(onOpenInNewWindow).toHaveBeenCalledWith(session.id);
+  });
+
+  it('says why split view is unavailable and marks shown and windowed Sessions', async () => {
+    const user = userEvent.setup();
+    const onOpenInSplitView = vi.fn();
+    render(
+      <SessionNavListRows
+        sessions={[
+          {
+            ...session,
+            openInPane: true,
+            inOwnWindow: true,
+            splitViewUnavailableReason: 'Already open',
+          },
+        ]}
+        activeSessionId={null}
+        folded={false}
+        openIn={{ onOpenInSplitView, newWindowKind: 'tab' }}
+      />
+    );
+
+    expect(
+      screen.getByLabelText('This session is open in another tab')
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Open in' }));
+    const split = await screen.findByRole('menuitem', { name: /Split view/ });
+    expect(split).toHaveTextContent('Already open');
+    expect(split).toHaveAttribute('data-disabled');
+  });
 });

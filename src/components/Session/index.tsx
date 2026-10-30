@@ -51,6 +51,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PreviewColumn } from './layout/PreviewColumn';
@@ -73,11 +74,14 @@ interface SessionProps {
   isNewProject?: boolean;
   /** Pane-owned Session; omitted for the existing active-Session route. */
   projectId?: string | null;
+  /** Extra controls at the right end of the Session header (split panes). */
+  headerActions?: ReactNode;
 }
 
 export default function Session({
   projectId,
   isNewProject = false,
+  headerActions,
 }: SessionProps) {
   const inheritedProjectId = useSessionProjectId();
   const id = projectId === undefined ? inheritedProjectId : projectId;
@@ -100,13 +104,16 @@ export default function Session({
         onPointerDownCapture={focus}
         onFocusCapture={focus}
       >
-        <SessionContent isNewProject={isNewProject} />
+        <SessionContent
+          isNewProject={isNewProject}
+          headerActions={headerActions}
+        />
       </div>
     </SessionPaneProvider>
   );
 }
 
-function SessionContent({ isNewProject = false }: SessionProps) {
+function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
   const { t } = useTranslation();
   const shouldReduceMotion = Boolean(useReducedMotion());
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -565,6 +572,7 @@ function SessionContent({ isNewProject = false }: SessionProps) {
             popoverBoundary: chatSideElement,
           }}
           className={showPreview ? 'pr-ds-4' : undefined}
+          trailingActions={headerActions}
         />
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

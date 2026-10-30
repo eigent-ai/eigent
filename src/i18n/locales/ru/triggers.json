@@ -165,7 +165,7 @@
   "execution-in-progress": "Выполняется…",
   "waiting-to-execute": "Ожидание выполнения…",
   "execution-cancelled": "Выполнение отменено",
-  "execution-missed": "Выполнение пропущено",
+  "execution-missed": "Eigent не получил этот запуск вовремя, поэтому он не начался. Оставьте Eigent открытым и не выходите из аккаунта, затем повторите попытку.",
   "unknown-status": "Неизвестное состояние",
   "trigger-label": "Автоматизация",
   "execution-started-toast": "Выполнение начато: {{name}}",

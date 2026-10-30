@@ -86,8 +86,23 @@ vi.mock('@/components/Background', () => ({
 }));
 
 vi.mock('@/components/Dispatch', () => ({ WorkspaceDispatch: () => null }));
+vi.mock('@/components/Workspace/SpaceOverview', () => ({
+  SpaceOverviewPanel: () => null,
+}));
 vi.mock('@/components/Folder', () => ({ default: () => null }));
 vi.mock('@/components/Session', () => ({ default: () => null }));
+vi.mock('@/components/Session/SplitView', () => ({
+  SessionSplitView: () => null,
+}));
+vi.mock('@/components/SessionWindow/SessionInOwnWindow', () => ({
+  SessionInOwnWindow: () => null,
+}));
+vi.mock('@/hooks/useSessionSplitView', () => ({
+  useSessionSplitFocusTracking: vi.fn(),
+}));
+vi.mock('@/hooks/useSessionWindows', () => ({
+  useMainWindowSessionWindows: vi.fn(),
+}));
 vi.mock('@/components/Session/SidePanel/components/SessionGroup', () => ({
   default: () => null,
 }));

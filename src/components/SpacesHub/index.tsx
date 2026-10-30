@@ -16,6 +16,7 @@ import { proxyFetchGet } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { Tag } from '@/components/ui/tag';
+import { pathBasename } from '@/lib/pathBasename';
 import {
   buildTaskQuestionsById,
   computeProjectFreshnessAnchor,
@@ -50,13 +51,6 @@ import { toast } from 'sonner';
 
 const SPACE_CARD_CLASS =
   'flex min-h-[12rem] flex-col rounded-lg border-x border-y border border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default';
-
-const pathBasename = (path?: string | null) => {
-  const value = path?.trim();
-  if (!value) return '';
-  const parts = value.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || value;
-};
 
 const projectTitle = (project: SpaceProjectMeta, fallback: string) => {
   const name = project.name?.trim();

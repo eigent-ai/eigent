@@ -13,10 +13,20 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import Workspace from '@/components/Workspace';
+import { useWorkspaceComposerRequests } from '@/components/Workspace/composerRequests';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError, reportError } from '@/lib/notifyError';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { errorCopy } from '@/lib/usageErrors';
+import { getAuthStore } from '@/store/authStore';
 import {
+  resetSessionDrafts,
+  sessionDraftKey,
+  useSessionDraftStore,
+} from '@/store/sessionDraftStore';
+import { isSessionStarting } from '@/store/sessionStartStore';
+import {
+  acknowledgeUsageNotice,
   setUsageAccount,
   setUsageModelType,
   useUsageNoticeStore,
@@ -97,11 +107,15 @@ const mocks = vi.hoisted(() => {
     activeWorkspaceTab: 'workforce',
     workspaceChatFocusRequestId: 0,
     customAgentFolderPathByProjectId: {},
-    setActiveWorkspaceTab: vi.fn(),
+    setActiveWorkspaceTab: vi.fn((tab: string) => {
+      pageState.activeWorkspaceTab = tab;
+    }),
     handOffNewSessionDraft: vi.fn(),
+    markSessionTaskStarted: vi.fn(),
   };
 
   return {
+    selectFile: vi.fn(),
     capability: false,
     spaceModelRef: null as string | null,
     managedSubmit: vi.fn(),
@@ -156,7 +170,7 @@ vi.mock('@/lib/notifyError', async (importOriginal) => {
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), dismiss: vi.fn() } }));
 
 vi.mock('@/host', () => ({
-  useHost: () => ({ electronAPI: {} }),
+  useHost: () => ({ electronAPI: { selectFile: mocks.selectFile } }),
 }));
 
 vi.mock('@/store/authStore', () => ({
@@ -283,6 +297,21 @@ const renderWorkspace = (props: ComponentProps<typeof Workspace> = {}) =>
     </MemoryRouter>
   );
 
+// Matches the local Session that createSyncedProjectInSpace creates and selects.
+function addCreatedSession() {
+  (mocks.projectState.projects as Record<string, unknown>)['new-project'] = {
+    id: 'new-project',
+    metadata: {},
+    mode: 'single',
+  };
+  mocks.projectState.activeProjectId = 'new-project';
+}
+
+const sessionDraftText = (projectId: string) =>
+  useSessionDraftStore.getState().drafts[
+    sessionDraftKey(getAccountEnvironmentKey(getAuthStore()), projectId)
+  ]?.text;
+
 describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -297,6 +326,10 @@ describe('Workspace', () => {
     mocks.pageState.activeWorkspaceTab = 'workforce';
     mocks.pageState.workspaceChatFocusRequestId = 0;
     mocks.projectState.activeProjectId = 'old-project';
+    delete (mocks.projectState.projects as Record<string, unknown>)[
+      'new-project'
+    ];
+    resetSessionDrafts();
     setUsageAccount(null);
     setUsageAccount('101');
     setUsageModelType('local');
@@ -306,11 +339,15 @@ describe('Workspace', () => {
       refreshError: null,
     });
     mocks.spaceState.projectsBySpaceId = {};
-    vi.mocked(createSyncedProjectInSpace).mockImplementation(async () => {
-      // Match createSyncedProjectInSpace's default setActive behavior.
-      mocks.projectState.activeProjectId = 'new-project';
-      return { projectId: 'new-project', spaceId: 'space-1' };
-    });
+    vi.mocked(createSyncedProjectInSpace).mockImplementation(
+      async ({ onLocalProjectCreated }) => {
+        // Match createSyncedProjectInSpace's default setActive behavior.
+        addCreatedSession();
+        const result = { projectId: 'new-project', spaceId: 'space-1' };
+        onLocalProjectCreated?.(result);
+        return result;
+      }
+    );
     mocks.projectState.getComposerThinkingEffort.mockReturnValue('high');
     mocks.newStartTask.mockResolvedValue(undefined);
   });
@@ -494,6 +531,33 @@ describe('Workspace', () => {
     expect(createSyncedProjectInSpace).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['workspace', 'max-w-[600px]'],
+    ['new-project', 'max-w-[736px]'],
+  ] as const)('sizes the %s composer column', (variant, widthClass) => {
+    renderWorkspace({ variant });
+
+    expect(
+      document.querySelector('[data-workspace-input-section]')
+        ?.firstElementChild
+    ).toHaveClass(widthClass);
+  });
+
+  it('attaches files picked through the Space panel request', async () => {
+    mocks.selectFile.mockResolvedValue({
+      success: true,
+      files: [{ fileName: 'brief.pdf', filePath: '/brief.pdf' }],
+    });
+    renderWorkspace();
+
+    act(() => {
+      useWorkspaceComposerRequests.getState().requestAttachFiles();
+    });
+
+    expect(await screen.findByText('brief.pdf')).toBeInTheDocument();
+    expect(mocks.selectFile).toHaveBeenCalledTimes(1);
+  });
+
   it('creates a fresh project and sends only Workspace draft attachments', async () => {
     renderWorkspace();
 
@@ -531,7 +595,18 @@ describe('Workspace', () => {
     expect(mocks.oldSetAttaches).not.toHaveBeenCalled();
   });
 
-  it('keeps the draft until startup is accepted, then opens the Session', async () => {
+  it('opens the Session on Send while creation and startup are pending', async () => {
+    let created!: () => void;
+    vi.mocked(createSyncedProjectInSpace).mockImplementation(
+      ({ onLocalProjectCreated }) => {
+        mocks.projectState.activeProjectId = 'new-project';
+        const result = { projectId: 'new-project', spaceId: 'space-1' };
+        onLocalProjectCreated?.(result);
+        return new Promise((resolve) => {
+          created = () => resolve(result);
+        });
+      }
+    );
     let accept!: () => void;
     mocks.newStartTask.mockReturnValue(
       new Promise<void>((resolve) => {
@@ -540,27 +615,52 @@ describe('Workspace', () => {
     );
     renderWorkspace();
     fireEvent.change(screen.getByLabelText('workspace-message'), {
-      target: { value: 'Keep this draft' },
+      target: { value: 'Open right away' },
     });
     fireEvent.click(screen.getByText('Attach draft'));
     fireEvent.click(screen.getByText('Send'));
 
-    await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
-    expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('workspace-message')).toHaveValue(
-      'Keep this draft'
+    // The server has not accepted the Session yet.
+    await waitFor(() =>
+      expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledWith(
+        'project'
+      )
     );
-    expect(screen.getByText('draft.txt')).toBeInTheDocument();
+    expect(mocks.newStartTask).not.toHaveBeenCalled();
+    // An unstarted Session would send the user back to this composer.
+    expect(mocks.newChatState.setHasMessages).toHaveBeenCalledWith(
+      'new-task',
+      true
+    );
     expect(
-      screen.getByTestId('workspace-bottom-box-footer-props')
-    ).toHaveAttribute('data-model-disabled', 'true');
-
-    await act(async () => accept());
-    expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledWith(
-      'project'
+      mocks.newChatState.setHasMessages.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      mocks.pageState.setActiveWorkspaceTab.mock.invocationCallOrder[0]
+    );
+    // Activity opens for a started Session, as it does after a full start.
+    expect(mocks.pageState.markSessionTaskStarted).toHaveBeenCalledWith(
+      'new-project'
+    );
+    expect(
+      mocks.pageState.markSessionTaskStarted.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      mocks.pageState.setActiveWorkspaceTab.mock.invocationCallOrder[0]
     );
     expect(screen.getByLabelText('workspace-message')).toHaveValue('');
     expect(screen.queryByText('draft.txt')).not.toBeInTheDocument();
+    // The opened Session's own composer waits for this start.
+    expect(isSessionStarting('new-project')).toBe(true);
+
+    await act(async () => created());
+    await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+    expect(mocks.newStartTask.mock.calls[0][5]).toEqual([
+      { fileName: 'draft.txt', filePath: '/draft.txt' },
+    ]);
+    expect(isSessionStarting('new-project')).toBe(true);
+    await act(async () => accept());
+    expect(isSessionStarting('new-project')).toBe(false);
+    expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledTimes(1);
+    expect(mocks.newSetAttaches).toHaveBeenLastCalledWith('new-task', []);
   });
 
   it.each([
@@ -600,7 +700,7 @@ describe('Workspace', () => {
   );
 
   it.each(['workforce', 'new-project'])(
-    'preserves text, attachments and the %s page on startup failure',
+    'stays in the new Session from %s when its start fails',
     async (tab) => {
       mocks.pageState.activeWorkspaceTab = tab;
       mocks.newStartTask.mockRejectedValue(new Error('Usage limit reached'));
@@ -621,43 +721,155 @@ describe('Workspace', () => {
           expect.objectContaining({ message: 'Usage limit reached' })
         )
       );
-      expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
-      // A failed start keeps draft Preview tabs on the New session page.
-      expect(mocks.pageState.handOffNewSessionDraft).not.toHaveBeenCalled();
-      expect(screen.getByLabelText('workspace-message')).toHaveValue(
-        'Retry this work'
-      );
-      expect(screen.getByText('draft.txt')).toBeInTheDocument();
-      expect(screen.getByText('Send')).not.toBeDisabled();
       expect(
-        screen.getByTestId('workspace-bottom-box-footer-props')
-      ).toHaveAttribute('data-model-disabled', 'false');
+        mocks.pageState.setActiveWorkspaceTab.mock.calls.map(([next]) => next)
+      ).toEqual(['project']);
+      expect(mocks.projectState.activeProjectId).toBe('new-project');
+      // The message waits in the Session's composer for a retry.
+      expect(sessionDraftText('new-project')).toBe('Retry this work');
+      expect(screen.getByLabelText('workspace-message')).toHaveValue('');
       consoleError.mockRestore();
     }
   );
 
-  it('does not redirect a user who leaves while startup is pending', async () => {
-    let accept!: () => void;
+  it('keeps newer text in the Session composer when its start fails', async () => {
+    let reject!: (error: Error) => void;
     mocks.newStartTask.mockReturnValue(
-      new Promise<void>((resolve) => {
-        accept = resolve;
+      new Promise<void>((_resolve, rejectPromise) => {
+        reject = rejectPromise;
       })
     );
-    const view = renderWorkspace();
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    renderWorkspace();
     fireEvent.change(screen.getByLabelText('workspace-message'), {
-      target: { value: 'Start in background' },
+      target: { value: 'First attempt' },
     });
     fireEvent.click(screen.getByText('Send'));
     await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
-    view.unmount();
-    await act(async () => accept());
-    expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+    act(() => {
+      useSessionDraftStore.setState({
+        drafts: {
+          [sessionDraftKey(
+            getAccountEnvironmentKey(getAuthStore()),
+            'new-project'
+          )]: { text: 'Typed in the Session', reviewHandoffIds: [] },
+        },
+      });
+    });
+
+    await act(async () => reject(new Error('Usage limit reached')));
+    expect(sessionDraftText('new-project')).toBe('Typed in the Session');
+    consoleError.mockRestore();
   });
 
+  it('returns the draft to the next composer when the server rejects the Session', async () => {
+    mocks.pageState.activeWorkspaceTab = 'new-project';
+    let reject!: (error: Error) => void;
+    vi.mocked(createSyncedProjectInSpace).mockImplementation(
+      ({ onLocalProjectCreated, onLocalProjectRejected }) => {
+        addCreatedSession();
+        const result = { projectId: 'new-project', spaceId: 'space-1' };
+        onLocalProjectCreated?.(result);
+        return new Promise((_resolve, rejectPromise) => {
+          reject = (error) => {
+            onLocalProjectRejected?.(result);
+            // The helper removes the local Session, clearing the selection.
+            // On a Session tab the page then selects another Session in the
+            // Space before the rejection reaches Workspace.
+            delete (mocks.projectState.projects as Record<string, unknown>)[
+              'new-project'
+            ];
+            mocks.projectState.activeProjectId =
+              mocks.pageState.activeWorkspaceTab === 'project'
+                ? 'another-project'
+                : null;
+            rejectPromise(error);
+          };
+        });
+      }
+    );
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    // Opening the Session unmounts the New session composer.
+    const view = renderWorkspace({ variant: 'new-project' });
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Bring this back' },
+    });
+    fireEvent.click(screen.getByText('Attach draft'));
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() =>
+      expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledWith(
+        'project'
+      )
+    );
+    view.unmount();
+
+    await act(async () => reject(new Error('Session rejected')));
+    expect(mocks.newStartTask).not.toHaveBeenCalled();
+    expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
+      'new-project'
+    );
+    // Back on the New session tab, so the page did not select another Session.
+    expect(mocks.projectState.activeProjectId).toBeNull();
+    expect(isSessionStarting('new-project')).toBe(false);
+    renderWorkspace({ variant: 'new-project' });
+    expect(screen.getByLabelText('workspace-message')).toHaveValue(
+      'Bring this back'
+    );
+    expect(screen.getByText('draft.txt')).toBeInTheDocument();
+    consoleError.mockRestore();
+  });
+
+  it.each([
+    ['another Session', 'project', 'another-project'],
+    ['New session', 'new-project', null],
+  ] as const)(
+    'leaves a user who moved on to %s when the opened Session fails to start',
+    async (_label, nextTab, nextProjectId) => {
+      let reject!: (error: Error) => void;
+      mocks.newStartTask.mockReturnValue(
+        new Promise<void>((_resolve, rejectPromise) => {
+          reject = rejectPromise;
+        })
+      );
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      const view = renderWorkspace();
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'Start in background' },
+      });
+      fireEvent.click(screen.getByText('Send'));
+      await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+      view.unmount();
+      mocks.pageState.activeWorkspaceTab = nextTab;
+      mocks.projectState.activeProjectId = nextProjectId;
+
+      await act(async () => reject(new Error('Usage limit reached')));
+      expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledTimes(1);
+      renderWorkspace();
+      expect(screen.getByLabelText('workspace-message')).toHaveValue('');
+      consoleError.mockRestore();
+    }
+  );
+
   it.each([null, 'another-project'])(
-    'preserves the composer when a newer Session selection is %s before admission',
+    'preserves a composer replaced before creation when the selection becomes %s',
     async (activeProjectId) => {
       mocks.pageState.activeWorkspaceTab = 'new-project';
+      vi.mocked(createSyncedProjectInSpace).mockImplementation(
+        async ({ onLocalProjectCreated }) => {
+          // A New session command lands before the local Session exists.
+          mocks.pageState.workspaceChatFocusRequestId = 1;
+          mocks.projectState.activeProjectId = 'new-project';
+          const result = { projectId: 'new-project', spaceId: 'space-1' };
+          onLocalProjectCreated?.(result);
+          return result;
+        }
+      );
       let accept!: () => void;
       mocks.newStartTask.mockReturnValue(
         new Promise<void>((resolve) => {
@@ -671,6 +883,7 @@ describe('Workspace', () => {
       fireEvent.click(screen.getByText('Attach draft'));
       fireEvent.click(screen.getByText('Send'));
       await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+      expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
 
       // New session clears selection without changing Space/tab or unmounting
       // Workspace. A different selection likewise belongs to the newer intent.
@@ -805,12 +1018,15 @@ describe('Workspace', () => {
         incidents: [{ reason: 'credits' }],
       });
       expect(toast.error).toHaveBeenCalledTimes(1);
+      // The toast is the one live notice; the composer shows it once dismissed.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      act(() => acknowledgeUsageNotice());
       expect(screen.getByRole('alert')).toHaveTextContent(errorCopy('credits'));
-      expect(screen.getByLabelText('workspace-message')).toHaveValue(
-        'Keep this rejected draft'
+      // The user stays in the new Session; the message waits in its composer.
+      expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
+        'project'
       );
-      expect(screen.getByText('draft.txt')).toBeInTheDocument();
-      expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+      expect(sessionDraftText('new-project')).toBe('Keep this rejected draft');
     }
   );
 

@@ -39,6 +39,7 @@ let groupedHistorySnapshot: {
 
 export type SessionDeleteCallback = (options: {
   deleteWorkdir: boolean;
+  deferLocalCleanup?: boolean;
 }) => Promise<void>;
 
 export function useHomeHubProjects() {
@@ -164,6 +165,7 @@ export function useHomeHubProjects() {
       const identity = { email: authEmail, userId };
       const deleteCallback: SessionDeleteCallback = async ({
         deleteWorkdir,
+        deferLocalCleanup,
       }) => {
         const targetProject = projects.find(
           (project) => project.project_id === projectId
@@ -186,6 +188,7 @@ export function useHomeHubProjects() {
             })),
           ],
           deleteWorkdir,
+          deferLocalCleanup,
           ipcRenderer,
         });
         assertSessionCleanupIdentity(identity);

@@ -50,6 +50,8 @@ const mocks = vi.hoisted(() => ({
   },
   spaceDefaultPending: false,
   spaceId: 'space-1',
+  spaceChoice: null as null | Record<string, unknown>,
+  setSpaceModelChoice: vi.fn(),
 }));
 vi.mock('@/api/http', () => ({
   proxyFetchGet: mocks.get,
@@ -89,7 +91,18 @@ vi.mock('@/store/projectRuntimeStore', () => ({
 }));
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: (selector: (state: unknown) => unknown) =>
-    selector({ projectIdIndex: {}, projectsBySpaceId: {} }),
+    selector({
+      activeSpaceId: 'space-1',
+      projectIdIndex: {},
+      projectsBySpaceId: {},
+      spaces: {
+        'space-1': { metadata: { modelSelection: mocks.spaceChoice } },
+      },
+    }),
+}));
+vi.mock('@/lib/spaceModelChoice', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/spaceModelChoice')>()),
+  setSpaceModelChoice: mocks.setSpaceModelChoice,
 }));
 vi.mock('@/store/settingsStore', () => ({ openSettings: mocks.openSettings }));
 const records = [
@@ -125,6 +138,7 @@ beforeEach(() => {
   mocks.selection = null;
   mocks.spaceDefaultPending = false;
   mocks.spaceId = 'space-1';
+  mocks.spaceChoice = null;
   mocks.auth.modelType = 'cloud';
   mocks.get.mockResolvedValue({ items: records });
   mocks.post.mockResolvedValue({});
@@ -169,6 +183,40 @@ describe('Configured model input menu', () => {
       modelType: 'cloud',
       cloud_model_type: 'gpt',
     });
+    expect(mocks.setSpaceModelChoice).toHaveBeenCalledWith('space-1', {
+      modelType: 'cloud',
+      cloud_model_type: 'gpt',
+    });
+  });
+  it("shows a pending Session on its Space's saved model", () => {
+    mocks.spaceDefaultPending = true;
+    mocks.spaceChoice = {
+      modelType: 'custom',
+      provider_id: 2,
+      model_platform: 'openai',
+      model_type: 'personal-model',
+    };
+    render(
+      <ModelAndThinkingEffortSelect
+        projectId="session"
+        thinkingEffort={undefined}
+      />
+    );
+    expect(
+      screen.getByRole('button', { name: /select model/i })
+    ).toHaveTextContent('personal-model');
+  });
+  it("keeps an older unpinned Session off its Space's saved model", () => {
+    mocks.spaceChoice = { modelType: 'cloud', cloud_model_type: 'claude' };
+    render(
+      <ModelAndThinkingEffortSelect
+        projectId="session"
+        thinkingEffort={undefined}
+      />
+    );
+    expect(
+      screen.getByRole('button', { name: /select model/i })
+    ).toHaveTextContent('GPT');
   });
   it('shows a single model list grouped by provider without unconfigured or invalid providers', async () => {
     render(
@@ -238,22 +286,48 @@ describe('Configured model input menu', () => {
       model_platform: 'openai',
       model_type: 'personal-model',
     });
+    expect(mocks.setSpaceModelChoice).toHaveBeenCalledWith('space-1', {
+      modelType: 'custom',
+      provider_id: 2,
+      model_platform: 'openai',
+      model_type: 'personal-model',
+    });
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.auth.setModelType).not.toHaveBeenCalled();
     expect(effort).not.toHaveBeenCalled();
   });
-  it('updates the home default by saved record ID', async () => {
+  it('saves a new-Session pick to the active Space, never the global default', async () => {
     render(<ModelAndThinkingEffortSelect thinkingEffort={undefined} />);
     await open();
     fireEvent.click(
       screen.getByRole('menuitemradio', { name: /personal-model/ })
     );
-    await waitFor(() =>
-      expect(mocks.post).toHaveBeenCalledWith('/api/v1/provider/prefer', {
-        provider_id: 2,
-      })
-    );
-    expect(mocks.auth.setModelType).toHaveBeenCalledWith('custom');
+    expect(mocks.setSpaceModelChoice).toHaveBeenCalledWith('space-1', {
+      modelType: 'custom',
+      provider_id: 2,
+      model_platform: 'openai',
+      model_type: 'personal-model',
+    });
+    expect(mocks.setProjectModel).not.toHaveBeenCalled();
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.auth.setModelType).not.toHaveBeenCalled();
+    expect(mocks.auth.setCloudModelType).not.toHaveBeenCalled();
+  });
+  it("shows the new-Session composer on the active Space's saved model", async () => {
+    mocks.spaceChoice = {
+      modelType: 'custom',
+      provider_id: 2,
+      model_platform: 'openai',
+      model_type: 'personal-model',
+    };
+    render(<ModelAndThinkingEffortSelect thinkingEffort={undefined} />);
+    expect(
+      screen.getByRole('button', { name: /select model/i })
+    ).toHaveTextContent('personal-model');
+    await open('personal-model');
+    expect(
+      screen.getByRole('menuitemradio', { name: /personal-model/ })
+    ).toHaveAttribute('aria-checked', 'true');
   });
   it('changes effort independently of the selected model', async () => {
     const onChange = vi.fn();

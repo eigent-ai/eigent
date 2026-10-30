@@ -22,6 +22,25 @@ import { executionScope } from '@/service/executionApi';
 import type { ProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { readSessionExecutionRoute } from '@/store/sessionExecutionStore';
 
+const TRIGGER_PLACEHOLDER_PREFIX = 'Project created via trigger:';
+
+/**
+ * The server saves a placeholder history row, keyed by the Session id, when an
+ * Automation is created for a Session that has no history yet. It is not a
+ * Task, so it must never be replayed as one.
+ */
+export function withoutTriggerPlaceholderTasks<
+  T extends { task_id?: string | null; question?: string | null },
+>(tasks: T[] | null | undefined, projectId: string): T[] {
+  return (tasks ?? []).filter(
+    (task) =>
+      !(
+        task.task_id === projectId &&
+        task.question?.startsWith(TRIGGER_PLACEHOLDER_PREFIX)
+      )
+  );
+}
+
 interface EnsureProjectRuntimeLoadedOptions {
   onHydrationStarted?: () => void;
   requireActiveSelection?: boolean;
@@ -58,7 +77,12 @@ export async function ensureProjectRuntimeLoaded(
       `/api/v1/chat/histories/grouped/${projectId}`,
       { include_tasks: true }
     );
-    const taskIdsList = (historyProject?.tasks ?? [])
+    const tasks = withoutTriggerPlaceholderTasks<{
+      id?: string | number | null;
+      task_id?: string | null;
+      question?: string | null;
+    }>(historyProject?.tasks, projectId);
+    const taskIdsList = tasks
       .map((task: { task_id?: string | null }) => task.task_id)
       .filter((taskId: string | null | undefined): taskId is string =>
         Boolean(taskId)
@@ -80,12 +104,12 @@ export async function ensureProjectRuntimeLoaded(
       getSessionNavLeadFromHistoryProject(historyProject)
     );
 
-    const firstTask = historyProject.tasks[0];
-    const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
+    const firstTask = tasks[0];
+    const taskQuestionsById = buildTaskQuestionsById(tasks);
     if (needsRemoteHistoryHydration) {
       const mergePromise = projectStore.mergeProjectHistory(
         projectId,
-        historyProject.tasks,
+        tasks,
         firstTask?.question || historyProject.last_prompt || ''
       );
       options.onHydrationStarted?.();
@@ -107,7 +131,8 @@ export async function ensureProjectRuntimeLoaded(
     options.onHydrationStarted?.();
     await loadPromise;
   } catch (error) {
-    console.error(`Failed to load Project ${projectId} from history:`, error);
+    // Keep the format string fixed: the id can come from a window's URL.
+    console.error('Failed to load Project from history:', projectId, error);
     if (!projectStore.peekActiveChatStore(projectId)) {
       projectStore.appendInitChatStore(projectId);
     }

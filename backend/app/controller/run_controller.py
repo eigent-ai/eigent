@@ -68,6 +68,7 @@ from app.run_runtime import (
 from app.run_runtime.tool_checkpoint import build_tool_display_projection
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
+from app.workspace_runtime.runtime import get_default_execution_service
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 logger = logging.getLogger("run_controller")
@@ -528,8 +529,28 @@ async def list_project_runs(
     }
 
 
+@router.get("/runs/active")
+async def active_local_execution():
+    """One local registry read across every Space and Session.
+
+    A Run that is still being admitted has no Attempt yet, so the journal
+    alone cannot tell it apart from a row a refused admission left behind.
+    """
+    if get_default_run_coordinator().has_admission_in_progress():
+        return {"active": True}
+    service = get_default_execution_service()
+    active = await asyncio.to_thread(
+        get_default_run_journal().has_active_local_execution,
+        admission_owner_id=service.owner_id if service is not None else None,
+    )
+    return {"active": active}
+
+
 @router.get("/runs/{run_id}")
-async def get_run(run_id: str):
+async def get_run(
+    run_id: str,
+    include_browser_evidence: Annotated[bool, Query()] = False,
+):
     run = await _load_run_or_404(run_id)
     handle = await get_default_run_coordinator().get_handle(run_id)
     journal = get_default_run_journal()
@@ -548,8 +569,19 @@ async def get_run(run_id: str):
         if bound_attempt and bound_attempt.environment_spec_id is not None
         else None
     )
+    # Only Resume reads browser evidence; other summary readers skip the scan.
+    browser_evidence = (
+        {
+            "used_browser": bool(
+                await asyncio.to_thread(journal.browser_tool_attempts, run_id)
+            )
+        }
+        if include_browser_evidence
+        else {}
+    )
     return {
         **asdict(run),
+        **browser_evidence,
         "attempts": [asdict(attempt) for attempt in attempts],
         "latest_attempt": asdict(attempts[-1]) if attempts else None,
         "resolved_model": _resolved_model_for_attempt(spec, bound_attempt),

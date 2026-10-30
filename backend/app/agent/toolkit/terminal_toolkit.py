@@ -77,7 +77,7 @@ logger = logging.getLogger("terminal_toolkit")
 
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.0.7"
 
 
 _SECRET_BROKER_ENVIRONMENT_KEY = re.compile(
@@ -288,6 +288,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             working_directory = base_dir
         self._agent_venv_dir = os.path.join(base_dir, self.agent_name)
         context = run_context_for_task(api_task_id)
+        self._environment_context = context
         self._workspace_run_id = (
             context.run_id if context is not None else None
         )
@@ -737,6 +738,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         self._preflight_venv_selection: (
             tuple[str, tuple[str, str] | None] | None
         ) = None
+        # Only an environment that was selected can later be rebuilt after a
+        # release; a missing base or failed clone keeps falling back silently.
+        self._cloned_env_ready = False
         self.cloned_env_path = os.path.join(self._agent_venv_dir, ".venv")
         context = run_context_for_task(self.api_task_id)
         selection = (
@@ -774,6 +778,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             )
             self.python_executable = cloned_python
             self._preflight_venv_selection = selection
+            self._cloned_env_ready = True
             return
 
         logger.info(f"Cloning terminal_base venv to: {self.cloned_env_path}")
@@ -789,6 +794,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
             self.python_executable = cloned_python
             self._preflight_venv_selection = selection
+            self._cloned_env_ready = True
             logger.info(
                 f"Successfully cloned environment to: {self.cloned_env_path}"
             )
@@ -826,7 +832,13 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         context = run_context_for_task(self.api_task_id)
         if context is not None and hasattr(self, "_agent_venv_dir"):
             directory = self._run_agent_environment_dir(context)
-            if directory != self._agent_venv_dir:
+            # A completed Run releases its copy and retention may remove an
+            # interrupted one; rebuild either before the next command.
+            if directory != self._agent_venv_dir or (
+                getattr(self, "_cloned_env_ready", False)
+                and not Path(directory, ".venv").exists()
+            ):
+                self._environment_context = context
                 self._agent_venv_dir = directory
                 self._setup_cloned_environment()
         cloned_env_path = getattr(self, "cloned_env_path", None)
@@ -2058,13 +2070,47 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     session["eigent_group_stopped"] = True
             return bool(session.get("running", False))
 
-    def cleanup(self, remove_venv: bool = True):
+    def release_run_environment(self, run_id: str):
+        """Release a completed Run without closing the warm toolkit for follow-ups."""
+        context = getattr(self, "_environment_context", None)
+        if context is None or context.run_id != run_id:
+            return
+        lingering = self.quiesce_run_background_sessions(run_id)
+        if lingering:
+            raise RuntimeError(f"Terminal sessions did not stop: {lingering}")
+        from app.utils.runtime_environment_cleanup import validate_runtime_path
+
+        with self._terminal_mutation_lock:
+            if self._environment_context is not context:
+                return
+            # Eigent always clones (CAMEL's initial_env_path stays unset), and
+            # only the Run-owned clone is released here.
+            value = getattr(self, "cloned_env_path", None)
+            if not value:
+                return
+            root = runtime_storage(context).runtime
+            path = validate_runtime_path(Path(value))
+            if not path.is_relative_to(root):
+                raise ValueError("Terminal environment is outside its Run")
+            if path.exists():
+                shutil.rmtree(path)
+                logger.info("Removed terminal environment for Run %s", run_id)
+
+    def cleanup(
+        self, remove_venv: bool = True, *, keep_run_environment: bool = False
+    ):
         """Clean up all active sessions and optionally remove the virtual environment.
 
         Args:
             remove_venv: If True, removes the .venv or .initial_env folder created
                         by this toolkit. Defaults to True to prevent disk bloat.
+            keep_run_environment: Keep a Run-owned copy for Resume after a
+                        Brain restart. Later cleanups, including CAMEL's
+                        destructor fallback, keep it too; retention or a
+                        terminal Run removes it.
         """
+        if keep_run_environment:
+            self._keep_run_environment = True
         lingering = self._stop_owned_sessions(
             None, timeout=_RUN_BACKGROUND_QUIESCE_TIMEOUT_SECONDS
         )
@@ -2082,6 +2128,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             raise RuntimeError(f"Terminal sessions did not stop: {lingering}")
 
         if not remove_venv:
+            return
+        if (
+            getattr(self, "_keep_run_environment", False)
+            and getattr(self, "_environment_context", None) is not None
+        ):
             return
 
         # Remove cloned env (.venv) if it exists

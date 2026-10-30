@@ -402,6 +402,7 @@
   "skip": "Пропустить",
   "social-media-agent": "Агент социальных сетей",
   "stop-task": "Остановить задачу",
+  "scroll-to-bottom": "Прокрутить вниз",
   "stopping-current-task-queued-next": "Текущая задача останавливается. Затем будет запущено сообщение из очереди.",
   "take-control": "Взять управление",
   "task-admission-failed": "Не удалось запустить задачу. Повторите попытку.",
@@ -577,6 +578,8 @@
   "task-failure-outcome-outcome_unknown": "Результат неизвестен",
   "task-failure-outcome-unverified": "Результат не проверен",
   "task-failure-timed-out": "Время выполнения задачи истекло до записи окончательного ответа.",
+  "task-failure-interrupted": "Задача была прервана до записи окончательного ответа.",
+  "task-failure-interrupted-effects": "Прерывание не позволяет определить, были ли изменены файлы или внешние сервисы.",
   "task-failure-no-actions-recorded": "Действия не были записаны.",
   "task-failure-more-actions": "Ещё не показано действий: {{count}}.",
   "approval-expired-title": "Срок одобрения истёк",
@@ -603,5 +606,9 @@
   "automation-source-session": "Автоматизация из сессии: {{name}}",
   "automation-schedule-review-hint": "Проверьте расписание ниже. Редактор выбирает значение по умолчанию даже без запроса на повторение.",
   "automation-review-confirm": "Я проверил расписание и необходимые данные.",
-  "automation-review-required": "Перед созданием проверьте расписание и необходимые данные."
+  "automation-review-required": "Перед созданием проверьте расписание и необходимые данные.",
+  "notice-use-own-api-key": "Использовать свой API-ключ",
+  "notice-credits-new": "Пополните кредиты, чтобы запускать задачи.",
+  "notice-credits-new-description": "Улучшите тариф или используйте API-ключ своей модели.",
+  "space-model-fallback": "Модель этого пространства больше недоступна, поэтому в этой сессии используется ваша модель по умолчанию."
 }

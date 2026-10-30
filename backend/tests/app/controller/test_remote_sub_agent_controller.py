@@ -104,3 +104,57 @@ async def test_validate_remote_sub_agent_failure(monkeypatch):
 
     assert response.is_valid is False
     assert "401" in response.message
+
+
+@pytest.mark.asyncio
+async def test_validate_modelark_requires_environment_id():
+    response = await validate_remote_sub_agent(
+        ValidateRemoteSubAgentRequest(
+            provider="modelark_agents",
+            api_key="test-key",
+            base_url="https://ark.example.test/api/v3",
+            agent_name="agent-1",
+        )
+    )
+
+    assert response.is_valid is False
+    assert "Environment ID" in response.message
+
+
+@pytest.mark.asyncio
+async def test_validate_modelark_passes_environment_id(monkeypatch):
+    seen: dict[str, object] = {}
+
+    async def fake_validate(config, *, options=None):
+        seen["config"] = config
+        return {"id": "agent-1", "environment_id": "env-1", "status": "ready"}
+
+    monkeypatch.setattr(
+        "app.controller.remote_sub_agent_controller."
+        "validate_remote_sub_agent_provider",
+        fake_validate,
+    )
+
+    response = await validate_remote_sub_agent(
+        ValidateRemoteSubAgentRequest(
+            provider="modelark_agents",
+            api_key=" test-key ",
+            base_url=" https://ark.example.test/api/v3 ",
+            agent_name=" agent-1 ",
+            environment_id=" env-1 ",
+        )
+    )
+
+    assert response.is_valid is True
+    assert response.interaction_id is None
+    assert response.environment_id == "env-1"
+    assert seen["config"] == {
+        "enabled": True,
+        "provider": "modelark_agents",
+        "modelark_agents": {
+            "api_key": "test-key",
+            "base_url": "https://ark.example.test/api/v3",
+            "agent_name": "agent-1",
+            "environment_id": "env-1",
+        },
+    }

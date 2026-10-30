@@ -12,10 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { CreditRecoveryToastBody } from '@/components/ChatBox/CreditRecoveryActions';
 import { createHost } from '@/host/createHost';
+import {
+  isAccountWithoutCredits,
+  isCreditRecoveryReason,
+} from '@/lib/creditRecovery';
 import { usageNoticeCopy } from '@/lib/trialQuotaCopy';
 import type { UsageReason } from '@/lib/usageErrors';
 import i18n from 'i18next';
+import { createElement } from 'react';
 import { toast } from 'sonner';
 import { create } from 'zustand';
 
@@ -29,6 +35,9 @@ export interface SubscriptionUsage {
   trial_total_credits_limit?: number;
   trial_total_credits_used?: number;
   trial_total_credits_remaining?: number;
+  trial_used?: boolean;
+  trial_available?: boolean | null;
+  trial_unavailable_reason?: string | null;
 }
 export interface UsageIncident {
   reason: UsageReason;
@@ -81,6 +90,29 @@ const priority = (incident: UsageIncident) =>
       : 2;
 export const activeUsageIncident = (state: UsageNoticeState) =>
   [...state.incidents].sort((a, b) => priority(b) - priority(a))[0] ?? null;
+/** The toast announces an incident; inline notices wait until it is dismissed. */
+export const isUsageToastOpen = (state: UsageNoticeState) =>
+  state.presented !== null;
+
+/** Current account copy, shared by the toast and the composer notice. */
+export function liveUsageNoticeCopy(
+  reason: UsageReason,
+  state: Pick<UsageNoticeState, 'subscription' | 'credits'>
+) {
+  if (isAccountWithoutCredits(reason, state.subscription, state.credits))
+    return {
+      message: i18n.t('chat.notice-credits-new'),
+      description: i18n.t('chat.notice-credits-new-description'),
+    };
+  return {
+    message: usageNoticeCopy(reason, state.subscription),
+    description: i18n.t(
+      reason === 'service'
+        ? 'chat.notice-contact-description'
+        : 'chat.notice-refresh-description'
+    ),
+  };
+}
 
 export function setUsageAccount(account: string | null) {
   const previous = useUsageNoticeStore.getState().account;
@@ -128,7 +160,8 @@ function syncReminder() {
     useUsageNoticeStore.setState({ presented: null });
     return;
   }
-  const message = usageNoticeCopy(incident.reason, state.subscription);
+  const { message, description } = liveUsageNoticeCopy(incident.reason, state);
+  const recovery = isCreditRecoveryReason(incident.reason);
   if (state.presented === identity && state.presentedCopy === message) return;
   useUsageNoticeStore.setState({ presented: identity, presentedCopy: message });
   const account = state.account;
@@ -141,23 +174,30 @@ function syncReminder() {
     duration: Infinity,
     closeButton: true,
     icon: null,
-    description: i18n.t(
-      incident.reason === 'service'
-        ? 'chat.notice-contact-description'
-        : 'chat.notice-refresh-description'
-    ),
-    action: {
-      label: i18n.t(
-        incident.reason === 'service'
-          ? 'chat.notice-contact-support'
-          : 'chat.notice-refresh'
-      ),
-      onClick: (event) => {
-        event.preventDefault();
-        if (incident.reason === 'service') contactSupport();
-        else void refreshUsage();
-      },
-    },
+    ...(recovery
+      ? {
+          description: createElement(CreditRecoveryToastBody, {
+            description,
+            onRefresh: () => void refreshUsage(),
+          }),
+          // Updating a toast merges options; drop an earlier Refresh action.
+          action: undefined,
+        }
+      : {
+          description,
+          action: {
+            label: i18n.t(
+              incident.reason === 'service'
+                ? 'chat.notice-contact-support'
+                : 'chat.notice-refresh'
+            ),
+            onClick: (event) => {
+              event.preventDefault();
+              if (incident.reason === 'service') contactSupport();
+              else void refreshUsage();
+            },
+          },
+        }),
     onDismiss: acknowledge,
     onAutoClose: acknowledge,
   });

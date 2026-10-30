@@ -113,6 +113,24 @@ def _configure_responses_instructions(model_backend: Any) -> None:
     model_backend._eigent_instructions_configured = True  # noqa: SLF001
 
 
+def append_resume_browser_notice(
+    system_message: str | BaseMessage, options: Chat
+):
+    if (
+        not options.resume_request_id
+        or not options.browser_unavailable_on_resume
+    ):
+        return system_message
+    notice = (
+        "\nThe browser could not be reconnected for this resumed task. "
+        "If your remaining work needs the browser, tell the user it is "
+        "unavailable. Do not claim to have opened or checked a page."
+    )
+    if isinstance(system_message, str):
+        return system_message + notice
+    return system_message.create_new_instance(system_message.content + notice)
+
+
 def agent_model(
     agent_name: str,
     system_message: str | BaseMessage,
@@ -125,6 +143,7 @@ def agent_model(
     custom_model_config: AgentModelConfig | None = None,
     managed_resources=None,
 ):
+    system_message = append_resume_browser_notice(system_message, options)
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
     logger.info(
