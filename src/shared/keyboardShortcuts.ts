@@ -164,7 +164,7 @@ export function getKeyboardShortcutGroups(
         {
           id: 'toggle-timeline-view',
           labelKey: 'layout.shortcuts.toggle-timeline-view',
-          defaultLabel: 'Toggle Dev Mode',
+          defaultLabel: 'Toggle dev mode',
           keys: [primary, shift, 'L'],
         },
         {

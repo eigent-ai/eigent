@@ -121,6 +121,18 @@ jobs:
           path: test-results/junit.xml
           if-no-files-found: warn
 
+      # The event-native ChatBox timeline is the default. Keep the legacy
+      # renderer that a VITE_CHATBOX_EVENT_BUS=false rollback build ships green.
+      - name: Run ChatBox tests against the rollback renderer
+        env:
+          VITE_CHATBOX_EVENT_BUS: 'false'
+        run: >-
+          npx vitest run --config vitest.config.ts
+          test/unit/components/ChatBox
+          test/unit/store/chatStore.test.ts
+          test/unit/store/restoredRunApproval.test.ts
+          test/unit/store/chatEventProjectionBridge.test.ts
+
   preview-browser-electron:
     name: Run Browser Preview Electron Test
     runs-on: ubuntu-latest

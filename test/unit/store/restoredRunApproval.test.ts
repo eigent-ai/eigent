@@ -281,8 +281,8 @@ describe('Run restored while it runs', () => {
     const startedAt = Date.parse('2026-10-01T10:00:00.000Z');
 
     beforeEach(() => {
-      // Installed builds render the legacy chat view.
-      vi.stubEnv('VITE_CHATBOX_EVENT_BUS', '');
+      // The legacy chat view, as a rollback build renders it.
+      vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
       vi.useFakeTimers({ toFake: ['Date'] });
     });
 

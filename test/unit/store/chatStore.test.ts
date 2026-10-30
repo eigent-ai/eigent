@@ -4866,8 +4866,8 @@ describe('ChatStore - Core Functionality', () => {
         let sequence = 0;
 
         beforeEach(() => {
-          // Installed builds render the legacy chat view.
-          vi.stubEnv('VITE_CHATBOX_EVENT_BUS', '');
+          // The legacy chat view, as a rollback build renders it.
+          vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
           vi.useFakeTimers({ toFake: ['Date'] });
           vi.setSystemTime(startedAt);
           sequence = 0;
