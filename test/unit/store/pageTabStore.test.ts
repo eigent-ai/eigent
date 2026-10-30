@@ -12,402 +12,120 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-/**
- * PageTabStore Unit Tests
- *
- * Tests page tab and workspace navigation state:
- * - Initial state defaults
- * - setActiveTab
- * - setActiveWorkspaceTab with auto mark-as-viewed
- * - setChatPanelPosition
- * - setHasTriggers / setHasAgentFiles
- * - markTabAsViewed / markTabAsUnviewed (unviewedTabs Set management)
- */
-
-import { act, renderHook } from '@testing-library/react';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { usePageTabStore } from '../../../src/store/pageTabStore';
 
-describe('PageTabStore', () => {
+describe('pageTabStore information density default', () => {
+  it('starts new users and older preferences without a density at Moderate while preserving saved choices', async () => {
+    expect(usePageTabStore.getInitialState().narrativeInformationDensity).toBe(
+      'balanced'
+    );
+    const migrate = usePageTabStore.persist.getOptions().migrate!;
+    expect(await migrate({}, 5)).toMatchObject({
+      narrativeInformationDensity: 'balanced',
+    });
+    expect(
+      await migrate({ narrativeInformationDensity: 'compact' }, 5)
+    ).toMatchObject({ narrativeInformationDensity: 'compact' });
+  });
+});
+
+describe('pageTabStore side-panel requests', () => {
   beforeEach(() => {
     usePageTabStore.setState({
-      activeTab: 'tasks',
       activeWorkspaceTab: 'workforce',
-      chatPanelPosition: 'left',
-      hasTriggers: false,
-      hasAgentFiles: false,
       unviewedTabs: new Set(),
+      filesUnviewedForProjects: new Set(),
+      taskBoxFocusRequestId: 0,
+      taskBoxFocusProjectId: null,
+      taskBoxFocusTaskId: null,
+      scrollToTurnRequest: null,
+      sessionSidePanelToggleRequestId: 0,
     });
   });
 
-  // ─── Initial State ────────────────────────────────────────────────
+  it('scopes task-card focus requests to a project and task', () => {
+    usePageTabStore.getState().requestTaskBoxFocus('project-1', 'task-2');
 
-  describe('Initial State', () => {
-    it('should have activeTab "tasks"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      expect(result.current.activeTab).toBe('tasks');
-    });
-
-    it('should have activeWorkspaceTab "workforce"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      expect(result.current.activeWorkspaceTab).toBe('workforce');
-    });
-
-    it('should have chatPanelPosition "left"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      expect(result.current.chatPanelPosition).toBe('left');
-    });
-
-    it('should have hasTriggers false', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      expect(result.current.hasTriggers).toBe(false);
-    });
-
-    it('should have hasAgentFiles false', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      expect(result.current.hasAgentFiles).toBe(false);
-    });
-
-    it('should have an empty unviewedTabs Set', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      expect(result.current.unviewedTabs.size).toBe(0);
+    expect(usePageTabStore.getState()).toMatchObject({
+      taskBoxFocusRequestId: 1,
+      taskBoxFocusProjectId: 'project-1',
+      taskBoxFocusTaskId: 'task-2',
     });
   });
 
-  // ─── setActiveTab ─────────────────────────────────────────────────
+  it('leaves unscoped focus requests unbound to the preview scope', () => {
+    // The draft sentinel (or a scope lagging setActiveProject) must never
+    // become the target of a request the caller did not scope.
+    usePageTabStore.setState({ sessionPreviewProjectId: 'new-session-draft' });
+    const store = usePageTabStore.getState();
+    store.requestTaskBoxFocus(undefined, 'task-1');
+    store.requestWorkspaceChatFocus();
+    store.requestToggleSessionSidePanel();
+    store.setScrollToQueryId('query-1');
 
-  describe('setActiveTab', () => {
-    it('should set activeTab to "trigger"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setActiveTab('trigger');
-      });
-
-      expect(result.current.activeTab).toBe('trigger');
+    expect(usePageTabStore.getState()).toMatchObject({
+      taskBoxFocusProjectId: null,
+      workspaceChatFocusProjectId: null,
+      scrollToQueryProjectId: null,
+      sessionSidePanelToggleProjectId: null,
     });
 
-    it('should set activeTab back to "tasks"', () => {
-      const { result } = renderHook(() => usePageTabStore());
+    usePageTabStore.getState().requestWorkspaceChatFocus('project-1');
+    expect(usePageTabStore.getState().workspaceChatFocusProjectId).toBe(
+      'project-1'
+    );
+    store.requestToggleSessionSidePanel('project-1');
+    expect(usePageTabStore.getState().sessionSidePanelToggleProjectId).toBe(
+      'project-1'
+    );
+  });
 
-      act(() => {
-        result.current.setActiveTab('trigger');
-      });
+  it('stores a one-shot historical Run scroll request', () => {
+    const request = { projectId: 'project-1', taskId: 'task-1' };
+    usePageTabStore.getState().setScrollToTurnRequest(request);
+    expect(usePageTabStore.getState().scrollToTurnRequest).toEqual(request);
 
-      act(() => {
-        result.current.setActiveTab('tasks');
-      });
+    usePageTabStore.getState().setScrollToTurnRequest(null);
+    expect(usePageTabStore.getState().scrollToTurnRequest).toBeNull();
+  });
 
-      expect(result.current.activeTab).toBe('tasks');
+  it('publishes one-shot session side-panel toggle requests', () => {
+    usePageTabStore.getState().requestToggleSessionSidePanel();
+    usePageTabStore.getState().requestToggleSessionSidePanel();
+
+    expect(usePageTabStore.getState().sessionSidePanelToggleRequestId).toBe(2);
+  });
+
+  it('keeps a skill draft bound to its source Session and marks the composer handoff as conditional', () => {
+    usePageTabStore
+      .getState()
+      .requestWorkspaceChatDraft(
+        '#automation-draft Draft this task',
+        undefined,
+        'source-project',
+        { ifEmpty: true }
+      );
+
+    expect(usePageTabStore.getState().workspaceChatDraftRequest).toMatchObject({
+      projectId: 'source-project',
+      ifEmpty: true,
+      content: '#automation-draft Draft this task',
     });
   });
 
-  // ─── setActiveWorkspaceTab ────────────────────────────────────────
+  it('tracks unread project files and clears the active project when Files opens', () => {
+    usePageTabStore.getState().markTabAsUnviewed('files', 'project-1');
+    usePageTabStore.getState().markTabAsUnviewed('files', 'project-2');
 
-  describe('setActiveWorkspaceTab', () => {
-    it('should set activeWorkspaceTab to "triggers"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setActiveWorkspaceTab('triggers');
-      });
-
-      expect(result.current.activeWorkspaceTab).toBe('triggers');
+    usePageTabStore.getState().setActiveWorkspaceTab('files', {
+      clearFilesForProjectId: 'project-1',
     });
 
-    it('should set activeWorkspaceTab to "inbox"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setActiveWorkspaceTab('inbox');
-      });
-
-      expect(result.current.activeWorkspaceTab).toBe('inbox');
-    });
-
-    it('should set activeWorkspaceTab to "workforce"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setActiveWorkspaceTab('triggers');
-      });
-
-      act(() => {
-        result.current.setActiveWorkspaceTab('workforce');
-      });
-
-      expect(result.current.activeWorkspaceTab).toBe('workforce');
-    });
-
-    it('should mark the tab as viewed when switching to "triggers"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      // Mark triggers as unviewed first
-      act(() => {
-        result.current.markTabAsUnviewed('triggers');
-      });
-
-      expect(result.current.unviewedTabs.has('triggers')).toBe(true);
-
-      // Switch to triggers tab
-      act(() => {
-        result.current.setActiveWorkspaceTab('triggers');
-      });
-
-      expect(result.current.unviewedTabs.has('triggers')).toBe(false);
-    });
-
-    it('should mark the tab as viewed when switching to "inbox"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsUnviewed('inbox');
-      });
-
-      expect(result.current.unviewedTabs.has('inbox')).toBe(true);
-
-      act(() => {
-        result.current.setActiveWorkspaceTab('inbox');
-      });
-
-      expect(result.current.unviewedTabs.has('inbox')).toBe(false);
-    });
-
-    it('should not modify unviewedTabs when switching to "workforce"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsUnviewed('triggers');
-        result.current.markTabAsUnviewed('inbox');
-      });
-
-      const sizeBefore = result.current.unviewedTabs.size;
-
-      act(() => {
-        result.current.setActiveWorkspaceTab('workforce');
-      });
-
-      expect(result.current.unviewedTabs.size).toBe(sizeBefore);
-      expect(result.current.unviewedTabs.has('triggers')).toBe(true);
-      expect(result.current.unviewedTabs.has('inbox')).toBe(true);
-    });
-  });
-
-  // ─── setChatPanelPosition ─────────────────────────────────────────
-
-  describe('setChatPanelPosition', () => {
-    it('should set chatPanelPosition to "right"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setChatPanelPosition('right');
-      });
-
-      expect(result.current.chatPanelPosition).toBe('right');
-    });
-
-    it('should set chatPanelPosition to "left"', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setChatPanelPosition('right');
-      });
-
-      act(() => {
-        result.current.setChatPanelPosition('left');
-      });
-
-      expect(result.current.chatPanelPosition).toBe('left');
-    });
-  });
-
-  // ─── setHasTriggers ───────────────────────────────────────────────
-
-  describe('setHasTriggers', () => {
-    it('should set hasTriggers to true', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setHasTriggers(true);
-      });
-
-      expect(result.current.hasTriggers).toBe(true);
-    });
-
-    it('should set hasTriggers to false', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setHasTriggers(true);
-      });
-
-      act(() => {
-        result.current.setHasTriggers(false);
-      });
-
-      expect(result.current.hasTriggers).toBe(false);
-    });
-  });
-
-  // ─── setHasAgentFiles ─────────────────────────────────────────────
-
-  describe('setHasAgentFiles', () => {
-    it('should set hasAgentFiles to true', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setHasAgentFiles(true);
-      });
-
-      expect(result.current.hasAgentFiles).toBe(true);
-    });
-
-    it('should set hasAgentFiles to false', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.setHasAgentFiles(true);
-      });
-
-      act(() => {
-        result.current.setHasAgentFiles(false);
-      });
-
-      expect(result.current.hasAgentFiles).toBe(false);
-    });
-  });
-
-  // ─── markTabAsViewed ──────────────────────────────────────────────
-
-  describe('markTabAsViewed', () => {
-    it('should remove a tab from unviewedTabs', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsUnviewed('triggers');
-      });
-
-      expect(result.current.unviewedTabs.has('triggers')).toBe(true);
-
-      act(() => {
-        result.current.markTabAsViewed('triggers');
-      });
-
-      expect(result.current.unviewedTabs.has('triggers')).toBe(false);
-    });
-
-    it('should be a no-op when the tab is not in unviewedTabs', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsViewed('triggers');
-      });
-
-      expect(result.current.unviewedTabs.size).toBe(0);
-    });
-
-    it('should only remove the specified tab, leaving others', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsUnviewed('triggers');
-        result.current.markTabAsUnviewed('inbox');
-      });
-
-      expect(result.current.unviewedTabs.size).toBe(2);
-
-      act(() => {
-        result.current.markTabAsViewed('triggers');
-      });
-
-      expect(result.current.unviewedTabs.size).toBe(1);
-      expect(result.current.unviewedTabs.has('triggers')).toBe(false);
-      expect(result.current.unviewedTabs.has('inbox')).toBe(true);
-    });
-  });
-
-  // ─── markTabAsUnviewed ────────────────────────────────────────────
-
-  describe('markTabAsUnviewed', () => {
-    it('should add a tab to unviewedTabs', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsUnviewed('triggers');
-      });
-
-      expect(result.current.unviewedTabs.has('triggers')).toBe(true);
-    });
-
-    it('should add multiple tabs to unviewedTabs', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsUnviewed('triggers');
-        result.current.markTabAsUnviewed('inbox');
-      });
-
-      expect(result.current.unviewedTabs.size).toBe(2);
-      expect(result.current.unviewedTabs.has('triggers')).toBe(true);
-      expect(result.current.unviewedTabs.has('inbox')).toBe(true);
-    });
-
-    it('should be a no-op when the tab is already unviewed (Set dedup)', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsUnviewed('triggers');
-        result.current.markTabAsUnviewed('triggers');
-      });
-
-      expect(result.current.unviewedTabs.size).toBe(1);
-    });
-  });
-
-  // ─── Combined unviewed tab workflows ──────────────────────────────
-
-  describe('Unviewed tab lifecycle', () => {
-    it('should handle mark-unviewed then mark-viewed cycle', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsUnviewed('inbox');
-      });
-      expect(result.current.unviewedTabs.has('inbox')).toBe(true);
-
-      act(() => {
-        result.current.markTabAsViewed('inbox');
-      });
-      expect(result.current.unviewedTabs.has('inbox')).toBe(false);
-
-      act(() => {
-        result.current.markTabAsUnviewed('inbox');
-      });
-      expect(result.current.unviewedTabs.has('inbox')).toBe(true);
-    });
-
-    it('should auto-view an unviewed tab when switching to it', () => {
-      const { result } = renderHook(() => usePageTabStore());
-
-      act(() => {
-        result.current.markTabAsUnviewed('triggers');
-        result.current.markTabAsUnviewed('inbox');
-      });
-
-      // Switch to triggers — should auto-view it
-      act(() => {
-        result.current.setActiveWorkspaceTab('triggers');
-      });
-
-      expect(result.current.activeWorkspaceTab).toBe('triggers');
-      expect(result.current.unviewedTabs.has('triggers')).toBe(false);
-      expect(result.current.unviewedTabs.has('inbox')).toBe(true);
-    });
+    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('files');
+    expect(usePageTabStore.getState().unviewedTabs).toEqual(new Set(['files']));
+    expect(usePageTabStore.getState().filesUnviewedForProjects).toEqual(
+      new Set(['project-2'])
+    );
   });
 });

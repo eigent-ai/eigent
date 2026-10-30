@@ -75,7 +75,9 @@ async def auto_login(db_session: Session = Depends(session)) -> LoginResponse:
                 raise UserException(code.error, _("Failed to create default user"))
 
     logger.info("Auto login successful", extra={"user_id": user.id, "email": user.email})
-    return LoginResponse(token=create_access_token(user.id), email=user.email)
+    return LoginResponse(
+        token=create_access_token(user.id), email=user.email, user_id=user.id
+    )
 
 
 class RefreshTokenIn(BaseModel):

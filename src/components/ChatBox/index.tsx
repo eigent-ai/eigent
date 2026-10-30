@@ -15,50 +15,517 @@
 import {
   fetchDelete,
   fetchPost,
-  fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
+  uploadFileToBrain,
 } from '@/api/http';
+import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { generateUniqueId, replayActiveTask } from '@/lib';
+import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
+import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
+import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
+import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionDraft } from '@/hooks/useSessionDraft';
+import { useSessionExecution } from '@/hooks/useSessionExecution';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { useSessionPane } from '@/hooks/useSessionPane';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
+import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
+import { useHost } from '@/host';
+import { generateUniqueId } from '@/lib';
+import {
+  interruptedRunDescription,
+  isHumanInteractionReadOnly,
+} from '@/lib/approvalPresentation';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
+import {
+  prepareColdAdmission,
+  prepareFollowUpAdmission,
+} from '@/lib/legacyRuntimeAdmission';
+import { notifyError } from '@/lib/notifyError';
+import {
+  isProjectAchieved,
+  setProjectAchievedState,
+} from '@/lib/projectAchievement';
+import { TERMINAL_RUN_STATUSES } from '@/lib/projector/runSummary';
+import { runEventIngressRegistry } from '@/lib/runEvents/registry';
+import {
+  beginResumeRequest,
+  finishResumeRequest,
+} from '@/lib/runResumeRequest';
+import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import {
+  parseSpaceModelChoice,
+  SPACE_MODEL_METADATA_KEY,
+} from '@/lib/spaceModelChoice';
+import { parseSpaceModelReference } from '@/lib/spaceModelReference';
+import { takeControlOfTask } from '@/lib/taskRuntimeControl';
+import { errorCopy } from '@/lib/usageErrors';
+import { buildUsageLimitBannerState } from '@/lib/usageLimitBanner';
+import {
+  reconcileControlOperations,
+  stopProjectTask,
+} from '@/service/controlOperations';
+import { controlOwner } from '@/service/controlRequest';
+import {
+  cancelFollowUpRequest,
+  createFollowUpRequest,
+  invalidatePendingFollowUps,
+  isQueueAdmissionWait,
+  listPendingFollowUpRequests,
+  prioritizeFollowUpRequest,
+  terminalContinuationAdmissionRejection,
+} from '@/service/followUpQueueApi';
+import {
+  decideHumanInteraction,
+  invalidatePendingHumanInteractions,
+  isHumanInteractionStillPending,
+} from '@/service/humanInteractionApi';
+import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
+import { reconcileHumanInteractionEvents } from '@/service/humanInteractionEventReconciliation';
+import { watchHumanInteractionPending } from '@/service/humanInteractionPendingCheck';
+import { cancelProjectRun } from '@/service/projectRunsApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
-import type { VanillaChatStore } from '@/store/chatStore';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
+import { buildProjectContinuationContext } from '@/store/chatStore';
+import {
+  followUpAdmissionClaims,
+  interruptedAdmissionClaims,
+  notifyFollowUpAdmissionReleased,
+  onFollowUpAdmissionReleased,
+} from '@/store/followUpAdmissionClaims';
+import { usePageTabStore } from '@/store/pageTabStore';
+import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
+import {
+  isSessionStarting,
+  useSessionStartStore,
+} from '@/store/sessionStartStore';
+import { openSettings } from '@/store/settingsStore';
+import { useSpaceStore } from '@/store/spaceStore';
+import {
+  acknowledgeUsageNotice,
+  activeUsageIncident,
+  refreshUsage,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
 import { ExecutionStatus } from '@/types';
-import { AgentStep, ChatTaskStatus } from '@/types/constants';
-import { TriangleAlert } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL } from '@/types/chatTimeline';
+import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
-import { HeaderBox } from './HeaderBox';
+import { selectBottomBoxControl } from './BottomBox/controlArbitration';
+import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
+import {
+  createLegacyApprovalVariant,
+  createLegacyConfirmationVariant,
+  isLegacyConfirmationInteraction,
+} from './BottomBox/legacyHumanControl';
+import type {
+  BottomBoxApprovalScope,
+  BottomBoxFeedbackVariant,
+  BottomBoxRunControlVariant,
+} from './BottomBox/types';
+import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
+import { isChatTimelineNearBottom } from './chatTimelineScroll';
+import { ControlRecovery, useControlOperations } from './ControlRecovery';
+import { EventNativeProjectTimeline } from './EventNativeProjectTimeline';
+import {
+  InterruptedRunBanner,
+  InterruptedRunBannerAction,
+} from './InterruptedRunBanner';
+import { FloatingAction } from './MessageItem/FloatingAction';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { ProjectChatContainer } from './ProjectChatContainer';
+import {
+  canUseLegacyControlWithoutCanonicalOwner,
+  isEventNativeRunActionable,
+  selectActionableInterruptedRun,
+  selectComposerTaskControlState,
+  selectEventNativeActiveRunId,
+  selectQueueExecution,
+} from './runControlArbitration';
+import {
+  SessionExecutionChat,
+  SessionExecutionStatus,
+} from './SessionExecutionChat';
+import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
-const getChatStoreTotalTokens = (chatStore: VanillaChatStore): number => {
-  const chatState = chatStore.getState();
-  return Object.values(chatState.tasks).reduce(
-    (total, task) =>
-      total + (typeof task.tokens === 'number' ? task.tokens : 0),
-    0
+/** Minimum scroll padding under messages (matches previous ~8rem floor). */
+const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
+/** Small gap between last message and BottomBox top. */
+const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
+
+const TERMINAL_QUEUED_RUN_STATUSES = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'timed_out',
+  'interrupted',
+]);
+const READ_ONLY_EVENT_NATIVE_RUN_STATUSES = new Set([
+  'pending',
+  'running',
+  'waiting_for_user',
+  'cancelling',
+  'interrupted',
+]);
+
+type EventNativeProjectedRun =
+  ProjectEventStoreSnapshot['view']['runs'][string];
+
+function isEventNativeRunReadOnly(run: EventNativeProjectedRun): boolean {
+  return (
+    (run.origin !== null && run.origin !== 'local') ||
+    Boolean(run.resumeBlockedReason)
   );
-};
+}
+
+function compareProjectedRunsByRecency(
+  left: EventNativeProjectedRun,
+  right: EventNativeProjectedRun
+): number {
+  const timeDelta =
+    (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0);
+  if (timeDelta !== 0) return timeDelta;
+  if (right.lastSequence !== left.lastSequence) {
+    return right.lastSequence - left.lastSequence;
+  }
+  return right.runId.localeCompare(left.runId);
+}
+
+function selectLatestReadOnlyEventNativeRun(
+  snapshot: ProjectEventStoreSnapshot | null
+): EventNativeProjectedRun | null {
+  if (!snapshot) return null;
+  return (
+    Object.values(snapshot.view.runs)
+      .filter(
+        (run) =>
+          READ_ONLY_EVENT_NATIVE_RUN_STATUSES.has(run.status) &&
+          isEventNativeRunReadOnly(run)
+      )
+      .sort(compareProjectedRunsByRecency)[0] ?? null
+  );
+}
+
+/** Longest wait between admissions while a Session is still busy. */
+const QUEUE_WAIT_RETRY_MAX_MS = 30_000;
+/** Busy refusals after which the queued message explains its wait. */
+const QUEUE_WAIT_NOTICE_ATTEMPTS = 4;
+
+function getCurrentTimestamp() {
+  return Date.now();
+}
 
 export default function ChatBox(): JSX.Element {
-  const [message, setMessage] = useState<string>('');
+  const sessionProjectId = useSessionProjectId();
+  const projectId = sessionProjectId;
+  const { scope, state } = useSessionExecution(projectId);
+  if (!projectId) return <></>;
+  if (state.managed)
+    return (
+      <SessionExecutionChat
+        key={`${scope.accountKey}:${projectId}`}
+        projectId={projectId}
+      />
+    );
+  if (!state.route || state.error)
+    return <SessionExecutionStatus projectId={projectId} />;
+  return <LegacyChatBox accountKey={scope.accountKey} />;
+}
+
+function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
+  const [editingSource, setEditingSource] = useState<{
+    projectId: string;
+    sourceId: string;
+  } | null>(null);
+  const host = useHost();
+  const overlaySlotId = useSessionPane()?.overlaySlotId ?? PLAN_OVERLAY_SLOT_ID;
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
+  // Send in the Workspace composer opens this Session while its first task
+  // is still being created and admitted there.
+  const isSessionStartPending = useSessionStartStore((s) =>
+    Boolean(sessionProjectId && s.startingProjectIds[sessionProjectId])
+  );
 
   const { t } = useTranslation();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [hasModel, setHasModel] = useState(false);
-  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
+  const textareaRef = useRef<HTMLDivElement>(null);
+  const handledChatDraftRequestRef = useRef<number | null>(null);
+  const workspaceChatFocusProjectId = useSessionPageTabStore(
+    (s) => s.workspaceChatFocusProjectId
+  );
+  const workspaceChatFocusRequestId = useSessionPageTabStore(
+    (s) => s.workspaceChatFocusRequestId
+  );
+  const handledChatFocusRequestRef = useRef(0);
+  const workspaceChatDraftRequest = useSessionPageTabStore(
+    (s) => s.workspaceChatDraftRequest
+  );
+  const consumeWorkspaceChatDraft = useSessionPageTabStore(
+    (s) => s.consumeWorkspaceChatDraft
+  );
+  const acknowledgeWorkspaceReviewHandoffs = useSessionPageTabStore(
+    (s) => s.acknowledgeWorkspaceReviewHandoffs
+  );
+  const discardWorkspaceReviewHandoffs = useSessionPageTabStore(
+    (s) => s.discardWorkspaceReviewHandoffs
+  );
+  const chatTimelineDetailLevel = useSessionPageTabStore(
+    (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
+  );
+  const activeProjectId = sessionProjectId;
+  // Switching Sessions remounts this composer; keep each Session's draft.
+  const {
+    text: message,
+    setText: setDraftMessage,
+    reviewHandoffIds: pendingReviewHandoffIds,
+    setReviewHandoffIds: setPendingReviewHandoffIds,
+  } = useSessionDraft(accountKey, activeProjectId);
+  const composerRevisionRef = useRef(0);
+  const previousDraft = useRef({ projectId: activeProjectId, text: message });
+  useEffect(() => {
+    const previous = previousDraft.current;
+    previousDraft.current = { projectId: activeProjectId, text: message };
+    if (previous.projectId === activeProjectId && previous.text && !message) {
+      setEditingSource((current) =>
+        current?.projectId === activeProjectId ? null : current
+      );
+    }
+  }, [activeProjectId, message]);
+  const setMessage = useCallback<typeof setDraftMessage>(
+    (value) => {
+      composerRevisionRef.current += 1;
+      if (value === '') setEditingSource(null);
+      setDraftMessage(value);
+    },
+    [setDraftMessage]
+  );
+  const controlOperations = useControlOperations();
+  const composerProjectRef = useRef(activeProjectId);
+  composerProjectRef.current = activeProjectId;
+  const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
+  const {
+    projectId: projectEventRuntimeProjectId,
+    snapshot: sharedProjectEventSnapshot,
+  } = useProjectEventRuntime();
+  const eventNativeProjectSnapshot =
+    eventNativeTimelineEnabled &&
+    sharedProjectEventSnapshot?.view.projectId === activeProjectId
+      ? sharedProjectEventSnapshot
+      : null;
+  useEffect(() => {
+    if (!activeProjectId || !eventNativeProjectSnapshot) return;
+    const admittedIds = eventNativeProjectSnapshot.chat.nodes.flatMap((node) =>
+      node.kind === 'message' && node.role === 'user'
+        ? (node.reviewHandoffIds ?? [])
+        : []
+    );
+    acknowledgeWorkspaceReviewHandoffs(activeProjectId, admittedIds);
+  }, [
+    acknowledgeWorkspaceReviewHandoffs,
+    activeProjectId,
+    eventNativeProjectSnapshot,
+  ]);
+  const eventNativeReadOnlyRun = selectLatestReadOnlyEventNativeRun(
+    eventNativeProjectSnapshot
+  );
+  const activeProjectMeta = useSpaceStore((s) =>
+    activeProjectId ? s.getProjectMeta(activeProjectId) : null
+  );
+  const updateProjectMeta = useSpaceStore((s) => s.updateProjectMeta);
+  const activeProject = activeProjectId
+    ? projectStore.getProjectById(activeProjectId)
+    : null;
+  const activeTask = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]
+    : undefined;
+  useEffect(() => {
+    if (sharedProjectEventSnapshot?.view.projectId === activeProjectId)
+      reconcileControlOperations(sharedProjectEventSnapshot);
+  }, [
+    sharedProjectEventSnapshot,
+    activeProjectId,
+    chatStore?.activeTaskId,
+    activeTask,
+    controlOperations.length,
+  ]);
+  // Project mode in three forms: `inferred` is a legacy Run fallback;
+  // `effective` always resolves to a concrete mode; `display` stays nullable
+  // so a still-loading Project renders empty instead of the wrong mode.
+  const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
+  const activeProjectMode = activeProjectMeta?.mode ?? activeProject?.mode;
+  const effectiveSessionMode =
+    activeProjectMode ?? inferredSessionMode ?? SessionMode.SINGLE_AGENT;
+  const displaySessionMode =
+    activeProjectMode ?? inferredSessionMode ?? undefined;
+  const ensureActiveProjectMode = useCallback(() => {
+    const projectId = sessionProjectId;
+    if (!projectId || activeProjectMode) return;
+    updateProjectMeta(projectId, { mode: effectiveSessionMode });
+  }, [
+    activeProjectMode,
+    effectiveSessionMode,
+    sessionProjectId,
+    updateProjectMeta,
+  ]);
+  const { hasModel, isConfigLoaded, cloudUsageLimitReached } =
+    useModelConfigCheck();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [_hasSearchKey, setHasSearchKey] = useState<any>(false);
+  const bottomBoxOverlayRef = useRef<HTMLDivElement>(null);
+  const [scrollBottomInsetPx, setScrollBottomInsetPx] = useState(
+    CHAT_SCROLL_BOTTOM_MIN_PX
+  );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { modelType } = useAuthStore();
+  const { modelType, token, user_id } = useAuthStore();
+  const sessionModelSelection =
+    (activeProjectId
+      ? projectStore.projects[activeProjectId]?.metadata?.modelSelection
+      : undefined) ?? activeProjectMeta?.metadata?.modelSelection;
+  const sessionModelIdentity = sessionModelSelection?.model_ref
+    ? parseSpaceModelReference(sessionModelSelection.model_ref)
+    : null;
+  const sessionSpace = useSpaceStore((s) =>
+    s.getSpaceById(activeProject?.spaceId)
+  );
+  const canUseSessionSpace = Boolean(
+    token &&
+    user_id != null &&
+    sessionSpace &&
+    sessionSpace.id === activeProject?.spaceId &&
+    sessionSpace.sourceType !== 'legacy' &&
+    !sessionSpace.id.startsWith('legacy_') &&
+    (!sessionSpace.userId || sessionSpace.userId === String(user_id))
+  );
+  // An accepted portable Session pin is independent of the global preference.
+  // A pending flag or receipt alone must still pass launch-time recovery; it
+  // cannot enable warm follow-ups, which go directly to continuation admission.
+  const canUseSessionModel =
+    hasModel ||
+    Boolean(
+      canUseSessionSpace &&
+      sessionModelIdentity &&
+      sessionModelIdentity.category === sessionModelSelection?.modelType
+    );
+  // An unpinned new Session starts on its Space's saved model.
+  const spaceModelType = parseSpaceModelChoice(
+    activeProject?.metadata?.spaceModelDefaultPending === true
+      ? sessionSpace?.metadata?.[SPACE_MODEL_METADATA_KEY]
+      : null
+  )?.modelType;
+  const composerModelType =
+    sessionModelSelection?.modelType ?? spaceModelType ?? modelType;
+  const usage = useUsageNoticeStore();
+  const subscriptionUsage = usage.subscription;
+  const currentCredits = usage.credits;
+  const incident = activeUsageIncident(usage);
+  const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
+    useState<string | null>(null);
+  const {
+    run: interruptedRun,
+    setRun: setInterruptedRun,
+    refresh: refreshInterruptedRun,
+    settled: interruptedRunSettled,
+  } = useInterruptedRunStatus(activeProjectId);
+  const pendingModelAdmission =
+    activeProject?.metadata?.spaceModelAdmissionRunId;
+  // Cold Resume always passes through canonical model recovery in startTask.
+  // This permits that attempt, not warm use of an unconfirmed receipt/default.
+  const canAttemptModelRecovery = Boolean(
+    !sessionModelSelection &&
+    canUseSessionSpace &&
+    interruptedRun?.project_id === activeProjectId &&
+    (interruptedRun?.status === 'interrupted' ||
+      (interruptedRun?.status === 'pending' &&
+        interruptedRun.retry_request_id)) &&
+    interruptedRun.origin !== 'cloud_restore' &&
+    interruptedRun.latest_attempt &&
+    (pendingModelAdmission != null
+      ? pendingModelAdmission === interruptedRun.run_id
+      : activeProject?.metadata?.spaceModelDefaultPending === true)
+  );
+  const [resumeRunAction, setDurableRunAction] =
+    useState<InterruptedRunBannerAction>(null);
+  const interruptedCancelOperation = controlOperations.find(
+    (op) => op.kind === 'cancel' && op.runId === interruptedRun?.run_id
+  );
+  const cancelRecoveryReason =
+    interruptedCancelOperation?.phase === 'unknown'
+      ? t('chat.control-outcome-unknown')
+      : undefined;
+  // Resume never replays a write whose outcome is unknown; Cancel still works.
+  const unsafeResumeReason = interruptedRun?.unsafeResumeBlockers?.length
+    ? t('chat.run-resume-unsafe-blocked')
+    : undefined;
+  const durableRunAction = controlOperations.some(
+    (op) =>
+      op.kind === 'cancel' &&
+      op.runId === interruptedRun?.run_id &&
+      op.phase === 'pending'
+  )
+    ? 'cancelling'
+    : resumeRunAction;
+  const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
+
+  const scheduleUsageRefresh = useCallback(() => {
+    window.setTimeout(() => void refreshUsage(), 2000);
+    window.setTimeout(() => void refreshUsage(), 15000);
+  }, []);
+
+  const usageLimitBannerState = useMemo(
+    () => buildUsageLimitBannerState(subscriptionUsage, currentCredits, t),
+    [subscriptionUsage, currentCredits, t]
+  );
+  const cloudUsageLimitMessage =
+    composerModelType === 'cloud' && cloudUsageLimitReached
+      ? errorCopy(incident?.reason ?? 'credits')
+      : null;
+  const incidentBanner = useUsageIncidentBanner(composerModelType);
+  const bannerId = usageLimitBannerState?.id;
+  // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
+  // An open incident owns this slot even while its toast hides the banner.
+  const usageLimitBanner = incident
+    ? incidentBanner
+    : composerModelType !== 'cloud' ||
+        !usageLimitBannerState ||
+        bannerId === dismissedUsageLimitBannerId
+      ? null
+      : {
+          message: usageLimitBannerState.message,
+          actionLabel: t(
+            usage.refreshing ? 'chat.notice-refreshing' : 'chat.notice-refresh'
+          ),
+          severity: usageLimitBannerState.severity,
+          refreshing: usage.refreshing,
+          refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
+          onAction: () => void refreshUsage(),
+          onDismiss: () => {
+            setDismissedUsageLimitBannerId(bannerId ?? null);
+            acknowledgeUsageNotice();
+          },
+        };
+
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
+
   useEffect(() => {
     // Only show warning message, don't block functionality
     if (
@@ -70,212 +537,539 @@ export default function ChatBox(): JSX.Element {
       setUseCloudModelInDev(false);
     }
   }, [modelType]);
+  useEffect(() => {
+    if (handledChatFocusRequestRef.current === workspaceChatFocusRequestId)
+      return;
+    handledChatFocusRequestRef.current = workspaceChatFocusRequestId;
+    if (
+      workspaceChatFocusRequestId === 0 ||
+      (workspaceChatFocusProjectId
+        ? workspaceChatFocusProjectId !== activeProjectId
+        : !isFocusedPane)
+    )
+      return;
+    const focusTimer = window.setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 180);
+    return () => clearTimeout(focusTimer);
+  }, [
+    workspaceChatFocusRequestId,
+    workspaceChatFocusProjectId,
+    activeProjectId,
+    isFocusedPane,
+  ]);
 
+  useEffect(() => {
+    if (
+      !workspaceChatDraftRequest ||
+      workspaceChatDraftRequest.projectId !== activeProjectId ||
+      handledChatDraftRequestRef.current === workspaceChatDraftRequest.requestId
+    ) {
+      return;
+    }
+    handledChatDraftRequestRef.current = workspaceChatDraftRequest.requestId;
+    if (
+      workspaceChatDraftRequest.ifEmpty &&
+      (message.trim() || activeTask?.attaches?.length)
+    ) {
+      toast.info(t('chat.message-draft-exists'));
+      consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
+      return;
+    }
+    setMessage((current) => {
+      const existing = current.trimEnd();
+      return existing
+        ? `${existing}\n\n${workspaceChatDraftRequest.content}`
+        : workspaceChatDraftRequest.content;
+    });
+    setPendingReviewHandoffIds((current) => [
+      ...new Set([
+        ...current,
+        ...(workspaceChatDraftRequest.reviewHandoffIds ?? []),
+      ]),
+    ]);
+    consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
+  }, [
+    activeProjectId,
+    activeTask?.attaches?.length,
+    consumeWorkspaceChatDraft,
+    message,
+    setMessage,
+    setPendingReviewHandoffIds,
+    t,
+    workspaceChatDraftRequest,
+  ]);
+
+  useEffect(() => {
+    proxyFetchGet('/api/v1/configs').catch((err) =>
+      console.error('Failed to fetch configs:', err)
+    );
+  }, []);
   const [searchParams, setSearchParams] = useSearchParams();
   const share_token = searchParams.get('share_token');
   const skill_prompt = searchParams.get('skill_prompt');
 
   const handleSendRef = useRef<
-    ((messageStr?: string, taskId?: string) => Promise<void>) | null
+    | ((
+        messageStr?: string,
+        taskId?: string,
+        executionId?: string,
+        queuedAttaches?: File[],
+        queuedRequestId?: string,
+        queuedReviewHandoffIds?: string[]
+      ) => Promise<void>)
+    | null
   >(null);
-
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Shared function to check model configuration
-  const checkModelConfig = useCallback(async () => {
-    try {
-      if (modelType === 'cloud') {
-        // For cloud model, check if API key exists
-        const res = await proxyFetchGet('/api/v1/user/key');
-        setHasModel(!!res.value);
-      } else if (modelType === 'local' || modelType === 'custom') {
-        // For local/custom model, check if provider exists
-        const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
-        const providerList = res.items || [];
-        setHasModel(providerList.length > 0);
-      } else {
-        setHasModel(false);
-      }
-    } catch (err) {
-      console.error('Failed to check model config:', err);
-      setHasModel(false);
-    } finally {
-      setIsConfigLoaded(true);
-    }
-  }, [modelType]);
-
-  // Check model config on mount and when modelType changes
-  useEffect(() => {
-    proxyFetchGet('/api/v1/configs')
-      .then((configsRes) => {
-        const configs = Array.isArray(configsRes) ? configsRes : [];
-        const _hasApiKey = configs.find(
-          (item) => item.config_name === 'GOOGLE_API_KEY'
-        );
-        const _hasApiId = configs.find(
-          (item) => item.config_name === 'SEARCH_ENGINE_ID'
-        );
-        if (_hasApiKey && _hasApiId) setHasSearchKey(true);
-      })
-      .catch((err) => console.error('Failed to fetch configs:', err));
-
-    checkModelConfig();
-  }, [modelType, checkModelConfig]);
-
-  // Re-check model config when returning from settings page
-  useEffect(() => {
-    // Check when location changes (user navigates)
-    if (location.pathname === '/') {
-      checkModelConfig();
-    }
-  }, [location.pathname, checkModelConfig]);
-
-  // Also check when window gains focus (user returns from settings)
-  useEffect(() => {
-    const handleFocus = () => {
-      checkModelConfig();
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [checkModelConfig]);
-
-  // Task time tracking
-  const [taskTime, setTaskTime] = useState(
-    chatStore?.getFormattedTaskTime(chatStore?.activeTaskId as string) ||
-      '00:00'
+  const queuedDispatchRef = useRef<string | null>(null);
+  const [queueRetryAt, setQueueRetryAt] = useState(0);
+  const [queueRetryRevision, setQueueRetryRevision] = useState(0);
+  const queueWaitRef = useRef<{ key: string; attempts: number } | null>(null);
+  // Shared across mounts: a composer remounted by a Session switch must still
+  // see an admission that an earlier mount has not finished.
+  const followUpAdmissionsRef = useRef(followUpAdmissionClaims);
+  const [followUpAdmissionRevision, setFollowUpAdmissionRevision] = useState(0);
+  useEffect(
+    () =>
+      onFollowUpAdmissionReleased(() =>
+        setFollowUpAdmissionRevision((revision) => revision + 1)
+      ),
+    []
   );
+  const interruptedAdmissionsRef = useRef(interruptedAdmissionClaims);
+  // Admission is monotonic. Late pending-list responses must never restore a
+  // request already accepted by HTTP or observed starting in the event stream.
+  const acknowledgedQueuedRequests = useRef(new Set<string>());
+  const queueActionRef = useRef<{
+    projectId: string;
+    taskId: string;
+    runId?: string;
+  } | null>(null);
+  const [queueAction, setQueueAction] =
+    useState<typeof queueActionRef.current>(null);
+  const [admittedQueuedRun, setAdmittedQueuedRun] = useState<{
+    projectId: string;
+    runId: string;
+  } | null>(null);
 
-  const [_hasSubTask, setHasSubTask] = useState(false);
+  const handleSelectModel = useCallback(() => {
+    openSettings('models');
+  }, []);
+
   const [loading, setLoading] = useState(false);
-  const [isReplayLoading, setIsReplayLoading] = useState(false);
-  const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
-  const [projectTotalTokens, setProjectTotalTokens] = useState(0);
+  const [pauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+  const isPauseResumeLoading =
+    pauseResumeLoading ||
+    controlOperations.some(
+      (op) =>
+        op.kind !== 'interaction' &&
+        op.runId === chatStore?.activeTaskId &&
+        op.phase === 'pending'
+    );
 
   const activeTaskId = chatStore?.activeTaskId;
-  const activeTaskMessages = chatStore?.tasks[activeTaskId as string]?.messages;
-  const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
-
-  useEffect(() => {
-    if (!chatStore?.activeTaskId) return;
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore?.activeTaskId, chatStore]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === AgentStep.TO_SUB_TASKS)
-      ? true
-      : false;
-    setHasSubTask(_hasSubTask);
-  }, [chatStore, activeTaskId, activeTaskMessages]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _activeAsk = activeAsk;
-    let timer: NodeJS.Timeout;
-    if (_activeAsk && _activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        if (handleSendRef.current) {
-          handleSendRef.current('skip', _taskId);
-        }
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      if (timer) clearTimeout(timer);
+  const activeAskTask = chatStore?.tasks[activeTaskId as string];
+  const legacyControlTaskId =
+    activeTaskId &&
+    activeAskTask &&
+    activeAskTask.type !== 'replay' &&
+    activeAskTask.type !== 'share' &&
+    activeAskTask.status !== ChatTaskStatus.FINISHED
+      ? activeTaskId
+      : null;
+  const projectedLegacyRun = activeTaskId
+    ? eventNativeProjectSnapshot?.view.runs[activeTaskId]
+    : undefined;
+  const eligibleLegacyActiveRunId =
+    activeTaskId &&
+    activeAskTask &&
+    activeAskTask.type !== 'replay' &&
+    activeAskTask.type !== 'share' &&
+    activeAskTask.status !== ChatTaskStatus.FINISHED &&
+    projectedLegacyRun &&
+    (projectedLegacyRun.status === 'running' ||
+      projectedLegacyRun.status === 'cancelling') &&
+    isEventNativeRunActionable(projectedLegacyRun)
+      ? activeTaskId
+      : null;
+  const eventNativeActiveRunId = selectEventNativeActiveRunId(
+    eventNativeProjectSnapshot,
+    eligibleLegacyActiveRunId
+  );
+  const eventNativeActiveTask = eventNativeActiveRunId
+    ? chatStore?.tasks[eventNativeActiveRunId]
+    : undefined;
+  const eventNativeActiveProjectedRun = eventNativeActiveRunId
+    ? eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]
+    : undefined;
+  const allowLegacyFallbackControl =
+    eventNativeTimelineEnabled &&
+    projectEventRuntimeProjectId === activeProjectId &&
+    canUseLegacyControlWithoutCanonicalOwner(
+      eventNativeProjectSnapshot,
+      legacyControlTaskId
+    );
+  const eventNativeInterruptedRun = selectActionableInterruptedRun(
+    eventNativeProjectSnapshot,
+    interruptedRun?.run_id
+  );
+  const activeAsk = activeAskTask?.activeAsk;
+  const activeAskMessage = activeAskTask?.messages.findLast(
+    (item) => item.step === AgentStep.ASK
+  );
+  const activeInteraction = activeAskMessage?.interaction;
+  const legacyControlViewKey = JSON.stringify([
+    controlOwner(),
+    activeProjectId,
+    activeTaskId,
+    activeInteraction?.interaction_id,
+    activeInteraction?.version,
+    activeInteraction?.action_digest,
+  ]);
+  const legacyControlView = useRef({
+    key: legacyControlViewKey,
+    generation: 0,
+    mounted: true,
+  });
+  if (legacyControlView.current.key !== legacyControlViewKey)
+    legacyControlView.current = {
+      key: legacyControlViewKey,
+      generation: legacyControlView.current.generation + 1,
+      mounted: true,
     };
-  }, [activeAsk, message, chatStore, activeTaskId]);
-
-  const getAllChatStoresMemoized = useMemo(() => {
-    if (!projectStore.activeProjectId) return [];
-    return projectStore.getAllChatStores(projectStore.activeProjectId);
-  }, [projectStore]);
+  useEffect(() => {
+    legacyControlView.current.mounted = true;
+    return () => {
+      legacyControlView.current.mounted = false;
+      legacyControlView.current.generation++;
+    };
+  }, []);
+  const legacyInteractionExpired = useHumanInteractionExpiry(activeInteraction);
+  // The canonical Run decides whether the active Run can still be answered:
+  // a task restored for playback keeps legacy status that Resume outdates.
+  const readOnlyRunStatus = (
+    runId: string | null | undefined,
+    legacyStatus: string | undefined
+  ) =>
+    (runId && sharedProjectEventSnapshot?.view.projectId === activeProjectId
+      ? sharedProjectEventSnapshot.view.runs[runId]?.status
+      : undefined) ?? legacyStatus;
+  const activeInteractionReadOnly =
+    !!activeInteraction &&
+    isHumanInteractionReadOnly({
+      interaction: activeInteraction,
+      activeTaskId,
+      taskType: activeAskTask?.type,
+      taskStatus: activeAskTask?.status,
+      durableRunStatus: readOnlyRunStatus(
+        activeTaskId,
+        activeAskTask?.durableRunStatus
+      ),
+    });
+  // Brain confirms that an approval is still pending before it is offered.
+  // `null` means Brain has not answered (the read failed or timed out): the
+  // card stays visible but disabled while the check is retried.
+  const [legacyApprovalCheck, setLegacyApprovalCheck] = useState<{
+    key: string;
+    pending: boolean | null;
+  }>();
+  useEffect(() => {
+    setLegacyApprovalCheck(undefined);
+    if (
+      !activeInteraction ||
+      activeInteraction.interaction_type !== 'approval' ||
+      legacyInteractionExpired ||
+      activeInteractionReadOnly
+    )
+      return;
+    const pendingWatch = watchHumanInteractionPending(
+      activeInteraction,
+      (pending) =>
+        setLegacyApprovalCheck({ key: legacyControlViewKey, pending })
+    );
+    const stopStreamWatch = onRunStreamReopened(
+      activeInteraction.run_id,
+      pendingWatch.recheck
+    );
+    window.addEventListener('focus', pendingWatch.recheck);
+    host?.ipcRenderer?.on('backend-ready', pendingWatch.recheck);
+    return () => {
+      pendingWatch.dispose();
+      stopStreamWatch();
+      window.removeEventListener('focus', pendingWatch.recheck);
+      host?.ipcRenderer?.off('backend-ready', pendingWatch.recheck);
+    };
+  }, [
+    legacyControlViewKey,
+    activeInteraction,
+    activeInteractionReadOnly,
+    legacyInteractionExpired,
+    host?.ipcRenderer,
+  ]);
+  const legacyApprovalPending =
+    legacyApprovalCheck?.key === legacyControlViewKey
+      ? legacyApprovalCheck.pending
+      : undefined;
+  const isLegacyApproval = activeInteraction?.interaction_type === 'approval';
+  // A reopened Session restores its Run for playback. When that Run still
+  // waits for this question, it is answered here like a live one.
+  const isRestoredQuestionWaiting =
+    activeAskTask?.type === 'replay' &&
+    activeInteraction?.interaction_type === 'question' &&
+    !activeInteractionReadOnly;
+  const canAnswerActiveAsk =
+    !legacyInteractionExpired &&
+    !activeInteractionReadOnly &&
+    !!activeAskTask &&
+    activeAskTask.type !== 'share' &&
+    (isRestoredQuestionWaiting ||
+      (activeAskTask.type !== 'replay' &&
+        activeAskTask.status !== ChatTaskStatus.FINISHED));
+  const isInteractiveHumanReply =
+    canAnswerActiveAsk && (!isLegacyApproval || legacyApprovalPending === true);
+  const isLegacyApprovalUnconfirmed =
+    canAnswerActiveAsk && isLegacyApproval && legacyApprovalPending === null;
+  const [legacyApprovalSubmitting, setLegacyApprovalSubmitting] =
+    useState(false);
 
   useEffect(() => {
-    if (!projectStore.activeProjectId) {
-      setProjectTotalTokens(0);
+    setLegacyApprovalSubmitting(false);
+  }, [legacyControlViewKey]);
+
+  const handleLegacyApprovalDecision = async (
+    decision: 'approved' | 'rejected',
+    scope: BottomBoxApprovalScope
+  ) => {
+    const interaction = activeInteraction;
+    const taskId = activeTaskId;
+    if (
+      !interaction ||
+      (interaction.interaction_type !== 'approval' &&
+        !isLegacyConfirmationInteraction(interaction)) ||
+      !taskId ||
+      legacyApprovalSubmitting ||
+      !isInteractiveHumanReply
+    ) {
       return;
     }
 
-    const chatTotals = new Map<string, number>();
-    let nextProjectTotalTokens = 0;
-
-    getAllChatStoresMemoized.forEach(({ chatId, chatStore }) => {
-      const chatTotalTokens = getChatStoreTotalTokens(chatStore);
-      chatTotals.set(chatId, chatTotalTokens);
-      nextProjectTotalTokens += chatTotalTokens;
-    });
-
-    setProjectTotalTokens(nextProjectTotalTokens);
-
-    const unsubscribers = getAllChatStoresMemoized.map(
-      ({ chatId, chatStore }) =>
-        chatStore.subscribe((state) => {
-          const nextChatTotalTokens = Object.values(state.tasks).reduce(
-            (total, task) =>
-              total + (typeof task.tokens === 'number' ? task.tokens : 0),
-            0
-          );
-          const previousChatTotalTokens = chatTotals.get(chatId) ?? 0;
-
-          if (nextChatTotalTokens === previousChatTotalTokens) {
-            return;
-          }
-
-          chatTotals.set(chatId, nextChatTotalTokens);
-          nextProjectTotalTokens +=
-            nextChatTotalTokens - previousChatTotalTokens;
-          setProjectTotalTokens(nextProjectTotalTokens);
+    const owner = controlOwner();
+    const generation = legacyControlView.current.generation;
+    const projectId = activeProjectId;
+    const isCurrent = () =>
+      legacyControlView.current.mounted &&
+      legacyControlView.current.generation === generation &&
+      controlOwner() === owner &&
+      composerProjectRef.current === projectId &&
+      projectStore.getActiveChatStore(projectId ?? undefined)?.getState()
+        .activeTaskId === taskId;
+    setLegacyApprovalSubmitting(true);
+    try {
+      invalidatePendingHumanInteractions(interaction.run_id);
+      const isPending = await isHumanInteractionStillPending(interaction);
+      if (!isCurrent()) return;
+      if (!isPending) {
+        setLegacyApprovalCheck({ key: legacyControlViewKey, pending: false });
+        await refreshInterruptedRun();
+        return;
+      }
+      const currentTask = projectStore
+        .getActiveChatStore(sessionProjectId ?? undefined)
+        ?.getState().tasks[taskId];
+      if (
+        !currentTask ||
+        isHumanInteractionReadOnly({
+          interaction:
+            currentTask.messages.findLast(
+              (message) =>
+                message.interaction?.interaction_id ===
+                interaction.interaction_id
+            )?.interaction || interaction,
+          activeTaskId: projectStore
+            .getActiveChatStore(sessionProjectId ?? undefined)
+            ?.getState().activeTaskId,
+          taskType: currentTask.type,
+          taskStatus: currentTask.status,
+          durableRunStatus: readOnlyRunStatus(
+            taskId,
+            currentTask.durableRunStatus
+          ),
         })
-    );
+      )
+        return;
+      await decideHumanInteraction(interaction, {
+        decisionRequestId: generateUniqueId(),
+        decision:
+          interaction.interaction_type === 'approval'
+            ? { decision, scope }
+            : { decision },
+        actorId: user_id,
+        projectId: projectId ?? undefined,
+      });
+      if (!projectId || !isCurrent()) return;
+      await reconcileHumanInteractionEvents({
+        bounded: true,
+        projectId,
+        runId: interaction.run_id!,
+        interactionId: interaction.interaction_id,
+        afterSequence: 0,
+      });
+      if (!isCurrent()) return;
+      const state = projectStore.getActiveChatStore(projectId)?.getState();
+      if (state)
+        completeHumanInteraction(state, taskId, interaction.interaction_id);
+    } catch {
+      // The persistent operation recovery owns ambiguous outcomes. No local
+      // decision or Run transition is inferred from a transport failure.
+    } finally {
+      if (isCurrent()) setLegacyApprovalSubmitting(false);
+    }
+  };
 
-    return () => {
-      unsubscribers.forEach((unsubscribe) => unsubscribe());
-    };
-  }, [projectStore.activeProjectId, getAllChatStoresMemoized]);
+  const updateLegacyHumanControlSubmission = useCallback(
+    (
+      projectId: string,
+      interaction: { interactionId: string; runId: string },
+      phase: 'submitting' | 'failed'
+    ) => {
+      const activeStore = projectStore.getActiveChatStore(projectId);
+      if (!activeStore) return;
+      const state = activeStore.getState();
+      if (state.activeTaskId !== interaction.runId) return;
+      const current = state.tasks[interaction.runId];
+      if (!current) return;
+
+      // Submission progress is presentation state, never a Run transition.
+      state.setIsPending(interaction.runId, phase === 'submitting');
+    },
+    [projectStore]
+  );
+
+  const handleDurableHumanControlResolved = useCallback(
+    (projectId: string, resolved: { interactionId: string; runId: string }) => {
+      const activeStore = projectStore.getActiveChatStore(projectId);
+      if (!activeStore) return;
+      const state = activeStore.getState();
+      if (state.activeTaskId !== resolved.runId) return;
+      completeHumanInteraction(state, resolved.runId, resolved.interactionId);
+    },
+    [projectStore]
+  );
+
+  const eventNativeHumanControl = useEventNativeHumanControl({
+    projectId: eventNativeTimelineEnabled ? activeProjectId : null,
+    activeRunId: eventNativeActiveRunId,
+    enabled:
+      eventNativeTimelineEnabled &&
+      Boolean(activeProjectId) &&
+      eventNativeActiveTask?.type !== 'share' &&
+      Boolean(
+        eventNativeActiveProjectedRun &&
+        isEventNativeRunActionable(eventNativeActiveProjectedRun)
+      ) &&
+      !share_token,
+    onSubmissionStart: (interaction) => {
+      if (!activeProjectId) return;
+      updateLegacyHumanControlSubmission(
+        activeProjectId,
+        interaction,
+        'submitting'
+      );
+    },
+    onSubmissionFailure: (interaction) => {
+      if (!activeProjectId) return;
+      updateLegacyHumanControlSubmission(
+        activeProjectId,
+        interaction,
+        'failed'
+      );
+    },
+    onDurableResolution: (interaction) => {
+      if (!activeProjectId) return;
+      handleDurableHumanControlResolved(activeProjectId, interaction);
+    },
+  });
+
+  const getAllChatStoresMemoized = useMemo(() => {
+    if (!sessionProjectId) return [];
+    return projectStore.getAllChatStores(sessionProjectId);
+  }, [projectStore, sessionProjectId]);
 
   // Check if any chat store in the project has messages
   const hasAnyMessages = useMemo(() => {
-    if (!chatStore) return false;
-    // First check current active chat store
-    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
-      const activeTask = chatStore.tasks[chatStore.activeTaskId];
-      if (
-        (activeTask.messages && activeTask.messages.length > 0) ||
-        activeTask.hasMessages
-      ) {
-        return true;
-      }
-    }
+    const hasMessages = (store: typeof chatStore) =>
+      !!store &&
+      Object.values(store.tasks).some(
+        (task) => (task.messages?.length || 0) > 0 || task.hasMessages
+      );
+
+    if (hasMessages(chatStore)) return true;
 
     // Then check all other chat stores in the project
     return getAllChatStoresMemoized.some(({ chatStore: store }) => {
       const state = store.getState();
-      return (
-        state.activeTaskId &&
-        state.tasks[state.activeTaskId] &&
-        (state.tasks[state.activeTaskId].messages.length > 0 ||
-          state.tasks[state.activeTaskId].hasMessages)
+      return Object.values(state.tasks).some(
+        (task) => (task.messages?.length || 0) > 0 || task.hasMessages
       );
     });
   }, [chatStore, getAllChatStoresMemoized]);
+
+  // With the event-native read path enabled, typed-only durable events can be
+  // the first visible records. Timeline presence must not depend on whether a
+  // legacy ChatStore message happened to be created for the same event.
+  const shouldRenderChatTimeline = eventNativeTimelineEnabled
+    ? Boolean(activeProjectId)
+    : hasAnyMessages;
+  const hasEventNativeTimelineContent = Boolean(
+    eventNativeProjectSnapshot?.chat.nodes.length
+  );
+  // Local durable events are the preferred read model, but cloud-restored and
+  // legacy Sessions may have usable ChatStore history before `/runs` responds
+  // (or no local RunJournal replica at all). Keep that history visible while
+  // event hydration catches up instead of replacing the page with a skeleton.
+  const shouldRenderEventNativeTimeline = Boolean(
+    eventNativeTimelineEnabled &&
+    activeProjectId &&
+    (hasEventNativeTimelineContent || !hasAnyMessages)
+  );
+  const shouldRenderBottomBoxOverlay =
+    shouldRenderChatTimeline &&
+    Boolean(
+      chatStore?.activeTaskId ||
+      (eventNativeTimelineEnabled &&
+        (interruptedRun ||
+          eventNativeHumanControl.variant ||
+          eventNativeActiveRunId ||
+          eventNativeReadOnlyRun))
+    );
+
+  useLayoutEffect(() => {
+    if (!shouldRenderBottomBoxOverlay) return;
+
+    const el = bottomBoxOverlayRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const raw = el.getBoundingClientRect().height;
+      setScrollBottomInsetPx(
+        Math.max(
+          CHAT_SCROLL_BOTTOM_MIN_PX,
+          Math.round(raw) + CHAT_SCROLL_BOTTOM_GAP_PX
+        )
+      );
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [shouldRenderBottomBoxOverlay]);
 
   const isTaskBusy = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
       return false;
     const task = chatStore.tasks[chatStore.activeTaskId];
+    if (interruptedRun?.run_id === chatStore.activeTaskId) return false;
+
     return (
       // running or paused
       task.status === ChatTaskStatus.RUNNING ||
@@ -285,12 +1079,29 @@ export default function ChatBox(): JSX.Element {
         (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
       ) ||
       // skeleton/computing phase
-      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+      ((task.status as string) !== ChatTaskStatus.FINISHED &&
+        (task.status as string) !== ChatTaskStatus.RUNNING &&
+        !task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
       task.isTakeControl
     );
-  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+  }, [chatStore?.activeTaskId, chatStore?.tasks, interruptedRun?.run_id]);
+
+  const queueExecution = selectQueueExecution({
+    snapshot: eventNativeTimelineEnabled ? eventNativeProjectSnapshot : null,
+    legacyRunId: chatStore?.activeTaskId,
+    legacyBusy: isTaskBusy,
+    queuedRunIds:
+      (activeProjectId &&
+        projectStore
+          .getProjectById(activeProjectId)
+          ?.queuedMessages.map((item) => item.task_id)) ||
+      [],
+  });
+
+  const isCloudUsageLimited =
+    composerModelType === 'cloud' && cloudUsageLimitReached;
 
   const isInputDisabled = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
@@ -298,13 +1109,15 @@ export default function ChatBox(): JSX.Element {
 
     const task = chatStore.tasks[chatStore.activeTaskId];
 
+    // A message sent before that start settles would start the task again.
+    if (isSessionStartPending) return true;
+
     // If ask human is active, allow input
     if (task.activeAsk) return false;
 
-    if (isTaskBusy) return true;
-
     // Standard checks - check model
-    if (!hasModel) return true;
+    if (isCloudUsageLimited) return true;
+    if (!canUseSessionModel) return true;
     if (useCloudModelInDev) return true;
     if (task.isContextExceeded) return true;
 
@@ -312,24 +1125,33 @@ export default function ChatBox(): JSX.Element {
   }, [
     chatStore?.activeTaskId,
     chatStore?.tasks,
-    hasModel,
+    isSessionStartPending,
+    isCloudUsageLimited,
+    canUseSessionModel,
     useCloudModelInDev,
-    isTaskBusy,
   ]);
 
   const handleSendShare = useCallback(
     async (token: string) => {
       if (!chatStore) return;
       if (!token) return;
-      if (!projectStore.activeProjectId) {
+      if (!sessionProjectId) {
         console.warn("Can't send share due to no active projectId");
         return;
       }
 
       // Check model configuration before starting task
       if (!hasModel) {
-        toast.error('Please select a model first.');
-        navigate('/history?tab=agents');
+        if (isCloudUsageLimited) {
+          notifyError(cloudUsageLimitMessage || errorCopy('credits'));
+          return;
+        }
+        notifyError(
+          t('chat.select-model-first', {
+            defaultValue: 'Please select a model first.',
+          })
+        );
+        openSettings('models');
         return;
       }
 
@@ -347,21 +1169,24 @@ export default function ChatBox(): JSX.Element {
         try {
           await chatStore.startTask(taskId, 'share', _token, 0.1);
           chatStore.setActiveTaskId(taskId);
-          chatStore.handleConfirmTask(
-            projectStore.activeProjectId,
-            taskId,
-            'share'
-          );
+          chatStore.handleConfirmTask(sessionProjectId, taskId, 'share');
         } catch (err: any) {
           console.error('Failed to start shared task:', err);
-          toast.error(
+          notifyError(
             err?.message ||
               'Failed to start task. Please check your model configuration.'
           );
         }
       }
     },
-    [chatStore, projectStore.activeProjectId, hasModel, navigate]
+    [
+      chatStore,
+      sessionProjectId,
+      hasModel,
+      isCloudUsageLimited,
+      cloudUsageLimitMessage,
+      t,
+    ]
   );
 
   // Handle skill_prompt from URL - pre-fill message when navigating from Skills page
@@ -373,23 +1198,7 @@ export default function ChatBox(): JSX.Element {
       newSearchParams.delete('skill_prompt');
       setSearchParams(newSearchParams, { replace: true });
     }
-  }, [skill_prompt, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    console.log('ChatStore Data: ', chatStore);
-  }, [chatStore]);
-
-  const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      setTimeout(() => {
-        scrollContainerRef.current!.scrollTo({
-          top: scrollContainerRef.current!.scrollHeight + 20,
-          behavior: 'smooth',
-        });
-      }, 200);
-    }
-  }, []);
+  }, [skill_prompt, searchParams, setSearchParams, setMessage]);
 
   // Handle scrollbar visibility on scroll
   useEffect(() => {
@@ -421,24 +1230,135 @@ export default function ChatBox(): JSX.Element {
     };
   }, []);
 
+  // Whether the timeline is scrolled up from its latest content, which offers
+  // the floating scroll-to-bottom action. Content growth changes the distance
+  // without a scroll event, so resizes are observed as well.
+  const [isTimelineScrolledUp, setIsTimelineScrolledUp] = useState(false);
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+    const update = () =>
+      setIsTimelineScrolledUp(
+        !isChatTimelineNearBottom(
+          scrollContainer.scrollHeight -
+            scrollContainer.scrollTop -
+            scrollContainer.clientHeight,
+          0
+        )
+      );
+    update();
+    scrollContainer.addEventListener('scroll', update, { passive: true });
+    if (typeof ResizeObserver === 'undefined') {
+      return () => scrollContainer.removeEventListener('scroll', update);
+    }
+    const resizeObserver = new ResizeObserver(update);
+    const observeChildren = () => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(scrollContainer);
+      Array.from(scrollContainer.children).forEach((child) =>
+        resizeObserver.observe(child)
+      );
+      update();
+    };
+    observeChildren();
+    const mutationObserver = new MutationObserver(observeChildren);
+    mutationObserver.observe(scrollContainer, { childList: true });
+    return () => {
+      scrollContainer.removeEventListener('scroll', update);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, []);
+  const scrollTimelineToBottom = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+    const reducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    ).matches;
+    scrollContainer.scrollTo({
+      top: scrollContainer.scrollHeight,
+      behavior: reducedMotion ? 'auto' : 'smooth',
+    });
+  }, []);
+
   const handleSend = async (
     messageStr?: string,
     taskId?: string,
-    executionId?: string
+    executionId?: string,
+    queuedAttaches?: File[],
+    queuedRequestId?: string,
+    queuedReviewHandoffIds?: string[]
   ) => {
     const _taskId = taskId || chatStore.activeTaskId;
-    if (message.trim() === '' && !messageStr) return;
+    const composerAttachments =
+      queuedAttaches || (_taskId ? chatStore.tasks[_taskId]?.attaches : []);
+    if (isSessionStarting(sessionProjectId)) return;
+    if (
+      message.trim() === '' &&
+      !messageStr &&
+      (composerAttachments?.length || 0) === 0
+    )
+      return;
 
-    // Check model configuration
-    if (!hasModel) {
-      toast.error('Please select a model first.');
-      navigate('/history?tab=agents');
+    const replyingToHuman = Boolean(
+      _taskId &&
+      chatStore.tasks[_taskId]?.activeAsk &&
+      interruptedRun?.project_id !== sessionProjectId
+    );
+    if ((isCloudUsageLimited && !replyingToHuman) || !canUseSessionModel) {
+      if (isCloudUsageLimited) {
+        notifyError(cloudUsageLimitMessage || errorCopy('credits'));
+        return;
+      }
+      notifyError(
+        t('chat.select-model-first', {
+          defaultValue: 'Please select a model first.',
+        })
+      );
+      openSettings('models');
       return;
     }
-    const tempMessageContent = messageStr || message;
 
-    if (executionId && projectStore.activeProjectId) {
-      const project = projectStore.getProjectById(projectStore.activeProjectId);
+    const targetProjectId = sessionProjectId;
+    if (!targetProjectId) {
+      notifyError(
+        t('chat.no-active-session', {
+          defaultValue: 'No active session selected.',
+        })
+      );
+      return;
+    }
+    if (
+      !queuedRequestId &&
+      (followUpAdmissionsRef.current.has(targetProjectId) ||
+        (queuedDispatchRef.current !== null &&
+          projectStore
+            .getProjectById(targetProjectId)
+            ?.queuedMessages.some(
+              (item) => item.task_id === queuedDispatchRef.current
+            )))
+    )
+      return;
+
+    const targetProjectMeta = useSpaceStore
+      .getState()
+      .getProjectMeta(targetProjectId);
+    const shouldResumeProject = isProjectAchieved(targetProjectMeta?.metadata);
+
+    const rawMessageContent = messageStr || message;
+    let tempMessageContent = rawMessageContent;
+    if (!tempMessageContent.trim() && (composerAttachments?.length || 0) > 0) {
+      tempMessageContent = t('chat.attachment-only-message', {
+        defaultValue: 'Please use the attached file(s).',
+      });
+    }
+    const displayContent = tempMessageContent;
+    const requestedReviewHandoffIds =
+      queuedReviewHandoffIds ?? pendingReviewHandoffIds;
+    const preserveComposer = queuedAttaches !== undefined;
+
+    if (executionId && targetProjectId) {
+      const project = projectStore.getProjectById(targetProjectId);
       const isInQueue = project?.queuedMessages?.some(
         (m) => m.executionId === executionId
       );
@@ -454,42 +1374,353 @@ export default function ChatBox(): JSX.Element {
 
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
-    const requiresHumanReply = Boolean(task?.activeAsk);
+    const startsAfterInterruption =
+      interruptedRun?.project_id === targetProjectId;
+    if (
+      startsAfterInterruption &&
+      (interruptedAdmissionsRef.current.has(targetProjectId) ||
+        (!queuedRequestId && queuedDispatchRef.current !== null))
+    )
+      return;
+    const requiresHumanReply =
+      !startsAfterInterruption && Boolean(task?.activeAsk);
+    const reviewHandoffIds = queuedReviewHandoffIds
+      ? requestedReviewHandoffIds
+      : requestedReviewHandoffIds.filter((handoffId) => {
+          const handoff = usePageTabStore
+            .getState()
+            .workspaceReviewHandoffs.find(
+              (candidate) =>
+                candidate.projectId === targetProjectId &&
+                candidate.handoffId === handoffId
+            );
+          return Boolean(
+            handoff && tempMessageContent.includes(handoff.content)
+          );
+        });
+    const discardedReviewHandoffIds = queuedReviewHandoffIds
+      ? []
+      : requestedReviewHandoffIds.filter(
+          (handoffId) => !reviewHandoffIds.includes(handoffId)
+        );
+    if (discardedReviewHandoffIds.length > 0) {
+      discardWorkspaceReviewHandoffs(
+        targetProjectId,
+        discardedReviewHandoffIds
+      );
+      setPendingReviewHandoffIds(reviewHandoffIds);
+    }
+    if (requiresHumanReply && reviewHandoffIds.length > 0) {
+      notifyError(
+        t('chat.answer-pending-before-review', {
+          defaultValue:
+            'Answer the pending question before sending review feedback.',
+        })
+      );
+      return;
+    }
+    const requiresApprovalDecision =
+      activeInteraction?.interaction_type === 'approval' ||
+      isLegacyConfirmationInteraction(activeInteraction);
+    const isTaskBusy =
+      (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
+      task.status === ChatTaskStatus.PAUSE ||
+      // splitting phase: has to_sub_tasks not confirmed OR skeleton computing
+      task.messages.some(
+        (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+      ) ||
+      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+        !task.hasWaitComfirm &&
+        task.messages.length > 0 &&
+        task.status !== ChatTaskStatus.FINISHED) ||
+      task.isTakeControl ||
+      // explicit confirm wait while task is pending but card not confirmed yet
+      (!!task.messages.find(
+        (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+      ) &&
+        task.status === ChatTaskStatus.PENDING);
     const _isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
+    const isReplayChatStore = task?.type === 'replay';
+    if (
+      !startsAfterInterruption &&
+      !queuedRequestId &&
+      !requiresHumanReply &&
+      (queueExecution.busy || (isTaskBusy && !isReplayChatStore))
+    ) {
+      const queuedFiles = JSON.parse(
+        JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+      );
+      const requestId = generateUniqueId();
+      try {
+        await createFollowUpRequest({
+          projectId: targetProjectId,
+          requestId,
+          content: displayContent,
+          attachmentPaths: queuedFiles.map((file: File) => file.filePath),
+          reviewHandoffIds,
+        });
+      } catch (error: any) {
+        console.error('[FollowUpQueue] Failed to persist message', error);
+        notifyError(
+          error instanceof Error
+            ? error
+            : error?.message || 'Failed to queue message.'
+        );
+        return;
+      }
+      projectStore.restoreQueuedMessage(targetProjectId, {
+        task_id: requestId,
+        run_id: requestId,
+        content: displayContent,
+        timestamp: getCurrentTimestamp(),
+        attaches: queuedFiles,
+        source: 'local',
+        reviewHandoffIds,
+      });
+      chatStore.setAttaches(_taskId, []);
+      setMessage('');
+      acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
+      setPendingReviewHandoffIds([]);
+      toast.success(
+        t('chat.message-queued', {
+          defaultValue:
+            'Message queued. Eigent will send it when the current task finishes.',
+        })
+      );
+      return;
+    }
+
+    if (shouldResumeProject) {
+      void setProjectAchievedState({
+        projectStore,
+        projectId: targetProjectId,
+        achieved: false,
+      }).catch((error) => {
+        console.error('[handleSend] Failed to resume achieved Project:', error);
+        notifyError(
+          t('chat.resumed-session-save-failed', {
+            defaultValue: "Couldn't save the resumed session. Try again.",
+          })
+        );
+      });
+    }
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
+    let messageAccepted = false;
+    let followUpAdmission: symbol | undefined;
+    // A direct start below always admits a new cold Run. Brain can still keep
+    // the previous Run's idle consumer, which nothing in this window observes
+    // after a reload, and rejects a cold Run while it lives. Retire it first,
+    // and never start a second Run while that consumer is still busy.
+    const prepareColdStart = async () => {
+      const composerRevision = composerRevisionRef.current;
+      let failure = t('chat.task-admission-failed', {
+        defaultValue: 'The task could not be started. Please try again.',
+      });
+      try {
+        await waitForPendingStaleRuntimeEviction(targetProjectId);
+        const admission = await prepareColdAdmission(
+          targetProjectId,
+          projectStore.getProjectById(targetProjectId)
+        );
+        if (admission === 'cold') return true;
+      } catch (error) {
+        console.error('[handleSend] Could not prepare a new task:', error);
+        if (error instanceof Error && error.message) failure = error.message;
+      }
+      notifyError(failure);
+      // Nothing was submitted. Return the draft unless it was edited since.
+      if (!preserveComposer && composerRevisionRef.current === composerRevision)
+        setMessage(rawMessageContent);
+      return false;
+    };
     try {
-      if (requiresHumanReply) {
+      if (startsAfterInterruption && !queuedRequestId) {
+        // A new instruction is a new task, never an implicit Resume. Keep the
+        // interrupted task and its tool outcomes intact for history/review.
+        interruptedAdmissionsRef.current.add(targetProjectId);
+        await waitForPendingStaleRuntimeEviction(targetProjectId);
+        const nextTaskId = generateUniqueId();
+        const attachesToSend = composerAttachments || [];
+        ensureActiveProjectMode();
+        await chatStore.startTask(
+          nextTaskId,
+          undefined,
+          undefined,
+          undefined,
+          tempMessageContent,
+          attachesToSend,
+          executionId,
+          targetProjectId,
+          effectiveSessionMode,
+          {
+            preserveTaskId: true,
+            awaitAdmission: true,
+            ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
+          }
+        );
+        // Admission can lead the Project projection. Keep older queued work
+        // behind this exact new Run until its terminal state is observed.
+        setAdmittedQueuedRun({ projectId: targetProjectId, runId: nextTaskId });
+        messageAccepted = true;
+        if (!preserveComposer) {
+          setMessage('');
+          chatStore.setAttaches(_taskId, []);
+        }
+      } else if (queuedRequestId) {
+        const queuedFiles = queuedAttaches || [];
+        const draftStore = projectStore.getActiveChatStore(
+          sessionProjectId ?? undefined
+        );
+        await waitForPendingStaleRuntimeEviction(targetProjectId);
+        const admissionMode = startsAfterInterruption
+          ? 'cold'
+          : await prepareFollowUpAdmission(
+              targetProjectId,
+              projectStore.getProjectById(targetProjectId)
+            );
+        if (admissionMode === 'busy') {
+          throw Object.assign(
+            new Error('Session is still finishing its current task.'),
+            { code: 'project_run_active' }
+          );
+        }
+        if (admissionMode !== 'cold') {
+          // An idle consumer observed by this window admits the follow-up warm.
+          chatStore.setNextTaskId(queuedRequestId);
+          chatStore.setNextExecutionId(_taskId, undefined);
+          await fetchPost(`/chat/${targetProjectId}`, {
+            question: tempMessageContent,
+            task_id: queuedRequestId,
+            attaches: queuedFiles.map((file) => file.filePath),
+            ...(reviewHandoffIds.length
+              ? { review_handoff_ids: reviewHandoffIds }
+              : {}),
+            target: undefined,
+          });
+          // The accepted request becomes a new durable Run. Do not append its
+          // user message to the completed compatibility Run: CONFIRMED owns
+          // the legacy projection and RunDomainEventHub owns the event-native
+          // projection. Writing here as well renders the queued prompt twice.
+        } else {
+          // Brain restart removes the warm compatibility consumer, and the
+          // admission decision retires one whose stream this window no longer
+          // holds. A queued instruction is still a normal new Run, so start it
+          // through the cold admission path with its durable request id
+          // instead of retrying /chat/{project} forever.
+          const admission = chatStore.startTask(
+            queuedRequestId,
+            undefined,
+            undefined,
+            undefined,
+            tempMessageContent,
+            queuedFiles,
+            undefined,
+            targetProjectId,
+            effectiveSessionMode,
+            {
+              preserveTaskId: true,
+              awaitAdmission: true,
+              deferPresentationUntilAdmission: true,
+              ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
+            }
+          );
+          await admission;
+          // Admission selects the new Run; move the current composer draft
+          // afterward without changing the submitted queued payload.
+          const draftTask = draftStore?.getState().tasks[_taskId];
+          const nextState = projectStore
+            .getChatStore(targetProjectId)
+            ?.getState();
+          const nextTask = nextState?.tasks[queuedRequestId];
+          if (
+            draftStore &&
+            draftTask?.attaches.length &&
+            nextState?.activeTaskId === queuedRequestId &&
+            nextTask &&
+            queuedRequestId !== _taskId
+          ) {
+            const draftFiles = draftTask.attaches;
+            const existingPaths = new Set(
+              nextTask.attaches.map((file) => file.filePath)
+            );
+            nextState.setAttaches(queuedRequestId, [
+              ...nextTask.attaches,
+              ...draftFiles.filter((file) => !existingPaths.has(file.filePath)),
+            ]);
+            if (draftStore.getState().tasks[_taskId]?.attaches === draftFiles)
+              draftStore.getState().setAttaches(_taskId, []);
+          }
+        }
+        messageAccepted = true;
+      } else if (requiresHumanReply) {
+        if (requiresApprovalDecision) {
+          notifyError(
+            t('chat.use-approval-card', {
+              defaultValue:
+                'Use the approval card to approve or reject this action.',
+            })
+          );
+          return;
+        }
+        const humanReplyMessageId = generateUniqueId();
         chatStore.addMessages(_taskId, {
-          id: generateUniqueId(),
+          id: humanReplyMessageId,
           role: 'user',
-          content: tempMessageContent,
-          attaches:
-            JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-            [],
+          content: displayContent,
+          interactionResponseTo: activeInteraction?.interaction_id,
+          attaches: JSON.parse(
+            JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+          ),
         });
         setMessage('');
 
-        // Scroll to bottom after adding user message
-        setTimeout(() => {
-          scrollToBottom();
-        }, 200);
-
         chatStore.setIsPending(_taskId, true);
 
-        await fetchPost(`/chat/${projectStore.activeProjectId}/human-reply`, {
-          agent: chatStore.tasks[_taskId].activeAsk,
-          reply: tempMessageContent,
-        });
+        let replyResult: any;
+        try {
+          replyResult = await fetchPost(
+            `/chat/${targetProjectId}/human-reply`,
+            {
+              agent: chatStore.tasks[_taskId].activeAsk,
+              reply: tempMessageContent,
+              interaction_id: activeInteraction?.interaction_id,
+              decision_request_id: activeInteraction?.interaction_id
+                ? `desktop-reply:${activeInteraction.interaction_id}`
+                : undefined,
+            }
+          );
+        } catch (error: any) {
+          // The optimistic answer must not become a historical receipt unless
+          // the backend accepted it. Keep the active request available for a
+          // retry and restore the draft on transport failure.
+          chatStore.removeMessage(_taskId, humanReplyMessageId);
+          chatStore.setIsPending(_taskId, false);
+          setMessage(tempMessageContent);
+          notifyError(
+            error instanceof Error
+              ? error
+              : error?.message || 'Failed to send your reply.'
+          );
+          return;
+        }
+        if (replyResult?.code === 1) {
+          chatStore.removeMessage(_taskId, humanReplyMessageId);
+          chatStore.setIsPending(_taskId, false);
+          chatStore.setActiveAskList(_taskId, []);
+          chatStore.setActiveAsk(_taskId, '');
+          setMessage(tempMessageContent);
+          notifyError(
+            replyResult.text || 'This task is no longer waiting for a reply.'
+          );
+          return;
+        }
+        messageAccepted = true;
         chatStore.setAttaches(_taskId, []);
         if (chatStore.tasks[_taskId].askList.length === 0) {
           chatStore.setActiveAsk(_taskId, '');
         } else {
           let activeAskList = chatStore.tasks[_taskId].askList;
-          console.log(
-            'activeAskList',
-            JSON.parse(JSON.stringify(activeAskList))
-          );
           let message = activeAskList.shift();
           chatStore.setActiveAskList(_taskId, [...activeAskList]);
           chatStore.setActiveAsk(_taskId, message?.agent_name || '');
@@ -531,29 +1762,32 @@ export default function ChatBox(): JSX.Element {
           const hasComplexTask = chatStore.tasks[
             _taskId as string
           ].messages.some((m) => m.step === 'to_sub_tasks');
-          const hasErrorMessage = chatStore.tasks[
-            _taskId as string
-          ].messages.some(
-            (m) => m.role === 'agent' && m.content.startsWith('❌ **Error**:')
-          );
-
-          // Only start a new task if: pending, no messages processed yet
-          // OR while or after replaying a project
+          // Only start a new task if: pending, no messages processed yet.
+          // A finished Run, including one restored after a window reload or
+          // resumed after an error, goes through follow-up admission: Brain
+          // may still hold its idle consumer, which must be retired first.
           if (
-            (chatStore.tasks[_taskId as string].status ===
+            chatStore.tasks[_taskId as string].status ===
               ChatTaskStatus.PENDING &&
-              !hasSimpleResponse &&
-              !hasComplexTask &&
-              !isFinished) ||
-            chatStore.tasks[_taskId].type === 'replay' ||
-            hasErrorMessage
+            !hasSimpleResponse &&
+            !hasComplexTask &&
+            !isFinished
           ) {
-            setMessage('');
+            if (!preserveComposer) setMessage('');
             // Pass the message content to startTask instead of adding it to current chatStore
             const attachesToSend =
-              JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-              [];
+              queuedAttaches ||
+              JSON.parse(
+                JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+              );
+            followUpAdmission = Symbol(targetProjectId);
+            followUpAdmissionsRef.current.set(
+              targetProjectId,
+              followUpAdmission
+            );
+            if (!(await prepareColdStart())) return;
             try {
+              ensureActiveProjectMode();
               await chatStore.startTask(
                 _taskId,
                 undefined,
@@ -561,64 +1795,247 @@ export default function ChatBox(): JSX.Element {
                 undefined,
                 tempMessageContent,
                 attachesToSend,
-                executionId
+                executionId,
+                targetProjectId,
+                effectiveSessionMode,
+                reviewHandoffIds.length ? { reviewHandoffIds } : undefined
               );
-              chatStore.setAttaches(_taskId, []);
+              messageAccepted = true;
+              if (!preserveComposer) chatStore.setAttaches(_taskId, []);
+              // If activeTaskId changed (new task created), clear its draft too
+              const newActiveId = chatStore.activeTaskId;
+              if (newActiveId && newActiveId !== _taskId) {
+                if (!preserveComposer) chatStore.setAttaches(newActiveId, []);
+              }
             } catch (err: any) {
               console.error('Failed to start task:', err);
-              toast.error(
+              notifyError(
                 err?.message ||
                   'Failed to start task. Please check your model configuration.'
               );
+              if (preserveComposer) throw err;
               return;
             }
             // keep hasWaitComfirm as true so that follow-up improves work as usual
           } else {
             // Continue conversation: simple response, complex task, or finished task
-            console.log(
-              '[Multi-turn] Continuing conversation with improve API'
+            // Claim synchronously: runtime lookup must not allow another user
+            // event (or the queued dispatcher) to submit the same turn.
+            followUpAdmission = Symbol(targetProjectId);
+            followUpAdmissionsRef.current.set(
+              targetProjectId,
+              followUpAdmission
             );
-
-            const attachesForThisTurn = JSON.parse(
-              JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+            const composerRevision = composerRevisionRef.current;
+            const sourceStore = projectStore.getActiveChatStore(
+              sessionProjectId ?? undefined
             );
+            const sourceAttaches =
+              sourceStore?.getState().tasks[_taskId]?.attaches;
+            const attachesForThisTurn =
+              queuedAttaches ||
+              JSON.parse(
+                JSON.stringify(
+                  sourceAttaches || chatStore.tasks[_taskId]?.attaches || []
+                )
+              );
             const improveAttaches =
               attachesForThisTurn.map(
                 (f: { filePath: string }) => f.filePath
               ) || [];
+            const clearOwnedComposer = () => {
+              if (
+                preserveComposer ||
+                composerProjectRef.current !== targetProjectId
+              )
+                return;
+              if (composerRevisionRef.current === composerRevision)
+                setMessage('');
+              const sourceTask = sourceStore?.getState().tasks[_taskId];
+              if (
+                sourceStore &&
+                sourceTask &&
+                sourceTask.attaches === sourceAttaches
+              )
+                sourceStore.getState().setAttaches(_taskId, []);
+            };
 
-            //Generate nextId in case new chatStore is created to sync with the backend beforehand
             const nextTaskId = generateUniqueId();
-            chatStore.setNextTaskId(nextTaskId);
-            chatStore.setNextExecutionId(taskId as string, executionId);
+            const transferEditedAttachments = (
+              nextStore: typeof sourceStore
+            ) => {
+              if (
+                preserveComposer ||
+                !sourceStore ||
+                !nextStore ||
+                nextTaskId === _taskId
+              )
+                return;
+              const sourceTask = sourceStore.getState().tasks[_taskId];
+              if (!sourceTask || sourceTask.attaches === sourceAttaches) return;
+              const nextState = nextStore.getState();
+              const nextTask = nextState.tasks[nextTaskId];
+              if (
+                nextState.activeTaskId !== nextTaskId ||
+                !nextTask ||
+                nextTask.attaches.length > 0
+              )
+                return;
+              // The composer now reads the prepared Run, not the previous
+              // one. Move only additions made during lookup; sent files
+              // already belong to the submitted message, not the next draft.
+              const editedAttachments = sourceTask.attaches;
+              const sentPaths = new Set<string>(improveAttaches);
+              nextState.setAttaches(
+                nextTaskId,
+                editedAttachments.filter(
+                  (file) => !sentPaths.has(file.filePath)
+                )
+              );
+              if (
+                sourceStore.getState().tasks[_taskId]?.attaches ===
+                editedAttachments
+              )
+                sourceStore.getState().setAttaches(_taskId, []);
+            };
+            await waitForPendingStaleRuntimeEviction(targetProjectId);
+            const admissionMode = await prepareFollowUpAdmission(
+              targetProjectId,
+              projectStore.getProjectById(targetProjectId)
+            );
 
-            // Use improve endpoint (POST /chat/{id}) - {id} is project_id
-            fetchPost(`/chat/${projectStore.activeProjectId}`, {
-              question: tempMessageContent,
-              task_id: nextTaskId,
-              attaches: improveAttaches,
-            });
-            chatStore.setIsPending(_taskId, true);
-            chatStore.addMessages(_taskId, {
-              id: generateUniqueId(),
-              role: 'user',
-              content: tempMessageContent,
-              attaches: attachesForThisTurn,
-            });
-            chatStore.setAttaches(_taskId, []);
-            setMessage('');
+            if (admissionMode === 'cold') {
+              // A stale-runtime transition may have retired the completed warm
+              // consumer while this Project was being reactivated, or this
+              // window lost its stream and the admission decision retired it.
+              // Admit the follow-up as a cold Run instead of posting to a
+              // queue that nobody observes.
+              ensureActiveProjectMode();
+              const admission = chatStore.startTask(
+                nextTaskId,
+                undefined,
+                undefined,
+                undefined,
+                tempMessageContent,
+                attachesForThisTurn,
+                executionId,
+                targetProjectId,
+                effectiveSessionMode,
+                {
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                  ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
+                }
+              );
+              // startTask prepares/selects its Run synchronously before its
+              // first await. Transfer now, before the user can edit that new
+              // task; never overwrite its later edits when admission settles.
+              transferEditedAttachments(
+                projectStore.getChatStore(targetProjectId)
+              );
+              await admission;
+              messageAccepted = true;
+              clearOwnedComposer();
+            } else {
+              // A normal warm follow-up is a new durable Run (a busy consumer
+              // still takes it on its queue, as before). Seed it before
+              // admission so its pending work is visible immediately.
+              chatStore.setNextTaskId(nextTaskId);
+              chatStore.setNextExecutionId(_taskId as string, executionId);
+              const nextChatResult = projectStore.appendInitChatStore(
+                targetProjectId,
+                nextTaskId
+              );
+              if (!nextChatResult) {
+                const prepareError = new Error(
+                  t('chat.follow-up-prepare-failed')
+                );
+                throw prepareError;
+              }
+
+              const nextChatState = nextChatResult.chatStore.getState();
+              transferEditedAttachments(nextChatResult.chatStore);
+              // During the remaining multi-store migration window the
+              // prepared Run can live in a different store. Keep the boundary
+              // token on both sides so CONFIRMED reuses this exact task.
+              nextChatState.setNextTaskId(nextTaskId);
+              nextChatState.setTaskSessionMode(
+                nextTaskId,
+                effectiveSessionMode
+              );
+              nextChatState.setTaskSource(
+                nextTaskId,
+                executionId ? 'trigger' : 'user'
+              );
+              nextChatState.setExecutionId(nextTaskId, executionId);
+              nextChatState.setIsPending(nextTaskId, true);
+              nextChatState.setHasMessages(nextTaskId, true);
+              nextChatState.addMessages(nextTaskId, {
+                id: generateUniqueId(),
+                role: 'user',
+                content: displayContent,
+                attaches: attachesForThisTurn,
+              });
+              clearOwnedComposer();
+
+              try {
+                // Use improve endpoint (POST /chat/{id}) - {id} is project_id.
+                await fetchPost(`/chat/${targetProjectId}`, {
+                  question: tempMessageContent,
+                  task_id: nextTaskId,
+                  attaches: improveAttaches,
+                  project_context: buildProjectContinuationContext(
+                    targetProjectId,
+                    nextTaskId
+                  ),
+                  ...(reviewHandoffIds.length
+                    ? { review_handoff_ids: reviewHandoffIds }
+                    : {}),
+                  target: undefined,
+                });
+                messageAccepted = true;
+              } catch (error: any) {
+                // Keep the failed turn as a traceable receipt instead of
+                // mutating the completed history Run.
+                nextChatState.setIsPending(nextTaskId, false);
+                nextChatState.setStatus(nextTaskId, ChatTaskStatus.FINISHED);
+                nextChatState.addMessages(nextTaskId, {
+                  id: generateUniqueId(),
+                  role: 'agent',
+                  content:
+                    error?.message ||
+                    '❌ **Error**: Failed to start the follow-up task.',
+                });
+                notifyError(
+                  error instanceof Error
+                    ? error
+                    : error?.message || 'Failed to send follow-up.'
+                );
+                if (preserveComposer) throw error;
+              }
+            }
+            if (messageAccepted)
+              setAdmittedQueuedRun((current) =>
+                current &&
+                current.projectId !== targetProjectId &&
+                current.projectId === composerProjectRef.current
+                  ? current
+                  : { projectId: targetProjectId, runId: nextTaskId }
+              );
           }
         } else {
-          setTimeout(() => {
-            scrollToBottom();
-          }, 200);
-
           // For the very first message, add it to the current chatStore first, then call startTask
           const attachesToSend =
-            JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-            [];
-          setMessage('');
+            queuedAttaches ||
+            JSON.parse(
+              JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+            );
+          if (!preserveComposer) setMessage('');
+          followUpAdmission = Symbol(targetProjectId);
+          followUpAdmissionsRef.current.set(targetProjectId, followUpAdmission);
+          if (!(await prepareColdStart())) return;
           try {
+            ensureActiveProjectMode();
             await chatStore.startTask(
               _taskId,
               undefined,
@@ -626,101 +2043,510 @@ export default function ChatBox(): JSX.Element {
               undefined,
               tempMessageContent,
               attachesToSend,
-              executionId
+              executionId,
+              targetProjectId,
+              effectiveSessionMode,
+              reviewHandoffIds.length ? { reviewHandoffIds } : undefined
             );
+            messageAccepted = true;
             chatStore.setHasWaitComfirm(_taskId as string, true);
-            chatStore.setAttaches(_taskId, []);
+            if (!preserveComposer) chatStore.setAttaches(_taskId, []);
+            // If activeTaskId changed (new task created), clear its draft too
+            const newActiveId2 = chatStore.activeTaskId;
+            if (newActiveId2 && newActiveId2 !== _taskId) {
+              if (!preserveComposer) chatStore.setAttaches(newActiveId2, []);
+            }
           } catch (err: any) {
             console.error('Failed to start task:', err);
-            toast.error(
-              err?.message ||
-                'Failed to start task. Please check your model configuration.'
+            notifyError(
+              err instanceof Error
+                ? err
+                : err?.message ||
+                    'Failed to start task. Please check your model configuration.'
             );
+            if (preserveComposer) throw err;
             return;
           }
         }
       }
     } catch (error) {
       console.error('error:', error);
+      if (!queuedRequestId && (startsAfterInterruption || followUpAdmission))
+        notifyError(
+          error instanceof Error ? error.message : t('chat.run-resume-failed')
+        );
+      if (preserveComposer) throw error;
+    } finally {
+      if (
+        followUpAdmission &&
+        followUpAdmissionsRef.current.get(targetProjectId) === followUpAdmission
+      ) {
+        followUpAdmissionsRef.current.delete(targetProjectId);
+        // Wake a queued dispatch that yielded to this admission, including
+        // when the lookup failed without producing a Run/store update, and
+        // in a composer remounted while it was running.
+        notifyFollowUpAdmissionReleased();
+      }
+      // Only the submit that took the claim gets here: the guard above
+      // returns synchronously while it is held.
+      if (startsAfterInterruption && !queuedRequestId) {
+        interruptedAdmissionsRef.current.delete(targetProjectId);
+        notifyFollowUpAdmissionReleased();
+      }
+      if (messageAccepted && !requiresHumanReply) {
+        if (startsAfterInterruption) setInterruptedRun(null);
+        acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
+        if (!followUpAdmission) setPendingReviewHandoffIds([]);
+        else if (composerProjectRef.current === targetProjectId)
+          setPendingReviewHandoffIds((current) =>
+            current.filter((id) => !reviewHandoffIds.includes(id))
+          );
+      }
+      scheduleUsageRefresh();
     }
   };
 
   useEffect(() => {
-    if (!chatStore?.activeTaskId) return;
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore?.activeTaskId, chatStore]);
+    handleSendRef.current = handleSend;
+  });
 
-  useEffect(() => {
-    if (!chatStore) return;
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === AgentStep.TO_SUB_TASKS)
-      ? true
-      : false;
-    setHasSubTask(_hasSubTask);
-  }, [chatStore, activeTaskId, activeTaskMessages]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _activeAsk = activeAsk;
-    let timer: NodeJS.Timeout;
-    if (_activeAsk && _activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        if (handleSendRef.current) {
-          handleSendRef.current('skip', _taskId);
+  const handleResumeInterruptedRun = async () => {
+    if (!interruptedRun || !activeProjectId || !chatStore) return;
+    // Unpinned recovery must establish the canonical model category first.
+    // startTask applies the quota check to that recovered model before admission.
+    if (isCloudUsageLimited && !canAttemptModelRecovery) {
+      notifyError(cloudUsageLimitMessage || errorCopy('credits'));
+      return;
+    }
+    if (!canUseSessionModel && !canAttemptModelRecovery) {
+      notifyError(
+        t('chat.select-model-before-resume', {
+          defaultValue: 'Select a model before resuming this task.',
+        })
+      );
+      return;
+    }
+    const run = interruptedRun;
+    const owner = {
+      accountKey: getAccountEnvironmentKey(useAuthStore.getState()),
+      projectId: activeProjectId,
+      runId: run.run_id,
+    };
+    const requestId = beginResumeRequest(owner, run);
+    setDurableRunAction('resuming');
+    try {
+      ensureActiveProjectMode();
+      const resumePromise = chatStore.startTask(
+        run.run_id,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        activeProjectId,
+        effectiveSessionMode,
+        {
+          preserveTaskId: true,
+          skipHistoryCreate: true,
+          historyId: projectStore.getHistoryId(activeProjectId),
+          resumeRequestId: requestId,
+          awaitAdmission: true,
         }
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
+      );
+      // Admission is now owned by the existing task card/SSE. Hide the stale
+      // interrupted action immediately; a failed admission refreshes it from
+      // RunJournal in the catch path.
+      setInterruptedRun(null);
+      await resumePromise;
+      finishResumeRequest(owner, requestId, true);
+    } catch (error: any) {
+      console.error('[RunControl] Failed to resume Run', error);
+      finishResumeRequest(owner, requestId, false);
+      notifyError(
+        error instanceof Error
+          ? error
+          : error?.message || t('chat.run-resume-failed')
+      );
+      await refreshInterruptedRun(owner.accountKey);
+    } finally {
+      setDurableRunAction(null);
     }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [activeAsk, message, chatStore, activeTaskId]);
+  };
 
-  const activeAskValue =
-    chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk;
+  const handleCancelInterruptedRun = async () => {
+    if (!interruptedRun || isCloudRestoredRun) return;
+    const run = interruptedRun;
+    await cancelProjectRun(
+      run.run_id,
+      generateUniqueId(),
+      'explicit_cancel_from_desktop_ui',
+      undefined,
+      run.project_id
+    ).catch(() => {});
+  };
+
+  const queueWaitingReason = interruptedRun
+    ? t('chat.queue-wait-interrupted')
+    : activeAsk
+      ? t('chat.queue-wait-reply')
+      : !canUseSessionModel
+        ? t('chat.queue-wait-model')
+        : isCloudUsageLimited
+          ? t('chat.queue-wait-usage')
+          : undefined;
+  const queueLocked = queueAction?.projectId === activeProjectId;
+  const queueContext = {
+    sessionId: activeProjectId ?? undefined,
+    activeTaskId: queueExecution.runId,
+    busy: queueExecution.busy,
+    locked: queueLocked,
+    waitingReason: queueWaitingReason,
+  };
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (activeAskValue && activeAskValue !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        handleSend('skip', _taskId);
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
+    if (!queueAction?.runId) return;
+    const projected = eventNativeProjectSnapshot?.view.runs[queueAction.runId];
+    const task = projectStore
+      .getAllChatStores(queueAction.projectId)
+      .map(({ chatStore: store }) => store.getState().tasks[queueAction.runId!])
+      .find(Boolean);
+    const stopped = projected
+      ? TERMINAL_QUEUED_RUN_STATUSES.has(projected.status)
+      : task?.status === ChatTaskStatus.FINISHED;
+    if (stopped && queueActionRef.current === queueAction) {
+      queueActionRef.current = null;
+      setQueueAction(null);
     }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [
-    activeAskValue,
-    message, // depend on message
-    chatStore,
-    handleSend,
-  ]);
+  }, [queueAction, eventNativeProjectSnapshot, projectStore, chatStore?.tasks]);
 
-  // Reactive queuedMessages for the active project
+  useEffect(() => {
+    if (!queueAction?.runId) return;
+    const timeout = window.setTimeout(() => {
+      if (queueActionRef.current !== queueAction) return;
+      void runEventIngressRegistry.replayRun(
+        queueAction.projectId,
+        queueAction.runId!
+      );
+      queueActionRef.current = null;
+      setQueueAction(null);
+      notifyError(t('chat.queue-stop-failed-next'));
+    }, 20000);
+    return () => window.clearTimeout(timeout);
+  }, [queueAction, t]);
+
+  const startedQueueRunIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!eventNativeProjectSnapshot) return ids;
+    for (const run of Object.values(eventNativeProjectSnapshot.view.runs)) {
+      if (
+        ['running', 'waiting_for_user', 'cancelling', 'completed'].includes(
+          run.status
+        )
+      )
+        ids.add(run.runId);
+    }
+    // Retain evidence for Runs which already ended before this render.
+    for (const node of eventNativeProjectSnapshot.chat.nodes) {
+      if (node.eventType === 'run.attempt_started') ids.add(node.runId);
+    }
+    return ids;
+  }, [eventNativeProjectSnapshot]);
+
+  const acknowledgeQueuedRequest = useCallback(
+    (projectId: string, runId: string) => {
+      acknowledgedQueuedRequests.current.add(
+        JSON.stringify([projectId, runId])
+      );
+      invalidatePendingFollowUps(projectId);
+      if (
+        projectStore
+          .getProjectById(projectId)
+          ?.queuedMessages.some((item) => item.task_id === runId)
+      )
+        projectStore.removeQueuedMessage(projectId, runId);
+    },
+    [projectStore]
+  );
+
+  // Hide a started row in the same render as its timeline event. Waiting for
+  // the admission HTTP response can leave "Starting" visible behind the chat.
   const queuedMessages = useMemo(() => {
-    const pid = projectStore.activeProjectId;
+    const pid = sessionProjectId;
     if (!pid) return [];
     const project = projectStore.getProjectById(pid);
-    return (project?.queuedMessages || []).map((m) => ({
-      id: m.task_id,
-      content: m.content,
-      timestamp: m.timestamp,
-    }));
-  }, [projectStore]);
+    return (project?.queuedMessages || [])
+      .filter((m) => !startedQueueRunIds.has(m.task_id))
+      .map((m) => ({
+        id: m.task_id,
+        content: m.content,
+        timestamp: m.timestamp,
+        processing: m.processing,
+        next: m.sendNow,
+        stopping:
+          queueAction?.projectId === pid && queueAction.taskId === m.task_id,
+        canReorder:
+          !m.executionId &&
+          m.source !== 'scheduled' &&
+          m.source !== 'remote_control',
+        canSendNow:
+          !m.executionId &&
+          m.source !== 'scheduled' &&
+          m.source !== 'remote_control' &&
+          !interruptedRun,
+      }));
+  }, [
+    interruptedRun,
+    projectStore,
+    sessionProjectId,
+    queueAction,
+    startedQueueRunIds,
+  ]);
 
   useEffect(() => {
-    // Wait for config to be loaded before handling share token
+    if (!activeProjectId) return;
+    for (const item of projectStore.getProjectById(activeProjectId)
+      ?.queuedMessages || []) {
+      if (startedQueueRunIds.has(item.task_id))
+        acknowledgeQueuedRequest(activeProjectId, item.task_id);
+    }
+  }, [
+    activeProjectId,
+    projectStore,
+    startedQueueRunIds,
+    acknowledgeQueuedRequest,
+  ]);
+
+  useEffect(() => {
+    const projectId = sessionProjectId;
+    if (!projectId) return;
+    let cancelled = false;
+    void listPendingFollowUpRequests(projectId)
+      .then((items) => {
+        if (cancelled) return;
+        const durableIds = new Set(items.map((item) => item.request_id));
+        const current =
+          projectStore.getProjectById(projectId)?.queuedMessages || [];
+        for (const local of current) {
+          if (local.source && !durableIds.has(local.task_id)) {
+            projectStore.removeQueuedMessage(projectId, local.task_id);
+          }
+        }
+        for (const item of items) {
+          if (
+            acknowledgedQueuedRequests.current.has(
+              JSON.stringify([projectId, item.request_id])
+            )
+          )
+            continue;
+          projectStore.restoreQueuedMessage(projectId, {
+            task_id: item.request_id,
+            run_id: item.request_id,
+            content: item.content,
+            timestamp: item.created_at * 1000,
+            attaches: item.attachment_paths.map((filePath) => ({
+              fileName: filePath.split(/[\\/]/).pop() || filePath,
+              filePath,
+              source: 'local',
+            })) as unknown as File[],
+            sendNow: item.delivery_mode === 'send_now',
+            source: item.source,
+            reviewHandoffIds: item.review_handoff_ids,
+          });
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn(
+          '[FollowUpQueue] Failed to restore pending messages',
+          error
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectStore, sessionProjectId]);
+
+  useEffect(() => {
+    if (
+      !admittedQueuedRun ||
+      admittedQueuedRun.projectId !== sessionProjectId
+    ) {
+      return;
+    }
+
+    const projectedRun =
+      eventNativeProjectSnapshot?.view.runs[admittedQueuedRun.runId];
+    if (projectedRun) {
+      if (TERMINAL_QUEUED_RUN_STATUSES.has(projectedRun.status)) {
+        setAdmittedQueuedRun(null);
+      }
+      return;
+    }
+
+    const legacyTask = projectStore
+      .getAllChatStores(admittedQueuedRun.projectId)
+      .map(
+        ({ chatStore: store }) =>
+          store.getState().tasks[admittedQueuedRun.runId]
+      )
+      .find(Boolean);
+    if (legacyTask?.status === ChatTaskStatus.FINISHED) {
+      setAdmittedQueuedRun(null);
+    }
+  }, [
+    admittedQueuedRun,
+    chatStore?.tasks,
+    eventNativeProjectSnapshot?.revision,
+    eventNativeProjectSnapshot?.view.runs,
+    projectStore,
+    sessionProjectId,
+  ]);
+
+  useEffect(() => {
+    const projectId = sessionProjectId;
+    const activeId = chatStore?.activeTaskId;
+    if (
+      !projectId ||
+      !activeId ||
+      queueExecution.busy ||
+      !interruptedRunSettled ||
+      Date.now() < queueRetryAt ||
+      interruptedRun ||
+      activeAsk ||
+      !canUseSessionModel ||
+      isCloudUsageLimited
+    )
+      return;
+    // HTTP admission completes before the new Run necessarily reaches either
+    // renderer projection. Keep a Project-scoped barrier until that exact Run
+    // is terminal so React batching cannot drain the next FIFO row early.
+    if (admittedQueuedRun?.projectId === projectId) return;
+    if (
+      queuedDispatchRef.current ||
+      followUpAdmissionsRef.current.has(projectId) ||
+      interruptedAdmissionsRef.current.has(projectId) ||
+      queueActionRef.current?.projectId === projectId
+    )
+      return;
+
+    const project = projectStore.getProjectById(projectId);
+    const candidates = (project?.queuedMessages || []).filter(
+      (item) => !item.executionId && !item.processing
+    );
+    const next = candidates.find((item) => item.sendNow) || candidates[0];
+    if (!next) return;
+    const sendQueuedMessage = handleSendRef.current;
+    if (!sendQueuedMessage) return;
+
+    queuedDispatchRef.current = next.task_id;
+    projectStore.setQueuedMessageProcessing(projectId, next.task_id, true);
+    void sendQueuedMessage(
+      next.content,
+      activeId,
+      undefined,
+      next.attaches,
+      next.task_id,
+      next.reviewHandoffIds
+    )
+      .then(() => {
+        queueWaitRef.current = null;
+        setAdmittedQueuedRun({ projectId, runId: next.task_id });
+        acknowledgeQueuedRequest(projectId, next.task_id);
+      })
+      .catch((error) => {
+        // A delayed/lost HTTP response cannot undo an observed Run start.
+        if (
+          acknowledgedQueuedRequests.current.has(
+            JSON.stringify([projectId, next.task_id])
+          )
+        )
+          return;
+        if (isQueueAdmissionWait(error)) {
+          // Back off while the Session stays busy, and explain the wait once
+          // per queued message instead of on every retry.
+          const waitKey = JSON.stringify([projectId, next.task_id]);
+          const wait =
+            queueWaitRef.current?.key === waitKey
+              ? queueWaitRef.current
+              : { key: waitKey, attempts: 0 };
+          wait.attempts += 1;
+          queueWaitRef.current = wait;
+          setQueueRetryAt(
+            Date.now() +
+              Math.min(1000 * 2 ** (wait.attempts - 1), QUEUE_WAIT_RETRY_MAX_MS)
+          );
+          if (wait.attempts === QUEUE_WAIT_NOTICE_ATTEMPTS)
+            toast.info(
+              t('chat.message-queued', {
+                defaultValue:
+                  'Message queued. Eigent will send it when the current task finishes.',
+              }),
+              { id: `queue-wait:${waitKey}` }
+            );
+          projectStore.setQueuedMessageProcessing(
+            projectId,
+            next.task_id,
+            false
+          );
+          if (chatStore.nextTaskId === next.task_id)
+            chatStore.setNextTaskId(null);
+          return;
+        }
+        queueWaitRef.current = null;
+        console.error('[FollowUpQueue] Failed to admit queued message', error);
+        const rejection = terminalContinuationAdmissionRejection(error);
+        if (rejection) {
+          // Brain has durably cancelled this queue row. Remove only the
+          // renderer projection and leave the typed explanation visible.
+          projectStore.removeQueuedMessage(projectId, next.task_id);
+          notifyError(rejection.message);
+          return;
+        }
+        projectStore.setQueuedMessageProcessing(projectId, next.task_id, false);
+        notifyError(
+          error instanceof Error
+            ? error
+            : error?.message || 'Failed to send queued message.'
+        );
+      })
+      .finally(() => {
+        queuedDispatchRef.current = null;
+      });
+  }, [
+    acknowledgeQueuedRequest,
+    activeAsk,
+    admittedQueuedRun,
+    chatStore?.activeTaskId,
+    canUseSessionModel,
+    isCloudUsageLimited,
+    queueExecution.busy,
+    interruptedRun,
+    interruptedRunSettled,
+    queueRetryAt,
+    queueRetryRevision,
+    chatStore,
+    projectStore,
+    queuedMessages,
+    t,
+    queueAction,
+    followUpAdmissionRevision,
+    sessionProjectId,
+  ]);
+
+  useEffect(() => {
+    if (!queueRetryAt) return;
+    const timer = window.setTimeout(
+      () => {
+        setQueueRetryRevision((value) => value + 1);
+        void refreshInterruptedRun();
+      },
+      Math.max(0, queueRetryAt - Date.now())
+    );
+    return () => window.clearTimeout(timer);
+  }, [queueRetryAt, refreshInterruptedRun]);
+
+  useEffect(() => {
     if (share_token && isConfigLoaded) {
       handleSendShare(share_token);
     }
@@ -732,31 +2558,80 @@ export default function ChatBox(): JSX.Element {
 
   const handleConfirmTask = async (taskId?: string) => {
     const _taskId = taskId || chatStore.activeTaskId;
-    if (!_taskId || !projectStore.activeProjectId) {
+    if (!_taskId || !sessionProjectId) {
       return;
     }
     setLoading(true);
-    await chatStore.handleConfirmTask(projectStore.activeProjectId, _taskId);
+    await chatStore.handleConfirmTask(sessionProjectId, _taskId);
     setLoading(false);
   };
 
   // File selection handler
   const handleFileSelect = async () => {
     try {
-      const result = await window.electronAPI.selectFile({
+      const taskId = chatStore.activeTaskId as string;
+      const existingFiles = chatStore.tasks[taskId].attaches || [];
+
+      if (isWeb()) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.onchange = async () => {
+          if (!input.files?.length) {
+            return;
+          }
+
+          const uploadedFiles: File[] = [];
+          for (const selectedFile of Array.from(input.files)) {
+            try {
+              const result = await uploadFileToBrain(selectedFile);
+              uploadedFiles.push({
+                fileName: result.filename,
+                filePath: result.file_id,
+                fileId: result.file_id,
+                source: 'upload',
+              } as File);
+            } catch (error) {
+              console.error('Select File Upload Error:', error);
+              notifyError(
+                t('chat.file-upload-failed', {
+                  name: selectedFile.name,
+                  defaultValue: 'Failed to upload {{name}}',
+                })
+              );
+            }
+          }
+
+          if (uploadedFiles.length === 0) {
+            return;
+          }
+
+          const files = [
+            ...existingFiles,
+            ...uploadedFiles.filter(
+              (uploaded) =>
+                !existingFiles.some(
+                  (existing) => existing.filePath === uploaded.filePath
+                )
+            ),
+          ];
+          chatStore.setAttaches(taskId, files);
+        };
+        input.click();
+        return;
+      }
+
+      const result = await host?.electronAPI?.selectFile({
         title: t('chat.select-file'),
         filters: [{ name: t('chat.all-files'), extensions: ['*'] }],
       });
 
-      if (result.success && result.files && result.files.length > 0) {
-        const taskId = chatStore.activeTaskId as string;
+      if (result?.success && result.files && result.files.length > 0) {
         const files = [
-          ...(chatStore.tasks[taskId].attaches || []),
+          ...existingFiles,
           ...result.files.filter(
             (r: File) =>
-              !chatStore.tasks[taskId].attaches?.some(
-                (f: File) => f.filePath === r.filePath
-              )
+              !existingFiles.some((f: File) => f.filePath === r.filePath)
           ),
         ];
         chatStore.setAttaches(taskId, files);
@@ -766,118 +2641,121 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  // Replay handler
-  const handleReplay = async () => {
-    setIsReplayLoading(true);
-    await replayActiveTask(chatStore, projectStore, navigate);
-    setIsReplayLoading(false);
-  };
-
-  // Pause/Resume handler
-  const handlePauseResume = () => {
-    const taskId = chatStore.activeTaskId as string;
-    const task = chatStore.tasks[taskId];
-    const type = task.status === 'running' ? 'pause' : 'resume';
-
-    setIsPauseResumeLoading(true);
-    if (type === 'pause') {
-      let { taskTime, elapsed } = task;
-      const now = Date.now();
-      elapsed += now - taskTime;
-      chatStore.setElapsed(taskId, elapsed);
-      chatStore.setTaskTime(taskId, 0);
-      chatStore.setStatus(taskId, 'pause');
-    } else {
-      chatStore.setTaskTime(taskId, Date.now());
-      chatStore.setStatus(taskId, 'running');
-    }
-
-    fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
-      action: type,
-    });
-    setIsPauseResumeLoading(false);
-  };
-
-  // Stop task handler - triggers Action.skip_task which preserves context
   const handleSkip = async () => {
-    const taskId = chatStore.activeTaskId as string;
-    console.log('='.repeat(80));
-    console.log('🛑 [STOP-BUTTON] handleSkip CALLED from frontend');
-    console.log(
-      `[STOP-BUTTON] taskId: ${taskId}, projectId: ${projectStore.activeProjectId}`
-    );
-    console.log('='.repeat(80));
+    const taskId = chatStore.activeTaskId;
+    const projectId = activeProjectId;
+    if (!taskId || !projectId) return;
+    await stopProjectTask(projectId, taskId).catch(() => {});
+  };
+
+  const handleTaskControl = async (action: 'pause' | 'resume') => {
+    const taskId = chatStore.activeTaskId;
+    const projectId = sessionProjectId;
+    if (!taskId || !projectId || isPauseResumeLoading) return;
     setIsPauseResumeLoading(true);
-
     try {
-      // Call skip-task endpoint to trigger Action.skip_task
-      // This will stop the task gracefully while preserving context for multi-turn
-      console.log(
-        `[STOP-BUTTON] Sending POST request to /chat/${projectStore.activeProjectId}/skip-task`
-      );
-      await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
-        project_id: projectStore.activeProjectId,
+      const changed = await takeControlOfTask({
+        chatStore,
+        action,
+        projectId,
+        taskId,
       });
-      console.log('[STOP-BUTTON] ✅ Backend skip-task request successful');
-
-      // DO NOT call chatStore.stopTask here!
-      // Keep SSE connection alive to receive "end" event from backend
-      // The "end" event will set status to 'finished' and allow multi-turn conversation
-      console.log(
-        "[STOP-BUTTON] ⚠️  SSE connection kept alive, waiting for backend 'end' event"
-      );
-
-      // Only set isPending to false so UI shows task is stopped
-      chatStore.setIsPending(taskId, false);
-      console.log(
-        '[STOP-BUTTON] ✅ Task marked as not pending, SSE connection remains open'
-      );
-
-      toast.success('Task stopped successfully', {
-        closeButton: true,
-      });
-    } catch (error) {
-      console.error('[STOP-BUTTON] ❌ Failed to stop task:', error);
-
-      // If backend call failed, close SSE connection as fallback
-      console.log(
-        '[STOP-BUTTON] Backend call failed, closing SSE connection as fallback'
-      );
-      try {
-        chatStore.stopTask(taskId);
-        chatStore.setIsPending(taskId, false);
-        console.log(
-          '[STOP-BUTTON] ⚠️  SSE connection closed due to backend failure'
-        );
-        toast.warning(
-          'Task stopped locally, but backend notification failed. Backend task may continue running.',
-          {
-            closeButton: true,
-            duration: 5000,
-          }
-        );
-      } catch (localError) {
-        console.error(
-          '[STOP-BUTTON] ❌ Failed to stop task locally:',
-          localError
-        );
-        toast.error(
-          'Failed to stop task completely. Please refresh the page.',
-          {
-            closeButton: true,
-          }
+      if (!changed) {
+        notifyError(
+          t(`chat.${action}-task-failed`, {
+            defaultValue: `Failed to ${action} the task.`,
+          })
         );
       }
     } finally {
-      console.log('[STOP-BUTTON] handleSkip completed');
       setIsPauseResumeLoading(false);
+    }
+  };
+
+  const handleSendQueuedMessageNow = async (
+    taskId: string,
+    expectedTaskId?: string
+  ) => {
+    const state = projectStore;
+    const projectId = sessionProjectId;
+    if (!projectId || queueActionRef.current || queueWaitingReason) return;
+    const queued = state
+      .getProjectById(projectId)
+      ?.queuedMessages.find((item) => item.task_id === taskId);
+    if (
+      !queued ||
+      queued.processing ||
+      queued.executionId ||
+      queued.source === 'scheduled' ||
+      queued.source === 'remote_control'
+    )
+      return;
+    const runId = queueExecution.runId;
+    // Opening a dialog is not permission to stop a replacement task.
+    if (queueExecution.busy && (!expectedTaskId || runId !== expectedTaskId)) {
+      notifyError(t('chat.queue-task-changed'));
+      return;
+    }
+    const action = {
+      projectId,
+      taskId,
+      runId: queueExecution.busy ? runId : undefined,
+    };
+    queueActionRef.current = action;
+    setQueueAction(action);
+    let prioritySaved = false;
+    try {
+      await prioritizeFollowUpRequest(projectId, taskId);
+      prioritySaved = true;
+      state.prioritizeQueuedMessage(projectId, taskId);
+      if (queueActionRef.current !== action) return;
+      if (!action.runId) {
+        queueActionRef.current = null;
+        setQueueAction(null);
+        return;
+      }
+      await fetchPost(
+        `/chat/${encodeURIComponent(projectId)}/skip-task?expected_task_id=${encodeURIComponent(action.runId)}`,
+        {
+          project_id: projectId,
+        }
+      );
+      // Keep the queue locked until the exact task's terminal event is observed.
+      void runEventIngressRegistry.replayRun(projectId, action.runId);
+    } catch (error) {
+      console.error('[FollowUpQueue] Failed to prioritize or stop task', error);
+      try {
+        const pending = await listPendingFollowUpRequests(projectId);
+        const next = pending.find((item) => item.delivery_mode === 'send_now');
+        state.prioritizeQueuedMessage(projectId, next?.request_id ?? '');
+        prioritySaved = next?.request_id === taskId;
+      } catch {
+        // Keep the last observed queue priority when reconciliation is unavailable.
+      }
+      notifyError(
+        t(
+          prioritySaved
+            ? (error as { status?: number })?.status === 409
+              ? 'chat.queue-task-changed'
+              : 'chat.queue-stop-failed-next'
+            : 'chat.queue-priority-failed'
+        )
+      );
+      if (action.runId)
+        void runEventIngressRegistry.replayRun(projectId, action.runId);
+      // The persisted priority remains visible as Next. Automatic dispatch still
+      // requires the current task to become terminal; never fake a stopped state.
+      if (queueActionRef.current === action) {
+        queueActionRef.current = null;
+        setQueueAction(null);
+      }
     }
   };
 
   // Edit query handler
   const handleEditQuery = async () => {
     const taskId = chatStore.activeTaskId as string;
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
 
     // Early validation
     if (!projectId) {
@@ -935,49 +2813,35 @@ export default function ChatBox(): JSX.Element {
     if (!chatStore.activeTaskId) return 'input';
     const task = chatStore.tasks[chatStore.activeTaskId];
 
-    // Queued messages no longer change BottomBox state; QueuedBox renders independently
-
-    // Check for any to_sub_tasks message (confirmed or not)
-    const anyToSubTasksMessage = task.messages.find(
-      (m) => m.step === 'to_sub_tasks'
-    );
+    // The plan-mode splitting UI now lives in PlanTaskBox, not BottomBox.
+    // BottomBox surfaces the action for the unconfirmed plan: `save` if the
+    // user has unsaved subtask edits, otherwise `confirm`.
     const toSubTasksMessage = task.messages.find(
       (m) => m.step === 'to_sub_tasks' && !m.isConfirm
     );
 
-    // Determine if we're in the "splitting in progress" phase (skeleton visible)
-    // Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
-    const isSkeletonPhase =
-      (task.status !== 'finished' &&
-        !anyToSubTasksMessage &&
-        !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
-      (task.isTakeControl && !anyToSubTasksMessage);
-    if (isSkeletonPhase) {
-      return 'splitting';
-    }
-
-    // After splitting completes and TaskCard is awaiting user confirmation,
-    // the Task becomes 'pending' and we show the confirm state.
     if (
       toSubTasksMessage &&
       !toSubTasksMessage.isConfirm &&
       task.status === 'pending'
     ) {
-      return 'confirm';
+      return task.planDirty ? 'save' : 'confirm';
     }
-
-    // If subtasks exist but not yet confirmed while task is still running, keep showing splitting
     if (toSubTasksMessage && !toSubTasksMessage.isConfirm) {
-      return 'splitting';
+      return task.planDirty ? 'save' : 'confirm';
     }
 
     // Check task status
-    if (
-      task.status === ChatTaskStatus.RUNNING ||
-      task.status === ChatTaskStatus.PAUSE
-    ) {
+    if (task.status === ChatTaskStatus.PAUSE) {
       return 'running';
+    }
+    if (task.status === ChatTaskStatus.RUNNING) {
+      const hasSubTasks = task.messages.some(
+        (m) => m.step === AgentStep.TO_SUB_TASKS
+      );
+      const isDirectMode =
+        !hasSubTasks && (task.taskAssigning?.length ?? 0) > 0;
+      return isDirectMode ? 'input' : 'running';
     }
 
     if (task.status === 'finished' && task.type !== '') {
@@ -987,25 +2851,35 @@ export default function ChatBox(): JSX.Element {
     return 'input';
   };
 
+  const handleReorderTaskQueue = (id: string, targetId: string) => {
+    const projectId = sessionProjectId;
+    if (!projectId || queueActionRef.current || queuedDispatchRef.current)
+      return;
+    projectStore.reorderQueuedMessage(projectId, id, targetId);
+  };
+
   const handleRemoveTaskQueue = async (task_id: string) => {
-    const project_id = projectStore.activeProjectId;
+    const project_id = sessionProjectId;
+    if (queueActionRef.current?.projectId === project_id) return;
     if (!project_id) {
       console.error('No active project ID found');
       return;
     }
 
-    // Remove from projectStore's queuedMessages
-    const removed = projectStore.removeQueuedMessage(project_id, task_id);
-    if (!removed || !removed.task_id) {
+    const project = projectStore.getProjectById(project_id);
+    const queued = project?.queuedMessages.find(
+      (item) => item.task_id === task_id
+    );
+    if (!queued) {
       console.error(`Task with id ${task_id} not found in project queue`);
       return;
     }
 
     try {
       // Update the backend execution status if it has an executionId
-      if (removed.executionId) {
+      if (queued.executionId) {
         await proxyUpdateTriggerExecution(
-          removed.executionId,
+          queued.executionId,
           {
             status: ExecutionStatus.Cancelled,
             error_message: 'Task was removed from queue by user.',
@@ -1014,202 +2888,575 @@ export default function ChatBox(): JSX.Element {
             projectId: project_id,
           }
         );
+      } else {
+        await cancelFollowUpRequest(project_id, task_id);
       }
-
-      console.log(`[ChatBox] Task ${task_id} cancelled successfully`);
+      projectStore.removeQueuedMessage(project_id, task_id);
     } catch (error) {
       console.error(`[ChatBox] Failed to cancel task ${task_id}:`, error);
-      // Restore the message if backend update failed
-      projectStore.restoreQueuedMessage(project_id, removed);
-      toast.error('Failed to cancel task', {
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
+      notifyError(
+        t('chat.cancel-task-failed', {
+          defaultValue: 'Failed to cancel task',
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t('chat.unknown-error', { defaultValue: 'Unknown error' }),
+        }
+      );
     }
   };
 
-  if (!chatStore) {
-    return <div>Loading...</div>;
+  const handleEventNativeResumeRun = (runId: string) => {
+    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
+    void handleResumeInterruptedRun();
+  };
+
+  const handleEventNativeCancelRun = (runId: string) => {
+    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
+    void handleCancelInterruptedRun();
+  };
+
+  const handleEventNativeStopRun = async (runId: string) => {
+    const currentRunId = selectEventNativeActiveRunId(
+      eventNativeProjectSnapshot,
+      eligibleLegacyActiveRunId
+    );
+    const currentRun = currentRunId
+      ? eventNativeProjectSnapshot?.view.runs[currentRunId]
+      : undefined;
+    if (
+      runId !== currentRunId ||
+      currentRun?.status !== 'running' ||
+      isPauseResumeLoading
+    ) {
+      return;
+    }
+
+    await cancelProjectRun(
+      runId,
+      generateUniqueId(),
+      'explicit_stop_from_event_native_chatbox',
+      undefined,
+      activeProjectId ?? undefined
+    ).catch(() => {});
+  };
+
+  let eventNativeRunControlVariant: BottomBoxRunControlVariant | null = null;
+  if (
+    eventNativeTimelineEnabled &&
+    interruptedRun &&
+    (isCloudRestoredRun || eventNativeInterruptedRun)
+  ) {
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title: t(
+          isCloudRestoredRun
+            ? 'chat.run-cloud-restored-title'
+            : 'chat.run-interrupted-title'
+        ),
+        description: isCloudRestoredRun
+          ? undefined
+          : (cancelRecoveryReason ??
+            interruptedRunDescription(
+              interruptedRun.terminalReason,
+              t,
+              unsafeResumeReason,
+              interruptedRun.terminalDetail
+            )),
+      },
+      runId: interruptedRun.run_id,
+      state: isCloudRestoredRun
+        ? 'read_only'
+        : (durableRunAction ?? 'interrupted'),
+      resumeLabel: t('chat.run-resume'),
+      resumingLabel: t('chat.run-resuming'),
+      disabled: Boolean(interruptedCancelOperation),
+      cancelLabel: t('chat.run-cancel'),
+      cancellingLabel: t('chat.run-cancelling'),
+      readOnlyLabel: t('chat.run-cloud-restored-description'),
+      onResume:
+        isCloudRestoredRun || unsafeResumeReason
+          ? undefined
+          : handleEventNativeResumeRun,
+      onCancel: isCloudRestoredRun ? undefined : handleEventNativeCancelRun,
+    };
+  } else if (eventNativeTimelineEnabled && eventNativeReadOnlyRun) {
+    const restoredFromCloud = eventNativeReadOnlyRun.origin === 'cloud_restore';
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title: t(
+          restoredFromCloud
+            ? 'chat.run-cloud-restored-title'
+            : 'chat.run-interrupted-title'
+        ),
+      },
+      runId: eventNativeReadOnlyRun.runId,
+      state: 'read_only',
+      readOnlyLabel: restoredFromCloud
+        ? t('chat.run-cloud-restored-description')
+        : undefined,
+    };
   }
 
-  return (
-    <div className="h-full w-full flex-none items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
-      {/* Unified ChatBox Structure */}
-      <div className="relative flex h-full w-full flex-col overflow-hidden">
-        {/* Header Box - Always visible */}
-        {chatStore.activeTaskId && (
-          <HeaderBox
-            totalTokens={projectTotalTokens}
-            status={chatStore.tasks[chatStore.activeTaskId]?.status}
-            replayLoading={isReplayLoading}
-            onReplay={handleReplay}
-          />
-        )}
-
-        {/* Main Content Area - Flex 1 to take remaining space */}
-        <div className="relative flex flex-1 flex-col overflow-hidden">
-          {/* Project Chat Container - Show when has messages (absolute, full height) */}
-          <div
-            className={`absolute inset-0 flex h-full flex-col transition-all duration-300 ease-in-out ${
-              hasAnyMessages
-                ? 'pointer-events-auto translate-y-0 opacity-100'
-                : 'pointer-events-none -translate-y-4 opacity-0'
-            }`}
-          >
-            <ProjectChatContainer
-              onSkip={handleSkip}
-              isPauseResumeLoading={isPauseResumeLoading}
+  const legacyApprovalVariant =
+    activeAsk &&
+    (isInteractiveHumanReply || isLegacyApprovalUnconfirmed) &&
+    activeAskMessage
+      ? createLegacyApprovalVariant({
+          interaction: activeInteraction,
+          fallbackQuestion: activeAskMessage.content.trim(),
+          submitting: legacyApprovalSubmitting,
+          t,
+          onApprove: (scope) =>
+            void handleLegacyApprovalDecision('approved', scope),
+          onReject: () => void handleLegacyApprovalDecision('rejected', 'once'),
+        })
+      : null;
+  if (
+    legacyApprovalVariant &&
+    (isLegacyApprovalUnconfirmed ||
+      controlOperations.some(
+        (op) =>
+          op.kind === 'interaction' &&
+          op.runId === activeInteraction?.run_id &&
+          op.interactionId === activeInteraction?.interaction_id
+      ))
+  ) {
+    legacyApprovalVariant.disabled = true;
+  }
+  const legacyConfirmationVariant =
+    !eventNativeTimelineEnabled &&
+    activeAsk &&
+    isInteractiveHumanReply &&
+    activeAskMessage
+      ? createLegacyConfirmationVariant({
+          interaction: activeInteraction,
+          fallbackQuestion: activeAskMessage.content.trim(),
+          submitting: legacyApprovalSubmitting,
+          t,
+          onConfirm: () =>
+            void handleLegacyApprovalDecision('approved', 'once'),
+          onReject: () => void handleLegacyApprovalDecision('rejected', 'once'),
+        })
+      : null;
+  if (
+    legacyConfirmationVariant &&
+    controlOperations.some(
+      (op) =>
+        op.kind === 'interaction' &&
+        op.runId === activeInteraction?.run_id &&
+        op.interactionId === activeInteraction?.interaction_id
+    )
+  ) {
+    legacyConfirmationVariant.disabled = true;
+  }
+  const legacyQuestionVariant: BottomBoxFeedbackVariant | null =
+    !eventNativeTimelineEnabled &&
+    activeAsk &&
+    !isLegacyApproval &&
+    !isLegacyConfirmationInteraction(activeInteraction) &&
+    isInteractiveHumanReply &&
+    activeAskMessage
+      ? {
+          kind: 'feedback',
+          presentation: 'question',
+          header: {
+            title: t('chat.timeline-question'),
+            description:
+              activeInteraction?.question || activeAskMessage.content.trim(),
+          },
+          value: message,
+          placeholder: t('chat.control-response-placeholder'),
+          submitting: activeAskTask?.isPending,
+          onChange: setMessage,
+          onSubmit: () => void handleSend(),
+        }
+      : null;
+  // Timeline density is presentation-only. Select one shared BottomBox control
+  // from the active authority before rendering Normal, Detailed, or Summarised.
+  const bottomBoxControl = selectBottomBoxControl({
+    humanInteractionVariant: eventNativeTimelineEnabled
+      ? eventNativeHumanControl.variant
+      : (legacyApprovalVariant ??
+        legacyConfirmationVariant ??
+        legacyQuestionVariant),
+    runControlVariant: eventNativeTimelineEnabled
+      ? eventNativeRunControlVariant
+      : null,
+    composerVariant: 'input',
+  });
+  // The editing note decorates only the plain composer. An open approval or
+  // question keeps its own controls, so an edited copy never reads as an answer.
+  const bottomBoxVariant =
+    bottomBoxControl.source === 'composer' &&
+    bottomBoxControl.variant === 'input' &&
+    editingSource?.projectId === activeProjectId
+      ? {
+          kind: 'input' as const,
+          header: {
+            eyebrow: t('chat.message-editing-copy'),
+          },
+        }
+      : bottomBoxControl.variant;
+  const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
+  const humanDecisionVariant =
+    bottomBoxControl.source === 'human_interaction' &&
+    typeof bottomBoxVariant !== 'string' &&
+    bottomBoxVariant.kind !== 'input' &&
+    bottomBoxVariant.kind !== 'run_control'
+      ? bottomBoxVariant
+      : null;
+  const humanDecisionKey = humanDecisionVariant
+    ? eventNativeTimelineEnabled && eventNativeHumanControl.interaction
+      ? `${activeProjectId}:${eventNativeHumanControl.interaction.runId}:${eventNativeHumanControl.interaction.interactionId}:${eventNativeHumanControl.interaction.version ?? 0}`
+      : `${activeProjectId}:${activeTaskId}:${activeInteraction?.interaction_id ?? activeAskMessage?.id ?? ''}`
+    : null;
+  const handleEditUserMessage = (source: EditUserMessageSource) => {
+    // A legacy question answers through the composer text, so an earlier
+    // message must not land there while any request is open.
+    if (humanDecisionVariant) {
+      toast.info(t('chat.message-edit-after-request'));
+      return;
+    }
+    if (message.trim() || activeTask?.attaches?.length) {
+      toast.info(t('chat.message-draft-exists'));
+      return;
+    }
+    setMessage(source.content);
+    if (activeProjectId)
+      setEditingSource({ projectId: activeProjectId, sourceId: source.id });
+    if (source.attaches?.length) {
+      toast.info(t('chat.message-reattach-files'));
+    }
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+  const composerTaskControlState = selectComposerTaskControlState({
+    eventNativeTimelineEnabled,
+    legacyControlRunId: legacyControlTaskId,
+    activeTaskStatus: activeTask?.status,
+    eventNativeActiveRunId,
+    allowLegacyFallbackControl,
+  });
+  const showFloatingStop =
+    shouldRenderChatTimeline &&
+    composerTaskControlState === 'running' &&
+    eventNativeActiveProjectedRun?.status !== 'cancelling' &&
+    !controlOperations.some(
+      (op) =>
+        op.kind !== 'interaction' &&
+        op.runId === (eventNativeActiveRunId ?? activeTaskId) &&
+        op.phase !== 'pending'
+    );
+  const isFloatingTaskRunning =
+    shouldRenderChatTimeline && composerTaskControlState === 'running';
+  const handleFloatingStop = () => {
+    if (eventNativeActiveProjectedRun?.status === 'running') {
+      void handleEventNativeStopRun(eventNativeActiveProjectedRun.runId);
+      return;
+    }
+    void handleSkip();
+  };
+  const chatColumn = (
+    <>
+      {controlOperations
+        .filter(
+          (op) =>
+            op.projectId === activeProjectId &&
+            (op.runId === interruptedRun?.run_id ||
+              op.runId === (eventNativeActiveRunId ?? activeTaskId))
+        )
+        .filter((op) => {
+          if (op.completionPending) return true;
+          // A later canonical event can settle the UI even when its HTTP
+          // reply was lost. Keep the uncertain envelope for deduplication.
+          if (
+            !sharedProjectEventSnapshot ||
+            sharedProjectEventSnapshot.view.projectId !== op.projectId
+          )
+            return true;
+          if (op.kind === 'interaction') {
+            const interaction =
+              sharedProjectEventSnapshot.control.interactionById[
+                op.interactionId!
+              ];
+            return (
+              !interaction ||
+              interaction.runId !== op.runId ||
+              interaction.status === 'requested'
+            );
+          }
+          const run = sharedProjectEventSnapshot.view.runs[op.runId];
+          return !run || !TERMINAL_RUN_STATUSES.has(run.status);
+        })
+        .map((op) => (
+          <ControlRecovery key={op.key} operation={op} />
+        ))}
+      {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div
+          ref={scrollContainerRef}
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pl-2.5"
+        >
+          {shouldRenderChatTimeline &&
+          shouldRenderEventNativeTimeline &&
+          activeProjectId ? (
+            <EventNativeProjectTimeline
+              chatStore={
+                projectStore.getActiveChatStore(
+                  sessionProjectId ?? undefined
+                ) ?? undefined
+              }
+              detailLevel={chatTimelineDetailLevel}
+              paused={composerTaskControlState === 'paused'}
+              projectId={activeProjectId}
+              sessionMode={displaySessionMode}
+              scrollContainerRef={scrollContainerRef}
+              scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
             />
-          </div>
+          ) : shouldRenderChatTimeline ? (
+            <ProjectChatContainer
+              scrollContainerRef={scrollContainerRef}
+              scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
+            />
+          ) : (
+            <div className="mx-auto flex min-h-full w-full max-w-[736px] flex-col">
+              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
-          {/* Init State Container - Welcome + BottomBox + Suggestions (vertically centered) */}
-          <div
-            className={`flex flex-1 flex-col transition-all duration-300 ease-in-out ${
-              hasAnyMessages
-                ? 'pointer-events-none absolute inset-0 opacity-0'
-                : 'pointer-events-auto opacity-100'
-            }`}
-          >
-            {/* Welcome Message - Top area, flex-1 to push content down */}
-            <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4">
-              <div className="text-center text-body-lg font-bold text-text-heading">
-                {t('layout.welcome-to-eigent')}
-              </div>
+              {interruptedRun && !eventNativeTimelineEnabled && (
+                <InterruptedRunBanner
+                  title={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-title'
+                      : 'chat.run-interrupted-title'
+                  )}
+                  description={
+                    isCloudRestoredRun
+                      ? t('chat.run-cloud-restored-description')
+                      : interruptedRunDescription(
+                          interruptedRun.terminalReason,
+                          t,
+                          unsafeResumeReason,
+                          interruptedRun.terminalDetail
+                        )
+                  }
+                  disabledReason={cancelRecoveryReason}
+                  resumeDisabledReason={unsafeResumeReason}
+                  action={durableRunAction}
+                  resumeLabel={t('chat.run-resume')}
+                  resumingLabel={t('chat.run-resuming')}
+                  cancelLabel={t('chat.run-cancel')}
+                  cancellingLabel={t('chat.run-cancelling')}
+                  onResume={handleResumeInterruptedRun}
+                  onCancel={handleCancelInterruptedRun}
+                  readOnly={isCloudRestoredRun}
+                />
+              )}
+
+              {chatStore.activeTaskId && (
+                <BottomBox
+                  state="input"
+                  queuedMessages={queuedMessages}
+                  queueContext={queueContext}
+                  onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                  onSendQueuedMessageNow={handleSendQueuedMessageNow}
+                  onReorderQueuedMessage={handleReorderTaskQueue}
+                  usageLimitBanner={usageLimitBanner}
+                  noModelOverlay={!canUseSessionModel && !isCloudUsageLimited}
+                  onSelectModel={handleSelectModel}
+                  inputProps={{
+                    value: message,
+                    onChange: setMessage,
+                    onSend: handleSend,
+                    queuesFollowUp: isTaskBusy && !activeAsk,
+                    taskControlState: composerTaskControlState,
+                    onPauseTask: () => void handleTaskControl('pause'),
+                    onResumeTask: () => void handleTaskControl('resume'),
+                    taskControlLoading: isPauseResumeLoading,
+                    files:
+                      chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
+                        (f) => ({
+                          fileName: f.fileName,
+                          filePath: f.filePath,
+                        })
+                      ) || [],
+                    onFilesChange: (files) =>
+                      chatStore.setAttaches(
+                        chatStore.activeTaskId as string,
+                        files as any
+                      ),
+                    onAddFile: handleFileSelect,
+                    disabled: isInputDisabled,
+                    textareaRef: textareaRef,
+                    allowDragDrop: true,
+                    useCloudModelInDev: useCloudModelInDev,
+                  }}
+                  sessionMode={effectiveSessionMode}
+                  sessionModeSelectInteractive={false}
+                  modelSelectProjectId={activeProjectId}
+                  modelSelectDisabled={isCloudUsageLimited ? false : undefined}
+                />
+              )}
             </div>
+          )}
+        </div>
 
-            {/* Bottom Box - Center (init state only) */}
-            {chatStore.activeTaskId && (
+        {shouldRenderChatTimeline &&
+          (showFloatingStop ||
+            isFloatingTaskRunning ||
+            isTimelineScrolledUp) && (
+            <div
+              data-floating-stop-control
+              className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-2.5"
+              style={{ bottom: scrollBottomInsetPx }}
+            >
+              <FloatingAction
+                className="w-auto"
+                showStop={showFloatingStop}
+                onStop={handleFloatingStop}
+                stopLoading={isPauseResumeLoading}
+                running={isFloatingTaskRunning}
+                scrolledUp={isTimelineScrolledUp}
+                onScrollToBottom={scrollTimelineToBottom}
+              />
+            </div>
+          )}
+
+        {chatStore.activeTaskId && hasAnyMessages ? (
+          <div id={overlaySlotId} className="contents" />
+        ) : null}
+        {shouldRenderBottomBoxOverlay && (
+          <div
+            ref={bottomBoxOverlayRef}
+            data-bottom-box-overlay
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
+          >
+            <div className="pointer-events-auto mx-auto w-full max-w-[736px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+              <HumanDecisionCard
+                key={activeProjectId ?? 'no-session'}
+                requestKey={humanDecisionKey}
+                variant={humanDecisionVariant}
+              />
+              {interruptedRun && !eventNativeTimelineEnabled && (
+                <InterruptedRunBanner
+                  compact
+                  title={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-title'
+                      : 'chat.run-interrupted-title'
+                  )}
+                  description={
+                    isCloudRestoredRun
+                      ? t('chat.run-cloud-restored-description')
+                      : interruptedRunDescription(
+                          interruptedRun.terminalReason,
+                          t,
+                          unsafeResumeReason,
+                          interruptedRun.terminalDetail
+                        )
+                  }
+                  attemptNumber={interruptedRun.latest_attempt?.attempt_number}
+                  disabledReason={cancelRecoveryReason}
+                  resumeDisabledReason={unsafeResumeReason}
+                  action={durableRunAction}
+                  resumeLabel={t('chat.run-resume')}
+                  resumingLabel={t('chat.run-resuming')}
+                  cancelLabel={t('chat.run-cancel')}
+                  cancellingLabel={t('chat.run-cancelling')}
+                  onResume={handleResumeInterruptedRun}
+                  onCancel={handleCancelInterruptedRun}
+                  readOnly={isCloudRestoredRun}
+                />
+              )}
               <BottomBox
-                state="input"
+                state={
+                  hasControlledBottomBoxVariant
+                    ? 'running'
+                    : getBottomBoxState()
+                }
+                variant={humanDecisionVariant ? 'input' : bottomBoxVariant}
                 queuedMessages={queuedMessages}
+                queueContext={queueContext}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                onSendQueuedMessageNow={handleSendQueuedMessageNow}
+                onReorderQueuedMessage={handleReorderTaskQueue}
+                usageLimitBanner={usageLimitBanner}
+                noModelOverlay={!canUseSessionModel && !isCloudUsageLimited}
+                onSelectModel={handleSelectModel}
+                subtitle={
+                  getBottomBoxState() === 'confirm' ||
+                  getBottomBoxState() === 'save'
+                    ? (() => {
+                        const messages = activeTask?.messages || [];
+                        const lastUserMessage = messages
+                          .slice()
+                          .reverse()
+                          .find((msg) => msg.role === 'user');
+                        return (
+                          lastUserMessage?.content || activeTask?.summaryTask
+                        );
+                      })()
+                    : activeTask?.summaryTask
+                }
+                autoStartDeadline={activeTask?.autoConfirmDeadline}
+                onStartTask={() => handleConfirmTask()}
+                onSavePlan={async () => {
+                  if (chatStore.activeTaskId) {
+                    setLoading(true);
+                    await chatStore.savePlan(
+                      chatStore.activeTaskId,
+                      activeProjectId
+                    );
+                    setLoading(false);
+                  }
+                }}
+                onEdit={handleEditQuery}
+                loading={loading}
                 inputProps={{
-                  value: message,
+                  value: legacyQuestionVariant ? '' : message,
                   onChange: setMessage,
                   onSend: handleSend,
+                  queuesFollowUp: isTaskBusy && !activeAsk,
+                  taskControlState: composerTaskControlState,
+                  onPauseTask: () => void handleTaskControl('pause'),
+                  onResumeTask: () => void handleTaskControl('resume'),
+                  taskControlLoading: isPauseResumeLoading,
                   files:
-                    chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
-                      (f) => ({
-                        fileName: f.fileName,
-                        filePath: f.filePath,
-                      })
-                    ) || [],
-                  onFilesChange: (files) =>
-                    chatStore.setAttaches(
-                      chatStore.activeTaskId as string,
-                      files as any
-                    ),
+                    activeTask?.attaches?.map((f) => ({
+                      fileName: f.fileName,
+                      filePath: f.filePath,
+                    })) || [],
+                  onFilesChange: (files) => {
+                    if (!chatStore.activeTaskId) return;
+                    chatStore.setAttaches(chatStore.activeTaskId, files as any);
+                  },
                   onAddFile: handleFileSelect,
-                  placeholder: t('chat.ask-placeholder'),
-                  disabled: isInputDisabled,
+                  placeholder: t('chat.follow-up-placeholder'),
+                  disabled: isInputDisabled || Boolean(humanDecisionVariant),
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,
                 }}
+                sessionMode={displaySessionMode}
+                sessionModeSelectInteractive={false}
+                modelSelectProjectId={activeProjectId}
+                modelSelectDisabled={isCloudUsageLimited ? false : undefined}
               />
-            )}
-
-            {/* Suggestion Area - Bottom area, flex-1 to push content up */}
-            <div className="mt-3 flex h-[210px] flex-1 items-start justify-center gap-2">
-              {!hasModel ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    onClick={() => {
-                      navigate('/history?tab=agents');
-                    }}
-                    className="flex cursor-pointer items-center gap-2 rounded-md bg-surface-warning px-sm py-xs"
-                  >
-                    <TriangleAlert size={20} className="text-icon-warning" />
-                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-warning">
-                      {t('layout.please-select-model')}
-                    </span>
-                  </div>
-                </div>
-              ) : null}
-              {hasModel && (
-                <div className="mr-2 flex flex-col items-center gap-2">
-                  {[
-                    {
-                      label: t('layout.it-ticket-creation'),
-                      message: t('layout.it-ticket-creation-message'),
-                    },
-                    {
-                      label: t('layout.bank-transfer-csv-analysis'),
-                      message: t('layout.bank-transfer-csv-analysis-message'),
-                    },
-                    {
-                      label: t('layout.find-duplicate-files'),
-                      message: t('layout.find-duplicate-files-message'),
-                    },
-                  ].map(({ label, message }) => (
-                    <div
-                      key={label}
-                      className="cursor-pointer rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium leading-none text-button-tertiery-text-default opacity-70 transition-all duration-300 hover:opacity-100"
-                      onClick={() => {
-                        setMessage(message);
-                      }}
-                    >
-                      <span>{label}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
-        </div>
-
-        {/* Bottom Box - Show when has messages */}
-        {chatStore.activeTaskId && hasAnyMessages && (
-          <BottomBox
-            state={hasAnyMessages ? getBottomBoxState() : 'input'}
-            queuedMessages={queuedMessages}
-            onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-            subtitle={
-              hasAnyMessages && getBottomBoxState() === 'confirm'
-                ? (() => {
-                    const messages =
-                      chatStore.tasks[chatStore.activeTaskId]?.messages || [];
-                    const lastUserMessage = messages
-                      .slice()
-                      .reverse()
-                      .find((msg) => msg.role === 'user');
-                    return (
-                      lastUserMessage?.content ||
-                      chatStore.tasks[chatStore.activeTaskId]?.summaryTask
-                    );
-                  })()
-                : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
-            }
-            onStartTask={() => handleConfirmTask()}
-            onEdit={handleEditQuery}
-            taskTime={taskTime}
-            taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
-            onPauseResume={handlePauseResume}
-            pauseResumeLoading={isPauseResumeLoading}
-            loading={loading}
-            inputProps={{
-              value: message,
-              onChange: setMessage,
-              onSend: handleSend,
-              files:
-                chatStore.tasks[chatStore.activeTaskId]?.attaches?.map((f) => ({
-                  fileName: f.fileName,
-                  filePath: f.filePath,
-                })) || [],
-              onFilesChange: (files) =>
-                chatStore.setAttaches(
-                  chatStore.activeTaskId as string,
-                  files as any
-                ),
-              onAddFile: handleFileSelect,
-              placeholder: t('chat.ask-placeholder'),
-              disabled: isInputDisabled,
-              textareaRef: textareaRef,
-              allowDragDrop: hasAnyMessages,
-              useCloudModelInDev: useCloudModelInDev,
-            }}
-          />
         )}
       </div>
+    </>
+  );
+
+  return (
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
+      {chatColumn}
     </div>
   );
 }

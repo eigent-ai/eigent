@@ -12,20 +12,47 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from typing import Annotated, Final
+from typing import Annotated, Any, Final
+from urllib.parse import urlparse
 
 from pydantic import BeforeValidator
 
 PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
-    "z.ai": "zhipu",
+    "z.ai": "zhipuai",
+    "ant-ling": "openai-compatible-model",
     "ModelArk": "openai-compatible-model",
     "grok": "openai-compatible-model",
     "ernie": "qianfan",
     "llama.cpp": "openai-compatible-model",
+    "meta": "openai-compatible-model",
+    "nebius": "openai-compatible-model",
+    "orcarouter": "openai-compatible-model",
 }
 
 # Bedrock Converse requires a region during model initialization.
 BEDROCK_CONVERSE_REGION: Final[str] = "us-west-2"
+
+# Azure OpenAI requires an api_version. The cloud proxy accepts any modern
+# version; this default keeps cloud-mode requests working when the frontend
+# does not surface api_version in extra_params.
+AZURE_DEFAULT_API_VERSION: Final[str] = "2024-10-21"
+
+EIGENT_CLOUD_MODEL_ENDPOINT_MARKERS: Final[tuple[str, ...]] = (
+    "eigent-proxy",
+    "proxy.eigent.ai",
+)
+
+OPENAI_COMPATIBLE_MODEL_PLATFORM: Final[str] = "openai-compatible-model"
+META_MODEL_API_HOST: Final[str] = "api.meta.ai"
+
+# Azure's GPT-5.6 model family rejects function tools combined with
+# `reasoning_effort` on the legacy chat-completions transport. CAMEL supports
+# Azure's Responses API explicitly, so select that transport for this known
+# incompatible combination instead of asking users to disable either tools or
+# thinking effort.
+AZURE_RESPONSES_REASONING_TOOL_MODEL_PREFIXES: Final[tuple[str, ...]] = (
+    "gpt-5.6",
+)
 
 
 def patch_bedrock_cloud_config(
@@ -43,9 +70,184 @@ def patch_bedrock_cloud_config(
     return api_url, extra_params
 
 
+def patch_azure_cloud_config(extra_params: dict) -> dict:
+    """Default Azure `api_version` for cloud mode.
+
+    The cloud proxy fronts Azure OpenAI but the frontend sends an empty
+    `extra_params` for cloud, leaving `api_version` unset. Camel's
+    `AzureOpenAIModel` raises if neither the kwarg nor `AZURE_API_VERSION`
+    env var is provided — inject a sensible default here so cloud-mode
+    GPT models (gpt-5.4, gpt-5.5, gpt-5-mini, ...) construct cleanly.
+    """
+    extra_params = dict(extra_params)
+    extra_params.setdefault("api_version", AZURE_DEFAULT_API_VERSION)
+    return extra_params
+
+
+def is_eigent_cloud_model_endpoint(api_url: object) -> bool:
+    """Return whether ``api_url`` targets Eigent's model proxy."""
+    return isinstance(api_url, str) and any(
+        marker in api_url for marker in EIGENT_CLOUD_MODEL_ENDPOINT_MARKERS
+    )
+
+
+def is_meta_model_api_endpoint(api_url: object) -> bool:
+    """Return whether ``api_url`` directly targets the official Meta API.
+
+    Proxies and alternate hosts deliberately do not inherit Meta-specific
+    request rewriting.
+    """
+    if not isinstance(api_url, str):
+        return False
+    try:
+        return urlparse(api_url).hostname == META_MODEL_API_HOST
+    except ValueError:
+        return False
+
+
+def _meta_schema_requires_non_strict(schema: object) -> bool:
+    """Find object schemas that are not closed, without changing arguments."""
+    if not isinstance(schema, dict):
+        return False
+
+    schema_type = schema.get("type")
+    is_object = (
+        schema_type == "object"
+        or (isinstance(schema_type, list) and "object" in schema_type)
+        or "properties" in schema
+        or "additionalProperties" in schema
+    )
+    if is_object and schema.get("additionalProperties") is not False:
+        return True
+
+    # Visit schema-bearing keywords, not data in defaults, enums or examples.
+    for keyword in ("properties", "$defs", "definitions", "patternProperties"):
+        children = schema.get(keyword)
+        if isinstance(children, dict) and any(
+            _meta_schema_requires_non_strict(child)
+            for child in children.values()
+        ):
+            return True
+    for keyword in ("items", "prefixItems", "allOf", "anyOf", "oneOf", "not"):
+        children = schema.get(keyword)
+        if isinstance(children, list):
+            if any(
+                _meta_schema_requires_non_strict(child) for child in children
+            ):
+                return True
+        elif _meta_schema_requires_non_strict(children):
+            return True
+    return False
+
+
+def configure_meta_model_api_backend(
+    model_backend: Any, api_url: object
+) -> None:
+    """Use Meta-compatible function schemas for Chat Completions.
+
+    CAMEL marks generated function schemas as strict. Meta strict mode requires
+    every object schema to set ``additionalProperties`` to ``false``, but
+    Eigent has tools with dictionary arguments whose additional properties
+    describe the dictionary value type. Meta accepts those schemas when strict
+    mode is omitted. Preserve strict mode for closed schemas: the SDK's native
+    structured-output parser requires strict tools, including for Meta workers
+    in a Workforce. Only relax tools whose object schemas are not closed.
+    """
+    if not is_meta_model_api_endpoint(api_url) or getattr(
+        model_backend, "_eigent_meta_tools_configured", False
+    ):
+        return
+
+    # This private hook is specific to CAMEL's Chat Completions transport.
+    # Responses uses a separate request-preparation path.
+    prepare = getattr(model_backend, "_prepare_request_config", None)
+    if not callable(prepare):
+        return
+
+    def prepare_with_compatible_tools(tools=None):
+        request_config = prepare(tools)
+        request_tools = request_config.get("tools")
+        if not isinstance(request_tools, list):
+            return request_config
+
+        compatible_tools = []
+        for tool in request_tools:
+            if not isinstance(tool, dict) or tool.get("type") != "function":
+                compatible_tools.append(tool)
+                continue
+            function = tool.get("function")
+            if not isinstance(
+                function, dict
+            ) or not _meta_schema_requires_non_strict(
+                function.get("parameters")
+            ):
+                compatible_tools.append(tool)
+                continue
+            compatible_tool = dict(tool)
+            compatible_function = dict(function)
+            compatible_function.pop("strict", None)
+            compatible_tool["function"] = compatible_function
+            compatible_tool.pop("strict", None)
+            compatible_tools.append(compatible_tool)
+
+        return {**request_config, "tools": compatible_tools}
+
+    model_backend._prepare_request_config = (  # noqa: SLF001
+        prepare_with_compatible_tools
+    )
+    model_backend._eigent_meta_tools_configured = True  # noqa: SLF001
+
+
+def resolve_cloud_model_runtime_platform(
+    *, model_platform: str, api_url: object, api_mode: object
+) -> str:
+    """Select the client protocol used to call an Eigent Cloud model.
+
+    Eigent Cloud exposes an OpenAI-compatible Responses endpoint even when
+    the selected deployment is backed by Azure.  Using ``AzureOpenAI`` for
+    that request produces ``/openai/responses``; LiteLLM reserves that path
+    for OpenAI pass-through.  The proxy's routed endpoint is ``/responses``
+    (or ``/v1/responses``), which is generated by the OpenAI-compatible
+    client.  Direct customer Azure endpoints retain the native Azure client.
+    """
+    normalized_platform = normalize_model_platform(model_platform)
+    if (
+        normalized_platform == "azure"
+        and api_mode == "responses"
+        and is_eigent_cloud_model_endpoint(api_url)
+    ):
+        return OPENAI_COMPATIBLE_MODEL_PLATFORM
+    return normalized_platform
+
+
+def azure_reasoning_tools_require_responses_api(
+    *, model_platform: str, model_type: str
+) -> bool:
+    """Return whether Azure requires Responses for reasoning plus tools.
+
+    Keep this compatibility rule transport-specific and model-family-specific:
+    older Azure deployments continue using chat completions unless their own
+    configuration explicitly opts into Responses.
+    """
+    normalized_platform = model_platform.strip().lower()
+    normalized_model = model_type.strip().lower()
+    return normalized_platform == "azure" and normalized_model.startswith(
+        AZURE_RESPONSES_REASONING_TOOL_MODEL_PREFIXES
+    )
+
+
 def normalize_model_platform(platform: str) -> str:
     """Normalize provider aliases to supported model platform names."""
     return PLATFORM_ALIAS_MAPPING.get(platform, platform)
+
+
+def canonical_model_platform(platform: str) -> str:
+    """Provider identity shared by a Run binding and its Session model.
+
+    A Session keeps the provider name the user picked, while the Run binding
+    stores its normalized alias; admission records the latter lowercased.
+    """
+    return normalize_model_platform(platform).strip().lower()
 
 
 def normalize_optional_model_platform(platform: str | None) -> str | None:

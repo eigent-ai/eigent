@@ -28,11 +28,23 @@ from app.model.trigger.trigger import Trigger
 from app.domains.chat.schema import TaskOwnershipCheckReq, FileValidationReq, FileValidationResult
 
 ALLOWED_EXTENSIONS = {
-    "jpg", "jpeg", "png", "gif", "webp",
-    "pdf", "txt", "md", "csv",
-    "json", "xml", "yaml", "yml",
-    "doc", "docx", "xls", "xlsx",
-    "zip",
+    # Images
+    "jpg", "jpeg", "png", "gif", "webp", "svg", "ico",
+    # Documents
+    "pdf", "txt", "md", "csv", "doc", "docx", "xls", "xlsx",
+    # Data
+    "json", "xml", "yaml", "yml", "toml",
+    # Web
+    "html", "htm", "css", "js", "jsx", "ts", "tsx", "vue", "svelte",
+    # Code
+    "py", "rb", "go", "rs", "java", "c", "cpp", "h", "hpp", "cs",
+    "sh", "bash", "zsh", "bat", "ps1",
+    "sql", "graphql", "proto",
+    # Config
+    "env", "ini", "cfg", "conf", "lock",
+    "dockerfile", "dockerignore", "gitignore",
+    # Archive
+    "zip", "tar", "gz",
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -42,7 +54,7 @@ class ChatService:
 
     @staticmethod
     def verify_task_ownership(req: TaskOwnershipCheckReq) -> bool:
-        """Check if task_id belongs to user_id."""
+        """Check if task_id belongs to user_id. Replaces _task_owned_by_user."""
         with session_make() as s:
             h = s.exec(
                 select(ChatHistory)
@@ -138,6 +150,7 @@ class ChatService:
         project_map: Dict[str, Dict] = defaultdict(
             lambda: {
                 "project_id": "",
+                "space_id": None,
                 "project_name": None,
                 "total_tokens": 0,
                 "task_count": 0,
@@ -157,6 +170,7 @@ class ChatService:
 
             if not project_data["project_id"]:
                 project_data["project_id"] = project_id
+                project_data["space_id"] = history.space_id
                 project_data["project_name"] = history.project_name or f"Project {project_id}"
                 project_data["latest_task_date"] = history.created_at.isoformat() if history.created_at else ""
                 project_data["last_prompt"] = history.question
@@ -191,7 +205,12 @@ class ChatService:
         return projects
 
     @staticmethod
-    def get_grouped_histories(user_id: int, include_tasks: bool, s: Session) -> GroupedHistoryResponse:
+    def get_grouped_histories(
+        user_id: int,
+        include_tasks: bool,
+        s: Session,
+        space_id: str | None = None,
+    ) -> GroupedHistoryResponse:
         """Get all chat histories grouped by project for a user."""
         stmt = (
             select(ChatHistory)
@@ -202,6 +221,8 @@ class ChatService:
                 desc(ChatHistory.id),
             )
         )
+        if space_id:
+            stmt = stmt.where(ChatHistory.space_id == space_id)
         histories = s.exec(stmt).all()
 
         trigger_count_stmt = (

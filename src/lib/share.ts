@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchPost } from '@/api/http';
+import { SITE_URL } from '@/lib';
+import i18next from 'i18next';
 import { toast } from 'sonner';
 
 export const share = async (taskId: string) => {
@@ -20,11 +22,15 @@ export const share = async (taskId: string) => {
     const res = await proxyFetchPost(`/api/v1/chat/share`, {
       task_id: taskId,
     });
-    const shareLink = `${import.meta.env.VITE_USE_LOCAL_PROXY === 'true' ? 'eigent://callback' : 'https://www.eigent.ai/download'}?share_token=${res.share_token}__${taskId}`;
+    const shareLink = `${import.meta.env.VITE_USE_LOCAL_PROXY === 'true' ? 'eigent://callback' : `${SITE_URL}/download`}?share_token=${res.share_token}__${taskId}`;
     navigator.clipboard
       .writeText(shareLink)
       .then(() => {
-        toast.success('The share link has been copied.');
+        toast.success(
+          i18next.t('chat.share-link-copied', {
+            defaultValue: 'The share link has been copied.',
+          })
+        );
       })
       .catch((err) => {
         console.error('Failed to copy:', err);

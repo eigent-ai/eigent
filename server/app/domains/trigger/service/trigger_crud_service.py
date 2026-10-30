@@ -37,8 +37,12 @@ from app.model.trigger.app_configs.config_registry import requires_authenticatio
 from app.model.chat.chat_history import ChatHistory
 from app.shared.types.trigger_types import TriggerType, TriggerStatus
 from app.core.redis_utils import get_redis_manager
+from app.domains.space.service import SpaceService
 from app.domains.trigger.service.trigger_schedule_service import TriggerScheduleService
-from app.domains.trigger.service.trigger_service import TriggerService
+from app.domains.trigger.service.trigger_service import (
+    TERMINAL_EXECUTION_STATUSES,
+    TriggerService,
+)
 
 
 ACTIVE_STATUSES = (TriggerStatus.active, TriggerStatus.pending_verification)
@@ -93,6 +97,7 @@ class TriggerCrudService:
         return TriggerOut(
             id=trigger.id,
             user_id=trigger.user_id,
+            space_id=trigger.space_id,
             project_id=trigger.project_id,
             name=trigger.name,
             description=trigger.description,
@@ -122,6 +127,17 @@ class TriggerCrudService:
         if not data.project_id:
             return
 
+        target_space_id = data.space_id or SpaceService.legacy_space_id(user_id)
+        SpaceService.ensure_project(
+            user_id,
+            data.project_id,
+            target_space_id,
+            data.name,
+            s,
+            description=data.description,
+            metadata={"createdFrom": "trigger"},
+        )
+
         existing_chat = s.exec(
             select(ChatHistory).where(ChatHistory.project_id == data.project_id)
         ).first()
@@ -132,6 +148,8 @@ class TriggerCrudService:
             user_id=user_id,
             task_id=data.project_id,
             project_id=data.project_id,
+            space_id=target_space_id,
+            run_id=data.project_id,
             question=f"Project created via trigger: {data.name}",
             language="en",
             model_platform=data.agent_model or "none",
@@ -222,7 +240,10 @@ class TriggerCrudService:
         Returns {"success": True, "trigger_out": TriggerOut} or {"success": False, "error": str, "status_code": int}.
         """
         # 1. Ensure project ChatHistory exists
-        TriggerCrudService._ensure_project_chat_history(data, user_id, s)
+        try:
+            TriggerCrudService._ensure_project_chat_history(data, user_id, s)
+        except ValueError as e:
+            return {"success": False, "error": str(e), "status_code": 404}
 
         # 2. Generate webhook URL
         webhook_url = None
@@ -241,6 +262,7 @@ class TriggerCrudService:
         # 5. Create trigger
         trigger_data = data.model_dump()
         trigger_data["user_id"] = str(user_id)
+        trigger_data["space_id"] = data.space_id or SpaceService.legacy_space_id(user_id)
         trigger_data["webhook_url"] = webhook_url
         trigger_data["status"] = initial_status
 
@@ -292,7 +314,7 @@ class TriggerCrudService:
 
         # Recalculate next_run_at if cron expression or status changed for scheduled triggers
         if trigger.trigger_type == TriggerType.schedule:
-            if "custom_cron_expression" in update_data or "status" in update_data:
+            if "custom_cron_expression" in update_data or "status" in update_data or "config" in update_data:
                 if trigger.status == TriggerStatus.active and trigger.custom_cron_expression:
                     schedule_service = TriggerScheduleService(s)
                     trigger.next_run_at = schedule_service.calculate_next_run_at(trigger)
@@ -491,9 +513,29 @@ class TriggerCrudService:
             select(TriggerExecution)
             .join(Trigger)
             .where(and_(TriggerExecution.execution_id == execution_id, Trigger.user_id == str(user_id)))
+            .with_for_update()
+            .execution_options(populate_existing=True)
         ).first()
         if not execution:
             return {"success": False, "error": "Execution not found", "status_code": 404}
+
+        # Freeze the accepted terminal receipt. The sole allowed enrichment is
+        # a larger token total for that same outcome, under this row lock.
+        if execution.status in TERMINAL_EXECUTION_STATUSES:
+            if data.status == execution.status and data.tokens_used is not None:
+                TriggerService(s).update_execution_status(
+                    execution,
+                    data.status,
+                    tokens_used=data.tokens_used,
+                )
+            logger.info(
+                "Ignored trigger execution update after terminal outcome",
+                extra={
+                    "execution_id": execution.execution_id,
+                    "current_status": execution.status.value,
+                },
+            )
+            return {"success": True, "execution": execution}
 
         update_data = data.model_dump(exclude_unset=True)
 

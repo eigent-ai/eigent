@@ -18,155 +18,256 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
-// Context for variant
-const TabsContext = React.createContext<{ variant?: 'default' | 'outline' }>({
-  variant: 'default',
+/** Visual style of the tab strip (not `UiVariant` / `Button` chrome). */
+export type TabsAppearance = 'default' | 'outline' | 'border' | 'ghost';
+
+/**
+ * @deprecated Use {@link TabsAppearance} and the `appearance` prop instead of
+ * `variant` on `TabsList` / `TabsTrigger` to avoid confusion with `UiVariant`.
+ */
+export type TabsVariant = TabsAppearance;
+
+// Context for tab strip appearance
+const TabsContext = React.createContext<{ appearance?: TabsAppearance }>({
+  appearance: 'default',
 });
+
+/** Shared trigger styles — default and outline use the same dimensions. */
+const tabsTriggerClassName =
+  'ring-offset-ds-neutral-subtle-default inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-xl border-x-0 border-y-0 border-solid bg-ds-neutral-strong-default !px-2 !py-1 !text-ds-text-base font-semibold text-ds-ink-default-default transition-[background-color,color,box-shadow,opacity] focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none data-[state=active]:bg-ds-neutral-subtle-default data-[state=active]:text-ds-ink-default-default data-[state=active]:shadow-ds-elevation-control disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-ink-default-default';
+
+/**
+ * Transparent triggers with a hover chip; active selection is shown
+ * by the animated bar under the tab row (TabsList), not a border on the trigger.
+ */
+const tabsTriggerBorderClassName =
+  'ring-offset-ds-neutral-default-default inline-flex h-ds-control-md min-h-ds-control-md shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-ds-compact-control border border-solid border-x border-y border-transparent bg-transparent !px-2 !py-0 !text-ds-text-base font-semibold text-ds-ink-muted-default transition-colors hover:bg-ds-neutral-subtle-default hover:text-ds-ink-default-default hover:ring-1 hover:ring-ds-hairline-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none data-[state=active]:bg-transparent data-[state=active]:text-ds-ink-default-default data-[state=active]:shadow-none data-[state=active]:ring-0 data-[state=active]:hover:bg-ds-neutral-subtle-default disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-ink-default-default';
+
+/** Borderless tab strip for sidebar navigation (Agents, Channels, Browser, Settings). */
+const tabsTriggerGhostClassName =
+  'ring-offset-ds-neutral-default-default inline-flex w-full items-center justify-start gap-2 rounded-xl border-x-0 border-y-0 border-solid bg-transparent !px-3 !py-1.5 !text-ds-text-base font-semibold text-ds-ink-muted-default shadow-none ring-0 transition-colors focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none data-[state=inactive]:bg-transparent data-[state=inactive]:opacity-70 data-[state=inactive]:hover:bg-ds-neutral-default-hover data-[state=inactive]:hover:opacity-100 data-[state=active]:bg-ds-neutral-default-default data-[state=active]:text-ds-ink-default-default data-[state=active]:shadow-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-ink-default-default';
+
+/** Gap (px) between the tab row and its underline. */
+const BORDER_TAB_UNDERLINE_GAP_PX = 8;
 
 const Tabs = TabsPrimitive.Root;
 
 type TabsListProps = React.ComponentPropsWithoutRef<
   typeof TabsPrimitive.List
 > & {
-  variant?: 'default' | 'outline';
+  appearance?: TabsAppearance;
+  /** @deprecated Use `appearance`. */
+  variant?: TabsAppearance;
 };
 
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   TabsListProps
->(({ className, variant = 'default', ...props }, ref) => {
-  const tabsListRef = React.useRef<React.ElementRef<
-    typeof TabsPrimitive.List
-  > | null>(null) as React.MutableRefObject<React.ElementRef<
-    typeof TabsPrimitive.List
-  > | null>;
-  const [sliderStyle, setSliderStyle] = React.useState({ left: 0, width: 0 });
+>(
+  (
+    { className, appearance: appearanceProp, variant: variantProp, ...props },
+    ref
+  ) => {
+    const appearance = appearanceProp ?? variantProp ?? 'default';
+    const wrapperRef = React.useRef<HTMLDivElement>(null);
+    const tabsListRef = React.useRef<React.ElementRef<
+      typeof TabsPrimitive.List
+    > | null>(null) as React.MutableRefObject<React.ElementRef<
+      typeof TabsPrimitive.List
+    > | null>;
+    const [sliderStyle, setSliderStyle] = React.useState({ left: 0, width: 0 });
+    const [borderBarStyle, setBorderBarStyle] = React.useState({
+      left: 0,
+      top: 0,
+      width: 0,
+    });
 
-  // Update slider position when active tab changes
-  React.useLayoutEffect(() => {
-    if (variant !== 'outline' || !tabsListRef.current) return;
-
-    const updateSlider = () => {
-      // Use requestAnimationFrame to ensure DOM has updated
-      requestAnimationFrame(() => {
-        const activeTab = tabsListRef.current?.querySelector(
-          '[data-state="active"][data-variant="outline"]'
-        ) as HTMLElement;
-
-        if (activeTab && tabsListRef.current) {
-          const containerRect = tabsListRef.current.getBoundingClientRect();
-          const tabRect = activeTab.getBoundingClientRect();
-
-          setSliderStyle({
-            left: tabRect.left - containerRect.left,
-            width: tabRect.width,
-          });
-        }
-      });
-    };
-
-    // Initial update
-    updateSlider();
-
-    // Watch for changes
-    const observer = new MutationObserver(updateSlider);
-    if (tabsListRef.current) {
-      observer.observe(tabsListRef.current, {
-        attributes: true,
-        attributeFilter: ['data-state'],
-        subtree: true,
-      });
-    }
-
-    // Also listen for resize
-    window.addEventListener('resize', updateSlider);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateSlider);
-    };
-  }, [variant]);
-
-  const combinedRef = React.useCallback(
-    (node: React.ElementRef<typeof TabsPrimitive.List> | null) => {
-      if (typeof ref === 'function') {
-        ref(node);
-      } else if (ref && 'current' in ref) {
-        (
-          ref as React.MutableRefObject<React.ElementRef<
-            typeof TabsPrimitive.List
-          > | null>
-        ).current = node;
+    // Update underline position when the active tab changes.
+    React.useLayoutEffect(() => {
+      if (
+        !tabsListRef.current ||
+        (appearance !== 'outline' && appearance !== 'border')
+      ) {
+        return;
       }
-      tabsListRef.current = node;
-    },
-    [ref]
-  );
 
-  return (
-    <TabsContext.Provider value={{ variant }}>
-      <div className="relative">
-        <TabsPrimitive.List
-          ref={combinedRef}
+      const updateSlider = () => {
+        requestAnimationFrame(() => {
+          const list = tabsListRef.current;
+          const wrap = wrapperRef.current;
+          if (!list) return;
+
+          if (appearance === 'outline') {
+            const activeTab = list.querySelector(
+              '[data-state="active"][data-tabs-appearance="outline"]'
+            ) as HTMLElement | null;
+            if (activeTab) {
+              const containerRect = list.getBoundingClientRect();
+              const tabRect = activeTab.getBoundingClientRect();
+              setSliderStyle({
+                left: tabRect.left - containerRect.left,
+                width: tabRect.width,
+              });
+            }
+            return;
+          }
+
+          const activeTab = list.querySelector(
+            '[data-state="active"][data-tabs-appearance="border"]'
+          ) as HTMLElement | null;
+          if (activeTab && wrap) {
+            const wr = wrap.getBoundingClientRect();
+            const tabRect = activeTab.getBoundingClientRect();
+            setBorderBarStyle({
+              left: tabRect.left - wr.left,
+              top: tabRect.bottom - wr.top + BORDER_TAB_UNDERLINE_GAP_PX,
+              width: tabRect.width,
+            });
+          }
+        });
+      };
+
+      updateSlider();
+
+      const observer = new MutationObserver(updateSlider);
+      if (tabsListRef.current) {
+        observer.observe(tabsListRef.current, {
+          attributes: true,
+          attributeFilter: ['data-state'],
+          subtree: true,
+        });
+      }
+
+      window.addEventListener('resize', updateSlider);
+
+      return () => {
+        observer.disconnect();
+        window.removeEventListener('resize', updateSlider);
+      };
+    }, [appearance]);
+
+    const combinedRef = React.useCallback(
+      (node: React.ElementRef<typeof TabsPrimitive.List> | null) => {
+        if (typeof ref === 'function') {
+          ref(node);
+        } else if (ref && 'current' in ref) {
+          (
+            ref as React.MutableRefObject<React.ElementRef<
+              typeof TabsPrimitive.List
+            > | null>
+          ).current = node;
+        }
+        tabsListRef.current = node;
+      },
+      [ref]
+    );
+
+    return (
+      <TabsContext.Provider value={{ appearance }}>
+        <div
+          ref={wrapperRef}
           className={cn(
-            variant === 'outline'
-              ? 'relative inline-flex items-center justify-center gap-0 bg-surface-disabled p-0'
-              : 'inline-flex items-center justify-center rounded-xl border border-solid border-menutabs-border-default bg-menutabs-bg-default p-0.5',
-            'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
-            className
+            'relative flex',
+            appearance === 'border' ? 'pb-2' : 'overflow-hidden',
+            appearance === 'default' &&
+              'rounded-xl ring-1 ring-ds-hairline-default-default'
           )}
-          data-variant={variant}
-          {...props}
-        />
-        {variant === 'outline' && sliderStyle.width > 0 && (
-          <motion.div
-            className="absolute bottom-0 z-10 h-[1.5px] bg-text-heading"
-            initial={false}
-            animate={{
-              left: sliderStyle.left,
-              width: sliderStyle.width,
-            }}
-            transition={{
-              type: 'spring',
-              stiffness: 300,
-              damping: 30,
-            }}
+        >
+          <TabsPrimitive.List
+            ref={combinedRef}
+            className={cn(
+              'inline-flex items-center justify-center',
+              appearance === 'border' &&
+                'gap-2 rounded-none border-x-0 border-y-0 border-solid bg-transparent p-0 shadow-none',
+              appearance === 'outline' &&
+                'relative rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-strong-default p-0.5',
+              appearance === 'default' &&
+                'rounded-xl bg-ds-neutral-strong-default',
+              appearance === 'ghost' &&
+                'gap-1.5 rounded-none border-x-0 border-y-0 border-solid bg-transparent p-0 shadow-none ring-0',
+              'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
+              className
+            )}
+            data-tabs-appearance={appearance}
+            {...props}
           />
-        )}
-      </div>
-    </TabsContext.Provider>
-  );
-});
+          {appearance === 'outline' && sliderStyle.width > 0 && (
+            <motion.div
+              className="absolute bottom-0 z-10 h-[1.5px] bg-ds-ink-default-default"
+              initial={false}
+              animate={{
+                left: sliderStyle.left,
+                width: sliderStyle.width,
+              }}
+              transition={{
+                type: 'spring',
+                stiffness: 300,
+                damping: 30,
+              }}
+            />
+          )}
+          {appearance === 'border' && borderBarStyle.width > 0 && (
+            <motion.div
+              aria-hidden
+              className="pointer-events-none absolute z-10 h-0.5 rounded-full bg-ds-accent-default-default"
+              initial={false}
+              animate={{
+                left: borderBarStyle.left,
+                top: borderBarStyle.top,
+                width: borderBarStyle.width,
+              }}
+              transition={{
+                type: 'spring',
+                stiffness: 420,
+                damping: 34,
+                mass: 0.55,
+              }}
+            />
+          )}
+        </div>
+      </TabsContext.Provider>
+    );
+  }
+);
 TabsList.displayName = TabsPrimitive.List.displayName;
 
 type TabsTriggerProps = React.ComponentPropsWithoutRef<
   typeof TabsPrimitive.Trigger
 > & {
-  variant?: 'default' | 'outline';
+  appearance?: TabsAppearance;
+  /** @deprecated Use `appearance`. */
+  variant?: TabsAppearance;
 };
 
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   TabsTriggerProps
->(({ className, variant: propVariant, ...props }, ref) => {
-  const { variant: contextVariant } = React.useContext(TabsContext);
-  const variant = propVariant || contextVariant || 'default';
+>(
+  (
+    { className, appearance: appearanceProp, variant: variantProp, ...props },
+    ref
+  ) => {
+    const { appearance: contextAppearance } = React.useContext(TabsContext);
+    const appearance =
+      appearanceProp ?? variantProp ?? contextAppearance ?? 'default';
+    const triggerBase =
+      appearance === 'border'
+        ? tabsTriggerBorderClassName
+        : appearance === 'ghost'
+          ? tabsTriggerGhostClassName
+          : tabsTriggerClassName;
 
-  return (
-    <TabsPrimitive.Trigger
-      ref={ref}
-      className={cn(
-        variant === 'outline'
-          ? 'relative flex cursor-pointer flex-row items-center justify-center gap-2 bg-transparent px-4 py-3 !text-body-sm !font-semibold text-text-label transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-surface-disabled data-[state=active]:!font-bold data-[state=active]:text-text-heading'
-          : 'ring-offset-background focus-visible:ring-ring inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-menutabs-fill-default px-2 py-1 text-body-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-menutabs-fill-active data-[state=active]:text-menutabs-text-active data-[state=active]:shadow-sm',
-        className
-      )}
-      data-variant={variant}
-      data-value={props.value}
-      {...props}
-    />
-  );
-});
+    return (
+      <TabsPrimitive.Trigger
+        ref={ref}
+        className={cn(triggerBase, className)}
+        data-tabs-appearance={appearance}
+        data-value={props.value}
+        {...props}
+      />
+    );
+  }
+);
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
 
 const TabsContent = React.forwardRef<
@@ -177,7 +278,7 @@ const TabsContent = React.forwardRef<
     <TabsPrimitive.Content
       ref={ref}
       className={cn(
-        'ring-offset-background focus-visible:ring-ring mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+        'mt-2 ring-offset-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none',
         className
       )}
       {...props}

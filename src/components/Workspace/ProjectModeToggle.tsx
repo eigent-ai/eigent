@@ -1,0 +1,177 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { DsIcon } from '@/components/ui/ds-icon';
+import { cn } from '@/lib/utils';
+import type { SessionModeType } from '@/types/constants';
+import { SessionMode } from '@/types/constants';
+import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
+import { ChevronsUpDown, Gamepad2, Joystick } from 'lucide-react';
+import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+
+const ROLL = {
+  initial: { y: 14, opacity: 0 },
+  animate: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 420,
+      damping: 32,
+      mass: 0.35,
+    },
+  },
+  exit: {
+    y: -14,
+    opacity: 0,
+    transition: { duration: 0.16, ease: [0.4, 0, 1, 1] as const },
+  },
+};
+
+const CHEVRON_TAP = {
+  type: 'spring' as const,
+  stiffness: 520,
+  damping: 22,
+  mass: 0.35,
+};
+
+const CHEVRON_RELEASE = {
+  type: 'spring' as const,
+  stiffness: 400,
+  damping: 28,
+  mass: 0.35,
+};
+
+export interface ProjectModeToggleProps {
+  value: SessionModeType;
+  onValueChange: (mode: SessionModeType) => void;
+  className?: string;
+  /**
+   * When true, only the current mode is shown (no switching). Used in the
+   * Project chat input. Uses a transparent background to match the chat input
+   * bar (see model read-only chip).
+   */
+  readOnly?: boolean;
+  /** When true, hides the text label and shows only the leading icon (narrow footer). */
+  compact?: boolean;
+}
+
+export function ProjectModeToggle({
+  value,
+  onValueChange,
+  className,
+  readOnly = false,
+  compact = false,
+}: ProjectModeToggleProps) {
+  const { t } = useTranslation();
+  const chevronScale = useAnimationControls();
+
+  const labelSingle = t('layout.workspace-session-single-agent');
+  const labelWorkforce = t('layout.workspace-session-workforce');
+
+  const modeAriaLabel = t('layout.workspace-session-mode-label');
+
+  const isSingle = value === SessionMode.SINGLE_AGENT;
+  const nextMode = isSingle ? SessionMode.WORKFORCE : SessionMode.SINGLE_AGENT;
+  const label = isSingle ? labelSingle : labelWorkforce;
+  const LeadingIcon = isSingle ? Joystick : Gamepad2;
+
+  const toggle = () => onValueChange(nextMode);
+
+  const pulseChevrons = useCallback(() => {
+    void (async () => {
+      await chevronScale.start({ scale: 1.22, transition: CHEVRON_TAP });
+      await chevronScale.start({ scale: 1, transition: CHEVRON_RELEASE });
+    })();
+  }, [chevronScale]);
+
+  const shellClass = cn(
+    'rounded-xl px-2 py-1 inline-flex items-center gap-1.5',
+    'bg-ds-neutral-subtle-default text-ds-ink-default-default',
+    className
+  );
+
+  // One 16px chevron, like the approval and model controls beside it, so all
+  // three footer controls share one height and icon size.
+  const endChevrons = (
+    <DsIcon icon={ChevronsUpDown} className="shrink-0 opacity-80" aria-hidden />
+  );
+
+  if (readOnly) {
+    return (
+      <div
+        role="status"
+        aria-label={`${modeAriaLabel}: ${label}`}
+        title={compact ? label : undefined}
+        className={cn(shellClass, 'pointer-events-none bg-transparent')}
+      >
+        <span className="inline-flex min-h-[1.25rem] items-center gap-1.5 overflow-hidden">
+          <DsIcon icon={LeadingIcon} />
+          {!compact && (
+            <span className="!text-ds-text-meta font-semibold">{label}</span>
+          )}
+        </span>
+      </div>
+    );
+  }
+
+  const cycleHint = t('layout.workspace-session-mode-cycle-hint');
+
+  return (
+    <motion.button
+      type="button"
+      aria-label={`${modeAriaLabel}: ${label}. ${cycleHint}`}
+      title={compact ? label : undefined}
+      className={cn(
+        shellClass,
+        'cursor-pointer border-0 border-x-0 border-y-0 text-left',
+        'hover:bg-ds-neutral-default-default focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-subtle-default focus-visible:outline-none'
+      )}
+      onPointerDown={pulseChevrons}
+      onClick={toggle}
+    >
+      <span className="relative inline-flex min-w-0 flex-1 items-center overflow-hidden">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={value}
+            className="inline-flex items-center gap-1.5 will-change-transform"
+            variants={ROLL}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <DsIcon icon={LeadingIcon} />
+            {!compact && (
+              <span className="!text-ds-text-meta font-semibold whitespace-nowrap">
+                {label}
+              </span>
+            )}
+          </motion.span>
+        </AnimatePresence>
+      </span>
+
+      <motion.span
+        className="inline-flex origin-center will-change-transform"
+        initial={{ scale: 1 }}
+        animate={chevronScale}
+      >
+        {endChevrons}
+      </motion.span>
+    </motion.button>
+  );
+}
+
+export type WorkspaceSessionModeToggleProps = ProjectModeToggleProps;
+export const WorkspaceSessionModeToggle = ProjectModeToggle;

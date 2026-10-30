@@ -14,7 +14,8 @@
 
 import { useState } from 'react';
 
-import { Calculator, Calendar, Smile } from 'lucide-react';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { Calculator, Calendar, Search, Smile } from 'lucide-react';
 
 import {
   CommandDialog,
@@ -26,18 +27,53 @@ import {
   CommandSeparator,
 } from '@/components/ui/command';
 import { DialogTitle } from '@/components/ui/dialog';
-import { Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-const _items = [
-  'Apple',
-  'Banana',
-  'Orange',
-  'Grape',
-  'Watermelon',
-  'Pineapple',
-  'Mango',
-  'Blueberry',
-];
+
+export interface GlobalSearchDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function GlobalSearchDialog({
+  open,
+  onOpenChange,
+}: GlobalSearchDialogProps) {
+  const { t } = useTranslation();
+  return (
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      overlayClassName="backdrop-blur-none"
+      contentClassName="border-x-0 border-y-0 border-0 bg-ds-neutral-subtle-default shadow-ds-elevation-popover"
+      commandClassName="bg-ds-neutral-subtle-default"
+    >
+      <DialogTitle className="sr-only">{t('dashboard.search')}</DialogTitle>
+      <CommandInput
+        placeholder={t('dashboard.command-search-placeholder', {
+          defaultValue: 'Type a command or search…',
+        })}
+      />
+      <CommandList>
+        <CommandEmpty>{t('dashboard.no-results')}</CommandEmpty>
+        <CommandGroup heading={t('dashboard.today', { defaultValue: 'Today' })}>
+          <CommandItem>
+            <DsIcon icon={Calendar} />
+            <span>{t('dashboard.calendar')}</span>
+          </CommandItem>
+          <CommandItem>
+            <DsIcon icon={Smile} />
+            <span>{t('dashboard.search-emoji')}</span>
+          </CommandItem>
+          <CommandItem>
+            <DsIcon icon={Calculator} />
+            <span>{t('dashboard.calculator')}</span>
+          </CommandItem>
+        </CommandGroup>
+        <CommandSeparator />
+      </CommandList>
+    </CommandDialog>
+  );
+}
 
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
@@ -45,36 +81,15 @@ export function GlobalSearch() {
   return (
     <>
       <div
-        className="bg-bg-surface-secondary no-drag flex h-6 w-60 items-center justify-center space-x-2 rounded-lg"
+        className="no-drag flex h-6 w-60 items-center justify-center space-x-2 rounded-lg bg-ds-neutral-subtle-default"
         onClick={() => setOpen(true)}
       >
-        <Search className="h-4 w-4 text-text-secondary"></Search>
-        <span className="font-inter text-[10px] leading-4 text-text-secondary">
+        <DsIcon icon={Search} className="text-ds-ink-muted-default" />
+        <span className="font-inter text-[10px] leading-4 text-ds-ink-muted-default">
           {t('dashboard.search-for-a-task-or-document')}
         </span>
       </div>
-      <CommandDialog open={open} onOpenChange={setOpen}>
-        <DialogTitle className="sr-only">{t('dashboard.search')}</DialogTitle>
-        <CommandInput placeholder="Type a command or search..." />
-        <CommandList>
-          <CommandEmpty>{t('dashboard.no-results')}</CommandEmpty>
-          <CommandGroup heading="Today">
-            <CommandItem>
-              <Calendar />
-              <span>{t('dashboard.calendar')}</span>
-            </CommandItem>
-            <CommandItem>
-              <Smile />
-              <span>{t('dashboard.search-emoji')}</span>
-            </CommandItem>
-            <CommandItem>
-              <Calculator />
-              <span>{t('dashboard.calculator')}</span>
-            </CommandItem>
-          </CommandGroup>
-          <CommandSeparator />
-        </CommandList>
-      </CommandDialog>
+      <GlobalSearchDialog open={open} onOpenChange={setOpen} />
     </>
   );
 }

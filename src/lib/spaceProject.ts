@@ -1,0 +1,193 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { generateUniqueId } from '@/lib';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { isLegacySpace } from '@/lib/spaceLabel';
+import {
+  proxyCreateSpaceProject,
+  proxyEnsureLegacySpace,
+} from '@/service/spaceApi';
+import { getAuthStore } from '@/store/authStore';
+import type {
+  ProjectMode,
+  ProjectRuntimeStore,
+  ProjectWorkdirMode,
+} from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
+
+/**
+ * Thrown when something tries to create a Project inside a legacy Space. Legacy
+ * Spaces are read-only — see {@link canCreateProjectInSpace}. UI entry points
+ * disable creation up front; this is the backstop that guarantees the invariant
+ * for any caller that slips through.
+ */
+export class LegacySpaceProjectError extends Error {
+  constructor() {
+    super('Cannot create a Project inside a legacy Space.');
+    this.name = 'LegacySpaceProjectError';
+  }
+}
+
+interface CreateSyncedProjectInSpaceInput {
+  projectId?: string;
+  expectedAccountKey?: string;
+  signal?: AbortSignal;
+  projectStore: ProjectRuntimeStore;
+  spaceId: string;
+  name?: string;
+  description?: string;
+  mode?: ProjectMode | null;
+  workdirMode?: ProjectWorkdirMode | null;
+  metadata?: Record<string, unknown>;
+  setActive?: boolean;
+  /**
+   * Creates the local Project before the server request so the caller can
+   * open it at once. The local Project is removed if the server rejects it.
+   */
+  onLocalProjectCreated?: (result: CreateSyncedProjectInSpaceResult) => void;
+  /**
+   * Runs when the server rejects a Project opened by `onLocalProjectCreated`,
+   * just before it is removed, while it is still the selection. Removing it
+   * clears the selection, and the page may select another Project at once.
+   */
+  onLocalProjectRejected?: (result: CreateSyncedProjectInSpaceResult) => void;
+}
+
+interface CreateSyncedProjectInSpaceResult {
+  projectId: string;
+  spaceId: string;
+}
+
+export const resolveServerBackedSpaceId = async (
+  projectStore: ProjectRuntimeStore,
+  spaceId: string
+): Promise<string> => {
+  if (!spaceId.startsWith('legacy_')) {
+    return spaceId;
+  }
+
+  const legacySpace = await proxyEnsureLegacySpace();
+  const spaceStore = useSpaceStore.getState();
+  spaceStore.upsertSpaces([legacySpace], legacySpace.id);
+
+  Object.values(projectStore.projects).forEach((project) => {
+    if (
+      !project.spaceId ||
+      project.spaceId === spaceId ||
+      project.spaceId.startsWith('legacy_')
+    ) {
+      projectStore.setProjectSpace(project.id, legacySpace.id);
+    }
+  });
+
+  if (spaceId !== legacySpace.id) {
+    spaceStore.deleteSpace(spaceId);
+  }
+
+  return legacySpace.id;
+};
+
+export const createSyncedProjectInSpace = async ({
+  projectId: requestedProjectId,
+  expectedAccountKey,
+  signal,
+  projectStore,
+  spaceId,
+  name = 'new project',
+  description,
+  mode,
+  workdirMode,
+  metadata,
+  setActive = true,
+  onLocalProjectCreated,
+  onLocalProjectRejected,
+}: CreateSyncedProjectInSpaceInput): Promise<CreateSyncedProjectInSpaceResult> => {
+  // Reject legacy Spaces before `resolveServerBackedSpaceId` runs any of its
+  // ensure/remap side effects. A bare `legacy_` id is always legacy; otherwise
+  // consult the loaded Space metadata.
+  const requestedSpace = useSpaceStore.getState().getSpaceById(spaceId);
+  if (
+    spaceId.startsWith('legacy_') ||
+    (requestedSpace && isLegacySpace(requestedSpace))
+  ) {
+    throw new LegacySpaceProjectError();
+  }
+
+  const resolvedSpaceId = await resolveServerBackedSpaceId(
+    projectStore,
+    spaceId
+  );
+  const projectId = requestedProjectId ?? generateUniqueId();
+  const projectMetadata = {
+    ...metadata,
+    serverSynced: true,
+  };
+
+  const createServerProject = async () => {
+    await proxyCreateSpaceProject(
+      resolvedSpaceId,
+      {
+        id: projectId,
+        name,
+        description,
+        mode,
+        workdir_mode: workdirMode,
+        metadata: projectMetadata,
+      },
+      expectedAccountKey ? { expectedAccountKey, signal } : undefined
+    );
+
+    if (
+      expectedAccountKey &&
+      expectedAccountKey !== getAccountEnvironmentKey(getAuthStore())
+    ) {
+      throw new Error('Session account changed');
+    }
+  };
+
+  const createLocalProject = () =>
+    projectStore.createProject(
+      name,
+      description,
+      projectId,
+      undefined,
+      undefined,
+      setActive,
+      {
+        spaceId: resolvedSpaceId,
+        mode,
+        workdirMode,
+        metadata: projectMetadata,
+      }
+    );
+
+  if (!onLocalProjectCreated) {
+    await createServerProject();
+    return { projectId: createLocalProject(), spaceId: resolvedSpaceId };
+  }
+
+  const localProjectId = createLocalProject();
+  const result = { projectId: localProjectId, spaceId: resolvedSpaceId };
+  onLocalProjectCreated(result);
+  try {
+    await createServerProject();
+  } catch (error) {
+    // Nothing has started in the Project yet; the server never accepted it.
+    onLocalProjectRejected?.(result);
+    projectStore.removeProject(localProjectId);
+    throw error;
+  }
+  return result;
+};

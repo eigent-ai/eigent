@@ -16,135 +16,123 @@ import { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
-import { FloatingAction } from './FloatingAction';
-import { UserQueryGroup } from './UserQueryGroup';
+import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
+import { partitionLegacyMessageEvidence } from './EventTimeline/legacyReplyEvidence';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
+import {
+  ModelChangeDivider,
+  type ResolvedRunModel,
+} from './TimelineModes/ModelChangeDivider';
+import { type QueryGroup, UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   chatId: string;
   chatStore: VanillaChatStore;
+  taskId?: string;
+  /** The last known model of an earlier Task in this Session. */
+  previousModel?: ResolvedRunModel | null;
+  /** The model this Task's Run ran on, when the Run read reported one. */
+  model?: ResolvedRunModel | null;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
-  // onPauseResume: () => void;  // Commented out - temporary not needed
-  onSkip: () => void;
-  isPauseResumeLoading: boolean;
 }
 
 export const ProjectSection = React.forwardRef<
   HTMLDivElement,
   ProjectSectionProps
->(
-  (
-    {
-      chatId,
-      chatStore,
-      activeQueryId,
-      onQueryActive,
-      // onPauseResume,  // Commented out - temporary not needed
-      onSkip,
-      isPauseResumeLoading,
-    },
-    ref
-  ) => {
-    // Subscribe to store changes with throttling to prevent excessive re-renders
-    const [chatState, setChatState] = React.useState(() =>
-      chatStore.getState()
-    );
+>((props, ref) => {
+  const { chatId, chatStore, taskId, activeQueryId, onQueryActive } = props;
+  // Subscribe to store changes with throttling to prevent excessive re-renders
+  const [chatState, setChatState] = React.useState(() => chatStore.getState());
 
-    React.useEffect(() => {
-      let timeoutId: NodeJS.Timeout | null = null;
-      let latestState: any = null;
+  React.useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    let latestState: any = null;
 
-      const unsubscribe = chatStore.subscribe((state) => {
-        latestState = state;
+    const unsubscribe = chatStore.subscribe((state) => {
+      latestState = state;
 
-        // Throttle updates to max once per 100ms
-        if (!timeoutId) {
-          timeoutId = setTimeout(() => {
-            if (latestState) {
-              setChatState(latestState);
-            }
-            timeoutId = null;
-          }, 100);
-        }
-      });
-
-      return () => {
-        unsubscribe();
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          // Apply final state on cleanup
+      // Throttle updates to max once per 100ms
+      if (!timeoutId) {
+        timeoutId = setTimeout(() => {
           if (latestState) {
             setChatState(latestState);
           }
+          timeoutId = null;
+        }, 100);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        // Apply final state on cleanup
+        if (latestState) {
+          setChatState(latestState);
         }
-      };
-    }, [chatStore]);
+      }
+    };
+  }, [chatStore]);
 
-    const activeTaskId = chatState.activeTaskId;
-    const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
+  const activeTaskId = taskId ?? chatState.activeTaskId;
+  const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
-    const messages = React.useMemo(() => {
-      return task?.messages || [];
-    }, [task?.messages]);
+  const messages = React.useMemo(() => {
+    return partitionLegacyMessageEvidence(task?.messages || []);
+  }, [task?.messages]);
 
-    // Memoize grouping to prevent re-creating objects on every render
-    const queryGroups = React.useMemo(() => {
-      return groupMessagesByQuery(messages);
-    }, [messages]);
-    if (!activeTaskId || !task) {
-      return null;
-    }
-
-    return (
-      <motion.div
-        ref={ref}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        transition={{ duration: 0.3 }}
-        className="relative mb-8"
-      >
-        {/* User Query Groups */}
-        <div className="space-y-0">
-          {queryGroups.map((group, index) => (
-            <UserQueryGroup
-              key={`${chatId}-${group.queryId}`}
-              chatId={chatId}
-              chatStore={chatStore}
-              queryGroup={group}
-              isActive={activeQueryId === group.queryId}
-              onQueryActive={onQueryActive}
-              index={index}
-            />
-          ))}
-        </div>
-
-        {/* Floating Action Button - positioned at project level */}
-        {activeTaskId && (
-          <FloatingAction
-            status={task.status}
-            // onPause={onPauseResume}  // Commented out - temporary not needed
-            // onResume={onPauseResume}  // Commented out - temporary not needed
-            onSkip={onSkip}
-            loading={isPauseResumeLoading}
-          />
-        )}
-      </motion.div>
-    );
+  // Memoize grouping to prevent re-creating objects on every render
+  const queryGroups = React.useMemo(() => {
+    return groupMessagesByQuery(messages.messages);
+  }, [messages]);
+  if (!activeTaskId || !task) {
+    return null;
   }
-);
+
+  return (
+    <motion.div
+      ref={ref}
+      data-turn-id={activeTaskId}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3 }}
+      className="relative mb-8"
+    >
+      <ModelChangeDivider
+        className="mb-3"
+        previous={props.previousModel}
+        current={props.model}
+      />
+      {/* User Query Groups */}
+      <div className="space-y-3">
+        {queryGroups.map((group, index) => (
+          <UserQueryGroup
+            key={`${chatId}-${group.queryId}`}
+            chatId={chatId}
+            chatStore={chatStore}
+            queryGroup={group}
+            isActive={activeQueryId === group.queryId}
+            onQueryActive={onQueryActive}
+            onEditUserMessage={props.onEditUserMessage}
+            index={index}
+            taskId={activeTaskId}
+          />
+        ))}
+      </div>
+      <HistoryEvidence entries={messages.evidence} />
+    </motion.div>
+  );
+});
 
 // Add display name for better debugging
 ProjectSection.displayName = 'ProjectSection';
 
 // Helper function to group messages by query cycles
-function groupMessagesByQuery(messages: any[]) {
-  const groups: Array<{
-    queryId: string;
-    userMessage: any;
-    taskMessage?: any;
-    otherMessages: any[];
-  }> = [];
+export function groupMessagesByQuery(messages: readonly any[]): QueryGroup[] {
+  const groups: QueryGroup[] = [];
 
   let currentGroup: any = null;
 
@@ -153,6 +141,36 @@ function groupMessagesByQuery(messages: any[]) {
 
   messages.forEach((message, index) => {
     if (message.role === 'user') {
+      const previousMessage = messages[index - 1];
+
+      const replyId = message.interactionResponseTo;
+      const askGroup = replyId
+        ? [...groups, ...(currentGroup ? [currentGroup] : [])].find((group) =>
+            group.otherMessages.some(
+              (candidate: Message) =>
+                candidate.step === AgentStep.ASK &&
+                candidate.interaction?.interaction_id === replyId
+            )
+          )
+        : previousMessage?.role === 'agent' &&
+            previousMessage.step === AgentStep.ASK
+          ? currentGroup
+          : undefined;
+      const ask = replyId
+        ? askGroup?.otherMessages.find(
+            (candidate: Message) =>
+              candidate.step === AgentStep.ASK &&
+              candidate.interaction?.interaction_id === replyId
+          )
+        : previousMessage;
+      if (askGroup && ask) {
+        askGroup.interactionResponses = {
+          ...askGroup.interactionResponses,
+          [ask.id]: message,
+        };
+        return;
+      }
+
       // Start a new query group
       if (currentGroup) {
         groups.push(currentGroup);
@@ -238,6 +256,15 @@ function groupMessagesByQuery(messages: any[]) {
   // Add the last group if it exists
   if (currentGroup) {
     groups.push(currentGroup);
+  }
+
+  // The work log belongs to the Run, not whichever user message happens to
+  // be last. Give it one stable owner so appending an ASK reply cannot move,
+  // duplicate, or temporarily hide the log. A separate Run gets its own
+  // groups and therefore its own owner.
+  const workLogOwner = groups.find((group) => group.userMessage);
+  if (workLogOwner) {
+    workLogOwner.ownsRunWorkLog = true;
   }
 
   return groups;

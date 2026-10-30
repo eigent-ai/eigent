@@ -12,32 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import i18n from '@/i18n';
-import { toast } from 'sonner';
+import { reportUsageIncident } from '@/store/usageNoticeStore';
 
 export function showCreditsToast() {
-  toast.dismiss();
-  toast(
-    <div>
-      {i18n.t('chat.you-ve-reached-the-limit-of-your-current-plan')}
-      <a
-        className="cursor-pointer underline"
-        onClick={() => (window.location.href = 'https://www.eigent.ai/pricing')}
-      >
-        {i18n.t('chat.upgrade')}
-      </a>{' '}
-      {i18n.t('chat.your-account-or-switch-to-a-self-hosted-model-and-api-in')}{' '}
-      <a
-        className="cursor-pointer underline"
-        onClick={() => (window.location.href = '#/setting/general')}
-      >
-        {i18n.t('chat.settings')}
-      </a>{' '}
-      .
-    </div>,
-    {
-      duration: Infinity,
-      closeButton: true,
-    }
-  );
+  reportUsageIncident({ reason: 'credits' });
 }

@@ -1,285 +1,469 @@
-# ChatBox Component Structure
+# ChatBox architecture and spacing
 
-This document explains the new Message ChatBox structure and the relationships between different components in the ChatBox folder.
+This document describes the current ChatBox structure, layout relationships,
+spacing rules, and the planned removal of the legacy ChatStore renderer. Paths
+are relative to `src/components/ChatBox/`.
 
-## Overview
+## Direction
 
-The ChatBox component has been restructured to support a multi-turn conversation system with improved message organization, task management, and user interaction patterns. The new structure separates concerns and provides better scalability for handling complex chat interactions.
+The target architecture is the event-native timeline plus the shared
+`BottomBox` composer. The older `ProjectChatContainer` → `ProjectSection` →
+`UserQueryGroup` renderer remains available behind the event timeline feature
+switch while migration is in progress.
 
-## Architecture
+New conversation presentation work should be added to `EventTimeline/`, not to
+the legacy `MessageItem/` routing path.
 
-### Core Structure
+## Current runtime structure
 
+```text
+ChatBox
+├── scroll viewport
+│   └── timeline column (Narrative: 600px max; Trajectory: full width)
+│       ├── event-native path
+│       │   └── EventNativeProjectTimeline
+│       │       └── TimelineModeRenderer
+│       │           ├── NarrativeTimeline (segments + CallRow)
+│       │           └── TrajectoryTimeline (trace rows)
+│       └── legacy fallback path
+│           └── ProjectChatContainer
+│               └── ProjectSection (one task/run)
+│                   ├── UserQueryGroup (one user turn)
+│                   │   ├── UserMessageCard
+│                   │   ├── PlanTaskBox or TaskCard
+│                   │   ├── TaskWorkLogAccordion
+│                   │   └── AgentMessageCard / NoticeCard / interaction UI
+│                   └── FloatingAction
+├── PlanTaskBox overlay portal (legacy only)
+└── BottomBox overlay (width: 100%; maximum width: 600px)
+    ├── QueuedBox
+    ├── floating UsageLimitBanner or PickerPanel
+    └── BoxMain
+        ├── BoxHeader
+        ├── ControlInputRouter
+        │   ├── InputBox
+        │   │   └── RichChatInput
+        │   └── approval / selection / form / feedback / blocked controls
+        └── BoxFooter
+            ├── project mode
+            ├── approval mode
+            └── thinking effort + model selector
 ```
+
+## Event-native components to keep
+
+```text
 ChatBox/
-├── index.tsx                    # Main ChatBox container and orchestration
-├── ProjectChatContainer.tsx     # Project-level chat container
-├── ProjectSection.tsx           # Individual project section
-├── UserQueryGroup.tsx           # User query and response grouping
-├── TaskCard.tsx                 # Task planning and execution display
-├── MessageCard.tsx              # Individual message rendering
-├── TypeCardSkeleton.tsx         # Loading skeleton for task planning
-├── NoticeCard.tsx               # Chain of thought display
-├── FloatingAction.tsx           # Floating action buttons
-├── TaskItem.tsx                 # Individual task item component
-├── TaskType.tsx                 # Task type indicator
-├── MarkDown.tsx                 # Markdown content rendering
-├── SummaryMarkDown.tsx          # Summary markdown rendering
-└── BottomBox/                   # Input and action components
-    ├── index.tsx               # BottomBox container
-    ├── InputBox.tsx            # Message input component
-    ├── BoxAction.tsx           # Action buttons
-    ├── BoxHeader.tsx           # Header with task info
-    └── QueuedBox.tsx           # Queued messages display
+├── index.tsx
+├── EventNativeProjectTimeline.tsx
+├── EventTimeline/
+│   ├── index.ts
+│   ├── EventTimeline.tsx
+│   ├── EventRenderer.tsx
+│   ├── EventRendererBoundary.tsx
+│   ├── DefaultEventRenderers.tsx
+│   ├── UnknownEventFallback.tsx
+│   ├── presentationPolicy.ts
+│   └── rendererRegistry.ts
+└── BottomBox/
+    ├── index.tsx
+    ├── types.ts
+    ├── useEventNativeHumanControl.ts
+    ├── ControlInput.tsx
+    ├── InputBox.tsx
+    ├── RichChatInput.tsx
+    ├── BoxHeader.tsx
+    ├── BoxFooter.tsx
+    ├── QueuedBox.tsx
+    ├── PickerPanel.tsx
+    ├── UsageLimitBanner.tsx
+    ├── ApprovalModeSelect.tsx
+    └── ModelAndThinkingEffortSelect.tsx
 ```
 
-## Component Relationships
-
-### 1. Main Orchestration (`index.tsx`)
-
-**Purpose**: The main ChatBox component that orchestrates the entire chat experience.
-
-**Key Responsibilities**:
-
-- Manages chat state and project store integration
-- Handles message sending and task queuing
-- Controls BottomBox state based on task status
-- Manages privacy settings and file attachments
-- Handles task confirmation and replay functionality
-
-**Relationships**:
-
-- **Uses**: `ProjectChatContainer`, `BottomBox`
-- **Manages**: Chat store state, project store state, message queuing
-- **Controls**: Input state, task status, privacy settings
-
-### 2. Project Chat Container (`ProjectChatContainer.tsx`)
-
-**Purpose**: Container for all chat stores within an active project.
-
-**Key Responsibilities**:
-
-- Renders multiple chat stores for the active project
-- Manages scroll behavior and auto-scrolling
-- Handles intersection observer for scroll-based animations
-- Provides scrollbar visibility management
-
-**Relationships**:
-
-- **Uses**: `ProjectSection`
-- **Manages**: Multiple chat stores, scroll behavior
-- **Provides**: Scroll container for all project chats
-
-### 3. Project Section (`ProjectSection.tsx`)
-
-**Purpose**: Individual project section that groups messages by query cycles.
-
-**Key Responsibilities**:
-
-- Groups messages by user queries and responses
-- Renders query groups in chronological order
-- Manages floating action buttons
-- Provides project-level task management
-
-**Relationships**:
-
-- **Uses**: `UserQueryGroup`, `FloatingAction`
-- **Manages**: Message grouping, query cycles
-- **Provides**: Project-level task controls
-
-### 4. User Query Group (`UserQueryGroup.tsx`)
-
-**Purpose**: Groups a user query with its associated task and responses.
-
-**Key Responsibilities**:
-
-- Renders user message and associated task card
-- Manages sticky task box behavior
-- Handles skeleton loading states
-- Renders assistant responses and file lists
-- Manages intersection observer for active query tracking
-
-**Relationships**:
-
-- **Uses**: `MessageCard`, `TaskCard`, `TypeCardSkeleton`, `NoticeCard`
-- **Manages**: Query grouping, sticky behavior, loading states
-- **Provides**: Complete query-response cycle display
-
-### 5. Task Card (`TaskCard.tsx`)
-
-**Purpose**: Displays task planning, execution status, and progress.
-
-**Key Responsibilities**:
-
-- Shows task summary and progress
-- Displays task list with status indicators
-- Manages task filtering and expansion
-- Handles task editing and management
-- Provides task state visualization
-
-**Relationships**:
-
-- **Uses**: `TaskItem`, `TaskType`, `TaskState`
-- **Manages**: Task info, task running status, progress
-- **Provides**: Task planning and execution interface
-
-### 6. Message Card (`MessageCard.tsx`)
-
-**Purpose**: Renders individual messages with typewriter effects and attachments.
-
-**Key Responsibilities**:
-
-- Displays message content with markdown rendering
-- Manages typewriter effect for agent messages
-- Handles file attachments display
-- Provides copy functionality for user messages
-- Tracks completed typewriter effects globally
-
-**Relationships**:
-
-- **Uses**: `MarkDown`
-- **Manages**: Message content, typewriter effects, attachments
-- **Provides**: Individual message rendering
-
-### 7. Loading and State Components
-
-#### TypeCardSkeleton (`TypeCardSkeleton.tsx`)
-
-- **Purpose**: Loading skeleton for task planning phase
-- **Shows**: Animated placeholders for task planning
-- **Used by**: `UserQueryGroup` during skeleton phase
-
-#### NoticeCard (`NoticeCard.tsx`)
-
-- **Purpose**: Displays chain of thought reasoning
-- **Shows**: Expandable list of reasoning steps
-- **Used by**: `UserQueryGroup` for CoT display
-
-#### FloatingAction (`FloatingAction.tsx`)
-
-- **Purpose**: Floating action buttons for task control
-- **Shows**: Pause, Resume, Skip buttons
-- **Used by**: `ProjectSection` for task control
-
-### 8. Task Management Components
-
-#### TaskItem (`TaskItem.tsx`)
-
-- **Purpose**: Individual task item with editing capabilities
-- **Features**: Inline editing, task status, delete functionality
-- **Used by**: `TaskCard` for task list display
-
-#### TaskType (`TaskType.tsx`)
-
-- **Purpose**: Visual indicator for task type
-- **Shows**: Task type icons and labels
-- **Used by**: `TaskCard`, `TypeCardSkeleton`
-
-### 9. BottomBox Components
-
-The BottomBox directory contains input and action components:
-
-#### BottomBox (`BottomBox/index.tsx`)
-
-- **Purpose**: Main input and action container
-- **Manages**: Different states (input, confirm, running, finished, splitting)
-- **Coordinates**: Input, actions, and queued messages
-
-#### InputBox (`BottomBox/InputBox.tsx`)
-
-- **Purpose**: Message input with file attachments
-- **Features**: Text input, file drag-drop, send functionality
-- **Used by**: BottomBox for message input
-
-#### QueuedBox (`BottomBox/QueuedBox.tsx`)
-
-- **Purpose**: Displays queued messages
-- **Features**: Message queuing, removal, reordering
-- **Used by**: BottomBox for queued message management
-
-#### BoxAction (`BottomBox/BoxAction.tsx`)
-
-- **Purpose**: Action buttons for task control
-- **Features**: Confirm, edit, replay, pause/resume, skip
-- **Used by**: BottomBox for task actions
-
-#### BoxHeader (`BottomBox/BoxHeader.tsx`)
-
-- **Purpose**: Header with task information
-- **Shows**: Task summary, progress, timing
-- **Used by**: BottomBox for task status display
-
-## Data Flow
-
-### Message Flow
-
-1. **User Input** → `BottomBox/InputBox` → `index.tsx` → Chat Store
-1. **Message Processing** → `index.tsx` → Backend API
-1. **Response Rendering** → Chat Store → `ProjectChatContainer` → `ProjectSection` → `UserQueryGroup` → `MessageCard`
-
-### Task Flow
-
-1. **Task Planning** → `UserQueryGroup` → `TypeCardSkeleton` (loading) → `TaskCard` (planning)
-1. **Task Execution** → `TaskCard` → Task status updates → `FloatingAction` (controls)
-1. **Task Completion** → `TaskCard` → Final results → `MessageCard` (end message)
-
-### State Management
-
-- **Chat Store**: Manages individual chat sessions and tasks
-- **Project Store**: Manages multiple chat stores per project
-- **Component State**: Local UI state (expanded/collapsed, active queries, etc.)
-
-## Key Features
-
-### Multi-Turn Conversations
-
-- Each user query creates a new query group
-- Task cards are sticky and follow the user query
-- Messages are grouped by query cycles for better organization
-
-### Task Management
-
-- Visual task planning with skeleton loading
-- Real-time task execution status
-- Task filtering and expansion
-- Inline task editing capabilities
-
-### Message Queuing
-
-- Messages can be queued when tasks are busy
-- Queued messages are displayed in a separate box
-- Automatic processing when current task completes
-
-### Responsive Design
-
-- Sticky task cards that adapt to scroll position
-- Smooth animations and transitions
-- Intersection observer for performance optimization
-
-### File Handling
-
-- File attachments in messages
-- File list display in end messages
-- Click-to-reveal functionality
-
-## Usage Patterns
-
-### Adding New Message Types
-
-1. Add message type handling in `UserQueryGroup.tsx`
-1. Create specific rendering logic in the appropriate component
-1. Update message grouping logic in `ProjectSection.tsx`
-
-### Extending Task Management
-
-1. Add new task states in `TaskCard.tsx`
-1. Update task filtering logic
-1. Add corresponding UI elements in `TaskItem.tsx`
-
-### Customizing Message Rendering
-
-1. Modify `MessageCard.tsx` for basic message display
-1. Update `MarkDown.tsx` for content rendering
-1. Add new attachment types as needed
-
-This structure provides a scalable foundation for complex chat interactions while maintaining clear separation of concerns and efficient state management.
+### Event-native data flow
+
+1. Durable project/run events hydrate the project event store.
+2. The chat projector converts transport events into semantic
+   `ChatProjectionNode` values.
+3. `presentChatSemanticEntities` folds lifecycle receipts into logical
+   entities (L1).
+4. `composeTimelineRuns` builds one `TimelineRunView` per Run.
+5. `EventNativeProjectTimeline` bounds the mounted history window.
+6. `TimelineModeRenderer` picks Narrative or Trajectory.
+7. `BottomBox` renders the event-derived human control or the standard input.
+
+### Normal timeline hierarchy
+
+When the event-native read path is enabled, Normal always renders from the
+semantic Run timeline. It keeps the legacy outer Run disclosure without
+reading presentation data from `ChatStore`, then selects its second layer from
+the Project session mode:
+
+```text
+Worked for / Working on tasks for
+├── Single Agent: flat chronological event list
+│   ├── event or reasoning text
+│   ├── permission or human-input receipt
+│   └── repeated toolkit/method event group
+│       └── individual tool-call accordions
+└── Workforce: one System/Agent accordion per Run-wide identity
+    ├── chronological event
+    ├── reasoning text
+    ├── permission or human-input receipt
+    └── repeated toolkit/method event group
+        └── individual tool-call accordions
+```
+
+Single Agent never renders a `Single Agent` or `System event` accordion.
+Workforce creates one stable accordion per agent, ordered by that actor's first
+visible event, and preserves chronological order inside each actor. Explicit
+agent IDs are authoritative; unique name and task correlations can join
+partial receipts, while ambiguous or unattributed rows stay in the one System
+accordion. Plans remain System events even when their tasks have assignees.
+
+Agent activation/deactivation frames provide Workforce identity metadata but
+are not child events. Their legacy `message` is the raw model input (for
+example the injected Lightweight Memory context), not assistant reasoning, and
+an unmatched activation can otherwise look permanently active after a stopped
+Run. Displayable reasoning comes from assistant narration messages.
+
+Human interactions are rendered at their request sequence. The semantic
+presentation layer folds an explicitly correlated resolution onto that request
+before Run composition, so answering a question updates the original row
+instead of moving it to the end or nesting it under a tool.
+
+## Timeline modes
+
+Two modes, selected in the Session settings menu and persisted in
+`pageTabStore`:
+
+| Mode         | Question it answers               | Work-band unit |
+| ------------ | --------------------------------- | -------------- |
+| `narrative`  | What did it do for me?            | Segment        |
+| `trajectory` | What exactly happened, and where? | Trace row      |
+
+Only the work band differs. The user query, plan, interrupts, artifacts, and
+final response render identically in both, so toggling never moves the row the
+reader was looking at.
+
+### The segment layer
+
+`lib/projector/chat/presentation/segmentTimeline.ts` folds trace rows into
+narrative segments. A segment is one piece of narration plus the calls made
+while carrying it out. Boundaries come only from data the projection already
+carries: new narration, an agent change, a task change, a toolkit change, or
+an interrupt. Wall-clock gaps are deliberately **not** a boundary.
+
+`TimelineSegment.source` is the seam for backend step events. Everything is
+`derived` today; backend `step.*` events will supply `authored` segments with
+real titles and no renderer change.
+
+### Narrative typography
+
+Primary text is reserved for language the agent produced itself. Anything the
+frontend derived from toolkit and method names stays subdued, so the reader can
+always tell narration from inference.
+
+| Content                                 | Token                                  |
+| --------------------------------------- | -------------------------------------- |
+| Narration, work-log progress, plan text | `text-ds-text-neutral-default-default` |
+| Derived segment label, calls, counts    | `text-ds-text-neutral-subtle-default`  |
+| Work-band header                        | `text-ds-text-neutral-muted-default`   |
+
+A segment with no narration promotes its derived label to primary, because it
+is then the only text there is.
+
+### Calls: one row, two executors
+
+`presentation/timelineCalls.ts` maps both a toolkit invocation and a human
+interaction onto one `TimelineCall`. They share a shape — a request, an
+executor, a response — so `TimelineModes/CallRow.tsx` renders both. Only the
+labels and title grammar differ:
+
+| Family      | Interaction types                                      | Labels               | Title            |
+| ----------- | ------------------------------------------------------ | -------------------- | ---------------- |
+| `ask`       | question, feedback, human_feedback, form, confirmation | Question / Answer    | `You · Answered` |
+| `authorize` | approval, credential_binding                           | Requested / Decision | `You · Allowed`  |
+| `choose`    | choice, selection, merge_conflict, diff_review         | Options / Selected   | `You · Selected` |
+
+An unrecognized future interaction type falls back to `ask`, which is the only
+family whose labels stay accurate for an unknown pair. **The timeline never
+renders an approve/reject control** — permission actions belong to `BottomBox`.
+A pending request shows as `Input required`; the resolved record shows the
+prompt and the human's answer through the same disclosure a tool call uses.
+
+### Fold policy
+
+The outer work log follows the Run by default: open while work is active or
+paused, folded when it ends. A user's toggle takes ownership of that Run's
+disclosure until it is unmounted, so later status receipts do not undo the
+choice. Live local toolkit rows come from the canonical Run stream; `/chat`
+toolkit mirrors remain available only for historical playback and the legacy
+renderer.
+
+Narrative follows the older event-log structure: the agent's words in place,
+then one row per call, led by the toolkit's icon. A fallback toolkit/method
+title reads in outcome tense (`Running` / `Ran` / `Failed to run` / `Stopped`);
+an authored title keeps its own wording. Each row's request/response detail
+stays folded; only a pending human call opens itself. A call with nothing to
+reveal is a plain line.
+Minimum and Moderate density count consecutive repeats of one toolkit method
+on a single `· N events` row, which opens when one of its calls fails. While
+that row is folded the running shimmer sits on its label; opening it hands the
+shimmer to the call that owns it, so exactly one indicator shows.
+
+### Pause and resume
+
+`paused` flows from `ChatBox` into both renderers. While paused, elapsed time
+holds, the shimmer and status spinners stop, and the header reads
+`Paused after`. The work log stays open, because a pause is not an ending.
+`usePausedOffsetMs` subtracts the paused span so the timer continues from where
+it stopped rather than jumping forward by the wait.
+
+### Waiting for the user
+
+Time a Run spends waiting for an approval or an answer is not task time. The
+backend leaves it out of `total_attempt_elapsed_ms`, and the projector records
+the waits it observes (`userWaitMs`, `userWaitStartedAt`), so the timer holds
+while the Run is `waiting_for_user` and continues from the same value after the
+answer, also in a Session reopened during the wait. This is independent of
+`paused`, which remains a user action: a pause taken before the wait still
+comes off the held value, and a pause during the wait is not taken off a
+second time after the answer.
+
+The legacy renderer, which ships by default, follows the same rule with the
+chat task's `elapsed` and `taskTime`. `src/service/legacyTaskTimer.ts` stops
+the clock while the projected Run is `waiting_for_user` and restarts it when
+the Run continues; the Run's own event stream updates that status in both
+renderers. Pause and resume keep the clock stopped during an open wait. A
+Session reopened during a wait shows the listed total until the Run continues,
+and a restored Run that ends settles on the time it worked rather than on the
+span of its loaded events.
+
+### Repeated tool-call presentation
+
+`EventTimeline/activityGrouping.ts` converts consecutive identical tool
+activity nodes into logical calls before rendering. It pairs lifecycle frames
+with a backend `toolCallId` when available and uses FIFO pairing for older
+events without correlation. The source projection remains immutable.
+
+Calls are grouped only when the run, agent, toolkit, and method match without
+another timeline node between them. A message, interaction, different tool,
+or Run change ends the group in Single Agent. Workforce applies the same rule
+inside each agent's own chronological list.
+
+- One logical call renders as an accordion with the safe Request then Response.
+- Two or more calls render through `RepeatedToolCallGroup.tsx` as
+  `Toolkit · method · count events`.
+- The repeated group is collapsed by default and expands to show each call's
+  individual status and safe display detail.
+- Aggregate running, completed, cancelled, and failed states appear on the
+  collapsed row.
+
+Normal tool rows do not show a status icon. Successful calls keep the neutral
+legacy text treatment; failed, timed-out, and unknown-outcome headers use the
+error text color plus an accessible failure label. Typed tool payloads reach
+Request/Response only through explicit backend `display_input` and
+`display_output` fields; the frontend never falls back to raw request/result
+data.
+
+- The group key is anchored to its first call so an open accordion stays open
+  when later calls join the same live burst.
+
+When the event-native read path is disabled, `TaskWorkLogAccordion.tsx` applies
+the same consecutive-call rule to action rows through
+`groupConsecutiveToolItems`. Its optional inner accordion uses the same
+`Toolkit · method · count events` summary. Every expanded child retains the
+original `Toolkit · method` name. Preparation/registration rows are
+intentionally excluded because that synthetic block can contain calls from
+multiple agents. Remove this legacy implementation together with
+`TaskWorkLogAccordion.tsx` at final cutover.
+
+## Main layout measurements
+
+| Relationship                                |                                                            Value |
+| ------------------------------------------- | ---------------------------------------------------------------: |
+| ChatBox shell                               |                      Full width and height; vertical flex layout |
+| Scroll viewport                             |                               Remaining height; 8px left padding |
+| Timeline column                             |          Normal/Summarised: 600px centered; Detailed: full width |
+| BottomBox overlay column                    | Full width; 600px maximum; 8px horizontal and 4px bottom padding |
+| Minimum space below timeline                |                                                            128px |
+| Dynamic space below timeline                |                                  BottomBox measured height + 8px |
+| Event-native row spacing                    |                                                             12px |
+| Second and later query/header gap           |                                                             44px |
+| Follow-up query scroll transition           |                                 800ms Framer Motion eased scroll |
+| Legacy query-group spacing                  |                                                             12px |
+| Legacy content spacing inside a query group |                                                             12px |
+| Separate legacy task/run sections           |                                               32px bottom margin |
+| Folded plan preview                         |                                                     200px height |
+| Expanded plan separation from BottomBox     |                                                              8px |
+| Footer compact threshold                    |                                                            460px |
+| Composer input height                       |                                      40px minimum; 200px maximum |
+| Legacy user-message left indentation        |                                                             64px |
+| Floating legacy controls bottom boundary    |                                                            128px |
+
+The timeline bottom padding is calculated as:
+
+```text
+maximum(128px, measured BottomBox height + 8px)
+```
+
+This keeps the final timeline item visible above queued messages, banners,
+headers, and other BottomBox states whose height changes at runtime.
+
+## Numeric spacing convention
+
+ChatBox spacing utilities must use numeric Tailwind values. Do not introduce
+named spacing utilities such as `p-sm`, `px-sm`, `gap-xs`, or `py-px`.
+
+| Utility value | Rendered size |
+| ------------: | ------------: |
+|           `0` |           0px |
+|         `0.5` |           2px |
+|           `1` |           4px |
+|         `1.5` |           6px |
+|           `2` |           8px |
+|         `2.5` |          10px |
+|           `3` |          12px |
+|           `4` |          16px |
+|           `5` |          20px |
+|           `6` |          24px |
+|           `8` |          32px |
+|          `10` |          40px |
+|          `16` |          64px |
+|          `32` |         128px |
+
+Use an explicit arbitrary numeric value when Tailwind has no matching scale
+entry, for example `py-[1px]`.
+
+### Timeline rhythm
+
+Both timeline paths currently use a real 12px sibling rhythm:
+
+- Event-native: `EventTimeline` uses `gap-3` between list items.
+- Legacy: `ProjectSection` uses `space-y-3` between query groups.
+- Legacy: `UserQueryGroup` uses `gap-3` between its direct content blocks.
+
+Do not add a gap to a wrapper that contains only one child. It has no visual
+effect and obscures which parent owns the relationship between components.
+
+## Radius by elevation
+
+Corner radius encodes how far a surface sits from the conversation, so sibling
+surfaces intentionally differ:
+
+| Radius        | Elevation                        | Examples                          |
+| ------------- | -------------------------------- | --------------------------------- |
+| `rounded-3xl` | Composer shell, floats over chat | `BottomBox`, control variants     |
+| `rounded-2xl` | Timeline card, sits in the flow  | `HumanInteractionCard`, banners   |
+| `rounded-xl`  | Nested block inside a card       | Argument detail, scope disclosure |
+| `rounded-lg`  | Inline row inside a block        | Receipts, option lists, skeletons |
+
+Match the surface's elevation rather than the radius of whatever is next to it.
+
+## Staged migration surfaces
+
+Parts of the event-native path are deliberately built ahead of their callers.
+They are not dead code, but nothing exercises them yet:
+
+- `EventTimeline/presentationPolicy.ts` is driven by the `detailLevel` prop.
+  `EventNativeProjectTimeline` has no caller that passes it, so `'detailed'` is
+  always in force until a detail-level control is wired up.
+- `VITE_CHATBOX_EVENT_BUS` gates the ChatBox event-native renderer and control
+  path and is unset in every checked-in env file, so the legacy conversation
+  renderer ships by default. It does **not** gate the Session-level Project
+  event runtime or the new SidePanel.
+
+### Project runtime cutover
+
+`ProjectEventRuntimeProvider` is mounted by the Session shell whenever a
+Project is active. The SidePanel uses that durable snapshot as its Run and
+activity source even while ChatBox still renders its legacy path. This runtime
+ownership is therefore an intentional default cutover, not a staged surface
+behind `VITE_CHATBOX_EVENT_BUS`.
+
+An HTTP 404 from Project replay is treated as an unsupported backend
+capability and stops automatic retry for that Project-store incarnation;
+manual retry remains available. Network and 5xx failures keep the bounded
+exponential retry path. The Files lane still watches the scoped legacy
+ChatStore task to know when resolver metadata may have changed, but Project
+filesystem results may only enrich durable artifact rows and never create Run
+ownership.
+
+Remove an entry here as soon as its caller lands.
+
+## Legacy cleanup inventory
+
+The following files belong to the legacy ChatStore conversation renderer. They
+can be removed after the event-native path is permanent and no fallback is
+required:
+
+```text
+ProjectChatContainer.tsx
+ProjectSection.tsx
+UserQueryGroup.tsx
+InterruptedRunBanner.tsx
+
+MessageItem/
+├── AgentMessageCard.tsx
+├── FloatingAction.tsx
+├── HumanInteractionCard.tsx
+├── NoticeCard.tsx
+├── PreparingToExecuteTasks.tsx
+├── TaskWorkLogAccordion.tsx
+└── UserMessageCard.tsx
+```
+
+The following appear unused by production code and should be verified before
+deletion:
+
+```text
+MessageItem/FeedbackCard.tsx
+MessageItem/SummaryMarkDown.tsx
+MessageItem/TaskCompletionCard.tsx
+TaskBox/TaskType.tsx
+```
+
+### Move or replace before deleting
+
+These components still have consumers outside the legacy ChatBox renderer:
+
+| Component                                | External dependency/action                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| `TaskBox/TaskCard.tsx`                   | Used by `Session/Workforce/FoldedPanel`; move to Workforce or replace              |
+| `TaskBox/TaskItem.tsx`                   | Child of `TaskCard`; move with it                                                  |
+| `TaskBox/PlanTaskBox/`                   | Used by `Session/Workforce/FoldedPanel`; move or replace with event-native plan UI |
+| `MessageItem/MarkDown.tsx`               | Used by `Folder`; move to a shared content component location                      |
+| `MessageItem/TokenUtils.tsx`             | Used by Session, HistorySidebar, and Dashboard; move to shared utilities           |
+| `MessageItem/UserMessageRichContent.tsx` | Used by PlanTaskBox; move with its remaining owner or make shared                  |
+
+### Final cutover changes
+
+After the dependencies above are resolved:
+
+1. Remove the `ProjectChatContainer` branch from `ChatBox/index.tsx`.
+2. Remove the legacy interruption-banner branches.
+3. Remove `PLAN_OVERLAY_SLOT_ID` and the legacy plan overlay portal.
+4. Make `EventNativeProjectTimeline` the only conversation renderer.
+5. Remove the legacy/event-native conditional state and handlers from
+   `ChatBox/index.tsx`.
+6. Retire `VITE_CHATBOX_EVENT_BUS` after event-native rendering is the default.
+7. Remove legacy projection normalization only after the event store no longer
+   relies on legacy `/chat` frames as an ingestion source.
+8. Delete or update the corresponding legacy tests.
+
+Do not remove the legacy event bridge merely because the legacy visual
+components are gone. The visible event-native timeline currently enables that
+bridge so legacy transport frames can still be normalized into the event store.
+
+## Extending ChatBox
+
+- Add a new semantic timeline node renderer in `EventTimeline/` and register it
+  in `rendererRegistry.ts`.
+- Add display-density or visibility rules in `presentationPolicy.ts`.
+- Add a new human-control state to `BottomBox/types.ts`, route it through
+  `ControlInputRouter`, and derive it in `useEventNativeHumanControl.ts`.
+- Keep transport and store logic outside presentation renderers.
+- Preserve the mode-aware timeline width (600px for Normal/Summarised, full
+  width for Detailed), the centered 600px composer, and 12px timeline rhythm.

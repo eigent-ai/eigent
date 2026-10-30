@@ -13,19 +13,31 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchPost } from '@/api/http';
+import { isDesktop } from '@/client/platform';
 import { useAuthStore } from '@/store/authStore';
+import {
+  SETTINGS_SECTIONS,
+  type SettingsSectionId,
+} from '@/store/settingsStore';
 import { lazy, useEffect, useReducer } from 'react';
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
+import { warnAuthClearedForEnvironment } from '@/lib/authEnvironment';
+import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
+import { LegacyRouteRedirect } from './LegacyRouteCompatibility';
+import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
-const Home = lazy(() => import('@/pages/Home'));
-const History = lazy(() => import('@/pages/History'));
+const Workspace = lazy(() => import('@/pages/Workspace'));
+const Settings = lazy(() => import('@/pages/Settings'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
+const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
+const SessionWindow = lazy(() => import('@/pages/SessionWindow'));
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
+const ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK = isDesktop();
 
 interface AuthState {
   loading: boolean;
@@ -58,6 +70,7 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 
 // Route guard: Check if user is logged in
 const ProtectedRoute = () => {
+  const location = useLocation();
   const [state, dispatch] = useReducer(authReducer, {
     loading: false,
     isAuthenticated: false,
@@ -82,7 +95,7 @@ const ProtectedRoute = () => {
 
       // If stored value exists and differs from current, logout
       if (storedProxyValue !== null && storedProxyValue !== currentProxyValue) {
-        console.warn('VITE_USE_LOCAL_PROXY value changed, logging out user');
+        warnAuthClearedForEnvironment(['local']);
         logout();
         dispatch({ type: 'LOGOUT' });
         return;
@@ -120,34 +133,105 @@ const ProtectedRoute = () => {
     }
 
     dispatch({ type: 'INITIALIZE', payload: { isAuthenticated: !!token } });
-  }, [token, localProxyValue, logout, setAuth, setLocalProxyValue]);
+  }, [
+    token,
+    localProxyValue,
+    logout,
+    setAuth,
+    setLocalProxyValue,
+    setInitState,
+    setIsFirstLaunch,
+    setModelType,
+  ]);
 
   if (state.loading || !state.initialized) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-x-0 border-t-0 border-b-2 border-blue-600"></div>
       </div>
     );
   }
-  return state.isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
+  if (state.isAuthenticated) {
+    return <Outlet />;
+  }
+
+  const redirect = `${location.pathname}${location.search}`;
+  return (
+    <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />
+  );
 };
+
+/** Keep legacy Settings links working while Home is the canonical surface. */
+function SettingsRouteRedirect() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const sectionFromUrl = searchParams.get('section');
+  const isLegacySettingsSection = SETTINGS_SECTIONS.includes(
+    sectionFromUrl as SettingsSectionId
+  );
+
+  if (sectionFromUrl !== 'spaces') {
+    searchParams.set('section', 'settings');
+    if (
+      sectionFromUrl &&
+      isLegacySettingsSection &&
+      sectionFromUrl !== 'settings'
+    ) {
+      searchParams.set('tab', sectionFromUrl);
+    }
+  }
+
+  return (
+    <Navigate
+      to={`/home?${searchParams.toString()}`}
+      replace
+      state={location.state}
+    />
+  );
+}
 
 // Main route configuration
 const AppRoutes = () => (
   <Routes>
     <Route path="/login" element={<Login />} />
     <Route path="/signup" element={<Signup />} />
+    {ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK ? (
+      <Route path="/remote-control/:sessionId" element={<RemoteControl />} />
+    ) : null}
     <Route element={<ProtectedRoute />}>
+      {/* A Session in its own window: no app shell, sidebar or top bar. */}
+      <Route path={SESSION_WINDOW_ROUTE} element={<SessionWindow />} />
       <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/history" element={<History />} />
+        <Route
+          element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
+        >
+          <Route index element={null} />
+          <Route path="/home" element={<Settings />} />
+        </Route>
+        <Route path="/settings" element={<SettingsRouteRedirect />} />
+        <Route
+          path="/history"
+          element={<LegacyRouteRedirect kind="history" />}
+        />
+        <Route
+          path="/workspace-configuration"
+          element={<LegacyRouteRedirect kind="workspace-configuration" />}
+        />
+        <Route
+          path="/workspace-bundles/install"
+          element={<LegacyRouteRedirect kind="workspace-bundle-install" />}
+        />
+        <Route
+          path="/agent-plugins/import"
+          element={<LegacyRouteRedirect kind="agent-plugin-import" />}
+        />
         <Route
           path="/setting"
-          element={<Navigate to="/history?tab=settings" replace />}
+          element={<Navigate to="/home?section=settings" replace />}
         />
         <Route
           path="/setting/*"
-          element={<Navigate to="/history?tab=settings" replace />}
+          element={<Navigate to="/home?section=settings" replace />}
         />
       </Route>
     </Route>

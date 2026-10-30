@@ -1,0 +1,439 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { fetchConnectedProviders, providerLabel } from '@/api/connectors';
+import { proxyFetchGet } from '@/api/http';
+import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
+import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import {
+  useIntegrationManagement,
+  type IntegrationItem,
+} from '@/hooks/useIntegrationManagement';
+import { shouldExposeBuiltInConnector } from '@/lib/builtInConnectorPolicy';
+import { integrationLeadingIconUrl } from '@/lib/connectorIcons';
+import {
+  RICH_CONNECTOR_STYLE_CLASSES,
+  RICH_SKILL_STYLE_CLASSES,
+  RICH_TAG_BASE_STYLE_CLASSES,
+  connectorNameToToken,
+  hashSkillLabel,
+} from '@/lib/richText';
+import { skillNameToDirName } from '@/lib/skillToolkit';
+import { cn } from '@/lib/utils';
+import { useServerCapabilityStore } from '@/store/serverCapabilityStore';
+import { openSettings } from '@/store/settingsStore';
+import { useSkillsStore } from '@/store/skillsStore';
+import { Check, Plus, Wrench } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+
+/**
+ * An item shown in a picker panel. `token` is the exact string inserted inline
+ * into the rich chat input when the item is selected (`#skill` / `@connector`).
+ */
+export interface PickerItem {
+  id: string;
+  name: string;
+  token: string;
+  /** Provider icon URL for hosted connector items. */
+  iconUrl?: string;
+}
+
+/** A labelled section within a picker (e.g. built-in vs. your own connectors). */
+export interface PickerGroup {
+  id: string;
+  /** Section heading; omit for a single ungrouped list (e.g. skills). */
+  label?: string;
+  items: PickerItem[];
+}
+
+interface PickerPanelProps {
+  title: string;
+  groups: PickerGroup[];
+  /** Current input text — an item is "added" when its token appears in it. */
+  inputValue: string;
+  onToggleItem: (item: PickerItem) => void;
+  /** Leading token tag for a row (`#skill` / `@connector`). */
+  renderTag: (item: PickerItem) => ReactNode;
+  /** Leading logo/icon for a row, shown before the item name. Omit for no logo. */
+  renderLogo?: (item: PickerItem) => ReactNode;
+  loading?: boolean;
+  emptyLabel: string;
+  emptyActionLabel: string;
+  onEmptyAction: () => void;
+}
+
+/**
+ * Floating list panel shown above BoxMain in the BottomBox shell. Selecting an
+ * item inserts its token inline into the input; selecting an added item removes
+ * it. Purely presentational — the trigger and open state live in BottomBox.
+ */
+export function PickerPanel({
+  title,
+  groups,
+  inputValue,
+  onToggleItem,
+  renderTag,
+  renderLogo,
+  loading = false,
+  emptyLabel,
+  emptyActionLabel,
+  onEmptyAction,
+}: PickerPanelProps) {
+  const nonEmptyGroups = groups.filter((g) => g.items.length > 0);
+  const totalItems = nonEmptyGroups.reduce((n, g) => n + g.items.length, 0);
+
+  return (
+    <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default">
+      {/* Header */}
+      <div className="flex items-center gap-1 px-3 pt-2 pb-1">
+        <span className="text-ds-text-meta font-bold text-ds-ink-muted-default">
+          {title}
+        </span>
+        {totalItems > 0 && (
+          <span className="text-ds-text-meta font-bold text-ds-ink-muted-default">
+            {totalItems}
+          </span>
+        )}
+      </div>
+
+      {/* List: max-h-[240px] caps the panel's scrollable area */}
+      <div className="scrollbar-always-visible flex max-h-[240px] flex-col gap-0.5 overflow-y-auto p-1">
+        {loading ? (
+          <>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-8 w-full animate-pulse rounded-lg bg-ds-neutral-strong-default"
+              />
+            ))}
+          </>
+        ) : totalItems === 0 ? (
+          <div className="flex w-full items-center justify-between gap-2 px-2 py-2">
+            <span className="text-ds-text-meta font-normal text-ds-ink-muted-default">
+              {emptyLabel}
+            </span>
+            <Button
+              variant="ghost"
+              size="xs"
+              buttonContent="text"
+              onClick={onEmptyAction}
+            >
+              {emptyActionLabel}
+            </Button>
+          </div>
+        ) : (
+          nonEmptyGroups.map((group) => (
+            <Fragment key={group.id}>
+              {group.label && (
+                <span className="block px-2 pt-1.5 pb-0.5 text-ds-text-meta font-bold text-ds-ink-muted-default">
+                  {group.label}
+                </span>
+              )}
+              {group.items.map((item) => (
+                <PickerPanelItem
+                  key={item.id}
+                  item={item}
+                  tag={renderTag(item)}
+                  logo={renderLogo?.(item)}
+                  added={inputValue.includes(item.token)}
+                  onToggle={() => onToggleItem(item)}
+                />
+              ))}
+            </Fragment>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface PickerPanelItemProps {
+  item: PickerItem;
+  tag: ReactNode;
+  logo?: ReactNode;
+  added: boolean;
+  onToggle: () => void;
+}
+
+function PickerPanelItem({
+  item,
+  tag,
+  logo,
+  added,
+  onToggle,
+}: PickerPanelItemProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={added}
+      className="group flex w-full items-center gap-2 rounded-xl border-0 border-x-0 border-y-0 bg-ds-neutral-subtle-default px-2 py-1.5 text-left transition-colors hover:bg-ds-neutral-default-default"
+      onClick={onToggle}
+    >
+      {logo && (
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+          {logo}
+        </span>
+      )}
+      <span className="min-w-0 flex-1 overflow-hidden text-ds-text-base font-medium text-ellipsis whitespace-nowrap text-ds-ink-default-default">
+        {item.name}
+      </span>
+      <span className="max-w-[45%] shrink-0 overflow-hidden whitespace-nowrap">
+        {tag}
+      </span>
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+        {added ? (
+          <DsIcon
+            icon={Check}
+            className="text-ds-icon-success-default-default"
+          />
+        ) : (
+          <DsIcon
+            icon={Plus}
+            className="text-ds-ink-muted-default opacity-0 transition-opacity group-hover:opacity-100"
+          />
+        )}
+      </span>
+    </button>
+  );
+}
+
+interface WiredPickerPanelProps {
+  inputValue: string;
+  onToggleItem: (item: PickerItem) => void;
+}
+
+/** Built-in integrations excluded from the MCP connector list (mirrors settings). */
+const EXCLUDED_BUILTIN_CONNECTORS = ['Search', 'RAG'];
+
+/**
+ * Connected connectors only, matching the Connectors page sidebar: connected
+ * hosted connectors (when the Connector Gateway is enabled), connected built-in
+ * integrations (`/api/v1/config/info` + configs), and the user's enabled MCPs
+ * (`/api/v1/mcp/users`), shown as labelled sections.
+ */
+export function ConnectorPickerPanel({
+  inputValue,
+  onToggleItem,
+}: WiredPickerPanelProps) {
+  const { t } = useTranslation();
+  const [builtInItems, setBuiltInItems] = useState<IntegrationItem[]>([]);
+  const [openItems, setOpenItems] = useState<PickerItem[]>([]);
+  const [yourMcps, setYourMcps] = useState<PickerItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const capabilities = useServerCapabilityStore((state) => state.capabilities);
+  const capabilityStatus = useServerCapabilityStore((state) => state.status);
+  const fetchCapabilities = useServerCapabilityStore(
+    (state) => state.fetchCapabilities
+  );
+  const gatewayEnabled =
+    capabilities.features.connector_gateway.enabled === true;
+
+  // Reuse the Connectors page's connected-state rules (OAuth tokens, config
+  // groups, Google Search defaults) instead of duplicating them here.
+  const { installed } = useIntegrationManagement(builtInItems);
+
+  useEffect(() => {
+    void fetchCapabilities();
+  }, [fetchCapabilities]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([
+      proxyFetchGet('/api/v1/config/info'),
+      proxyFetchGet('/api/v1/mcp/users'),
+    ])
+      .then(([infoRes, usersRes]) => {
+        if (cancelled) return;
+        if (
+          infoRes.status === 'fulfilled' &&
+          infoRes.value &&
+          typeof infoRes.value === 'object'
+        ) {
+          setBuiltInItems(
+            Object.keys(infoRes.value)
+              .filter((key) => !EXCLUDED_BUILTIN_CONNECTORS.includes(key))
+              .map((key) => ({
+                key,
+                name: key,
+                desc: '',
+                env_vars: [],
+                onInstall: () => undefined,
+              }))
+          );
+        }
+        if (usersRes.status === 'fulfilled') {
+          const list = Array.isArray(usersRes.value)
+            ? usersRes.value
+            : (usersRes.value?.items ?? []);
+          setYourMcps(
+            list
+              .filter((item: { status?: number }) => Number(item.status) === 1)
+              .map((item: { id: number; mcp_name: string }) => ({
+                id: `user-${item.id}`,
+                name: item.mcp_name,
+                token: connectorNameToToken(item.mcp_name),
+              }))
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (capabilityStatus !== 'ready' || !gatewayEnabled) {
+      setOpenItems([]);
+      return;
+    }
+    let cancelled = false;
+    fetchConnectedProviders()
+      .then((providers) => {
+        if (cancelled) return;
+        setOpenItems(
+          providers.map((provider) => ({
+            id: `open-${provider.service}`,
+            name: providerLabel(provider),
+            token: connectorNameToToken(providerLabel(provider)),
+            iconUrl: provider.iconUrl || undefined,
+          }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setOpenItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [capabilityStatus, gatewayEnabled]);
+
+  const builtIn = useMemo(
+    () =>
+      builtInItems
+        .filter((item) =>
+          shouldExposeBuiltInConnector(item.key, gatewayEnabled)
+        )
+        .filter((item) => installed[item.key])
+        .map((item) => ({
+          id: `builtin-${item.key}`,
+          name: item.name,
+          token: connectorNameToToken(item.key),
+        })),
+    [builtInItems, gatewayEnabled, installed]
+  );
+
+  const groups: PickerGroup[] = [
+    { id: 'open', label: t('connectors.gateway-connectors'), items: openItems },
+    {
+      id: 'builtin',
+      label: t('setting.mcp-sidebar-built-in'),
+      items: builtIn,
+    },
+    { id: 'yours', label: t('setting.your-own-mcps'), items: yourMcps },
+  ];
+
+  return (
+    <PickerPanel
+      title={t('chat.input-attach-connectors')}
+      groups={groups}
+      inputValue={inputValue}
+      onToggleItem={onToggleItem}
+      renderTag={(item) => (
+        <span
+          className={cn(
+            RICH_TAG_BASE_STYLE_CLASSES,
+            RICH_CONNECTOR_STYLE_CLASSES
+          )}
+        >
+          {item.token}
+        </span>
+      )}
+      renderLogo={(item) => {
+        if (item.id.startsWith('open-')) {
+          return item.iconUrl ? (
+            <img src={item.iconUrl} alt="" className="h-4 w-4 object-contain" />
+          ) : (
+            <img src={ellipseIcon} alt="" className="h-3 w-3" />
+          );
+        }
+        if (!item.id.startsWith('builtin-')) {
+          return <DsIcon icon={Wrench} className="text-ds-ink-muted-default" />;
+        }
+        const iconUrl = integrationLeadingIconUrl(item.name);
+        return iconUrl ? (
+          <img src={iconUrl} alt="" className="h-4 w-4 object-contain" />
+        ) : (
+          <img src={ellipseIcon} alt="" className="h-3 w-3" />
+        );
+      }}
+      loading={loading}
+      emptyLabel={t('chat.no-connectors-added')}
+      emptyActionLabel={t('chat.input-attach-manage-connectors')}
+      onEmptyAction={() => openSettings('connectors')}
+    />
+  );
+}
+
+/** Lists the user's enabled skills from the skills store. */
+export function SkillPickerPanel({
+  inputValue,
+  onToggleItem,
+}: WiredPickerPanelProps) {
+  const { t } = useTranslation();
+  const skills = useSkillsStore((s) => s.skills);
+
+  const items = useMemo(
+    () =>
+      skills
+        .filter((s) => s.enabled)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          token: `#${s.skillDirName || skillNameToDirName(s.name)}`,
+        })),
+    [skills]
+  );
+
+  return (
+    <PickerPanel
+      title={t('chat.input-attach-skills')}
+      groups={[{ id: 'skills', items }]}
+      inputValue={inputValue}
+      onToggleItem={onToggleItem}
+      renderTag={(item) => {
+        const clsIdx =
+          hashSkillLabel(item.token) % RICH_SKILL_STYLE_CLASSES.length;
+        return (
+          <span
+            className={cn(
+              RICH_TAG_BASE_STYLE_CLASSES,
+              RICH_SKILL_STYLE_CLASSES[clsIdx]
+            )}
+          >
+            {item.token}
+          </span>
+        );
+      }}
+      emptyLabel={t('chat.no-skills-added')}
+      emptyActionLabel={t('chat.input-attach-manage-skills')}
+      onEmptyAction={() => openSettings('skills')}
+    />
+  );
+}

@@ -12,22 +12,35 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
+import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from camel.tasks import Task
 from camel.tasks.task import TaskState
 
-from app.model.chat import Chat, NewAgent
+from app.model.chat import AgentModelConfig, Chat, NewAgent
+from app.model.enums import DEFAULT_SUMMARY_PROMPT
+from app.run_journal import SQLiteRunJournal
 from app.service.chat_service import (
+    _activate_improve_admission,
+    _answer_simple_question,
+    _build_question_context,
+    _extract_stream_chunk_content,
+    _render_subtask_report,
+    _trim_in_process_history,
     add_sub_tasks,
     build_context_for_workforce,
+    check_conversation_history_length,
     collect_previous_task_context,
     construct_workforce,
     format_agent_description,
     format_task_context,
     install_mcp,
     new_agent_model,
+    normalize_summary_task,
     question_confirm,
     step_solve,
     summary_task,
@@ -40,9 +53,139 @@ from app.service.task import (
     ActionEndData,
     ActionImproveData,
     ActionInstallMcpData,
+    ActionStopData,
     ImprovePayload,
     TaskLock,
 )
+
+
+class _StreamMsg:
+    def __init__(self, content="", reasoning_content=""):
+        self.content = content
+        self.reasoning_content = reasoning_content
+
+
+class _StreamChunk:
+    def __init__(self, msg=None, msgs=None):
+        self.msg = msg
+        self.msgs = msgs
+
+    def __str__(self):
+        return "msgs=[BaseMessage(role_name='System', reasoning_content='We')]"
+
+
+class _AgentStepResponse:
+    def __init__(self, content: str):
+        self.msg = None
+        self.msgs = [MagicMock(content=content)]
+
+
+def test_default_completion_prompt_requires_concrete_deliverables():
+    assert "entire final report" in DEFAULT_SUMMARY_PROMPT
+    assert "workspace-relative paths" in DEFAULT_SUMMARY_PROMPT
+    assert "Validation performed" in DEFAULT_SUMMARY_PROMPT
+    assert "one-line acknowledgement" in DEFAULT_SUMMARY_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_improve_admission_activates_once_and_deduplicates_retry():
+    task_lock = MagicMock()
+    task_lock.processed_improve_request_ids = set()
+    journal = MagicMock(spec=SQLiteRunJournal)
+    scheduler = MagicMock()
+    activation_order = []
+
+    async def _acquire_writer(**_kwargs):
+        activation_order.append("writer")
+
+    scheduler.wait_until_acquired = AsyncMock(side_effect=_acquire_writer)
+    coordinator = MagicMock()
+    coordinator.refresh_run_boundary_after_writer_acquired.side_effect = (
+        lambda **_kwargs: activation_order.append("boundary")
+    )
+    journal.activate_run_attempt.side_effect = (
+        lambda *_args, **_kwargs: activation_order.append("attempt")
+    )
+    item = ActionImproveData(
+        data=ImprovePayload(question="hello"),
+        request_id="request-1",
+        run_id="run-1",
+        attempt_id="attempt-1",
+    )
+
+    with (
+        patch(
+            "app.run_runtime.admission.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.run_runtime.admission.WorkspaceWriterScheduler",
+            return_value=scheduler,
+        ),
+        patch(
+            "app.run_runtime.admission.get_default_workspace_git_coordinator",
+            return_value=coordinator,
+        ),
+    ):
+        assert await _activate_improve_admission(
+            task_lock, item, project_id="project-1"
+        )
+        assert not await _activate_improve_admission(
+            task_lock, item, project_id="project-1"
+        )
+
+    scheduler.wait_until_acquired.assert_awaited_once_with(
+        run_id="run-1",
+        task_id="run-1",
+    )
+    coordinator.refresh_run_boundary_after_writer_acquired.assert_called_once_with(
+        run_id="run-1",
+        task_id="run-1",
+        attempt_id="attempt-1",
+    )
+    journal.activate_run_attempt.assert_called_once_with(
+        "attempt-1", expected_run_id="run-1"
+    )
+    assert activation_order == ["writer", "boundary", "attempt"]
+
+
+@pytest.mark.unit
+class TestExtractStreamChunkContent:
+    def test_extracts_single_message_content(self):
+        chunk = _StreamChunk(msg=_StreamMsg("<task>Clean desktop</task>"))
+
+        assert _extract_stream_chunk_content(chunk) == (
+            "<task>Clean desktop</task>"
+        )
+
+    def test_extracts_single_message_reasoning_content(self):
+        chunk = _StreamChunk(
+            msg=_StreamMsg(
+                reasoning_content="We need to organize the desktop."
+            )
+        )
+
+        assert (
+            _extract_stream_chunk_content(chunk)
+            == "We need to organize the desktop."
+        )
+
+    def test_extracts_message_list_content(self):
+        chunk = _StreamChunk(
+            msgs=[
+                _StreamMsg(reasoning_content="We need "),
+                _StreamMsg("<task>Group files</task>"),
+            ]
+        )
+
+        assert _extract_stream_chunk_content(chunk) == (
+            "We need <task>Group files</task>"
+        )
+
+    def test_ignores_metadata_only_chunk(self):
+        chunk = _StreamChunk()
+
+        assert _extract_stream_chunk_content(chunk) == ""
 
 
 @pytest.mark.unit
@@ -323,7 +466,6 @@ class TestBuildContextForWorkforce:
                 "content": "I will create a Python script for you",
             },
         ]
-        task_lock.last_task_result = "Script created successfully"
         task_lock.last_task_summary = "Python Script Creation"
 
         # Create mock Chat options
@@ -341,7 +483,6 @@ class TestBuildContextForWorkforce:
         """Test build_context_for_workforce with empty conversation history."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = []
-        task_lock.last_task_result = ""
         task_lock.last_task_summary = ""
 
         options = MagicMock()
@@ -365,7 +506,6 @@ class TestBuildContextForWorkforce:
                 "content": "Task completed successfully",
             },
         ]
-        task_lock.last_task_result = "Final result"
         task_lock.last_task_summary = "Task summary"
 
         options = MagicMock()
@@ -377,7 +517,7 @@ class TestBuildContextForWorkforce:
         assert "Full task context from previous task" in result
         assert "Task completed successfully" in result
 
-    def test_build_context_for_workforce_with_last_task_result(self, temp_dir):
+    def test_build_context_for_workforce_with_assistant_result(self, temp_dir):
         """Test build_context_for_workforce with assistant entries."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = [
@@ -386,7 +526,6 @@ class TestBuildContextForWorkforce:
                 "content": "Task completed with output.txt",
             },
         ]
-        task_lock.last_task_result = "Task completed with output.txt"
         task_lock.last_task_summary = "File creation task"
 
         options = MagicMock()
@@ -599,6 +738,246 @@ class TestChatServiceUtilities:
 
 
 @pytest.mark.unit
+class TestInProcessHistoryCompaction:
+    """`_trim_in_process_history` keeps the workforce loop alive for long
+    Projects without losing durable transcript on disk."""
+
+    def _make_task_lock(self, convo_entries=0, snapshot_entries=0):
+        lock = MagicMock(spec=[])
+        lock.conversation_history = [
+            {"role": "assistant", "content": f"turn {i} result"}
+            for i in range(convo_entries)
+        ]
+        lock.agent_memory_history = [
+            {
+                "agent_name": "worker",
+                "scope": "workforce_worker",
+                "task_id": f"t{i}",
+                "task_content": f"task {i}",
+                "task_result": f"result {i}",
+                "messages": [],
+            }
+            for i in range(snapshot_entries)
+        ]
+        lock.memory_summary = ""
+        return lock
+
+    def test_returns_zero_when_nothing_to_trim(self):
+        lock = self._make_task_lock(convo_entries=2, snapshot_entries=2)
+        assert _trim_in_process_history(lock, keep_recent=4) == 0
+        assert len(lock.conversation_history) == 2
+        assert len(lock.agent_memory_history) == 2
+        assert lock.memory_summary == ""
+
+    def test_drops_oldest_entries_and_records_marker(self):
+        lock = self._make_task_lock(convo_entries=10, snapshot_entries=10)
+        dropped = _trim_in_process_history(lock, keep_recent=4)
+        # 6 dropped from convo + 6 dropped from snapshots.
+        assert dropped == 12
+        assert len(lock.conversation_history) == 4
+        assert len(lock.agent_memory_history) == 4
+        # Tail preserved, head discarded.
+        assert lock.conversation_history[-1]["content"] == "turn 9 result"
+        assert lock.conversation_history[0]["content"] == "turn 6 result"
+        assert (
+            "[memory] Compacted 12 older in-process turn"
+            in lock.memory_summary
+        )
+        assert "~/.eigent/memory" in lock.memory_summary
+
+    def test_marker_not_duplicated_across_compactions(self):
+        lock = self._make_task_lock(convo_entries=10, snapshot_entries=10)
+        _trim_in_process_history(lock, keep_recent=4)
+        first_summary = lock.memory_summary
+        # Add more entries then compact again.
+        lock.conversation_history.extend(
+            [{"role": "assistant", "content": f"new {i}"} for i in range(6)]
+        )
+        _trim_in_process_history(lock, keep_recent=4)
+        # We append a marker each compaction (different count), but the
+        # earlier marker text is still there once -- no duplicate-for-identical.
+        assert lock.memory_summary.count("[memory] Compacted 12") == 1
+
+    def test_only_runs_when_both_lists_exceed_keep_recent(self):
+        # Only convo exceeds; snapshots do not -- compaction only trims convo.
+        lock = self._make_task_lock(convo_entries=10, snapshot_entries=2)
+        dropped = _trim_in_process_history(lock, keep_recent=4)
+        assert dropped == 6  # only from convo
+        assert len(lock.conversation_history) == 4
+        assert len(lock.agent_memory_history) == 2
+
+    def test_check_conversation_history_length_with_trimmed_state(self):
+        # After trimming, check_conversation_history_length should reflect the
+        # shorter total -- if not, the compaction didn't really happen.
+        lock = self._make_task_lock(convo_entries=10, snapshot_entries=0)
+        lock.conversation_history = [
+            {"role": "assistant", "content": "x" * 50_000} for _ in range(6)
+        ]
+        before_exceeded, before_total = check_conversation_history_length(
+            lock, max_length=200_000
+        )
+        assert before_exceeded is True
+        assert before_total > 200_000
+        _trim_in_process_history(lock, keep_recent=2)
+        after_exceeded, after_total = check_conversation_history_length(
+            lock, max_length=200_000
+        )
+        assert after_exceeded is False
+        assert after_total < before_total
+
+
+@pytest.mark.unit
+class TestPartialFailureRender:
+    """`_render_partial_failure_result` ships the captured subtask output
+    even when Workforce skipped the LLM summary because one subtask failed.
+    Previously the SSE end event got `task.result or ""` (often empty) and
+    the UI rendered nothing."""
+
+    def _subtask(self, *, state_name, content, result):
+        sub = MagicMock(spec=[])
+        sub.state = MagicMock(name=state_name)
+        sub.state.name = state_name
+        sub.content = content
+        sub.result = result
+        return sub
+
+    def _task(self, subtasks, result=""):
+        task = MagicMock(spec=[])
+        task.subtasks = subtasks
+        task.result = result
+        task.id = "task_partial"
+        return task
+
+    def test_mixed_success_and_failure_returns_per_subtask_report(self):
+        task = self._task(
+            [
+                self._subtask(
+                    state_name="DONE",
+                    content="Generate v2 CSV with different dates",
+                    result="Saved to mock_bank_transfers_v2.csv (10 rows)",
+                ),
+                self._subtask(
+                    state_name="FAILED",
+                    content="Run quality check on the CSV",
+                    result="",
+                ),
+            ]
+        )
+        out = _render_subtask_report(task, is_failure=True)
+        assert out.startswith("⚠️ Task partially failed")
+        # Both subtasks listed, with the right markers + content + result.
+        assert "✅ **Subtask 1 (DONE)**" in out
+        assert "Generate v2 CSV with different dates" in out
+        assert "Saved to mock_bank_transfers_v2.csv" in out
+        assert "❌ **Subtask 2 (FAILED)**" in out
+        assert "Run quality check on the CSV" in out
+        assert "_No output captured._" in out
+
+    def test_parent_task_result_appended_when_present(self):
+        task = self._task(
+            [
+                self._subtask(
+                    state_name="DONE",
+                    content="x",
+                    result="ok",
+                ),
+                self._subtask(
+                    state_name="FAILED",
+                    content="y",
+                    result="",
+                ),
+            ],
+            result="Overall: partial completion",
+        )
+        out = _render_subtask_report(task, is_failure=True)
+        assert "**Overall task result**" in out
+        assert "Overall: partial completion" in out
+
+    def test_no_subtasks_still_produces_banner(self):
+        task = self._task([], result="")
+        out = _render_subtask_report(task, is_failure=True)
+        assert "⚠️ Task partially failed" in out
+        # Output is non-empty so the SSE end event isn't blank -- this is
+        # the whole point: the UI must have *something* to render.
+        assert out.strip()
+
+    def test_long_subtask_content_truncates_in_header(self):
+        long_text = "x" * 500
+        task = self._task(
+            [
+                self._subtask(
+                    state_name="DONE",
+                    content=long_text,
+                    result="done",
+                ),
+                self._subtask(state_name="FAILED", content="y", result=""),
+            ]
+        )
+        out = _render_subtask_report(task, is_failure=True)
+        # 200-char cap + ellipsis
+        assert "x" * 200 + "…" in out
+        # Result body unaffected
+        assert "done" in out
+
+
+@pytest.mark.unit
+class TestSingleSubtaskEmptyResultFallback:
+    """Regression: workforce sometimes finishes a single-subtask task with
+    empty task.result. Previously the SSE end event got "" and the UI showed
+    no body text under the "Done 1" card. Now we fall back to the per-subtask
+    render so the user always sees what the subtask produced."""
+
+    import pytest as _pytest
+
+    @_pytest.mark.asyncio
+    async def test_empty_task_result_falls_back_to_subtask_render(self):
+        from app.service.chat_service import (
+            get_task_result_with_optional_summary,
+        )
+
+        subtask = MagicMock(spec=[])
+        subtask.state = MagicMock(name="DONE")
+        subtask.state.name = "DONE"
+        subtask.content = "Generate v2 CSV"
+        subtask.result = "Saved mock_bank_transfers_v2.csv (10 rows)"
+
+        task = MagicMock(spec=[])
+        task.subtasks = [subtask]
+        task.result = ""  # the bug condition
+        task.id = "task_empty_result"
+
+        options = MagicMock(spec=[])
+        out = await get_task_result_with_optional_summary(task, options)
+        # Fallback kicked in -- output is non-empty + contains subtask body.
+        assert out.strip(), "result must not be empty"
+        assert "Saved mock_bank_transfers_v2.csv" in out
+        # Successful run must not show the failure banner.
+        assert "Task partially failed" not in out
+
+    @_pytest.mark.asyncio
+    async def test_non_empty_task_result_is_unchanged(self):
+        from app.service.chat_service import (
+            get_task_result_with_optional_summary,
+        )
+
+        subtask = MagicMock(spec=[])
+        subtask.state = MagicMock(name="DONE")
+        subtask.state.name = "DONE"
+        subtask.content = "x"
+        subtask.result = "y"
+
+        task = MagicMock(spec=[])
+        task.subtasks = [subtask]
+        task.result = "Direct task result body"
+        task.id = "task_direct"
+
+        options = MagicMock(spec=[])
+        out = await get_task_result_with_optional_summary(task, options)
+        # The original task.result wins; no fallback inserted.
+        assert out == "Direct task result body"
+
+
+@pytest.mark.unit
 class TestChatServiceAgentOperations:
     """Test cases for agent-related chat service operations."""
 
@@ -626,6 +1005,82 @@ class TestChatServiceAgentOperations:
         # Should return True for complex tasks
         assert result is True
 
+    def test_question_context_falls_back_to_persisted_project_projection(self):
+        task_lock = SimpleNamespace(
+            conversation_history=[],
+            agent_memory_history=[],
+            memory_summary="",
+        )
+
+        context = _build_question_context(
+            task_lock,
+            "Assistant previously created scene.html for this Project.",
+        )
+
+        assert "previously created scene.html" in context
+
+    def test_question_context_prefers_current_process_history(self):
+        task_lock = SimpleNamespace(
+            conversation_history=[
+                {"role": "assistant", "content": "current response"}
+            ],
+            agent_memory_history=[],
+            memory_summary="",
+        )
+
+        context = _build_question_context(task_lock, "stale projection")
+
+        assert "current response" in context
+        assert "stale projection" not in context
+
+    @pytest.mark.asyncio
+    async def test_question_confirm_uses_persisted_project_context(
+        self, mock_camel_agent
+    ):
+        mock_camel_agent.step.return_value.msgs[0].content = "yes"
+        task_lock = SimpleNamespace(
+            conversation_history=[],
+            agent_memory_history=[],
+            memory_summary="",
+        )
+
+        assert await question_confirm(
+            mock_camel_agent,
+            "Can you improve its lighting?",
+            task_lock,
+            project_context="The previous Run created an ISS HTML scene.",
+        )
+
+        classifier_prompt = mock_camel_agent.step.call_args.args[0]
+        assert "previous Run created an ISS HTML scene" in classifier_prompt
+        assert "optimize, fix, or modify" in classifier_prompt
+
+    @pytest.mark.asyncio
+    async def test_simple_answer_consumes_streaming_model_response(self):
+        agent = MagicMock()
+        streaming_response = object()
+        agent.step.return_value = streaming_response
+        materialized = _AgentStepResponse("")
+
+        with (
+            patch(
+                "app.service.chat_service.is_streaming_response",
+                return_value=True,
+            ),
+            patch(
+                "app.service.chat_service.consume_response_content",
+                return_value=(materialized, "streamed direct answer"),
+            ) as consume,
+        ):
+            answer = await _answer_simple_question(
+                agent,
+                question="What changed?",
+                context="Previous Project context.\n",
+            )
+
+        assert answer == "streamed direct answer"
+        consume.assert_called_once_with(streaming_response)
+
     @pytest.mark.asyncio
     async def test_summary_task(self, mock_camel_agent):
         """Test summary_task creates proper task summary."""
@@ -647,6 +1102,67 @@ class TestChatServiceAgentOperations:
         mock_camel_agent.step.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_summary_task_sync_step_does_not_block_event_loop(self):
+        """Synchronous model steps should not freeze other async work."""
+        agent = MagicMock()
+
+        def slow_step(_prompt: str):
+            time.sleep(0.12)
+            return _AgentStepResponse(
+                "Blocking Step|The blocking step completed"
+            )
+
+        agent.step.side_effect = slow_step
+        task = Task(content="Summarize a blocking step", id="blocking")
+
+        started = time.perf_counter()
+
+        async def ticker():
+            await asyncio.sleep(0.01)
+            return time.perf_counter() - started
+
+        result, tick_elapsed = await asyncio.gather(
+            summary_task(agent, task),
+            ticker(),
+        )
+
+        assert result == "Blocking Step|The blocking step completed"
+        assert tick_elapsed < 0.08
+        agent.step.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_summary_task_consumes_sync_streaming_response(self):
+        """Codex subscription forces streaming responses even for helpers."""
+        from camel.agents.chat_agent import StreamingChatAgentResponse
+
+        agent = MagicMock()
+
+        def stream():
+            yield _StreamChunk(msg=_StreamMsg("Streamed Task|"))
+            yield _StreamChunk(msg=_StreamMsg("streamed summary"))
+
+        agent.step.return_value = StreamingChatAgentResponse(stream())
+        task = Task(content="Summarize a streamed step", id="streamed")
+
+        result = await summary_task(agent, task)
+
+        assert result == "Streamed Task|streamed summary"
+        agent.step.assert_called_once()
+
+    def test_normalize_summary_task_limits_name_and_summary(self):
+        """Test summary_task output is normalized before it reaches UI state."""
+        result = normalize_summary_task(
+            ("Long Task Name " * 20) + "|" + ("Long summary text " * 40),
+            "fallback",
+        )
+        name, summary = result.split("|", 1)
+
+        assert len(name) <= 80
+        assert len(summary) <= 240
+        assert name.endswith("...")
+        assert summary.endswith("...")
+
+    @pytest.mark.asyncio
     async def test_new_agent_model_creation(self, sample_chat_data):
         """Test new_agent_model creates agent with proper configuration."""
         options = Chat(**sample_chat_data)
@@ -656,6 +1172,11 @@ class TestChatServiceAgentOperations:
             tools=["search", "code"],
             mcp_tools=None,
             env_path=".env",
+            custom_model_config=AgentModelConfig(
+                model_platform="aws-bedrock-converse",
+                api_key="super-secret-api-key",
+                extra_params={"aws_secret_access_key": "super-secret-aws-key"},
+            ),
         )
 
         mock_agent = MagicMock()
@@ -666,10 +1187,27 @@ class TestChatServiceAgentOperations:
             patch(
                 "app.service.chat_service.agent_model", return_value=mock_agent
             ),
+            patch(
+                "app.agent.toolkit.human_toolkit.get_task_lock",
+                return_value=MagicMock(),
+            ),
+            patch("app.service.chat_service.logger") as mock_logger,
         ):
             result = await new_agent_model(agent_data, options)
 
             assert result is mock_agent
+            mock_logger.debug.assert_any_call(
+                "New agent data",
+                extra={
+                    "agent_name": "TestAgent",
+                    "tools": ["search", "code"],
+                    "has_mcp_tools": False,
+                    "has_custom_model_config": True,
+                },
+            )
+            logged_calls = repr(mock_logger.mock_calls)
+            assert "super-secret-api-key" not in logged_calls
+            assert "super-secret-aws-key" not in logged_calls
 
     @pytest.mark.asyncio
     async def test_construct_workforce(self, sample_chat_data, mock_task_lock):
@@ -688,7 +1226,7 @@ class TestChatServiceAgentOperations:
             patch(
                 "app.service.chat_service.Workforce",
                 return_value=mock_workforce,
-            ),
+            ) as mock_workforce_cls,
             patch("app.service.chat_service.browser_agent"),
             patch("app.service.chat_service.developer_agent"),
             patch("app.service.chat_service.document_agent"),
@@ -715,6 +1253,76 @@ class TestChatServiceAgentOperations:
 
             # Should add multiple agent workers
             assert mock_workforce.add_single_agent_worker.call_count >= 4
+            developer_description = (
+                mock_workforce.add_single_agent_worker.call_args_list[0]
+                .args[0]
+                .lower()
+            )
+            assert "deploy" not in developer_description
+            assert (
+                mock_workforce_cls.call_args.kwargs[
+                    "use_structured_output_handler"
+                ]
+                is False
+            )
+
+    @pytest.mark.asyncio
+    async def test_construct_workforce_uses_prompt_structured_output_for_subscription_auth(
+        self, sample_chat_data, mock_task_lock
+    ):
+        """Subscription auth must avoid strict native response_format schemas."""
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "api_key": "",
+                "auth_source": "codex_subscription",
+                "model_platform": "openai",
+                "model_type": "gpt-5.5",
+            }
+        )
+
+        mock_workforce = MagicMock()
+        mock_mcp_agent = MagicMock()
+
+        with (
+            patch("app.service.chat_service.agent_model") as mock_agent_model,
+            patch(
+                "app.service.chat_service.get_working_directory",
+                return_value="/tmp/test_workdir",
+            ),
+            patch(
+                "app.service.chat_service.Workforce",
+                return_value=mock_workforce,
+            ) as mock_workforce_cls,
+            patch("app.service.chat_service.browser_agent"),
+            patch("app.service.chat_service.developer_agent"),
+            patch("app.service.chat_service.document_agent"),
+            patch("app.service.chat_service.multi_modal_agent"),
+            patch(
+                "app.service.chat_service.mcp_agent",
+                return_value=mock_mcp_agent,
+            ),
+            patch(
+                "app.agent.toolkit.human_toolkit.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.service.chat_service.WorkforceMetricsCallback",
+                return_value=MagicMock(),
+            ),
+        ):
+            mock_agent_model.return_value = MagicMock()
+
+            workforce, mcp = await construct_workforce(options)
+
+            assert workforce is mock_workforce
+            assert mcp is mock_mcp_agent
+            assert (
+                mock_workforce_cls.call_args.kwargs[
+                    "use_structured_output_handler"
+                ]
+                is True
+            )
 
     @pytest.mark.asyncio
     async def test_install_mcp_success(self, mock_camel_agent):
@@ -751,7 +1359,6 @@ class TestChatServiceIntegration:
             {"role": "user", "content": "Create a Python script"},
             {"role": "assistant", "content": "Script created successfully"},
         ]
-        task_lock.last_task_result = "def hello(): print('Hello World')"
         task_lock.last_task_summary = "Python Hello World Script"
 
         # Create some files in working directory
@@ -918,29 +1525,60 @@ class TestChatServiceIntegration:
             assert len(responses) > 0
 
     @pytest.mark.asyncio
-    async def test_step_solve_with_disconnected_request(
-        self, sample_chat_data, mock_request, mock_task_lock
+    async def test_step_solve_ignores_transport_disconnect(
+        self, sample_chat_data, mock_task_lock
     ):
-        """Test step_solve handles disconnected request."""
+        """Execution lifecycle no longer polls the SSE request transport."""
         options = Chat(**sample_chat_data)
-        mock_request.is_disconnected = AsyncMock(return_value=True)
+        request = MagicMock()
+        request.state.hands = None
+        request.headers = {}
+        request.is_disconnected = AsyncMock(return_value=True)
+        mock_task_lock.get_queue = AsyncMock(return_value=ActionStopData())
+        mock_task_lock.conversation_history = []
+        mock_task_lock.agent_memory_history = []
+        mock_task_lock.memory_summary = ""
+        mock_task_lock.summary_generated = False
+        mock_task_lock.memory_service = None
+        mock_task_lock.run_context = None
+        mock_task_lock.question_agent = MagicMock()
 
         mock_workforce = MagicMock()
 
-        with patch(
-            "app.service.chat_service.construct_workforce",
-            return_value=(mock_workforce, MagicMock()),
+        with (
+            patch(
+                "app.service.chat_service.question_confirm",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "app.service.chat_service._answer_simple_question",
+                new=AsyncMock(return_value="still running"),
+            ),
+            patch(
+                "app.service.chat_service.construct_workforce",
+                return_value=(mock_workforce, MagicMock()),
+            ),
+            patch(
+                "app.service.chat_service.delete_task_lock",
+                new=AsyncMock(),
+            ) as mock_delete_task_lock,
+            patch(
+                "app.run_runtime.get_default_run_coordinator",
+                return_value=SimpleNamespace(
+                    complete_turn_with_receipt=AsyncMock(
+                        return_value=(True, None)
+                    )
+                ),
+            ),
         ):
-            # Should exit immediately if request is disconnected
             responses = []
-            async for response in step_solve(
-                options, mock_request, mock_task_lock
-            ):
+            async for response in step_solve(options, request, mock_task_lock):
                 responses.append(response)
 
-            # Should not have any responses due to immediate disconnection
-            assert len(responses) == 0
-            # Note: Workforce might not be created/stopped if request is immediately disconnected
+            assert len(responses) == 1
+            assert "still running" in responses[0]
+            request.is_disconnected.assert_not_awaited()
+            mock_delete_task_lock.assert_awaited_once_with(mock_task_lock.id)
 
     @pytest.mark.asyncio
     @pytest.mark.skip(reason="Gets Stuck for some reason.")
@@ -1045,7 +1683,6 @@ class TestChatServiceErrorCases:
         # Create task_lock without required attributes
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = None  # Missing attribute
-        task_lock.last_task_result = None  # Missing attribute
         task_lock.last_task_summary = None  # Missing attribute
 
         options = MagicMock()
@@ -1060,7 +1697,6 @@ class TestChatServiceErrorCases:
         """Test build_context_for_workforce returns empty for empty conversation."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = []
-        task_lock.last_task_result = "Test result"
         task_lock.last_task_summary = "Test summary"
 
         options = MagicMock()

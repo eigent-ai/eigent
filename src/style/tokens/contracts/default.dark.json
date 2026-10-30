@@ -1,0 +1,4 @@
+{
+  "$extends": "contracts.base",
+  "mode": "dark"
+}

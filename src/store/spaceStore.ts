@@ -1,0 +1,1971 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { generateUniqueId } from '@/lib';
+import {
+  getAccountEnvironmentKey,
+  getAuthEnvironmentKey,
+} from '@/lib/authEnvironment';
+import { parseServerTimestamp } from '@/lib/serverTimestamp';
+import {
+  getSessionNavLeadFromHistoryProject,
+  type SessionNavLeadPresentation,
+} from '@/lib/sessionNavLead';
+import {
+  isLegacySpace,
+  isLocalWorkspaceSpace,
+  isPlaceholderProjectName,
+  isPlaceholderSpaceNameStatic,
+  sessionHistoryDisplayName,
+} from '@/lib/spaceLabel';
+import { scheduleWorkspaceUnbind } from '@/lib/workspaceUnbind';
+import { fetchGroupedHistoryProjects } from '@/service/historyApi';
+import {
+  proxyEnsureLegacySpace,
+  proxyFetchSpaceProjects,
+  type ServerProject,
+} from '@/service/spaceApi';
+import type { ProjectGroup } from '@/types/history';
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { getAuthStore } from './authStore';
+import { usePageTabStore } from './pageTabStore';
+import type {
+  ProjectMetadata,
+  ProjectMode,
+  ProjectRuntimeStore,
+  ProjectWorkdirMode,
+} from './projectRuntimeStore';
+
+export const SPACE_SCHEMA_VERSION = 2;
+const SPACE_STORE_PERSIST_VERSION = 3;
+export const DEFAULT_LOCAL_USER_ID = 'local';
+const PROJECT_SYNC_TTL_MS = 5 * 60 * 1000;
+const PROJECT_PLACEHOLDER_RESYNC_MS = 10 * 1000;
+const BACKGROUND_PROJECT_SYNC_CONCURRENCY = 2;
+const PROJECT_DISPLAY_NAME_MAX = 80;
+const INITIAL_BLANK_SPACE_NAME = 'Untitled Space';
+const INITIAL_BLANK_SPACE_CREATED_FROM = 'initial_hydrate';
+
+export type SpaceSourceType = 'blank' | 'folder' | 'legacy';
+export type SpaceStatus = 'active' | 'disconnected' | 'archived';
+
+export interface Space {
+  id: string;
+  name: string;
+  description?: string;
+  userId?: string;
+  sourceType: SpaceSourceType;
+  rootPath?: string | null;
+  rootFingerprint?: Record<string, unknown> | null;
+  status: SpaceStatus;
+  schemaVersion: number;
+  createdAt: number;
+  updatedAt: number;
+  metadata?: {
+    legacy?: boolean;
+    sharedMemoryEnabled?: boolean;
+    preferredWorkdirMode?: 'worktree' | 'copy' | 'direct-write';
+    [key: string]: unknown;
+  };
+}
+
+export interface CreateSpaceInput {
+  id?: string;
+  name: string;
+  description?: string;
+  userId?: string | number | null;
+  sourceType?: SpaceSourceType;
+  rootPath?: string | null;
+  rootFingerprint?: Record<string, unknown> | null;
+  metadata?: Space['metadata'];
+  setActive?: boolean;
+}
+
+export type UpdateSpaceInput = Partial<
+  Pick<
+    Space,
+    | 'name'
+    | 'description'
+    | 'sourceType'
+    | 'rootPath'
+    | 'rootFingerprint'
+    | 'status'
+    | 'metadata'
+  >
+>;
+
+export interface SpaceProjectMeta {
+  id: string;
+  userId?: string;
+  spaceId: string;
+  name: string;
+  description?: string;
+  mode?: ProjectMode | null;
+  workdirMode?: ProjectWorkdirMode | null;
+  status: 'active' | 'archived';
+  createdAt: number;
+  updatedAt: number;
+  metadata?: ProjectMetadata;
+}
+
+interface UpsertProjectMetaOptions {
+  syncedSpaceId?: string;
+  replaceSpace?: boolean;
+  syncedAt?: number;
+}
+
+interface SpaceStore {
+  storageEnvironmentKey: string;
+  activeSpaceId: string | null;
+  spaces: Record<string, Space>;
+  lastVisitedProjectBySpace: Record<string, string>;
+  /** Active Space each account left at sign-out, reopened at sign-in. */
+  lastActiveSpaceIdByUser: Record<string, string>;
+  projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>>;
+  projectIdIndex: Record<string, string>;
+  projectsSyncedAt: Record<string, number>;
+  resetForUser: (userId?: string | number | null) => void;
+  ensureLegacySpace: (userId?: string | number | null) => string;
+  hydrateFromServer: (userId?: string | number | null) => Promise<void>;
+  syncProjectsFromServer: (
+    spaceId: string,
+    historyProjects?: ProjectGroup[] | null
+  ) => Promise<void>;
+  syncProjectsForSpaces: (spaceIds: string[]) => Promise<void>;
+  upsertProjectMetas: (
+    projects: SpaceProjectMeta[],
+    options?: UpsertProjectMetaOptions
+  ) => void;
+  updateProjectMeta: (
+    projectId: string,
+    updates: Partial<Omit<SpaceProjectMeta, 'id' | 'createdAt'>>
+  ) => void;
+  removeProjectMeta: (projectId: string) => void;
+  moveProjectMeta: (projectId: string, spaceId: string) => void;
+  getProjectsForSpace: (spaceId?: string | null) => SpaceProjectMeta[];
+  getProjectMeta: (projectId?: string | null) => SpaceProjectMeta | null;
+  shouldSyncProjects: (spaceId: string, ttlMs?: number) => boolean;
+  upsertSpaces: (spaces: Space[], activeSpaceId?: string | null) => void;
+  createSpace: (input: CreateSpaceInput) => string;
+  createSpaceOnServer: (input: CreateSpaceInput) => Promise<string>;
+  updateSpaceOnServer: (
+    spaceId: string,
+    input: UpdateSpaceInput
+  ) => Promise<void>;
+  deleteSpace: (spaceId: string) => void;
+  deleteSpaceOnServer: (spaceId: string) => Promise<void>;
+  cleanupInactiveEmptySpacesOnServer: () => Promise<void>;
+  updateSpace: (
+    spaceId: string,
+    updates: Partial<Omit<Space, 'id' | 'createdAt'>>
+  ) => void;
+  renameSpaceOnServer: (spaceId: string, name: string) => Promise<void>;
+  setActiveSpace: (spaceId: string) => void;
+  setLastVisitedProject: (spaceId: string, projectId: string) => void;
+  archiveSpace: (spaceId: string) => void;
+  archiveSpaceOnServer: (spaceId: string) => Promise<void>;
+  unarchiveSpaceOnServer: (spaceId: string) => Promise<void>;
+  promoteProjectOnServer: (spaceId: string, projectId: string) => Promise<void>;
+  refreshProjectOnServer: (
+    spaceId: string,
+    projectId: string,
+    force?: boolean
+  ) => Promise<void>;
+  relocateSpace: (
+    spaceId: string,
+    rootPath: string,
+    rootFingerprint?: Record<string, unknown> | null
+  ) => void;
+  relocateSpaceOnServer: (
+    spaceId: string,
+    rootPath: string,
+    force?: boolean
+  ) => Promise<void>;
+  getActiveSpace: () => Space | null;
+  getAllSpaces: () => Space[];
+  getSpaceById: (spaceId: string | null | undefined) => Space | null;
+}
+
+const emptyEnvironmentScopedSpaceState = (): Pick<
+  SpaceStore,
+  | 'storageEnvironmentKey'
+  | 'activeSpaceId'
+  | 'spaces'
+  | 'lastVisitedProjectBySpace'
+  | 'lastActiveSpaceIdByUser'
+  | 'projectsBySpaceId'
+  | 'projectIdIndex'
+  | 'projectsSyncedAt'
+> => ({
+  storageEnvironmentKey: getAuthEnvironmentKey(),
+  activeSpaceId: null,
+  spaces: {},
+  lastVisitedProjectBySpace: {},
+  lastActiveSpaceIdByUser: {},
+  projectsBySpaceId: {},
+  projectIdIndex: {},
+  projectsSyncedAt: {},
+});
+
+const spaceStoreEnvironmentMatches = (state: Partial<SpaceStore> | undefined) =>
+  state?.storageEnvironmentKey === getAuthEnvironmentKey();
+
+const canonicalUserId = (userId?: string | number | null) =>
+  userId === undefined || userId === null || userId === ''
+    ? DEFAULT_LOCAL_USER_ID
+    : String(userId);
+
+const spaceBelongsToUser = (space: Space, userId?: string | number | null) => {
+  const ownerId = canonicalUserId(userId);
+  if (!space.userId) return ownerId === DEFAULT_LOCAL_USER_ID;
+  return String(space.userId) === ownerId;
+};
+
+/**
+ * Scratch workspace roots belong to this machine and are intentionally kept
+ * in the persisted renderer store. Cloud Space responses can omit that local
+ * binding, so merging one must not make an already-confirmed root disappear.
+ */
+const mergeServerSpaceWithLocalBinding = (
+  serverSpace: Space,
+  localSpace: Space | undefined
+): Space => {
+  if (
+    !localSpace ||
+    serverSpace.sourceType !== 'blank' ||
+    localSpace.sourceType !== 'blank' ||
+    serverSpace.status !== 'active' ||
+    localSpace.status !== 'active' ||
+    (serverSpace.userId &&
+      localSpace.userId &&
+      String(serverSpace.userId) !== String(localSpace.userId))
+  ) {
+    return serverSpace;
+  }
+
+  const serverRoot = serverSpace.rootPath;
+  if (serverRoot) return serverSpace;
+
+  const localRoot = localSpace.rootPath;
+  const rememberedRoot =
+    typeof localSpace.metadata?.localWorkspaceRoot === 'string'
+      ? localSpace.metadata.localWorkspaceRoot
+      : '';
+  if (
+    !localRoot ||
+    rememberedRoot !== localRoot ||
+    localSpace.metadata?.localWorkspaceSource !== 'scratch_space'
+  ) {
+    return serverSpace;
+  }
+
+  return {
+    ...serverSpace,
+    rootPath: localRoot,
+    rootFingerprint:
+      serverSpace.rootFingerprint ?? localSpace.rootFingerprint ?? null,
+    metadata: {
+      ...serverSpace.metadata,
+      localWorkspaceRoot: localRoot,
+      localWorkspaceSource: 'scratch_space',
+    },
+  };
+};
+
+export const legacySpaceIdForUser = (userId?: string | number | null) =>
+  `legacy_${canonicalUserId(userId)}`;
+
+const timestampFromServer = (value?: string | null, fallback = Date.now()) => {
+  const timestamp = parseServerTimestamp(value);
+  return Number.isFinite(timestamp) ? timestamp : fallback;
+};
+
+export const projectMetaFromServer = (
+  project: ServerProject
+): SpaceProjectMeta => {
+  const createdAt = timestampFromServer(project.created_at);
+  const updatedAt = timestampFromServer(project.updated_at, createdAt);
+  return {
+    id: project.id,
+    userId: project.user_id,
+    spaceId: project.space_id,
+    name: project.name || 'Project',
+    description: project.description ?? undefined,
+    mode: project.mode ?? null,
+    workdirMode: project.workdir_mode ?? null,
+    status: project.status,
+    createdAt,
+    updatedAt: Math.max(createdAt, updatedAt),
+    metadata: (project.metadata ?? undefined) as ProjectMetadata | undefined,
+  };
+};
+
+const normalizedProjectName = (name?: string | null) =>
+  (name ?? '').trim().toLowerCase();
+
+const isAutoCreatedProjectMeta = (project: SpaceProjectMeta) =>
+  project.metadata?.serverSynced !== true &&
+  (project.metadata?.autoCreatedPlaceholder === true ||
+    (normalizedProjectName(project.name) === 'new project' &&
+      normalizedProjectName(project.description) === 'auto-created project'));
+
+const projectMetaWithDisplayName = (project: SpaceProjectMeta) => {
+  const historyDisplayName = sessionHistoryDisplayName(project);
+  return historyDisplayName
+    ? { ...project, name: historyDisplayName }
+    : project;
+};
+
+export const getVisibleProjectMetasForSpace = (
+  projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {},
+  spaceId?: string | null
+) =>
+  Object.values(spaceId ? (projectsBySpaceId[spaceId] ?? {}) : {})
+    .filter(
+      (project) =>
+        project.status !== 'archived' && !isAutoCreatedProjectMeta(project)
+    )
+    .map(projectMetaWithDisplayName)
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+const hasVisibleProjectsForSpace = (
+  projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {},
+  spaceId: string
+) => getVisibleProjectMetasForSpace(projectsBySpaceId, spaceId).length > 0;
+
+const DISPOSABLE_BLANK_SPACE_CREATED_FROM = new Set([
+  INITIAL_BLANK_SPACE_CREATED_FROM,
+  'home_hub_toolbar',
+  'top_bar',
+  'project_sidebar_space_selector',
+  'space_detail_sidebar',
+  'workspace_space_picker',
+]);
+
+/** Empty placeholder Spaces stay available to creation flows but never render as user Spaces. */
+export const isUnconfiguredPlaceholderSpace = (
+  space: Space | null | undefined,
+  projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {}
+) => {
+  if (!space || space.metadata?.legacy === true) return false;
+  if (space.status !== 'active' || space.sourceType !== 'blank') return false;
+  if (space.rootPath) return false;
+  if (!isPlaceholderSpaceNameStatic(space.name)) return false;
+  return !hasVisibleProjectsForSpace(projectsBySpaceId, space.id);
+};
+
+export const isDisposableBlankSpace = (
+  space: Space | null | undefined,
+  projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {}
+) => {
+  if (!space || !isUnconfiguredPlaceholderSpace(space, projectsBySpaceId)) {
+    return false;
+  }
+  if (space.metadata?.autoCreatedPlaceholder !== true) return false;
+
+  const createdFrom =
+    typeof space.metadata?.createdFrom === 'string'
+      ? space.metadata.createdFrom
+      : '';
+  return (
+    DISPOSABLE_BLANK_SPACE_CREATED_FROM.has(createdFrom) &&
+    isPlaceholderSpaceNameStatic(space.name)
+  );
+};
+
+const pruneInactiveDisposableBlankSpaces = (
+  spaces: Record<string, Space> = {},
+  projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {},
+  lastVisitedProjectBySpace: Record<string, string> = {},
+  preserveSpaceId?: string | null
+) => {
+  const nextSpaces = { ...spaces };
+  const nextLastVisitedProjectBySpace = { ...lastVisitedProjectBySpace };
+  const removedIds: string[] = [];
+  const canonicalLegacyId =
+    Object.values(spaces).find(
+      (space) =>
+        space.id !== 'legacy_local' &&
+        (space.metadata?.legacy === true || space.sourceType === 'legacy')
+    )?.id ?? null;
+
+  for (const [spaceId, space] of Object.entries(spaces)) {
+    if (spaceId === preserveSpaceId) continue;
+    const isEmptyLegacyLocalDrift =
+      spaceId === 'legacy_local' &&
+      Boolean(canonicalLegacyId) &&
+      !hasVisibleProjectsForSpace(projectsBySpaceId, spaceId);
+    if (
+      !isEmptyLegacyLocalDrift &&
+      !isDisposableBlankSpace(space, projectsBySpaceId)
+    ) {
+      continue;
+    }
+    delete nextSpaces[spaceId];
+    delete nextLastVisitedProjectBySpace[spaceId];
+    removedIds.push(spaceId);
+  }
+
+  return {
+    spaces: nextSpaces,
+    lastVisitedProjectBySpace: nextLastVisitedProjectBySpace,
+    removedIds,
+  };
+};
+
+const pruneAutoCreatedProjectMetas = (
+  projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {},
+  projectIdIndex: Record<string, string> = {}
+) => {
+  const nextBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {};
+  const nextIndex = { ...projectIdIndex };
+  let removedCount = 0;
+
+  for (const [spaceId, projects] of Object.entries(projectsBySpaceId)) {
+    const nextProjects: Record<string, SpaceProjectMeta> = {};
+    for (const [projectId, project] of Object.entries(projects)) {
+      if (isAutoCreatedProjectMeta(project)) {
+        delete nextIndex[projectId];
+        removedCount += 1;
+        continue;
+      }
+      nextProjects[projectId] = project;
+    }
+    nextBySpaceId[spaceId] = nextProjects;
+  }
+
+  return {
+    projectsBySpaceId: nextBySpaceId,
+    projectIdIndex: nextIndex,
+    removedCount,
+  };
+};
+
+const activeSpacesByRecentUpdate = (spaces: Record<string, Space>) =>
+  Object.values(spaces)
+    .filter((space) => space.status === 'active')
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+
+const pickHydratedActiveSpaceId = (
+  spaces: Record<string, Space>,
+  currentActiveSpaceId: string | null | undefined,
+  localLegacyId: string,
+  preferredSpaceId?: string | null
+) => {
+  if (preferredSpaceId && spaces[preferredSpaceId]?.status === 'active') {
+    return preferredSpaceId;
+  }
+
+  const currentActiveSpace = currentActiveSpaceId
+    ? spaces[currentActiveSpaceId]
+    : null;
+  if (
+    currentActiveSpace &&
+    currentActiveSpace.status === 'active' &&
+    currentActiveSpace.id !== localLegacyId
+  ) {
+    return currentActiveSpace.id;
+  }
+
+  const activeSpaces = activeSpacesByRecentUpdate(spaces);
+  return (
+    activeSpaces.find((space) => !isLegacySpace(space))?.id ??
+    activeSpaces[0]?.id ??
+    null
+  );
+};
+
+const truncateProjectDisplayName = (name: string) =>
+  name.length > PROJECT_DISPLAY_NAME_MAX
+    ? `${name.slice(0, PROJECT_DISPLAY_NAME_MAX - 3)}...`
+    : name;
+
+const projectDisplayNameFromHistory = (project: ProjectGroup) => {
+  const historyName = project.project_name?.trim();
+  if (
+    historyName &&
+    !isPlaceholderProjectName(historyName, project.project_id)
+  ) {
+    return truncateProjectDisplayName(historyName);
+  }
+  const prompt = project.last_prompt?.trim();
+  return prompt ? truncateProjectDisplayName(prompt) : null;
+};
+
+const projectBelongsToSpace = (project: ProjectGroup, spaceId: string) =>
+  project.space_id === spaceId ||
+  project.tasks?.some((task) => task.space_id === spaceId);
+
+const fetchHistoryProjectSidebarMetaMap = async (
+  spaceId: string,
+  historyProjects?: ProjectGroup[] | null
+) => {
+  const projects =
+    historyProjects === undefined
+      ? await fetchGroupedHistoryProjects({
+          includeTasks: false,
+          spaceId,
+        })
+      : historyProjects?.filter((project) =>
+          projectBelongsToSpace(project, spaceId)
+        );
+  const metaByProjectId = new Map<
+    string,
+    { displayName?: string; navLead: SessionNavLeadPresentation }
+  >();
+  for (const project of projects ?? []) {
+    const displayName = projectDisplayNameFromHistory(project) ?? undefined;
+    metaByProjectId.set(project.project_id, {
+      displayName,
+      navLead: getSessionNavLeadFromHistoryProject(project),
+    });
+  }
+  return metaByProjectId;
+};
+
+const withHistoryProjectNames = (
+  projects: ServerProject[],
+  historyMetaByProjectId: Map<
+    string,
+    { displayName?: string; navLead: SessionNavLeadPresentation }
+  >
+): ServerProject[] =>
+  projects.map((project) => {
+    const historyMeta = historyMetaByProjectId.get(project.id);
+    const historyName = historyMeta?.displayName;
+    if (
+      !historyName ||
+      project.metadata?.nameSource ||
+      !isPlaceholderProjectName(project.name, project.id)
+    ) {
+      return project;
+    }
+    return {
+      ...project,
+      name: historyName,
+      metadata: {
+        ...(project.metadata ?? {}),
+        historyDisplayName: historyName,
+      },
+    };
+  });
+
+const rehomeLegacyRuntimeProjects = (
+  projectStore: ProjectRuntimeStore,
+  fromLegacySpaceId: string,
+  toLegacySpaceId: string
+) => {
+  Object.values(projectStore.projects).forEach((project) => {
+    if (
+      !project.spaceId ||
+      project.spaceId === fromLegacySpaceId ||
+      project.spaceId.startsWith('legacy_')
+    ) {
+      projectStore.setProjectSpace(project.id, toLegacySpaceId);
+    }
+  });
+};
+
+let workspaceReconcileFailureCount = 0;
+const projectSyncInFlight = new Map<
+  string,
+  {
+    promise: Promise<void>;
+    context: {
+      accountKey: string;
+      spaceIds: Set<string>;
+      cancelled: boolean;
+    };
+  }
+>();
+const spaceHydrationInFlight = new Map<
+  string,
+  { promise: Promise<void>; deletedSpaceIds: Set<string> }
+>();
+
+const wait = (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const resolveHydrationOwnerId = async (
+  userId?: string | number | null
+): Promise<string> => {
+  if (userId !== undefined) {
+    return canonicalUserId(userId);
+  }
+  try {
+    const { getAuthStore } = await import('@/store/authStore');
+    return canonicalUserId(getAuthStore().user_id);
+  } catch {
+    return canonicalUserId(userId);
+  }
+};
+
+const unbindBrainWorkspaceMirror = async (spaceId: string) => {
+  const [{ unbindWorkspaceFromBrain }, { getAuthStore }] = await Promise.all([
+    import('@/service/workspaceApi'),
+    import('@/store/authStore'),
+  ]);
+  const email = getAuthStore().email;
+  const userId = getAuthStore().user_id;
+  if (!email) {
+    console.warn(
+      `[spaceStore] No email available; skipped Brain workspace unbind for ${spaceId}.`
+    );
+    return;
+  }
+  await unbindWorkspaceFromBrain(spaceId, email, userId);
+};
+
+const isHydrationStillCurrentForUser = async (ownerId: string) => {
+  try {
+    const { getAuthStore } = await import('@/store/authStore');
+    return canonicalUserId(getAuthStore().user_id) === ownerId;
+  } catch {
+    return true;
+  }
+};
+
+/**
+ * Hydration keeps a confirmed scratch root that the Cloud copy omits. Clearing
+ * that root used to send the Space back through the binding flow, so re-check
+ * each kept root with the backend instead: a deleted folder or a moved binding
+ * must still be repaired before the next task starts in that Space.
+ */
+const verifyKeptScratchRoots = async (
+  spaceIds: string[],
+  ownerId: string,
+  environmentKey: string
+) => {
+  const [scratchModule, installationModule] = await Promise.all([
+    import('@/lib/scratchSpaceWorkspace'),
+    import('@/store/installationStore'),
+  ]);
+  await installationModule.waitForBackendReadiness();
+  const { email, user_id: userId } = getAuthStore();
+  if (
+    !email ||
+    canonicalUserId(userId) !== ownerId ||
+    getAuthEnvironmentKey() !== environmentKey
+  )
+    return;
+  await Promise.all(
+    spaceIds.map((spaceId) =>
+      scratchModule.verifyScratchSpaceWorkspaceRoot({
+        email,
+        userId,
+        space: useSpaceStore.getState().spaces[spaceId],
+      })
+    )
+  );
+};
+
+const captureSpaceResponseGuard = async (
+  get: () => SpaceStore,
+  spaceId: string
+) => {
+  const { getAuthStore } = await import('@/store/authStore');
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  // An update must not recreate a Space removed while the request was pending.
+  return () =>
+    Boolean(get().spaces[spaceId]) &&
+    getAccountEnvironmentKey(getAuthStore()) === accountKey;
+};
+
+export const useSpaceStore = create<SpaceStore>()(
+  persist(
+    (set, get) => ({
+      storageEnvironmentKey: getAuthEnvironmentKey(),
+      activeSpaceId: null,
+      spaces: {},
+      lastVisitedProjectBySpace: {},
+      lastActiveSpaceIdByUser: {},
+      projectsBySpaceId: {},
+      projectIdIndex: {},
+      projectsSyncedAt: {},
+
+      resetForUser: (userId) =>
+        set((state) => {
+          const nextSpaces: Record<string, Space> = {};
+          for (const [spaceId, space] of Object.entries(state.spaces)) {
+            if (spaceBelongsToUser(space, userId)) {
+              nextSpaces[spaceId] = space;
+            }
+          }
+
+          const nextProjectsBySpaceId: Record<
+            string,
+            Record<string, SpaceProjectMeta>
+          > = {};
+          const nextProjectIdIndex: Record<string, string> = {};
+          for (const spaceId of Object.keys(nextSpaces)) {
+            const projects = state.projectsBySpaceId[spaceId];
+            if (!projects) continue;
+            nextProjectsBySpaceId[spaceId] = projects;
+            for (const projectId of Object.keys(projects)) {
+              nextProjectIdIndex[projectId] = spaceId;
+            }
+          }
+
+          const nextLastVisitedProjectBySpace: Record<string, string> = {};
+          for (const [spaceId, projectId] of Object.entries(
+            state.lastVisitedProjectBySpace
+          )) {
+            if (nextProjectsBySpaceId[spaceId]?.[projectId]) {
+              nextLastVisitedProjectBySpace[spaceId] = projectId;
+            }
+          }
+
+          const nextProjectsSyncedAt: Record<string, number> = {};
+          for (const spaceId of Object.keys(nextSpaces)) {
+            const syncedAt = state.projectsSyncedAt[spaceId];
+            if (syncedAt !== undefined) {
+              nextProjectsSyncedAt[spaceId] = syncedAt;
+            }
+          }
+
+          // Remember where the outgoing account was, so signing back in
+          // reopens that Space instead of the most recently updated one.
+          const departingSpace = state.activeSpaceId
+            ? state.spaces[state.activeSpaceId]
+            : undefined;
+          const lastActiveSpaceIdByUser = departingSpace?.userId
+            ? {
+                ...state.lastActiveSpaceIdByUser,
+                [String(departingSpace.userId)]: departingSpace.id,
+              }
+            : state.lastActiveSpaceIdByUser;
+
+          const localLegacyId = legacySpaceIdForUser(DEFAULT_LOCAL_USER_ID);
+          return {
+            storageEnvironmentKey: getAuthEnvironmentKey(),
+            spaces: nextSpaces,
+            lastActiveSpaceIdByUser,
+            activeSpaceId: pickHydratedActiveSpaceId(
+              nextSpaces,
+              state.activeSpaceId,
+              localLegacyId
+            ),
+            lastVisitedProjectBySpace: nextLastVisitedProjectBySpace,
+            projectsBySpaceId: nextProjectsBySpaceId,
+            projectIdIndex: nextProjectIdIndex,
+            projectsSyncedAt: nextProjectsSyncedAt,
+          };
+        }),
+
+      hydrateFromServer: async (userId) => {
+        const ownerId = await resolveHydrationOwnerId(userId);
+        const environmentKey = getAuthEnvironmentKey();
+        const hydrationKey = `${environmentKey}::${ownerId}`;
+        const existingHydration = spaceHydrationInFlight.get(hydrationKey);
+        if (existingHydration) {
+          await existingHydration.promise;
+          return;
+        }
+
+        let finishHydration: () => void = () => undefined;
+        const currentHydration = {
+          promise: new Promise<void>((resolve) => {
+            finishHydration = resolve;
+          }),
+          deletedSpaceIds: new Set<string>(),
+        };
+        spaceHydrationInFlight.set(hydrationKey, currentHydration);
+
+        try {
+          const [
+            { proxyCreateSpace, proxyFetchSpaceProjects, proxyFetchSpaces },
+            projectModule,
+          ] = await Promise.all([
+            import('@/service/spaceApi'),
+            import('./projectRuntimeStore'),
+          ]);
+          const serverSpaces = await proxyFetchSpaces();
+          if (!(await isHydrationStillCurrentForUser(ownerId))) {
+            return;
+          }
+          const ownedSpaces = serverSpaces.filter(
+            (space) =>
+              (!space.userId || String(space.userId) === ownerId) &&
+              !currentHydration.deletedSpaceIds.has(space.id)
+          );
+          const activeOwnedSpaces = ownedSpaces.filter(
+            (space) => space.status === 'active'
+          );
+          const activeLegacySpaces = activeOwnedSpaces.filter(isLegacySpace);
+          const legacySpaceIdsWithProjects = new Set<string>();
+          let initialBlankSpace: Space | null = null;
+
+          for (const legacySpace of activeLegacySpaces) {
+            try {
+              const legacyProjects = await proxyFetchSpaceProjects(
+                legacySpace.id
+              );
+              if (
+                legacyProjects.some((project) => project.status !== 'archived')
+              ) {
+                legacySpaceIdsWithProjects.add(legacySpace.id);
+              }
+            } catch (error) {
+              console.warn(
+                `[spaceStore] Failed to inspect legacy Space ${legacySpace.id}; preserving it as the active fallback:`,
+                error
+              );
+              legacySpaceIdsWithProjects.add(legacySpace.id);
+            }
+          }
+
+          const visibleOwnedSpaces = ownedSpaces.filter(
+            (space) =>
+              (!isLegacySpace(space) ||
+                legacySpaceIdsWithProjects.has(space.id)) &&
+              !currentHydration.deletedSpaceIds.has(space.id)
+          );
+          // The list holds only the signed-in account's Spaces. One with
+          // another owner means this hydration started with a placeholder or
+          // stale user id, so it cannot conclude the account has no Spaces.
+          // Relies on GET /spaces returning only the caller's own Spaces.
+          const listedForAnotherOwner = serverSpaces.some(
+            (space) =>
+              space.status === 'active' &&
+              Boolean(space.userId) &&
+              String(space.userId) !== ownerId
+          );
+          const shouldCreateInitialBlankSpace =
+            !listedForAnotherOwner &&
+            !visibleOwnedSpaces.some((space) => space.status === 'active');
+
+          if (shouldCreateInitialBlankSpace) {
+            try {
+              initialBlankSpace = await proxyCreateSpace({
+                name: INITIAL_BLANK_SPACE_NAME,
+                source_type: 'blank',
+                metadata: {
+                  createdFrom: INITIAL_BLANK_SPACE_CREATED_FROM,
+                  autoCreatedPlaceholder: true,
+                },
+              });
+            } catch (error) {
+              console.warn(
+                '[spaceStore] Failed to create initial blank Space:',
+                error
+              );
+            }
+          }
+
+          if (!(await isHydrationStillCurrentForUser(ownerId))) {
+            return;
+          }
+
+          // A cloud deletion can complete during any of the awaits above.
+          // Keep its tombstone only for this hydration, so an older response
+          // cannot restore the Space after deleteSpace has removed it.
+          const spaces = (
+            initialBlankSpace
+              ? [initialBlankSpace, ...visibleOwnedSpaces]
+              : visibleOwnedSpaces
+          ).filter((space) => !currentHydration.deletedSpaceIds.has(space.id));
+          void Promise.all([
+            import('@/service/workspaceApi'),
+            import('@/store/authStore'),
+            import('@/store/installationStore'),
+          ])
+            .then(async ([workspaceModule, authModule, installationModule]) => {
+              await installationModule.waitForBackendReadiness();
+              const reconcileCurrentBindings = async () => {
+                const { email, user_id: userId } = authModule.getAuthStore();
+                if (
+                  !email ||
+                  canonicalUserId(userId) !== ownerId ||
+                  getAuthEnvironmentKey() !== environmentKey
+                )
+                  return;
+                // Read again after readiness and on each retry: Spaces may
+                // have been deleted or created since the cloud fetch.
+                const bindingSpaceIds = Object.values(get().spaces)
+                  .filter(
+                    (space) =>
+                      (!space.userId || String(space.userId) === ownerId) &&
+                      space.status !== 'archived' &&
+                      !isLegacySpace(space)
+                  )
+                  .map((space) => space.id);
+                return workspaceModule.reconcileWorkspaceBindings(
+                  email,
+                  bindingSpaceIds,
+                  userId
+                );
+              };
+              return reconcileCurrentBindings().catch(async (firstError) => {
+                console.warn(
+                  '[spaceStore] Brain workspace reconcile failed; retrying once:',
+                  firstError
+                );
+                await wait(500);
+                try {
+                  return await reconcileCurrentBindings();
+                } catch (retryError) {
+                  workspaceReconcileFailureCount += 1;
+                  console.warn(
+                    '[spaceStore] Failed to reconcile Brain workspace bindings after retry:',
+                    {
+                      failureCount: workspaceReconcileFailureCount,
+                      error: retryError,
+                    }
+                  );
+                  return undefined;
+                }
+              });
+            })
+            .catch((error) => {
+              console.warn(
+                '[spaceStore] Failed to reconcile Brain workspace bindings:',
+                error
+              );
+            });
+          const localLegacyId = legacySpaceIdForUser(DEFAULT_LOCAL_USER_ID);
+          const serverLegacySpace = spaces.find(isLegacySpace);
+          const serverLegacyId =
+            serverLegacySpace?.id ?? legacySpaceIdForUser(ownerId);
+          const hasServerLegacySpace = Boolean(serverLegacySpace);
+
+          const keptScratchRootSpaceIds: string[] = [];
+          set((state) => {
+            const nextSpaces: Record<string, Space> = {};
+            for (const space of spaces) {
+              const merged = mergeServerSpaceWithLocalBinding(
+                space,
+                state.spaces[space.id]
+              );
+              if (merged.rootPath && !space.rootPath) {
+                keptScratchRootSpaceIds.push(space.id);
+              }
+              nextSpaces[space.id] = merged;
+            }
+            const currentActiveSpace = state.activeSpaceId
+              ? nextSpaces[state.activeSpaceId]
+              : undefined;
+            return {
+              spaces: nextSpaces,
+              activeSpaceId: pickHydratedActiveSpaceId(
+                nextSpaces,
+                state.activeSpaceId,
+                localLegacyId,
+                currentActiveSpace?.status === 'active'
+                  ? null
+                  : state.lastActiveSpaceIdByUser[ownerId]
+              ),
+            };
+          });
+          if (keptScratchRootSpaceIds.length > 0) {
+            void verifyKeptScratchRoots(
+              keptScratchRootSpaceIds,
+              ownerId,
+              environmentKey
+            ).catch((error) => {
+              console.warn(
+                '[spaceStore] Failed to verify kept scratch workspace roots:',
+                error
+              );
+            });
+          }
+
+          const projectStore = projectModule.useProjectRuntimeStore.getState();
+          projectStore.cleanupAutoCreatedEmptyProjects();
+          set((state) => {
+            const pruned = pruneAutoCreatedProjectMetas(
+              state.projectsBySpaceId,
+              state.projectIdIndex
+            );
+            if (pruned.removedCount === 0) return state;
+            console.warn(
+              `[spaceStore] Removed ${pruned.removedCount} auto-created Project metadata entr${
+                pruned.removedCount === 1 ? 'y' : 'ies'
+              }.`
+            );
+            return {
+              projectsBySpaceId: pruned.projectsBySpaceId,
+              projectIdIndex: pruned.projectIdIndex,
+            };
+          });
+          if (hasServerLegacySpace) {
+            rehomeLegacyRuntimeProjects(
+              projectStore,
+              localLegacyId,
+              serverLegacyId
+            );
+          }
+
+          const activeSpaceId = get().activeSpaceId;
+          if (activeSpaceId && get().shouldSyncProjects(activeSpaceId)) {
+            // TODO(space-hub): Spaces Hub should fan out and sync visible Spaces,
+            // not just the active Space.
+            void get().syncProjectsFromServer(activeSpaceId);
+          }
+          void get().cleanupInactiveEmptySpacesOnServer();
+        } catch (error) {
+          console.warn(
+            '[spaceStore] Failed to hydrate spaces from server:',
+            error
+          );
+        } finally {
+          if (spaceHydrationInFlight.get(hydrationKey) === currentHydration) {
+            spaceHydrationInFlight.delete(hydrationKey);
+          }
+          finishHydration();
+        }
+      },
+
+      upsertSpaces: (spaces, activeSpaceId) =>
+        set((state) => {
+          const nextSpaces = { ...state.spaces };
+          for (const space of spaces) {
+            nextSpaces[space.id] = mergeServerSpaceWithLocalBinding(
+              space,
+              state.spaces[space.id]
+            );
+          }
+          return {
+            spaces: nextSpaces,
+            activeSpaceId:
+              activeSpaceId === undefined ? state.activeSpaceId : activeSpaceId,
+          };
+        }),
+
+      ensureLegacySpace: (userId) => {
+        const ownerId = canonicalUserId(userId);
+        const spaceId = legacySpaceIdForUser(ownerId);
+        const existing = get().spaces[spaceId];
+        if (existing) {
+          if (!get().activeSpaceId) {
+            set({ activeSpaceId: spaceId });
+          }
+          return spaceId;
+        }
+
+        const now = Date.now();
+        const legacySpace: Space = {
+          id: spaceId,
+          name: 'Legacy Space',
+          description: 'Projects created before the Space layer migration.',
+          userId: ownerId,
+          sourceType: 'legacy',
+          rootPath: null,
+          rootFingerprint: null,
+          status: 'active',
+          schemaVersion: SPACE_SCHEMA_VERSION,
+          createdAt: now,
+          updatedAt: now,
+          metadata: {
+            legacy: true,
+          },
+        };
+
+        set((state) => ({
+          spaces: {
+            ...state.spaces,
+            [spaceId]: legacySpace,
+          },
+          activeSpaceId: state.activeSpaceId ?? spaceId,
+        }));
+        return spaceId;
+      },
+
+      syncProjectsFromServer: async (spaceId, historyProjects) => {
+        if (!spaceId) return;
+
+        const accountKey = getAccountEnvironmentKey(getAuthStore());
+        const syncKey = `${accountKey}::${spaceId}`;
+        const existingSync = projectSyncInFlight.get(syncKey);
+        if (existingSync) {
+          await existingSync.promise;
+          return;
+        }
+
+        const context = {
+          accountKey,
+          spaceIds: new Set([spaceId]),
+          cancelled: false,
+        };
+        const isCurrent = () =>
+          !context.cancelled &&
+          getAccountEnvironmentKey(getAuthStore()) === accountKey;
+        const syncOperation = (async () => {
+          try {
+            const projectModule = await import('./projectRuntimeStore');
+            if (!isCurrent()) return;
+            let targetSpaceId = spaceId;
+
+            if (spaceId.startsWith('legacy_')) {
+              const legacySpace = await proxyEnsureLegacySpace();
+              if (!isCurrent()) return;
+              targetSpaceId = legacySpace.id;
+              context.spaceIds.add(targetSpaceId);
+              get().upsertSpaces(
+                [legacySpace],
+                get().activeSpaceId === spaceId ? legacySpace.id : undefined
+              );
+
+              if (legacySpace.id !== spaceId) {
+                const projectStore =
+                  projectModule.useProjectRuntimeStore.getState();
+                rehomeLegacyRuntimeProjects(
+                  projectStore,
+                  spaceId,
+                  legacySpace.id
+                );
+
+                set((state) => {
+                  const nextSpaces = { ...state.spaces };
+                  delete nextSpaces[spaceId];
+                  return {
+                    spaces: nextSpaces,
+                    activeSpaceId:
+                      state.activeSpaceId === spaceId
+                        ? legacySpace.id
+                        : state.activeSpaceId,
+                  };
+                });
+              }
+            }
+
+            const [serverProjects, historyMetaByProjectId] = await Promise.all([
+              proxyFetchSpaceProjects(targetSpaceId),
+              fetchHistoryProjectSidebarMetaMap(
+                targetSpaceId,
+                historyProjects
+              ).catch((error) => {
+                console.warn(
+                  `[spaceStore] Failed to fetch history sidebar meta for Space ${targetSpaceId}:`,
+                  error
+                );
+                return new Map<
+                  string,
+                  {
+                    displayName?: string;
+                    navLead: SessionNavLeadPresentation;
+                  }
+                >();
+              }),
+            ]);
+            // Deletion or an account switch invalidates the entire response,
+            // including navigation metadata and the runtime Project store.
+            if (!isCurrent()) return;
+            const namedProjects = withHistoryProjectNames(
+              serverProjects,
+              historyMetaByProjectId
+            );
+            const activeNamedProjects = namedProjects.filter(
+              (project) => project.status !== 'archived'
+            );
+            get().upsertProjectMetas(
+              activeNamedProjects.map(projectMetaFromServer),
+              {
+                syncedSpaceId: targetSpaceId,
+                replaceSpace: true,
+                syncedAt: Date.now(),
+              }
+            );
+            const projectStore =
+              projectModule.useProjectRuntimeStore.getState();
+            projectStore.upsertProjectsFromServer(activeNamedProjects);
+            if (historyMetaByProjectId.size > 0) {
+              const navLeads: Record<string, SessionNavLeadPresentation> = {};
+              for (const [projectId, meta] of historyMetaByProjectId) {
+                navLeads[projectId] = meta.navLead;
+              }
+              projectStore.setProjectNavLeads(navLeads);
+            }
+          } catch (error) {
+            console.warn(
+              `[spaceStore] Failed to sync projects for Space ${spaceId}:`,
+              error
+            );
+          }
+        })();
+
+        const currentSync = { promise: syncOperation, context };
+        projectSyncInFlight.set(syncKey, currentSync);
+        try {
+          await syncOperation;
+        } finally {
+          if (projectSyncInFlight.get(syncKey) === currentSync) {
+            projectSyncInFlight.delete(syncKey);
+          }
+        }
+      },
+
+      syncProjectsForSpaces: async (spaceIds) => {
+        const pendingSpaceIds = [...new Set(spaceIds)].filter(
+          (spaceId) =>
+            spaceId &&
+            (spaceId.startsWith('legacy_') || get().shouldSyncProjects(spaceId))
+        );
+        if (pendingSpaceIds.length === 0) return;
+
+        // One summaries-only history read supplies display metadata for every
+        // Space. The previous per-Space include_tasks=true fan-out could issue
+        // dozens of large requests at once and starve the interactive UI.
+        const historyProjects = await fetchGroupedHistoryProjects({
+          includeTasks: false,
+        }).catch((error) => {
+          console.warn(
+            '[spaceStore] Failed to fetch shared history project metadata:',
+            error
+          );
+          return null;
+        });
+
+        let nextIndex = 0;
+        const workers = Array.from(
+          {
+            length: Math.min(
+              BACKGROUND_PROJECT_SYNC_CONCURRENCY,
+              pendingSpaceIds.length
+            ),
+          },
+          async () => {
+            while (nextIndex < pendingSpaceIds.length) {
+              const spaceId = pendingSpaceIds[nextIndex];
+              nextIndex += 1;
+              await get().syncProjectsFromServer(spaceId, historyProjects);
+            }
+          }
+        );
+        await Promise.all(workers);
+      },
+
+      upsertProjectMetas: (projects, options) =>
+        set((state) => {
+          const nextBySpaceId: Record<
+            string,
+            Record<string, SpaceProjectMeta>
+          > = { ...state.projectsBySpaceId };
+          const nextIndex = { ...state.projectIdIndex };
+          const nextSyncedAt = { ...state.projectsSyncedAt };
+
+          if (options?.syncedSpaceId && options.replaceSpace) {
+            const existingProjectIds = Object.keys(
+              nextBySpaceId[options.syncedSpaceId] ?? {}
+            );
+            for (const projectId of existingProjectIds) {
+              delete nextIndex[projectId];
+            }
+            nextBySpaceId[options.syncedSpaceId] = {};
+          }
+
+          for (const project of projects) {
+            const previousSpaceId = nextIndex[project.id];
+            const previousProject =
+              (previousSpaceId
+                ? nextBySpaceId[previousSpaceId]?.[project.id]
+                : undefined) ?? nextBySpaceId[project.spaceId]?.[project.id];
+            if (
+              previousSpaceId &&
+              previousSpaceId !== project.spaceId &&
+              nextBySpaceId[previousSpaceId]
+            ) {
+              nextBySpaceId[previousSpaceId] = {
+                ...nextBySpaceId[previousSpaceId],
+              };
+              delete nextBySpaceId[previousSpaceId][project.id];
+            }
+
+            const shouldKeepPreviousDisplayName =
+              previousProject &&
+              !project.metadata?.nameSource &&
+              isPlaceholderProjectName(project.name, project.id) &&
+              !isPlaceholderProjectName(previousProject.name, project.id);
+            const historyDisplayName =
+              typeof project.metadata?.historyDisplayName === 'string'
+                ? project.metadata.historyDisplayName.trim()
+                : '';
+            const shouldUseHistoryDisplayName =
+              !shouldKeepPreviousDisplayName &&
+              !project.metadata?.nameSource &&
+              historyDisplayName &&
+              isPlaceholderProjectName(project.name, project.id);
+
+            nextBySpaceId[project.spaceId] = {
+              ...(nextBySpaceId[project.spaceId] ?? {}),
+              [project.id]: {
+                ...previousProject,
+                ...project,
+                name: shouldKeepPreviousDisplayName
+                  ? previousProject.name
+                  : shouldUseHistoryDisplayName
+                    ? historyDisplayName
+                    : project.name,
+                metadata:
+                  project.metadata === undefined
+                    ? previousProject?.metadata
+                    : {
+                        ...previousProject?.metadata,
+                        ...project.metadata,
+                      },
+              },
+            };
+            nextIndex[project.id] = project.spaceId;
+          }
+
+          if (options?.syncedSpaceId) {
+            nextSyncedAt[options.syncedSpaceId] =
+              options.syncedAt ?? Date.now();
+          }
+
+          return {
+            projectsBySpaceId: nextBySpaceId,
+            projectIdIndex: nextIndex,
+            projectsSyncedAt: nextSyncedAt,
+          };
+        }),
+
+      updateProjectMeta: (projectId, updates) => {
+        const existing = get().getProjectMeta(projectId);
+        if (!existing) return;
+        get().upsertProjectMetas([
+          {
+            ...existing,
+            ...updates,
+            metadata:
+              updates.metadata === undefined
+                ? existing.metadata
+                : {
+                    ...existing.metadata,
+                    ...updates.metadata,
+                  },
+            updatedAt: Date.now(),
+          },
+        ]);
+      },
+
+      removeProjectMeta: (projectId) =>
+        set((state) => {
+          const spaceId = state.projectIdIndex[projectId];
+          if (!spaceId) return state;
+          const nextBySpaceId = { ...state.projectsBySpaceId };
+          const nextSpaceProjects = { ...(nextBySpaceId[spaceId] ?? {}) };
+          delete nextSpaceProjects[projectId];
+          nextBySpaceId[spaceId] = nextSpaceProjects;
+          const nextIndex = { ...state.projectIdIndex };
+          delete nextIndex[projectId];
+          const nextLastVisitedProjectBySpace = {
+            ...state.lastVisitedProjectBySpace,
+          };
+          if (nextLastVisitedProjectBySpace[spaceId] === projectId) {
+            delete nextLastVisitedProjectBySpace[spaceId];
+          }
+          return {
+            projectsBySpaceId: nextBySpaceId,
+            projectIdIndex: nextIndex,
+            lastVisitedProjectBySpace: nextLastVisitedProjectBySpace,
+          };
+        }),
+
+      moveProjectMeta: (projectId, spaceId) => {
+        const existing = get().getProjectMeta(projectId);
+        if (!existing) return;
+        get().upsertProjectMetas([
+          {
+            ...existing,
+            spaceId,
+            updatedAt: Date.now(),
+          },
+        ]);
+      },
+
+      getProjectsForSpace: (spaceId) => {
+        const { projectsBySpaceId } = get();
+        if (spaceId) {
+          return getVisibleProjectMetasForSpace(projectsBySpaceId, spaceId);
+        }
+        return Object.values(projectsBySpaceId)
+          .flatMap((projects) => Object.values(projects))
+          .filter(
+            (project) =>
+              project.status !== 'archived' &&
+              !isAutoCreatedProjectMeta(project)
+          )
+          .sort((a, b) => b.createdAt - a.createdAt);
+      },
+
+      getProjectMeta: (projectId) => {
+        if (!projectId) return null;
+        const { projectIdIndex, projectsBySpaceId } = get();
+        const spaceId = projectIdIndex[projectId];
+        return spaceId ? projectsBySpaceId[spaceId]?.[projectId] || null : null;
+      },
+
+      shouldSyncProjects: (spaceId, ttlMs = PROJECT_SYNC_TTL_MS) => {
+        const lastSyncedAt = get().projectsSyncedAt[spaceId];
+        const hasPlaceholderProjects = Object.values(
+          get().projectsBySpaceId[spaceId] ?? {}
+        ).some(
+          (project) =>
+            project.status !== 'archived' &&
+            !isAutoCreatedProjectMeta(project) &&
+            isPlaceholderProjectName(project.name, project.id)
+        );
+        if (
+          hasPlaceholderProjects &&
+          (!lastSyncedAt ||
+            Date.now() - lastSyncedAt > PROJECT_PLACEHOLDER_RESYNC_MS)
+        ) {
+          return true;
+        }
+        return !lastSyncedAt || Date.now() - lastSyncedAt > ttlMs;
+      },
+
+      createSpace: (input) => {
+        const now = Date.now();
+        const id = input.id ?? `space_${generateUniqueId()}`;
+        const ownerId = canonicalUserId(input.userId);
+        const space: Space = {
+          id,
+          name: input.name,
+          description: input.description,
+          userId: ownerId,
+          sourceType: input.sourceType ?? 'blank',
+          rootPath: input.rootPath ?? null,
+          rootFingerprint: input.rootFingerprint ?? null,
+          status: 'active',
+          schemaVersion: SPACE_SCHEMA_VERSION,
+          createdAt: now,
+          updatedAt: now,
+          metadata: input.metadata,
+        };
+
+        set((state) => ({
+          spaces: {
+            ...state.spaces,
+            [id]: space,
+          },
+          ...(input.setActive !== false ? { activeSpaceId: id } : {}),
+        }));
+
+        return id;
+      },
+
+      createSpaceOnServer: async (input) => {
+        const { proxyCreateSpace } = await import('@/service/spaceApi');
+        const space = await proxyCreateSpace({
+          id: input.id,
+          name: input.name,
+          description: input.description,
+          source_type: input.sourceType,
+          root_path: input.rootPath,
+          root_fingerprint: input.rootFingerprint,
+          metadata: input.metadata,
+        });
+        get().upsertSpaces(
+          [space],
+          input.setActive === false ? undefined : space.id
+        );
+        return space.id;
+      },
+
+      updateSpaceOnServer: async (spaceId, input) => {
+        const [{ proxyUpdateSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
+        const space = await proxyUpdateSpace(spaceId, {
+          name: input.name,
+          description: input.description,
+          source_type: input.sourceType,
+          root_path: input.rootPath,
+          root_fingerprint: input.rootFingerprint,
+          status: input.status,
+          metadata: input.metadata,
+        });
+        if (isCurrent()) get().upsertSpaces([space], undefined);
+      },
+
+      deleteSpace: (spaceId) => {
+        const current = get();
+        // Hydration may have removed the Space row before DELETE completed;
+        // its Session metadata and previews still need to be cleared.
+        const removedProjectIds = Object.keys(
+          current.projectsBySpaceId[spaceId] ?? {}
+        );
+        for (const projectId of removedProjectIds) {
+          usePageTabStore.getState().removeSessionPreviewProject(projectId);
+        }
+        set((state) => {
+          const nextSpaces = { ...state.spaces };
+          delete nextSpaces[spaceId];
+          const nextProjectsBySpaceId = { ...state.projectsBySpaceId };
+          delete nextProjectsBySpaceId[spaceId];
+          const nextProjectIdIndex = { ...state.projectIdIndex };
+          for (const projectId of removedProjectIds) {
+            delete nextProjectIdIndex[projectId];
+          }
+          const nextProjectsSyncedAt = { ...state.projectsSyncedAt };
+          delete nextProjectsSyncedAt[spaceId];
+          const nextLastVisitedProjectBySpace = {
+            ...state.lastVisitedProjectBySpace,
+          };
+          delete nextLastVisitedProjectBySpace[spaceId];
+          const nextActiveSpaceId =
+            state.activeSpaceId === spaceId
+              ? Object.keys(nextSpaces)[0] || null
+              : state.activeSpaceId;
+          return {
+            spaces: nextSpaces,
+            activeSpaceId: nextActiveSpaceId,
+            projectsBySpaceId: nextProjectsBySpaceId,
+            projectIdIndex: nextProjectIdIndex,
+            projectsSyncedAt: nextProjectsSyncedAt,
+            lastVisitedProjectBySpace: nextLastVisitedProjectBySpace,
+          };
+        });
+      },
+
+      deleteSpaceOnServer: async (spaceId) => {
+        const [{ proxyDeleteSpace }, { getAuthStore }] = await Promise.all([
+          import('@/service/spaceApi'),
+          import('@/store/authStore'),
+        ]);
+        const { email, user_id: userId } = getAuthStore();
+        const ownerId = canonicalUserId(userId);
+        const environmentKey = getAuthEnvironmentKey();
+        const accountKey = getAccountEnvironmentKey(getAuthStore());
+        const isCurrentOwner = () =>
+          canonicalUserId(getAuthStore().user_id) === ownerId &&
+          getAuthEnvironmentKey() === environmentKey;
+        try {
+          await proxyDeleteSpace(spaceId);
+        } catch (error) {
+          if ((error as { status?: number })?.status !== 404) {
+            throw error;
+          }
+          console.warn(
+            `[spaceStore] Space ${spaceId} was already absent on server; continuing Brain unbind.`
+          );
+        }
+        // Cloud deletion is authoritative. A failed or stalled Brain unbind
+        // must not keep a deleted Space visible or its confirmation pending.
+        spaceHydrationInFlight
+          .get(`${environmentKey}::${ownerId}`)
+          ?.deletedSpaceIds.add(spaceId);
+        for (const { context } of projectSyncInFlight.values()) {
+          if (
+            context.accountKey === accountKey &&
+            context.spaceIds.has(spaceId)
+          ) {
+            context.cancelled = true;
+          }
+        }
+        if (isCurrentOwner()) get().deleteSpace(spaceId);
+        if (email) {
+          // Also handles the last Space: bulk reconciliation skips empty lists.
+          void scheduleWorkspaceUnbind(spaceId, {
+            email,
+            userId,
+            accountKey,
+          }).catch((error) => {
+            console.warn(
+              `[spaceStore] Failed to schedule Brain workspace cleanup for ${spaceId}:`,
+              error
+            );
+          });
+        }
+      },
+
+      cleanupInactiveEmptySpacesOnServer: async () => {
+        const accountKey = getAccountEnvironmentKey(getAuthStore());
+        const isCurrentAccount = () =>
+          getAccountEnvironmentKey(getAuthStore()) === accountKey;
+        const isCurrentSpace = (spaceId: string) =>
+          isCurrentAccount() && Boolean(get().spaces[spaceId]);
+        const { proxyFetchSpaceProjects } = await import('@/service/spaceApi');
+        const projectModule = await import('./projectRuntimeStore');
+        if (!isCurrentAccount()) return;
+        const { activeSpaceId, spaces, projectsBySpaceId } = get();
+        const candidates = Object.values(spaces).filter(
+          (space) =>
+            space.id !== activeSpaceId &&
+            isDisposableBlankSpace(space, projectsBySpaceId)
+        );
+
+        for (const space of candidates) {
+          if (!isCurrentSpace(space.id)) continue;
+          try {
+            const projects = await proxyFetchSpaceProjects(space.id);
+            // This inspection can outlive a confirmed deletion or account
+            // switch, just like an explicit Session synchronization request.
+            if (!isCurrentSpace(space.id)) continue;
+            const activeProjects = projects.filter(
+              (project) => project.status !== 'archived'
+            );
+            if (activeProjects.length > 0) {
+              get().upsertProjectMetas(
+                activeProjects.map(projectMetaFromServer),
+                {
+                  syncedSpaceId: space.id,
+                  replaceSpace: true,
+                  syncedAt: Date.now(),
+                }
+              );
+              projectModule.useProjectRuntimeStore
+                .getState()
+                .upsertProjectsFromServer(activeProjects);
+              continue;
+            }
+            const current = get();
+            if (
+              current.activeSpaceId !== space.id &&
+              isDisposableBlankSpace(
+                current.spaces[space.id],
+                current.projectsBySpaceId
+              )
+            ) {
+              await get().deleteSpaceOnServer(space.id);
+            }
+          } catch (error) {
+            if (!isCurrentSpace(space.id)) continue;
+            if ((error as { status?: number })?.status === 404) {
+              get().deleteSpace(space.id);
+              continue;
+            }
+            console.warn(
+              `[spaceStore] Failed to clean up empty placeholder Space ${space.id}:`,
+              error
+            );
+          }
+        }
+      },
+
+      updateSpace: (spaceId, updates) =>
+        set((state) => {
+          const space = state.spaces[spaceId];
+          if (!space) return state;
+          return {
+            spaces: {
+              ...state.spaces,
+              [spaceId]: {
+                ...space,
+                ...updates,
+                metadata: {
+                  ...space.metadata,
+                  ...updates.metadata,
+                },
+                updatedAt: Date.now(),
+              },
+            },
+          };
+        }),
+
+      renameSpaceOnServer: async (spaceId, name) => {
+        const nextName = name.trim();
+        if (!nextName) return;
+        await get().updateSpaceOnServer(spaceId, { name: nextName });
+      },
+
+      setActiveSpace: (spaceId) => {
+        if (!get().spaces[spaceId]) {
+          console.warn(`Space ${spaceId} not found`);
+          return;
+        }
+        set((state) => {
+          const pruned = pruneInactiveDisposableBlankSpaces(
+            state.spaces,
+            state.projectsBySpaceId,
+            state.lastVisitedProjectBySpace,
+            spaceId
+          );
+          return {
+            activeSpaceId: spaceId,
+            spaces: pruned.spaces,
+            lastVisitedProjectBySpace: pruned.lastVisitedProjectBySpace,
+          };
+        });
+        if (
+          spaceId.startsWith('legacy_') ||
+          get().shouldSyncProjects(spaceId)
+        ) {
+          void get().syncProjectsFromServer(spaceId);
+        }
+      },
+
+      setLastVisitedProject: (spaceId, projectId) =>
+        set((state) => ({
+          lastVisitedProjectBySpace: {
+            ...state.lastVisitedProjectBySpace,
+            [spaceId]: projectId,
+          },
+        })),
+
+      archiveSpace: (spaceId) => {
+        get().updateSpace(spaceId, { status: 'archived' });
+        void unbindBrainWorkspaceMirror(spaceId).catch((error) => {
+          console.warn(
+            `[spaceStore] Failed to unbind archived Space ${spaceId} from Brain:`,
+            error
+          );
+        });
+      },
+
+      archiveSpaceOnServer: async (spaceId) => {
+        const [{ proxyArchiveSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
+        const space = await proxyArchiveSpace(spaceId);
+        if (!isCurrent()) return;
+        get().upsertSpaces([space], undefined);
+        await unbindBrainWorkspaceMirror(spaceId);
+      },
+
+      unarchiveSpaceOnServer: async (spaceId) => {
+        const [{ proxyUnarchiveSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
+        const space = await proxyUnarchiveSpace(spaceId);
+        if (!isCurrent()) return;
+        get().upsertSpaces([space], space.id);
+      },
+
+      promoteProjectOnServer: async (spaceId, projectId) => {
+        const [{ proxyPromoteSpaceProject }, projectModule] = await Promise.all(
+          [import('@/service/spaceApi'), import('./projectRuntimeStore')]
+        );
+        const project = await proxyPromoteSpaceProject(spaceId, projectId);
+        get().upsertProjectMetas([projectMetaFromServer(project)]);
+        // PR-X3 bridge: keep existing runtime shells in sync until Project
+        // metadata fields are fully removed from projectRuntimeStore.
+        projectModule.useProjectRuntimeStore
+          .getState()
+          .updateProject(project.id, {
+            spaceId: project.space_id,
+            workdirMode: project.workdir_mode,
+            metadata: project.metadata ?? undefined,
+          });
+      },
+
+      refreshProjectOnServer: async (spaceId, projectId, force = false) => {
+        const project = get().getProjectMeta(projectId);
+        const space = get().getSpaceById(spaceId);
+        const workdirMode = project?.workdirMode ?? null;
+        const isDirectWrite =
+          workdirMode === 'direct-write' ||
+          (!workdirMode && isLocalWorkspaceSpace(space));
+        if (isDirectWrite) {
+          return;
+        }
+        const [
+          { proxyRefreshSpaceProject },
+          { refreshWorkspaceProject },
+          { getAuthStore },
+          projectModule,
+        ] = await Promise.all([
+          import('@/service/spaceApi'),
+          import('@/service/workspaceApi'),
+          import('@/store/authStore'),
+          import('./projectRuntimeStore'),
+        ]);
+        const refreshed = await proxyRefreshSpaceProject(spaceId, projectId, {
+          force,
+        });
+        const { email, user_id: userId } = getAuthStore();
+        let baseSnapshotId = refreshed.base_snapshot_id;
+        if (email) {
+          const brainRefresh = await refreshWorkspaceProject(
+            spaceId,
+            projectId,
+            {
+              email,
+              userId,
+              force,
+              serverRefreshConfirmed: true,
+            }
+          ).catch((error) => {
+            console.warn(
+              `[spaceStore] Failed to refresh Brain project workdir ${projectId}:`,
+              error
+            );
+            return null;
+          });
+          baseSnapshotId = brainRefresh?.base_snapshot_id || baseSnapshotId;
+        }
+        get().updateProjectMeta(projectId, {
+          metadata: {
+            baseSnapshotId,
+          },
+        });
+        // PR-X3 bridge: keep existing runtime shells in sync until Project
+        // metadata fields are fully removed from projectRuntimeStore.
+        projectModule.useProjectRuntimeStore
+          .getState()
+          .updateProject(projectId, {
+            metadata: {
+              baseSnapshotId,
+            },
+          });
+      },
+
+      relocateSpace: (spaceId, rootPath, rootFingerprint) =>
+        get().updateSpace(spaceId, {
+          rootPath,
+          rootFingerprint: rootFingerprint ?? null,
+          status: 'active',
+        }),
+
+      relocateSpaceOnServer: async (spaceId, rootPath, force = false) => {
+        const [{ proxyRelocateSpace }, isCurrent] = await Promise.all([
+          import('@/service/spaceApi'),
+          captureSpaceResponseGuard(get, spaceId),
+        ]);
+        const space = await proxyRelocateSpace(spaceId, {
+          root_path: rootPath,
+          force,
+        });
+        if (!isCurrent()) return;
+        get().upsertSpaces([space], space.id);
+        await unbindBrainWorkspaceMirror(spaceId).catch((error) => {
+          console.warn(
+            `[spaceStore] Failed to clear old Brain workspace binding for relocated Space ${spaceId}:`,
+            error
+          );
+        });
+        if (isLocalWorkspaceSpace(space) && space.rootPath) {
+          const [{ bindWorkspaceToSpace }, { getAuthStore }] =
+            await Promise.all([
+              import('@/service/workspaceApi'),
+              import('@/store/authStore'),
+            ]);
+          const { email, user_id: userId } = getAuthStore();
+          if (email && isCurrent()) {
+            await bindWorkspaceToSpace({
+              space_id: space.id,
+              email,
+              user_id: userId,
+              path: space.rootPath,
+            }).catch((error) => {
+              console.warn(
+                `[spaceStore] Failed to bind relocated Space ${spaceId} in Brain mirror:`,
+                error
+              );
+            });
+          }
+        }
+      },
+
+      getActiveSpace: () => {
+        const { activeSpaceId, spaces } = get();
+        return activeSpaceId ? spaces[activeSpaceId] || null : null;
+      },
+
+      getAllSpaces: () =>
+        Object.values(get().spaces).sort((a, b) => b.updatedAt - a.updatedAt),
+
+      getSpaceById: (spaceId) => {
+        if (!spaceId) return null;
+        return get().spaces[spaceId] || null;
+      },
+    }),
+    {
+      name: 'eigent-space-store',
+      version: SPACE_STORE_PERSIST_VERSION,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<SpaceStore> | undefined;
+        if (!state) return persistedState as SpaceStore;
+        if (!spaceStoreEnvironmentMatches(state)) {
+          return emptyEnvironmentScopedSpaceState() as SpaceStore;
+        }
+        const pruned = pruneAutoCreatedProjectMetas(
+          state.projectsBySpaceId,
+          state.projectIdIndex
+        );
+        const prunedSpaces = pruneInactiveDisposableBlankSpaces(
+          state.spaces ?? {},
+          pruned.projectsBySpaceId,
+          state.lastVisitedProjectBySpace ?? {},
+          state.activeSpaceId ?? null
+        );
+        return {
+          ...state,
+          storageEnvironmentKey: getAuthEnvironmentKey(),
+          activeSpaceId: state.activeSpaceId ?? null,
+          spaces: prunedSpaces.spaces,
+          lastVisitedProjectBySpace: prunedSpaces.lastVisitedProjectBySpace,
+          lastActiveSpaceIdByUser: state.lastActiveSpaceIdByUser ?? {},
+          projectsBySpaceId: pruned.projectsBySpaceId,
+          projectIdIndex: pruned.projectIdIndex,
+          projectsSyncedAt: {},
+        } as SpaceStore;
+      },
+      partialize: (state) => ({
+        storageEnvironmentKey: state.storageEnvironmentKey,
+        activeSpaceId: state.activeSpaceId,
+        spaces: state.spaces,
+        lastVisitedProjectBySpace: state.lastVisitedProjectBySpace,
+        lastActiveSpaceIdByUser: state.lastActiveSpaceIdByUser,
+        projectsBySpaceId: state.projectsBySpaceId,
+        projectIdIndex: state.projectIdIndex,
+      }),
+    }
+  )
+);
+
+if (typeof queueMicrotask === 'function') {
+  queueMicrotask(() => {
+    const state = useSpaceStore.getState();
+    if (!spaceStoreEnvironmentMatches(state)) {
+      useSpaceStore.setState(emptyEnvironmentScopedSpaceState());
+      console.warn(
+        '[spaceStore] Cleared persisted spaces after API environment changed.'
+      );
+      return;
+    }
+    const pruned = pruneAutoCreatedProjectMetas(
+      state.projectsBySpaceId,
+      state.projectIdIndex
+    );
+    const prunedSpaces = pruneInactiveDisposableBlankSpaces(
+      state.spaces,
+      pruned.projectsBySpaceId,
+      state.lastVisitedProjectBySpace,
+      state.activeSpaceId
+    );
+    if (pruned.removedCount === 0 && prunedSpaces.removedIds.length === 0) {
+      return;
+    }
+    useSpaceStore.setState({
+      spaces: prunedSpaces.spaces,
+      lastVisitedProjectBySpace: prunedSpaces.lastVisitedProjectBySpace,
+      projectsBySpaceId: pruned.projectsBySpaceId,
+      projectIdIndex: pruned.projectIdIndex,
+    });
+    if (pruned.removedCount > 0) {
+      console.warn(
+        `[spaceStore] Removed ${pruned.removedCount} auto-created Project metadata entr${
+          pruned.removedCount === 1 ? 'y' : 'ies'
+        }.`
+      );
+    }
+    if (prunedSpaces.removedIds.length > 0) {
+      console.warn(
+        `[spaceStore] Removed ${prunedSpaces.removedIds.length} empty placeholder Space entr${
+          prunedSpaces.removedIds.length === 1 ? 'y' : 'ies'
+        }.`
+      );
+    }
+  });
+}
+
+export type { SpaceStore };

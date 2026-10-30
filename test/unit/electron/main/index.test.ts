@@ -671,10 +671,10 @@ describe('Electron Main Index Functions', () => {
 
       const mockConfig = {
         title: 'Eigent',
-        width: 1200,
-        height: 800,
-        minWidth: 1200,
-        minHeight: 800,
+        width: 1366,
+        height: 860,
+        minWidth: 1100,
+        minHeight: 700,
         frame: false,
         transparent: true,
         backgroundColor: '#f5f5f5',
@@ -696,10 +696,10 @@ describe('Electron Main Index Functions', () => {
 
       const mockConfig = {
         title: 'Eigent',
-        width: 1200,
-        height: 800,
-        minWidth: 1200,
-        minHeight: 800,
+        width: 1366,
+        height: 860,
+        minWidth: 1100,
+        minHeight: 700,
         frame: true,
         transparent: false,
         backgroundColor: '#ffffff',
@@ -887,21 +887,12 @@ describe('Electron Main Index Functions', () => {
       expect(mockApp.whenReady).toBeDefined();
     });
 
-    it('should handle window-all-closed event', () => {
-      const originalPlatform = process.platform;
+    it('should quit when all windows are closed', () => {
+      const windowAllClosedHandler = () => mockApp.quit();
 
-      // Test non-darwin platform
-      Object.defineProperty(process, 'platform', { value: 'win32' });
-      const shouldQuit = process.platform !== 'darwin';
-      expect(shouldQuit).toBe(true);
+      windowAllClosedHandler();
 
-      // Test darwin platform
-      Object.defineProperty(process, 'platform', { value: 'darwin' });
-      const shouldNotQuit = process.platform !== 'darwin';
-      expect(shouldNotQuit).toBe(false);
-
-      // Restore original platform
-      Object.defineProperty(process, 'platform', { value: originalPlatform });
+      expect(mockApp.quit).toHaveBeenCalled();
     });
 
     it('should handle app activate event', () => {
@@ -1234,6 +1225,7 @@ describe('Electron Main Index Functions', () => {
       mockFileReader = {
         openFile: vi.fn(),
         getFileList: vi.fn(),
+        getCamelLogFileList: vi.fn(),
       };
       mockWebViewManager = {
         captureWebview: vi.fn(),
@@ -1277,6 +1269,20 @@ describe('Electron Main Index Functions', () => {
       expect(mockFileReader.getFileList).toHaveBeenCalledWith(
         'email',
         'taskId'
+      );
+    });
+
+    it('should handle isolated camel-log file listing', async () => {
+      const mockHandler = vi.fn((...args) =>
+        mockFileReader.getCamelLogFileList(...args)
+      );
+      mockIpcMain.handle('get-camel-log-file-list', mockHandler);
+      await mockHandler('email', 'taskId', 'projectId', 7);
+      expect(mockFileReader.getCamelLogFileList).toHaveBeenCalledWith(
+        'email',
+        'taskId',
+        'projectId',
+        7
       );
     });
 
@@ -1370,48 +1376,41 @@ describe('Electron Main Index Functions', () => {
         false
       );
     });
+
+    it('should preserve Windows drive letters from standard localfile URLs', () => {
+      const decodedUrl = '/C:/Users/test/canvas_map/image.png';
+      const normalizedUrl = decodedUrl.replace(/^\/([A-Za-z]:[\\/])/, '$1');
+
+      expect(path.win32.resolve(path.win32.normalize(normalizedUrl))).toBe(
+        'C:\\Users\\test\\canvas_map\\image.png'
+      );
+    });
   });
 
   describe('Application Lifecycle', () => {
-    it('should quit on window-all-closed for non-darwin platforms', () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, 'platform', { value: 'win32' });
+    it.each(['darwin', 'win32', 'linux'] as const)(
+      'should quit on window-all-closed for %s',
+      (platform) => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: platform });
 
-      mockApp.on.mockImplementation((event, listener) => {
-        if (event === 'window-all-closed') {
-          listener();
-        }
-      });
+        mockApp.on.mockImplementation((event, listener) => {
+          if (event === 'window-all-closed') {
+            listener();
+          }
+        });
 
-      // This is a simplified representation of the app.on('window-all-closed') logic
-      const windowAllClosedHandler = () => {
-        if (process.platform !== 'darwin') {
-          mockApp.quit();
-        }
-      };
+        // This mirrors the single-window app policy in the real handler.
+        const windowAllClosedHandler = () => mockApp.quit();
 
-      windowAllClosedHandler();
-      expect(mockApp.quit).toHaveBeenCalled();
+        windowAllClosedHandler();
+        expect(mockApp.quit).toHaveBeenCalled();
 
-      Object.defineProperty(process, 'platform', { value: originalPlatform });
-    });
-
-    it('should not quit on window-all-closed for darwin platforms', () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, 'platform', { value: 'darwin' });
-      vi.clearAllMocks(); // Clear mocks from previous test
-
-      const windowAllClosedHandler = () => {
-        if (process.platform !== 'darwin') {
-          mockApp.quit();
-        }
-      };
-
-      windowAllClosedHandler();
-      expect(mockApp.quit).not.toHaveBeenCalled();
-
-      Object.defineProperty(process, 'platform', { value: originalPlatform });
-    });
+        Object.defineProperty(process, 'platform', {
+          value: originalPlatform,
+        });
+      }
+    );
 
     it('should call cleanup on before-quit', () => {
       const mockCleanup = vi.fn();

@@ -22,11 +22,14 @@ import {
   CarouselContent,
   CarouselItem,
 } from '@/components/ui/carousel';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useAuthStore } from '@/store/authStore';
 import { Pause, Play } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export const CarouselStep: React.FC = () => {
+  const { t } = useTranslation();
   const { setInitState: _setInitState } = useAuthStore();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [_isHovered, setIsHovered] = useState(false);
@@ -102,15 +105,21 @@ export const CarouselStep: React.FC = () => {
 
   const carouselItems = [
     {
-      title: 'Dynamic Workforce break it down, get task done',
+      title: t('layout.onboarding-dynamic-workforce', {
+        defaultValue: 'Dynamic Workforce breaks it down and gets the task done',
+      }),
       video: dynamicWorkforceVideo,
     },
     {
-      title: 'Add worker with pluggable MCP',
+      title: t('layout.onboarding-pluggable-mcp', {
+        defaultValue: 'Add workers with pluggable MCP servers',
+      }),
       video: addWorkerVideo,
     },
     {
-      title: 'Private and secure with local model settings',
+      title: t('layout.onboarding-local-models', {
+        defaultValue: 'Private and secure with local model settings',
+      }),
       video: localModelVideo,
     },
   ];
@@ -153,7 +162,7 @@ export const CarouselStep: React.FC = () => {
   return (
     <div className="flex h-full w-full flex-col">
       <div className="flex h-full min-h-0 w-full flex-col">
-        <div className="mb-md text-heading-sm font-bold text-text-heading">
+        <div className="mb-md text-ds-text-page font-bold text-ds-ink-default-default">
           {carouselItems[currentSlide].title}
         </div>
 
@@ -218,10 +227,10 @@ export const CarouselStep: React.FC = () => {
             <div
               key={index}
               onMouseEnter={() => handleIndicatorHover(index)}
-              className={`h-1 w-32 cursor-pointer rounded-full transition-all duration-300 ${
+              className={`h-1 w-32 cursor-pointer rounded-full transition-colors duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] ${
                 index === currentSlide
-                  ? 'bg-fill-fill-secondary'
-                  : 'bg-fill-fill-tertiary hover:bg-fill-fill-secondary'
+                  ? 'bg-ds-neutral-default-default'
+                  : 'bg-ds-neutral-subtle-default hover:bg-ds-neutral-default-default'
               }`}
             ></div>
           ))}
@@ -229,14 +238,19 @@ export const CarouselStep: React.FC = () => {
         <Button
           onClick={handleTogglePause}
           variant="ghost"
-          size="icon"
-          className="absolute bottom-0 right-0 rounded-full"
-          aria-label={isPaused ? 'Resume' : 'Pause'}
+          size="xs"
+          buttonContent="icon-only"
+          className="absolute right-0 bottom-0 rounded-full"
+          aria-label={
+            isPaused
+              ? t('layout.resume', { defaultValue: 'Resume' })
+              : t('layout.pause', { defaultValue: 'Pause' })
+          }
         >
           {isPaused ? (
-            <Play className="h-4 w-4" />
+            <DsIcon recipe="main-compact" icon={Play} />
           ) : (
-            <Pause className="h-4 w-4" />
+            <DsIcon recipe="main-compact" icon={Pause} />
           )}
         </Button>
       </div>

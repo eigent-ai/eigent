@@ -15,15 +15,23 @@
 import platform
 import threading
 import uuid
+from urllib.parse import urlparse
 
 from camel.messages import BaseMessage
 from camel.toolkits import ToolkitMessageIntegration
 
 from app.agent.agent_model import agent_model
+from app.agent.factory.remote_sub_agent import (
+    attach_remote_sub_agent_if_enabled,
+)
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import BROWSER_SYS_PROMPT
+from app.agent.prompt import (
+    BROWSER_SYS_PROMPT,
+    append_connected_app_mcp_notice,
+)
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -31,16 +39,37 @@ from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-from app.agent.utils import NOW_STR
+from app.agent.utils import agent_current_time
 from app.component.environment import env
+from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
+from app.utils.browser_launcher import normalize_cdp_url
 from app.utils.file_utils import get_working_directory
 
 
 def _get_browser_port(browser: dict) -> int:
     """Extract port from a browser config dict, with fallback to env default."""
-    return int(browser.get("port", env("browser_port", "9222")))
+    raw_port = browser.get("port")
+    if raw_port is not None:
+        return int(raw_port)
+
+    raw_endpoint = browser.get("endpoint") or browser.get("cdp_url")
+    if raw_endpoint:
+        _, _, port = normalize_cdp_url(str(raw_endpoint))
+        return port
+
+    return int(env("browser_port", "9222"))
+
+
+def _get_browser_endpoint(browser: dict) -> str:
+    """Extract a normalized CDP endpoint from a browser config dict."""
+    raw_endpoint = browser.get("endpoint") or browser.get("cdp_url")
+    if raw_endpoint:
+        endpoint, _, _ = normalize_cdp_url(str(raw_endpoint))
+        return endpoint
+
+    return f"http://localhost:{_get_browser_port(browser)}"
 
 
 class CdpBrowserPoolManager:
@@ -48,10 +77,21 @@ class CdpBrowserPoolManager:
     parallel tasks use different browsers."""
 
     def __init__(self):
-        self._occupied_ports: dict[int, str] = {}
+        self._occupied_browsers: dict[str, str] = {}
+        self._session_to_browser_key: dict[str, str] = {}
         self._session_to_port: dict[str, int] = {}
         self._session_to_task: dict[str, str | None] = {}
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _browser_key(browser: dict) -> str | None:
+        target_url = str(browser.get("targetUrl") or "").strip()
+        if target_url:
+            return f"target:{target_url}"
+        try:
+            return f"port:{_get_browser_port(browser)}"
+        except (TypeError, ValueError):
+            return None
 
     def acquire_browser(
         self,
@@ -71,37 +111,44 @@ class CdpBrowserPoolManager:
         """
         with self._lock:
             for browser in cdp_browsers:
-                port = browser.get("port")
-                if port and port not in self._occupied_ports:
-                    self._occupied_ports[port] = session_id
+                try:
+                    port = _get_browser_port(browser)
+                except (TypeError, ValueError):
+                    continue
+                browser_key = self._browser_key(browser)
+                if browser_key and browser_key not in self._occupied_browsers:
+                    self._occupied_browsers[browser_key] = session_id
+                    self._session_to_browser_key[session_id] = browser_key
                     self._session_to_port[session_id] = port
                     self._session_to_task[session_id] = task_id
                     logger.info(
                         f"Acquired browser on port {port} for session "
                         f"{session_id}. Occupied: "
-                        f"{list(self._occupied_ports.keys())}"
+                        f"{list(self._occupied_browsers.keys())}"
                     )
                     return browser
             logger.warning(
                 f"No available browsers for session {session_id}. "
-                f"All occupied: {list(self._occupied_ports.keys())}"
+                f"All occupied: {list(self._occupied_browsers.keys())}"
             )
             return None
 
     def release_browser(self, port: int, session_id: str):
         """Release a browser back to the pool."""
         with self._lock:
+            browser_key = self._session_to_browser_key.get(session_id)
             if (
-                port in self._occupied_ports
-                and self._occupied_ports[port] == session_id
+                browser_key is not None
+                and self._occupied_browsers.get(browser_key) == session_id
             ):
-                del self._occupied_ports[port]
+                del self._occupied_browsers[browser_key]
+                self._session_to_browser_key.pop(session_id, None)
                 self._session_to_port.pop(session_id, None)
                 self._session_to_task.pop(session_id, None)
                 logger.info(
                     f"Released browser on port {port} from session "
                     f"{session_id}. Occupied: "
-                    f"{list(self._occupied_ports.keys())}"
+                    f"{list(self._occupied_browsers.keys())}"
                 )
             else:
                 logger.warning(
@@ -122,11 +169,14 @@ class CdpBrowserPoolManager:
             ]
             for session_id in sessions:
                 port = self._session_to_port.get(session_id)
+                browser_key = self._session_to_browser_key.get(session_id)
                 if (
-                    port is not None
-                    and self._occupied_ports.get(port) == session_id
+                    browser_key is not None
+                    and self._occupied_browsers.get(browser_key) == session_id
                 ):
-                    del self._occupied_ports[port]
+                    del self._occupied_browsers[browser_key]
+                    self._session_to_browser_key.pop(session_id, None)
+                if port is not None:
                     released_ports.append(port)
                 self._session_to_port.pop(session_id, None)
                 self._session_to_task.pop(session_id, None)
@@ -134,21 +184,24 @@ class CdpBrowserPoolManager:
                 logger.info(
                     f"Released {len(released_ports)} browser(s) for "
                     f"task {task_id}. Occupied: "
-                    f"{list(self._occupied_ports.keys())}"
+                    f"{list(self._occupied_browsers.keys())}"
                 )
         return released_ports
 
     def get_occupied_ports(self) -> list[int]:
         """Get list of currently occupied ports."""
         with self._lock:
-            return list(self._occupied_ports.keys())
+            return list(dict.fromkeys(self._session_to_port.values()))
 
 
 # Global CDP browser pool manager instance
 _cdp_pool_manager = CdpBrowserPoolManager()
 
 
-def browser_agent(options: Chat):
+def browser_agent(
+    options: Chat,
+    hands: IHands | None = None,
+):
     working_directory = get_working_directory(options)
     logger.info(
         f"Creating browser agent for project: {options.project_id} "
@@ -160,80 +213,140 @@ def browser_agent(options: Chat):
         ).send_message_to_user
     )
 
-    # Acquire CDP browser from pool or use default port
+    electron_runtime = env("EIGENT_RUNTIME", "").lower().strip() == "electron"
+    has_owned_electron_target = any(
+        browser.get("managedBy") == "electron" and browser.get("targetUrl")
+        for browser in options.cdp_browsers
+    )
+    use_browser = (hands is None or hands.can_use_browser()) and (
+        not electron_runtime or has_owned_electron_target
+    )
+    use_terminal = hands is None or hands.can_execute_terminal()
+
+    # Acquire CDP browser from pool or use default port (only when browser enabled)
     toolkit_session_id = str(uuid.uuid4())[:8]
     selected_port = None
     selected_is_external = False
+    cdp_url = None
+    cdp_owned_by_hands = False
+    owned_target_url: str | None = None
 
-    if options.cdp_browsers:
+    if use_browser and options.cdp_browsers:
         selected_browser = _cdp_pool_manager.acquire_browser(
             options.cdp_browsers, toolkit_session_id, options.task_id
         )
         if selected_browser:
             selected_port = _get_browser_port(selected_browser)
+            cdp_url = _get_browser_endpoint(selected_browser)
             selected_is_external = selected_browser.get("isExternal", False)
+            owned_target_url = selected_browser.get("targetUrl")
             logger.info(
                 f"Acquired CDP browser from pool (initial): "
                 f"port={selected_port}, isExternal={selected_is_external}, "
                 f"session_id={toolkit_session_id}"
             )
         else:
-            selected_port = _get_browser_port(options.cdp_browsers[0])
-            selected_is_external = options.cdp_browsers[0].get(
-                "isExternal", False
-            )
-            logger.warning(
-                f"No available browsers in pool (initial), using first: "
-                f"port={selected_port}, session_id={toolkit_session_id}"
-            )
-    else:
+            if electron_runtime:
+                use_browser = False
+                logger.warning(
+                    "No unused Eigent embedded browser target is available; "
+                    "Browser Toolkit will remain disabled for this Agent",
+                    extra={
+                        "project_id": options.project_id,
+                        "task_id": options.task_id,
+                    },
+                )
+            else:
+                fallback_browser = options.cdp_browsers[0]
+                selected_port = _get_browser_port(fallback_browser)
+                cdp_url = _get_browser_endpoint(fallback_browser)
+                selected_is_external = fallback_browser.get(
+                    "isExternal", False
+                )
+                logger.warning(
+                    f"No available browsers in pool (initial), using first: "
+                    f"port={selected_port}, session_id={toolkit_session_id}"
+                )
+    elif use_browser:
+        existing_cdp_url = env("EIGENT_CDP_URL", "").strip()
         selected_port = env("browser_port", "9222")
+        cdp_url = f"http://localhost:{selected_port}"
 
-    web_toolkit_custom = HybridBrowserToolkit(
-        options.project_id,
-        cdp_keep_current_page=True,
-        headless=False,
-        browser_log_to_file=True,
-        stealth=True,
-        session_id=toolkit_session_id,
-        cdp_url=f"http://localhost:{selected_port}",
-        enabled_tools=[
-            "browser_click",
-            "browser_type",
-            "browser_back",
-            "browser_forward",
-            "browser_select",
-            "browser_console_exec",
-            "browser_console_view",
-            "browser_switch_tab",
-            "browser_enter",
-            "browser_visit_page",
-            "browser_scroll",
-            "browser_sheet_read",
-            "browser_sheet_input",
-            "browser_get_page_snapshot",
-            "browser_open",
-            "browser_upload_file",
-            "browser_download_file",
-        ],
-    )
+        if existing_cdp_url:
+            cdp_url = existing_cdp_url
+            try:
+                parsed = urlparse(existing_cdp_url)
+                if parsed.port is not None:
+                    selected_port = parsed.port
+            except Exception:
+                selected_port = env("browser_port", "9222")
+        elif hands is not None:
+            try:
+                cdp_url = hands.acquire_resource(
+                    "browser", toolkit_session_id, port=selected_port
+                )
+                cdp_owned_by_hands = True
+            except (NotImplementedError, ValueError):
+                cdp_url = f"http://localhost:{selected_port}"
 
-    # Save reference before registering for toolkits_to_register_agent
-    web_toolkit_for_agent_registration = web_toolkit_custom
-    web_toolkit_custom = message_integration.register_toolkits(
-        web_toolkit_custom
-    )
+    # Web mode (no Electron): cdp_keep_current_page=False so toolkit can create
+    # pages when browser has 0 tabs. Electron mode: True to reuse user's page.
+    cdp_keep_current = bool(options.cdp_browsers) if use_browser else False
+    default_start_url = None if cdp_keep_current else "about:blank"
 
-    terminal_toolkit = TerminalToolkit(
-        options.project_id,
-        Agents.browser_agent,
-        working_directory=working_directory,
-        safe_mode=True,
-        clone_current_env=True,
-    )
-    terminal_toolkit = message_integration.register_functions(
-        [terminal_toolkit.shell_exec]
-    )
+    web_toolkit_custom = None
+    web_toolkit_for_agent_registration = None
+    if use_browser:
+        web_toolkit_custom = HybridBrowserToolkit(
+            options.project_id,
+            cdp_keep_current_page=cdp_keep_current,
+            default_start_url=default_start_url,
+            headless=False,
+            browser_log_to_file=True,
+            # Electron already injects stealth behavior into its isolated
+            # WebContentsView. Playwright context-wide headers would also
+            # affect the main Eigent renderer on the shared CDP endpoint.
+            stealth=not bool(owned_target_url),
+            session_id=toolkit_session_id,
+            cdp_url=cdp_url,
+            owned_target_url=owned_target_url,
+            enabled_tools=[
+                "browser_click",
+                "browser_type",
+                "browser_back",
+                "browser_forward",
+                "browser_select",
+                "browser_console_exec",
+                "browser_console_view",
+                "browser_switch_tab",
+                "browser_enter",
+                "browser_visit_page",
+                "browser_scroll",
+                "browser_sheet_read",
+                "browser_sheet_input",
+                "browser_get_page_snapshot",
+                "browser_open",
+                "browser_upload_file",
+                "browser_download_file",
+            ],
+        )
+        web_toolkit_for_agent_registration = web_toolkit_custom
+        web_toolkit_custom = message_integration.register_toolkits(
+            web_toolkit_custom
+        )
+
+    terminal_toolkit = None
+    if use_terminal:
+        terminal_toolkit = TerminalToolkit(
+            options.project_id,
+            Agents.browser_agent,
+            working_directory=working_directory,
+            safe_mode=True,
+            clone_current_env=True,
+        )
+        terminal_toolkit = message_integration.register_functions(
+            [terminal_toolkit.shell_exec]
+        )
 
     note_toolkit = NoteTakingToolkit(
         options.project_id,
@@ -272,13 +385,39 @@ def browser_agent(options: Chat):
         *HumanToolkit.get_can_use_tools(
             options.project_id, Agents.browser_agent
         ),
-        *web_toolkit_custom.get_tools(),
-        *terminal_toolkit,
         *note_toolkit.get_tools(),
         *screenshot_toolkit.get_tools(),
         *search_tools,
         *skill_toolkit.get_tools(),
     ]
+    tool_names = [
+        SearchToolkit.toolkit_name(),
+        HumanToolkit.toolkit_name(),
+        NoteTakingToolkit.toolkit_name(),
+        ScreenshotToolkit.toolkit_name(),
+        SkillToolkit.toolkit_name(),
+    ]
+    if use_browser and web_toolkit_custom:
+        tools = [
+            *HumanToolkit.get_can_use_tools(
+                options.project_id, Agents.browser_agent
+            ),
+            *web_toolkit_custom.get_tools(),
+            *note_toolkit.get_tools(),
+            *screenshot_toolkit.get_tools(),
+            *search_tools,
+            *skill_toolkit.get_tools(),
+        ]
+        tool_names.insert(1, HybridBrowserToolkit.toolkit_name())
+    if use_terminal and terminal_toolkit:
+        tools.extend(terminal_toolkit)
+        tool_names.append(TerminalToolkit.toolkit_name())
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.browser_agent,
+    )
 
     # Build external browser notice
     external_browser_notice = ""
@@ -297,8 +436,19 @@ def browser_agent(options: Chat):
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
-        now_str=NOW_STR,
+        now_str=agent_current_time(options),
         external_browser_notice=external_browser_notice,
+    )
+    system_message = append_connected_app_mcp_notice(system_message)
+    system_message = attach_remote_sub_agent_if_enabled(
+        options=options,
+        agent_name=Agents.browser_agent,
+        working_directory=working_directory,
+        tools=tools,
+        tool_names=tool_names,
+        system_message=system_message,
+        local_tool_description="local browser, search, or terminal actions",
+        message_integration=message_integration,
     )
 
     agent = agent_model(
@@ -310,18 +460,14 @@ def browser_agent(options: Chat):
         options,
         tools,
         prune_tool_calls_from_memory=True,
-        tool_names=[
-            SearchToolkit.toolkit_name(),
-            HybridBrowserToolkit.toolkit_name(),
-            HumanToolkit.toolkit_name(),
-            NoteTakingToolkit.toolkit_name(),
-            TerminalToolkit.toolkit_name(),
-            ScreenshotToolkit.toolkit_name(),
-            SkillToolkit.toolkit_name(),
-        ],
+        tool_names=tool_names,
         toolkits_to_register_agent=[
-            web_toolkit_for_agent_registration,
-            screenshot_toolkit_for_agent_registration,
+            t
+            for t in (
+                web_toolkit_for_agent_registration,
+                screenshot_toolkit_for_agent_registration,
+            )
+            if t is not None
         ],
         enable_snapshot_clean=True,
     )
@@ -337,7 +483,17 @@ def browser_agent(options: Chat):
         )
         if selected:
             agent_instance._cdp_port = _get_browser_port(selected)
+            agent_instance._cdp_url = _get_browser_endpoint(selected)
+            agent_instance._cdp_owned_target_url = selected.get("targetUrl")
         else:
+            if any(
+                browser.get("managedBy") == "electron"
+                for browser in options.cdp_browsers
+            ):
+                raise RuntimeError(
+                    "No unused Eigent embedded browser target is available "
+                    "for the cloned Agent."
+                )
             agent_instance._cdp_port = _get_browser_port(
                 options.cdp_browsers[0]
             )
@@ -351,19 +507,42 @@ def browser_agent(options: Chat):
         """Release CDP browser back to pool."""
         port = getattr(agent_instance, "_cdp_port", None)
         session_id = getattr(agent_instance, "_cdp_session_id", None)
-        if port is not None and session_id is not None:
+        if (
+            port is not None
+            and session_id is not None
+            and options.cdp_browsers
+        ):
             _cdp_pool_manager.release_browser(port, session_id)
             logger.info(
                 f"Released CDP for agent {agent_instance.agent_id}: "
                 f"port={port}, session={session_id}"
             )
+        elif (
+            session_id is not None
+            and hands is not None
+            and getattr(agent_instance, "_cdp_owned_by_hands", False)
+        ):
+            try:
+                hands.release_resource("browser", session_id)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to release browser resource for session %s: %s",
+                    session_id,
+                    exc,
+                )
 
-    agent._cdp_acquire_callback = acquire_cdp_for_agent
-    agent._cdp_release_callback = release_cdp_from_agent
+    agent._cdp_acquire_callback = (
+        acquire_cdp_for_agent if use_browser else None
+    )
+    agent._cdp_release_callback = (
+        release_cdp_from_agent if use_browser else None
+    )
     agent._cdp_port = selected_port
+    agent._cdp_url = cdp_url
     agent._cdp_session_id = toolkit_session_id
     agent._cdp_task_id = options.task_id
     agent._cdp_options = options
     agent._browser_toolkit = web_toolkit_for_agent_registration
+    agent._cdp_owned_by_hands = cdp_owned_by_hands
 
     return agent

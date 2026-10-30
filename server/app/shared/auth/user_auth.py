@@ -16,6 +16,7 @@
 User auth with 1 week access token, refresh token, blacklist check, type claim.
 """
 
+import hashlib
 import uuid
 from datetime import datetime, timedelta
 
@@ -40,6 +41,40 @@ TOKEN_EXPIRY = timedelta(weeks=1)  # 1 week
 REFRESH_EXPIRY = timedelta(days=30)
 TOKEN_TYPE_USER = "user"
 TOKEN_TYPE_REFRESH = "refresh"
+TOKEN_AUDIENCE = env("TOKEN_AUDIENCE") or env("JWT_AUDIENCE") or "eigent-api"
+
+
+def _token_issuer() -> str:
+    explicit = env("TOKEN_ISSUER") or env("JWT_ISSUER") or env("token_issuer")
+    if explicit:
+        return explicit
+
+    material = "|".join(
+        value
+        for value in (
+            env("SERVER_URL", ""),
+            env("VITE_BASE_URL", ""),
+            env("VITE_PROXY_URL", ""),
+            env("url_prefix", ""),
+            env("database_url", ""),
+        )
+        if value
+    )
+    if not material:
+        material = "eigent-default-token-environment"
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+    return f"eigent:{digest}"
+
+
+TOKEN_ISSUER = _token_issuer()
+
+
+def _message(text: str) -> str:
+    try:
+        return _(text)
+    except LookupError:
+        return text
+
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{env('url_prefix', '')}/v1/user/dev_login",
@@ -64,16 +99,29 @@ class V1UserAuth:
     @classmethod
     def decode_token(cls, token: str) -> "V1UserAuth":
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            payload = jwt.decode(
+                token,
+                SECRET_KEY,
+                algorithms=["HS256"],
+                issuer=TOKEN_ISSUER,
+                audience=TOKEN_AUDIENCE,
+                options={"require": ["id", "type", "jti", "iss", "aud", "exp"]},
+            )
             token_type = payload.get("type", "user")
             if token_type != TOKEN_TYPE_USER:
-                raise TokenException(code.token_invalid, _("Invalid token type"))
+                raise TokenException(code.token_invalid, _message("Invalid token type"))
             user_id = payload["id"]
             if payload["exp"] < int(datetime.utcnow().timestamp()):
-                raise TokenException(code.token_expired, _("Validate credentials expired"))
+                raise TokenException(
+                    code.token_expired,
+                    _message("Validate credentials expired"),
+                )
             return V1UserAuth(user_id, datetime.fromtimestamp(payload["exp"]))
         except InvalidTokenError:
-            raise TokenException(code.token_invalid, _("Could not validate credentials"))
+            raise TokenException(
+                code.token_invalid,
+                _message("Could not validate credentials"),
+            )
 
     @classmethod
     def create_access_token(cls, user_id: int, expires_delta: timedelta | None = None) -> str:
@@ -83,6 +131,8 @@ class V1UserAuth:
             "id": user_id,
             "type": TOKEN_TYPE_USER,
             "jti": str(uuid.uuid4()),
+            "iss": TOKEN_ISSUER,
+            "aud": TOKEN_AUDIENCE,
             "exp": expire,
         }
         return jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
@@ -95,6 +145,8 @@ class V1UserAuth:
             "id": user_id,
             "type": TOKEN_TYPE_REFRESH,
             "jti": str(uuid.uuid4()),
+            "iss": TOKEN_ISSUER,
+            "aud": TOKEN_AUDIENCE,
             "exp": expire,
         }
         return jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
@@ -102,7 +154,16 @@ class V1UserAuth:
 
 def _get_jti(token: str) -> str | None:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False})
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=["HS256"],
+            options={
+                "verify_exp": False,
+                "verify_aud": False,
+                "verify_iss": False,
+            },
+        )
         return payload.get("jti")
     except Exception:
         return None
@@ -115,33 +176,46 @@ async def decode_refresh_token(token: str) -> tuple[int, str | None, int]:
     :raises TokenException: if invalid, wrong type, or blacklisted.
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=["HS256"],
+            issuer=TOKEN_ISSUER,
+            audience=TOKEN_AUDIENCE,
+            options={"require": ["id", "type", "jti", "iss", "aud", "exp"]},
+        )
         if payload.get("type") != TOKEN_TYPE_REFRESH:
-            raise TokenException(code.token_invalid, _("Invalid token type - refresh required"))
+            raise TokenException(
+                code.token_invalid,
+                _message("Invalid token type - refresh required"),
+            )
         user_id = payload["id"]
         jti = payload.get("jti")
         exp = payload["exp"]
         if jti and await is_blacklisted(jti):
-            raise TokenException(code.token_blocked, _("Token has been revoked"))
+            raise TokenException(code.token_blocked, _message("Token has been revoked"))
         return user_id, jti, exp
     except InvalidTokenError:
-        raise TokenException(code.token_invalid, _("Could not validate credentials"))
+        raise TokenException(
+            code.token_invalid,
+            _message("Could not validate credentials"),
+        )
 
 
 async def auth_must(
-    token: str = Depends(oauth2_scheme),
+    token: str | None = Depends(oauth2_scheme),
     db_session: Session = Depends(session),
 ) -> V1UserAuth:
     """Require valid user token. Raises TokenException if invalid or blacklisted."""
     if not token:
-        raise TokenException(code.token_need, _("Token required"))
+        raise TokenException(code.token_need, _message("Token required"))
     model = V1UserAuth.decode_token(token)
     jti = _get_jti(token)
     if jti and await is_blacklisted(jti):
-        raise TokenException(code.token_blocked, _("Token has been revoked"))
+        raise TokenException(code.token_blocked, _message("Token has been revoked"))
     user = db_session.get(User, model.id)
     if not user:
-        raise TokenException(code.token_invalid, _("User not found"))
+        raise TokenException(code.token_invalid, _message("User not found"))
     model._user = user
     return model
 
@@ -173,5 +247,8 @@ async def key_must(headers: ApiKey = Header(), db_session: Session = Depends(ses
     """Validate API key from request headers."""
     model = db_session.exec(select(Key).where(Key.value == headers.api_key)).one_or_none()
     if model is None:
-        raise TokenException(code.token_invalid, _(f"Could not validate key credentials: {headers.api_key}"))
+        raise TokenException(
+            code.token_invalid,
+            _message(f"Could not validate key credentials: {headers.api_key}"),
+        )
     return model

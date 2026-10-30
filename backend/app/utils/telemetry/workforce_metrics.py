@@ -22,6 +22,7 @@ from typing import Any
 import camel
 from camel.societies.workforce.events import (
     LogEvent,
+    StreamChunkEvent,
     TaskAssignedEvent,
     TaskCompletedEvent,
     TaskCreatedEvent,
@@ -181,6 +182,25 @@ def get_tracer_provider() -> TracerProvider | None:
         )
         return None
     return _GLOBAL_TRACER_PROVIDER
+
+
+def shutdown_tracer_provider() -> None:
+    """Shutdown the global TracerProvider and release background threads.
+
+    Call during FastAPI shutdown to ensure BatchSpanProcessor worker threads
+    are properly released, preventing process hang on exit.
+    """
+    global _GLOBAL_TRACER_PROVIDER
+    if _GLOBAL_TRACER_PROVIDER is None:
+        return
+    try:
+        _GLOBAL_TRACER_PROVIDER.force_flush(timeout_millis=2000)
+        _GLOBAL_TRACER_PROVIDER.shutdown()
+        logger.info("TracerProvider shutdown completed")
+    except Exception as e:
+        logger.warning(f"TracerProvider shutdown failed: {e}")
+    finally:
+        _GLOBAL_TRACER_PROVIDER = None
 
 
 def _create_langfuse_endpoint(base_url: str) -> str:
@@ -582,6 +602,14 @@ class WorkforceMetricsCallback(WorkforceMetrics):
                     span.set_status(
                         Status(StatusCode.ERROR, log_event.message)
                     )
+
+    def log_stream_chunk(self, _event: StreamChunkEvent) -> None:
+        """Accept CAMEL stream callbacks without tracing every text chunk.
+
+        A model response can produce hundreds of chunks. Recording one span
+        per chunk would add high-cardinality telemetry without useful task
+        boundaries, so task lifecycle events remain the tracing unit.
+        """
 
     def log_all_tasks_completed(self, event) -> None:
         """Log when all tasks in the workforce are completed.

@@ -12,1645 +12,952 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-/**
- * useBackgroundTaskProcessor — Comprehensive Unit Tests
- *
- * Architecture under test:
- *   useBackgroundTaskProcessor polls projectStore queuedMessages for messages
- *   with an executionId, processes them one at a time (per-project concurrency),
- *   and manages the full task lifecycle via chatStore.startTask.
- *
- * Test categories:
- *  1. Hook initialization and cleanup (timer, subscription)
- *  2. Task queue processing order (first-unprocessed with executionId)
- *  3. Per-project concurrency control (one active task per project)
- *  4. SSE connection lifecycle (stale SSE detection and cleanup)
- *  5. Running/paused task detection (skip project with active chat tasks)
- *  6. Error recovery and retry (startTask failure, chatStore unavailable)
- *  7. Store state updates on task events (mapping registration, status reports)
- *  8. Poll-driven re-evaluation (completed task cleanup + next task pickup)
- *  9. Edge cases (empty projects, no executionId, already processing guard)
- */
+// These cases exercise the existing legacy lane. C6 ownership/transport is
+// covered separately by sessionExecution and real ASGI IPC integration tests.
+const sessionEntryGuard = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined)
+);
+vi.mock('@/store/sessionExecutionStore', () => ({
+  requireLegacyExecution: sessionEntryGuard,
+  readSessionExecutionRoute: async (scope: { projectId: string }) => ({
+    project_id: scope.projectId,
+    route: 'legacy',
+  }),
+  getSessionExecutionState: (scope: { projectId: string }) => ({
+    route: { project_id: scope.projectId, route: 'legacy' },
+    managed: false,
+  }),
+}));
 
-import { act, renderHook } from '@testing-library/react';
+import { useBackgroundTaskProcessor } from '@/hooks/useBackgroundTaskProcessor';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import * as authStore from '@/store/authStore';
+import { ExecutionStatus } from '@/types';
+import { AgentStep, ChatTaskStatus } from '@/types/constants';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// ─── Hoisted mock references ──────────────────────────────────────────
+const mocks = vi.hoisted(() => {
+  const projectRuntimeStore = {
+    getAllProjects: vi.fn(),
+    getProjectById: vi.fn(),
+    getChatStore: vi.fn(),
+    appendInitChatStore: vi.fn(),
+    markQueuedMessageAsProcessing: vi.fn(),
+    setQueuedMessageProcessing: vi.fn(),
+    removeQueuedMessage: vi.fn(),
+  };
+  const useProjectRuntimeStore = Object.assign(
+    vi.fn(() => projectRuntimeStore),
+    {
+      getState: vi.fn(() => projectRuntimeStore),
+      subscribe: vi.fn(() => vi.fn()),
+    }
+  );
+  const triggerTaskStore = {
+    registerExecutionMapping: vi.fn(),
+  };
 
-const { mockGenerateUniqueId } = vi.hoisted(() => ({
-  mockGenerateUniqueId: vi.fn(),
+  return {
+    closeIdleSSEConnectionsForTasks: vi.fn(),
+    fetchGet: vi.fn(),
+    fetchPost: vi.fn(),
+    flushPendingTriggerExecutionUpdates: vi.fn(() => Promise.resolve()),
+    hasActiveSSEConnection: vi.fn(),
+    hasSSETransportForTasks: vi.fn(),
+    projectRuntimeStore,
+    proxyUpdateTriggerExecution: vi.fn(() => Promise.resolve()),
+    startTask: vi.fn(),
+    triggerTaskStore,
+    useProjectRuntimeStore,
+    waitForIdleSSEDisplayTail: vi.fn(),
+  };
+});
+
+vi.mock('@/i18n', () => ({
+  default: {
+    t: (_key: string, options?: { defaultValue?: string }) =>
+      options?.defaultValue || _key,
+  },
 }));
 
-const { mockProxyUpdateTriggerExecution } = vi.hoisted(() => ({
-  mockProxyUpdateTriggerExecution: vi.fn(() => Promise.resolve()),
+vi.mock('@/api/http', () => ({
+  fetchGet: mocks.fetchGet,
+  fetchPost: mocks.fetchPost,
 }));
-
-const { mockHasActiveSSEConnection } = vi.hoisted(() => ({
-  mockHasActiveSSEConnection: vi.fn(() => false),
-}));
-
-const { mockCloseSSEConnectionsForTasks } = vi.hoisted(() => ({
-  mockCloseSSEConnectionsForTasks: vi.fn(),
-}));
-
-const { mockToastError } = vi.hoisted(() => ({
-  mockToastError: vi.fn(),
-}));
-
-// ─── Mock declarations (hoisted) ──────────────────────────────────────
 
 vi.mock('@/lib', () => ({
-  generateUniqueId: mockGenerateUniqueId,
+  generateUniqueId: () => 'new-trigger-run',
 }));
 
 vi.mock('@/service/triggerApi', () => ({
-  proxyUpdateTriggerExecution: mockProxyUpdateTriggerExecution,
+  flushPendingTriggerExecutionUpdates:
+    mocks.flushPendingTriggerExecutionUpdates,
+  proxyUpdateTriggerExecution: mocks.proxyUpdateTriggerExecution,
 }));
 
 vi.mock('@/store/chatStore', () => ({
-  hasActiveSSEConnection: mockHasActiveSSEConnection,
-  closeSSEConnectionsForTasks: mockCloseSSEConnectionsForTasks,
+  closeIdleSSEConnectionsForTasks: mocks.closeIdleSSEConnectionsForTasks,
+  hasActiveSSEConnection: mocks.hasActiveSSEConnection,
+  hasSSETransportForTasks: mocks.hasSSETransportForTasks,
+  waitForIdleSSEDisplayTail: mocks.waitForIdleSSEDisplayTail,
 }));
 
-vi.mock('sonner', () => ({
-  toast: {
-    error: mockToastError,
-  },
-}));
-
-// ─── Build mock stores ────────────────────────────────────────────────
-
-/**
- * Create a fresh mock projectStore with isolated state for each test.
- * Returns the store object plus helper functions to manipulate state.
- */
-function createMockProjectStore() {
-  /** Map<projectId, projectData> */
-  const projects = new Map<
-    string,
-    {
-      id: string;
-      name: string;
-      queuedMessages: any[];
-      chatStores: Record<string, any>;
-    }
-  >();
-
-  const subscribers: Array<() => void> = [];
-
-  const store = {
-    getAllProjects: vi.fn(() => {
-      return Array.from(projects.values());
-    }),
-
-    getProjectById: vi.fn((projectId: string) => {
-      return projects.get(projectId) ?? null;
-    }),
-
-    markQueuedMessageAsProcessing: vi.fn(
-      (projectId: string, taskId: string) => {
-        const project = projects.get(projectId);
-        if (project) {
-          const msg = project.queuedMessages.find(
-            (m: any) => m.task_id === taskId
-          );
-          if (msg) msg.processing = true;
-        }
-        // Notify subscribers — simulates zustand subscription
-        subscribers.forEach((fn) => fn());
-      }
-    ),
-
-    removeQueuedMessage: vi.fn((projectId: string, taskId: string) => {
-      const project = projects.get(projectId);
-      if (project) {
-        const idx = project.queuedMessages.findIndex(
-          (m: any) => m.task_id === taskId
-        );
-        if (idx !== -1) {
-          const removed = project.queuedMessages.splice(idx, 1)[0];
-          return removed;
-        }
-      }
-      return null;
-    }),
-
-    getChatStore: vi.fn((projectId: string) => {
-      const project = projects.get(projectId);
-      if (!project) return null;
-      // Return the first chatStore or create a mock one
-      const chatIds = Object.keys(project.chatStores);
-      if (chatIds.length > 0) return project.chatStores[chatIds[0]];
-
-      // Create a default mock chatStore with startTask
-      const mockStore = {
-        getState: vi.fn(() => ({
-          tasks: {},
-          activeTaskId: null,
-          startTask: vi.fn(() => Promise.resolve()),
-        })),
-      };
-      project.chatStores['default-chat'] = mockStore;
-      return mockStore;
-    }),
-
-    /** Test helper: add a project with optional queued messages */
-    _addProject(
-      projectId: string,
-      opts: {
-        queuedMessages?: any[];
-        chatStores?: Record<string, any>;
-      } = {}
-    ) {
-      projects.set(projectId, {
-        id: projectId,
-        name: `Project ${projectId}`,
-        queuedMessages: opts.queuedMessages ?? [],
-        chatStores: opts.chatStores ?? {},
-      });
-    },
-
-    /** Test helper: get internal project data */
-    _getProject(projectId: string) {
-      return projects.get(projectId);
-    },
-
-    /** Test helper: reset all state */
-    _reset() {
-      projects.clear();
-      subscribers.length = 0;
-    },
-
-    /** Subscribe (zustand-compatible) */
-    subscribe: vi.fn((fn: () => void) => {
-      subscribers.push(fn);
-      return () => {
-        const idx = subscribers.indexOf(fn);
-        if (idx !== -1) subscribers.splice(idx, 1);
-      };
-    }),
-
-    getState: vi.fn(() => ({
-      projects: Object.fromEntries(projects),
-    })),
-  };
-
-  return store;
-}
-
-function createMockTriggerTaskStore() {
-  const mappings = new Map<
-    string,
-    {
-      chatTaskId: string;
-      executionId: string;
-      triggerTaskId: string;
-      projectId: string;
-      triggerName?: string;
-      triggerId?: number;
-      reported: boolean;
-    }
-  >();
-
-  return {
-    registerExecutionMapping: vi.fn(
-      (
-        chatTaskId: string,
-        executionId: string,
-        triggerTaskId: string,
-        projectId: string,
-        triggerName?: string,
-        triggerId?: number
-      ) => {
-        mappings.set(chatTaskId, {
-          chatTaskId,
-          executionId,
-          triggerTaskId,
-          projectId,
-          triggerName,
-          triggerId,
-          reported: false,
-        });
-      }
-    ),
-
-    getExecutionMapping: vi.fn((chatTaskId: string) => {
-      return mappings.get(chatTaskId);
-    }),
-
-    removeExecutionMapping: vi.fn((chatTaskId: string) => {
-      mappings.delete(chatTaskId);
-    }),
-
-    executionMappings: mappings,
-  };
-}
-
-// ─── Mock store hooks ─────────────────────────────────────────────────
-
-let _mockProjectStore: ReturnType<typeof createMockProjectStore>;
-let _mockTriggerTaskStore: ReturnType<typeof createMockTriggerTaskStore>;
-
-/**
- * Create a mock useProjectStore function that:
- * - When called as a hook → returns the store instance (for projectStore.getAllProjects, etc.)
- * - Has .subscribe() and .getState() static methods (for the useEffect subscription)
- */
-function createMockUseProjectStore() {
-  const fn = vi.fn(() => _mockProjectStore);
-  // Attach zustand-compatible static methods that delegate to the store
-  Object.defineProperty(fn, 'subscribe', {
-    get: () => (callback: () => void) => _mockProjectStore.subscribe(callback),
-    configurable: true,
-  });
-  Object.defineProperty(fn, 'getState', {
-    get: () => () => _mockProjectStore.getState(),
-    configurable: true,
-  });
-  return fn;
-}
-
-const mockUseProjectStoreFn = createMockUseProjectStore();
-
-vi.mock('@/store/projectStore', () => ({
-  get useProjectStore() {
-    return mockUseProjectStoreFn;
-  },
+vi.mock('@/store/projectRuntimeStore', () => ({
+  useProjectRuntimeStore: mocks.useProjectRuntimeStore,
 }));
 
 vi.mock('@/store/triggerTaskStore', () => ({
-  useTriggerTaskStore: vi.fn(() => _mockTriggerTaskStore),
+  useTriggerTaskStore: () => mocks.triggerTaskStore,
 }));
 
-// ─── SUT import (after mocks) ─────────────────────────────────────────
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn() },
+}));
 
-import { useBackgroundTaskProcessor } from '@/hooks/useBackgroundTaskProcessor';
+describe('useBackgroundTaskProcessor SSE admission', () => {
+  let idleController: AbortController;
+  let physicalTransportPresent: boolean;
+  let sourceState: any;
 
-// ─── Helpers ──────────────────────────────────────────────────────────
-
-/** Create a queued message with an executionId (ready for background processing). */
-function makeQueuedMessage(overrides: Record<string, any> = {}) {
-  return {
-    task_id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    content: 'Do something important',
-    attaches: [],
-    executionId: `exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    processing: false,
-    triggerTaskId: undefined,
-    triggerId: undefined,
-    triggerName: undefined,
-    timestamp: Date.now(),
-    ...overrides,
-  };
-}
-
-/** Create a mock chatStore with configurable task states. */
-function makeMockChatStore(taskOverrides: Record<string, any> = {}) {
-  const tasks: Record<string, any> = taskOverrides.tasks ?? {};
-
-  return {
-    getState: vi.fn(() => ({
-      tasks,
-      activeTaskId: taskOverrides.activeTaskId ?? null,
-      startTask: vi.fn(() => Promise.resolve()),
-    })),
-  };
-}
-
-// Use fake timers for deterministic timer behavior
-const POLL_INTERVAL_MS = 2000;
-
-// ═══════════════════════════════════════════════════════════════════════
-// Tests
-// ═══════════════════════════════════════════════════════════════════════
-
-describe('useBackgroundTaskProcessor', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-
-    _mockProjectStore = createMockProjectStore();
-    _mockTriggerTaskStore = createMockTriggerTaskStore();
-
-    // Re-bind the mock hook function to return the fresh store instance.
-    // clearAllMocks in afterEach resets vi.fn implementations.
-    mockUseProjectStoreFn.mockImplementation(() => _mockProjectStore);
-
-    mockGenerateUniqueId.mockReturnValue('unique-task-id-1');
-    mockProxyUpdateTriggerExecution.mockResolvedValue(undefined);
-    mockHasActiveSSEConnection.mockReturnValue(false);
-    mockCloseSSEConnectionsForTasks.mockReturnValue(undefined);
-    mockToastError.mockReturnValue(undefined);
-
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
     vi.clearAllMocks();
-  });
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  1. Hook Initialization and Cleanup                             ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-
-  describe('Hook initialization and cleanup', () => {
-    it('should run an initial poll on mount immediately', () => {
-      _mockProjectStore._addProject('proj-A', { queuedMessages: [] });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      // getAllProjects called from the initial poll
-      expect(_mockProjectStore.getAllProjects).toHaveBeenCalled();
-    });
-
-    it('should set up a polling timer that fires at POLL_INTERVAL_MS', () => {
-      _mockProjectStore._addProject('proj-A', { queuedMessages: [] });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      const initialCallCount =
-        _mockProjectStore.getAllProjects.mock.calls.length;
-
-      // Advance past the first poll interval
-      act(() => {
-        vi.advanceTimersByTime(POLL_INTERVAL_MS);
-      });
-
-      expect(
-        _mockProjectStore.getAllProjects.mock.calls.length
-      ).toBeGreaterThan(initialCallCount);
-    });
-
-    it('should clear the poll timer on unmount', () => {
-      _mockProjectStore._addProject('proj-A', { queuedMessages: [] });
-
-      const { unmount } = renderHook(() => useBackgroundTaskProcessor());
-
-      unmount();
-
-      const callCountAfterUnmount =
-        _mockProjectStore.getAllProjects.mock.calls.length;
-
-      // Advance timer — no more polls should fire
-      act(() => {
-        vi.advanceTimersByTime(POLL_INTERVAL_MS * 3);
-      });
-
-      expect(_mockProjectStore.getAllProjects.mock.calls.length).toBe(
-        callCountAfterUnmount
-      );
-    });
-
-    it('should subscribe to projectStore changes and poll on trigger tasks', () => {
-      _mockProjectStore._addProject('proj-A', { queuedMessages: [] });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      expect(_mockProjectStore.subscribe).toHaveBeenCalled();
-
-      // Simulate a store notification with a trigger task in queue
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [makeQueuedMessage({ executionId: 'exec-new' })],
-      });
-
-      // Manually invoke the subscriber (the subscription callback)
-      const subscribeFn = _mockProjectStore.subscribe.mock
-        .calls[0][0] as () => void;
-      act(() => {
-        subscribeFn();
-      });
-
-      // Should have triggered another poll
-      expect(
-        _mockProjectStore.getAllProjects.mock.calls.length
-      ).toBeGreaterThan(1);
-    });
-  });
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  2. Task Queue Processing Order                                 ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-
-  describe('Task queue processing order', () => {
-    it('should process the first queued message with an executionId', async () => {
-      const msg1 = makeQueuedMessage({ executionId: 'exec-first' });
-      const msg2 = makeQueuedMessage({ executionId: 'exec-second' });
-      const chatStore = makeMockChatStore();
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg1, msg2],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // Should have processed the first message
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).toHaveBeenCalledWith('proj-A', msg1.task_id);
-    });
-
-    it('should skip messages without executionId', async () => {
-      const msgNoExec = makeQueuedMessage({ executionId: undefined });
-      const msgWithExec = makeQueuedMessage({ executionId: 'exec-valid' });
-      const chatStore = makeMockChatStore();
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msgNoExec, msgWithExec],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // Only the message with executionId should be processed
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).toHaveBeenCalledWith('proj-A', msgWithExec.task_id);
-    });
-
-    it('should skip already-processing messages', async () => {
-      const msgProcessing = makeQueuedMessage({
-        executionId: 'exec-proc',
-        processing: true,
-      });
-      const msgReady = makeQueuedMessage({
-        executionId: 'exec-ready',
-        processing: false,
-      });
-      const chatStore = makeMockChatStore();
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msgProcessing, msgReady],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).toHaveBeenCalledWith('proj-A', msgReady.task_id);
-    });
-
-    it('should do nothing when all projects have empty queues', async () => {
-      _mockProjectStore._addProject('proj-A', { queuedMessages: [] });
-      _mockProjectStore._addProject('proj-B', { queuedMessages: [] });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).not.toHaveBeenCalled();
-    });
-
-    it('should process from the first project that has a valid message', async () => {
-      const msgB = makeQueuedMessage({ executionId: 'exec-B' });
-      const chatStoreB = makeMockChatStore();
-
-      _mockProjectStore._addProject('proj-A', { queuedMessages: [] });
-      _mockProjectStore._addProject('proj-B', {
-        queuedMessages: [msgB],
-        chatStores: { 'chat-1': chatStoreB },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).toHaveBeenCalledWith('proj-B', msgB.task_id);
-    });
-  });
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  3. Per-Project Concurrency Control                             ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-
-  describe('Per-project concurrency control', () => {
-    it('should skip a project that already has an active background task', async () => {
-      // This tests the activeTasksRef check: if a project already has an active
-      // background task in the ref, it should be skipped.
-      const msg1 = makeQueuedMessage({ executionId: 'exec-1' });
-      const msg2 = makeQueuedMessage({ executionId: 'exec-2' });
-
-      const startTaskFn = vi.fn(() => new Promise(() => {})); // never resolves
-      const chatStore = makeMockChatStore();
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: startTaskFn,
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg1],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      // First poll: picks up msg1
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(startTaskFn).toHaveBeenCalledTimes(1);
-
-      // Now add msg2 to the same project
-      const projA = _mockProjectStore._getProject('proj-A')!;
-      projA.queuedMessages.push(msg2);
-
-      // Second poll: should skip proj-A because it has an active task
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
-      });
-
-      // startTask should NOT have been called again for proj-A
-      expect(startTaskFn).toHaveBeenCalledTimes(1);
-    });
-
-    it('should allow concurrent tasks across different projects', async () => {
-      const msgA = makeQueuedMessage({ executionId: 'exec-A' });
-      const msgB = makeQueuedMessage({ executionId: 'exec-B' });
-
-      const startTaskA = vi.fn(() => new Promise(() => {}));
-      const startTaskB = vi.fn(() => new Promise(() => {}));
-      const chatStoreA = makeMockChatStore();
-      chatStoreA.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: startTaskA,
-      });
-      const chatStoreB = makeMockChatStore();
-      chatStoreB.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: startTaskB,
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msgA],
-        chatStores: { 'chat-1': chatStoreA },
-      });
-      _mockProjectStore._addProject('proj-B', {
-        queuedMessages: [msgB],
-        chatStores: { 'chat-1': chatStoreB },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      // First poll picks up proj-A's message
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(startTaskA).toHaveBeenCalledTimes(1);
-
-      // Second poll should pick up proj-B (not blocked by proj-A)
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
-      });
-
-      expect(startTaskB).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  4. Running/Paused Chat Task Detection                          ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-
-  describe('Running/paused chat task detection', () => {
-    it('should skip a project that has a running chat task', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-1' });
-      const chatStore = makeMockChatStore({
-        tasks: {
-          'running-task': {
-            status: 'running',
-            messages: [],
-            isTakeControl: false,
-            hasWaitComfirm: false,
-          },
+    idleController = new AbortController();
+    physicalTransportPresent = true;
+
+    sourceState = {
+      activeTaskId: 'ended-run',
+      tasks: {
+        'ended-run': {
+          status: ChatTaskStatus.FINISHED,
+          messages: [{ step: AgentStep.TO_SUB_TASKS, isConfirm: true }],
+          hasWaitComfirm: false,
+          isTakeControl: false,
         },
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).not.toHaveBeenCalled();
-    });
-
-    it('should skip a project that has a paused chat task', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-1' });
-      const chatStore = makeMockChatStore({
-        tasks: {
-          'paused-task': {
-            status: 'pause',
-            messages: [],
-            isTakeControl: false,
-            hasWaitComfirm: false,
-          },
+      },
+      startTask: mocks.startTask,
+    };
+    const chatStore = { getState: () => sourceState };
+    const project = {
+      id: 'project-1',
+      mode: 'single-agent',
+      chatStores: { primary: chatStore },
+      queuedMessages: [
+        {
+          task_id: 'queued-trigger',
+          content: 'Run scheduled task',
+          attaches: [],
+          executionId: 'execution-1',
+          triggerTaskId: 'trigger-task-1',
+          triggerId: 42,
+          triggerName: 'Scheduled trigger',
+          timestamp: 1,
         },
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).not.toHaveBeenCalled();
-    });
-
-    it('should skip a project with a task in splitting phase (TO_SUB_TASKS unconfirmed)', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-1' });
-      const chatStore = makeMockChatStore({
-        tasks: {
-          'splitting-task': {
-            status: 'finished',
-            messages: [{ step: 'to_sub_tasks', isConfirm: false }],
-            isTakeControl: false,
-            hasWaitComfirm: false,
-          },
-        },
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).not.toHaveBeenCalled();
-    });
-
-    it('should skip a project with a task in computing phase (no TO_SUB_TASKS, messages exist, not waiting)', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-1' });
-      const chatStore = makeMockChatStore({
-        tasks: {
-          'computing-task': {
-            status: 'pending',
-            messages: [{ step: 'task_state', isConfirm: true }],
-            isTakeControl: false,
-            hasWaitComfirm: false,
-          },
-        },
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).not.toHaveBeenCalled();
-    });
-
-    it('should skip a project with isTakeControl=true task', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-1' });
-      const chatStore = makeMockChatStore({
-        tasks: {
-          'control-task': {
-            status: 'finished',
-            messages: [],
-            isTakeControl: true,
-            hasWaitComfirm: true,
-          },
-        },
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).not.toHaveBeenCalled();
-    });
-
-    it('should allow processing when all chat tasks are finished', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-1' });
-      const chatStore = makeMockChatStore({
-        tasks: {
-          'done-task': {
-            status: 'finished',
-            messages: [
-              { step: 'to_sub_tasks', isConfirm: true },
-              { step: 'end', isConfirm: true },
-            ],
-            isTakeControl: false,
-            hasWaitComfirm: true,
-          },
-        },
-      });
-      // Override getChatStore to return this chatStore for the startTask call
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).toHaveBeenCalledWith('proj-A', msg.task_id);
-    });
-  });
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  5. SSE Connection Lifecycle                                    ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-
-  describe('SSE connection lifecycle', () => {
-    it('should skip a project when SSE connection is active and task is still running', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-1' });
-      const chatStore = makeMockChatStore({
-        tasks: {
-          'sse-task': {
-            status: 'running',
-            messages: [],
-            isTakeControl: false,
-            hasWaitComfirm: false,
-          },
-        },
-        activeTaskId: 'sse-task',
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      // SSE is active
-      mockHasActiveSSEConnection.mockReturnValue(true);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).not.toHaveBeenCalled();
-    });
-
-    it('should close stale SSE and skip when active task is finished', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-1' });
-      const chatStore = makeMockChatStore({
-        tasks: {
-          'done-task': {
-            status: 'finished',
-            messages: [],
-            isTakeControl: false,
-            hasWaitComfirm: true,
-          },
-        },
-        activeTaskId: 'done-task',
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      // SSE is active but task is done
-      mockHasActiveSSEConnection.mockReturnValue(true);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // Should have closed the SSE connections
-      expect(mockCloseSSEConnectionsForTasks).toHaveBeenCalled();
-      // Should NOT process the message in this poll cycle (continues to skip)
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).not.toHaveBeenCalled();
-    });
-
-    it('should close stale SSE when active task has hasWaitComfirm=true', async () => {
-      // The task must NOT be running/paused to pass the running-task check.
-      // Use status='finished' with hasWaitComfirm=true — this passes the
-      // running-task guard and triggers the "active task done" SSE close.
-      const chatStore = makeMockChatStore({
-        tasks: {
-          'wait-task': {
-            status: 'finished',
-            messages: [{ step: 'end', isConfirm: true }],
-            isTakeControl: false,
-            hasWaitComfirm: true,
-          },
-        },
-        activeTaskId: 'wait-task',
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [makeQueuedMessage({ executionId: 'exec-1' })],
-        chatStores: { 'chat-1': chatStore },
-      });
-
-      mockHasActiveSSEConnection.mockReturnValue(true);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(mockCloseSSEConnectionsForTasks).toHaveBeenCalled();
-    });
-  });
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  6. Error Recovery and Retry                                    ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-
-  describe('Error recovery and retry', () => {
-    it('should remove queued message and report failure when chatStore is unavailable', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-fail-1' });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: {},
-      });
-
-      // getChatStore returns null
-      _mockProjectStore.getChatStore.mockReturnValue(null);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // Should have removed the message
-      expect(_mockProjectStore.removeQueuedMessage).toHaveBeenCalledWith(
-        'proj-A',
-        msg.task_id
-      );
-
-      // Should report failure to backend
-      expect(mockProxyUpdateTriggerExecution).toHaveBeenCalledWith(
-        'exec-fail-1',
-        expect.objectContaining({
-          status: 'failed',
-          error_message: 'Failed to get chat store for background task',
-        }),
-        expect.objectContaining({ projectId: 'proj-A' })
-      );
-
-      // Should show error toast
-      expect(mockToastError).toHaveBeenCalledWith(
-        'Background task failed',
-        expect.objectContaining({
-          description: 'Failed to get chat store for background task',
-        })
-      );
-    });
-
-    it('should remove queued message and report failure when startTask rejects', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-fail-2' });
-      const chatStore = makeMockChatStore();
-      const startTaskError = new Error('Stream connection lost');
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: vi.fn(() => Promise.reject(startTaskError)),
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // Wait for the startTask promise to reject (flush microtasks)
-      await act(async () => {
-        await Promise.resolve();
-      });
-
-      // Should remove message on error
-      expect(_mockProjectStore.removeQueuedMessage).toHaveBeenCalledWith(
-        'proj-A',
-        msg.task_id
-      );
-
-      // Should report failure
-      expect(mockProxyUpdateTriggerExecution).toHaveBeenCalledWith(
-        'exec-fail-2',
-        expect.objectContaining({
-          status: 'failed',
-          error_message: 'Stream connection lost',
-        }),
-        expect.objectContaining({ projectId: 'proj-A' })
-      );
-
-      expect(mockToastError).toHaveBeenCalledWith(
-        'Background task failed',
-        expect.objectContaining({
-          description: 'Stream connection lost',
-        })
-      );
-    });
-
-    it('should handle startTask rejection with non-Error thrown value', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-fail-3' });
-      const chatStore = makeMockChatStore();
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: vi.fn(() => Promise.reject('string error')),
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      await act(async () => {
-        await Promise.resolve(); // flush microtasks
-      });
-
-      expect(mockProxyUpdateTriggerExecution).toHaveBeenCalledWith(
-        'exec-fail-3',
-        expect.objectContaining({
-          status: 'failed',
-          error_message: 'Task failed',
-        }),
-        expect.objectContaining({ projectId: 'proj-A' })
-      );
-
-      expect(mockToastError).toHaveBeenCalledWith(
-        'Background task failed',
-        expect.objectContaining({
-          description: 'Unknown error',
-        })
-      );
-    });
-
-    it('should warn (not crash) when proxyUpdateTriggerExecution itself fails during error handling', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-fail-4' });
-      const chatStore = makeMockChatStore();
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: vi.fn(() => Promise.reject(new Error('boom'))),
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      // Make the error reporting itself fail
-      mockProxyUpdateTriggerExecution.mockRejectedValue(
-        new Error('Network down')
-      );
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      await act(async () => {
-        await Promise.resolve(); // flush microtasks
-      });
-
-      // Should still have removed the message and shown toast
-      expect(_mockProjectStore.removeQueuedMessage).toHaveBeenCalled();
-      expect(mockToastError).toHaveBeenCalled();
-    });
-
-    it('should allow picking up next task after a failed task is cleaned up', async () => {
-      const msg1 = makeQueuedMessage({ executionId: 'exec-fail-then-ok' });
-      const msg2 = makeQueuedMessage({ executionId: 'exec-next' });
-
-      const startTask = vi
-        .fn()
-        .mockRejectedValueOnce(new Error('first fails'))
-        .mockResolvedValueOnce(undefined);
-
-      const chatStore = makeMockChatStore();
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask,
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg1, msg2],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      // First poll: msg1 fails
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      await act(async () => {
-        await Promise.resolve(); // flush startTask rejection
-        await Promise.resolve(); // flush .catch handler
-        await Promise.resolve(); // flush inner proxyUpdateTriggerExecution
-      });
-
-      expect(startTask).toHaveBeenCalledTimes(1);
-
-      // Reset tasks so the project looks clear
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask,
-      });
-
-      // Second poll: should pick up msg2
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
-      });
-
-      expect(startTask).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  7. Store State Updates on Task Events                          ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-
-  describe('Store state updates on task events', () => {
-    it('should register execution mapping when starting a task', async () => {
-      const msg = makeQueuedMessage({
-        executionId: 'exec-map',
-        triggerTaskId: 'tt-1',
-        triggerName: 'My Trigger',
-        triggerId: 42,
-      });
-      const chatStore = makeMockChatStore();
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockTriggerTaskStore.registerExecutionMapping
-      ).toHaveBeenCalledWith(
-        'unique-task-id-1', // from mockGenerateUniqueId
-        'exec-map',
-        'tt-1',
-        'proj-A',
-        'My Trigger',
-        42
-      );
-    });
-
-    it('should use task_id as fallback triggerTaskId when triggerTaskId is undefined', async () => {
-      const msg = makeQueuedMessage({
-        executionId: 'exec-no-tt',
-        triggerTaskId: undefined,
-      });
-      const chatStore = makeMockChatStore();
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(
-        _mockTriggerTaskStore.registerExecutionMapping
-      ).toHaveBeenCalledWith(
-        'unique-task-id-1',
-        'exec-no-tt',
-        msg.task_id, // fallback to task_id
-        'proj-A',
-        undefined,
-        undefined
-      );
-    });
-
-    it('should report running status to backend when starting a task', async () => {
-      const msg = makeQueuedMessage({
-        executionId: 'exec-status',
-        triggerId: 5,
-        triggerName: 'Status Trigger',
-      });
-      const chatStore = makeMockChatStore();
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // The initial running status update is fire-and-forget
-      expect(mockProxyUpdateTriggerExecution).toHaveBeenCalledWith(
-        'exec-status',
-        { status: 'running' },
-        { projectId: 'proj-A', triggerId: 5, triggerName: 'Status Trigger' }
-      );
-    });
-
-    it('should remove queued message after successful task completion', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-done' });
-      const chatStore = makeMockChatStore();
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: vi.fn(() => Promise.resolve()),
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // Flush the startTask promise
-      await act(async () => {
-        await Promise.resolve();
-      });
-
-      // Remove should be called after task completes
-      expect(_mockProjectStore.removeQueuedMessage).toHaveBeenCalledWith(
-        'proj-A',
-        msg.task_id
-      );
-    });
-
-    it('should call startTask with correct arguments including executionId and projectId', async () => {
-      const msg = makeQueuedMessage({
-        executionId: 'exec-args',
-        content: 'Analyze the data',
-        attaches: [],
-      });
-      const startTaskFn = vi.fn(() => Promise.resolve());
-      const chatStore = makeMockChatStore();
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: startTaskFn,
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(startTaskFn).toHaveBeenCalledWith(
-        'unique-task-id-1', // newTaskId from generateUniqueId
-        undefined, // undefined params
-        undefined,
-        undefined,
-        'Analyze the data', // content
-        [], // attaches
-        'exec-args', // executionId
-        'proj-A' // projectId
-      );
-    });
-  });
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  8. Poll-Driven Re-evaluation (checkCompletedTasks)             ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-
-  describe('Poll-driven re-evaluation', () => {
-    it('should process queued messages sequentially within a project', async () => {
-      // When the first task completes, the next poll should pick up the second message.
-      // We test this by verifying the complete lifecycle of two sequential messages.
-      const msg1 = makeQueuedMessage({ executionId: 'exec-seq-1' });
-      const msg2 = makeQueuedMessage({ executionId: 'exec-seq-2' });
-
-      const startTaskFn = vi.fn().mockResolvedValue(undefined);
-
-      const chatStore = {
-        getState: vi.fn(() => ({
-          tasks: {},
-          activeTaskId: null,
-          startTask: startTaskFn,
-        })),
-      };
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg1],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      mockGenerateUniqueId.mockReturnValue('uid-seq');
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      // First poll picks up msg1
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(startTaskFn).toHaveBeenCalledTimes(1);
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).toHaveBeenCalledWith('proj-A', msg1.task_id);
-      expect(
-        _mockTriggerTaskStore.registerExecutionMapping
-      ).toHaveBeenCalledWith(
-        'uid-seq',
-        'exec-seq-1',
-        msg1.task_id,
-        'proj-A',
-        undefined,
-        undefined
-      );
-    });
-
-    it('should skip a project with active task on first poll but allow after completion', async () => {
-      // Verify the per-project concurrency releases after task completion
-      const msg = makeQueuedMessage({ executionId: 'exec-single' });
-      const startTaskFn = vi.fn().mockResolvedValue(undefined);
-
-      const chatStore = {
-        getState: vi.fn(() => ({
-          tasks: {},
-          activeTaskId: null,
-          startTask: startTaskFn,
-        })),
-      };
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      // First poll: processes the message
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(startTaskFn).toHaveBeenCalledTimes(1);
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).toHaveBeenCalledWith('proj-A', msg.task_id);
-
-      // Flush completion to verify cleanup side effects
-      vi.useRealTimers();
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 10));
-      });
-      vi.useFakeTimers();
-
-      // Verify cleanup: removeQueuedMessage called and activeTasksRef cleaned
-      expect(_mockProjectStore.removeQueuedMessage).toHaveBeenCalledWith(
-        'proj-A',
-        msg.task_id
-      );
-    });
-  });
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  9. Edge Cases                                                  ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-
-  describe('Edge cases', () => {
-    it('should handle projects with no chatStores property', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-no-cs' });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: undefined as any,
-      });
-
-      // getChatStore returns null for this project
-      _mockProjectStore.getChatStore.mockReturnValue(null);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // Should handle gracefully — getChatStore returns null → error path
-      // The hook removes the message and reports failure
-      expect(_mockProjectStore.removeQueuedMessage).toHaveBeenCalledWith(
-        'proj-A',
-        msg.task_id
-      );
-    });
-
-    it('should handle a project with null queuedMessages', async () => {
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: null as any,
-        chatStores: {},
-      });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // Should not crash
-      expect(
-        _mockProjectStore.markQueuedMessageAsProcessing
-      ).not.toHaveBeenCalled();
-    });
-
-    it('should not re-enter processOneTask when already processing (isProcessingRef guard)', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-reentry' });
-
-      // Make startTask hang so isProcessingRef stays true
-      const chatStore = makeMockChatStore();
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: vi.fn(() => new Promise(() => {})),
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      // Fire multiple polls rapidly
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      // The subscribe callback triggers during markQueuedMessageAsProcessing
-      // which is synchronous — the re-entrancy guard should block it
-      const callCount =
-        _mockProjectStore.markQueuedMessageAsProcessing.mock.calls.length;
-
-      // Should only have processed once despite re-entrant poll trigger
-      expect(callCount).toBe(1);
-    });
-
-    it('should use unique IDs from generateUniqueId for each new task', async () => {
-      const msg = makeQueuedMessage({ executionId: 'exec-uid' });
-      const chatStore = makeMockChatStore();
-      const startTaskFn = vi.fn(() => Promise.resolve());
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: startTaskFn,
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      mockGenerateUniqueId.mockReturnValue('custom-uuid-123');
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(mockGenerateUniqueId).toHaveBeenCalled();
-      expect(startTaskFn).toHaveBeenCalledWith(
-        'custom-uuid-123',
-        undefined,
-        undefined,
-        undefined,
-        'Do something important',
-        [],
-        'exec-uid',
-        'proj-A'
-      );
-    });
-
-    it('should pass attaches from queued message to startTask', async () => {
-      const fakeFiles = [new File(['data'], 'test.csv', { type: 'text/csv' })];
-      const msg = makeQueuedMessage({
-        executionId: 'exec-files',
-        attaches: fakeFiles,
-      });
-      const chatStore = makeMockChatStore();
-      const startTaskFn = vi.fn(() => Promise.resolve());
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: startTaskFn,
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(startTaskFn).toHaveBeenCalledWith(
-        'unique-task-id-1',
-        undefined,
-        undefined,
-        undefined,
-        'Do something important',
-        fakeFiles,
-        'exec-files',
-        'proj-A'
-      );
-    });
-
-    it('should default attaches to empty array when not provided in queued message', async () => {
-      const msg = makeQueuedMessage({
-        executionId: 'exec-no-attaches',
-        attaches: undefined,
-      });
-      const chatStore = makeMockChatStore();
-      const startTaskFn = vi.fn(() => Promise.resolve());
-      chatStore.getState.mockReturnValue({
-        tasks: {},
-        activeTaskId: null,
-        startTask: startTaskFn,
-      });
-
-      _mockProjectStore._addProject('proj-A', {
-        queuedMessages: [msg],
-        chatStores: { 'chat-1': chatStore },
-      });
-      _mockProjectStore.getChatStore.mockReturnValue(chatStore);
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      expect(startTaskFn).toHaveBeenCalledWith(
-        'unique-task-id-1',
-        undefined,
-        undefined,
-        undefined,
-        'Do something important',
-        [], // default empty array
-        'exec-no-attaches',
-        'proj-A'
-      );
-    });
-
-    it('should not trigger poll subscription when store changes have no trigger tasks', () => {
-      _mockProjectStore._addProject('proj-A', { queuedMessages: [] });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      const initialCallCount =
-        _mockProjectStore.getAllProjects.mock.calls.length;
-
-      // Simulate a store change with no trigger tasks
-      const subscribeFn = _mockProjectStore.subscribe.mock
-        .calls[0][0] as () => void;
-
-      // Store has no queuedMessages with executionId
-      act(() => {
-        subscribeFn();
-      });
-
-      // No additional poll should have been triggered
-      // (subscription callback checks hasTriggerTasks and skips)
-      // Note: The subscribe callback does check the state, and if no trigger
-      // tasks exist, it won't call poll()
-    });
-
-    it('should handle multiple poll cycles without errors', async () => {
-      _mockProjectStore._addProject('proj-A', { queuedMessages: [] });
-
-      renderHook(() => useBackgroundTaskProcessor());
-
-      // Run 5 poll cycles
-      for (let i = 0; i < 5; i++) {
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
-        });
+      ],
+    };
+
+    mocks.projectRuntimeStore.getAllProjects.mockReturnValue([project]);
+    mocks.projectRuntimeStore.getProjectById.mockReturnValue(project);
+    mocks.projectRuntimeStore.getChatStore.mockReturnValue(chatStore);
+    mocks.projectRuntimeStore.markQueuedMessageAsProcessing.mockImplementation(
+      (_projectId: string, taskId: string) => {
+        project.queuedMessages = project.queuedMessages.map((message) =>
+          message.task_id === taskId
+            ? { ...message, processing: true }
+            : message
+        );
       }
-
-      // Should not have thrown or crashed
-      expect(console.error).not.toHaveBeenCalled();
+    );
+    Object.assign(mocks.projectRuntimeStore, {
+      projects: { 'project-1': project },
     });
+    mocks.hasActiveSSEConnection.mockReturnValue(false);
+    mocks.waitForIdleSSEDisplayTail.mockResolvedValue(undefined);
+    mocks.hasSSETransportForTasks.mockImplementation(
+      () => physicalTransportPresent
+    );
+    mocks.closeIdleSSEConnectionsForTasks.mockImplementation(() => {
+      idleController.abort();
+      physicalTransportPresent = false;
+    });
+    mocks.fetchGet.mockResolvedValue({
+      status: 'done',
+      run_id: 'ended-run',
+      consumer_alive: true,
+      subscriber_count: 1,
+    });
+    mocks.fetchPost.mockResolvedValue({
+      retired: true,
+      consumer_alive: false,
+    });
+    mocks.startTask.mockImplementation(() => new Promise<void>(() => {}));
+  });
+
+  it('rejects a managed Session before legacy retirement or admission', async () => {
+    sessionEntryGuard.mockRejectedValueOnce(
+      new Error('managed_execution_required')
+    );
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sessionEntryGuard).toHaveBeenCalled();
+    expect(mocks.fetchPost).not.toHaveBeenCalled();
+    expect(mocks.startTask).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('reconciles receipts at startup and periodically without dispatching a Run, and stops on unmount', async () => {
+    vi.useFakeTimers();
+    mocks.projectRuntimeStore.getAllProjects.mockReturnValue([]);
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+    try {
+      expect(mocks.flushPendingTriggerExecutionUpdates).toHaveBeenCalledTimes(
+        1
+      );
+      await act(() => vi.advanceTimersByTimeAsync(30_000));
+      expect(mocks.flushPendingTriggerExecutionUpdates).toHaveBeenCalledTimes(
+        2
+      );
+      expect(mocks.startTask).not.toHaveBeenCalled();
+      expect(mocks.fetchPost).not.toHaveBeenCalled();
+      unmount();
+      await act(() => vi.advanceTimersByTimeAsync(30_000));
+      expect(mocks.flushPendingTriggerExecutionUpdates).toHaveBeenCalledTimes(
+        2
+      );
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports pre-admission failure under the submitting account after an account switch', async () => {
+    const originalAccount = { user_id: 1, email: 'one@example.invalid' };
+    const account = vi
+      .spyOn(authStore, 'getAuthStore')
+      .mockReturnValue(originalAccount as any);
+    const expectedAccount = getAccountEnvironmentKey(originalAccount);
+    let rejectAdmission!: (error: Error) => void;
+    mocks.startTask.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectAdmission = reject;
+        })
+    );
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+    try {
+      await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
+      account.mockReturnValue({
+        user_id: 2,
+        email: 'two@example.invalid',
+      } as any);
+      await act(async () =>
+        rejectAdmission(new Error('local preflight failed'))
+      );
+      expect(mocks.proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+        'execution-1',
+        expect.objectContaining({ status: ExecutionStatus.Failed }),
+        expect.objectContaining({ projectId: 'project-1' }),
+        expectedAccount
+      );
+    } finally {
+      unmount();
+      account.mockRestore();
+    }
+  });
+
+  it('retires an attached warm consumer before starting a fresh trigger stream', async () => {
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
+    expect(mocks.fetchPost).toHaveBeenCalledWith(
+      '/chat/project-1/runtime/retire-idle',
+      { run_id: 'ended-run' },
+      undefined,
+      { signal: expect.any(AbortSignal) }
+    );
+    expect(mocks.fetchPost.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.closeIdleSSEConnectionsForTasks.mock.invocationCallOrder[0]
+    );
+    expect(
+      mocks.closeIdleSSEConnectionsForTasks.mock.invocationCallOrder[0]
+    ).toBeLessThan(mocks.startTask.mock.invocationCallOrder[0]);
+    expect(idleController.signal.aborted).toBe(true);
+    expect(mocks.startTask).toHaveBeenCalledWith(
+      'queued-trigger',
+      undefined,
+      undefined,
+      undefined,
+      'Run scheduled task',
+      [],
+      'execution-1',
+      'project-1',
+      undefined,
+      { preserveTaskId: true, awaitAdmission: true }
+    );
+
+    // Re-entrant project-store notifications must see the execution guard and
+    // cannot admit the same trigger twice.
+    const subscription =
+      mocks.useProjectRuntimeStore.subscribe.mock.calls[0][0];
+    subscription();
+    await Promise.resolve();
+    expect(mocks.fetchPost).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  describe.each(['status', 'retirement'] as const)(
+    'bounded %s requests',
+    (stage) => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+        const first = mocks.projectRuntimeStore.getProjectById('project-1');
+        const second = {
+          ...first,
+          id: 'project-2',
+          queuedMessages: [
+            {
+              ...first.queuedMessages[0],
+              task_id: 'queued-trigger-2',
+              executionId: 'execution-2',
+            },
+          ],
+        };
+        const projects: Record<string, typeof first> = {
+          'project-1': first,
+          'project-2': second,
+        };
+        mocks.projectRuntimeStore.getAllProjects.mockReturnValue(
+          Object.values(projects)
+        );
+        mocks.projectRuntimeStore.getProjectById.mockImplementation(
+          (id: string) => projects[id]
+        );
+        mocks.projectRuntimeStore.getChatStore.mockImplementation(
+          (id: string) => projects[id].chatStores.primary
+        );
+        mocks.projectRuntimeStore.markQueuedMessageAsProcessing.mockImplementation(
+          (id: string, taskId: string) => {
+            projects[id].queuedMessages = projects[id].queuedMessages.map(
+              (message: { task_id: string }) =>
+                message.task_id === taskId
+                  ? { ...message, processing: true }
+                  : message
+            );
+          }
+        );
+        Object.assign(mocks.projectRuntimeStore, { projects });
+        mocks.hasSSETransportForTasks.mockReturnValue(false);
+      });
+
+      afterEach(() => vi.useRealTimers());
+
+      const suspendFirstProject = () => {
+        let resolveRequest!: (value: unknown) => void;
+        // Deliberately ignore AbortSignal: the hook must also bound async
+        // readiness/header work that has not reached fetch yet.
+        const request = new Promise((resolve) => {
+          resolveRequest = resolve;
+        });
+        let suspendedSignal!: AbortSignal;
+        let suspended = false;
+        let retryAllowed = false;
+        const successfulSignals: AbortSignal[] = [];
+        const events: string[] = [];
+        mocks.fetchGet.mockImplementation(
+          async (
+            url: string,
+            _params: unknown,
+            _headers: unknown,
+            { signal }: { signal: AbortSignal }
+          ) => {
+            if (url.includes('/project-2/')) {
+              successfulSignals.push(signal);
+              return { consumer_alive: false };
+            }
+            if (stage === 'status' && !suspended) {
+              suspended = true;
+              suspendedSignal = signal;
+              return request;
+            }
+            successfulSignals.push(signal);
+            if (retryAllowed) events.push('fresh-status');
+            return {
+              status: !suspended || retryAllowed ? 'done' : 'running',
+              run_id: 'ended-run',
+              consumer_alive: true,
+            };
+          }
+        );
+        mocks.fetchPost.mockImplementation(
+          async (
+            _url: string,
+            _data: unknown,
+            _headers: unknown,
+            { signal }: { signal: AbortSignal }
+          ) => {
+            if (stage === 'retirement' && !suspended) {
+              suspended = true;
+              suspendedSignal = signal;
+              return request;
+            }
+            successfulSignals.push(signal);
+            events.push('retired');
+            return { retired: true, consumer_alive: false };
+          }
+        );
+        mocks.startTask.mockImplementation((...args: unknown[]) => {
+          events.push(`start:${args[7]}`);
+          return new Promise<void>(() => {});
+        });
+        return {
+          signal: () => suspendedSignal,
+          resolve: () => resolveRequest({ consumer_alive: false }),
+          allowRetry: () => {
+            retryAllowed = true;
+          },
+          successfulSignals,
+          events,
+        };
+      };
+
+      it('skips a hung Session without treating timeout as retirement, then retries ownership afresh', async () => {
+        const pending = suspendFirstProject();
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await act(async () => vi.advanceTimersByTimeAsync(0));
+        const fetch = stage === 'status' ? mocks.fetchGet : mocks.fetchPost;
+        expect(fetch).toHaveBeenCalledTimes(1);
+        const subscription =
+          mocks.useProjectRuntimeStore.subscribe.mock.calls[0][0];
+
+        await act(async () => {
+          subscription();
+          subscription();
+          await vi.advanceTimersByTimeAsync(9_999);
+        });
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(pending.signal().aborted).toBe(false);
+
+        await act(async () => vi.advanceTimersByTimeAsync(1));
+        expect(pending.signal().aborted).toBe(true);
+        expect(mocks.startTask).toHaveBeenCalledTimes(1);
+        expect(mocks.startTask.mock.calls[0][7]).toBe('project-2');
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalledWith('project-1', 'queued-trigger');
+        expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+
+        // Even a successful late retirement response cannot resume the old
+        // attempt or consume its still-pending queue row.
+        await act(async () => pending.resolve());
+        expect(mocks.startTask).toHaveBeenCalledTimes(1);
+        expect(
+          mocks.projectRuntimeStore.getProjectById('project-1')
+            .queuedMessages[0].processing
+        ).not.toBe(true);
+
+        pending.allowRetry();
+        await act(async () => vi.advanceTimersByTimeAsync(2_000));
+        expect(pending.events).toEqual([
+          'start:project-2',
+          'fresh-status',
+          'retired',
+          'start:project-1',
+        ]);
+        await act(async () => {
+          subscription();
+          await vi.advanceTimersByTimeAsync(20_000);
+        });
+        expect(mocks.startTask).toHaveBeenCalledTimes(2);
+        expect(
+          pending.successfulSignals.every((signal) => !signal.aborted)
+        ).toBe(true);
+        unmount();
+        expect(vi.getTimerCount()).toBe(0);
+      });
+
+      it('aborts on unmount and cannot start either Session from a late response', async () => {
+        const pending = suspendFirstProject();
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await act(async () => vi.advanceTimersByTimeAsync(0));
+        expect(pending.signal().aborted).toBe(false);
+
+        await act(async () => {
+          unmount();
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(pending.signal().aborted).toBe(true);
+        await act(async () => {
+          pending.resolve();
+          await vi.advanceTimersByTimeAsync(20_000);
+        });
+        expect(vi.getTimerCount()).toBe(0);
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalled();
+        expect(
+          mocks.fetchGet.mock.calls.every(
+            ([url]) => !url.includes('/project-2/')
+          )
+        ).toBe(true);
+      });
+    }
+  );
+
+  it.each([true, false])(
+    'waits for the display tail before retirement/close when consumer_alive is %s',
+    async (consumerAlive) => {
+      let releaseDisplay!: () => void;
+      mocks.waitForIdleSSEDisplayTail.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          releaseDisplay = resolve;
+        })
+      );
+      mocks.fetchGet.mockResolvedValue({
+        status: 'done',
+        run_id: 'ended-run',
+        consumer_alive: consumerAlive,
+      });
+      const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+      await waitFor(() =>
+        expect(mocks.waitForIdleSSEDisplayTail).toHaveBeenCalledOnce()
+      );
+      expect(mocks.fetchPost).not.toHaveBeenCalled();
+      expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+      expect(mocks.startTask).not.toHaveBeenCalled();
+
+      await act(async () => releaseDisplay());
+      await waitFor(() => expect(mocks.startTask).toHaveBeenCalledOnce());
+      expect(mocks.fetchPost).toHaveBeenCalledTimes(consumerAlive ? 1 : 0);
+      expect(
+        mocks.waitForIdleSSEDisplayTail.mock.invocationCallOrder[0]
+      ).toBeLessThan(
+        mocks.closeIdleSSEConnectionsForTasks.mock.invocationCallOrder[0]
+      );
+      unmount();
+    }
+  );
+
+  it('continues to another Session after the display barrier resolves and its first queue row was cancelled', async () => {
+    const first = mocks.projectRuntimeStore.getProjectById('project-1');
+    const second = {
+      ...first,
+      id: 'project-2',
+      queuedMessages: [
+        {
+          ...first.queuedMessages[0],
+          task_id: 'queued-2',
+          executionId: 'execution-2',
+        },
+      ],
+    };
+    mocks.projectRuntimeStore.getAllProjects.mockReturnValue([first, second]);
+    mocks.projectRuntimeStore.getProjectById.mockImplementation((id) =>
+      id === first.id ? first : second
+    );
+    mocks.projectRuntimeStore.markQueuedMessageAsProcessing.mockImplementation(
+      (id, taskId) => {
+        const project = id === first.id ? first : second;
+        project.queuedMessages = project.queuedMessages.map((msg: any) =>
+          msg.task_id === taskId ? { ...msg, processing: true } : msg
+        );
+      }
+    );
+    let releaseDisplay!: () => void;
+    mocks.waitForIdleSSEDisplayTail.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseDisplay = resolve;
+      })
+    );
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+    await waitFor(() =>
+      expect(mocks.waitForIdleSSEDisplayTail).toHaveBeenCalledOnce()
+    );
+    first.queuedMessages = [];
+    await act(async () => releaseDisplay());
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledOnce());
+    expect(mocks.startTask.mock.calls[0][7]).toBe('project-2');
+    expect(mocks.fetchPost.mock.calls.map(([url]) => url)).toEqual([
+      '/chat/project-2/runtime/retire-idle',
+    ]);
+    unmount();
+  });
+
+  it('does not retire or admit after unmount while waiting for the display tail', async () => {
+    let releaseDisplay!: () => void;
+    mocks.waitForIdleSSEDisplayTail.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseDisplay = resolve;
+      })
+    );
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+    await waitFor(() =>
+      expect(mocks.waitForIdleSSEDisplayTail).toHaveBeenCalledOnce()
+    );
+    unmount();
+    await act(async () => releaseDisplay());
+    expect(mocks.fetchPost).not.toHaveBeenCalled();
+    expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+    expect(mocks.startTask).not.toHaveBeenCalled();
+  });
+
+  describe.each(['status', 'display tail', 'retirement'] as const)(
+    'queue changes while awaiting %s',
+    (stage) => {
+      const suspendOwnershipRequest = () => {
+        let resolveRequest!: (value: unknown) => void;
+        const request = new Promise((resolve) => {
+          resolveRequest = resolve;
+        });
+        const fetch =
+          stage === 'status'
+            ? mocks.fetchGet
+            : stage === 'display tail'
+              ? mocks.waitForIdleSSEDisplayTail
+              : mocks.fetchPost;
+        fetch.mockReturnValueOnce(request);
+        return {
+          fetch,
+          finish: () => resolveRequest({ consumer_alive: false }),
+        };
+      };
+
+      it('does not start an execution removed by queue cancellation', async () => {
+        const { fetch, finish } = suspendOwnershipRequest();
+        const project = mocks.projectRuntimeStore.getProjectById('project-1');
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+        project.queuedMessages = [];
+        await act(async () => finish());
+
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(mocks.proxyUpdateTriggerExecution).not.toHaveBeenCalled();
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalled();
+        expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+        if (stage !== 'retirement')
+          expect(mocks.fetchPost).not.toHaveBeenCalled();
+        unmount();
+      });
+
+      it.each(['running', 'pending', 'logical SSE'])(
+        'defers to a new foreground Run with %s state',
+        async (state) => {
+          const { fetch, finish } = suspendOwnershipRequest();
+          const project = mocks.projectRuntimeStore.getProjectById('project-1');
+          const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+          await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+          // A foreground start creates a new chat store before its async
+          // preparation registers a backend consumer or an SSE controller.
+          project.chatStores = {
+            ...project.chatStores,
+            foreground: {
+              getState: () => ({
+                tasks: {
+                  'new-foreground-run': {
+                    status:
+                      state === 'running'
+                        ? ChatTaskStatus.RUNNING
+                        : state === 'pending'
+                          ? ChatTaskStatus.PENDING
+                          : ChatTaskStatus.FINISHED,
+                    messages: [{ role: 'user', content: 'Foreground task' }],
+                    hasWaitComfirm: false,
+                    isTakeControl: false,
+                  },
+                },
+              }),
+            },
+          };
+          if (state === 'logical SSE') {
+            mocks.hasActiveSSEConnection.mockImplementation((taskIds) =>
+              taskIds.includes('new-foreground-run')
+            );
+          }
+          await act(async () => finish());
+
+          expect(mocks.startTask).not.toHaveBeenCalled();
+          expect(mocks.proxyUpdateTriggerExecution).not.toHaveBeenCalled();
+          expect(
+            mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+          ).not.toHaveBeenCalled();
+          expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+          if (stage !== 'retirement')
+            expect(mocks.fetchPost).not.toHaveBeenCalled();
+          expect(project.queuedMessages).toHaveLength(1);
+          unmount();
+        }
+      );
+
+      it('defers to pending admission on the same existing Run', async () => {
+        const { fetch, finish } = suspendOwnershipRequest();
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+        sourceState.tasks['ended-run'].isPending = true;
+        await act(async () => finish());
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalled();
+        if (stage !== 'retirement')
+          expect(mocks.fetchPost).not.toHaveBeenCalled();
+        unmount();
+      });
+
+      it.each([
+        { task_id: 'replacement-task' },
+        { executionId: 'replacement-execution' },
+        { timestamp: 2 },
+      ])(
+        'does not claim a replacement queue identity %j',
+        async (replacement) => {
+          const { fetch, finish } = suspendOwnershipRequest();
+          const project = mocks.projectRuntimeStore.getProjectById('project-1');
+          const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+          await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+          project.queuedMessages = [
+            { ...project.queuedMessages[0], ...replacement },
+          ];
+          await act(async () => finish());
+
+          expect(mocks.startTask).not.toHaveBeenCalled();
+          expect(mocks.proxyUpdateTriggerExecution).not.toHaveBeenCalled();
+          expect(
+            mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+          ).not.toHaveBeenCalled();
+          unmount();
+        }
+      );
+
+      it('does not claim an execution already taken by another processor', async () => {
+        const { fetch, finish } = suspendOwnershipRequest();
+        const project = mocks.projectRuntimeStore.getProjectById('project-1');
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+        project.queuedMessages[0].processing = true;
+        await act(async () => finish());
+
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalled();
+        unmount();
+      });
+
+      it('does not start an execution after its project was removed', async () => {
+        const { fetch, finish } = suspendOwnershipRequest();
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+        mocks.projectRuntimeStore.getProjectById.mockReturnValue(undefined);
+        await act(async () => finish());
+
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        unmount();
+      });
+    }
+  );
+
+  it('verifies the claim after a synchronous queue subscriber removes it', async () => {
+    const project = mocks.projectRuntimeStore.getProjectById('project-1');
+    mocks.projectRuntimeStore.markQueuedMessageAsProcessing.mockImplementation(
+      () => {
+        project.queuedMessages = [];
+      }
+    );
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() =>
+      expect(
+        mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+      ).toHaveBeenCalledTimes(1)
+    );
+
+    expect(mocks.startTask).not.toHaveBeenCalled();
+    expect(mocks.proxyUpdateTriggerExecution).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('keeps the queue item until the exact Run is admitted', async () => {
+    let admitRun!: () => void;
+    mocks.startTask.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          admitRun = resolve;
+        })
+    );
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
+    expect(
+      mocks.projectRuntimeStore.removeQueuedMessage
+    ).not.toHaveBeenCalled();
+
+    admitRun();
+    await waitFor(() =>
+      expect(
+        mocks.projectRuntimeStore.removeQueuedMessage
+      ).toHaveBeenCalledWith('project-1', 'queued-trigger')
+    );
+
+    unmount();
+  });
+
+  it('requeues a trigger when another Project consumer wins admission', async () => {
+    mocks.startTask.mockRejectedValue(
+      Object.assign(new Error('Project consumer is active'), {
+        code: 'project_consumer_active',
+      })
+    );
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() =>
+      expect(
+        mocks.projectRuntimeStore.setQueuedMessageProcessing
+      ).toHaveBeenCalledWith('project-1', 'queued-trigger', false)
+    );
+    expect(
+      mocks.projectRuntimeStore.removeQueuedMessage
+    ).not.toHaveBeenCalled();
+    expect(
+      mocks.proxyUpdateTriggerExecution.mock.calls.some(
+        ([, update]) => update.status === ExecutionStatus.Failed
+      )
+    ).toBe(false);
+
+    unmount();
+  });
+
+  it('does not treat a finished direct task as an active skeleton phase', async () => {
+    sourceState.tasks['ended-run'].messages = [
+      { role: 'user', content: 'Create a direct answer' },
+    ];
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
+
+    unmount();
+  });
+
+  it('awaits backend retirement after the renderer subscriber is gone', async () => {
+    physicalTransportPresent = false;
+    let retirementCompleted = false;
+    mocks.fetchPost.mockImplementation(async (url: string) => {
+      expect(url).toBe('/chat/project-1/runtime/retire-idle');
+      retirementCompleted = true;
+      return { retired: true, consumer_alive: false };
+    });
+    mocks.startTask.mockImplementation(() => {
+      expect(retirementCompleted).toBe(true);
+      return new Promise<void>(() => {});
+    });
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
+    expect(mocks.fetchPost).toHaveBeenCalledWith(
+      '/chat/project-1/runtime/retire-idle',
+      { run_id: 'ended-run' },
+      undefined,
+      { signal: expect.any(AbortSignal) }
+    );
+    expect(mocks.fetchPost.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.startTask.mock.invocationCallOrder[0]
+    );
+    expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('keeps a queued trigger pending when backend retirement fails', async () => {
+    physicalTransportPresent = false;
+    mocks.fetchPost.mockRejectedValue(new Error('retirement unavailable'));
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.fetchPost).toHaveBeenCalledTimes(1));
+    expect(mocks.startTask).not.toHaveBeenCalled();
+    expect(
+      mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+    ).not.toHaveBeenCalled();
+    expect(
+      mocks.projectRuntimeStore.removeQueuedMessage
+    ).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('closes a stale renderer transport when Brain has no consumer', async () => {
+    mocks.fetchGet.mockResolvedValue({
+      status: 'done',
+      run_id: 'ended-run',
+      consumer_alive: false,
+      subscriber_count: 0,
+    });
+    mocks.startTask.mockImplementation(() => {
+      expect(idleController.signal.aborted).toBe(true);
+      expect(physicalTransportPresent).toBe(false);
+      return new Promise<void>(() => {});
+    });
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
+    expect(mocks.closeIdleSSEConnectionsForTasks).toHaveBeenCalledWith([
+      'ended-run',
+    ]);
+    expect(
+      mocks.closeIdleSSEConnectionsForTasks.mock.invocationCallOrder[0]
+    ).toBeLessThan(mocks.startTask.mock.invocationCallOrder[0]);
+
+    unmount();
+  });
+
+  it('does not close a transport or start a trigger while its Run is active', async () => {
+    mocks.hasActiveSSEConnection.mockReturnValue(true);
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() =>
+      expect(mocks.hasActiveSSEConnection).toHaveBeenCalledWith(['ended-run'])
+    );
+    expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+    expect(mocks.startTask).not.toHaveBeenCalled();
+    expect(idleController.signal.aborted).toBe(false);
+
+    unmount();
+  });
+
+  it('leaves a reusable transport open when the queue has no trigger execution', async () => {
+    const project = mocks.projectRuntimeStore.getProjectById('project-1');
+    project.queuedMessages[0].executionId = undefined;
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() =>
+      expect(mocks.projectRuntimeStore.getProjectById).toHaveBeenCalledWith(
+        'project-1'
+      )
+    );
+    expect(mocks.hasActiveSSEConnection).not.toHaveBeenCalled();
+    expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+    expect(mocks.startTask).not.toHaveBeenCalled();
+    expect(idleController.signal.aborted).toBe(false);
+
+    unmount();
   });
 });

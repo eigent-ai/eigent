@@ -22,6 +22,7 @@ class ProjectGroup(BaseModel):
     """Project group response model for grouped history"""
 
     project_id: str
+    space_id: str | None = None
     project_name: str | None = None
     total_tokens: int = 0
     task_count: int = 0

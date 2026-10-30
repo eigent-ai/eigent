@@ -12,53 +12,121 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Check, Copy, FileText } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import {
+  recordMessageFeedback,
+  type MessageFeedbackRating,
+} from '@/lib/events/appEvents';
+import { fileInfoFromPath } from '@/lib/fileInfo';
+import {
+  errorPresentationReason,
+  isLegacyTaskError,
+  isRefinableReason,
+  type ErrorReason,
+} from '@/lib/usageErrors';
+import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
+import { DsIcon } from '../../ui/ds-icon';
+import { TaskErrorNotice } from '../TaskErrorNotice';
 import { MarkDown } from './MarkDown';
 
 const COPIED_RESET_MS = 2000;
 
+type MessageFeedback = MessageFeedbackRating | null;
+
+type MessageFeedbackState = {
+  key: string;
+  rating: MessageFeedbackRating;
+};
+
+// Keep accepted feedback stable while a message card is remounted (for
+// example, after switching Timeline modes). The Run scope prevents otherwise
+// identical message ids from colliding across separate Runs.
+const messageFeedbackByKey = new Map<string, MessageFeedbackRating>();
+
+function getMessageFeedbackKey(
+  runId: string | undefined,
+  messageId: string,
+  hasSourceIdentity: boolean
+) {
+  return JSON.stringify([runId ?? null, messageId, hasSourceIdentity]);
+}
+
 interface AgentMessageCardProps {
   id: string;
   content: string;
+  errorReason?: ErrorReason;
   className?: string;
   typewriter?: boolean;
   attaches?: File[];
+  /** Stable logical message identity used by feedback analytics. */
+  feedbackMessageId?: string;
+  /** Run scope for feedback correlation and deduplication. */
+  feedbackRunId?: string;
+  /** Lifecycle step of the rated message; forwarded with the feedback event. */
+  messageStep?: string;
+  /** Shown only after markdown (and typewriter, if enabled) has finished rendering — e.g. generated file chips. */
+  deferredFooter?: ReactNode;
   onTyping?: () => void;
+  onMarkdownRenderComplete?: () => void;
 }
 
-// global Map to track completed typewriter effect content hash
-const completedTypewriterHashes = new Map<string, boolean>();
+// Tracks agent messages that have already played the typewriter (by stable message id).
+const completedTypewriterByMessageId = new Map<string, boolean>();
 
 export function AgentMessageCard({
   id,
   content,
+  errorReason,
   typewriter = true,
   onTyping,
+  onMarkdownRenderComplete,
   className,
   attaches,
+  feedbackMessageId,
+  feedbackRunId,
+  messageStep,
+  deferredFooter,
 }: AgentMessageCardProps) {
-  // use content hash to track if typewriter effect is completed
-  const contentHash = useMemo(() => {
-    return `${id}-${content}`;
-  }, [id, content]);
+  const openFilePreview = useSessionPageTabStore((s) => s.openFilePreview);
+  const [markdownAndTypingComplete, setMarkdownAndTypingComplete] = useState(
+    () => completedTypewriterByMessageId.has(id)
+  );
 
-  // check if typewriter effect is completed
-  const isCompleted = completedTypewriterHashes.has(contentHash);
+  useEffect(() => {
+    setMarkdownAndTypingComplete(completedTypewriterByMessageId.has(id));
+  }, [id]);
 
-  // if completed, disable typewriter effect
+  const isCompleted = completedTypewriterByMessageId.has(id);
   const enableTypewriter = !isCompleted;
 
   const [copied, setCopied] = useState(false);
+  const hasSourceIdentity = !!feedbackMessageId?.trim();
+  const resolvedFeedbackMessageId = feedbackMessageId?.trim()
+    ? feedbackMessageId
+    : id;
+  const resolvedFeedbackRunId = feedbackRunId?.trim()
+    ? feedbackRunId
+    : undefined;
+  const messageFeedbackKey = getMessageFeedbackKey(
+    resolvedFeedbackRunId,
+    resolvedFeedbackMessageId,
+    hasSourceIdentity
+  );
+  const [feedbackState, setFeedbackState] =
+    useState<MessageFeedbackState | null>(null);
+  const feedback: MessageFeedback =
+    feedbackState?.key === messageFeedbackKey
+      ? feedbackState.rating
+      : (messageFeedbackByKey.get(messageFeedbackKey) ?? null);
   const { t } = useTranslation();
 
-  // when typewriter effect is completed, record to global Map
   const handleTypingComplete = () => {
-    if (!isCompleted) {
-      completedTypewriterHashes.set(contentHash, true);
+    if (!completedTypewriterByMessageId.has(id)) {
+      completedTypewriterByMessageId.set(id, true);
     }
     if (onTyping) {
       onTyping();
@@ -72,53 +140,179 @@ export function AgentMessageCard({
       setCopied(true);
       setTimeout(() => setCopied(false), COPIED_RESET_MS);
     } catch {
-      toast.error('Failed to copy to clipboard');
+      toast.error(
+        t('setting.copy-failed', {
+          defaultValue: 'Failed to copy to clipboard',
+        })
+      );
     }
   }, [content, t]);
+
+  const handleMarkdownRenderComplete = useCallback(() => {
+    setMarkdownAndTypingComplete(true);
+    onMarkdownRenderComplete?.();
+  }, [onMarkdownRenderComplete]);
+
+  // Source identities survive replay and renderer changes. An old message
+  // without source metadata can only be deduplicated for its current UI id;
+  // mark that limitation for consumers instead of claiming durable identity.
+  // Rated content and agent names are not included in the event.
+  const submitFeedback = useCallback(
+    (rating: MessageFeedbackRating) => {
+      const recordedRating = messageFeedbackByKey.get(messageFeedbackKey);
+      if (recordedRating) {
+        setFeedbackState({
+          key: messageFeedbackKey,
+          rating: recordedRating,
+        });
+        return;
+      }
+
+      messageFeedbackByKey.set(messageFeedbackKey, rating);
+      setFeedbackState({ key: messageFeedbackKey, rating });
+      recordMessageFeedback({
+        rating,
+        message_id: resolvedFeedbackMessageId,
+        run_id: resolvedFeedbackRunId,
+        message_step: messageStep,
+        ...(hasSourceIdentity
+          ? {}
+          : { message_id_source: 'legacy_ui' as const }),
+      });
+      toast.success(
+        t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
+      );
+    },
+    [
+      messageFeedbackKey,
+      hasSourceIdentity,
+      messageStep,
+      resolvedFeedbackMessageId,
+      resolvedFeedbackRunId,
+      t,
+    ]
+  );
+
+  const handleThumbUp = useCallback(
+    () => submitFeedback('up'),
+    [submitFeedback]
+  );
+
+  const handleThumbDown = useCallback(
+    () => submitFeedback('down'),
+    [submitFeedback]
+  );
+
+  if (errorReason || isLegacyTaskError(content)) {
+    // Keep request-time ownership (cloud vs custom) when it was known. Only
+    // refine generic historical classifications from the retained message.
+    const parsedReason =
+      errorReason && !isRefinableReason(errorReason)
+        ? errorReason
+        : errorPresentationReason(content);
+    return (
+      <TaskErrorNotice
+        reason={
+          parsedReason === 'task' ? (errorReason ?? 'task') : parsedReason
+        }
+      />
+    );
+  }
+
+  const showDeferredFileUi =
+    markdownAndTypingComplete &&
+    ((attaches && attaches.length > 0) || deferredFooter != null);
 
   return (
     <div
       key={id}
-      className={`relative w-full rounded-xl bg-transparent px-sm py-3 ${className || ''} group overflow-hidden`}
+      className={`flex w-full flex-col rounded-xl bg-transparent py-3 ${className || ''} overflow-hidden`}
     >
-      <div className="absolute bottom-[0px] right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        <Button onClick={handleCopy} variant="ghost" size="icon">
-          {copied ? (
-            <Check className="h-4 w-4 text-text-success" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-        </Button>
+      <div className="px-ds-panel-inset" data-agent-message-content>
+        <MarkDown
+          content={content}
+          onTyping={handleTypingComplete}
+          onMarkdownRenderComplete={handleMarkdownRenderComplete}
+          enableTypewriter={enableTypewriter && typewriter}
+        />
       </div>
-      <MarkDown
-        content={content}
-        onTyping={handleTypingComplete}
-        enableTypewriter={enableTypewriter && typewriter}
-      />
-      {attaches && attaches.length > 0 && (
-        <div className="mt-[10px] flex flex-wrap gap-2">
+      {showDeferredFileUi && attaches && attaches.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap gap-2 px-ds-panel-inset">
           {attaches?.map((file) => {
             return (
               <div
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.ipcRenderer.invoke('reveal-in-folder', file.filePath);
+                  openFilePreview(
+                    fileInfoFromPath(file.filePath, file.fileName)
+                  );
                 }}
                 key={'attache-' + file.fileName}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-solid border-task-border-default bg-message-fill-default py-1 pl-2"
+                className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default py-1 pl-2"
               >
-                <FileText size={24} className="flex-shrink-0" />
+                <DsIcon icon={FileText} recipe="illustration" />
                 <div className="flex flex-col">
-                  <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-text-body">
+                  <span className="block max-w-48 overflow-hidden text-ds-text-base font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default">
                     {file?.fileName?.split('.')[0]}
-                  </div>
-                  <div className="text-xs font-medium leading-29 text-text-body">
+                  </span>
+                  <span className="block text-ds-text-meta font-medium text-ds-ink-muted-default">
                     {file?.fileName?.split('.')[1]}
-                  </div>
+                  </span>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+      {showDeferredFileUi && deferredFooter != null && (
+        <div className="mt-2.5 w-full px-ds-panel-inset">{deferredFooter}</div>
+      )}
+      {markdownAndTypingComplete && (
+        <div className="mt-ds-12 flex shrink-0 justify-start gap-ds-4 px-ds-panel-inset">
+          <Button
+            onClick={handleCopy}
+            variant="ghost"
+            size="sm"
+            buttonContent="icon-only"
+            aria-label={t('setting.copy')}
+          >
+            {copied ? (
+              <DsIcon
+                icon={Check}
+                className="text-ds-text-success-default-default"
+              />
+            ) : (
+              <DsIcon icon={Copy} />
+            )}
+          </Button>
+          <Button
+            onClick={handleThumbUp}
+            variant="ghost"
+            size="sm"
+            buttonContent="icon-only"
+            aria-label={t('chat.thumbs-up', { defaultValue: 'Thumb up' })}
+            aria-pressed={feedback === 'up'}
+            disabled={feedback === 'down'}
+          >
+            <DsIcon
+              icon={ThumbsUp}
+              className={`${feedback === 'up' ? 'text-ds-accent-default-default' : ''}`}
+            />
+          </Button>
+          <Button
+            onClick={handleThumbDown}
+            variant="ghost"
+            size="sm"
+            buttonContent="icon-only"
+            aria-label={t('chat.thumbs-down', { defaultValue: 'Thumb down' })}
+            aria-pressed={feedback === 'down'}
+            disabled={feedback === 'up'}
+          >
+            <DsIcon
+              icon={ThumbsDown}
+              className={`${feedback === 'down' ? 'text-ds-accent-default-default' : ''}`}
+            />
+          </Button>
         </div>
       )}
     </div>

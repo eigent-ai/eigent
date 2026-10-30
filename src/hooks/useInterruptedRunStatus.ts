@@ -1,0 +1,300 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { useHost } from '@/host';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
+import type {
+  ProjectedRun,
+  ProjectedUnsafeResumeBlocker,
+} from '@/lib/projector';
+import { TERMINAL_RUN_STATUSES } from '@/lib/projector/runSummary';
+import {
+  runEventIngressRegistry,
+  runProjectionStore,
+  useRunProjectionSelector,
+} from '@/lib/runEvents';
+import {
+  pendingResumeRequest,
+  resumeRequestsRevision,
+  subscribeResumeRequests,
+} from '@/lib/runResumeRequest';
+import type { RunTerminalReason } from '@/lib/runTerminalReason';
+import { getAuthStore, useAuthStore } from '@/store/authStore';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+
+/** Retries after a failed load; later loads wait for focus/backend-ready. */
+const REFRESH_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
+
+export interface DurableRunSummary {
+  run_id: string;
+  project_id: string;
+  status: string;
+  updated_at: number;
+  origin?: 'local' | 'cloud_restore' | 'remote';
+  resume_blocked_reason?: string | null;
+  terminalReason?: RunTerminalReason | null;
+  terminalDetail?: string | null;
+  /** Local retry authority; the canonical Run remains pending. */
+  retry_request_id?: string;
+  latest_attempt?: {
+    attempt_number: number;
+    status: string;
+    resume_request_id?: string;
+  } | null;
+  /** Tool calls with unknown outcomes; Resume is refused while any remain. */
+  unsafeResumeBlockers?: ProjectedUnsafeResumeBlocker[];
+}
+
+type RunsByProject = Record<string, DurableRunSummary | null>;
+type InterruptedRunState = RunsByProject | DurableRunSummary | null;
+
+/**
+ * Vite Fast Refresh can preserve the pre-map hook state (a single Run or
+ * null) after this hook's state shape changes. Normalize that legacy value so
+ * any subsequent ChatBox render remains safe without requiring an app restart.
+ */
+export function normalizeInterruptedRunState(
+  value: InterruptedRunState
+): RunsByProject {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if ('run_id' in value && 'project_id' in value) {
+    const legacyRun = value as DurableRunSummary;
+    return { [legacyRun.project_id]: legacyRun };
+  }
+  return value as RunsByProject;
+}
+
+/**
+ * Cloud-restored Runs are historical projections, not actionable local
+ * interruptions. Keep their provenance in the journal, but do not surface
+ * them through the Resume/Cancel product state.
+ */
+export function actionableInterruptedRun(
+  run: DurableRunSummary | null
+): DurableRunSummary | null {
+  if (run?.origin === 'cloud_restore') return null;
+  // A Run without an Attempt is an abandoned admission, not resumable work.
+  // Startup reconciliation terminalizes it; suppress the misleading control
+  // during the brief interval before that reconciliation reaches the UI.
+  return run?.latest_attempt ? run : null;
+}
+
+function projectedRunToDurableSummary(
+  projectId: string,
+  run: ProjectedRun
+): DurableRunSummary {
+  return {
+    run_id: run.runId,
+    project_id: projectId,
+    status: run.status,
+    updated_at: Date.parse(run.updatedAt) / 1000,
+    origin: run.origin ?? undefined,
+    resume_blocked_reason: run.resumeBlockedReason,
+    terminalReason: run.terminalReason,
+    terminalDetail: run.terminalDetail,
+    unsafeResumeBlockers: run.unsafeResumeBlockers,
+    latest_attempt: run.latestAttempt
+      ? {
+          attempt_number: run.latestAttempt.attemptNumber,
+          status: run.latestAttempt.status,
+          ...(run.latestAttempt.resumeRequestId
+            ? { resume_request_id: run.latestAttempt.resumeRequestId }
+            : {}),
+        }
+      : null,
+  };
+}
+
+/**
+ * Loads interrupted state at lifecycle boundaries instead of polling forever.
+ *
+ * Startup reconciliation completes before the first Desktop render in the
+ * normal path. A Brain restart while the renderer survives emits
+ * `backend-ready`; returning to the app emits `focus`. Resume/cancel callers
+ * also invoke `refresh` explicitly on errors. Those boundaries cover state
+ * changes without a GET every five seconds for every open Project. A failed
+ * load keeps the last reconciled state and retries a few times with backoff,
+ * then waits for the next boundary.
+ */
+export function useInterruptedRunStatus(projectId: string | null) {
+  const host = useHost();
+  const accountKey = useAuthStore(getAccountEnvironmentKey);
+  useSyncExternalStore(
+    subscribeResumeRequests,
+    resumeRequestsRevision,
+    resumeRequestsRevision
+  );
+  const refreshRevision = useRef(0);
+  const lastLoadedScope = useRef<string | null>(null);
+  const failedRefreshes = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout>>();
+  const refreshRef = useRef<() => Promise<void>>();
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const scope = JSON.stringify([accountKey, projectId]);
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const selectInterrupted = useCallback(
+    (state: import('@/lib/projector').ProjectViewState | null) => {
+      // Only the latest locally executed task owns the composer. Earlier
+      // interruptions remain in history after the user starts another task.
+      return (
+        Object.values(state?.runs || {})
+          .filter(
+            (candidate) =>
+              candidate.origin !== 'cloud_restore' && candidate.latestAttempt
+          )
+          .sort((left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt)
+          )[0] ?? null
+      );
+    },
+    []
+  );
+  const projectedRun = useRunProjectionSelector(projectId, selectInterrupted);
+  const summary = useMemo(
+    () =>
+      projectedRun && projectId
+        ? projectedRunToDurableSummary(projectId, projectedRun)
+        : null,
+    [projectId, projectedRun]
+  );
+  const retryRequestId =
+    summary && projectId
+      ? pendingResumeRequest(
+          { accountKey, projectId, runId: summary.run_id },
+          summary
+        )
+      : null;
+  const run = useMemo(
+    () =>
+      summary &&
+      projectId &&
+      (summary.status === 'interrupted' || retryRequestId) &&
+      dismissed !== `${projectId}:${summary.run_id}`
+        ? actionableInterruptedRun({
+            ...summary,
+            ...(retryRequestId ? { retry_request_id: retryRequestId } : {}),
+          })
+        : null,
+    [projectId, summary, dismissed, retryRequestId]
+  );
+
+  const setRun = useCallback(
+    (next: DurableRunSummary | null) => {
+      if (!projectId) return;
+      if (!next) {
+        if (projectedRun) setDismissed(`${projectId}:${projectedRun.runId}`);
+        return;
+      }
+      setDismissed(null);
+      runProjectionStore.upsertRunSummaries(projectId, [next]);
+    },
+    [projectId, projectedRun]
+  );
+
+  const refresh = useCallback(
+    (expectedAccountKey?: string): Promise<void> => {
+      if (!projectId) return Promise.resolve();
+      if (
+        expectedAccountKey &&
+        expectedAccountKey !== getAccountEnvironmentKey(getAuthStore())
+      ) {
+        setDismissed(null);
+        return Promise.resolve();
+      }
+      const revision = ++refreshRevision.current;
+      const refreshAccountKey = getAccountEnvironmentKey(getAuthStore());
+      clearTimeout(retryTimer.current);
+      setLoadedScope(null);
+      return runEventIngressRegistry
+        .reconcileProject(projectId)
+        .then(() => {
+          if (
+            refreshRevision.current !== revision ||
+            getAccountEnvironmentKey(getAuthStore()) !== refreshAccountKey
+          )
+            return;
+          const loaded = JSON.stringify([accountKey, projectId]);
+          failedRefreshes.current = 0;
+          lastLoadedScope.current = loaded;
+          setDismissed(null);
+          setLoadedScope(loaded);
+        })
+        .catch((error) => {
+          // Brain can still be booting while the Project shell is visible. Keep
+          // the last canonical state until backend-ready/focus retries it.
+          if (error?.name !== 'AbortError') {
+            console.debug('[RunControl] Run status refresh deferred', error);
+          }
+          if (refreshRevision.current !== revision) return;
+          // Brain still refuses a busy Session, so a failed load must not
+          // hold queued messages until the next focus or backend-ready.
+          setLoadedScope(lastLoadedScope.current);
+          if (error?.name === 'AbortError') return;
+          const delay = REFRESH_RETRY_DELAYS_MS[failedRefreshes.current++];
+          if (delay !== undefined)
+            retryTimer.current = setTimeout(
+              () => void refreshRef.current?.(),
+              delay
+            );
+        });
+    },
+    [projectId, accountKey]
+  );
+
+  useEffect(() => {
+    refreshRef.current = refresh;
+    failedRefreshes.current = 0;
+    void refresh();
+
+    const handleFocus = () => void refresh();
+    const handleBackendReady = () => void refresh();
+    const handleDurableRunStatusChanged = (event: Event) => {
+      const changedProjectId = (event as CustomEvent<{ projectId?: string }>)
+        .detail?.projectId;
+      if (!changedProjectId || changedProjectId === projectId) {
+        void refresh();
+      }
+    };
+    const ipcRenderer = host?.ipcRenderer;
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener(
+      DURABLE_RUN_STATUS_CHANGED_EVENT,
+      handleDurableRunStatusChanged
+    );
+    ipcRenderer?.on('backend-ready', handleBackendReady);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener(
+        DURABLE_RUN_STATUS_CHANGED_EVENT,
+        handleDurableRunStatusChanged
+      );
+      ipcRenderer?.off('backend-ready', handleBackendReady);
+      clearTimeout(retryTimer.current);
+    };
+  }, [host?.ipcRenderer, projectId, refresh]);
+
+  const settled =
+    loadedScope === scope &&
+    (!summary ||
+      TERMINAL_RUN_STATUSES.has(summary.status as ProjectedRun['status']));
+  return { run, setRun, refresh, settled };
+}

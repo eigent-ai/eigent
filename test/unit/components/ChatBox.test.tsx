@@ -13,23 +13,89 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Comprehensive unit tests for ChatBox component
-import { render, screen, waitFor } from '@testing-library/react';
+vi.mock('@/hooks/useSessionExecution', () => ({
+  useSessionExecution: (projectId: string) => ({
+    scope: { projectId, accountKey: 'legacy-test' },
+    state: {
+      route: { route: 'legacy', project_id: projectId },
+      managed: false,
+      error: null,
+    },
+  }),
+}));
+
+import BottomBox from '@/components/ChatBox/BottomBox';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
+import { generateUniqueId } from '@/lib';
+import { runProjectionStore } from '@/lib/runEvents';
+import { errorCopy } from '@/lib/usageErrors';
+import { createChatStoreInstance } from '@/store/chatStore';
+import { resetConnectionConfig } from '@/store/connectionStore';
+import { resetFollowUpAdmissionClaims } from '@/store/followUpAdmissionClaims';
+import { resetSessionDrafts } from '@/store/sessionDraftStore';
+import { useSessionStartStore } from '@/store/sessionStartStore';
+import {
+  acknowledgeUsageNotice,
+  reportUsageIncident,
+  setUsageAccount,
+  setUsageModelType,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
+import { AgentStep, ChatTaskStatus } from '@/types/constants';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useSyncExternalStore } from 'react';
 import { BrowserRouter } from 'react-router-dom';
+import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchDelete,
+  fetchGet,
   fetchPost,
   fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
 } from '../../../src/api/http';
 import ChatBox from '../../../src/components/ChatBox/index';
+import { ProjectChatContainer } from '../../../src/components/ChatBox/ProjectChatContainer';
 import { useAuthStore } from '../../../src/store/authStore';
+import { usePageTabStore } from '../../../src/store/pageTabStore';
+
+const eventNativeHarness = vi.hoisted(() => ({
+  enabled: false,
+  snapshot: null as any,
+  controlOptions: null as any,
+}));
+const waitForPendingStaleRuntimeEvictionMock = vi.hoisted(() => vi.fn());
+// Run whose idle legacy `/chat` stream this renderer still holds.
+const legacyStreamHarness = vi.hoisted(() => ({
+  idleRunId: 'test-task-id' as string | null,
+}));
+vi.mock('@/store/chatStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store/chatStore')>()),
+  getIdleSSETransportTaskId: () => legacyStreamHarness.idleRunId,
+}));
+
+const modelConfigHarness = vi.hoisted(() => ({
+  hasModel: true,
+  isConfigLoaded: true,
+  cloudUsageLimitReached: false,
+}));
+
+import { runEventIngressRegistry } from '@/lib/runEvents/registry';
+import { invalidatePendingFollowUps } from '@/service/followUpQueueApi';
+
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), dismiss: vi.fn() },
+}));
 
 // Mock dependencies (use the same relative paths as the imports above)
-vi.mock('../../../src/store/authStore', () => ({ useAuthStore: vi.fn() }));
+vi.mock('../../../src/store/authStore', () => ({
+  useAuthStore: vi.fn(),
+  getAuthStore: vi.fn(() => ({ language: 'en-US', setLanguage: vi.fn() })),
+}));
 vi.mock('../../../src/api/http', () => ({
+  fetchGet: vi.fn(),
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
   fetchDelete: vi.fn(),
@@ -37,74 +103,206 @@ vi.mock('../../../src/api/http', () => ({
   proxyFetchDelete: vi.fn(),
 }));
 // Also mock the alias paths the component uses so the component picks up these mocks
-vi.mock('@/store/authStore', () => ({ useAuthStore: vi.fn() }));
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: vi.fn(),
+  getAuthStore: vi.fn(() => ({ language: 'en-US', setLanguage: vi.fn() })),
+}));
 vi.mock('@/api/http', () => ({
+  fetchGet: vi.fn(),
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
   fetchDelete: vi.fn(),
   proxyFetchGet: vi.fn(),
   proxyFetchDelete: vi.fn(),
 }));
+vi.mock('@/store/chatEventProjectionBridge', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/store/chatEventProjectionBridge')>();
+  return {
+    ...actual,
+    isChatEventTimelineEnabled: () => eventNativeHarness.enabled,
+  };
+});
+vi.mock('@/hooks/useProjectEventRuntime', () => ({
+  useProjectEventRuntime: () => ({
+    hydration: {
+      status: 'ready',
+      errorCode: null,
+      eventsTruncated: false,
+      retry: vi.fn(),
+    },
+    projectId: 'test-project-id',
+    snapshot: eventNativeHarness.snapshot,
+  }),
+}));
+vi.mock('../../../src/components/ChatBox/EventNativeProjectTimeline', () => ({
+  EventNativeProjectTimeline: ({ floatingControl }: any) => (
+    <div data-testid="event-native-timeline">{floatingControl}</div>
+  ),
+}));
+vi.mock(
+  '../../../src/components/ChatBox/BottomBox/useEventNativeHumanControl',
+  () => ({
+    useEventNativeHumanControl: (options: any) => {
+      eventNativeHarness.controlOptions = options;
+      return {
+        interaction: null,
+        variant: null,
+        pendingCount: 0,
+        phase: 'idle',
+        submitError: null,
+      };
+    },
+  })
+);
 vi.mock('../../../src/lib', () => ({
   generateUniqueId: vi.fn(() => 'test-unique-id'),
   replayActiveTask: vi.fn(),
 }));
 
 // Mock projectStore with proper vanilla store structure
-vi.mock('../../../src/store/projectStore', () => ({
-  useProjectStore: vi.fn(),
-}));
+vi.mock('../../../src/store/projectStore', () => {
+  const useProjectStore = vi.fn();
+  (useProjectStore as any).getState = vi.fn(() => ({
+    getAllChatStores: () => [],
+  }));
+  return {
+    useProjectStore,
+    waitForPendingStaleRuntimeEviction: waitForPendingStaleRuntimeEvictionMock,
+  };
+});
+
+vi.mock('@/store/projectStore', () => {
+  const useProjectStore = vi.fn();
+  (useProjectStore as any).getState = vi.fn(() => ({
+    getAllChatStores: () => [],
+  }));
+  return {
+    useProjectStore,
+    waitForPendingStaleRuntimeEviction: waitForPendingStaleRuntimeEvictionMock,
+  };
+});
 
 // Mock useChatStoreAdapter to provide both stores
 vi.mock('../../../src/hooks/useChatStoreAdapter', () => ({
   default: vi.fn(),
 }));
 
+vi.mock('@/hooks/useModelConfigCheck', () => ({
+  useModelConfigCheck: () => modelConfigHarness,
+}));
+
 // Mock i18next for translations
 vi.mock('react-i18next', () => ({
+  initReactI18next: {
+    type: '3rdParty',
+    init: () => {},
+  },
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options: Record<string, unknown> = {}) => {
       const translations: Record<string, string> = {
-        'layout.welcome-to-eigent': 'Welcome to Eigent',
-        'layout.how-can-i-help-you': 'How can I help you today?',
-        'layout.it-ticket-creation': 'IT Ticket Creation',
-        'layout.bank-transfer-csv-analysis':
-          'Bank Transfer CSV Analysis and Visualization',
-        'layout.find-duplicate-files': 'Please Help Organize My Desktop',
-        'layout.it-ticket-creation-message':
-          'Plan a 3-day tennis trip to Palm Springs',
-        'layout.bank-transfer-csv-analysis-message':
-          'Analyze bank transfer CSV',
-        'layout.find-duplicate-files-message': 'Find duplicate files',
         'chat.ask-placeholder': 'Type your message...',
+        'chat.attachment-only-message': 'Please use the attached file(s).',
         'layout.by-messaging-eigent': 'By messaging Eigent, you agree to our',
         'layout.terms-of-use': 'Terms of Use',
         'layout.and': 'and',
         'layout.privacy-policy': 'Privacy Policy',
       };
-      return translations[key] || key;
+      return translations[key] || String(options.defaultValue ?? key);
     },
   }),
 }));
 
 // Mock BottomBox component
 vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
-  default: vi.fn(({ inputProps }: any) => {
-    if (!inputProps) return null;
-    return (
-      <div data-testid="bottom-box">
-        <input
-          data-testid="message-input"
-          placeholder={inputProps.placeholder}
-          value={inputProps.value}
-          onChange={(e) => inputProps.onChange(e.target.value)}
-        />
-        <button data-testid="send-button" onClick={() => inputProps.onSend()}>
-          Send
-        </button>
-      </div>
-    );
-  }),
+  default: vi.fn(
+    ({
+      inputProps,
+      queuedMessages,
+      onSendQueuedMessageNow,
+      queueContext,
+      variant,
+      modelSelectDisabled,
+    }: any) => {
+      if (!inputProps) return null;
+      const hasContent =
+        (inputProps.value || '').trim().length > 0 ||
+        inputProps.files?.length > 0;
+      const primaryAction = hasContent
+        ? 'send'
+        : inputProps.taskControlState === 'running'
+          ? 'pause'
+          : inputProps.taskControlState === 'paused'
+            ? 'resume'
+            : 'idle';
+      return (
+        <div
+          data-testid="bottom-box"
+          data-model-disabled={String(
+            modelSelectDisabled ?? inputProps.disabled ?? false
+          )}
+        >
+          {variant?.kind === 'run_control' && (
+            <div>{variant.header?.title}</div>
+          )}
+          {queuedMessages?.map((item: any) => (
+            <button
+              key={item.id}
+              data-testid={`queue-${item.id}`}
+              disabled={queueContext?.locked}
+              onClick={() =>
+                onSendQueuedMessageNow(item.id, queueContext?.activeTaskId)
+              }
+            >
+              Confirm queued task
+            </button>
+          ))}
+          <input
+            data-testid="message-input"
+            ref={inputProps.textareaRef}
+            placeholder={inputProps.placeholder}
+            value={inputProps.value}
+            disabled={inputProps.disabled}
+            onChange={(e) => inputProps.onChange(e.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                inputProps.onSend();
+              }
+            }}
+          />
+          <input
+            data-testid="attachment-input"
+            type="file"
+            onChange={(event) =>
+              inputProps.onFilesChange([
+                ...(inputProps.files || []),
+                ...Array.from(event.target.files || []).map((file) => ({
+                  fileName: file.name,
+                  filePath: `/tmp/${file.name}`,
+                })),
+              ])
+            }
+          />
+          <output data-testid="composer-files">
+            {inputProps.files?.map((file: any) => file.fileName).join(', ')}
+          </output>
+          <button
+            data-testid="send-button"
+            data-composer-primary-action={primaryAction}
+            disabled={primaryAction === 'idle'}
+            onClick={() => {
+              if (primaryAction === 'send') inputProps.onSend();
+              if (primaryAction === 'pause') inputProps.onPauseTask();
+              if (primaryAction === 'resume') inputProps.onResumeTask();
+            }}
+          >
+            {primaryAction}
+          </button>
+        </div>
+      );
+    }
+  ),
 }));
 
 // Mock ProjectChatContainer to avoid scrollTo issues
@@ -135,6 +333,7 @@ vi.mock('../../../src/components/ChatBox/TypeCardSkeleton', () => ({
 
 describe('ChatBox Component', async () => {
   const mockUseAuthStore = vi.mocked(useAuthStore);
+  const mockFetchGet = vi.mocked(fetchGet);
   const _mockFetchPost = vi.mocked(fetchPost);
   const _mockFetchPut = vi.mocked(fetchPut);
   const _mockFetchDelete = vi.mocked(fetchDelete);
@@ -176,6 +375,7 @@ describe('ChatBox Component', async () => {
     },
     setHasMessages: vi.fn(),
     addMessages: vi.fn(),
+    removeMessage: vi.fn(),
     setIsPending: vi.fn(),
     startTask: vi.fn(),
     setActiveAsk: vi.fn(),
@@ -196,10 +396,31 @@ describe('ChatBox Component', async () => {
     setAttaches: vi.fn(),
     setNextTaskId: vi.fn(),
     setNextExecutionId: vi.fn(),
+    setTaskSessionMode: vi.fn(),
+    setTaskSource: vi.fn(),
+    setExecutionId: vi.fn(),
     removeTask: vi.fn(),
+    stopTask: vi.fn(),
     setElapsed: vi.fn(),
     setTaskTime: vi.fn(),
     setStatus: vi.fn(),
+    setDurableRunStatus: vi.fn(),
+    markHumanInteractionResolved: vi.fn(),
+  };
+
+  const preparedRunState = {
+    setNextTaskId: vi.fn(),
+    setTaskSessionMode: vi.fn(),
+    setTaskSource: vi.fn(),
+    setExecutionId: vi.fn(),
+    setIsPending: vi.fn(),
+    setHasMessages: vi.fn(),
+    addMessages: vi.fn(),
+    setStatus: vi.fn(),
+  };
+
+  const preparedRunChatStore = {
+    getState: vi.fn(() => preparedRunState),
   };
 
   const defaultProjectStoreState = {
@@ -214,8 +435,12 @@ describe('ChatBox Component', async () => {
     removeQueuedMessage: vi.fn(),
     restoreQueuedMessage: vi.fn(),
     clearQueuedMessages: vi.fn(),
+    prioritizeQueuedMessage: vi.fn(),
+    setQueuedMessageProcessing: vi.fn(),
     createChatStore: vi.fn(),
-    appendInitChatStore: vi.fn(),
+    appendInitChatStore: vi.fn((_projectId: string, _taskId: string) => ({
+      chatStore: preparedRunChatStore,
+    })),
     setActiveChatStore: vi.fn(),
     removeChatStore: vi.fn(),
     saveChatStore: vi.fn(),
@@ -236,27 +461,136 @@ describe('ChatBox Component', async () => {
     modelType: 'cloud',
   };
 
+  const runningEventNativeSnapshot = (runId = 'test-task-id') => ({
+    view: {
+      projectId: 'test-project-id',
+      mode: 'live',
+      seenEventIds: {},
+      currentCursor: 1,
+      eventsTruncated: false,
+      lastSyncedAt: null,
+      needsResync: false,
+      resyncReason: null,
+      resyncTargetCursor: null,
+      runs: {
+        [runId]: {
+          runId,
+          status: 'running',
+          lastSequence: 1,
+          runVersion: 1,
+          updatedAt: '2026-08-20T00:00:00Z',
+          origin: 'local',
+          resumeBlockedReason: null,
+        },
+      },
+      artifactsByRun: {},
+      legacySteps: [],
+      unknownEvents: [],
+    },
+    chat: {
+      projectId: 'test-project-id',
+      nodes: [
+        {
+          id: `${runId}:started`,
+          eventId: `${runId}:started`,
+          projectId: 'test-project-id',
+          runId,
+          createdAt: '2026-08-20T00:00:00Z',
+          runSequence: 1,
+          cloudCursor: 1,
+          eventType: 'run.attempt_started',
+          legacyStep: null,
+          kind: 'run_status',
+          status: 'running',
+        },
+      ],
+      nodeById: {},
+      seenEventIds: {},
+    },
+    control: {
+      projectId: 'test-project-id',
+      orderedInteractionIds: [],
+      interactionById: {},
+      seenEventIds: {},
+    },
+    revision: 1,
+    hasHydratedSnapshot: true,
+    overflowed: false,
+    lastEffects: [],
+  });
+
   beforeEach(() => {
+    resetConnectionConfig();
+    resetSessionDrafts();
+    resetFollowUpAdmissionClaims();
+    setUsageAccount(null);
+    setUsageModelType('cloud');
+    modelConfigHarness.cloudUsageLimitReached = false;
     // Reset all mocks
     vi.clearAllMocks();
+    vi.mocked(generateUniqueId).mockReturnValue('test-unique-id');
+    runProjectionStore.clear();
+    defaultChatStoreState.startTask.mockReset();
+    invalidatePendingFollowUps('test-project-id');
+    window.sessionStorage.clear();
+    eventNativeHarness.enabled = false;
+    eventNativeHarness.snapshot = null;
+    eventNativeHarness.controlOptions = null;
+    usePageTabStore.setState({
+      workspaceChatDraftRequest: null,
+      workspaceChatDraftRequestSequence: 0,
+      workspaceReviewHandoffs: [],
+      workspaceChatFocusRequestId: 0,
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
+    });
+    defaultProjectStoreState.activeProjectId = 'test-project-id';
+    defaultProjectStoreState.getActiveChatStore.mockImplementation(() => ({
+      getState: () => defaultChatStoreState,
+      subscribe: () => () => {},
+    }));
+    defaultProjectStoreState.getProjectById.mockImplementation(() => ({
+      queuedMessages: [],
+    }));
+    defaultProjectStoreState.removeQueuedMessage.mockImplementation(
+      () => undefined
+    );
+    defaultProjectStoreState.getAllChatStores.mockReturnValue([]);
+    defaultProjectStoreState.getChatStore.mockReset();
+    defaultProjectStoreState.appendInitChatStore.mockImplementation(() => ({
+      chatStore: preparedRunChatStore,
+    }));
+    waitForPendingStaleRuntimeEvictionMock.mockReset();
+    waitForPendingStaleRuntimeEvictionMock.mockResolvedValue(undefined);
+    legacyStreamHarness.idleRunId = 'test-task-id';
 
     // Setup default store states
     mockUseChatStoreAdapter.mockReturnValue({
       projectStore: defaultProjectStoreState as any,
       chatStore: defaultChatStoreState as any,
     });
-    mockUseProjectStore.mockReturnValue(defaultProjectStoreState as any);
+    mockUseProjectStore.mockImplementation((selector: any) =>
+      selector ? selector(defaultProjectStoreState) : defaultProjectStoreState
+    );
     mockUseAuthStore.mockReturnValue(defaultAuthStoreState as any);
 
-    // Setup default API responses (use /api/v1/ paths matching source)
+    // Setup default API responses
+    mockFetchGet.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === '/chat/test-project-id/status'
+          ? {
+              has_lock: true,
+              status: 'done',
+              run_id: 'test-task-id',
+              consumer_alive: true,
+              subscriber_count: 1,
+            }
+          : { runs: [] }
+      )
+    );
     mockProxyFetchGet.mockImplementation((url: string) => {
-      if (url === '/api/v1/user/key') {
+      if (url === '/api/user/key' || url === '/api/v1/user/key') {
         return Promise.resolve({ value: 'test-api-key' });
-      }
-      if (url === '/api/v1/providers') {
-        return Promise.resolve({
-          items: [{ id: 'test-provider', name: 'Test' }],
-        });
       }
       if (url === '/api/v1/configs') {
         return Promise.resolve([
@@ -268,6 +602,7 @@ describe('ChatBox Component', async () => {
     });
 
     _mockFetchPost.mockResolvedValue({ success: true });
+    _mockFetchPut.mockResolvedValue({ success: true });
 
     // Mock import.meta.env
     Object.defineProperty(import.meta, 'env', {
@@ -277,6 +612,7 @@ describe('ChatBox Component', async () => {
   });
 
   afterEach(() => {
+    if (vi.isMockFunction(toast.error)) toast.error.mockRestore();
     vi.clearAllMocks();
   });
 
@@ -288,20 +624,418 @@ describe('ChatBox Component', async () => {
     );
   };
 
-  // Helper: get the first matching element by testid (avoids duplicate-element errors)
-  const getFirstByTestId = (id: string) => screen.getAllByTestId(id)[0];
+  it('sends from the non-active pane and keeps the other composer draft', async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <BrowserRouter>
+        <div data-testid="pane-a">
+          <SessionPaneProvider projectId="test-project-id">
+            <ChatBox />
+          </SessionPaneProvider>
+        </div>
+        <div data-testid="pane-b">
+          <SessionPaneProvider projectId="other-session">
+            <ChatBox />
+          </SessionPaneProvider>
+        </div>
+      </BrowserRouter>
+    );
+    const a = within(view.getByTestId('pane-a'));
+    const b = within(view.getByTestId('pane-b'));
+    await user.type(a.getByTestId('message-input'), 'Keep A draft');
+    await user.type(b.getByTestId('message-input'), 'Send from B');
+    await user.click(b.getByTestId('send-button'));
+    await waitFor(() =>
+      expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+    );
+    expect(defaultChatStoreState.startTask.mock.calls[0][7]).toBe(
+      'other-session'
+    );
+    expect(a.getByTestId('message-input')).toHaveValue('Keep A draft');
+    expect(b.getByTestId('message-input')).toHaveValue('');
+    expect(defaultProjectStoreState.activeProjectId).toBe('test-project-id');
+  });
 
-  describe('Initial Render', () => {
-    it('should render welcome screen when no messages exist', () => {
+  it('focuses the composer once per chat-focus request, not again when pane focus returns', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const paneTree = () => (
+        <BrowserRouter>
+          <SessionPaneProvider projectId="test-project-id">
+            <ChatBox />
+          </SessionPaneProvider>
+        </BrowserRouter>
+      );
+      const view = render(paneTree());
+      const focus = vi.spyOn(screen.getByTestId('message-input'), 'focus');
+
+      act(() => {
+        usePageTabStore.setState({
+          workspaceChatFocusRequestId: 1,
+          workspaceChatFocusProjectId: null,
+        });
+      });
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(1);
+
+      // Focus moves to another Session and back without a new request.
+      defaultProjectStoreState.activeProjectId = 'other-session';
+      view.rerender(paneTree());
+      defaultProjectStoreState.activeProjectId = 'test-project-id';
+      view.rerender(paneTree());
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        usePageTabStore.setState({ workspaceChatFocusRequestId: 2 });
+      });
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  describe('subscription quota copy', () => {
+    const trial = {
+      plan_key: 'pro',
+      is_trialing: true,
+      monthly_credits: 10000,
+      trial_daily_credits_limit: 300,
+      trial_daily_credits_used: 288,
+      trial_daily_credits_remaining: 12,
+      trial_total_credits_limit: 1000,
+      trial_total_credits_used: 528,
+      trial_total_credits_remaining: 472,
+    };
+    const latestBanner = () =>
+      vi.mocked(BottomBox).mock.calls.at(-1)?.[0].usageLimitBanner;
+
+    it('passes confirmed Pro trial wording and Refresh to the real composer boundary', () => {
+      useUsageNoticeStore.setState({ subscription: trial, credits: 472 });
       renderChatBox();
-
-      expect(screen.getByText('Welcome to Eigent')).toBeInTheDocument();
+      expect(latestBanner()).toMatchObject({
+        message: 'chat.usage-limit-plan-trial-daily-warning',
+        actionLabel: 'chat.notice-refresh',
+        severity: 'warning',
+      });
+      act(() =>
+        useUsageNoticeStore.setState({
+          subscription: { ...trial, is_trialing: false },
+          credits: 2000,
+        })
+      );
+      expect(latestBanner()?.message).toBe('chat.usage-limit-monthly-warning');
+      act(() =>
+        useUsageNoticeStore.setState({ subscription: null, credits: null })
+      );
+      expect(latestBanner()).toBeNull();
     });
 
-    it('should render bottom box component', () => {
+    it('retains warning dismissal and hides cloud quota copy for custom models', () => {
+      useUsageNoticeStore.setState({ subscription: trial, credits: 472 });
+      const view = renderChatBox();
+      act(() => latestBanner()?.onDismiss?.());
+      expect(latestBanner()).toBeNull();
+      act(() => useUsageNoticeStore.setState({ subscription: { ...trial } }));
+      expect(latestBanner()).toBeNull();
+      view.unmount();
+      mockUseAuthStore.mockReturnValue({
+        ...defaultAuthStoreState,
+        modelType: 'custom',
+      } as any);
+      renderChatBox();
+      expect(latestBanner()).toBeNull();
+    });
+  });
+
+  describe('Initial Render', () => {
+    it('should render bottom box when no messages exist', () => {
       renderChatBox();
 
       expect(screen.getByTestId('bottom-box')).toBeInTheDocument();
+    });
+
+    it('should render message input in bottom box', () => {
+      renderChatBox();
+
+      expect(screen.getByTestId('message-input')).toBeInTheDocument();
+    });
+
+    it('appends a Project-scoped review handoff to the Chat draft', async () => {
+      renderChatBox();
+
+      act(() => {
+        usePageTabStore.setState({
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: 'Please address review comment 1.',
+            reviewHandoffIds: [],
+          },
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Please address review comment 1.'
+        );
+      });
+      expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
+    });
+
+    it('keeps an unsent draft when a request asks to fill only an empty composer', async () => {
+      const user = userEvent.setup();
+      renderChatBox();
+      await user.type(screen.getByTestId('message-input'), 'Unsent draft');
+
+      act(() => {
+        usePageTabStore.setState({
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: '#skill-creator Turn this Task into a skill.',
+            reviewHandoffIds: [],
+            ifEmpty: true,
+          },
+        });
+      });
+
+      await waitFor(() => {
+        expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
+      });
+      expect(screen.getByTestId('message-input')).toHaveValue('Unsent draft');
+      expect(toast.info).toHaveBeenCalledWith('chat.message-draft-exists');
+    });
+
+    it('marks review comments sent only after Chat accepts the message', async () => {
+      renderChatBox();
+
+      act(() => {
+        usePageTabStore.setState({
+          sessionPreviewProjectId: 'test-project-id',
+          sessionPreviewByProject: {
+            'test-project-id': {
+              open: true,
+              activeTabId: 'review-1',
+              tabs: [
+                {
+                  id: 'review-1',
+                  type: 'review',
+                  title: 'Review',
+                  reviewComments: [
+                    {
+                      id: 'comment-1',
+                      fileId: 'src/app.ts',
+                      path: 'src/app.ts',
+                      selection: null,
+                      body: 'Keep this compatible.',
+                      createdAt: 1,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: 'Please address review comment 1.',
+            reviewHandoffIds: ['handoff-1'],
+          },
+          workspaceReviewHandoffs: [
+            {
+              handoffId: 'handoff-1',
+              requestId: 1,
+              projectId: 'test-project-id',
+              reviewTabId: 'review-1',
+              commentIds: ['comment-1'],
+              content: 'Please address review comment 1.',
+            },
+          ],
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Please address review comment 1.'
+        );
+      });
+      const pendingReviewTab =
+        usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+          .tabs[0];
+      expect(pendingReviewTab.type).toBe('review');
+      expect(
+        pendingReviewTab.type === 'review'
+          ? pendingReviewTab.reviewComments?.[0].status
+          : 'wrong-tab-type'
+      ).toBeUndefined();
+
+      await userEvent.click(screen.getByTestId('send-button'));
+
+      await waitFor(() => {
+        const reviewTab =
+          usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+            .tabs[0];
+        expect(reviewTab).toMatchObject({
+          reviewComments: [
+            expect.objectContaining({ id: 'comment-1', status: 'sent' }),
+          ],
+        });
+      });
+      expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+    });
+
+    it('does not acknowledge review feedback removed from the composer', async () => {
+      renderChatBox();
+
+      act(() => {
+        usePageTabStore.setState({
+          sessionPreviewProjectId: 'test-project-id',
+          sessionPreviewByProject: {
+            'test-project-id': {
+              open: true,
+              activeTabId: 'review-1',
+              tabs: [
+                {
+                  id: 'review-1',
+                  type: 'review',
+                  title: 'Review',
+                  reviewComments: [
+                    {
+                      id: 'comment-1',
+                      fileId: 'src/app.ts',
+                      path: 'src/app.ts',
+                      selection: null,
+                      body: 'Keep this compatible.',
+                      createdAt: 1,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: 'Please address review comment 1.',
+            reviewHandoffIds: ['handoff-1'],
+          },
+          workspaceReviewHandoffs: [
+            {
+              handoffId: 'handoff-1',
+              requestId: 1,
+              projectId: 'test-project-id',
+              reviewTabId: 'review-1',
+              commentIds: ['comment-1'],
+              content: 'Please address review comment 1.',
+            },
+          ],
+        });
+      });
+
+      const input = await screen.findByTestId('message-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'Unrelated request');
+      await userEvent.click(screen.getByTestId('send-button'));
+
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalled()
+      );
+      const call = defaultChatStoreState.startTask.mock.calls.at(-1) ?? [];
+      expect(call[4]).toBe('Unrelated request');
+      expect(call[9]).toBeUndefined();
+      const reviewTabAfterSend =
+        usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+          .tabs[0];
+      expect(reviewTabAfterSend).toMatchObject({
+        reviewComments: [expect.objectContaining({ id: 'comment-1' })],
+      });
+      expect(
+        reviewTabAfterSend.type === 'review'
+          ? reviewTabAfterSend.reviewComments?.[0].status
+          : 'wrong-tab-type'
+      ).toBeUndefined();
+      expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+    });
+
+    it('recovers an admitted review handoff from the durable user message', async () => {
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      eventNativeHarness.snapshot.chat.nodes.push({
+        id: 'review-user-message',
+        eventId: 'review-user-message',
+        projectId: 'test-project-id',
+        runId: 'test-task-id',
+        createdAt: '2026-08-20T00:00:01Z',
+        runSequence: 2,
+        cloudCursor: 2,
+        eventType: 'user.message',
+        legacyStep: null,
+        kind: 'message',
+        role: 'user',
+        content: 'Review feedback',
+        status: 'completed',
+        reviewHandoffIds: ['handoff-recovered'],
+      });
+      usePageTabStore.setState({
+        sessionPreviewProjectId: 'test-project-id',
+        sessionPreviewByProject: {
+          'test-project-id': {
+            open: true,
+            activeTabId: 'review-1',
+            tabs: [
+              {
+                id: 'review-1',
+                type: 'review',
+                title: 'Review',
+                reviewComments: [
+                  {
+                    id: 'comment-1',
+                    fileId: 'src/app.ts',
+                    path: 'src/app.ts',
+                    selection: null,
+                    body: 'Keep this compatible.',
+                    createdAt: 1,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        workspaceReviewHandoffs: [
+          {
+            handoffId: 'handoff-recovered',
+            requestId: 1,
+            projectId: 'test-project-id',
+            reviewTabId: 'review-1',
+            commentIds: ['comment-1'],
+            content: 'Review feedback',
+          },
+        ],
+      });
+
+      renderChatBox();
+
+      await waitFor(() => {
+        const tab =
+          usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+            .tabs[0];
+        expect(tab).toMatchObject({
+          reviewComments: [
+            expect.objectContaining({ id: 'comment-1', status: 'sent' }),
+          ],
+        });
+      });
+      expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
     });
 
     it('should not fetch privacy settings on mount', async () => {
@@ -321,6 +1055,177 @@ describe('ChatBox Component', async () => {
     });
   });
 
+  describe('Session drafts', () => {
+    // Switching Sessions remounts the chat surface, keyed by the Session id.
+    const sessionView = (projectId: string) => {
+      defaultProjectStoreState.activeProjectId = projectId;
+      return (
+        <BrowserRouter>
+          <ChatBox key={projectId} />
+        </BrowserRouter>
+      );
+    };
+
+    it('keeps each unsent draft when switching Sessions remounts the composer', async () => {
+      const user = userEvent.setup();
+      const view = render(sessionView('session-a'));
+      const sessionAComposer = screen.getByTestId('message-input');
+      await user.type(sessionAComposer, 'Unsent Session A draft');
+      expect(screen.getByTestId('send-button')).toBeEnabled();
+
+      view.rerender(sessionView('session-b'));
+      expect(sessionAComposer).not.toBeInTheDocument();
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      expect(screen.getByTestId('send-button')).toBeDisabled();
+      await user.type(
+        screen.getByTestId('message-input'),
+        'Unsent Session B draft'
+      );
+
+      view.rerender(sessionView('session-a'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Unsent Session A draft'
+      );
+      expect(screen.getByTestId('send-button')).toBeEnabled();
+
+      view.rerender(sessionView('session-b'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Unsent Session B draft'
+      );
+    });
+
+    it('clears only the draft of the Session that sent it', async () => {
+      const user = userEvent.setup();
+      const view = render(sessionView('session-b'));
+      await user.type(
+        screen.getByTestId('message-input'),
+        'Unsent Session B draft'
+      );
+
+      view.rerender(sessionView('session-a'));
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      await user.type(screen.getByTestId('message-input'), 'Send from A');
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+      );
+      expect(defaultChatStoreState.startTask.mock.calls[0][4]).toBe(
+        'Send from A'
+      );
+      expect(defaultChatStoreState.startTask.mock.calls[0][7]).toBe(
+        'session-a'
+      );
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+
+      view.rerender(sessionView('session-b'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Unsent Session B draft'
+      );
+      view.rerender(sessionView('session-a'));
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+    });
+
+    it('waits to send until the Session that Send opened has started', async () => {
+      const user = userEvent.setup();
+      render(sessionView('session-a'));
+      await user.type(screen.getByTestId('message-input'), 'Early message');
+
+      // Workspace opened this Session and is still creating and starting it.
+      act(() =>
+        useSessionStartStore.getState().markSessionStarting('session-a')
+      );
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      await user.click(screen.getByTestId('send-button'));
+      expect(defaultChatStoreState.startTask).not.toHaveBeenCalled();
+      expect(screen.getByTestId('message-input')).toHaveValue('Early message');
+
+      act(() =>
+        useSessionStartStore.getState().clearSessionStarting('session-a')
+      );
+      expect(screen.getByTestId('message-input')).not.toBeDisabled();
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+      );
+    });
+
+    it('keeps review feedback attached to a restored draft', async () => {
+      const user = userEvent.setup();
+      const view = render(sessionView('test-project-id'));
+      act(() => {
+        usePageTabStore.setState({
+          sessionPreviewProjectId: 'test-project-id',
+          sessionPreviewByProject: {
+            'test-project-id': {
+              open: true,
+              activeTabId: 'review-1',
+              tabs: [
+                {
+                  id: 'review-1',
+                  type: 'review',
+                  title: 'Review',
+                  reviewComments: [
+                    {
+                      id: 'comment-1',
+                      fileId: 'src/app.ts',
+                      path: 'src/app.ts',
+                      selection: null,
+                      body: 'Keep this compatible.',
+                      createdAt: 1,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: 'Please address review comment 1.',
+            reviewHandoffIds: ['handoff-1'],
+          },
+          workspaceReviewHandoffs: [
+            {
+              handoffId: 'handoff-1',
+              requestId: 1,
+              projectId: 'test-project-id',
+              reviewTabId: 'review-1',
+              commentIds: ['comment-1'],
+              content: 'Please address review comment 1.',
+            },
+          ],
+        });
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Please address review comment 1.'
+        )
+      );
+
+      view.rerender(sessionView('session-b'));
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      view.rerender(sessionView('test-project-id'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Please address review comment 1.'
+      );
+
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() => {
+        const reviewTab =
+          usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+            .tabs[0];
+        expect(reviewTab).toMatchObject({
+          reviewComments: [
+            expect.objectContaining({ id: 'comment-1', status: 'sent' }),
+          ],
+        });
+      });
+      expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+    });
+  });
+
   describe('Privacy', () => {
     it('should not fetch privacy settings on mount', async () => {
       renderChatBox();
@@ -333,6 +1238,38 @@ describe('ChatBox Component', async () => {
   });
 
   describe('Chat Interface', () => {
+    it('keeps cloud history visible when local event history is unavailable', () => {
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = null;
+      const restoredChatStore = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            messages: [
+              {
+                id: 'restored-message',
+                role: 'agent',
+                content: 'Restored cloud history',
+              },
+            ],
+            hasMessages: true,
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: restoredChatStore as any,
+      });
+
+      renderChatBox();
+
+      expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('event-native-timeline')
+      ).not.toBeInTheDocument();
+    });
+
     beforeEach(() => {
       const updatedChatState = {
         ...defaultChatStoreState,
@@ -368,6 +1305,300 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
+    });
+
+    describe('Edit and resend', () => {
+      const editUserMessage = (
+        source: Parameters<
+          NonNullable<
+            Parameters<typeof ProjectChatContainer>[0]['onEditUserMessage']
+          >
+        >[0]
+      ) => {
+        const props = vi.mocked(ProjectChatContainer).mock.calls.at(-1)?.[0];
+        expect(props?.onEditUserMessage).toBeTypeOf('function');
+        act(() => props!.onEditUserMessage!(source));
+      };
+      const composerVariant = () =>
+        vi.mocked(BottomBox).mock.calls.at(-1)?.[0].variant;
+
+      it('copies an earlier message into the composer as an edited copy', async () => {
+        const user = userEvent.setup();
+        renderChatBox();
+
+        editUserMessage({ id: '1', content: 'Hello' });
+
+        expect(screen.getByTestId('message-input')).toHaveValue('Hello');
+        expect(composerVariant()).toEqual({
+          kind: 'input',
+          header: { eyebrow: 'chat.message-editing-copy' },
+        });
+        expect(toast.info).not.toHaveBeenCalled();
+
+        await user.clear(screen.getByTestId('message-input'));
+        expect(composerVariant()).toBe('input');
+      });
+
+      it('keeps an unsent draft instead of replacing it', async () => {
+        const user = userEvent.setup();
+        renderChatBox();
+        await user.type(screen.getByTestId('message-input'), 'Unsent draft');
+
+        editUserMessage({ id: '1', content: 'Hello' });
+
+        expect(screen.getByTestId('message-input')).toHaveValue('Unsent draft');
+        expect(toast.info).toHaveBeenCalledWith('chat.message-draft-exists');
+        expect(composerVariant()).toBe('input');
+      });
+
+      it('asks for files to be attached again', () => {
+        renderChatBox();
+
+        editUserMessage({
+          id: '1',
+          content: 'Summarize this',
+          attaches: [{ fileName: 'report.pdf' }],
+        });
+
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Summarize this'
+        );
+        expect(toast.info).toHaveBeenCalledWith('chat.message-reattach-files');
+      });
+    });
+
+    it.each([
+      ['running', 'pause'],
+      ['pause', 'resume'],
+    ] as const)(
+      'routes the empty composer %s state through the %s task control',
+      async (status, action) => {
+        const user = userEvent.setup();
+        const controlledTask = {
+          ...defaultChatStoreState.tasks['test-task-id'],
+          status,
+          hasMessages: true,
+          messages: [{ id: '1', role: 'user', content: 'Start', attaches: [] }],
+          elapsed: 100,
+          taskTime: 1_000,
+        };
+        const controlledStore = {
+          ...defaultChatStoreState,
+          tasks: { 'test-task-id': controlledTask },
+          setElapsed: vi.fn(),
+          setTaskTime: vi.fn(),
+          setStatus: vi.fn(),
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: controlledStore as any,
+        });
+
+        renderChatBox();
+
+        const actionButton = screen.getByTestId('send-button');
+        expect(actionButton).toHaveAttribute(
+          'data-composer-primary-action',
+          action
+        );
+        await user.click(actionButton);
+
+        await waitFor(() => {
+          expect(_mockFetchPut).toHaveBeenCalledWith(
+            '/task/test-project-id/take-control',
+            { action }
+          );
+        });
+      }
+    );
+
+    it('sends an attachment-only draft with a usable instruction', async () => {
+      const user = userEvent.setup();
+      const attachment = {
+        fileName: 'brief.pdf',
+        filePath: '/tmp/brief.pdf',
+      };
+      const attachmentStore = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            attaches: [attachment],
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: attachmentStore as any,
+      });
+
+      renderChatBox();
+
+      const actionButton = screen.getByTestId('send-button');
+      expect(actionButton).toHaveAttribute(
+        'data-composer-primary-action',
+        'send'
+      );
+      await user.click(actionButton);
+
+      await waitFor(() => {
+        expect(attachmentStore.startTask).toHaveBeenCalledWith(
+          'test-task-id',
+          undefined,
+          undefined,
+          undefined,
+          'Please use the attached file(s).',
+          [attachment],
+          undefined,
+          'test-project-id',
+          'single-agent',
+          undefined
+        );
+      });
+    });
+
+    it('asks to confirm a Memory change review instead of a text answer', async () => {
+      const user = userEvent.setup();
+      const review = {
+        interaction_id: 'review-1',
+        interaction_type: 'memory_change_review',
+        run_id: 'test-task-id',
+        version: 0,
+        title: 'Review Memory change',
+        question: "Allow the Agent to update Memory 'Favourite drink: coffee'?",
+        agent: 'single_agent',
+        display_arguments: {
+          before: { content: 'Favourite drink: coffee' },
+          after: { content: 'Favourite drink: tea' },
+        },
+      };
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.includes('/interactions?status=pending')
+            ? {
+                interactions: [
+                  {
+                    interaction_id: 'review-1',
+                    status: 'requested',
+                    version: 0,
+                  },
+                ],
+              }
+            : { runs: [] }
+        )
+      );
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'single_agent',
+              hasMessages: true,
+              messages: [
+                { id: 'prompt', role: 'user', content: 'Update my drink' },
+                {
+                  id: 'ask-review',
+                  role: 'agent',
+                  step: 'ask',
+                  content: review.question,
+                  agent_name: 'single_agent',
+                  interaction: review,
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+
+      renderChatBox();
+
+      expect(screen.getByText('Review Memory change')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /feedback/i })).toBeNull();
+      await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+      await waitFor(() =>
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/runs/test-task-id/interactions/review-1/decisions',
+          expect.objectContaining({ decision: { decision: 'approved' } })
+        )
+      );
+    });
+
+    describe('question still waiting in a reopened Session', () => {
+      const restoredQuestionState = (durableRunStatus: string) => ({
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            type: 'replay',
+            status: 'finished',
+            durableRunStatus,
+            activeAsk: 'single_agent',
+            hasMessages: true,
+            messages: [
+              { id: 'prompt', role: 'user', content: 'Save my colour' },
+              {
+                id: 'ask',
+                role: 'agent',
+                step: 'ask',
+                content: 'Which colour?',
+                agent_name: 'single_agent',
+                interaction: {
+                  interaction_id: 'question-1',
+                  interaction_type: 'question',
+                  run_id: 'test-task-id',
+                  question: 'Which colour?',
+                  agent: 'single_agent',
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      it('answers it above the composer', async () => {
+        const user = userEvent.setup();
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: restoredQuestionState('waiting_for_user') as any,
+        });
+
+        renderChatBox();
+
+        expect(screen.getByText('Which colour?')).toBeInTheDocument();
+        await user.type(
+          screen.getByRole('textbox', { name: /feedback/i }),
+          'teal'
+        );
+        await user.click(
+          screen.getByRole('button', { name: /send.feedback/i })
+        );
+
+        await waitFor(() =>
+          expect(_mockFetchPost).toHaveBeenCalledWith(
+            '/chat/test-project-id/human-reply',
+            expect.objectContaining({
+              agent: 'single_agent',
+              reply: 'teal',
+              interaction_id: 'question-1',
+            })
+          )
+        );
+      });
+
+      it('offers nothing once the Run no longer waits', () => {
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: restoredQuestionState('completed') as any,
+        });
+
+        renderChatBox();
+
+        expect(screen.queryByRole('textbox', { name: /feedback/i })).toBeNull();
+      });
     });
 
     it('should handle message sending', async () => {
@@ -408,25 +1639,2758 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // Wait for the async model config check to resolve and state to update
-      await waitFor(() => {
-        expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/user/key');
-      });
-      // Allow React to flush the hasModel state update
-      await waitFor(() => {
-        // When hasModel becomes true, the suggestion area renders example prompts
-        expect(screen.queryByText('IT Ticket Creation')).toBeInTheDocument();
-      });
-
-      const messageInput = getFirstByTestId('message-input');
-      const sendButton = getFirstByTestId('send-button');
+      const messageInput = screen.getByTestId('message-input');
+      const sendButton = screen.getByTestId('send-button');
 
       await user.type(messageInput, 'Test message');
       await user.click(sendButton);
 
-      // The component should call fetchPost for continuing conversation
+      // A follow-up is prepared as a new durable Run before admission.
       await waitFor(() => {
-        expect(_mockFetchPost).toHaveBeenCalled();
+        expect(defaultProjectStoreState.appendInitChatStore).toHaveBeenCalled();
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/chat/test-project-id',
+          expect.objectContaining({
+            question: 'Test message',
+          })
+        );
+      });
+
+      const nextTaskId =
+        defaultProjectStoreState.appendInitChatStore.mock.calls[0][1];
+      expect(preparedRunState.setNextTaskId).toHaveBeenCalledWith(nextTaskId);
+      expect(preparedRunState.setTaskSessionMode).toHaveBeenCalledWith(
+        nextTaskId,
+        'single-agent'
+      );
+      expect(preparedRunState.setIsPending).toHaveBeenCalledWith(
+        nextTaskId,
+        true
+      );
+      expect(preparedRunState.setHasMessages).toHaveBeenCalledWith(
+        nextTaskId,
+        true
+      );
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.objectContaining({ task_id: nextTaskId })
+      );
+    });
+
+    it('waits for stale retirement and cold-admits when the warm consumer is gone', async () => {
+      const user = userEvent.setup();
+      let releaseRetirement!: () => void;
+      waitForPendingStaleRuntimeEvictionMock.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseRetirement = resolve;
+          })
+      );
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url === '/chat/test-project-id/status'
+            ? {
+                has_lock: true,
+                status: 'done',
+                run_id: 'test-task-id',
+                consumer_alive: false,
+              }
+            : { runs: [] }
+        )
+      );
+      const completedChatState = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            messages: [
+              { id: '1', role: 'user', content: 'Initial task', attaches: [] },
+              {
+                id: '2',
+                role: 'assistant',
+                content: 'Initial result',
+                step: 'wait_confirm',
+                attaches: [],
+              },
+            ],
+            hasMessages: true,
+            hasWaitComfirm: true,
+            status: 'pending',
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: completedChatState as any,
+      });
+
+      renderChatBox();
+      await user.type(screen.getByTestId('message-input'), 'Continue safely');
+      await user.click(screen.getByTestId('send-button'));
+      await Promise.resolve();
+
+      expect(mockFetchGet).not.toHaveBeenCalledWith(
+        '/chat/test-project-id/status'
+      );
+      expect(completedChatState.startTask).not.toHaveBeenCalled();
+
+      releaseRetirement();
+
+      await waitFor(() =>
+        expect(completedChatState.startTask).toHaveBeenCalledWith(
+          'test-unique-id',
+          undefined,
+          undefined,
+          undefined,
+          'Continue safely',
+          [],
+          undefined,
+          'test-project-id',
+          'single-agent',
+          expect.objectContaining({
+            preserveTaskId: true,
+            awaitAdmission: true,
+          })
+        )
+      );
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.anything()
+      );
+    });
+
+    describe('follow-up admission after the previous Run finished', () => {
+      const retireIdleCall = [
+        '/chat/test-project-id/runtime/retire-idle',
+        { run_id: 'test-task-id' },
+        undefined,
+        { signal: undefined },
+      ] as const;
+      const finishedTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        messages: [
+          { id: '1', role: 'user', content: 'Initial task', attaches: [] },
+          { id: '2', role: 'agent', content: 'Done', step: AgentStep.END },
+        ],
+        hasMessages: true,
+        status: ChatTaskStatus.FINISHED,
+      };
+      const mockIdleConsumer = (subscriberCount: number) => {
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url === '/chat/test-project-id/status'
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  run_id: 'test-task-id',
+                  consumer_alive: true,
+                  subscriber_count: subscriberCount,
+                }
+              : { items: [] }
+          )
+        );
+        _mockFetchPost.mockImplementation((url: string) =>
+          Promise.resolve(
+            url === retireIdleCall[0]
+              ? { retired: true, consumer_alive: false }
+              : { success: true }
+          )
+        );
+      };
+
+      it.each([
+        {
+          route: 'cold',
+          reason: 'its stream errored after the Run finished',
+          idleRunId: null,
+          subscriberCount: 0,
+        },
+        {
+          route: 'cold',
+          reason: 'Brain no longer counts its subscriber',
+          idleRunId: 'test-task-id',
+          subscriberCount: 0,
+        },
+        {
+          route: 'warm',
+          reason: 'this window still holds its stream',
+          idleRunId: 'test-task-id',
+          subscriberCount: 1,
+        },
+      ])(
+        'admits a follow-up $route when $reason',
+        async ({ route, idleRunId, subscriberCount }) => {
+          const user = userEvent.setup();
+          legacyStreamHarness.idleRunId = idleRunId;
+          mockIdleConsumer(subscriberCount);
+          const finishedChatState = {
+            ...defaultChatStoreState,
+            tasks: { 'test-task-id': finishedTask },
+          };
+          mockUseChatStoreAdapter.mockReturnValue({
+            projectStore: defaultProjectStoreState as any,
+            chatStore: finishedChatState as any,
+          });
+
+          renderChatBox();
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Continue after sleep'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          const retirements = () =>
+            _mockFetchPost.mock.calls.filter(
+              ([url]) => url === retireIdleCall[0]
+            );
+
+          if (route === 'warm') {
+            await waitFor(() =>
+              expect(_mockFetchPost).toHaveBeenCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({ question: 'Continue after sleep' })
+              )
+            );
+            expect(retirements()).toEqual([]);
+            expect(finishedChatState.startTask).not.toHaveBeenCalled();
+            return;
+          }
+          await waitFor(() =>
+            expect(finishedChatState.startTask).toHaveBeenCalledWith(
+              'test-unique-id',
+              undefined,
+              undefined,
+              undefined,
+              'Continue after sleep',
+              [],
+              undefined,
+              'test-project-id',
+              'single-agent',
+              expect.objectContaining({
+                preserveTaskId: true,
+                awaitAdmission: true,
+              })
+            )
+          );
+          expect(retirements()).toEqual([retireIdleCall]);
+          const retirement = _mockFetchPost.mock.calls.findIndex(
+            ([url]) => url === retireIdleCall[0]
+          );
+          expect(
+            _mockFetchPost.mock.invocationCallOrder[retirement]
+          ).toBeLessThan(
+            finishedChatState.startTask.mock.invocationCallOrder[0]
+          );
+          expect(_mockFetchPost).not.toHaveBeenCalledWith(
+            '/chat/test-project-id',
+            expect.anything()
+          );
+        }
+      );
+
+      it.each([
+        {
+          source: 'a Session restored after a window reload',
+          task: { ...finishedTask, type: 'replay' },
+        },
+        {
+          source: 'a Run resumed after an error',
+          task: {
+            ...finishedTask,
+            messages: [
+              finishedTask.messages[0],
+              {
+                id: 'error',
+                role: 'agent',
+                content: '❌ **Error**: Bad Gateway',
+                step: AgentStep.ERROR,
+              },
+              finishedTask.messages[1],
+            ],
+          },
+        },
+      ])(
+        'retires the idle consumer before a follow-up to $source',
+        async ({ task }) => {
+          const user = userEvent.setup();
+          legacyStreamHarness.idleRunId = null;
+          mockIdleConsumer(0);
+          const chatState = {
+            ...defaultChatStoreState,
+            tasks: { 'test-task-id': task },
+          };
+          mockUseChatStoreAdapter.mockReturnValue({
+            projectStore: defaultProjectStoreState as any,
+            chatStore: chatState as any,
+          });
+
+          renderChatBox();
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Continue after reload'
+          );
+          await user.click(screen.getByTestId('send-button'));
+
+          await waitFor(() =>
+            expect(chatState.startTask).toHaveBeenCalledWith(
+              'test-unique-id',
+              undefined,
+              undefined,
+              undefined,
+              'Continue after reload',
+              [],
+              undefined,
+              'test-project-id',
+              'single-agent',
+              expect.objectContaining({
+                preserveTaskId: true,
+                awaitAdmission: true,
+              })
+            )
+          );
+          const retirement = _mockFetchPost.mock.calls.findIndex(
+            ([url]) => url === retireIdleCall[0]
+          );
+          expect(_mockFetchPost.mock.calls[retirement]).toEqual(retireIdleCall);
+          expect(
+            _mockFetchPost.mock.invocationCallOrder[retirement]
+          ).toBeLessThan(chatState.startTask.mock.invocationCallOrder[0]);
+        }
+      );
+
+      it('admits a queued follow-up cold through the same decision', async () => {
+        legacyStreamHarness.idleRunId = null;
+        mockIdleConsumer(0);
+        defaultProjectStoreState.getProjectById.mockImplementation(
+          () =>
+            ({
+              queuedMessages: [
+                {
+                  task_id: 'queued-after-sleep',
+                  run_id: 'queued-after-sleep',
+                  content: 'Queued after sleep',
+                  timestamp: 1,
+                  attaches: [],
+                },
+              ],
+            }) as any
+        );
+        const finishedChatState = {
+          ...defaultChatStoreState,
+          tasks: { 'test-task-id': finishedTask },
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: finishedChatState as any,
+        });
+        eventNativeHarness.enabled = true;
+        eventNativeHarness.snapshot = runningEventNativeSnapshot();
+        eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+          'completed';
+
+        renderChatBox();
+
+        await waitFor(() =>
+          expect(finishedChatState.startTask).toHaveBeenCalledWith(
+            'queued-after-sleep',
+            undefined,
+            undefined,
+            undefined,
+            'Queued after sleep',
+            [],
+            undefined,
+            'test-project-id',
+            'single-agent',
+            expect.objectContaining({
+              preserveTaskId: true,
+              awaitAdmission: true,
+            })
+          )
+        );
+        expect(_mockFetchPost).toHaveBeenCalledWith(...retireIdleCall);
+        expect(_mockFetchPost).not.toHaveBeenCalledWith(
+          '/chat/test-project-id',
+          expect.anything()
+        );
+      });
+
+      describe('when the message starts a new task directly', () => {
+        // History restored after a window reload replays each task.
+        const restoredTask = { ...finishedTask, type: 'replay' };
+        const failedStartTask = {
+          ...defaultChatStoreState.tasks['test-task-id'],
+          messages: [
+            { id: '1', role: 'user', content: 'Retry task', attaches: [] },
+            {
+              id: '2',
+              role: 'agent',
+              content: '❌ **Error**: The task could not be started.',
+              step: AgentStep.ERROR,
+            },
+          ],
+          hasMessages: true,
+          status: ChatTaskStatus.FINISHED,
+        };
+        const errorAfterAnswerTask = {
+          ...defaultChatStoreState.tasks['test-task-id'],
+          messages: [
+            { id: '1', role: 'user', content: 'Initial task', attaches: [] },
+            {
+              id: '2',
+              role: 'agent',
+              content: 'Answer',
+              step: AgentStep.WAIT_CONFIRM,
+            },
+            {
+              id: '3',
+              role: 'agent',
+              content: '❌ **Error**: The model is unavailable.',
+              step: AgentStep.ERROR,
+            },
+          ],
+          hasMessages: true,
+          hasWaitComfirm: true,
+          status: ChatTaskStatus.PENDING,
+        };
+        const directStartCall = [
+          'test-task-id',
+          undefined,
+          undefined,
+          undefined,
+          'Next task',
+          [],
+          undefined,
+          'test-project-id',
+          'single-agent',
+          undefined,
+        ] as const;
+        const retirements = () =>
+          _mockFetchPost.mock.calls.filter(
+            ([url]) => url === retireIdleCall[0]
+          );
+        const sendFrom = async (task: Record<string, unknown>) => {
+          const user = userEvent.setup();
+          const chatState = {
+            ...defaultChatStoreState,
+            tasks: { 'test-task-id': task },
+          };
+          mockUseChatStoreAdapter.mockReturnValue({
+            projectStore: defaultProjectStoreState as any,
+            chatStore: chatState as any,
+          });
+          renderChatBox();
+          await user.type(screen.getByTestId('message-input'), 'Next task');
+          await user.click(screen.getByTestId('send-button'));
+          return chatState;
+        };
+
+        it.each([
+          {
+            session: 'restored after the window reloaded',
+            task: restoredTask,
+            idleRunId: null,
+            subscriberCount: 0,
+            direct: false,
+          },
+          {
+            session: 'whose last task failed to start',
+            task: failedStartTask,
+            idleRunId: null,
+            subscriberCount: 0,
+            direct: true,
+          },
+          {
+            session: 'whose last answer was followed by an error',
+            task: errorAfterAnswerTask,
+            idleRunId: null,
+            subscriberCount: 0,
+            direct: false,
+          },
+          {
+            session:
+              'whose last task failed while this window holds the stream',
+            task: failedStartTask,
+            idleRunId: 'test-task-id',
+            subscriberCount: 1,
+            direct: true,
+          },
+        ])(
+          'retires the idle consumer before a cold start in a Session $session',
+          async ({ task, idleRunId, subscriberCount, direct }) => {
+            legacyStreamHarness.idleRunId = idleRunId;
+            mockIdleConsumer(subscriberCount);
+
+            const chatState = await sendFrom(task);
+
+            // A restored or errored finished task may also start through the
+            // normal follow-up path. Either way exactly one new task starts,
+            // after the idle consumer is retired.
+            await waitFor(() =>
+              expect(chatState.startTask).toHaveBeenCalledTimes(1)
+            );
+            const [startCall] = chatState.startTask.mock.calls;
+            if (direct) expect(startCall).toEqual([...directStartCall]);
+            expect(startCall[4]).toBe('Next task');
+            expect(startCall[7]).toBe('test-project-id');
+            expect(retirements()).toEqual([retireIdleCall]);
+            const retirement = _mockFetchPost.mock.calls.findIndex(
+              ([url]) => url === retireIdleCall[0]
+            );
+            expect(
+              _mockFetchPost.mock.invocationCallOrder[retirement]
+            ).toBeLessThan(chatState.startTask.mock.invocationCallOrder[0]);
+            expect(_mockFetchPost).not.toHaveBeenCalledWith(
+              '/chat/test-project-id',
+              expect.anything()
+            );
+          }
+        );
+
+        it('keeps the draft and starts nothing while the consumer is busy', async () => {
+          legacyStreamHarness.idleRunId = null;
+          mockIdleConsumer(0);
+          mockFetchGet.mockImplementation((url: string) =>
+            Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? {
+                    has_lock: true,
+                    status: 'processing',
+                    run_id: 'running-task-id',
+                    consumer_alive: true,
+                    subscriber_count: 0,
+                  }
+                : { items: [] }
+            )
+          );
+
+          const chatState = await sendFrom(failedStartTask);
+
+          await waitFor(() =>
+            expect(toast.error).toHaveBeenCalledWith(
+              'The task could not be started. Please try again.',
+              undefined
+            )
+          );
+          expect(screen.getByTestId('message-input')).toHaveValue('Next task');
+          expect(chatState.startTask).not.toHaveBeenCalled();
+          expect(retirements()).toEqual([]);
+          expect(_mockFetchPost).not.toHaveBeenCalledWith(
+            '/chat/test-project-id',
+            expect.anything()
+          );
+        });
+
+        it('still starts the task when Brain cannot report its runtime yet', async () => {
+          mockIdleConsumer(0);
+          mockFetchGet.mockImplementation((url: string) =>
+            url === '/chat/test-project-id/status'
+              ? Promise.reject(new Error('Brain is starting'))
+              : Promise.resolve({ items: [] })
+          );
+
+          const chatState = await sendFrom(failedStartTask);
+
+          await waitFor(() =>
+            expect(chatState.startTask).toHaveBeenCalledWith(...directStartCall)
+          );
+          expect(retirements()).toEqual([]);
+        });
+      });
+    });
+
+    describe('normal follow-up admission ownership', () => {
+      const originalAttachment = {
+        fileName: 'original.pdf',
+        filePath: '/tmp/original.pdf',
+      };
+      const createFollowUpStore = (attachment = originalAttachment) => {
+        const store = createChatStoreInstance();
+        const state = store.getState();
+        state.create('test-task-id');
+        state.addMessages('test-task-id', {
+          id: 'result',
+          role: 'agent',
+          content: 'Previous result',
+          step: AgentStep.WAIT_CONFIRM,
+        });
+        state.setHasMessages('test-task-id', true);
+        state.setHasWaitComfirm('test-task-id', true);
+        state.setAttaches('test-task-id', [attachment] as any);
+        store.setState({
+          setAttaches: vi.fn(state.setAttaches),
+          startTask: vi.fn(),
+        });
+        return store;
+      };
+
+      const setupAdmission = (
+        warm: boolean,
+        stage: 'status' | 'stale',
+        deferAdmission = false
+      ) => {
+        let release!: () => void;
+        let reject!: (error: Error) => void;
+        const status = {
+          has_lock: true,
+          status: 'done',
+          run_id: 'test-task-id',
+          consumer_alive: warm,
+          subscriber_count: warm ? 1 : 0,
+        };
+        const pendingOwnership = new Promise<any>((resolve, rejectPromise) => {
+          release = () => resolve(stage === 'status' ? status : undefined);
+          reject = rejectPromise;
+        });
+        if (stage === 'stale') {
+          waitForPendingStaleRuntimeEvictionMock.mockReturnValue(
+            pendingOwnership
+          );
+        }
+        mockFetchGet.mockImplementation((url: string) =>
+          url === '/chat/test-project-id/status'
+            ? stage === 'status'
+              ? pendingOwnership
+              : Promise.resolve(status)
+            : Promise.resolve({ runs: [] })
+        );
+        const chatStore = createFollowUpStore();
+        let nextId = 0;
+        vi.mocked(generateUniqueId).mockImplementation(() => {
+          nextId += 1;
+          return nextId === 1 ? 'test-unique-id' : `test-unique-id-${nextId}`;
+        });
+        defaultProjectStoreState.getActiveChatStore.mockImplementation(
+          () => chatStore as any
+        );
+        defaultProjectStoreState.getChatStore.mockImplementation(
+          () => chatStore as any
+        );
+        // Subscribe to the actual primary store so create/select/setAttaches
+        // change both the active Run and the rendered composer immediately.
+        mockUseChatStoreAdapter.mockImplementation(
+          function useReactiveAdapter() {
+            const activeStore = defaultProjectStoreState.getActiveChatStore();
+            const chatState = useSyncExternalStore(
+              activeStore.subscribe,
+              activeStore.getState,
+              activeStore.getState
+            );
+            return {
+              projectStore: defaultProjectStoreState as any,
+              chatStore: chatState as any,
+            };
+          }
+        );
+        defaultProjectStoreState.appendInitChatStore.mockImplementation(
+          (_projectId, taskId) => {
+            const state = chatStore.getState();
+            if (!state.tasks[taskId]) state.create(taskId);
+            state.setActiveTaskId(taskId);
+            return { taskId, chatStore } as any;
+          }
+        );
+        let releaseAdmission!: () => void;
+        const pendingAdmission = new Promise<void>((resolve) => {
+          releaseAdmission = resolve;
+        });
+        const startTask = vi.mocked(chatStore.getState().startTask);
+        startTask.mockImplementation(
+          async (taskId, _type, _share, _delay, content, files) => {
+            defaultProjectStoreState.appendInitChatStore(
+              'test-project-id',
+              taskId
+            );
+            const state = chatStore.getState();
+            state.setIsPending(taskId, true);
+            state.setHasMessages(taskId, true);
+            state.addMessages(taskId, {
+              id: `${taskId}:user`,
+              role: 'user',
+              content: content || '',
+              attaches: files,
+            });
+            if (deferAdmission) await pendingAdmission;
+          }
+        );
+        if (warm && deferAdmission) {
+          _mockFetchPost.mockImplementation((url) =>
+            url === '/chat/test-project-id'
+              ? pendingAdmission
+              : Promise.resolve({ success: true })
+          );
+        }
+        const view = renderChatBox();
+        // A Session key remounts the composer, as switching Sessions does.
+        const rerender = (sessionKey?: string) =>
+          view.rerender(
+            <BrowserRouter>
+              <ChatBox key={sessionKey} />
+            </BrowserRouter>
+          );
+        const waitUntilOwnershipPending = () =>
+          waitFor(() => {
+            if (stage === 'status') {
+              expect(mockFetchGet).toHaveBeenCalledWith(
+                '/chat/test-project-id/status'
+              );
+            } else {
+              expect(
+                waitForPendingStaleRuntimeEvictionMock
+              ).toHaveBeenCalledWith('test-project-id');
+            }
+          });
+        const expectAdmission = async () => {
+          await waitFor(() => {
+            if (warm) {
+              expect(_mockFetchPost).toHaveBeenCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({
+                  question: 'Original instruction',
+                  attaches: [originalAttachment.filePath],
+                })
+              );
+            } else {
+              expect(startTask).toHaveBeenCalledWith(
+                expect.any(String),
+                undefined,
+                undefined,
+                undefined,
+                'Original instruction',
+                [originalAttachment],
+                undefined,
+                'test-project-id',
+                'single-agent',
+                expect.objectContaining({
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                })
+              );
+            }
+          });
+        };
+        const admissionCount = () =>
+          warm
+            ? _mockFetchPost.mock.calls.filter(
+                ([url]) => url === '/chat/test-project-id'
+              ).length
+            : startTask.mock.calls.length;
+        return {
+          get chatState() {
+            return chatStore.getState();
+          },
+          chatStore,
+          releaseAdmission,
+          release,
+          reject,
+          status,
+          rerender,
+          waitUntilOwnershipPending,
+          expectAdmission,
+          admissionCount,
+        };
+      };
+
+      describe.each([
+        ['status', true],
+        ['status', false],
+        ['stale', true],
+        ['stale', false],
+      ] as const)('waiting for %s with warm=%s', (stage, warm) => {
+        it('admits only once for Enter then click in separate browser events', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.keyboard('{Enter}');
+          await setup.waitUntilOwnershipPending();
+          await user.click(screen.getByTestId('send-button'));
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(setup.admissionCount()).toBe(1);
+        });
+
+        it('preserves a newer composer draft and attachments after the old admission resolves', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(screen.getByTestId('message-input'), 'A newer draft');
+          await user.upload(
+            screen.getByTestId('attachment-input'),
+            new File(['new'], 'newer.pdf', { type: 'application/pdf' })
+          );
+          setup.rerender();
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          setup.rerender();
+
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'A newer draft'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'newer.pdf'
+          );
+          const nextTaskId = setup.chatState.activeTaskId!;
+          expect(nextTaskId).not.toBe('test-task-id');
+          expect(setup.chatState.tasks[nextTaskId].attaches).toEqual([
+            { fileName: 'newer.pdf', filePath: '/tmp/newer.pdf' },
+          ]);
+          expect(setup.chatState.tasks['test-task-id'].attaches).toEqual([]);
+
+          await act(async () => {
+            const state = setup.chatStore.getState();
+            state.setIsPending(nextTaskId, false);
+            state.setStatus(nextTaskId, ChatTaskStatus.FINISHED);
+            state.setHasWaitComfirm(nextTaskId, true);
+            state.addMessages(nextTaskId, {
+              id: `${nextTaskId}:end`,
+              role: 'agent',
+              content: 'Done',
+              step: AgentStep.END,
+            });
+          });
+          await user.click(screen.getByTestId('send-button'));
+          await waitFor(() => {
+            if (warm) {
+              expect(_mockFetchPost).toHaveBeenLastCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({
+                  question: 'A newer draft',
+                  attaches: ['/tmp/newer.pdf'],
+                })
+              );
+            } else {
+              expect(setup.chatState.startTask).toHaveBeenLastCalledWith(
+                expect.any(String),
+                undefined,
+                undefined,
+                undefined,
+                'A newer draft',
+                [{ fileName: 'newer.pdf', filePath: '/tmp/newer.pdf' }],
+                undefined,
+                'test-project-id',
+                'single-agent',
+                expect.objectContaining({
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                })
+              );
+            }
+          });
+        });
+
+        it('does not clear another Session composer after switching during admission', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          const secondStore = createFollowUpStore({
+            fileName: 'second-session.pdf',
+            filePath: '/tmp/second-session.pdf',
+          });
+          defaultProjectStoreState.activeProjectId = 'second-project-id';
+          defaultProjectStoreState.getActiveChatStore.mockImplementation(
+            (projectId?: string) =>
+              (projectId === 'test-project-id'
+                ? setup.chatStore
+                : secondStore) as any
+          );
+          setup.rerender();
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Session B draft'
+          );
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          setup.rerender();
+
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Session B draft'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'second-session.pdf'
+          );
+          expect(secondStore.getState().setAttaches).not.toHaveBeenCalled();
+        });
+
+        it('does not reinsert unchanged submitted files into the new active Run', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+
+          const nextTaskId = setup.chatState.activeTaskId!;
+          expect(nextTaskId).not.toBe('test-task-id');
+          expect(setup.chatState.tasks[nextTaskId].attaches).toEqual([]);
+          expect(screen.getByTestId('composer-files')).toBeEmptyDOMElement();
+        });
+
+        it('keeps edited files on Session A when admission resolves while Session B is selected', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(screen.getByTestId('message-input'), 'A newer draft');
+          await user.upload(
+            screen.getByTestId('attachment-input'),
+            new File(['new'], 'newer.pdf', { type: 'application/pdf' })
+          );
+
+          const secondStore = createFollowUpStore({
+            fileName: 'second-session.pdf',
+            filePath: '/tmp/second-session.pdf',
+          });
+          defaultProjectStoreState.activeProjectId = 'second-project-id';
+          defaultProjectStoreState.getActiveChatStore.mockImplementation(
+            (projectId?: string) =>
+              ((projectId || defaultProjectStoreState.activeProjectId) ===
+              'test-project-id'
+                ? setup.chatStore
+                : secondStore) as any
+          );
+          setup.rerender();
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Session B draft'
+          );
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Session B draft'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'second-session.pdf'
+          );
+          expect(secondStore.getState().setAttaches).not.toHaveBeenCalled();
+
+          defaultProjectStoreState.activeProjectId = 'test-project-id';
+          setup.rerender();
+          const nextTaskId = setup.chatState.activeTaskId!;
+          expect(nextTaskId).not.toBe('test-task-id');
+          expect(setup.chatState.tasks[nextTaskId].attaches).toEqual([
+            { fileName: 'newer.pdf', filePath: '/tmp/newer.pdf' },
+          ]);
+          expect(setup.chatState.tasks['test-task-id'].attaches).toEqual([]);
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'newer.pdf'
+          );
+          expect(screen.getByTestId('composer-files')).not.toHaveTextContent(
+            'original.pdf'
+          );
+        });
+
+        it('keeps edits on the new active Run while its admission response is delayed', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage, true);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(screen.getByTestId('message-input'), 'A newer draft');
+          await user.upload(
+            screen.getByTestId('attachment-input'),
+            new File(['new'], 'newer.pdf', { type: 'application/pdf' })
+          );
+          expect(
+            setup.chatState.tasks['test-task-id'].attaches.map(
+              (file) => file.fileName
+            )
+          ).toEqual(['original.pdf', 'newer.pdf']);
+
+          await act(async () => setup.release());
+          await waitFor(() =>
+            expect(setup.chatState.activeTaskId).not.toBe('test-task-id')
+          );
+          const nextTaskId = setup.chatState.activeTaskId!;
+          // The pending SSE/HTTP admission cannot leave the draft files on
+          // the now-hidden historical task until its response arrives.
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'newer.pdf'
+          );
+          expect(screen.getByTestId('composer-files')).not.toHaveTextContent(
+            'original.pdf'
+          );
+          await user.upload(
+            screen.getByTestId('attachment-input'),
+            new File(['later'], 'later.pdf', { type: 'application/pdf' })
+          );
+          await act(async () => setup.releaseAdmission());
+          await setup.expectAdmission();
+
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'A newer draft'
+          );
+          expect(
+            setup.chatState.tasks[nextTaskId].attaches.map(
+              (file) => file.fileName
+            )
+          ).toEqual(['newer.pdf', 'later.pdf']);
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'newer.pdf, later.pdf'
+          );
+        });
+      });
+
+      it.each([true, false])(
+        'retains the failed status draft and files for a successful retry with warm=%s',
+        async (warm) => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          await act(async () => setup.reject(new Error('Status unavailable')));
+
+          expect(setup.admissionCount()).toBe(0);
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Original instruction'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'original.pdf'
+          );
+
+          mockFetchGet.mockImplementation((url: string) =>
+            Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? setup.status
+                : { runs: [] }
+            )
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.expectAdmission();
+          expect(setup.admissionCount()).toBe(1);
+        }
+      );
+
+      it('preserves a clear-and-retyped identical draft as a newer edit', async () => {
+        const user = userEvent.setup();
+        const setup = setupAdmission(true, 'status');
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Original instruction'
+        );
+        await user.click(screen.getByTestId('send-button'));
+        await setup.waitUntilOwnershipPending();
+        await user.clear(screen.getByTestId('message-input'));
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Original instruction'
+        );
+
+        await act(async () => setup.release());
+        await setup.expectAdmission();
+
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Original instruction'
+        );
+      });
+
+      describe('when switching Sessions remounts the composer', () => {
+        const remountSession = (
+          setup: ReturnType<typeof setupAdmission>,
+          projectId: string
+        ) => {
+          const secondStore = createFollowUpStore({
+            fileName: 'second-session.pdf',
+            filePath: '/tmp/second-session.pdf',
+          });
+          defaultProjectStoreState.getActiveChatStore.mockImplementation(
+            (requestedProjectId?: string) =>
+              ((requestedProjectId ||
+                defaultProjectStoreState.activeProjectId) === 'test-project-id'
+                ? setup.chatStore
+                : secondStore) as any
+          );
+          defaultProjectStoreState.activeProjectId = projectId;
+          setup.rerender(projectId);
+        };
+
+        it('clears the sent draft when admission finishes after the Session was left', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          remountSession(setup, 'second-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue('');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Session B draft'
+          );
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Session B draft'
+          );
+
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue('');
+          remountSession(setup, 'second-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Session B draft'
+          );
+        });
+
+        it('clears a restored draft sent before the Session was left again', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          remountSession(setup, 'second-project-id');
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Original instruction'
+          );
+
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          remountSession(setup, 'second-project-id');
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue('');
+        });
+
+        it('keeps a draft edited after returning before admission finishes', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          remountSession(setup, 'second-project-id');
+          remountSession(setup, 'test-project-id');
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Newer Session A draft'
+          );
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Newer Session A draft'
+          );
+        });
+
+        it('does not send a restored draft again while its admission is still running', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(true, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          remountSession(setup, 'second-project-id');
+          remountSession(setup, 'test-project-id');
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(setup.admissionCount()).toBe(1);
+          expect(screen.getByTestId('message-input')).toHaveValue('');
+        });
+      });
+
+      it.each([
+        [true, true],
+        [true, false],
+        [false, true],
+        [false, false],
+      ])(
+        'holds newly queued work behind ordinary admission (warm=%s, succeeds=%s)',
+        async (warm, succeeds) => {
+          const user = userEvent.setup();
+          eventNativeHarness.enabled = true;
+          eventNativeHarness.snapshot = runningEventNativeSnapshot();
+          eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+            'completed';
+          const setup = setupAdmission(warm, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          const queuedFile = {
+            fileName: 'queued.pdf',
+            filePath: '/tmp/queued.pdf',
+          };
+          const queuedMessages = [
+            {
+              task_id: 'queued-after-ordinary',
+              run_id: 'queued-after-ordinary',
+              content: 'Queued instruction',
+              timestamp: 1,
+              attaches: [queuedFile],
+            },
+          ];
+          defaultProjectStoreState.getProjectById.mockImplementation(
+            () => ({ queuedMessages }) as any
+          );
+          defaultProjectStoreState.removeQueuedMessage.mockImplementation(
+            (_projectId, taskId) => {
+              const index = queuedMessages.findIndex(
+                (item) => item.task_id === taskId
+              );
+              return index < 0 ? undefined : queuedMessages.splice(index, 1)[0];
+            }
+          );
+          setup.rerender();
+          await act(async () => {});
+          expect(setup.admissionCount()).toBe(0);
+          expect(
+            defaultProjectStoreState.setQueuedMessageProcessing
+          ).not.toHaveBeenCalled();
+
+          // Future queue status reads succeed; only the already captured
+          // ordinary request remains suspended or fails below.
+          mockFetchGet.mockImplementation((url: string) =>
+            Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? setup.status
+                : { items: [] }
+            )
+          );
+          if (succeeds) {
+            await act(async () => setup.release());
+            await setup.expectAdmission();
+            expect(setup.admissionCount()).toBe(1);
+            expect(
+              defaultProjectStoreState.setQueuedMessageProcessing
+            ).not.toHaveBeenCalled();
+
+            await user.type(
+              screen.getByTestId('message-input'),
+              'Unsent composer draft'
+            );
+            await user.upload(
+              screen.getByTestId('attachment-input'),
+              new File(['next'], 'next.pdf', { type: 'application/pdf' })
+            );
+            setup.rerender();
+            // HTTP admission alone does not release the queue. The exact
+            // admitted Run must reach a canonical terminal status first.
+            expect(setup.admissionCount()).toBe(1);
+            eventNativeHarness.snapshot =
+              runningEventNativeSnapshot('test-unique-id');
+            eventNativeHarness.snapshot.revision = 2;
+            eventNativeHarness.snapshot.view.runs['test-unique-id'].status =
+              'completed';
+            setup.rerender();
+          } else {
+            // Do not rerender: the failed admission must release its guard
+            // and make React reconsider the queued item by itself.
+            await act(async () =>
+              setup.reject(new Error('Status unavailable'))
+            );
+          }
+
+          await waitFor(() => {
+            if (warm) {
+              expect(_mockFetchPost).toHaveBeenCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({
+                  question: 'Queued instruction',
+                  task_id: 'queued-after-ordinary',
+                  attaches: [queuedFile.filePath],
+                })
+              );
+            } else {
+              expect(setup.chatState.startTask).toHaveBeenCalledWith(
+                'queued-after-ordinary',
+                undefined,
+                undefined,
+                undefined,
+                'Queued instruction',
+                [queuedFile],
+                undefined,
+                'test-project-id',
+                'single-agent',
+                expect.objectContaining({
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                })
+              );
+            }
+          });
+          expect(setup.admissionCount()).toBe(succeeds ? 2 : 1);
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            succeeds ? 'Unsent composer draft' : 'Original instruction'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            succeeds ? 'next.pdf' : 'original.pdf'
+          );
+        }
+      );
+
+      it('merges composer files into a reused queued Run without changing its request payload', async () => {
+        const user = userEvent.setup();
+        const setup = setupAdmission(false, 'status');
+        const queuedTaskId = 'queued-retry-with-draft';
+        const queuedFile = {
+          fileName: 'queued.pdf',
+          filePath: '/tmp/queued.pdf',
+        };
+        const existingFile = {
+          fileName: 'existing.pdf',
+          filePath: '/tmp/existing.pdf',
+        };
+        const targetShared = {
+          fileName: 'target-shared.pdf',
+          filePath: '/tmp/shared.pdf',
+        };
+        const sourceShared = {
+          fileName: 'source-shared.pdf',
+          filePath: '/tmp/shared.pdf',
+        };
+        await act(async () => {
+          const state = setup.chatStore.getState();
+          state.create(queuedTaskId);
+          state.setAttaches(queuedTaskId, [existingFile, targetShared] as any);
+          state.setActiveTaskId('test-task-id');
+          state.setAttaches('test-task-id', [
+            originalAttachment,
+            sourceShared,
+          ] as any);
+        });
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Original instruction'
+        );
+        await user.click(screen.getByTestId('send-button'));
+        await setup.waitUntilOwnershipPending();
+
+        const queuedMessages = [
+          {
+            task_id: queuedTaskId,
+            run_id: queuedTaskId,
+            content: 'Queued instruction',
+            timestamp: 1,
+            attaches: [queuedFile],
+          },
+        ];
+        defaultProjectStoreState.getProjectById.mockImplementation(
+          () => ({ queuedMessages }) as any
+        );
+        defaultProjectStoreState.removeQueuedMessage.mockImplementation(() =>
+          queuedMessages.shift()
+        );
+        setup.rerender();
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url === '/chat/test-project-id/status'
+              ? setup.status
+              : { items: [] }
+          )
+        );
+        await act(async () => setup.reject(new Error('Status unavailable')));
+
+        await waitFor(() =>
+          expect(setup.chatState.startTask).toHaveBeenCalledWith(
+            queuedTaskId,
+            undefined,
+            undefined,
+            undefined,
+            'Queued instruction',
+            [queuedFile],
+            undefined,
+            'test-project-id',
+            'single-agent',
+            expect.objectContaining({
+              preserveTaskId: true,
+              awaitAdmission: true,
+            })
+          )
+        );
+        expect(setup.chatState.activeTaskId).toBe(queuedTaskId);
+        expect(setup.chatState.tasks[queuedTaskId].attaches).toEqual([
+          existingFile,
+          targetShared,
+          originalAttachment,
+        ]);
+        expect(setup.chatState.tasks['test-task-id'].attaches).toEqual([]);
+        expect(screen.getByTestId('composer-files')).toHaveTextContent(
+          'existing.pdf, target-shared.pdf, original.pdf'
+        );
+        expect(screen.getByTestId('composer-files')).not.toHaveTextContent(
+          'source-shared.pdf'
+        );
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Original instruction'
+        );
+      });
+    });
+
+    it('keeps the composer available and queues a second task while running', async () => {
+      const user = userEvent.setup();
+      const runningChatState = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            messages: [
+              {
+                id: 'running-query',
+                role: 'user',
+                content: 'First task',
+                attaches: [],
+              },
+            ],
+            hasMessages: true,
+            status: 'running',
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: runningChatState as any,
+      });
+      _mockFetchPost.mockResolvedValueOnce({
+        request_id: 'test-unique-id',
+        project_id: 'test-project-id',
+        content: 'Second task',
+        attachment_paths: [],
+        delivery_mode: 'wait',
+        status: 'pending',
+        source: 'local',
+        created_at: 1,
+        updated_at: 1,
+      });
+
+      renderChatBox();
+      await user.type(screen.getByTestId('message-input'), 'Second task');
+      await user.click(screen.getByTestId('send-button'));
+
+      await waitFor(() => {
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/projects/test-project-id/follow-ups',
+          {
+            request_id: 'test-unique-id',
+            content: 'Second task',
+            attachment_paths: [],
+            delivery_mode: 'wait',
+            source: 'local',
+            source_command_id: undefined,
+          }
+        );
+        expect(
+          defaultProjectStoreState.restoreQueuedMessage
+        ).toHaveBeenCalledWith(
+          'test-project-id',
+          expect.objectContaining({
+            task_id: 'test-unique-id',
+            content: 'Second task',
+            source: 'local',
+          })
+        );
+      });
+    });
+
+    it.each([false, true])(
+      'keeps restored follow-ups pending after interruption with event-native=%s',
+      async (eventNative) => {
+        eventNativeHarness.enabled = eventNative;
+        const queuedMessages = [
+          {
+            task_id: 'queued-run-b',
+            content: 'Task B depends on task A',
+            timestamp: 1,
+            attaches: [],
+          },
+        ];
+        defaultProjectStoreState.getProjectById.mockImplementation(() => ({
+          queuedMessages,
+        }));
+        const runningChat = {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              hasMessages: true,
+              messages: [{ id: 'task-a', role: 'user', content: 'Task A' }],
+            },
+          },
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: runningChat as any,
+        });
+        renderChatBox();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(defaultChatStoreState.startTask).not.toHaveBeenCalled();
+
+        // Restore the canonical interruption without any user action.
+        await act(async () => {
+          runProjectionStore.upsertRunSummaries('test-project-id', [
+            {
+              run_id: 'test-task-id',
+              project_id: 'test-project-id',
+              status: 'interrupted',
+              updated_at: 100,
+              origin: 'local',
+              latest_attempt: { attempt_number: 1, status: 'interrupted' },
+            },
+          ]);
+        });
+
+        expect(defaultChatStoreState.startTask).not.toHaveBeenCalled();
+        expect(_mockFetchPost).not.toHaveBeenCalled();
+        expect(
+          defaultProjectStoreState.setQueuedMessageProcessing
+        ).not.toHaveBeenCalled();
+        expect(
+          defaultProjectStoreState.removeQueuedMessage
+        ).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(
+      [false, true].flatMap((eventNative) =>
+        ([null, 'independent', 'credits', 'service'] as const).map(
+          (failure) => ({ eventNative, failure })
+        )
+      )
+    )(
+      'starts an independent task after interruption (native=$eventNative, failure=$failure)',
+      async ({ eventNative, failure }) => {
+        eventNativeHarness.enabled = eventNative;
+        // The Project snapshot still shows A after C's admission response.
+        // Its interrupted status must not make the waiting B runnable yet.
+        eventNativeHarness.snapshot = runningEventNativeSnapshot();
+        const fails = failure !== null;
+        const failureMessage =
+          failure === 'credits' || failure === 'service'
+            ? errorCopy(failure)
+            : 'Admission unavailable';
+        const notice = vi.spyOn(toast, 'error').mockReturnValue('test-toast');
+        setUsageAccount('test-account');
+        setUsageModelType('cloud');
+        reportUsageIncident({
+          reason: failure === 'service' ? 'service' : 'credits',
+        });
+        acknowledgeUsageNotice();
+        notice.mockClear();
+        const user = userEvent.setup();
+        // This fixture has no warm consumer after the independent Run ends.
+        // A surviving TaskLock alone must not route B into a dead queue.
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url.endsWith('/status')
+              ? { has_lock: true, status: 'done', consumer_alive: false }
+              : { runs: [] }
+          )
+        );
+        defaultProjectStoreState.getProjectById.mockImplementation(() => ({
+          queuedMessages: [
+            {
+              task_id: 'queued-run-b',
+              content: 'Old queued task B',
+              timestamp: 1,
+              attaches: [],
+            },
+          ],
+        }));
+        const interruptedChat = {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              hasMessages: true,
+              messages: [
+                { id: 'old-prompt', role: 'user', content: 'Old task' },
+              ],
+            },
+          },
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: interruptedChat as any,
+        });
+        if (fails)
+          defaultChatStoreState.startTask.mockRejectedValueOnce(
+            new Error(failureMessage)
+          );
+        else defaultChatStoreState.startTask.mockResolvedValueOnce(undefined);
+        const view = renderChatBox();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        act(() => {
+          eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+            'interrupted';
+          runProjectionStore.upsertRunSummaries('test-project-id', [
+            {
+              run_id: 'test-task-id',
+              project_id: 'test-project-id',
+              status: 'interrupted',
+              updated_at: 100,
+              origin: 'local',
+              latest_attempt: { attempt_number: 1, status: 'interrupted' },
+            },
+          ]);
+        });
+        expect(
+          screen.getByText('chat.run-interrupted-title')
+        ).toBeInTheDocument();
+        await user.click(screen.getByTestId('queue-queued-run-b'));
+        expect(_mockFetchPost).not.toHaveBeenCalled();
+        expect(defaultChatStoreState.startTask).not.toHaveBeenCalled();
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Create three new notes'
+        );
+        await user.click(screen.getByTestId('send-button'));
+        await waitFor(() =>
+          expect(defaultChatStoreState.startTask).toHaveBeenCalledWith(
+            'test-unique-id',
+            undefined,
+            undefined,
+            undefined,
+            'Create three new notes',
+            [],
+            undefined,
+            'test-project-id',
+            expect.any(String),
+            expect.objectContaining({
+              preserveTaskId: true,
+              awaitAdmission: true,
+            })
+          )
+        );
+        expect(_mockFetchPost).not.toHaveBeenCalledWith(
+          expect.stringContaining('/cancel'),
+          expect.anything()
+        );
+        expect(
+          defaultProjectStoreState.restoreQueuedMessage
+        ).not.toHaveBeenCalled();
+        expect(
+          runProjectionStore.getProject('test-project-id')?.runs['test-task-id']
+            .status
+        ).toBe('interrupted');
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1);
+        expect(
+          defaultProjectStoreState.addQueuedMessage
+        ).not.toHaveBeenCalled();
+        expect(
+          defaultProjectStoreState.removeQueuedMessage
+        ).not.toHaveBeenCalled();
+        if (fails) {
+          expect(
+            screen.getByText('chat.run-interrupted-title')
+          ).toBeInTheDocument();
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Create three new notes'
+          );
+          if (failure === 'independent') {
+            expect(notice).toHaveBeenCalledTimes(1);
+            expect(notice.mock.calls[0][0]).toBe(failureMessage);
+          } else {
+            expect(notice).not.toHaveBeenCalled();
+            expect(useUsageNoticeStore.getState().incidents).toEqual([
+              { reason: failure },
+            ]);
+          }
+        } else {
+          await waitFor(() =>
+            expect(screen.queryByText('chat.run-interrupted-title')).toBeNull()
+          );
+          for (const status of ['pending', 'running', 'completed']) {
+            act(() =>
+              runProjectionStore.upsertRunSummaries('test-project-id', [
+                {
+                  run_id: 'test-unique-id',
+                  project_id: 'test-project-id',
+                  status,
+                  version:
+                    ['pending', 'running', 'completed'].indexOf(status) + 1,
+                  updated_at:
+                    200 + ['pending', 'running', 'completed'].indexOf(status),
+                  origin: 'local',
+                  latest_attempt: { attempt_number: 1, status },
+                },
+              ])
+            );
+
+            const nextChat = {
+              ...interruptedChat,
+              activeTaskId: 'test-unique-id',
+              tasks: {
+                ...interruptedChat.tasks,
+                'test-unique-id': {
+                  ...defaultChatStoreState.tasks['test-task-id'],
+                  status: status === 'completed' ? 'finished' : status,
+                },
+              },
+            };
+            mockUseChatStoreAdapter.mockReturnValue({
+              projectStore: defaultProjectStoreState as any,
+              chatStore: nextChat as any,
+            });
+            defaultProjectStoreState.getAllChatStores.mockReturnValue([
+              { chatStore: { getState: () => nextChat } },
+            ] as any);
+            const snapshot = eventNativeHarness.snapshot;
+            eventNativeHarness.snapshot = {
+              ...snapshot,
+              revision: snapshot.revision + 1,
+              view: {
+                ...snapshot.view,
+                runs: {
+                  ...snapshot.view.runs,
+                  'test-unique-id': {
+                    ...snapshot.view.runs['test-task-id'],
+                    runId: 'test-unique-id',
+                    status,
+                  },
+                },
+              },
+            };
+            view.rerender(
+              <BrowserRouter>
+                <ChatBox />
+              </BrowserRouter>
+            );
+            if (status !== 'completed') {
+              expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1);
+              expect(
+                defaultProjectStoreState.removeQueuedMessage
+              ).not.toHaveBeenCalled();
+            } else {
+              await waitFor(() =>
+                expect(defaultChatStoreState.startTask).toHaveBeenCalledWith(
+                  'queued-run-b',
+                  undefined,
+                  undefined,
+                  undefined,
+                  'Old queued task B',
+                  [],
+                  undefined,
+                  'test-project-id',
+                  expect.any(String),
+                  expect.objectContaining({ awaitAdmission: true })
+                )
+              );
+              expect(
+                defaultProjectStoreState.removeQueuedMessage
+              ).toHaveBeenCalledWith('test-project-id', 'queued-run-b');
+            }
+          }
+        }
+      }
+    );
+
+    it('does not start a second task from a restored draft while the task after interruption is admitting', async () => {
+      eventNativeHarness.enabled = false;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      const user = userEvent.setup();
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.endsWith('/status')
+            ? { has_lock: true, status: 'done', consumer_alive: false }
+            : { runs: [] }
+        )
+      );
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              hasMessages: true,
+              messages: [
+                { id: 'old-prompt', role: 'user', content: 'Old task' },
+              ],
+            },
+          },
+        } as any,
+      });
+      let admit!: () => void;
+      defaultChatStoreState.startTask.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            admit = resolve;
+          })
+      );
+      // Switching Sessions remounts the chat surface, keyed by the Session id.
+      const sessionView = (projectId: string) => {
+        defaultProjectStoreState.activeProjectId = projectId;
+        return (
+          <BrowserRouter>
+            <ChatBox key={projectId} />
+          </BrowserRouter>
+        );
+      };
+      const view = render(sessionView('test-project-id'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        runProjectionStore.upsertRunSummaries('test-project-id', [
+          {
+            run_id: 'test-task-id',
+            project_id: 'test-project-id',
+            status: 'interrupted',
+            updated_at: 100,
+            origin: 'local',
+            latest_attempt: { attempt_number: 1, status: 'interrupted' },
+          },
+        ]);
+      });
+      expect(
+        screen.getByText('chat.run-interrupted-title')
+      ).toBeInTheDocument();
+      await user.type(
+        screen.getByTestId('message-input'),
+        'Create three new notes'
+      );
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+      );
+
+      view.rerender(sessionView('second-project-id'));
+      view.rerender(sessionView('test-project-id'));
+      expect(screen.getByTestId('message-input')).toHaveValue(
+        'Create three new notes'
+      );
+      await user.click(screen.getByTestId('send-button'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1);
+
+      await act(async () => admit());
+      await waitFor(() =>
+        expect(screen.getByTestId('message-input')).toHaveValue('')
+      );
+      expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['cloud', 'local', false],
+      ['cloud', 'custom', false],
+      ['local', 'cloud', true],
+      ['custom', 'cloud', true],
+    ] as const)(
+      'uses global %s and pinned %s models for queued admission (blocked: %s)',
+      async (globalModelType, pinnedModelType, blocked) => {
+        modelConfigHarness.cloudUsageLimitReached = true;
+        mockUseAuthStore.mockReturnValue({
+          modelType: globalModelType,
+        } as any);
+        defaultProjectStoreState.getProjectById.mockReturnValue({
+          queuedMessages: [
+            {
+              task_id: 'queued-model-boundary',
+              content: 'Continue with the Session model',
+              timestamp: 1,
+              attaches: [],
+            },
+          ],
+        } as any);
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: {
+            ...defaultProjectStoreState,
+            projects: {
+              'test-project-id': {
+                metadata: { modelSelection: { modelType: pinnedModelType } },
+              },
+            },
+          } as any,
+          chatStore: {
+            ...defaultChatStoreState,
+            tasks: {
+              'test-task-id': {
+                ...defaultChatStoreState.tasks['test-task-id'],
+                status: 'finished',
+              },
+            },
+          } as any,
+        });
+        eventNativeHarness.enabled = true;
+        eventNativeHarness.snapshot = runningEventNativeSnapshot();
+        eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+          'completed';
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url.endsWith('/status')
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  consumer_alive: true,
+                  run_id: 'test-task-id',
+                  subscriber_count: 1,
+                }
+              : { items: [] }
+          )
+        );
+
+        renderChatBox();
+        await act(async () => {});
+
+        if (blocked) {
+          expect(screen.getByTestId('message-input')).toBeDisabled();
+          expect(screen.getByTestId('bottom-box')).toHaveAttribute(
+            'data-model-disabled',
+            'false'
+          );
+          expect(_mockFetchPost).not.toHaveBeenCalled();
+          expect(
+            defaultProjectStoreState.setQueuedMessageProcessing
+          ).not.toHaveBeenCalled();
+          expect(
+            defaultProjectStoreState.removeQueuedMessage
+          ).not.toHaveBeenCalled();
+        } else {
+          await waitFor(() =>
+            expect(_mockFetchPost).toHaveBeenCalledWith(
+              '/chat/test-project-id',
+              expect.objectContaining({ task_id: 'queued-model-boundary' })
+            )
+          );
+          expect(
+            defaultProjectStoreState.removeQueuedMessage
+          ).toHaveBeenCalledWith('test-project-id', 'queued-model-boundary');
+        }
+      }
+    );
+
+    it('preserves a queued Stop conflict and its explanation after a usage reminder is dismissed', async () => {
+      const user = userEvent.setup();
+      setUsageAccount('queue-integration-account');
+      reportUsageIncident({ reason: 'credits' });
+      acknowledgeUsageNotice();
+      vi.mocked(toast.error).mockClear();
+      vi.spyOn(runEventIngressRegistry, 'replayRun').mockResolvedValue(
+        undefined
+      );
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-conflict',
+            content: 'Follow-up',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+            },
+          },
+        } as any,
+      });
+      _mockFetchPost.mockImplementation((url: string) =>
+        url.endsWith('/send-now')
+          ? Promise.resolve({
+              request_id: 'queued-conflict',
+              content: 'Follow-up',
+            })
+          : Promise.reject(
+              Object.assign(new Error('Run changed'), { status: 409 })
+            )
+      );
+      mockFetchGet.mockResolvedValue({
+        items: [
+          {
+            request_id: 'queued-conflict',
+            content: 'Follow-up',
+            attachment_paths: [],
+            delivery_mode: 'send_now',
+            created_at: 1,
+          },
+        ],
+      });
+
+      renderChatBox();
+      await user.click(screen.getByTestId('queue-queued-conflict'));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          'chat.queue-task-changed',
+          undefined
+        )
+      );
+      expect(toast.error).toHaveBeenCalledTimes(1);
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id/skip-task?expected_task_id=test-task-id',
+        { project_id: 'test-project-id' }
+      );
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.anything()
+      );
+      expect(
+        defaultProjectStoreState.prioritizeQueuedMessage
+      ).toHaveBeenLastCalledWith('test-project-id', 'queued-conflict');
+      expect(
+        defaultProjectStoreState.removeQueuedMessage
+      ).not.toHaveBeenCalled();
+      expect(screen.getByTestId('queue-queued-conflict')).toBeEnabled();
+      expect(useUsageNoticeStore.getState().incidents).toEqual([
+        { reason: 'credits' },
+      ]);
+      expect(useUsageNoticeStore.getState().acknowledged).toEqual(['credits']);
+    });
+
+    it('locks duplicate queue interruptions and passes the expected task to Stop', async () => {
+      const user = userEvent.setup();
+      vi.spyOn(runEventIngressRegistry, 'replayRun').mockResolvedValue(
+        undefined
+      );
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-control',
+            content: 'Follow-up',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      const runningChatState = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            status: 'running',
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: runningChatState as any,
+      });
+      let resolvePriority!: (value: any) => void;
+      _mockFetchPost.mockImplementation((url: string) =>
+        url.endsWith('/send-now')
+          ? new Promise((resolve) => {
+              resolvePriority = resolve;
+            })
+          : Promise.resolve({})
+      );
+      renderChatBox();
+      const action = screen.getByTestId('queue-queued-control');
+      await user.click(action);
+      expect(action).toBeDisabled();
+      await user.click(action);
+      expect(
+        _mockFetchPost.mock.calls.filter(([url]) =>
+          String(url).endsWith('/send-now')
+        )
+      ).toHaveLength(1);
+      await act(async () => {
+        resolvePriority({ request_id: 'queued-control', content: 'Follow-up' });
+      });
+      await waitFor(() =>
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/chat/test-project-id/skip-task?expected_task_id=test-task-id',
+          { project_id: 'test-project-id' }
+        )
+      );
+      expect(action).toBeDisabled();
+      expect(
+        defaultProjectStoreState.removeQueuedMessage
+      ).not.toHaveBeenCalledWith('test-project-id', 'queued-control');
+    });
+
+    it.each(['cancelled', 'interrupted'] as const)(
+      'waits for the exact executing Run after Stop succeeds (terminal=%s)',
+      async (terminal) => {
+        const user = userEvent.setup();
+        vi.spyOn(runEventIngressRegistry, 'replayRun').mockResolvedValue(
+          undefined
+        );
+        defaultProjectStoreState.getProjectById.mockReturnValue({
+          queuedMessages: [
+            {
+              task_id: 'queued-control',
+              content: 'Follow-up',
+              timestamp: 1,
+              attaches: [],
+            },
+          ],
+        } as any);
+        const staleChatState = {
+          ...defaultChatStoreState,
+          activeTaskId: 'queued-control',
+          tasks: {
+            'queued-control': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+            },
+          },
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: staleChatState as any,
+        });
+        eventNativeHarness.enabled = true;
+        eventNativeHarness.snapshot =
+          runningEventNativeSnapshot('actual-running');
+        eventNativeHarness.snapshot.view.runs['queued-control'] = {
+          ...eventNativeHarness.snapshot.view.runs['actual-running'],
+          runId: 'queued-control',
+          status: 'pending',
+        };
+        _mockFetchPost.mockResolvedValue({
+          request_id: 'queued-control',
+          content: 'Follow-up',
+        });
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url === '/chat/test-project-id/status'
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  consumer_alive: true,
+                  run_id: 'test-task-id',
+                  subscriber_count: 1,
+                }
+              : { items: [] }
+          )
+        );
+        const view = renderChatBox();
+        expect(_mockFetchPost).not.toHaveBeenCalledWith(
+          '/chat/test-project-id',
+          expect.anything()
+        );
+        await user.click(screen.getByTestId('queue-queued-control'));
+        await waitFor(() =>
+          expect(_mockFetchPost).toHaveBeenCalledWith(
+            '/chat/test-project-id/skip-task?expected_task_id=actual-running',
+            { project_id: 'test-project-id' }
+          )
+        );
+        expect(
+          defaultProjectStoreState.removeQueuedMessage
+        ).not.toHaveBeenCalledWith('test-project-id', 'queued-control');
+
+        expect(_mockFetchPost).not.toHaveBeenCalledWith(
+          '/chat/test-project-id',
+          expect.anything()
+        );
+        eventNativeHarness.snapshot = {
+          ...eventNativeHarness.snapshot,
+          revision: 2,
+          view: {
+            ...eventNativeHarness.snapshot.view,
+            runs: {
+              ...eventNativeHarness.snapshot.view.runs,
+              'actual-running': {
+                ...eventNativeHarness.snapshot.view.runs['actual-running'],
+                status: terminal,
+              },
+            },
+          },
+        };
+        if (terminal === 'interrupted') {
+          act(() =>
+            runProjectionStore.upsertRunSummaries('test-project-id', [
+              {
+                run_id: 'actual-running',
+                project_id: 'test-project-id',
+                status: 'interrupted',
+                updated_at: 100,
+                origin: 'local',
+                latest_attempt: { attempt_number: 1, status: 'interrupted' },
+              },
+            ])
+          );
+        }
+        view.rerender(
+          <BrowserRouter>
+            <ChatBox />
+          </BrowserRouter>
+        );
+        if (terminal === 'interrupted') {
+          expect(_mockFetchPost).not.toHaveBeenCalledWith(
+            '/chat/test-project-id',
+            expect.anything()
+          );
+          expect(
+            defaultProjectStoreState.removeQueuedMessage
+          ).not.toHaveBeenCalled();
+          expect(
+            screen.getByText('chat.run-interrupted-title')
+          ).toBeInTheDocument();
+          return;
+        }
+        await waitFor(() =>
+          expect(_mockFetchPost).toHaveBeenCalledWith(
+            '/chat/test-project-id',
+            expect.objectContaining({
+              task_id: 'queued-control',
+              question: 'Follow-up',
+            })
+          )
+        );
+        expect(
+          defaultProjectStoreState.removeQueuedMessage
+        ).toHaveBeenCalledWith('test-project-id', 'queued-control');
+      }
+    );
+
+    it.each([false, true])(
+      'retains observed queue admission after late pending and HTTP responses (rejected=%s)',
+      async (rejected) => {
+        const queue = [
+          {
+            task_id: 'queued-start',
+            content: 'Start this next',
+            timestamp: 1,
+            attaches: [],
+          },
+          {
+            task_id: 'queued-after',
+            content: 'Keep waiting',
+            timestamp: 2,
+            attaches: [],
+          },
+        ];
+        defaultProjectStoreState.getProjectById.mockReturnValue({
+          queuedMessages: queue,
+        } as any);
+        const finished = {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'finished',
+            },
+          },
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: finished as any,
+        });
+        eventNativeHarness.enabled = true;
+        eventNativeHarness.snapshot = runningEventNativeSnapshot();
+        eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+          'completed';
+        let resolveAdmission!: (value: unknown) => void;
+        let rejectAdmission!: (error: Error) => void;
+        let resolveList!: (value: unknown) => void;
+        _mockFetchPost.mockImplementation((url: string) =>
+          url === '/chat/test-project-id'
+            ? new Promise((resolve, reject) => {
+                resolveAdmission = resolve;
+                rejectAdmission = reject;
+              })
+            : Promise.resolve({})
+        );
+        mockFetchGet.mockImplementation((url: string) => {
+          if (url === '/projects/test-project-id/follow-ups')
+            return new Promise((resolve) => {
+              resolveList = resolve;
+            });
+          return Promise.resolve(
+            url.endsWith('/status')
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  consumer_alive: true,
+                  run_id: 'test-task-id',
+                  subscriber_count: 1,
+                }
+              : { items: [] }
+          );
+        });
+        const view = renderChatBox();
+        await waitFor(() =>
+          expect(_mockFetchPost).toHaveBeenCalledWith(
+            '/chat/test-project-id',
+            expect.objectContaining({ task_id: 'queued-start' })
+          )
+        );
+        expect(screen.getByTestId('queue-queued-start')).toBeInTheDocument();
+
+        eventNativeHarness.snapshot =
+          runningEventNativeSnapshot('queued-start');
+        view.rerender(
+          <BrowserRouter>
+            <ChatBox />
+          </BrowserRouter>
+        );
+        expect(
+          screen.queryByTestId('queue-queued-start')
+        ).not.toBeInTheDocument();
+        expect(screen.getByTestId('queue-queued-after')).toBeInTheDocument();
+        expect(
+          defaultProjectStoreState.removeQueuedMessage
+        ).toHaveBeenCalledWith('test-project-id', 'queued-start');
+        await act(async () =>
+          resolveList({
+            items: queue.map((item) => ({
+              request_id: item.task_id,
+              content: item.content,
+              attachment_paths: [],
+              created_at: 1,
+              status: 'pending',
+              source: 'local',
+            })),
+          })
+        );
+        expect(
+          defaultProjectStoreState.restoreQueuedMessage
+        ).not.toHaveBeenCalledWith(
+          'test-project-id',
+          expect.objectContaining({ task_id: 'queued-start' })
+        );
+        expect(
+          defaultProjectStoreState.restoreQueuedMessage
+        ).toHaveBeenCalledWith(
+          'test-project-id',
+          expect.objectContaining({ task_id: 'queued-after' })
+        );
+        await act(async () => {
+          if (rejected)
+            rejectAdmission(new Error('Late admission response lost'));
+          else resolveAdmission({});
+        });
+        expect(
+          _mockFetchPost.mock.calls.filter(
+            ([url]) => url === '/chat/test-project-id'
+          )
+        ).toHaveLength(1);
+        expect(
+          defaultProjectStoreState.setQueuedMessageProcessing
+        ).not.toHaveBeenCalledWith('test-project-id', 'queued-start', false);
+        expect(
+          defaultProjectStoreState.removeQueuedMessage
+        ).not.toHaveBeenCalledWith('test-project-id', 'queued-after');
+      }
+    );
+
+    it('quietly retries a busy queued admission once the Session is available', async () => {
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-busy',
+            content: 'Follow up once',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'finished',
+            },
+          },
+        } as any,
+      });
+      _mockFetchPost
+        .mockRejectedValueOnce(
+          Object.assign(new Error('Still finishing'), {
+            response: { data: { detail: { code: 'project_run_active' } } },
+          })
+        )
+        .mockResolvedValue({ success: true });
+      renderChatBox();
+      await waitFor(() =>
+        expect(
+          defaultProjectStoreState.setQueuedMessageProcessing
+        ).toHaveBeenCalledWith('test-project-id', 'queued-busy', false)
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(defaultChatStoreState.addMessages).not.toHaveBeenCalled();
+      expect(defaultChatStoreState.setActiveTaskId).not.toHaveBeenCalledWith(
+        'queued-busy'
+      );
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(2), {
+        timeout: 3000,
+      });
+      expect(defaultProjectStoreState.removeQueuedMessage).toHaveBeenCalledWith(
+        'test-project-id',
+        'queued-busy'
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('holds a queued message until the Session run status is reconciled', async () => {
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-held',
+            content: 'Follow up once',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'finished',
+            },
+          },
+        } as any,
+      });
+      let releaseRuns!: (value: unknown) => void;
+      const runs = new Promise((resolve) => {
+        releaseRuns = resolve;
+      });
+      mockFetchGet.mockImplementation((url: string) =>
+        url === '/runs'
+          ? runs
+          : Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? {
+                    has_lock: true,
+                    status: 'done',
+                    run_id: 'test-task-id',
+                    consumer_alive: true,
+                    subscriber_count: 1,
+                  }
+                : { runs: [] }
+            )
+      );
+      _mockFetchPost.mockResolvedValue({ success: true });
+      renderChatBox();
+      await waitFor(() =>
+        expect(mockFetchGet).toHaveBeenCalledWith('/runs', expect.anything())
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(_mockFetchPost).not.toHaveBeenCalled();
+      expect(
+        defaultProjectStoreState.setQueuedMessageProcessing
+      ).not.toHaveBeenCalledWith('test-project-id', 'queued-held', true);
+      await act(async () => {
+        releaseRuns({ runs: [] });
+      });
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(1));
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.objectContaining({ task_id: 'queued-held' })
+      );
+    });
+
+    it('backs off a busy queued admission and explains the wait once', async () => {
+      vi.useFakeTimers();
+      try {
+        defaultProjectStoreState.getProjectById.mockReturnValue({
+          queuedMessages: [
+            {
+              task_id: 'queued-busy',
+              content: 'Follow up once',
+              timestamp: 1,
+              attaches: [],
+            },
+          ],
+        } as any);
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: {
+            ...defaultChatStoreState,
+            tasks: {
+              'test-task-id': {
+                ...defaultChatStoreState.tasks['test-task-id'],
+                status: 'finished',
+              },
+            },
+          } as any,
+        });
+        _mockFetchPost.mockRejectedValue(
+          Object.assign(new Error('Still finishing'), {
+            response: { data: { detail: { code: 'project_run_active' } } },
+          })
+        );
+        const advance = (ms: number) =>
+          act(async () => {
+            await vi.advanceTimersByTimeAsync(ms);
+          });
+        const waitNotices = () =>
+          vi
+            .mocked(toast.info)
+            .mock.calls.filter(([, options]) =>
+              String((options as any)?.id ?? '').startsWith('queue-wait:')
+            );
+        renderChatBox();
+        await advance(50);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(1);
+        await advance(1050);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(2);
+        // The second wait is longer than the first.
+        await advance(1500);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(2);
+        await advance(600);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(3);
+        expect(waitNotices()).toHaveLength(0);
+        await advance(4100);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(4);
+        expect(waitNotices()).toHaveLength(1);
+        await advance(8100);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(5);
+        expect(waitNotices()).toHaveLength(1);
+        expect(toast.error).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps an unstarted queue row available when admission fails', async () => {
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-retry',
+            content: 'Try this',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      const finished = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            status: 'finished',
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: finished as any,
+      });
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+        'completed';
+      eventNativeHarness.snapshot.view.runs['queued-retry'] = {
+        ...eventNativeHarness.snapshot.view.runs['test-task-id'],
+        runId: 'queued-retry',
+        status: 'pending',
+      };
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.endsWith('/status')
+            ? {
+                has_lock: true,
+                status: 'done',
+                consumer_alive: true,
+                run_id: 'test-task-id',
+                subscriber_count: 1,
+              }
+            : { items: [] }
+        )
+      );
+      _mockFetchPost.mockRejectedValue(new Error('Admission unavailable'));
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        renderChatBox();
+        await waitFor(() =>
+          expect(
+            defaultProjectStoreState.setQueuedMessageProcessing
+          ).toHaveBeenCalledWith('test-project-id', 'queued-retry', false)
+        );
+        expect(screen.getByTestId('queue-queued-retry')).toBeInTheDocument();
+        expect(
+          defaultProjectStoreState.removeQueuedMessage
+        ).not.toHaveBeenCalledWith('test-project-id', 'queued-retry');
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it('admits queued follow-ups one at a time without writing into the completed Run', async () => {
+      const queuedMessages = [
+        {
+          task_id: 'queued-run-1',
+          run_id: 'queued-run-1',
+          content: 'First queued follow-up',
+          timestamp: 1,
+          attaches: [],
+        },
+        {
+          task_id: 'queued-run-2',
+          run_id: 'queued-run-2',
+          content: 'Second queued follow-up',
+          timestamp: 2,
+          attaches: [],
+        },
+      ];
+      defaultProjectStoreState.getProjectById.mockImplementation(
+        () => ({ queuedMessages }) as any
+      );
+      defaultProjectStoreState.removeQueuedMessage.mockImplementation(
+        (_projectId: string, taskId: string) => {
+          const index = queuedMessages.findIndex(
+            (item) => item.task_id === taskId
+          );
+          return index >= 0 ? queuedMessages.splice(index, 1)[0] : undefined;
+        }
+      );
+
+      const completedTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        messages: [
+          {
+            id: 'completed-query',
+            role: 'user',
+            content: 'Completed task',
+            attaches: [],
+          },
+        ],
+        hasMessages: true,
+        hasWaitComfirm: true,
+        status: 'finished',
+      };
+      const completedStore = {
+        ...defaultChatStoreState,
+        tasks: { 'test-task-id': completedTask },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: completedStore as any,
+      });
+      defaultProjectStoreState.getAllChatStores.mockReturnValue([]);
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot('test-task-id');
+      eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+        'completed';
+      mockFetchGet.mockImplementation((url: string) => {
+        if (url === '/chat/test-project-id/status') {
+          return Promise.resolve({
+            has_lock: true,
+            status: 'done',
+            run_id: 'test-task-id',
+            consumer_alive: true,
+            subscriber_count: 1,
+          });
+        }
+        return Promise.resolve({ items: [] });
+      });
+
+      const view = renderChatBox();
+
+      await waitFor(() => {
+        expect(_mockFetchPost).toHaveBeenCalledWith('/chat/test-project-id', {
+          question: 'First queued follow-up',
+          task_id: 'queued-run-1',
+          attaches: [],
+          target: undefined,
+        });
+      });
+      expect(
+        _mockFetchPost.mock.calls.filter(
+          ([url]) => url === '/chat/test-project-id'
+        )
+      ).toHaveLength(1);
+      expect(completedStore.addMessages).not.toHaveBeenCalled();
+      expect(defaultProjectStoreState.removeQueuedMessage).toHaveBeenCalledWith(
+        'test-project-id',
+        'queued-run-1'
+      );
+
+      eventNativeHarness.snapshot = runningEventNativeSnapshot('queued-run-1');
+      eventNativeHarness.snapshot.revision = 2;
+      view.rerender(
+        <BrowserRouter>
+          <ChatBox />
+        </BrowserRouter>
+      );
+      await Promise.resolve();
+      expect(
+        _mockFetchPost.mock.calls.filter(
+          ([url]) => url === '/chat/test-project-id'
+        )
+      ).toHaveLength(1);
+
+      eventNativeHarness.snapshot = runningEventNativeSnapshot('queued-run-1');
+      eventNativeHarness.snapshot.revision = 3;
+      eventNativeHarness.snapshot.view.runs['queued-run-1'].status =
+        'completed';
+      view.rerender(
+        <BrowserRouter>
+          <ChatBox />
+        </BrowserRouter>
+      );
+
+      await waitFor(() => {
+        expect(_mockFetchPost).toHaveBeenCalledWith('/chat/test-project-id', {
+          question: 'Second queued follow-up',
+          task_id: 'queued-run-2',
+          attaches: [],
+          target: undefined,
+        });
       });
     });
 
@@ -435,10 +4399,236 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      const sendButton = getFirstByTestId('send-button');
+      const sendButton = screen.getByTestId('send-button');
       await user.click(sendButton);
 
       expect(defaultChatStoreState.addMessages).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Event-native floating Stop', () => {
+    const setRunningEventNativeStore = () => {
+      const runningTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        status: 'running',
+        hasMessages: true,
+        messages: [{ id: '1', role: 'user', content: 'Start', attaches: [] }],
+      };
+      const runningStore = {
+        ...defaultChatStoreState,
+        tasks: { 'test-task-id': runningTask },
+        stopTask: vi.fn(),
+        setIsPending: vi.fn(),
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: runningStore as any,
+      });
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      return runningStore;
+    };
+
+    it('keeps the plan overlay host mounted for the durable timeline', () => {
+      setRunningEventNativeStore();
+
+      renderChatBox();
+
+      expect(
+        document.getElementById('plan-task-overlay-root')
+      ).toBeInTheDocument();
+    });
+
+    it('keeps Stop and Pause available while projected Run ownership hydrates', async () => {
+      const user = userEvent.setup();
+      setRunningEventNativeStore();
+      eventNativeHarness.snapshot.chat.nodes[0].eventType = 'legacy.agent_step';
+
+      renderChatBox();
+
+      const floatingStop = document.querySelector(
+        '[data-floating-stop-control]'
+      );
+      expect(floatingStop).toHaveClass('justify-center');
+      expect(floatingStop).toHaveStyle({ bottom: '128px' });
+      const stopButton = screen.getByRole('button', { name: 'Stop Task' });
+      const pauseButton = screen.getByTestId('send-button');
+      expect(pauseButton).toHaveAttribute(
+        'data-composer-primary-action',
+        'pause'
+      );
+
+      await user.click(pauseButton);
+      await waitFor(() => {
+        expect(_mockFetchPut).toHaveBeenCalledWith(
+          '/task/test-project-id/take-control',
+          { action: 'pause' }
+        );
+      });
+
+      await user.click(stopButton);
+      await waitFor(() => {
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/chat/test-project-id/skip-task?expected_task_id=test-task-id',
+          { project_id: 'test-project-id' },
+          undefined,
+          expect.objectContaining({ signal: expect.any(AbortSignal) })
+        );
+      });
+    });
+
+    it('keeps the centered Stop control in the legacy-history fallback', () => {
+      setRunningEventNativeStore();
+      eventNativeHarness.snapshot = null;
+
+      renderChatBox();
+
+      expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
+      expect(
+        document.querySelector('[data-floating-stop-control]')
+      ).toHaveClass('justify-center');
+      expect(
+        screen.getByRole('button', { name: 'Stop Task' })
+      ).toBeInTheDocument();
+    });
+
+    it('fails closed when the rendered Run loses control ownership before click', async () => {
+      const user = userEvent.setup();
+      setRunningEventNativeStore();
+      renderChatBox();
+      const stopButton = await screen.findByRole('button', {
+        name: 'Stop Task',
+      });
+
+      const snapshot = eventNativeHarness.snapshot;
+      snapshot.view.runs['typed-run'] = {
+        ...snapshot.view.runs['test-task-id'],
+        runId: 'typed-run',
+      };
+      snapshot.control.orderedInteractionIds.push('typed-request');
+      snapshot.control.interactionById['typed-request'] = {
+        interactionId: 'typed-request',
+        runId: 'typed-run',
+        status: 'requested',
+        requestSource: 'canonical',
+        requestEventType: 'interaction.requested',
+      };
+
+      await user.click(stopButton);
+
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
+        expect.stringMatching(/^\/runs\//),
+        expect.anything()
+      );
+    });
+
+    it('reuses the request id after failure and never closes the legacy SSE', async () => {
+      const user = userEvent.setup();
+      const runningStore = setRunningEventNativeStore();
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      _mockFetchPost.mockRejectedValue(new Error('offline'));
+      renderChatBox();
+      const stopButton = await screen.findByRole('button', {
+        name: 'Stop Task',
+      });
+
+      await user.click(stopButton);
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(1));
+      expect(
+        screen.queryByRole('button', { name: 'Stop Task' })
+      ).not.toBeInTheDocument();
+      await user.click(
+        screen.getByRole('button', { name: 'chat.control-retry-same-request' })
+      );
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(2));
+
+      const [firstUrl, firstBody] = _mockFetchPost.mock.calls[0];
+      const [secondUrl, secondBody] = _mockFetchPost.mock.calls[1];
+      expect(firstUrl).toBe('/runs/test-task-id/cancel');
+      expect(secondUrl).toBe(firstUrl);
+      expect(secondBody.request_id).toBe(firstBody.request_id);
+      expect(runningStore.stopTask).not.toHaveBeenCalled();
+      expect(runningStore.setIsPending).not.toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
+  });
+
+  describe('Event-native human-control compatibility bridge', () => {
+    it('reconciles the initiating Project after the user switches Projects', () => {
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      const projectAState = {
+        ...defaultChatStoreState,
+        activeTaskId: 'test-task-id',
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            messages: [],
+            askList: [],
+          },
+        },
+        setIsPending: vi.fn(),
+        setDurableRunStatus: vi.fn(),
+        setStatus: vi.fn(),
+        markHumanInteractionResolved: vi.fn(),
+        setActiveAskList: vi.fn(),
+        setActiveAsk: vi.fn(),
+        addMessages: vi.fn(),
+      };
+      const projectBState = {
+        ...projectAState,
+        setIsPending: vi.fn(),
+        setDurableRunStatus: vi.fn(),
+        setStatus: vi.fn(),
+        markHumanInteractionResolved: vi.fn(),
+        setActiveAskList: vi.fn(),
+        setActiveAsk: vi.fn(),
+        addMessages: vi.fn(),
+      };
+      const projectAStore = { getState: () => projectAState };
+      const projectBStore = { getState: () => projectBState };
+      defaultProjectStoreState.getActiveChatStore.mockImplementation(((
+        projectId?: string
+      ) =>
+        projectId === 'test-project-id'
+          ? projectAStore
+          : projectBStore) as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: projectAState as any,
+      });
+
+      renderChatBox();
+      const initiatingCallbacks = eventNativeHarness.controlOptions;
+      defaultProjectStoreState.activeProjectId = 'project-b';
+      const interaction = {
+        interactionId: 'interaction-1',
+        runId: 'test-task-id',
+      };
+
+      initiatingCallbacks.onSubmissionStart(interaction);
+      initiatingCallbacks.onSubmissionFailure(interaction);
+      initiatingCallbacks.onDurableResolution(interaction);
+
+      expect(
+        defaultProjectStoreState.getActiveChatStore
+      ).toHaveBeenLastCalledWith('test-project-id');
+      expect(projectAState.setIsPending).toHaveBeenCalledWith(
+        'test-task-id',
+        true
+      );
+      expect(projectAState.setIsPending).toHaveBeenCalledWith(
+        'test-task-id',
+        false
+      );
+      expect(projectAState.markHumanInteractionResolved).toHaveBeenCalledWith(
+        'test-task-id',
+        'interaction-1'
+      );
+      expect(projectBState.setIsPending).not.toHaveBeenCalled();
+      expect(projectBState.markHumanInteractionResolved).not.toHaveBeenCalled();
     });
   });
 
@@ -609,6 +4799,140 @@ describe('ChatBox Component', async () => {
   });
 
   describe('Agent Interaction', () => {
+    it('answers a legacy question in a separate card while the composer stays disabled', async () => {
+      const user = userEvent.setup();
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'test-agent',
+              hasMessages: true,
+              messages: [
+                {
+                  id: 'legacy-question',
+                  role: 'agent',
+                  step: 'ask',
+                  content: 'Which colour?',
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+      renderChatBox();
+
+      const card = screen.getByRole('region', {
+        name: 'chat.control-region-label',
+      });
+      const response = within(card).getByRole('textbox', {
+        name: 'chat.control-feedback-label',
+      });
+      expect(within(card).getByText('Which colour?')).toBeInTheDocument();
+      expect(card.querySelector('[data-question-divider]')).not.toBeNull();
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      expect(screen.getByTestId('bottom-box')).not.toContainElement(response);
+
+      await user.type(response, 'green{Shift>}{Enter}{/Shift}please');
+      expect(response).toHaveValue('green\nplease');
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      await user.type(response, '{Enter}');
+      await waitFor(() =>
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/chat/test-project-id/human-reply',
+          expect.objectContaining({
+            agent: 'test-agent',
+            reply: 'green\nplease',
+          })
+        )
+      );
+    });
+
+    it('keeps Edit and resend out of an open legacy question answer', () => {
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'test-agent',
+              hasMessages: true,
+              messages: [
+                { id: 'earlier', role: 'user', content: 'Earlier request' },
+                {
+                  id: 'legacy-question',
+                  role: 'agent',
+                  step: 'ask',
+                  content: 'Which colour?',
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+      renderChatBox();
+
+      const props = vi.mocked(ProjectChatContainer).mock.calls.at(-1)?.[0];
+      act(() =>
+        props!.onEditUserMessage!({ id: 'earlier', content: 'Earlier request' })
+      );
+
+      const card = screen.getByRole('region', {
+        name: 'chat.control-region-label',
+      });
+      expect(
+        within(card).getByRole('textbox', {
+          name: 'chat.control-feedback-label',
+        })
+      ).toHaveValue('');
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      expect(toast.info).toHaveBeenCalledWith(
+        'chat.message-edit-after-request'
+      );
+    });
+
+    it('keeps a failed legacy question answer in the card for retry', async () => {
+      const user = userEvent.setup();
+      _mockFetchPost.mockRejectedValueOnce(new Error('Reply unavailable'));
+      const storeObj = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            status: 'running',
+            activeAsk: 'test-agent',
+            hasMessages: true,
+            messages: [
+              {
+                id: 'legacy-question',
+                role: 'agent',
+                step: 'ask',
+                content: 'Which colour?',
+              },
+            ],
+          },
+        },
+      } as any;
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: storeObj,
+      });
+      renderChatBox();
+      const response = screen.getByRole('textbox', {
+        name: 'chat.control-feedback-label',
+      });
+      await user.type(response, 'green{Enter}');
+      await waitFor(() => expect(storeObj.removeMessage).toHaveBeenCalled());
+      expect(response).toHaveValue('green');
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      expect(storeObj.setActiveAsk).not.toHaveBeenCalled();
+    });
+
     it('should handle human reply when activeAsk is set', async () => {
       const user = userEvent.setup();
 
@@ -629,8 +4953,8 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      const messageInput = getFirstByTestId('message-input');
-      const sendButton = getFirstByTestId('send-button');
+      const messageInput = screen.getByTestId('message-input');
+      const sendButton = screen.getByTestId('send-button');
 
       await user.type(messageInput, 'Test reply');
       await user.click(sendButton);
@@ -644,6 +4968,55 @@ describe('ChatBox Component', async () => {
             reply: 'Test reply',
           }
         );
+      });
+    });
+
+    it('should clear stale human reply state when backend no longer has the task lock', async () => {
+      const user = userEvent.setup();
+      _mockFetchPost.mockResolvedValueOnce({
+        code: 1,
+        text: 'This task is no longer waiting for a human reply.',
+      });
+
+      const storeObj = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            activeAsk: 'test-agent',
+            askList: [],
+            hasMessages: true,
+          },
+        },
+      } as any;
+
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: storeObj,
+      });
+
+      renderChatBox();
+
+      const messageInput = screen.getByTestId('message-input');
+      const sendButton = screen.getByTestId('send-button');
+
+      await user.type(messageInput, 'Late reply');
+      await user.click(sendButton);
+
+      await waitFor(() => {
+        expect(storeObj.removeMessage).toHaveBeenCalledWith(
+          'test-task-id',
+          expect.any(String)
+        );
+        expect(storeObj.setIsPending).toHaveBeenCalledWith(
+          'test-task-id',
+          false
+        );
+        expect(storeObj.setActiveAskList).toHaveBeenCalledWith(
+          'test-task-id',
+          []
+        );
+        expect(storeObj.setActiveAsk).toHaveBeenCalledWith('test-task-id', '');
       });
     });
 
@@ -678,9 +5051,9 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       // Type a non-empty message so handleSend proceeds to process the ask list
-      const messageInput = getFirstByTestId('message-input');
+      const messageInput = screen.getByTestId('message-input');
       await user.type(messageInput, 'Reply to ask');
-      const sendButton = getFirstByTestId('send-button');
+      const sendButton = screen.getByTestId('send-button');
       await user.click(sendButton);
 
       await waitFor(() => {
@@ -691,6 +5064,77 @@ describe('ChatBox Component', async () => {
         const apiCalled = (_mockFetchPost as any).mock.calls.length > 0;
         expect(storeCalled || apiCalled).toBe(true);
       });
+    });
+
+    it('keeps an ordinary human question pending without a skip timer', () => {
+      const timeoutSpy = vi.spyOn(window, 'setTimeout');
+
+      const activeAskTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        activeAsk: 'test-agent',
+        hasMessages: true,
+        messages: [
+          {
+            id: 'ask-1',
+            role: 'agent',
+            content: 'Please clarify',
+            step: 'ask',
+          },
+        ],
+      };
+      const storeObj = {
+        ...defaultChatStoreState,
+        tasks: { 'test-task-id': activeAskTask },
+      } as any;
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: storeObj,
+      });
+
+      renderChatBox();
+
+      expect(
+        timeoutSpy.mock.calls.filter(([, delay]) => delay === 30000)
+      ).toHaveLength(0);
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
+        '/chat/test-project-id/human-reply',
+        expect.objectContaining({ reply: 'skip' })
+      );
+      expect(storeObj.setActiveAsk).not.toHaveBeenCalled();
+      expect(storeObj.setIsPending).not.toHaveBeenCalled();
+      timeoutSpy.mockRestore();
+    });
+
+    it('should not auto-skip a question while replaying history', () => {
+      const timeoutSpy = vi.spyOn(window, 'setTimeout');
+      const replayTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        type: 'replay',
+        activeAsk: 'test-agent',
+        hasMessages: true,
+        messages: [
+          {
+            id: 'historical-ask-1',
+            role: 'agent',
+            content: 'Historical question',
+            step: 'ask',
+          },
+        ],
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: { 'test-task-id': replayTask },
+        } as any,
+      });
+
+      renderChatBox();
+
+      expect(
+        timeoutSpy.mock.calls.filter(([, delay]) => delay === 30000)
+      ).toHaveLength(0);
+      timeoutSpy.mockRestore();
     });
   });
 
@@ -708,20 +5152,18 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       await waitFor(() => {
-        // Relaxed: either the cloud-mode warning shows or the example prompts are present
         const foundCloud = !!(
           document.body.textContent &&
           document.body.textContent.includes('Self-hosted')
         );
-        const foundExamples = !!screen.queryByText('IT Ticket Creation');
-        const hasWelcome = !!screen.queryByText('Welcome to Eigent');
-        expect(foundCloud || foundExamples || hasWelcome).toBe(true);
+        const hasInput = !!screen.queryByTestId('message-input');
+        expect(foundCloud || hasInput).toBe(true);
       });
     });
 
     it('should show search key warning when missing API keys', async () => {
       mockProxyFetchGet.mockImplementation((url: string) => {
-        if (url === '/api/v1/providers') {
+        if (url === '/api/providers' || url === '/api/v1/providers') {
           return Promise.resolve({
             items: [{ id: 'test-provider', name: 'Test' }],
           });
@@ -738,71 +5180,9 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // When no API keys are configured, the component should show example prompts
-      // or allow normal chat without search functionality
       await waitFor(() => {
-        // Either example prompts show up or the input is available
-        const hasExamples = screen.queryByText('IT Ticket Creation');
-        const hasInput = screen.queryByPlaceholderText('Type your message...');
-        expect(hasExamples || hasInput).toBeTruthy();
+        expect(screen.getByTestId('message-input')).toBeInTheDocument();
       });
-    });
-  });
-
-  describe('Example Prompts', () => {
-    beforeEach(() => {
-      mockProxyFetchGet.mockImplementation((url: string) => {
-        if (url === '/api/v1/providers') {
-          return Promise.resolve({
-            items: [{ id: 'test-provider', name: 'Test' }],
-          });
-        }
-        if (url === '/api/v1/configs') {
-          return Promise.resolve([
-            { config_name: 'GOOGLE_API_KEY', value: 'test-key' },
-            { config_name: 'SEARCH_ENGINE_ID', value: 'test-id' },
-          ]);
-        }
-        return Promise.resolve({});
-      });
-
-      mockUseAuthStore.mockReturnValue({
-        modelType: 'local',
-      } as any);
-    });
-
-    it('should show example prompts when conditions are met', async () => {
-      renderChatBox();
-
-      await waitFor(() => {
-        expect(screen.getByText('IT Ticket Creation')).toBeInTheDocument();
-        expect(
-          screen.getByText('Bank Transfer CSV Analysis and Visualization')
-        ).toBeInTheDocument();
-        expect(
-          screen.getByText('Please Help Organize My Desktop')
-        ).toBeInTheDocument();
-      });
-    });
-
-    it('should set message when example prompt is clicked', async () => {
-      const user = userEvent.setup();
-
-      renderChatBox();
-
-      await waitFor(() => {
-        expect(screen.getByText('IT Ticket Creation')).toBeInTheDocument();
-      });
-
-      const examplePrompt = screen.getByText('IT Ticket Creation');
-      await user.click(examplePrompt);
-
-      // The message should be set in the input (this would be verified by checking the BottomInput mock)
-      const messageInput = getFirstByTestId(
-        'message-input'
-      ) as HTMLInputElement;
-      // Ensure the input received some content after clicking the example prompt
-      expect(messageInput.value.length).toBeGreaterThan(10);
     });
   });
 
@@ -824,11 +5204,11 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      const messageInput = getFirstByTestId('message-input');
+      const messageInput = screen.getByTestId('message-input');
       await user.type(messageInput, 'Test message');
 
       // Click the send button instead of testing Ctrl+Enter
-      const sendButton = getFirstByTestId('send-button');
+      const sendButton = screen.getByTestId('send-button');
       await user.click(sendButton);
 
       // Should call startTask for a new conversation
@@ -862,9 +5242,9 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       // Make sure we send a non-empty message so API path is exercised
-      const messageInput = getFirstByTestId('message-input');
+      const messageInput = screen.getByTestId('message-input');
       await user.type(messageInput, 'API test');
-      const sendButton = getFirstByTestId('send-button');
+      const sendButton = screen.getByTestId('send-button');
       await user.click(sendButton);
 
       await waitFor(() => {
@@ -872,19 +5252,15 @@ describe('ChatBox Component', async () => {
       });
     });
 
-    it('should handle privacy fetch errors', async () => {
-      // Mock console.error to suppress expected error logs
+    it('should handle configs fetch errors', async () => {
       const consoleErrorSpy = vi
         .spyOn(console, 'error')
         .mockImplementation(() => {});
 
-      // Mock the fetch to reject properly for testing error handling
-      mockProxyFetchGet.mockRejectedValue(new Error('Privacy fetch failed'));
+      mockProxyFetchGet.mockRejectedValue(new Error('Configs fetch failed'));
 
-      // Rendering should not throw even with fetch error
       expect(() => renderChatBox()).not.toThrow();
 
-      // Wait for the promise to settle
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalled();
       });

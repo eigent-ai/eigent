@@ -1,14 +1,204 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import tailwindcssAnimate from 'tailwindcss-animate';
+
+// Shared with the code surfaces that need the stack as a plain string
+// (Monaco can't read Tailwind classes). Single source of truth for `font-code`.
+const require = createRequire(import.meta.url);
+const fontStacks = require('./src/style/fontStacks.json');
+const dsGeneratedTokens = require('./src/style/generated/tokens.tailwind.cjs');
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function loadTokenManifest() {
+  const fallback = {
+    elements: ['bg', 'text', 'border', 'icon', 'ring'],
+    emphasis: ['subtle', 'muted', 'default', 'strong', 'inverse'],
+    states: ['default', 'hover', 'active', 'selected', 'focus', 'disabled'],
+    tones: [
+      'neutral',
+      'brand',
+      'status-running',
+      'status-splitting',
+      'status-pending',
+      'status-error',
+      'status-reassigning',
+      'status-completed',
+      'status-blocked',
+      'status-paused',
+      'status-skipped',
+      'status-cancelled',
+      'single-agent',
+      'workforce',
+      'browser',
+      'terminal',
+      'document',
+      'success',
+      'error',
+      'warning',
+      'information',
+    ],
+    category: {
+      colors: [
+        'gray',
+        'slate',
+        'red',
+        'blue',
+        'green',
+        'yellow',
+        'orange',
+        'purple',
+        'pink',
+        'cyan',
+        'teal',
+        'indigo',
+        'amber',
+        'lime',
+        'mint',
+        'tomato',
+      ],
+      roles: [
+        ['background', 'app'],
+        ['background', 'subtle'],
+        ['background', 'default'],
+        ['background', 'hover'],
+        ['background', 'active'],
+        ['border', 'subtle'],
+        ['border', 'default'],
+        ['border', 'hover'],
+        ['solid', 'default'],
+        ['solid', 'hover'],
+        ['text', 'default'],
+        ['text', 'strong'],
+      ],
+    },
+  };
+
+  const manifestPath = path.join(
+    __dirname,
+    'src',
+    'style',
+    'tokens',
+    'manifest.json'
+  );
+  try {
+    const raw = fs.readFileSync(manifestPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (
+      Array.isArray(parsed.elements) &&
+      Array.isArray(parsed.emphasis) &&
+      Array.isArray(parsed.states) &&
+      Array.isArray(parsed.tones) &&
+      Array.isArray(parsed.category?.colors) &&
+      Array.isArray(parsed.category?.roles)
+    ) {
+      return parsed;
+    }
+    return fallback;
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+const TOKEN_MANIFEST = loadTokenManifest();
+const DS_TOKEN_ELEMENTS = TOKEN_MANIFEST.elements;
+const DS_TOKEN_EMPHASIS = TOKEN_MANIFEST.emphasis;
+const DS_TOKEN_STATES = TOKEN_MANIFEST.states;
+const DS_TOKEN_TONES = TOKEN_MANIFEST.tones;
+const DS_CATEGORY_COLORS = TOKEN_MANIFEST.category.colors;
+const DS_CATEGORY_ROLES = TOKEN_MANIFEST.category.roles;
+
+function buildDsTokenColorMap() {
+  const map = {};
+  for (const element of DS_TOKEN_ELEMENTS) {
+    for (const tone of DS_TOKEN_TONES) {
+      for (const emphasis of DS_TOKEN_EMPHASIS) {
+        for (const state of DS_TOKEN_STATES) {
+          const token = `ds-${element}-${tone}-${emphasis}-${state}`;
+          map[token] = `var(--${token})`;
+        }
+      }
+    }
+  }
+  return map;
+}
+
+function buildDsCategoryColorMap() {
+  const map = {};
+  for (const color of DS_CATEGORY_COLORS) {
+    for (const [style, state] of DS_CATEGORY_ROLES) {
+      const token = `ds-category-${color}-${style}-${state}`;
+      map[token] = `var(--${token})`;
+    }
+  }
+  return map;
+}
+
+/** `bg-ds-bg-{status}-subtle-default` → `var(--ds-bg-status-{status}-subtle-default)` (drops `status` from the utility name). */
+function buildDsBgStatusSubtleShortAliases() {
+  const map = {};
+  const statuses = [
+    'running',
+    'splitting',
+    'pending',
+    'error',
+    'reassigning',
+    'completed',
+    'blocked',
+    'paused',
+    'skipped',
+    'cancelled',
+  ];
+  for (const s of statuses) {
+    map[`ds-bg-${s}-subtle-default`] =
+      `var(--ds-bg-status-${s}-subtle-default)`;
+  }
+  return map;
+}
+
+/** Safelist neutral DS tokens (all emphasis × state) so JIT always emits bg/text/border/icon/ring/divide/outline utilities. */
+function neutralDsSemanticSafelist() {
+  const variants = [
+    'hover',
+    'focus',
+    'active',
+    'disabled',
+    'focus-visible',
+    'group-hover',
+    'dark',
+    'placeholder',
+  ];
+  return [
+    { pattern: /^bg-ds-bg-neutral-/, variants },
+    { pattern: /^text-ds-text-neutral-/, variants },
+    { pattern: /^text-ds-icon-neutral-/, variants },
+    { pattern: /^border-ds-border-neutral-/, variants },
+    { pattern: /^ring-ds-ring-neutral-/, variants },
+    { pattern: /^divide-ds-border-neutral-/, variants },
+    { pattern: /^outline-ds-border-neutral-/, variants },
+  ];
+}
+
+export default {
   darkMode: ['class'],
   content: [
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
+    './web-ui/index.html',
+    './web-ui/src/**/*.{js,ts,jsx,tsx}',
     './.storybook/**/*.{js,ts,jsx,tsx}',
   ],
+  safelist: neutralDsSemanticSafelist(),
   theme: {
     extend: {
       colors: {
+        ...buildDsTokenColorMap(),
+        ...buildDsCategoryColorMap(),
+        ...buildDsBgStatusSubtleShortAliases(),
+        ...dsGeneratedTokens.colors,
         red: {
           50: 'var(--colors-red-50)',
           100: 'var(--colors-red-100)',
@@ -151,6 +341,20 @@ module.exports = {
           950: 'var(--colors-fuchsia-950)',
           default: 'var(--colors-fuchsia-default)',
         },
+        neon: {
+          50: 'var(--colors-neon-50)',
+          100: 'var(--colors-neon-100)',
+          200: 'var(--colors-neon-200)',
+          300: 'var(--colors-neon-300)',
+          400: 'var(--colors-neon-400)',
+          500: 'var(--colors-neon-500)',
+          600: 'var(--colors-neon-600)',
+          700: 'var(--colors-neon-700)',
+          800: 'var(--colors-neon-800)',
+          900: 'var(--colors-neon-900)',
+          950: 'var(--colors-neon-950)',
+          default: 'var(--colors-neon-default)',
+        },
         black: {
           '0%': 'var(--colors-black-0)',
           '10%': 'var(--colors-black-10)',
@@ -204,19 +408,17 @@ module.exports = {
         input: {
           'bg-default': 'var(--input-bg-default)',
           'bg-hover': 'var(--input-bg-hover)',
-          'bg-spliting': 'var(--input-bg-spliting)',
+          'bg-splitting': 'var(--input-bg-splitting)',
           'bg-confirm': 'var(--input-bg-confirm)',
           'bg-input': 'var(--input-bg-input)',
           'border-default': 'var(--input-border-default)',
           'border-hover': 'var(--input-border-hover)',
           'border-focus': 'var(--input-border-focus)',
           'border-success': 'var(--input-border-success)',
-          'border-cuation': 'var(--input-border-cuation)',
           'border-warning': 'var(--input-border-warning)',
           'text-default': 'var(--input-text-default)',
           'text-focus': 'var(--input-text-focus)',
           'text-success': 'var(--text-success)',
-          'text-cuation': 'var(--text-cuation)',
           'text-warning': 'var(--text-warning)',
           'label-default': 'var(--input-label-default)',
         },
@@ -294,33 +496,31 @@ module.exports = {
             'icon-disabled': 'var(--button-transparent-icon-disabled)',
             'icon-active': 'var(--button-transparent-icon-active)',
           },
-          tertiery: {
-            'fill-hover': 'var(--button-tertiery-fill-hover)',
-            'fill-default': 'var(--button-tertiery-fill-default)',
-            'fill-disabled': 'var(--button-tertiery-fill-disabled)',
-            'fill-active': 'var(--button-tertiery-fill-active)',
-            'icon-hover': 'var(--button-tertiery-icon-hover)',
-            'icon-default': 'var(--button-tertiery-icon-default)',
-            'text-disabled': 'var(--button-tertiery-text-disabled)',
-            'text-active': 'var(--button-tertiery-text-active)',
-            'text-hover': 'var(--button-tertiery-text-hover)',
-            'text-default': 'var(--button-tertiery-text-default)',
-            'icon-disabled': 'var(--button-tertiery-icon-disabled)',
-            'icon-active': 'var(--button-tertiery-icon-active)',
-            'icon-hover 2': 'var(--button-tertiery-icon-hover-2)',
-            'icon-default 2': 'var(--button-tertiery-icon-default-2)',
-            'text-disabled 2': 'var(--button-tertiery-text-disabled-2)',
-            'text-active 2': 'var(--button-tertiery-text-active-2)',
-            'text-hover 2': 'var(--button-tertiery-text-hover-2)',
-            'text-default 2': 'var(--button-tertiery-text-default-2)',
-            'icon-disabled 2': 'var(--button-tertiery-icon-disabled-2)',
-            'icon-active 2': 'var(--button-tertiery-icon-active-2)',
+          tertiary: {
+            'fill-hover': 'var(--button-tertiary-fill-hover)',
+            'fill-default': 'var(--button-tertiary-fill-default)',
+            'fill-disabled': 'var(--button-tertiary-fill-disabled)',
+            'fill-active': 'var(--button-tertiary-fill-active)',
+            'icon-hover': 'var(--button-tertiary-icon-hover)',
+            'icon-default': 'var(--button-tertiary-icon-default)',
+            'text-disabled': 'var(--button-tertiary-text-disabled)',
+            'text-active': 'var(--button-tertiary-text-active)',
+            'text-hover': 'var(--button-tertiary-text-hover)',
+            'text-default': 'var(--button-tertiary-text-default)',
+            'icon-disabled': 'var(--button-tertiary-icon-disabled)',
+            'icon-active': 'var(--button-tertiary-icon-active)',
+            'icon-hover 2': 'var(--button-tertiary-icon-hover-2)',
+            'icon-default 2': 'var(--button-tertiary-icon-default-2)',
+            'text-disabled 2': 'var(--button-tertiary-text-disabled-2)',
+            'text-active 2': 'var(--button-tertiary-text-active-2)',
+            'text-hover 2': 'var(--button-tertiary-text-hover-2)',
+            'text-default 2': 'var(--button-tertiary-text-default-2)',
+            'icon-disabled 2': 'var(--button-tertiary-icon-disabled-2)',
+            'icon-active 2': 'var(--button-tertiary-icon-active-2)',
           },
           'fill-success': 'var(--button-fill-success)',
-          'fill-cuation': 'var(--button-fill-cuation)',
           'fill-warning': 'var(--button-fill-warning)',
           'fill-success-foreground': 'var(--button-fill-success-foreground)',
-          'fill-cuation-foreground': 'var(--button-fill-cuation-foreground)',
           'fill-warning-foreground': 'var(--button-fill-warning-foreground)',
           'fill-information': 'var(--button-fill-information)',
           'fill-information-foreground':
@@ -389,6 +589,7 @@ module.exports = {
         tag: {
           surface: 'var(--tag-surface)',
           'fill-browser': 'var(--tag-fill-browser)',
+          'fill-camel': 'var(--tag-fill-camel)',
           'fill-developer': 'var(--tag-fill-developer)',
           'fill-document': 'var(--tag-fill-document)',
           'fill-multimodal': 'var(--tag-fill-multimodal)',
@@ -402,8 +603,6 @@ module.exports = {
           'text-success': 'var(--tag-text-success)',
           'fill-warning': 'var(--tag-fill-warning)',
           'foreground-warning': 'var(--tag-foreground-warning)',
-          'fill-cuation': 'var(--tag-fill-cuation)',
-          'foreground-cuation': 'var(--tag-foreground-cuation)',
           'fill-default': 'var(--tag-fill-default)',
           'foreground-default': 'var(--tag-foreground-default)',
           'fill-default-foreground': 'var(--tag-fill-default-foreground)',
@@ -445,16 +644,17 @@ module.exports = {
           default: 'var(--mask-default)',
           dark: 'var(--mask-dark)',
         },
+        'dialog-overlay-scrim': 'var(--dialog-overlay-scrim)',
         code: {
           bg: 'var(--code-bg)',
           foreground: 'var(--code-foreground)',
           surface: 'var(--code-surface)',
         },
         surface: {
-          'error-subtle': 'var(--surface-error-subtle)',
-          'hover-subtle': 'var(--surface-hover-subtle)',
-          'success-subtle': 'var(--surface-success-subtle)',
-          'tertiary-subtle': 'var(--surface-tertiary-subtle)',
+          'error-subtle': 'var(--ds-bg-status-error-subtle-default)',
+          'hover-subtle': 'var(--ds-bg-neutral-subtle-hover)',
+          'success-subtle': 'var(--ds-bg-status-completed-subtle-default)',
+          'tertiary-subtle': 'var(--ds-bg-neutral-strong-default)',
         },
         'text-muted': 'var(--text-muted)',
         'text-muted-strong': 'var(--text-muted-strong)',
@@ -479,30 +679,35 @@ module.exports = {
         'text-information': 'var(--text-information)',
         'text-success': 'var(--text-success)',
         'text-warning': 'var(--text-warning)',
-        'text-cuation': 'var(--text-cuation)',
         'text-on-action': 'var(--text-on-action)',
         'text-on-disabled': 'var(--text-on-disabled)',
         'text-document': 'var(--text-document)',
         'text-socialmedia': 'var(--text-socialmedia)',
         'text-browser': 'var(--text-browser)',
+        'text-camel': 'var(--text-camel)',
         'text-developer': 'var(--text-developer)',
         'text-multimodal': 'var(--text-multimodal)',
+        'session-single-agent': 'var(--text-session-single-agent)',
+        'session-workforce': 'var(--text-session-workforce)',
         'text-on-hover': 'var(--text-on-hover)',
 
-        'surface-primary': 'var(--surface-primary)',
-        'surface-secondary': 'var(--surface-secondary)',
-        'surface-success': 'var(--surface-success)',
-        'surface-information': 'var(--surface-information)',
-        'surface-warning': 'var(--surface-warning)',
-        'surface-cuation': 'var(--surface-cuation)',
-        'surface-action': 'var(--surface-action)',
-        'surface-action-hover': 'var(--surface-action-hover)',
-        'surface-disabled': 'var(--surface-disabled)',
-        'surface-tertiary': 'var(--surface-tertiary)',
-        'surface-card': 'var(--surface-card)',
-        'surface-card-hover': 'var(--surface-card-hover)',
-        'surface-card-focus': 'var(--surface-card-focus)',
-        'surface-card-default': 'var(--surface-card-default)',
+        'surface-primary': 'var(--ds-bg-neutral-subtle-default)',
+        'surface-secondary': 'var(--ds-bg-neutral-default-default)',
+        'surface-success': 'var(--ds-bg-status-completed-subtle-default)',
+        'surface-information': 'var(--ds-bg-status-splitting-subtle-default)',
+        'surface-warning': 'var(--ds-bg-status-pending-subtle-default)',
+        'surface-action': 'var(--ds-bg-neutral-default-default)',
+        'surface-action-hover': 'var(--ds-bg-neutral-default-hover)',
+        'surface-disabled': 'var(--ds-bg-neutral-muted-disabled)',
+        'surface-tertiary': 'var(--ds-bg-neutral-strong-default)',
+        'surface-card': 'var(--ds-bg-neutral-default-default)',
+        'surface-card-hover': 'var(--ds-bg-neutral-default-hover)',
+        'surface-card-focus': 'var(--ds-bg-neutral-default-focus)',
+        'surface-card-default': '1.25rem',
+        'surface-session-single-agent-selected':
+          'var(--ds-bg-single-agent-subtle-selected)',
+        'surface-session-workforce-selected':
+          'var(--ds-bg-workforce-subtle-selected)',
 
         'border-primary': 'var(--border-primary)',
         'border-secondary': 'var(--border-secondary)',
@@ -510,13 +715,13 @@ module.exports = {
         'border-information': 'var(--border-information)',
         'border-success': 'var(--border-success)',
         'border-warning': 'var(--border-warning)',
-        'border-cuation': 'var(--border-cuation)',
         'border-focus': 'var(--border-focus)',
         'border-action': 'var(--border-action)',
         'border-action-hover': 'var(--border-action-hover)',
         'border-disabled': 'var(--border-disabled)',
         'border-developer': 'var(--border-developer)',
         'border-browser': 'var(--border-browser)',
+        'border-camel': 'var(--border-camel)',
         'border-socialmedia': 'var(--border-socialmedia)',
         'border-multimodal': 'var(--border-multimodal)',
         'border-document': 'var(--border-document)',
@@ -528,8 +733,6 @@ module.exports = {
         'icon-information': 'var(--icon-information)',
         'icon-success': 'var(--icon-success)',
         'icon-warning': 'var(--icon-warning)',
-        'icon-caution': 'var(--icon-cuation)',
-        'icon-cuation': 'var(--icon-cuation)',
         'icon-action-hover': 'var(--icon-action-hover)',
         'icon-multimodal': 'var(--icon-multimodal)',
         'icon-socialmedia': 'var(--icon-socialmedia)',
@@ -540,6 +743,8 @@ module.exports = {
         'icon-on-hover': 'var(--icon-on-hover)',
         'icon-on-action': 'var(--icon-on-action)',
         'icon-secondary': 'var(--icon-secondary)',
+        /** Muted icons aligned with label text (e.g. row affordances) */
+        'icon-label': 'var(--text-label)',
 
         'fill-default': 'var(--fill-default)',
         'fill-fill-primary': 'var(--fill-fill-primary)',
@@ -564,16 +769,19 @@ module.exports = {
         'fill-fill-success-active': 'var(--fill-fill-success-active)',
         'fill-fill-success-disable': 'var(--fill-fill-success-disable)',
         'fill-fill-warning': 'var(--fill-fill-warning)',
-        'fill-fill-cuation': 'var(--fill-fill-cuation)',
         'fill-socialmedia': 'var(--fill-socialmedia)',
         'fill-document': 'var(--fill-document)',
         'fill-browser': 'var(--fill-browser)',
+        'fill-camel': 'var(--fill-camel)',
         'fill-multimodal': 'var(--fill-multimodal)',
         'fill-developer': 'var(--fill-developer)',
         'fill-scrollbar-dark': 'var(--fill-scrollbar-dark)',
         'fill-scrollbar-light': 'var(--fill-scrollbar-light)',
         'fill-skeloten-default': 'var(--fill-skeloten-default)',
         'fill-fill-information': 'var(--fill-fill-information)',
+
+        /** Embedded xterm viewport backdrop; fixed black (see tokens/component.color.json). */
+        'terminal-viewport-surface': 'var(--terminal-viewport-surface)',
 
         'bg-page': 'var(--bg-page)',
         'bg-primary': 'var(--bg-primary)',
@@ -593,10 +801,19 @@ module.exports = {
         short: { raw: '(max-height: 800px)' },
       },
       boxShadow: {
+        // Preserve Tailwind 3's `shadow-sm` visual during the v4 migration.
+        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
         'history-item': '0px 3px 4px -1px rgba(0, 0, 0, 0.10)',
-        perfect: 'var(--shadow-perfect)',
+        perfect: 'var(--ds-elevation-popover)',
+        soft: 'var(--shadow-soft)',
         'blur-effect': 'var(--shadow-blur-effect)',
         'button-shadow': 'var(--shadow-button)',
+        'workspace-project-picker': 'var(--shadow-workspace-project-picker)',
+        ...dsGeneratedTokens.boxShadow,
+      },
+      blur: {
+        // Tailwind 4 renamed the old 4px `blur-sm` step to `blur-xs`.
+        sm: '4px',
       },
       spacing: {
         xs: 'var(--spacing-xs, 4px)',
@@ -605,19 +822,30 @@ module.exports = {
         lg: 'var(--spacing-lg, 32px)',
         xl: 'var(--spacing-xl, 64px)',
         'multi-value': 'var(--spacing-multi-value, 8 64)',
+        ...dsGeneratedTokens.spacing,
       },
       borderRadius: {
         sm: 'var(--borderRadius-sm, 4px)',
         lg: 'var(--borderRadius-lg, 8px)',
         xl: 'var(--borderRadius-xl, 16px)',
         'multi-value': 'var(--borderRadius-multi-value, 4 8)',
+        ...dsGeneratedTokens.borderRadius,
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
         mono: ['SFMono-Regular', 'Menlo', 'monospace'],
+        code: fontStacks.code,
+        text: dsGeneratedTokens.fontFamily.text,
         inter: ['Inter'],
         menlo: ['Menlo'],
         serif: ['Palatino'],
+        display: [
+          'Palatino LT',
+          'Palatino Linotype',
+          'Book Antiqua',
+          'Palatino',
+          'serif',
+        ],
       },
       fontSize: {
         xs: 'var(--fontSize-xs, 10px)',
@@ -678,6 +906,22 @@ module.exports = {
           'var(--fontSize-5xl, 44px)',
           { lineHeight: 'var(--lineHeight-0, 58px)' },
         ],
+        ...dsGeneratedTokens.fontSize,
+      },
+      height: {
+        ...dsGeneratedTokens.height,
+      },
+      width: {
+        ...dsGeneratedTokens.width,
+      },
+      size: {
+        ...dsGeneratedTokens.size,
+      },
+      minHeight: {
+        ...dsGeneratedTokens.minHeight,
+      },
+      borderWidth: {
+        ...dsGeneratedTokens.borderWidth,
       },
       lineHeight: {
         0: 'var(--lineHeight-0, 58)',
@@ -723,10 +967,10 @@ module.exports = {
         '6xl': 'var(--lineHeight-6xl, 58px)',
       },
       fontWeight: {
-        regular: 'var(--fontWeight-regular, 400)',
-        medium: 'var(--fontWeight-medium, 500)',
-        semibold: 'var(--fontWeight-semibold, 600)',
-        bold: 'var(--fontWeight-bold, 700)',
+        regular: 'var(--ds-weight-regular)',
+        medium: 'var(--ds-weight-medium)',
+        semibold: 'var(--ds-weight-semibold)',
+        bold: 'var(--ds-weight-bold)',
         'inter-0': 'var(--fontWeight-inter-0, 700)',
         'inter-1': 'var(--fontWeight-inter-1, 400)',
         'inter-2': 'var(--fontWeight-inter-2, 500)',
@@ -757,5 +1001,5 @@ module.exports = {
   corePlugins: {
     preflight: false,
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [tailwindcssAnimate],
 };

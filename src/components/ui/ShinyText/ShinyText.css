@@ -2,6 +2,7 @@
   color: transparent;
   background: linear-gradient(120deg, #71717b 30%, #d4d4d8 50%, #71717b 70%);
   background-size: 200% 100%;
+  background-position: 50% center;
   -webkit-background-clip: text;
   background-clip: text;
   display: inline-block;
@@ -22,4 +23,11 @@
   animation: none;
   color: #71717b;
   background: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-text {
+    animation: none;
+    background-position: 50% center;
+  }
 }

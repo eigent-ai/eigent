@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -289,6 +290,7 @@ def test_get_working_directory_no_new_folder_path_uses_env(temp_dir):
     options = MagicMock()
     task_lock = MagicMock()
     task_lock.new_folder_path = None
+    task_lock.working_directory = None
     with patch("app.utils.file_utils.env", return_value=str(temp_dir)):
         result = get_working_directory(options, task_lock)
     assert os.path.realpath(result) == os.path.realpath(str(temp_dir))
@@ -358,3 +360,21 @@ def test_list_files_custom_skip_prefix(temp_dir):
     names = [os.path.basename(p) for p in result]
     assert "keep.txt" in names
     assert "_private.txt" not in names
+
+
+def test_list_files_filters_modified_before(temp_dir):
+    cutoff = time.time() - 30
+    during = temp_dir / "during.txt"
+    during.write_text("during")
+    os.utime(during, (cutoff - 10, cutoff - 10))
+    after = temp_dir / "after.txt"
+    after.write_text("after")
+    os.utime(after, (cutoff + 10, cutoff + 10))
+
+    result = list_files(
+        str(temp_dir),
+        base=str(temp_dir),
+        modified_before=cutoff,
+    )
+
+    assert result == [str(during.resolve())]

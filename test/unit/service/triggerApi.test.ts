@@ -12,771 +12,966 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-/**
- * triggerApi Unit Tests
- *
- * Tests all exported proxy API functions:
- * - proxyFetchTriggers: query param building, proxyFetchGet delegation
- * - proxyFetchProjectTriggers: project_id guard, query params
- * - proxyFetchTrigger: single trigger fetch
- * - proxyFetchTriggerConfig: config fetch by trigger type
- * - proxyCreateTrigger: POST delegation
- * - proxyUpdateTrigger: PUT delegation
- * - proxyDeleteTrigger: DELETE delegation
- * - proxyActivateTrigger / proxyDeactivateTrigger: POST to sub-routes
- * - proxyFetchTriggerExecutions: paginated execution listing
- * - proxyUpdateTriggerExecution: PUT + activity log dispatching per status
- * - proxyRetryTriggerExecution: POST + activity log for retry
- */
+import { ExecutionStatus } from '@/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-// ── Mocks (vi.hoisted ensures availability inside hoisted vi.mock factories) ──
-
-const {
-  mockProxyFetchGet,
-  mockProxyFetchPost,
-  mockProxyFetchPut,
-  mockProxyFetchDelete,
-  mockAddLog,
-  mockModifyLog,
-} = vi.hoisted(() => ({
-  mockProxyFetchGet: vi.fn(),
-  mockProxyFetchPost: vi.fn(),
-  mockProxyFetchPut: vi.fn(),
-  mockProxyFetchDelete: vi.fn(),
-  mockAddLog: vi.fn(),
-  mockModifyLog: vi.fn(() => false),
+const mocks = vi.hoisted(() => ({
+  addLog: vi.fn(),
+  modifyLog: vi.fn(() => false),
+  proxyFetchPut: vi.fn(),
+  proxyFetchPost: vi.fn(),
+  fetchGet: vi.fn(),
+  auth: { user_id: 1, email: 'one@example.invalid' },
 }));
 
 vi.mock('@/api/http', () => ({
-  proxyFetchGet: mockProxyFetchGet,
-  proxyFetchPost: mockProxyFetchPost,
-  proxyFetchPut: mockProxyFetchPut,
-  proxyFetchDelete: mockProxyFetchDelete,
+  fetchGet: mocks.fetchGet,
+  proxyFetchDelete: vi.fn(),
+  proxyFetchGet: vi.fn(),
+  proxyFetchPost: mocks.proxyFetchPost,
+  proxyFetchPut: mocks.proxyFetchPut,
+}));
+vi.mock('@/store/authStore', () => ({ getAuthStore: () => mocks.auth }));
+
+vi.mock('@/lib/events/appEvents', () => ({
+  recordFeatureUsed: vi.fn(),
+  recordScheduledTriggerCreated: vi.fn(),
 }));
 
 vi.mock('@/store/activityLogStore', () => ({
-  useActivityLogStore: {
-    getState: vi.fn(() => ({
-      addLog: mockAddLog,
-      modifyLog: mockModifyLog,
-    })),
-  },
   ActivityType: {
-    TriggerCreated: 'trigger_created',
     TriggerExecuted: 'trigger_executed',
     ExecutionSuccess: 'execution_success',
     ExecutionFailed: 'execution_failed',
     ExecutionCancelled: 'execution_cancelled',
   },
+  useActivityLogStore: {
+    getState: () => ({
+      addLog: mocks.addLog,
+      modifyLog: mocks.modifyLog,
+    }),
+  },
 }));
 
-// ── Import after mocks ───────────────────────────────────────────────────
+const OUTBOX_KEY = 'eigent.trigger-terminal-outbox.v1';
 
-import {
-  proxyActivateTrigger,
-  proxyCreateTrigger,
-  proxyDeactivateTrigger,
-  proxyDeleteTrigger,
-  proxyFetchProjectTriggers,
-  proxyFetchTrigger,
-  proxyFetchTriggerConfig,
-  proxyFetchTriggerExecutions,
-  proxyFetchTriggers,
-  proxyRetryTriggerExecution,
-  proxyUpdateTrigger,
-  proxyUpdateTriggerExecution,
-} from '@/service/triggerApi';
-import { ExecutionStatus, TriggerStatus, TriggerType } from '@/types';
-
-// ── Helpers ──────────────────────────────────────────────────────────────
-
-/** Create a minimal TriggerInput payload. */
-function createTriggerInput(overrides: Record<string, any> = {}) {
-  return {
-    name: 'Test Trigger',
-    trigger_type: TriggerType.Schedule,
-    custom_cron_expression: '0 * * * *',
-    task_prompt: 'Do something',
-    ...overrides,
-  };
-}
-
-/** Create a minimal TriggerUpdate payload. */
-function createTriggerUpdate(overrides: Record<string, any> = {}) {
-  return {
-    name: 'Updated Trigger',
-    ...overrides,
-  };
-}
-
-// ── Tests ────────────────────────────────────────────────────────────────
-
-describe('triggerApi', () => {
+describe('trigger execution status delivery', () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
+    window.localStorage.clear();
+    mocks.auth = { user_id: 1, email: 'one@example.invalid' };
+    mocks.fetchGet.mockReset();
   });
 
-  // ─── proxyFetchTriggers ──────────────────────────────────────────
-
-  describe('proxyFetchTriggers', () => {
-    it('should call proxyFetchGet with base URL and default pagination', async () => {
-      mockProxyFetchGet.mockResolvedValueOnce({ items: [] });
-
-      await proxyFetchTriggers();
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/trigger/', {
-        page: 1,
-        size: 20,
-      });
-    });
-
-    it('should include trigger_type when provided', async () => {
-      mockProxyFetchGet.mockResolvedValueOnce({ items: [] });
-
-      await proxyFetchTriggers(TriggerType.Webhook);
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/trigger/', {
-        page: 1,
-        size: 20,
-        trigger_type: TriggerType.Webhook,
-      });
-    });
-
-    it('should include status when provided', async () => {
-      mockProxyFetchGet.mockResolvedValueOnce({ items: [] });
-
-      await proxyFetchTriggers(undefined, TriggerStatus.Active);
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/trigger/', {
-        page: 1,
-        size: 20,
-        status: TriggerStatus.Active,
-      });
-    });
-
-    it('should accept custom page and size', async () => {
-      mockProxyFetchGet.mockResolvedValueOnce({ items: [] });
-
-      await proxyFetchTriggers(undefined, undefined, 3, 50);
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/trigger/', {
-        page: 3,
-        size: 50,
-      });
-    });
-
-    it('should include all optional params together', async () => {
-      mockProxyFetchGet.mockResolvedValueOnce({ items: [] });
-
-      await proxyFetchTriggers(
-        TriggerType.Slack,
-        TriggerStatus.PendingAuth,
-        2,
-        10
-      );
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/trigger/', {
-        page: 2,
-        size: 10,
-        trigger_type: TriggerType.Slack,
-        status: TriggerStatus.PendingAuth,
-      });
-    });
-
-    it('should re-throw on error', async () => {
-      const error = new Error('Network failure');
-      mockProxyFetchGet.mockRejectedValueOnce(error);
-
-      await expect(proxyFetchTriggers()).rejects.toThrow('Network failure');
-    });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  // ─── proxyFetchProjectTriggers ───────────────────────────────────
-
-  describe('proxyFetchProjectTriggers', () => {
-    it('should throw when project_id is null', async () => {
-      await expect(proxyFetchProjectTriggers(null)).rejects.toThrow(
-        'Project ID is required to fetch project triggers.'
-      );
+  it('requests a manual execution with a unique identity without changing the schedule', async () => {
+    const { proxyRunTriggerNow } = await import('@/service/triggerApi');
+    mocks.proxyFetchPost.mockResolvedValue({ execution_id: 'accepted' });
+    await proxyRunTriggerNow(12);
+    await proxyRunTriggerNow(12);
+    const [first, second] = mocks.proxyFetchPost.mock.calls;
+    expect(first[0]).toBe('/api/v1/execution/');
+    expect(first[1]).toEqual({
+      trigger_id: 12,
+      execution_id: expect.any(String),
+      execution_type: 'manual',
+      input_data: {},
     });
-
-    it('should throw when project_id is empty string', async () => {
-      await expect(proxyFetchProjectTriggers('')).rejects.toThrow(
-        'Project ID is required to fetch project triggers.'
-      );
-    });
-
-    it('should call proxyFetchGet with project_id in params', async () => {
-      mockProxyFetchGet.mockResolvedValueOnce({ items: [] });
-
-      await proxyFetchProjectTriggers('proj-123');
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/trigger/', {
-        page: 1,
-        size: 50,
-        project_id: 'proj-123',
-      });
-    });
-
-    it('should include trigger_type and status when provided', async () => {
-      mockProxyFetchGet.mockResolvedValueOnce({ items: [] });
-
-      await proxyFetchProjectTriggers(
-        'proj-456',
-        TriggerType.Schedule,
-        TriggerStatus.Active,
-        2,
-        25
-      );
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/trigger/', {
-        page: 2,
-        size: 25,
-        project_id: 'proj-456',
-        trigger_type: TriggerType.Schedule,
-        status: TriggerStatus.Active,
-      });
-    });
-
-    it('should re-throw on error', async () => {
-      const error = new Error('Server error');
-      mockProxyFetchGet.mockRejectedValueOnce(error);
-
-      await expect(proxyFetchProjectTriggers('proj-789')).rejects.toThrow(
-        'Server error'
-      );
-    });
+    expect(first[1].execution_id).not.toBe(second[1].execution_id);
+    expect(mocks.proxyFetchPut).not.toHaveBeenCalled();
   });
 
-  // ─── proxyFetchTrigger ───────────────────────────────────────────
-
-  describe('proxyFetchTrigger', () => {
-    it('should call proxyFetchGet with the trigger ID in URL', async () => {
-      const mockTrigger = { id: 42, name: 'My Trigger' };
-      mockProxyFetchGet.mockResolvedValueOnce(mockTrigger);
-
-      const result = await proxyFetchTrigger(42);
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/trigger/42');
-      expect(result).toEqual(mockTrigger);
-    });
-
-    it('should re-throw on error', async () => {
-      mockProxyFetchGet.mockRejectedValueOnce(new Error('Not found'));
-
-      await expect(proxyFetchTrigger(999)).rejects.toThrow('Not found');
-    });
+  it('propagates a rejected run request so the page can report failure', async () => {
+    const { proxyRunTriggerNow } = await import('@/service/triggerApi');
+    mocks.proxyFetchPost.mockRejectedValueOnce(new Error('Offline'));
+    await expect(proxyRunTriggerNow(12)).rejects.toThrow('Offline');
   });
 
-  // ─── proxyFetchTriggerConfig ─────────────────────────────────────
-
-  describe('proxyFetchTriggerConfig', () => {
-    it('should call proxyFetchGet with trigger type config URL', async () => {
-      const mockConfig = { fields: [] };
-      mockProxyFetchGet.mockResolvedValueOnce(mockConfig);
-
-      const result = await proxyFetchTriggerConfig(TriggerType.Webhook);
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith(
-        '/api/v1/trigger/webhook/config'
-      );
-      expect(result).toEqual(mockConfig);
+  describe('unobserved durable terminal recovery', () => {
+    const BINDINGS_KEY = 'eigent.trigger-run-bindings.v1';
+    const summary = (status: string, overrides = {}) => ({
+      run_id: 'run-1',
+      project_id: 'project-1',
+      status,
+      version: 4,
+      updated_at: 1_800_000_000,
+      origin: 'local',
+      latest_attempt: { attempt_number: 1, status },
+      ...overrides,
     });
-
-    it('should re-throw on error', async () => {
-      mockProxyFetchGet.mockRejectedValueOnce(new Error('Config error'));
-
-      await expect(
-        proxyFetchTriggerConfig(TriggerType.Schedule)
-      ).rejects.toThrow('Config error');
-    });
-  });
-
-  // ─── proxyCreateTrigger ──────────────────────────────────────────
-
-  describe('proxyCreateTrigger', () => {
-    it('should call proxyFetchPost with trigger data', async () => {
-      const input = createTriggerInput();
-      const created = { id: 1, ...input };
-      mockProxyFetchPost.mockResolvedValueOnce(created);
-
-      const result = await proxyCreateTrigger(input);
-
-      expect(mockProxyFetchPost).toHaveBeenCalledWith(
-        '/api/v1/trigger/',
-        input
-      );
-      expect(result).toEqual(created);
-    });
-
-    it('should re-throw on error', async () => {
-      const input = createTriggerInput();
-      mockProxyFetchPost.mockRejectedValueOnce(new Error('Create failed'));
-
-      await expect(proxyCreateTrigger(input)).rejects.toThrow('Create failed');
-    });
-  });
-
-  // ─── proxyUpdateTrigger ──────────────────────────────────────────
-
-  describe('proxyUpdateTrigger', () => {
-    it('should call proxyFetchPut with trigger ID and update data', async () => {
-      const update = createTriggerUpdate();
-      const updated = { id: 5, ...update };
-      mockProxyFetchPut.mockResolvedValueOnce(updated);
-
-      const result = await proxyUpdateTrigger(5, update);
-
-      expect(mockProxyFetchPut).toHaveBeenCalledWith(
-        '/api/v1/trigger/5',
-        update
-      );
-      expect(result).toEqual(updated);
-    });
-
-    it('should re-throw on error', async () => {
-      mockProxyFetchPut.mockRejectedValueOnce(new Error('Update failed'));
-
-      await expect(
-        proxyUpdateTrigger(1, createTriggerUpdate())
-      ).rejects.toThrow('Update failed');
-    });
-  });
-
-  // ─── proxyDeleteTrigger ──────────────────────────────────────────
-
-  describe('proxyDeleteTrigger', () => {
-    it('should call proxyFetchDelete with the trigger ID in URL', async () => {
-      mockProxyFetchDelete.mockResolvedValueOnce(undefined);
-
-      await proxyDeleteTrigger(10);
-
-      expect(mockProxyFetchDelete).toHaveBeenCalledWith('/api/v1/trigger/10');
-    });
-
-    it('should re-throw on error', async () => {
-      mockProxyFetchDelete.mockRejectedValueOnce(new Error('Delete failed'));
-
-      await expect(proxyDeleteTrigger(10)).rejects.toThrow('Delete failed');
-    });
-  });
-
-  // ─── proxyActivateTrigger ────────────────────────────────────────
-
-  describe('proxyActivateTrigger', () => {
-    it('should call proxyFetchPost to the activate sub-route', async () => {
-      const activated = { id: 3, status: 'active' };
-      mockProxyFetchPost.mockResolvedValueOnce(activated);
-
-      const result = await proxyActivateTrigger(3);
-
-      expect(mockProxyFetchPost).toHaveBeenCalledWith(
-        '/api/v1/trigger/3/activate'
-      );
-      expect(result).toEqual(activated);
-    });
-
-    it('should re-throw on error', async () => {
-      mockProxyFetchPost.mockRejectedValueOnce(new Error('Activate failed'));
-
-      await expect(proxyActivateTrigger(3)).rejects.toThrow('Activate failed');
-    });
-  });
-
-  // ─── proxyDeactivateTrigger ──────────────────────────────────────
-
-  describe('proxyDeactivateTrigger', () => {
-    it('should call proxyFetchPost to the deactivate sub-route', async () => {
-      const deactivated = { id: 3, status: 'inactive' };
-      mockProxyFetchPost.mockResolvedValueOnce(deactivated);
-
-      const result = await proxyDeactivateTrigger(3);
-
-      expect(mockProxyFetchPost).toHaveBeenCalledWith(
-        '/api/v1/trigger/3/deactivate'
-      );
-      expect(result).toEqual(deactivated);
-    });
-
-    it('should re-throw on error', async () => {
-      mockProxyFetchPost.mockRejectedValueOnce(new Error('Deactivate failed'));
-
-      await expect(proxyDeactivateTrigger(3)).rejects.toThrow(
-        'Deactivate failed'
-      );
-    });
-  });
-
-  // ─── proxyFetchTriggerExecutions ─────────────────────────────────
-
-  describe('proxyFetchTriggerExecutions', () => {
-    it('should call proxyFetchGet with trigger ID executions URL and default pagination', async () => {
-      const executions = { items: [] };
-      mockProxyFetchGet.mockResolvedValueOnce(executions);
-
-      const result = await proxyFetchTriggerExecutions(7);
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith(
-        '/api/v1/trigger/7/executions',
+    const journal = (status: string) => ({
+      run_id: 'run-1',
+      after_sequence: 0,
+      next_sequence: 2,
+      has_more: false,
+      events: [
         {
-          page: 1,
-          size: 20,
-        }
-      );
-      expect(result).toEqual(executions);
-    });
-
-    it('should pass custom page and size', async () => {
-      mockProxyFetchGet.mockResolvedValueOnce({ items: [] });
-
-      await proxyFetchTriggerExecutions(7, 3, 50);
-
-      expect(mockProxyFetchGet).toHaveBeenCalledWith(
-        '/api/v1/trigger/7/executions',
-        {
-          page: 3,
-          size: 50,
-        }
-      );
-    });
-
-    it('should re-throw on error', async () => {
-      mockProxyFetchGet.mockRejectedValueOnce(
-        new Error('Fetch executions failed')
-      );
-
-      await expect(proxyFetchTriggerExecutions(7)).rejects.toThrow(
-        'Fetch executions failed'
-      );
-    });
-  });
-
-  // ─── proxyUpdateTriggerExecution ─────────────────────────────────
-
-  describe('proxyUpdateTriggerExecution', () => {
-    it('should call proxyFetchPut and return the result', async () => {
-      const response = { id: 'exec-1', status: 'running' };
-      mockProxyFetchPut.mockResolvedValueOnce(response);
-
-      const result = await proxyUpdateTriggerExecution('exec-1', {
-        status: ExecutionStatus.Running,
-      });
-
-      expect(mockProxyFetchPut).toHaveBeenCalledWith(
-        '/api/v1/execution/exec-1',
-        {
-          status: ExecutionStatus.Running,
-        }
-      );
-      expect(result).toEqual(response);
-    });
-
-    it('should log ExecutionSuccess when status is completed', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
-
-      await proxyUpdateTriggerExecution('exec-ok', {
-        status: ExecutionStatus.Completed,
-        duration_seconds: 120,
-        tokens_used: 500,
-      });
-
-      // modifyLog returns false → addLog should be called
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-ok',
-        expect.objectContaining({
-          type: 'execution_success',
-          message: 'Execution exec-ok completed successfully',
-        })
-      );
-      expect(mockAddLog).toHaveBeenCalledWith(
-        expect.objectContaining({
-          executionId: 'exec-ok',
-          type: 'execution_success',
-          message: 'Execution exec-ok completed successfully',
-        })
-      );
-    });
-
-    it('should log ExecutionFailed when status is failed with error_message', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
-
-      await proxyUpdateTriggerExecution('exec-fail', {
-        status: ExecutionStatus.Failed,
-        error_message: 'Timeout exceeded',
-      });
-
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-fail',
-        expect.objectContaining({
-          type: 'execution_failed',
-          message: 'Execution exec-fail failed: Timeout exceeded',
-        })
-      );
-      expect(mockAddLog).toHaveBeenCalledWith(
-        expect.objectContaining({
-          executionId: 'exec-fail',
-          type: 'execution_failed',
-        })
-      );
-    });
-
-    it('should log ExecutionFailed without error_message suffix when absent', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
-
-      await proxyUpdateTriggerExecution('exec-fail2', {
-        status: ExecutionStatus.Failed,
-      });
-
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-fail2',
-        expect.objectContaining({
-          message: 'Execution exec-fail2 failed',
-        })
-      );
-    });
-
-    it('should log TriggerExecuted when status is running', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
-
-      await proxyUpdateTriggerExecution('exec-run', {
-        status: ExecutionStatus.Running,
-      });
-
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-run',
-        expect.objectContaining({
-          type: 'trigger_executed',
-          message: 'Execution exec-run started running',
-        })
-      );
-    });
-
-    it('should log ExecutionCancelled when status is cancelled', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
-
-      await proxyUpdateTriggerExecution('exec-cancel', {
-        status: ExecutionStatus.Cancelled,
-      });
-
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-cancel',
-        expect.objectContaining({
-          type: 'execution_cancelled',
-          message: 'Execution exec-cancel was cancelled',
-        })
-      );
-    });
-
-    it('should use default activity type for unrecognized status values', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
-
-      await proxyUpdateTriggerExecution('exec-unknown', {
-        status: 'custom_status' as any,
-      });
-
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-unknown',
-        expect.objectContaining({
-          type: 'trigger_executed',
-          message: 'Execution exec-unknown status updated to custom_status',
-        })
-      );
-    });
-
-    it('should update existing log (modifyLog) instead of adding when modifyLog returns true', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(true);
-
-      await proxyUpdateTriggerExecution('exec-existing', {
-        status: ExecutionStatus.Completed,
-      });
-
-      expect(mockModifyLog).toHaveBeenCalled();
-      expect(mockAddLog).not.toHaveBeenCalled();
-    });
-
-    it('should pass triggerInfo to the log when provided', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
-
-      const triggerInfo = {
-        triggerId: 42,
-        triggerName: 'Daily Cron',
-        projectId: 'proj-abc',
-      };
-
-      await proxyUpdateTriggerExecution(
-        'exec-info',
-        {
-          status: ExecutionStatus.Completed,
-        },
-        triggerInfo
-      );
-
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-info',
-        expect.objectContaining({
-          triggerId: 42,
-          triggerName: 'Daily Cron',
-          projectId: 'proj-abc',
-        })
-      );
-    });
-
-    it('should include metadata for duration_seconds, tokens_used, and error_message', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
-
-      await proxyUpdateTriggerExecution('exec-meta', {
-        status: ExecutionStatus.Completed,
-        duration_seconds: 300,
-        tokens_used: 1500,
-        error_message: undefined,
-      });
-
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-meta',
-        expect.objectContaining({
-          metadata: {
-            duration_seconds: 300,
-            tokens_used: 1500,
+          event_id: 'usage',
+          project_id: 'project-1',
+          run_id: 'run-1',
+          sequence: 1,
+          run_sequence: 1,
+          event_type: 'model.invocation.completed',
+          payload: {
+            invocation_id: 'invocation-1',
+            usage: { prompt_tokens: 80, completion_tokens: 43 },
           },
-        })
-      );
+        },
+        {
+          event_id: 'terminal',
+          project_id: 'project-1',
+          run_id: 'run-1',
+          sequence: 2,
+          run_sequence: 2,
+          event_type: `run.${status}`,
+          payload: {},
+        },
+      ],
     });
+    const respond = (status: string, overrides = {}) =>
+      mocks.fetchGet.mockImplementation((path) =>
+        Promise.resolve(
+          path === '/runs/run-1' ? summary(status, overrides) : journal(status)
+        )
+      );
+    const start = async () => {
+      mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+      const api = await import('@/service/triggerApi');
+      api.trackTriggerExecutionRun('execution-1', 'project-1', 'run-1');
+      await api.proxyUpdateTriggerExecution('execution-1', {
+        status: ExecutionStatus.Running,
+      });
+      expect(window.localStorage.getItem(BINDINGS_KEY)).toContain('run-1');
+      expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+      return api;
+    };
 
-    it('should not include tokens_used in metadata when value is 0', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
+    it.each(['completed', 'failed', 'cancelled'])(
+      'rebuilds modules after renderer loss and delivers canonical %s once without executing the Run',
+      async (status) => {
+        await start();
+        vi.resetModules();
+        respond(status);
+        const recovered = await import('@/service/triggerApi');
+        await Promise.all([
+          recovered.flushPendingTriggerExecutionUpdates(),
+          recovered.flushPendingTriggerExecutionUpdates(),
+        ]);
+        expect(
+          mocks.proxyFetchPut.mock.calls.map(([, data]) => data.status)
+        ).toEqual(['running', status]);
+        expect(mocks.proxyFetchPut.mock.calls.at(-1)?.[1].tokens_used).toBe(
+          123
+        );
+        expect(window.localStorage.getItem(BINDINGS_KEY)).toBeNull();
+        expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+        vi.resetModules();
+        await (
+          await import('@/service/triggerApi')
+        ).flushPendingTriggerExecutionUpdates();
+        expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+        expect(mocks.fetchGet.mock.calls.map(([path]) => path)).toEqual([
+          '/runs/run-1',
+          '/runs/run-1/events',
+        ]);
+      }
+    );
 
-      await proxyUpdateTriggerExecution('exec-zero-tokens', {
+    it.each(['network', 'timeout'])(
+      'delivers terminal first but retries %s usage failure after renderer loss',
+      async (failure) => {
+        vi.useFakeTimers();
+        const api = await start();
+        mocks.fetchGet.mockImplementation((path) =>
+          path === '/runs/run-1'
+            ? Promise.resolve(summary('completed'))
+            : failure === 'network'
+              ? Promise.reject(new Error('temporary Journal failure'))
+              : new Promise(() => {})
+        );
+        const first = api.flushPendingTriggerExecutionUpdates();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await first;
+        expect(mocks.proxyFetchPut.mock.calls.at(-1)?.[1]).toMatchObject({
+          status: 'completed',
+          tokens_used: 0,
+        });
+        const saved = JSON.parse(window.localStorage.getItem(BINDINGS_KEY)!)[0];
+        expect(saved.terminalDelivery).toEqual({
+          status: 'completed',
+          tokens: 0,
+        });
+        expect(saved.reconciledUsage).toBeUndefined();
+        vi.resetModules();
+        respond('completed');
+        const recovered = await import('@/service/triggerApi');
+        await recovered.flushPendingTriggerExecutionUpdates();
+        expect(mocks.proxyFetchPut.mock.calls.at(-1)?.[1]).toMatchObject({
+          status: 'completed',
+          tokens_used: 123,
+        });
+        expect(window.localStorage.getItem(BINDINGS_KEY)).toBeNull();
+        const calls = mocks.proxyFetchPut.mock.calls.length;
+        await recovered.flushPendingTriggerExecutionUpdates();
+        expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(calls);
+      }
+    );
+
+    it.each([0, 123])(
+      'retains live terminal ACK through reload until validated usage %s converges',
+      async (tokens) => {
+        const api = await start();
+        await api.proxyUpdateTriggerExecution('execution-1', {
+          status: ExecutionStatus.Completed,
+          tokens_used: 0,
+        });
+        expect(window.localStorage.getItem(BINDINGS_KEY)).toContain(
+          'terminalDelivery'
+        );
+        expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+        vi.resetModules();
+        mocks.fetchGet.mockImplementation((path) => {
+          const page = journal('completed');
+          page.events[0].payload = {
+            invocation_id: 'invocation-1',
+            usage: { prompt_tokens: tokens, completion_tokens: 0 },
+          };
+          return Promise.resolve(
+            path === '/runs/run-1' ? summary('completed') : page
+          );
+        });
+        const recovered = await import('@/service/triggerApi');
+        mocks.auth = { user_id: 2, email: 'two@example.invalid' };
+        await recovered.flushPendingTriggerExecutionUpdates();
+        expect(mocks.fetchGet).not.toHaveBeenCalled();
+        expect(window.localStorage.getItem(BINDINGS_KEY)).not.toBeNull();
+        mocks.auth = { user_id: 1, email: 'one@example.invalid' };
+        await recovered.flushPendingTriggerExecutionUpdates();
+        expect(mocks.proxyFetchPut.mock.calls.at(-1)?.[1].tokens_used).toBe(
+          tokens
+        );
+        // A real zero is a successful read, not a reason to scan forever or
+        // duplicate the terminal write which the previous renderer delivered.
+        expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(tokens === 0 ? 2 : 3);
+        expect(window.localStorage.getItem(BINDINGS_KEY)).toBeNull();
+        vi.resetModules();
+        mocks.fetchGet.mockClear();
+        await (
+          await import('@/service/triggerApi')
+        ).flushPendingTriggerExecutionUpdates();
+        expect(mocks.fetchGet).not.toHaveBeenCalled();
+      }
+    );
+
+    it('retains read-complete usage and retries failed enrichment after another module rebuild', async () => {
+      vi.useFakeTimers();
+      const api = await start();
+      await api.proxyUpdateTriggerExecution('execution-1', {
         status: ExecutionStatus.Completed,
         tokens_used: 0,
       });
-
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-zero-tokens',
-        expect.objectContaining({
-          metadata: {},
-        })
-      );
-    });
-
-    it('should not include tokens_used in metadata when value is undefined', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
-
-      await proxyUpdateTriggerExecution('exec-no-tokens', {
-        status: ExecutionStatus.Completed,
+      respond('completed');
+      mocks.proxyFetchPut.mockRejectedValue(new Error('offline'));
+      const failed = api.flushPendingTriggerExecutionUpdates();
+      await vi.runAllTimersAsync();
+      await failed;
+      const saved = JSON.parse(window.localStorage.getItem(BINDINGS_KEY)!)[0];
+      expect(saved.terminalDelivery).toEqual({
+        status: 'completed',
+        tokens: 0,
       });
-
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-no-tokens',
-        expect.objectContaining({
-          metadata: {},
-        })
-      );
-    });
-
-    it('should not log activity when status is not provided in updateData', async () => {
-      mockProxyFetchPut.mockResolvedValueOnce({});
-
-      await proxyUpdateTriggerExecution('exec-no-status', {
-        duration_seconds: 100,
+      expect(saved.reconciledUsage).toEqual({
+        status: 'completed',
+        tokens: 123,
       });
-
-      expect(mockModifyLog).not.toHaveBeenCalled();
-      expect(mockAddLog).not.toHaveBeenCalled();
+      vi.resetModules();
+      mocks.fetchGet
+        .mockClear()
+        .mockRejectedValue(new Error('Journal unavailable again'));
+      mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+      const recovered = await import('@/service/triggerApi');
+      await recovered.flushPendingTriggerExecutionUpdates();
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
+      expect(mocks.proxyFetchPut.mock.calls[0][1]).toMatchObject({
+        status: 'completed',
+        tokens_used: 123,
+      });
+      expect(mocks.fetchGet).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem(BINDINGS_KEY)).toBeNull();
+      expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
     });
 
-    it('should re-throw on error', async () => {
-      mockProxyFetchPut.mockRejectedValueOnce(
-        new Error('Update execution failed')
-      );
+    it.each([
+      'pending',
+      'running',
+      'waiting_for_user',
+      'interrupted',
+      'unknown',
+    ])(
+      'retains %s without inventing a terminal, then reconciles after Resume/completion',
+      async (status) => {
+        await start();
+        vi.resetModules();
+        const recovered = await import('@/service/triggerApi');
+        respond(status);
+        await recovered.flushPendingTriggerExecutionUpdates();
+        expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
+        expect(window.localStorage.getItem(BINDINGS_KEY)).toContain('run-1');
+        respond('completed', {
+          latest_attempt: { attempt_number: 2, status: 'completed' },
+        });
+        await recovered.flushPendingTriggerExecutionUpdates();
+        expect(mocks.proxyFetchPut.mock.calls.at(-1)?.[1].status).toBe(
+          'completed'
+        );
+      }
+    );
 
-      await expect(
-        proxyUpdateTriggerExecution('exec-err', {
-          status: ExecutionStatus.Failed,
-        })
-      ).rejects.toThrow('Update execution failed');
+    it.each(['network', 'missing', 'run', 'project', 'version'])(
+      'keeps exact identity after %s lookup failure and recovers on a later pass',
+      async (failure) => {
+        const api = await start();
+        if (failure === 'network')
+          mocks.fetchGet.mockRejectedValue(new Error('offline'));
+        else if (failure === 'missing')
+          mocks.fetchGet.mockResolvedValue(undefined);
+        else
+          respond(
+            'completed',
+            failure === 'run'
+              ? { run_id: 'other-run' }
+              : failure === 'project'
+                ? { project_id: 'other-project' }
+                : { version: -1 }
+          );
+        await api.flushPendingTriggerExecutionUpdates();
+        expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
+        expect(window.localStorage.getItem(BINDINGS_KEY)).toContain('run-1');
+        respond('completed');
+        await api.flushPendingTriggerExecutionUpdates();
+        expect(mocks.proxyFetchPut.mock.calls.at(-1)?.[1].status).toBe(
+          'completed'
+        );
+      }
+    );
+
+    it('bounds a hung lookup, ignores its late response and retries exact identity', async () => {
+      vi.useFakeTimers();
+      const api = await start();
+      let release!: (value: unknown) => void;
+      mocks.fetchGet.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      );
+      const first = api.flushPendingTriggerExecutionUpdates();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await first;
+      release(summary('completed'));
+      await Promise.resolve();
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
+      expect(mocks.fetchGet.mock.calls[0][3].signal.aborted).toBe(true);
+      respond('completed');
+      await api.flushPendingTriggerExecutionUpdates();
+      expect(mocks.proxyFetchPut.mock.calls.at(-1)?.[1].status).toBe(
+        'completed'
+      );
+    });
+
+    it('retains association and scoped outbox after bounded reporting failure, then retries after reload', async () => {
+      vi.useFakeTimers();
+      const api = await start();
+      respond('completed');
+      mocks.proxyFetchPut.mockRejectedValue(new Error('offline'));
+      const failed = api.flushPendingTriggerExecutionUpdates();
+      await vi.runAllTimersAsync();
+      await failed;
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(4);
+      expect(window.localStorage.getItem(BINDINGS_KEY)).toContain('run-1');
+      expect(window.localStorage.getItem(OUTBOX_KEY)).toContain('accountKey');
+      vi.resetModules();
+      mocks.proxyFetchPut.mockResolvedValue(undefined);
+      await (
+        await import('@/service/triggerApi')
+      ).flushPendingTriggerExecutionUpdates();
+      expect(window.localStorage.getItem(BINDINGS_KEY)).toBeNull();
+      expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+    });
+
+    it('does not query or deliver another account binding, including account change during lookup', async () => {
+      const api = await start();
+      mocks.auth = { user_id: 2, email: 'two@example.invalid' };
+      respond('completed');
+      await api.flushPendingTriggerExecutionUpdates();
+      expect(mocks.fetchGet).not.toHaveBeenCalled();
+      expect(() =>
+        api.trackTriggerExecutionRun('execution-1', 'project-1', 'run-1')
+      ).toThrow('different Run or account');
+      mocks.auth = { user_id: 1, email: 'one@example.invalid' };
+      mocks.fetchGet.mockImplementationOnce(async () => {
+        mocks.auth = { user_id: 2, email: 'two@example.invalid' };
+        return summary('completed');
+      });
+      await api.flushPendingTriggerExecutionUpdates();
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
+      mocks.auth = { user_id: 1, email: 'one@example.invalid' };
+      await api.flushPendingTriggerExecutionUpdates();
+      expect(mocks.proxyFetchPut.mock.calls.at(-1)?.[1].status).toBe(
+        'completed'
+      );
+    });
+
+    it('will not rebind an execution except after an exact typed admission rejection', async () => {
+      const api = await start();
+      expect(() =>
+        api.trackTriggerExecutionRun('execution-1', 'project-1', 'other-run')
+      ).toThrow();
+      api.forgetRejectedTriggerRun('execution-1', 'project-1', 'wrong-run');
+      expect(() =>
+        api.trackTriggerExecutionRun('execution-1', 'project-1', 'other-run')
+      ).toThrow();
+      api.forgetRejectedTriggerRun('execution-1', 'project-1', 'run-1');
+      api.trackTriggerExecutionRun('execution-1', 'project-1', 'other-run');
+      expect(window.localStorage.getItem(BINDINGS_KEY)).toContain('other-run');
+    });
+
+    it('refuses late binding if the account changed during local preflight', async () => {
+      const { getAccountEnvironmentKey } =
+        await import('@/lib/authEnvironment');
+      const api = await import('@/service/triggerApi');
+      const expectedAccount = getAccountEnvironmentKey(mocks.auth);
+      mocks.auth = { user_id: 2, email: 'two@example.invalid' };
+      expect(() =>
+        api.trackTriggerExecutionRun(
+          'execution-1',
+          'project-1',
+          'run-1',
+          expectedAccount
+        )
+      ).toThrow('account changed before admission');
+      expect(window.localStorage.getItem(BINDINGS_KEY)).toBeNull();
+    });
+
+    it('retains a pre-admission failure receipt for its captured account without a Run binding', async () => {
+      const { getAccountEnvironmentKey } =
+        await import('@/lib/authEnvironment');
+      const api = await import('@/service/triggerApi');
+      const expectedAccount = getAccountEnvironmentKey(mocks.auth);
+      mocks.auth = { user_id: 2, email: 'two@example.invalid' };
+      await api.proxyUpdateTriggerExecution(
+        'unsubmitted-execution',
+        { status: ExecutionStatus.Failed },
+        { projectId: 'project-1' },
+        expectedAccount
+      );
+      expect(mocks.proxyFetchPut).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem(BINDINGS_KEY)).toBeNull();
+      expect(
+        JSON.parse(window.localStorage.getItem(OUTBOX_KEY)!)[0].accountKey
+      ).toBe(expectedAccount);
+      mocks.auth = { user_id: 1, email: 'one@example.invalid' };
+      mocks.proxyFetchPut.mockResolvedValue(undefined);
+      await api.flushPendingTriggerExecutionUpdates();
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
+      expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+      expect(mocks.fetchGet).not.toHaveBeenCalled();
+    });
+
+    it('retains an exhausted scoped receipt while signed in to another account', async () => {
+      vi.useFakeTimers();
+      const api = await start();
+      respond('completed');
+      mocks.proxyFetchPut.mockRejectedValue(new Error('offline'));
+      const delivery = api.flushPendingTriggerExecutionUpdates();
+      await vi.runAllTimersAsync();
+      await delivery;
+      const savedReceipt = window.localStorage.getItem(OUTBOX_KEY);
+      vi.resetModules();
+      mocks.auth = { user_id: 2, email: 'two@example.invalid' };
+      mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+      mocks.fetchGet.mockClear();
+      const recovered = await import('@/service/triggerApi');
+      await recovered.flushPendingTriggerExecutionUpdates();
+      expect(mocks.proxyFetchPut).not.toHaveBeenCalled();
+      expect(mocks.fetchGet).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem(OUTBOX_KEY)).toBe(savedReceipt);
+      mocks.auth = { user_id: 1, email: 'one@example.invalid' };
+      await recovered.flushPendingTriggerExecutionUpdates();
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
+      expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+      expect(window.localStorage.getItem(BINDINGS_KEY)).toBeNull();
+    });
+
+    it('does not retain an unpersisted admission or forget a binding when storage fails', async () => {
+      const api = await import('@/service/triggerApi');
+      const originalSave = vi
+        .mocked(window.localStorage.setItem)
+        .getMockImplementation()!;
+      const save = vi
+        .mocked(window.localStorage.setItem)
+        .mockImplementationOnce(() => {
+          throw new Error('storage unavailable');
+        });
+      try {
+        expect(() =>
+          api.trackTriggerExecutionRun('execution-1', 'project-1', 'run-1')
+        ).toThrow('storage unavailable');
+        expect(window.localStorage.getItem(BINDINGS_KEY)).toBeNull();
+        api.trackTriggerExecutionRun('execution-1', 'project-1', 'other-run');
+      } finally {
+        save.mockImplementation(originalSave);
+      }
+      const originalRemove = vi
+        .mocked(window.localStorage.removeItem)
+        .getMockImplementation()!;
+      const remove = vi
+        .mocked(window.localStorage.removeItem)
+        .mockImplementationOnce(() => {
+          throw new Error('storage unavailable');
+        });
+      try {
+        expect(() =>
+          api.forgetRejectedTriggerRun('execution-1', 'project-1', 'other-run')
+        ).toThrow('storage unavailable');
+        expect(() =>
+          api.trackTriggerExecutionRun('execution-1', 'project-1', 'run-1')
+        ).toThrow('different Run or account');
+        expect(window.localStorage.getItem(BINDINGS_KEY)).toContain(
+          'other-run'
+        );
+      } finally {
+        remove.mockImplementation(originalRemove);
+      }
+    });
+
+    it('bounds each pass to ten lookups and visits unchecked bindings on a later pass', async () => {
+      vi.useFakeTimers();
+      const api = await import('@/service/triggerApi');
+      for (let index = 0; index < 12; index += 1) {
+        api.trackTriggerExecutionRun(
+          `execution-${index}`,
+          'project-1',
+          `run-${index}`
+        );
+      }
+      mocks.fetchGet.mockRejectedValue(new Error('temporarily offline'));
+      await Promise.all([
+        api.flushPendingTriggerExecutionUpdates(),
+        api.flushPendingTriggerExecutionUpdates(),
+      ]);
+      expect(mocks.fetchGet).toHaveBeenCalledTimes(10);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await api.flushPendingTriggerExecutionUpdates();
+      expect(mocks.fetchGet).toHaveBeenCalledTimes(20);
+      expect(mocks.fetchGet.mock.calls[10][0]).toBe('/runs/run-10');
+      expect(mocks.fetchGet.mock.calls[11][0]).toBe('/runs/run-11');
+      expect(
+        JSON.parse(window.localStorage.getItem(BINDINGS_KEY)!)
+      ).toHaveLength(12);
+      expect(mocks.proxyFetchPut).not.toHaveBeenCalled();
     });
   });
 
-  // ─── proxyRetryTriggerExecution ──────────────────────────────────
+  it('serializes terminal delivery behind a previously issued Running update', async () => {
+    let releaseRunning!: () => void;
+    mocks.proxyFetchPut
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseRunning = resolve;
+          })
+      )
+      .mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
 
-  describe('proxyRetryTriggerExecution', () => {
-    it('should call proxyFetchPost to the retry sub-route', async () => {
-      const retryResponse = { execution_id: 'exec-retry', status: 'pending' };
-      mockProxyFetchPost.mockResolvedValueOnce(retryResponse);
+    const running = proxyUpdateTriggerExecution('execution-1', {
+      status: ExecutionStatus.Running,
+    });
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
 
-      const result = await proxyRetryTriggerExecution('exec-retry');
+    const completed = proxyUpdateTriggerExecution('execution-1', {
+      status: ExecutionStatus.Completed,
+    });
+    await Promise.resolve();
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
 
-      expect(mockProxyFetchPost).toHaveBeenCalledWith(
-        '/api/v1/execution/exec-retry/retry'
-      );
-      expect(result).toEqual(retryResponse);
+    releaseRunning();
+    await Promise.all([running, completed]);
+
+    expect(
+      mocks.proxyFetchPut.mock.calls.map(([, body]) => body.status)
+    ).toEqual([ExecutionStatus.Running, ExecutionStatus.Completed]);
+    await proxyUpdateTriggerExecution('execution-1', {
+      status: ExecutionStatus.Running,
+    });
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets a terminal receipt advance after a hung Running update times out', async () => {
+    vi.useFakeTimers();
+    mocks.proxyFetchPut
+      .mockImplementationOnce(
+        (
+          _url: string,
+          _body: unknown,
+          _headers: unknown,
+          options?: { signal?: AbortSignal }
+        ) =>
+          new Promise<void>((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          })
+      )
+      .mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+
+    const runningResult = proxyUpdateTriggerExecution('execution-hung', {
+      status: ExecutionStatus.Running,
+    }).catch((error) => error);
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
+    const completed = proxyUpdateTriggerExecution('execution-hung', {
+      status: ExecutionStatus.Completed,
     });
 
-    it('should log retry activity', async () => {
-      mockProxyFetchPost.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await completed;
 
-      await proxyRetryTriggerExecution('exec-retry');
+    expect(await runningResult).toMatchObject({ name: 'AbortError' });
+    expect(
+      mocks.proxyFetchPut.mock.calls.map(([, body]) => body.status)
+    ).toEqual([ExecutionStatus.Running, ExecutionStatus.Completed]);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
 
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-retry',
-        expect.objectContaining({
-          type: 'trigger_executed',
-          message: 'Execution exec-retry retry initiated',
-        })
-      );
-      expect(mockAddLog).toHaveBeenCalledWith(
-        expect.objectContaining({
-          executionId: 'exec-retry',
-          metadata: {
-            status: ExecutionStatus.Pending,
-            retried: true,
-          },
-        })
-      );
+  it('retries a terminal receipt after its network request times out', async () => {
+    vi.useFakeTimers();
+    mocks.proxyFetchPut
+      .mockImplementationOnce(
+        (
+          _url: string,
+          _body: unknown,
+          _headers: unknown,
+          options?: { signal?: AbortSignal }
+        ) =>
+          new Promise<void>((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          })
+      )
+      .mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+
+    const delivery = proxyUpdateTriggerExecution('execution-timeout', {
+      status: ExecutionStatus.Failed,
+      error_message: 'Run timed out',
     });
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
 
-    it('should pass triggerInfo to the log when provided', async () => {
-      mockProxyFetchPost.mockResolvedValueOnce({});
-      mockModifyLog.mockReturnValue(false);
+    await vi.advanceTimersByTimeAsync(10_250);
+    await delivery;
 
-      const triggerInfo = {
-        triggerId: 10,
-        triggerName: 'Hourly Sync',
-        projectId: 'proj-x',
-      };
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
 
-      await proxyRetryTriggerExecution('exec-retry-info', triggerInfo);
+  it('replays an exhausted terminal delivery from the durable outbox', async () => {
+    vi.useFakeTimers();
+    mocks.proxyFetchPut.mockRejectedValue(new Error('temporarily unavailable'));
+    const firstModule = await import('@/service/triggerApi');
 
-      expect(mockModifyLog).toHaveBeenCalledWith(
-        'exec-retry-info',
-        expect.objectContaining({
-          triggerId: 10,
-          triggerName: 'Hourly Sync',
-          projectId: 'proj-x',
-        })
-      );
+    const firstDelivery = firstModule.proxyUpdateTriggerExecution(
+      'execution-durable',
+      {
+        status: ExecutionStatus.Failed,
+        error_message: 'Run failed',
+      }
+    );
+    await vi.runAllTimersAsync();
+    await firstDelivery;
+
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(3);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toContain(
+      'execution-durable'
+    );
+
+    vi.useRealTimers();
+    vi.resetModules();
+    mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+    const recoveredModule = await import('@/service/triggerApi');
+
+    await recoveredModule.flushPendingTriggerExecutionUpdates();
+
+    expect(mocks.proxyFetchPut).toHaveBeenCalledWith(
+      '/api/v1/execution/execution-durable',
+      expect.objectContaining({ status: ExecutionStatus.Failed }),
+      undefined,
+      expect.objectContaining({ signal: expect.anything() })
+    );
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+
+  it('coalesces pending same-outcome tokens without changing the first receipt', async () => {
+    let releaseRunning!: () => void;
+    mocks.proxyFetchPut
+      .mockReset()
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => (releaseRunning = resolve))
+      )
+      .mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+    const running = proxyUpdateTriggerExecution('pending-tokens', {
+      status: ExecutionStatus.Running,
     });
-
-    it('should re-throw on error', async () => {
-      mockProxyFetchPost.mockRejectedValueOnce(new Error('Retry failed'));
-
-      await expect(proxyRetryTriggerExecution('exec-retry')).rejects.toThrow(
-        'Retry failed'
-      );
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
+    const canonical = proxyUpdateTriggerExecution('pending-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 0,
+      completed_at: '2026-09-18T00:00:00Z',
+      output_data: { result: 'accepted' },
     });
+    const legacy = proxyUpdateTriggerExecution('pending-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+      completed_at: '2026-09-19T00:00:00Z',
+      output_data: { result: 'late' },
+      error_message: 'must not replace the receipt',
+    });
+    expect(
+      JSON.parse(window.localStorage.getItem(OUTBOX_KEY)!)[0].updateData
+    ).toEqual({
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+      completed_at: '2026-09-18T00:00:00Z',
+      output_data: { result: 'accepted' },
+    });
+    releaseRunning();
+    await Promise.all([running, canonical, legacy]);
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+    expect(mocks.proxyFetchPut.mock.calls[1][1].tokens_used).toBe(123);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+
+  it('retains richer tokens while the older terminal receipt is in flight', async () => {
+    let releaseCanonical!: () => void;
+    let releaseLegacy!: () => void;
+    mocks.proxyFetchPut
+      .mockReset()
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => (releaseCanonical = resolve))
+      )
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => (releaseLegacy = resolve))
+      );
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+    const canonical = proxyUpdateTriggerExecution('inflight-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 0,
+    });
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
+    const legacy = proxyUpdateTriggerExecution('inflight-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+    });
+    const lower = proxyUpdateTriggerExecution('inflight-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 40,
+    });
+    await proxyUpdateTriggerExecution('inflight-tokens', {
+      status: ExecutionStatus.Failed,
+      tokens_used: 999,
+    });
+    expect(mocks.proxyFetchPut.mock.calls[0][1].tokens_used).toBe(0);
+    releaseCanonical();
+    await canonical;
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2)
+    );
+    expect(
+      JSON.parse(window.localStorage.getItem(OUTBOX_KEY)!)[0].updateData
+    ).toEqual({ status: ExecutionStatus.Completed, tokens_used: 123 });
+    releaseLegacy();
+    await Promise.all([legacy, lower]);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+
+  it('enriches an already-delivered terminal outcome exactly once', async () => {
+    mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+    await proxyUpdateTriggerExecution('delivered-tokens', {
+      status: ExecutionStatus.Failed,
+      tokens_used: 0,
+      error_message: 'original failure',
+      duration_seconds: 8,
+    });
+    await proxyUpdateTriggerExecution('delivered-tokens', {
+      status: ExecutionStatus.Failed,
+      tokens_used: 123,
+      error_message: 'late different failure',
+      duration_seconds: 88,
+    });
+    for (const tokens of [0, 10, 123]) {
+      await proxyUpdateTriggerExecution('delivered-tokens', {
+        status: ExecutionStatus.Failed,
+        tokens_used: tokens,
+      });
+    }
+    await proxyUpdateTriggerExecution('delivered-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 999,
+    });
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+    expect(mocks.proxyFetchPut.mock.calls[1][1]).toEqual({
+      status: ExecutionStatus.Failed,
+      tokens_used: 123,
+      error_message: 'original failure',
+      duration_seconds: 8,
+    });
+  });
+
+  it('advances to richer tokens after an older request times out and resolves late', async () => {
+    vi.useFakeTimers();
+    let releaseOlderRequest!: () => void;
+    mocks.proxyFetchPut
+      .mockReset()
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => (releaseOlderRequest = resolve))
+      )
+      .mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+    const canonical = proxyUpdateTriggerExecution('timeout-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 0,
+    });
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
+    const legacy = proxyUpdateTriggerExecution('timeout-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+    });
+    await vi.advanceTimersByTimeAsync(10_250);
+    await Promise.all([canonical, legacy]);
+    releaseOlderRequest();
+    await Promise.resolve();
+    expect(
+      mocks.proxyFetchPut.mock.calls.map(([, body]) => body.tokens_used)
+    ).toEqual([0, 123]);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+    await proxyUpdateTriggerExecution('timeout-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 100,
+    });
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists failed token enrichment and restores its maximum after restart', async () => {
+    vi.useFakeTimers();
+    mocks.proxyFetchPut
+      .mockReset()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValue(new Error('offline'));
+    const firstModule = await import('@/service/triggerApi');
+    await firstModule.proxyUpdateTriggerExecution('restart-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 0,
+      output_data: { result: 'accepted' },
+    });
+    const enrichment = firstModule.proxyUpdateTriggerExecution(
+      'restart-tokens',
+      {
+        status: ExecutionStatus.Completed,
+        tokens_used: 123,
+        output_data: { result: 'late' },
+      }
+    );
+    await vi.runAllTimersAsync();
+    await enrichment;
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(4);
+
+    vi.resetModules();
+    mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+    const recovered = await import('@/service/triggerApi');
+    await recovered.proxyUpdateTriggerExecution('restart-tokens', {
+      status: ExecutionStatus.Failed,
+      tokens_used: 999,
+    });
+    await recovered.proxyUpdateTriggerExecution('restart-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 1,
+    });
+    await recovered.flushPendingTriggerExecutionUpdates();
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
+    expect(mocks.proxyFetchPut.mock.calls[0][1]).toEqual({
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+      output_data: { result: 'accepted' },
+    });
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+});
+
+describe('Space trigger listing on older servers', () => {
+  it('filters all pages locally when the server ignores space_id', async () => {
+    const http = await import('@/api/http');
+    const get = vi.mocked(http.proxyFetchGet);
+    get.mockReset();
+    const { useSpaceStore } = await import('@/store/spaceStore');
+    vi.spyOn(useSpaceStore.getState(), 'getProjectMeta').mockImplementation(
+      (id) => (id === 'legacy-session' ? ({ spaceId: 'space-1' } as any) : null)
+    );
+    get.mockResolvedValueOnce({
+      items: Array.from({ length: 100 }, (_, id) => ({
+        id,
+        space_id: 'space-2',
+      })),
+      total: 102,
+    });
+    get.mockResolvedValueOnce({
+      items: [
+        { id: 100, space_id: 'space-1' },
+        { id: 101, space_id: null, project_id: 'legacy-session' },
+      ],
+      total: 102,
+    });
+    const { proxyFetchSpaceTriggers } = await import('@/service/triggerApi');
+    const result = await proxyFetchSpaceTriggers('space-1');
+    expect(result.items.map((item) => item.id)).toEqual([100, 101]);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Automation Session name', () => {
+  it('saves the shown name through the Session name route', async () => {
+    mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+    const { proxySaveAutomationSessionName } =
+      await import('@/service/triggerApi');
+    await proxySaveAutomationSessionName('session-1', 'Automation: A & B');
+    expect(mocks.proxyFetchPut).toHaveBeenCalledWith(
+      '/api/v1/chat/project/session-1/name?new_name=Automation%3A%20A%20%26%20B'
+    );
   });
 });

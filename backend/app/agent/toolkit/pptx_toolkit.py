@@ -29,6 +29,10 @@ from app.utils.listen.toolkit_listen import (
     auto_listen_toolkit,
     listen_toolkit,
 )
+from app.utils.space_overlay_client import (
+    relative_to_artifact_root,
+    run_context_for_task,
+)
 
 
 @auto_listen_toolkit(BasePPTXToolkit)
@@ -50,10 +54,9 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BasePPTXToolkit.create_presentation,
-        lambda _,
-        content,
-        filename,
-        template=None: f"create presentation with content: {content}, filename: {filename}, template: {template}",
+        lambda _, content, filename, template=None: (
+            f"create presentation with content: {content}, filename: {filename}, template: {template}"
+        ),
     )
     def create_presentation(
         self, content: str, filename: str, template: str | None = None
@@ -64,6 +67,12 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
         file_path = self._resolve_filepath(filename)
         res = super().create_presentation(content, filename, template)
         if "PowerPoint presentation successfully created" in res:
+            run_context = run_context_for_task(self.api_task_id)
+            relative_path = (
+                relative_to_artifact_root(run_context, file_path)
+                if run_context is not None
+                else None
+            )
             task_lock = get_task_lock(self.api_task_id)
             # Capture ContextVar value before creating async task
             current_process_task_id = process_task.get("")
@@ -74,6 +83,7 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
                 ActionWriteFileData(
                     process_task_id=current_process_task_id,
                     data=str(file_path),
+                    relative_path=relative_path,
                 ),
             )
         return res

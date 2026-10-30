@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { FilePreviewPayload } from '../shared/filePreviewContract';
 import type {
   AgentMessageStatusType,
   AgentStatusType,
@@ -32,7 +33,29 @@ declare global {
     task_id?: string;
     project_id?: string;
     isFolder?: boolean;
+    isRemote?: boolean;
     relativePath?: string;
+    artifactChange?: 'generated' | 'changed';
+    size?: number;
+    modifiedAt?: number;
+    mimeType?: string;
+    supportsRanges?: boolean;
+    preview?: FilePreviewPayload;
+    /** Stable identity from the canonical Artifact event stream. */
+    artifactId?: string;
+    /** Only agent-generated outputs may be uploaded automatically. */
+    uploadPolicy?: 'agent_generated' | 'metadata_only';
+    /** False for Cloud-restored metadata whose local path was redacted. */
+    localPathAvailable?: boolean;
+    /** Durable Cloud asset reference populated after upload succeeds. */
+    assetRef?: {
+      chatFileId?: number;
+      bucket?: string;
+      key: string;
+      filename?: string;
+      size?: number;
+      contentType?: string;
+    };
   }
 
   interface ProjectInfo {
@@ -45,6 +68,8 @@ declare global {
 
   interface TaskInfo {
     report?: string | undefined;
+    /** Recovered Journal display excerpt, not a complete subtask report. */
+    reportTruncated?: boolean;
     id: string;
     content: string;
     status?: TaskStatusType;
@@ -65,6 +90,8 @@ declare global {
   interface File {
     fileName: string;
     filePath: string;
+    fileId?: string;
+    source?: 'local' | 'upload';
   }
 
   type AgentStatus = AgentStatusType;
@@ -92,12 +119,18 @@ declare global {
       tools: any;
       mcp_tools: any;
       selectedTools: any;
+      model_provider_id?: number;
     };
   }
 
   interface Message {
     id: string;
+    /** Source message/event identity, independent of the generated UI id. */
+    feedbackMessageId?: string;
     role: 'user' | 'agent';
+    errorReason?: import('@/lib/usageErrors').ErrorReason;
+    /** This error stopped an Attempt that Resume can continue. */
+    resumable?: boolean;
     content: string;
     step?: AgentStepType;
     agent_id?: string;
@@ -114,9 +147,23 @@ declare global {
     summary?: string;
     agent_name?: string;
     attaches?: File[];
+    interaction?: import('@/service/humanInteractionApi').HumanInteractionPayload;
+    /** Explicit ASK identity for a user response retained in legacy history. */
+    interactionResponseTo?: string;
+    /** Receipt provenance for display; unlinked legacy evidence is retained. */
+    interactionResponseSource?: 'canonical' | 'legacy';
   }
 
   interface AgentMessage {
+    /** Retained when a canonical event enters the legacy message reducer. */
+    feedbackMessageId?: string;
+    event_id?: string;
+    /** Committed RunJournal receipt for a live legacy message. */
+    source_event_id?: string;
+    timestamp?: number | null;
+    created_at?: string | null;
+    /** Per-Run receive order used to merge legacy per-agent work logs. */
+    timelineSequence?: number;
     step: AgentStepType;
     data: {
       project_id?: string;
@@ -124,8 +171,16 @@ declare global {
       tokens?: number;
       sub_tasks?: TaskInfo[];
       summary_task?: string;
+      project_name?: string;
+      project_summary?: string;
       content?: string;
       notice?: string;
+      message_title?: string;
+      message_description?: string;
+      notice_id?: string;
+      purpose?: 'progress' | 'result' | 'decision' | 'status';
+      severity?: 'info' | 'success' | 'warning' | 'error';
+      tool_call_id?: string;
       answer?: string;
       agent_name?: string;
       agent_id?: string;
@@ -135,17 +190,49 @@ declare global {
       method_name?: string;
       state?: string;
       message?: string;
+      retryable?: boolean;
+      reason?: string | null;
       question?: string;
+      reply?: string;
       agent?: string;
       file_path?: string;
       process_task_id?: string;
+      request_index?: number;
+      response_id?: string;
+      step_total_tokens?: number;
       output?: string;
       result?: string;
       tools?: string[];
+      todos?: {
+        id: string;
+        content: string;
+        active_form?: string;
+        status: 'pending' | 'in_progress' | 'completed';
+      }[];
       //Context Length
       current_length?: number;
       max_length?: number;
       text?: string;
+      interaction_id?: string;
+      interaction_type?: import('@/service/humanInteractionApi').HumanInteractionPayload['interaction_type'];
+      run_id?: string;
+      version?: number;
+      approval_id?: string;
+      action_digest?: string;
+      title?: string;
+      operation?: string;
+      safety_class?: string;
+      target_resources?: string[];
+      artifacts?: Array<Record<string, unknown>>;
+      artifact_id?: string;
+      asset_ref?: Record<string, unknown>;
+      artifact_count?: number;
+      scan_status?: string;
+      truncated?: boolean;
+      manifest_digest?: string;
+      allowed_scopes?: import('@/service/humanInteractionApi').InteractionDecisionScope[];
+      options?: import('@/service/humanInteractionApi').HumanInteractionPayload['options'];
+      fields?: import('@/service/humanInteractionApi').HumanInteractionPayload['fields'];
     };
     status?: AgentMessageStatusType;
   }
@@ -155,7 +242,8 @@ declare global {
     | 'browser_agent'
     | 'document_agent'
     | 'multi_modal_agent'
-    | 'social_media_agent';
+    | 'social_media_agent'
+    | 'single_agent';
 
   interface AgentNameMap {
     developer_agent: 'Developer Agent';
@@ -163,6 +251,7 @@ declare global {
     document_agent: 'Document Agent';
     multi_modal_agent: 'Multi Modal Agent';
     social_media_agent: 'Social Media Agent';
+    single_agent: 'CAMEL Agent';
   }
   type WorkspaceType =
     | 'workflow'

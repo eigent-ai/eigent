@@ -41,14 +41,14 @@ class SlackOAuthAdapter(OAuthAdapter):
         self.scope = env("SLACK_SCOPE", "chat:write,channels:read,channels:join,groups:read,im:write")
 
     def get_authorize_url(self, state: str | None = None) -> str | None:
-        url = (
-            f"https://slack.com/oauth/v2/authorize?client_id={self.client_id}"
-            f"&scope={self.scope}"
-            f"&redirect_uri={self.redirect_uri}"
-        )
+        params = {
+            "client_id": self.client_id,
+            "scope": self.scope,
+            "redirect_uri": self.redirect_uri,
+        }
         if state:
-            url += f"&state={state}"
-        return url
+            params["state"] = state
+        return f"https://slack.com/oauth/v2/authorize?{urlencode(params)}"
 
     def fetch_token(self, code: str | None) -> dict[str, Any] | None:
         if not code:
@@ -73,15 +73,15 @@ class NotionOAuthAdapter(OAuthAdapter):
         self.scope = env("NOTION_SCOPE", "")  # Notion目前scope可为空
 
     def get_authorize_url(self, state: str | None = None) -> str | None:
-        url = (
-            f"https://api.notion.com/v1/oauth/authorize?client_id={self.client_id}"
-            f"&owner=user"
-            f"&response_type=code"
-            f"&redirect_uri={self.redirect_uri}"
-        )
+        params = {
+            "client_id": self.client_id,
+            "owner": "user",
+            "response_type": "code",
+            "redirect_uri": self.redirect_uri,
+        }
         if state:
-            url += f"&state={state}"
-        return url
+            params["state"] = state
+        return f"https://api.notion.com/v1/oauth/authorize?{urlencode(params)}"
 
     def fetch_token(self, code: str | None) -> dict[str, Any] | None:
         if not code:
@@ -110,17 +110,17 @@ class XOAuthAdapter(OAuthAdapter):
     def get_authorize_url(
         self, state: str | None = None, code_challenge: str | None = None, code_challenge_method: str = "plain"
     ) -> str | None:
-        # code_challenge建议由外部生成并传入，PKCE安全
-        url = (
-            f"https://twitter.com/i/oauth2/authorize?response_type=code"
-            f"&client_id={self.client_id}"
-            f"&redirect_uri={self.redirect_uri}"
-            f"&scope={self.scope.replace(' ', '%20')}"
-            f"&state={state or ''}"
-        )
+        params = {
+            "response_type": "code",
+            "client_id": self.client_id,
+            "redirect_uri": self.redirect_uri,
+            "scope": self.scope,
+            "state": state or "",
+        }
         if code_challenge:
-            url += f"&code_challenge={code_challenge}&code_challenge_method={code_challenge_method}"
-        return url
+            params["code_challenge"] = code_challenge
+            params["code_challenge_method"] = code_challenge_method
+        return f"https://twitter.com/i/oauth2/authorize?{urlencode(params)}"
 
     def fetch_token(self, code: str | None, code_verifier: str | None = None) -> dict[str, Any] | None:
         if not code:
@@ -152,18 +152,17 @@ class GoogleSuiteOAuthAdapter(OAuthAdapter):
         )
 
     def get_authorize_url(self, state: str | None = None) -> str | None:
-        url = (
-            f"https://accounts.google.com/o/oauth2/v2/auth?"
-            f"client_id={self.client_id}"
-            f"&redirect_uri={self.redirect_uri}"
-            f"&response_type=code"
-            f"&scope={self.scope.replace(' ', '%20')}"
-            f"&access_type=offline"
-            f"&include_granted_scopes=true"
-        )
+        params = {
+            "client_id": self.client_id,
+            "redirect_uri": self.redirect_uri,
+            "response_type": "code",
+            "scope": self.scope,
+            "access_type": "offline",
+            "include_granted_scopes": "true",
+        }
         if state:
-            url += f"&state={state}"
-        return url
+            params["state"] = state
+        return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
     def fetch_token(self, code: str | None) -> dict[str, Any] | None:
         if not code:

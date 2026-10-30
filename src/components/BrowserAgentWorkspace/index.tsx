@@ -13,7 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchPut } from '@/api/http';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
+import { useHost } from '@/host';
 import { TaskStatus } from '@/types/constants';
 import {
   ArrowDown,
@@ -28,56 +31,60 @@ import {
   Image,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
 
 export default function BrowserAgentWorkspace() {
+  const { t } = useTranslation();
   //Get Chatstore for the active project's task
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { chatStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
+  const host = useHost();
 
   const [isSingleMode, setIsSingleMode] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const agentMap = {
     developer_agent: {
-      name: 'Developer Agent',
-      icon: <CodeXml size={16} className="text-text-primary" />,
+      name: t('layout.developer-agent'),
+      icon: <DsIcon icon={CodeXml} className="text-ds-ink-default-default" />,
       textColor: 'text-emerald-700',
-      bgColor: 'bg-bg-fill-coding-active',
-      shapeColor: 'bg-bg-fill-coding-default',
-      borderColor: 'border-bg-fill-coding-active',
+      bgColor: 'bg-ds-bg-terminal-default-default',
+      shapeColor: 'bg-ds-bg-terminal-subtle-default',
+      borderColor: 'border-ds-border-terminal-default-default',
       bgColorLight: 'bg-emerald-200',
     },
     browser_agent: {
-      name: 'Browser Agent',
-      icon: <Globe size={16} className="text-text-primary" />,
+      name: t('layout.browser-agent'),
+      icon: <DsIcon icon={Globe} className="text-ds-ink-default-default" />,
       textColor: 'text-blue-700',
-      bgColor: 'bg-bg-fill-browser-active',
-      shapeColor: 'bg-bg-fill-browser-default',
-      borderColor: 'border-bg-fill-browser-active',
+      bgColor: 'bg-ds-bg-browser-default-default',
+      shapeColor: 'bg-ds-bg-browser-subtle-default',
+      borderColor: 'border-ds-border-browser-default-default',
       bgColorLight: 'bg-blue-200',
     },
     document_agent: {
-      name: 'Document Agent',
-      icon: <FileText size={16} className="text-text-primary" />,
+      name: t('layout.document-agent'),
+      icon: <DsIcon icon={FileText} className="text-ds-ink-default-default" />,
       textColor: 'text-yellow-700',
-      bgColor: 'bg-bg-fill-writing-active',
-      shapeColor: 'bg-bg-fill-writing-default',
-      borderColor: 'border-bg-fill-writing-active',
+      bgColor: 'bg-ds-bg-document-default-default',
+      shapeColor: 'bg-ds-bg-document-subtle-default',
+      borderColor: 'border-ds-border-document-default-default',
       bgColorLight: 'bg-yellow-200',
     },
     multi_modal_agent: {
-      name: 'Multi Modal Agent',
-      icon: <Image size={16} className="text-text-primary" />,
+      name: t('layout.multi-modal-agent'),
+      icon: <DsIcon icon={Image} className="text-ds-ink-default-default" />,
       textColor: 'text-fuchsia-700',
-      bgColor: 'bg-bg-fill-multimodal-active',
-      shapeColor: 'bg-bg-fill-multimodal-default',
-      borderColor: 'border-bg-fill-multimodal-active',
+      bgColor: 'bg-ds-neutral-default-default',
+      shapeColor: 'bg-ds-neutral-subtle-default',
+      borderColor: 'border-ds-hairline-default-default',
       bgColorLight: 'bg-fuchsia-200',
     },
     social_media_agent: {
-      name: 'Social Media Agent',
-      icon: <Bird size={16} className="text-text-primary" />,
+      name: t('layout.social-media-agent'),
+      icon: <DsIcon icon={Bird} className="text-ds-ink-default-default" />,
       textColor: 'text-purple-700',
       bgColor: 'bg-violet-700',
       shapeColor: 'bg-violet-300',
@@ -86,9 +93,10 @@ export default function BrowserAgentWorkspace() {
     },
   };
   // Extract complex expressions to avoid lint error in dependency array
-  const activeTaskId = chatStore?.activeTaskId as string;
-  const taskAssigning = chatStore?.tasks[activeTaskId]?.taskAssigning;
-  const activeWorkspace = chatStore?.tasks[activeTaskId]?.activeWorkspace;
+  const targetChatStore = chatStore;
+  const activeTaskId = targetChatStore?.activeTaskId as string;
+  const taskAssigning = targetChatStore?.tasks[activeTaskId]?.taskAssigning;
+  const activeWorkspace = targetChatStore?.tasks[activeTaskId]?.activeWorkspace;
 
   // Derive activeAgent from taskAssigning and activeWorkspace (no setState in effect)
   const activeAgent = useMemo(() => {
@@ -104,18 +112,18 @@ export default function BrowserAgentWorkspace() {
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const rect = webviewContainer.getBoundingClientRect();
-      window.electronAPI.setSize({
+      host?.electronAPI?.setSize?.({
         x: rect.left,
         y: rect.top,
         width: rect.width,
         height: rect.height,
       });
     }
-  }, []);
+  }, [host]);
 
   const handleTakeControl = (id: string) => {
     console.log('handleTakeControl', id);
-    fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+    fetchPut(`/task/${sessionProjectId}/take-control`, {
       action: 'pause',
     });
 
@@ -123,19 +131,12 @@ export default function BrowserAgentWorkspace() {
     setTimeout(() => {
       getSize();
       // show corresponding webview
-      window.electronAPI.showWebview(id);
+      host?.electronAPI?.showWebview?.(id);
     }, 400);
   };
 
   // listen to webview container size
   useEffect(() => {
-    if (!projectStore.activeProjectId) {
-      projectStore.createProject('new project');
-      console.warn(
-        'No active projectId found in WorkSpace, creating a new project'
-      );
-    }
-
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const resizeObserver = new ResizeObserver(() => {
@@ -147,43 +148,43 @@ export default function BrowserAgentWorkspace() {
         resizeObserver.disconnect();
       };
     }
-  }, [projectStore, getSize]);
+  }, [getSize]);
 
   const [_url, setUrl] = useState('');
 
   useEffect(() => {
-    window.ipcRenderer?.on('url-updated', (_event: any, newUrl: any) => {
+    host?.ipcRenderer?.on('url-updated', (_event: any, newUrl: any) => {
       setUrl(newUrl);
     });
 
     // optional: clear listener when uninstall
     return () => {
-      window.ipcRenderer.removeAllListeners('url-updated');
+      host?.ipcRenderer?.removeAllListeners?.('url-updated');
     };
-  }, []);
+  }, [host]);
 
-  if (!chatStore) {
+  if (!targetChatStore) {
     return <div>Loading...</div>;
   }
 
   return isTakeControl ? (
-    <div className="flex h-full w-full flex-col items-center justify-start rounded-xl border border-solid border-border-success bg-menutabs-bg-default">
+    <div className="flex h-full w-full flex-col items-center justify-start rounded-xl border border-x border-y border-solid border-ds-border-status-completed-default-default bg-ds-neutral-strong-default">
       <div className="flex w-full items-start justify-start gap-sm p-sm">
-        <div className="rounded-full border border-solid border-border-primary bg-transparent p-1">
+        <div className="rounded-full border border-x border-y border-solid border-ds-hairline-strong-default bg-transparent p-1">
           <Button
             onClick={() => {
-              fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+              fetchPut(`/task/${sessionProjectId}/take-control`, {
                 action: 'resume',
               });
               setIsTakeControl(false);
-              window.electronAPI.hideAllWebview();
+              host?.electronAPI?.hideAllWebview?.();
             }}
             size="sm"
             variant="success"
             className="rounded-full"
           >
-            <ChevronLeft size={16} />
-            <span>Give back to Agent</span>
+            <DsIcon icon={ChevronLeft} />
+            <span>{t('chat.give-back-to-agent')}</span>
           </Button>
         </div>
         {/* <div className="mx-2 bg-border-primary">{url}</div> */}
@@ -191,26 +192,22 @@ export default function BrowserAgentWorkspace() {
       <div id="webview-container" className="h-full w-full"></div>
     </div>
   ) : (
-    <div
-      className={`flex h-full w-full flex-1 items-center justify-center transition-all duration-300 ease-in-out`}
-    >
-      <div className="blur-bg relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-surface-secondary">
-        <div className="flex flex-shrink-0 items-center justify-between rounded-t-2xl px-2 pb-2 pt-3">
+    <div className="flex h-full w-full flex-1 items-center justify-center">
+      <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-ds-neutral-default-default backdrop-blur-sm">
+        <div className="flex shrink-0 items-center justify-between rounded-t-2xl px-2 pt-3 pb-2">
           <div className="flex items-center justify-start gap-sm">
             <Button
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               variant="ghost"
               onClick={() => {
-                chatStore.setActiveWorkspace(
-                  chatStore.activeTaskId as string,
-                  'workflow'
-                );
+                targetChatStore.setActiveWorkspace(activeTaskId, 'workflow');
               }}
             >
-              <ChevronLeft size={16} />
+              <DsIcon recipe="main-compact" icon={ChevronLeft} />
             </Button>
             <div
-              className={`text-base font-bold leading-snug ${
+              className={`text-base leading-snug font-bold ${
                 agentMap[activeAgent?.type as keyof typeof agentMap]?.textColor
               }`}
             >
@@ -255,7 +252,7 @@ export default function BrowserAgentWorkspace() {
                 ).length || 0
               }
             />
-            {/* <div className="text-[10px] leading-17 font-medium text-text-tertiary">
+            {/* <div className="text-[10px] leading-17 font-medium text-ds-ink-muted-default">
 							{
 								activeAgent?.tasks?.filter(
 									(task) => task.status && task.status !== "running"
@@ -285,15 +282,17 @@ export default function BrowserAgentWorkspace() {
                   alt=""
                   className="h-full w-full rounded-b-2xl object-contain"
                 />
-                <div className="bg-black/20 pointer-events-none absolute inset-0 flex h-full w-full items-center justify-center rounded-b-lg opacity-0 transition-all group-hover:opacity-100">
+                <div className="bg-dialog-overlay-dark pointer-events-none absolute inset-0 flex h-full w-full items-center justify-center rounded-b-lg opacity-0 transition-opacity group-hover:opacity-[0.67]">
                   <Button
                     size="sm"
                     variant="primary"
                     className="cursor-pointer rounded-full"
                   >
-                    <Hand size={24} />
-                    <span className="text-base font-medium leading-9">
-                      Take Control
+                    <DsIcon icon={Hand} />
+                    <span className="text-base leading-9 font-medium">
+                      {t('chat.take-control', {
+                        defaultValue: 'Take Control',
+                      })}
                     </span>
                   </Button>
                 </div>
@@ -333,16 +332,18 @@ export default function BrowserAgentWorkspace() {
                           activeAgent?.activeWebviewIds?.[0]?.id || ''
                         )
                       }
-                      className="bg-black/20 pointer-events-none absolute inset-0 flex h-full w-full items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-100"
+                      className="bg-dialog-overlay-dark pointer-events-none absolute inset-0 flex h-full w-full items-center justify-center rounded-lg opacity-0 transition-opacity group-hover:opacity-[0.67]"
                     >
                       <Button
                         size="sm"
                         variant="primary"
                         className="cursor-pointer rounded-full"
                       >
-                        <Hand size={24} />
-                        <span className="text-base font-medium leading-9">
-                          Take Control
+                        <DsIcon icon={Hand} />
+                        <span className="text-base leading-9 font-medium">
+                          {t('chat.take-control', {
+                            defaultValue: 'Take Control',
+                          })}
                         </span>
                       </Button>
                     </div>
@@ -352,9 +353,10 @@ export default function BrowserAgentWorkspace() {
           </div>
         )}
         {activeAgent?.activeWebviewIds?.length !== 1 && (
-          <div className="z-100 absolute bottom-2 right-2 flex w-auto items-center gap-1 rounded-lg border border-solid border-border-primary bg-menutabs-bg-default p-1">
+          <div className="absolute right-2 bottom-2 z-100 flex w-auto items-center gap-1 rounded-lg border border-x border-y border-solid border-ds-hairline-strong-default bg-ds-neutral-strong-default p-1">
             <Button
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               variant="ghost"
               onClick={() => {
                 if (scrollContainerRef.current) {
@@ -375,10 +377,11 @@ export default function BrowserAgentWorkspace() {
                 }
               }}
             >
-              <ArrowDown size={16} />
+              <DsIcon icon={ArrowDown} />
             </Button>
             <Button
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               variant="ghost"
               onClick={() => {
                 if (scrollContainerRef.current) {
@@ -396,10 +399,11 @@ export default function BrowserAgentWorkspace() {
                 }
               }}
             >
-              <ArrowUp size={16} />
+              <DsIcon icon={ArrowUp} />
             </Button>
             <Button
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               variant="ghost"
               onClick={() => {
                 setIsSingleMode(!isSingleMode);
@@ -411,7 +415,7 @@ export default function BrowserAgentWorkspace() {
                 }
               }}
             >
-              <GalleryThumbnails size={16} />
+              <DsIcon icon={GalleryThumbnails} />
             </Button>
           </div>
         )}

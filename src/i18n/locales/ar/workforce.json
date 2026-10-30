@@ -1,13 +1,14 @@
 {
-  "your-ai-workforce": "قوة العمل الذكية الاصطناعية الخاصة بك",
-  "new-worker": "عامل جديد",
+  "your-ai-workforce": "فريق عملك بالذكاء الاصطناعي",
+  "new-worker": "وكيل جديد",
   "edit": "تعديل",
-  "configure-mcp-server": "تكوين خادم مسيبي",
-  "add-your-agent": "إضافة خادم مسيبي",
+  "configure-mcp-server": "إعداد خادم MCP",
+  "add-your-agent": "إضافة وكيلك",
   "cancel": "إلغاء",
   "save-changes": "حفظ التغييرات",
   "description-optional": "الوصف (اختياري)",
   "agent-tool": "أداة الوكيل",
+  "agent-tool-tooltip": "اختر الأدوات والتكاملات لوكيلك",
   "share": "مشاركة",
   "advanced-model-config": "إعدادات النموذج المتقدمة",
   "use-custom-model": "استخدام إعدادات نموذج مخصصة",
@@ -16,5 +17,8 @@
   "model-type": "نوع النموذج",
   "model-type-placeholder": "مثال: gpt-4o-mini",
   "worker-name-cannot-be-empty": "لا يمكن أن يكون اسم العامل فارغًا",
-  "worker-name-already-exists": "اسم العامل موجود بالفعل"
+  "worker-name-already-exists": "اسم العامل موجود بالفعل",
+  "detail": "التفاصيل",
+  "duplicate": "تكرار",
+  "delete": "حذف"
 }

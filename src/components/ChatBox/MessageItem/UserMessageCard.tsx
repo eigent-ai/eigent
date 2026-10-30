@@ -12,45 +12,66 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
-import { Check, Copy, FileText, Image, Sparkles } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import {
+  Check,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Copy,
+  FileText,
+  Image,
+  Pencil,
+} from 'lucide-react';
+import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
+import { DsIcon } from '../../ui/ds-icon';
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover';
+import { UserMessageRichContent } from './UserMessageRichContent';
 
 const COPIED_RESET_MS = 2000;
 
-const SKILL_TAG_REGEX = /\{\{([^}]+)\}\}/g;
+/** Four lines at `body-sm` line height — same tokens as `text-ds-text-base` (13px / 20px). */
+const USER_MESSAGE_COLLAPSED_MAX = 'calc(4 * var(--lineHeight-14, 20px))';
 
-function parseContentWithSkillTags(
-  content: string
-): Array<{ type: 'text'; value: string } | { type: 'skill'; name: string }> {
-  const nodes: Array<
-    { type: 'text'; value: string } | { type: 'skill'; name: string }
-  > = [];
-  let lastIndex = 0;
-  let m: RegExpExecArray | null;
-  SKILL_TAG_REGEX.lastIndex = 0;
-  while ((m = SKILL_TAG_REGEX.exec(content)) !== null) {
-    if (m.index > lastIndex) {
-      nodes.push({ type: 'text', value: content.slice(lastIndex, m.index) });
-    }
-    nodes.push({ type: 'skill', name: m[1].trim() });
-    lastIndex = m.index + m[0].length;
-  }
-  if (lastIndex < content.length) {
-    nodes.push({ type: 'text', value: content.slice(lastIndex) });
-  }
-  return nodes.length > 0 ? nodes : [{ type: 'text', value: content }];
+/** SVG alpha mask: CSS linear-gradient masks are often treated as luminance in WebKit/Chromium (black = hole), which reads as a flat white slab. */
+const USER_MESSAGE_FOLD_MASK_DATA_URL = `url("data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" preserveAspectRatio="none"><defs><linearGradient id="g" gradientUnits="objectBoundingBox" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="white"/><stop offset="50%" stop-color="white" stop-opacity="0.55"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient></defs><rect width="1" height="1" fill="url(#g)"/></svg>'
+)}")`;
+
+const USER_MESSAGE_FOLD_FADE_STYLE = {
+  maskImage: USER_MESSAGE_FOLD_MASK_DATA_URL,
+  WebkitMaskImage: USER_MESSAGE_FOLD_MASK_DATA_URL,
+  maskSize: '100% 100%',
+  WebkitMaskSize: '100% 100%',
+  maskRepeat: 'no-repeat',
+  WebkitMaskRepeat: 'no-repeat',
+} as const;
+
+export interface UserMessageAttachment {
+  fileName: string;
+  /** Trusted local path. Durable display-only attachments intentionally omit it. */
+  filePath?: string;
+}
+
+/** A sent user message offered back to the composer for an edited copy. */
+export interface EditUserMessageSource {
+  id: string;
+  content: string;
+  attaches?: readonly { fileName: string; filePath?: string }[];
 }
 
 interface UserMessageCardProps {
   id: string;
   content: string;
   className?: string;
-  attaches?: File[];
+  attaches?: readonly UserMessageAttachment[];
+  createdAt?: string | number | null;
+  onEditAndResend?: () => void;
+  /** Nested in a row that already marks the user query for scroll anchoring. */
+  embedded?: boolean;
 }
 
 export function UserMessageCard({
@@ -58,12 +79,65 @@ export function UserMessageCard({
   content,
   className,
   attaches,
+  createdAt,
+  onEditAndResend,
+  embedded = false,
 }: UserMessageCardProps) {
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
   const [_hoveredFilePath, setHoveredFilePath] = useState<string | null>(null);
   const [isRemainingOpen, setIsRemainingOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [canClamp, setCanClamp] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const contentId = useId();
   const hoverCloseTimerRef = useRef<number | null>(null);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const date = createdAt
+    ? new Date(
+        typeof createdAt === 'number' && createdAt < 1e12
+          ? createdAt * 1000
+          : createdAt
+      )
+    : null;
+  const validDate = date && !Number.isNaN(date.getTime()) ? date : null;
+  const timeLabel = validDate
+    ? new Intl.DateTimeFormat(i18n.language, {
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(validDate)
+    : null;
+  const fullTimeLabel = validDate
+    ? new Intl.DateTimeFormat(i18n.language, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(validDate)
+    : null;
+
+  useLayoutEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    const updateClamp = () => {
+      if (expanded) {
+        const prevMax = el.style.maxHeight;
+        const prevOv = el.style.overflow;
+        el.style.maxHeight = USER_MESSAGE_COLLAPSED_MAX;
+        el.style.overflow = 'hidden';
+        setCanClamp(el.scrollHeight > el.clientHeight + 1);
+        el.style.maxHeight = prevMax;
+        el.style.overflow = prevOv;
+        return;
+      }
+      setCanClamp(el.scrollHeight > el.clientHeight + 1);
+    };
+
+    updateClamp();
+    const ro = new ResizeObserver(updateClamp);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [content, expanded, id]);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -72,9 +146,28 @@ export function UserMessageCard({
       setCopied(true);
       setTimeout(() => setCopied(false), COPIED_RESET_MS);
     } catch {
-      toast.error('Failed to copy to clipboard');
+      toast.error(
+        t('setting.copy-failed', {
+          defaultValue: 'Failed to copy to clipboard',
+        })
+      );
     }
   }, [content, t]);
+
+  const revealAttachment = useCallback(
+    async (filePath: string) => {
+      try {
+        const result = await ipcRenderer?.invoke('reveal-in-folder', filePath);
+        if (!result?.success) {
+          toast.error(result?.error || t('chat.failed-to-open-folder'));
+        }
+      } catch (error) {
+        console.error('Failed to reveal attachment:', error);
+        toast.error(t('chat.failed-to-open-folder'));
+      }
+    },
+    [ipcRenderer, t]
+  );
 
   // Popover handles outside clicks; no manual listener needed
   const openRemainingPopover = () => {
@@ -98,174 +191,252 @@ export function UserMessageCard({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return <Image className="h-4 w-4 text-icon-primary" />;
+      return <DsIcon icon={Image} />;
     }
-    return <FileText className="h-4 w-4 text-icon-primary" />;
+    return <DsIcon icon={FileText} />;
   };
-
-  const handleOpenSkillFolder = (skillName: string) => {
-    window.electronAPI?.openSkillFolder?.(skillName);
-  };
-
-  const contentNodes = parseContentWithSkillTags(content);
-  const hasSkillTags = contentNodes.some((n) => n.type === 'skill');
 
   return (
     <div
       key={id}
-      className={`relative w-full rounded-xl border bg-surface-tertiary px-sm py-2 ${className || ''} group overflow-visible`}
+      className={cn('group/msg relative w-full pl-16', className)}
+      data-message-role={embedded ? undefined : 'user'}
+      data-user-query-anchor={embedded ? undefined : true}
     >
-      <div className="absolute bottom-[0px] right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        <Button onClick={handleCopy} variant="ghost" size="icon">
-          {copied ? (
-            <Check className="h-4 w-4 text-text-success" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
-      <div className="whitespace-pre-wrap break-words text-body-sm text-text-body">
-        {hasSkillTags
-          ? contentNodes.map((node, i) =>
-              node.type === 'text' ? (
-                <span key={i}>{node.value}</span>
-              ) : (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenSkillFolder(node.name);
-                  }}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border-primary bg-surface-secondary px-1.5 py-0.5 font-medium text-text-body transition-colors hover:bg-surface-tertiary hover:underline"
-                  title="Open skill folder"
-                >
-                  <Sparkles className="h-3.5 w-3.5 text-icon-primary" />
-                  {node.name}
-                </button>
-              )
-            )
-          : content}
-      </div>
-      {attaches && attaches.length > 0 && (
-        <div className="relative mt-2 box-border flex w-full flex-wrap items-start gap-1">
-          {(() => {
-            // Show max 4 files + count indicator
-            const maxVisibleFiles = 4;
-            const visibleFiles = attaches.slice(0, maxVisibleFiles);
-            const remainingCount =
-              attaches.length > maxVisibleFiles
-                ? attaches.length - maxVisibleFiles
-                : 0;
+      <div className="w-full overflow-visible rounded-xl rounded-br-sm bg-ds-neutral-strong-default px-4 py-2">
+        {attaches && attaches.length > 0 && (
+          <div className="relative mb-2 box-border flex w-full flex-wrap items-start gap-1">
+            {(() => {
+              // Show max 2 files + count indicator
+              const maxVisibleFiles = 2;
+              const visibleFiles = attaches.slice(0, maxVisibleFiles);
+              const remainingCount =
+                attaches.length > maxVisibleFiles
+                  ? attaches.length - maxVisibleFiles
+                  : 0;
 
-            return (
-              <>
-                {visibleFiles.map((file) => {
-                  return (
-                    <div
-                      key={'attache-' + file.fileName}
-                      className={cn(
-                        'relative box-border flex h-auto max-w-32 cursor-pointer items-center gap-0.5 rounded-lg bg-tag-surface transition-colors duration-300 hover:bg-tag-surface-hover'
-                      )}
-                      onMouseEnter={() => setHoveredFilePath(file.filePath)}
-                      onMouseLeave={() =>
-                        setHoveredFilePath((prev) =>
-                          prev === file.filePath ? null : prev
-                        )
-                      }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.ipcRenderer.invoke(
-                          'reveal-in-folder',
-                          file.filePath
-                        );
-                      }}
-                    >
-                      {/* File icon */}
-                      <div className="flex h-6 w-6 items-center justify-center rounded-md">
-                        {getFileIcon(file.fileName)}
-                      </div>
-
-                      {/* File Name */}
-                      <p
+              return (
+                <>
+                  {visibleFiles.map((file) => {
+                    const canReveal = Boolean(file.filePath);
+                    return (
+                      <div
+                        key={`attache-${file.filePath || file.fileName}`}
+                        data-attachment-capability={
+                          canReveal ? 'reveal' : 'display-only'
+                        }
                         className={cn(
-                          "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-text-body"
+                          'relative box-border flex h-auto max-w-24 items-center gap-0.5 rounded-lg bg-ds-neutral-default-default',
+                          canReveal &&
+                            'cursor-pointer transition-colors duration-300 hover:bg-ds-neutral-default-hover'
                         )}
-                        title={file.fileName}
+                        onMouseEnter={() => {
+                          if (file.filePath) setHoveredFilePath(file.filePath);
+                        }}
+                        onMouseLeave={() =>
+                          setHoveredFilePath((prev) =>
+                            prev === file.filePath ? null : prev
+                          )
+                        }
+                        onClick={
+                          file.filePath
+                            ? (e) => {
+                                e.stopPropagation();
+                                void revealAttachment(file.filePath!);
+                              }
+                            : undefined
+                        }
                       >
-                        {file.fileName}
-                      </p>
-                    </div>
-                  );
-                })}
+                        {/* File icon */}
+                        <div className="flex h-6 w-6 items-center justify-center rounded-md">
+                          {getFileIcon(file.fileName)}
+                        </div>
 
-                {/* Show remaining count if more than 4 files */}
-                {remainingCount > 0 && (
-                  <Popover
-                    open={isRemainingOpen}
-                    onOpenChange={setIsRemainingOpen}
-                  >
-                    <PopoverTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="relative box-border flex h-auto items-center rounded-lg bg-tag-surface"
+                        {/* File Name */}
+                        <span
+                          className={cn(
+                            "relative block min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] !text-ds-text-meta font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default"
+                          )}
+                          title={file.fileName}
+                        >
+                          {file.fileName}
+                        </span>
+                      </div>
+                    );
+                  })}
+
+                  {/* Show remaining count if more than 2 files */}
+                  {remainingCount > 0 && (
+                    <Popover
+                      open={isRemainingOpen}
+                      onOpenChange={setIsRemainingOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          size="xs"
+                          buttonContent="text"
+                          variant="ghost"
+                          className="relative flex items-center rounded-lg bg-ds-neutral-strong-default"
+                          onMouseEnter={openRemainingPopover}
+                          onMouseLeave={scheduleCloseRemainingPopover}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                          }}
+                        >
+                          <span className="font-['Inter'] !text-ds-text-meta leading-tight font-bold whitespace-nowrap text-ds-ink-default-default">
+                            {remainingCount}+
+                          </span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="end"
+                        sideOffset={4}
+                        className="!w-auto max-w-40 rounded-md border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-default-default p-1 shadow-ds-elevation-popover"
                         onMouseEnter={openRemainingPopover}
                         onMouseLeave={scheduleCloseRemainingPopover}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                        }}
                       >
-                        <p className="my-0 whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-text-body">
-                          {remainingCount}+
-                        </p>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      align="end"
-                      sideOffset={4}
-                      className="!w-auto max-w-40 rounded-md border border-dropdown-border bg-dropdown-bg p-1 shadow-perfect"
-                      onMouseEnter={openRemainingPopover}
-                      onMouseLeave={scheduleCloseRemainingPopover}
-                    >
-                      <div className="scrollbar-hide flex max-h-[176px] flex-col gap-1 overflow-auto">
-                        {attaches.slice(maxVisibleFiles).map((file) => {
-                          return (
-                            <div
-                              key={file.filePath}
-                              className="flex cursor-pointer items-center gap-1 rounded-lg bg-tag-surface py-0.5 transition-colors duration-300 hover:bg-tag-surface-hover"
-                              onMouseLeave={() =>
-                                setHoveredFilePath((prev) =>
-                                  prev === file.filePath ? null : prev
-                                )
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.ipcRenderer.invoke(
-                                  'reveal-in-folder',
+                        <div className="scrollbar-hide flex max-h-[176px] flex-col gap-1 overflow-auto">
+                          {attaches.slice(maxVisibleFiles).map((file) => {
+                            const canReveal = Boolean(file.filePath);
+                            return (
+                              <div
+                                key={file.filePath || file.fileName}
+                                data-attachment-capability={
+                                  canReveal ? 'reveal' : 'display-only'
+                                }
+                                className={cn(
+                                  'flex items-center gap-1 rounded-lg bg-ds-neutral-strong-default py-0.5',
+                                  canReveal &&
+                                    'cursor-pointer transition-colors duration-300 hover:bg-ds-neutral-default-hover'
+                                )}
+                                onMouseLeave={() =>
+                                  setHoveredFilePath((prev) =>
+                                    prev === file.filePath ? null : prev
+                                  )
+                                }
+                                onClick={
                                   file.filePath
-                                );
-                                setIsRemainingOpen(false);
-                              }}
-                            >
-                              <div className="flex h-6 w-6 items-center justify-center rounded-md">
-                                {getFileIcon(file.fileName)}
+                                    ? (e) => {
+                                        e.stopPropagation();
+                                        void revealAttachment(file.filePath!);
+                                        setIsRemainingOpen(false);
+                                      }
+                                    : undefined
+                                }
+                              >
+                                <div className="flex h-6 w-6 items-center justify-center rounded-md">
+                                  {getFileIcon(file.fileName)}
+                                </div>
+                                <span className="block flex-1 overflow-hidden font-['Inter'] !text-ds-text-meta font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default">
+                                  {file.fileName}
+                                </span>
                               </div>
-                              <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-text-body">
-                                {file.fileName}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                )}
-              </>
-            );
-          })()}
+                            );
+                          })}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
+        <div className="relative w-full">
+          <div
+            id={contentId}
+            ref={contentRef}
+            style={
+              !expanded ? { maxHeight: USER_MESSAGE_COLLAPSED_MAX } : undefined
+            }
+            className={cn('relative', !expanded && 'overflow-hidden')}
+          >
+            <UserMessageRichContent content={content} variant="card" />
+            {canClamp && !expanded && (
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-14 bg-ds-neutral-strong-default"
+                style={USER_MESSAGE_FOLD_FADE_STYLE}
+                aria-hidden
+              />
+            )}
+          </div>
         </div>
-      )}
+      </div>
+      <div
+        className="mt-ds-4 flex w-full items-center justify-end gap-ds-4"
+        data-user-message-actions
+      >
+        <div
+          className="pointer-events-none flex items-center justify-end gap-ds-4 opacity-0 transition-opacity group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
+          data-user-message-hover-actions
+        >
+          {timeLabel && (
+            <time
+              dateTime={validDate!.toISOString()}
+              title={fullTimeLabel ?? undefined}
+              className="px-ds-6 text-ds-text-meta text-ds-ink-muted-default"
+            >
+              {timeLabel}
+            </time>
+          )}
+          <Button
+            onClick={handleCopy}
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            aria-label={t('chat.message-copy')}
+            title={t('chat.message-copy')}
+          >
+            {copied ? (
+              <DsIcon
+                icon={Check}
+                className="text-ds-text-success-default-default"
+              />
+            ) : (
+              <DsIcon icon={Copy} />
+            )}
+          </Button>
+          {canClamp ? (
+            <Button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpanded((value) => !value);
+              }}
+              variant="ghost"
+              size="xs"
+              buttonContent="icon-only"
+              aria-label={t(
+                expanded
+                  ? 'chat.agent-outcome-collapse'
+                  : 'chat.agent-outcome-expand'
+              )}
+              title={t(
+                expanded
+                  ? 'chat.agent-outcome-collapse'
+                  : 'chat.agent-outcome-expand'
+              )}
+              aria-controls={contentId}
+              aria-expanded={expanded}
+            >
+              <DsIcon icon={expanded ? ChevronsDownUp : ChevronsUpDown} />
+            </Button>
+          ) : null}
+          {onEditAndResend ? (
+            <Button
+              type="button"
+              onClick={onEditAndResend}
+              variant="ghost"
+              size="xs"
+              buttonContent="icon-only"
+              aria-label={t('chat.message-edit-and-resend')}
+              title={t('chat.message-edit-and-resend')}
+            >
+              <DsIcon icon={Pencil} />
+            </Button>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

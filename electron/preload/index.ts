@@ -13,6 +13,81 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import crypto from 'node:crypto';
+import {
+  APP_COMMAND_CHANNEL,
+  APP_COMMAND_HANDLED_CHANNEL,
+  APP_SHELL_NOT_READY_CHANNEL,
+  APP_SHELL_READY_CHANNEL,
+  APP_SHELL_READY_PROBE_CHANNEL,
+  isAppCommandRequest,
+  type AppCommandId,
+} from '../../src/shared/appCommands';
+import {
+  BRAIN_STREAM_RELAY_CANCEL_CHANNEL,
+  BRAIN_STREAM_RELAY_OPEN_CHANNEL,
+  BRAIN_STREAM_RELAY_READ_CHANNEL,
+  BRAIN_STREAM_RELAY_TARGET_CHANNEL,
+  type BrainStreamRelayRequest,
+} from '../../src/shared/brainStreamRelay';
+import {
+  NATIVE_MENU_LOCALE_CHANNEL,
+  type NativeMenuLocale,
+} from '../../src/shared/nativeMenu';
+import {
+  isSubframeLoadFailure,
+  SUBFRAME_LOAD_FAILED_CHANNEL,
+  type SubframeLoadFailure,
+} from '../../src/shared/subframeLoadFailure';
+import {
+  isWindowCloseRequest,
+  WINDOW_CLOSE_REQUEST_CHANNEL,
+  WINDOW_CLOSE_RESPONSE_CHANNEL,
+  type WindowCloseRequest,
+  type WindowCloseResponse,
+} from '../../src/shared/windowClose';
+import type {
+  WorkspaceSecretLookup,
+  WorkspaceSecretPutRequest,
+} from '../main/workspaceSecrets/types';
+
+const appShellEpoch = crypto.randomUUID();
+let appCommandListenerCount = 0;
+let closeRequestListenerCount = 0;
+let appShellReadySent = false;
+let readinessRevision = 0;
+
+function updateAppShellReadiness(): void {
+  const revision = ++readinessRevision;
+  const ready = appCommandListenerCount > 0 && closeRequestListenerCount > 0;
+  if (ready) {
+    if (appShellReadySent) return;
+    appShellReadySent = true;
+    ipcRenderer.send(APP_SHELL_READY_CHANNEL, { epoch: appShellEpoch });
+    return;
+  }
+  if (!appShellReadySent) return;
+
+  // React replaces effect listeners synchronously during a commit. Defer the
+  // not-ready edge so that a normal callback rebind cannot create a false
+  // renderer outage, while a real unmount/error boundary still invalidates the
+  // shell before the next task can dispatch an IPC command.
+  queueMicrotask(() => {
+    if (revision !== readinessRevision) return;
+    if (appCommandListenerCount > 0 && closeRequestListenerCount > 0) return;
+    appShellReadySent = false;
+    ipcRenderer.send(APP_SHELL_NOT_READY_CHANNEL, { epoch: appShellEpoch });
+  });
+}
+
+ipcRenderer.on(APP_SHELL_READY_PROBE_CHANNEL, () => {
+  // READY may race ahead of main's did-finish-load gate. Re-open the edge so
+  // the current listeners can announce the same document epoch again. If the
+  // listeners are not mounted yet, their normal registration path will send
+  // READY later.
+  appShellReadySent = false;
+  updateAppShellReadiness();
+});
 
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
@@ -45,13 +120,62 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximizeWindow: () => ipcRenderer.send('window-toggle-maximize'),
   isFullScreen: () => ipcRenderer.invoke('is-fullscreen'),
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
+  selectAgentPluginSource: () =>
+    ipcRenderer.invoke('select-agent-plugin-source'),
   processDroppedFiles: (fileData: Array<{ name: string; path?: string }>) =>
     ipcRenderer.invoke('process-dropped-files', fileData),
+  savePastedFile: (fileName: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke('save-pasted-file', fileName, data),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
-  triggerMenuAction: (action: string) =>
-    ipcRenderer.send('menu-action', action),
-  onExecuteAction: (callback: (action: string) => void) =>
-    ipcRenderer.on('execute-action', (event, action) => callback(action)),
+  onAppCommand: (callback: (command: AppCommandId) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
+      if (!isAppCommandRequest(request) || request.epoch !== appShellEpoch) {
+        return;
+      }
+      callback(request.commandId);
+      ipcRenderer.send(APP_COMMAND_HANDLED_CHANNEL, request);
+    };
+    ipcRenderer.on(APP_COMMAND_CHANNEL, listener);
+    appCommandListenerCount += 1;
+    updateAppShellReadiness();
+    let disposed = false;
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      ipcRenderer.off(APP_COMMAND_CHANNEL, listener);
+      appCommandListenerCount = Math.max(0, appCommandListenerCount - 1);
+      updateAppShellReadiness();
+    };
+  },
+  onCloseRequest: (callback: (request: WindowCloseRequest) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
+      if (isWindowCloseRequest(request)) callback(request);
+    };
+    ipcRenderer.on(WINDOW_CLOSE_REQUEST_CHANNEL, listener);
+    closeRequestListenerCount += 1;
+    updateAppShellReadiness();
+    let disposed = false;
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      ipcRenderer.off(WINDOW_CLOSE_REQUEST_CHANNEL, listener);
+      closeRequestListenerCount = Math.max(0, closeRequestListenerCount - 1);
+      updateAppShellReadiness();
+    };
+  },
+  respondToCloseRequest: (response: WindowCloseResponse) =>
+    ipcRenderer.send(WINDOW_CLOSE_RESPONSE_CHANNEL, response),
+  onSubframeLoadFailed: (callback: (failure: SubframeLoadFailure) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, failure: unknown) => {
+      if (isSubframeLoadFailure(failure)) callback(failure);
+    };
+    ipcRenderer.on(SUBFRAME_LOAD_FAILED_CHANNEL, listener);
+    return () => {
+      ipcRenderer.off(SUBFRAME_LOAD_FAILED_CHANNEL, listener);
+    };
+  },
+  setNativeMenuLocale: (locale: NativeMenuLocale) =>
+    ipcRenderer.send(NATIVE_MENU_LOCALE_CHANNEL, locale),
   getPlatform: () => process.platform,
   getHomeDir: () => ipcRenderer.invoke('get-home-dir'),
   createWebView: (id: string, url: string) =>
@@ -76,6 +200,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   webviewDestroy: (webviewId: string) =>
     ipcRenderer.invoke('webview-destroy', webviewId),
   exportLog: () => ipcRenderer.invoke('export-log'),
+  exportCamelLog: (
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('export-camel-log', email, taskId, projectId, userId),
+  getDiagnosticsInfo: () => ipcRenderer.invoke('get-diagnostics-info'),
+  exportDiagnosticsZip: (payload: { description: string; steps?: string }) =>
+    ipcRenderer.invoke('export-diagnostics-zip', payload),
+  openMailto: (url: string) => ipcRenderer.invoke('open-mailto', url),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   uploadLog: (email: string, taskId: string, baseUrl: string, token: string) =>
     ipcRenderer.invoke('upload-log', email, taskId, baseUrl, token),
   // mcp
@@ -90,6 +225,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   envRemove: (email: string, key: string) =>
     ipcRenderer.invoke('env-remove', email, key),
   getEnvPath: (email: string) => ipcRenderer.invoke('get-env-path', email),
+  workspaceSecretPut: (request: WorkspaceSecretPutRequest) =>
+    ipcRenderer.invoke('workspace-secret:put', request),
+  workspaceSecretStatus: (request: WorkspaceSecretLookup) =>
+    ipcRenderer.invoke('workspace-secret:status', request),
+  workspaceSecretDelete: (request: WorkspaceSecretLookup) =>
+    ipcRenderer.invoke('workspace-secret:delete', request),
   // command execution
   executeCommand: (command: string, email: string) =>
     ipcRenderer.invoke('execute-command', command, email),
@@ -97,6 +238,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
   readFileAsDataUrl: (path: string) =>
     ipcRenderer.invoke('read-file-dataurl', path),
+  reviewListBackups: (filePaths: string[]) =>
+    ipcRenderer.invoke('review-list-backups', filePaths),
   deleteFolder: (email: string) => ipcRenderer.invoke('delete-folder', email),
   getMcpConfigPath: (email: string) =>
     ipcRenderer.invoke('get-mcp-config-path', email),
@@ -105,6 +248,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkInstallBrowser: () => ipcRenderer.invoke('check-install-browser'),
   getInstallationStatus: () => ipcRenderer.invoke('get-installation-status'),
   getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
+  getLocalControlCapability: () =>
+    ipcRenderer.invoke('get-local-control-capability'),
+  // Brain event streams relayed by the main process (see brainStreamRelay).
+  brainStreamRelayTarget: () =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_TARGET_CHANNEL),
+  brainStreamRelayOpen: (request: BrainStreamRelayRequest) =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_OPEN_CHANNEL, request),
+  brainStreamRelayRead: (streamId: string) =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_READ_CHANNEL, streamId),
+  brainStreamRelayCancel: (streamId: string) =>
+    ipcRenderer.invoke(BRAIN_STREAM_RELAY_CANCEL_CHANNEL, streamId),
+  getDesktopInstanceId: (legacyRendererId?: string) =>
+    ipcRenderer.invoke('get-desktop-instance-id', legacyRendererId),
   restartBackend: () => ipcRenderer.invoke('restart-backend'),
   onInstallDependenciesStart: (callback: () => void) => {
     ipcRenderer.on('install-dependencies-start', callback);
@@ -154,10 +310,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-email-folder-path', email),
   restartApp: () => ipcRenderer.invoke('restart-app'),
   readGlobalEnv: (key: string) => ipcRenderer.invoke('read-global-env', key),
-  getProjectFolderPath: (email: string, projectId: string) =>
-    ipcRenderer.invoke('get-project-folder-path', email, projectId),
-  openInIDE: (folderPath: string, ide: string) =>
-    ipcRenderer.invoke('open-in-ide', folderPath, ide),
+  codexSubscriptionStatus: (email: string) =>
+    ipcRenderer.invoke('subscription-auth:codex-status', email),
+  codexSubscriptionLogin: (email: string) =>
+    ipcRenderer.invoke('subscription-auth:codex-login', email),
+  codexSubscriptionDisconnect: (email: string) =>
+    ipcRenderer.invoke('subscription-auth:codex-disconnect', email),
+  getProjectFolderPath: (
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('get-project-folder-path', email, projectId, userId),
+  revealLocalPath: (targetPath: string) =>
+    ipcRenderer.invoke('reveal-local-path', targetPath),
+  openLocalFile: (targetPath: string) =>
+    ipcRenderer.invoke('open-local-file', targetPath),
+  openInIDE: (targetPath: string, ide: 'vscode' | 'cursor' | 'system') =>
+    ipcRenderer.invoke('open-in-ide', targetPath, ide),
   setBrowserPort: (port: number, isExternal?: boolean) =>
     ipcRenderer.invoke('set-browser-port', port, isExternal),
   getBrowserPort: () => ipcRenderer.invoke('get-browser-port'),
@@ -175,32 +344,42 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.off(channel, listener);
     };
   },
-  // Skills
-  getSkillsDir: () => ipcRenderer.invoke('get-skills-dir'),
-  skillsScan: () => ipcRenderer.invoke('skills-scan'),
-  skillWrite: (skillDirName: string, content: string) =>
-    ipcRenderer.invoke('skill-write', skillDirName, content),
-  skillDelete: (skillDirName: string) =>
-    ipcRenderer.invoke('skill-delete', skillDirName),
-  skillRead: (filePath: string) => ipcRenderer.invoke('skill-read', filePath),
-  skillListFiles: (skillDirName: string) =>
-    ipcRenderer.invoke('skill-list-files', skillDirName),
-  skillImportZip: (
-    zipPathOrBuffer: string | ArrayBuffer,
-    replacements?: string[]
-  ) => ipcRenderer.invoke('skill-import-zip', zipPathOrBuffer, replacements),
-  openSkillFolder: (skillName: string) =>
-    ipcRenderer.invoke('open-skill-folder', skillName),
-  skillConfigInit: (userId: string) =>
-    ipcRenderer.invoke('skill-config-init', userId),
-  skillConfigLoad: (userId: string) =>
-    ipcRenderer.invoke('skill-config-load', userId),
-  skillConfigToggle: (userId: string, skillName: string, enabled: boolean) =>
-    ipcRenderer.invoke('skill-config-toggle', userId, skillName, enabled),
-  skillConfigUpdate: (userId: string, skillName: string, skillConfig: any) =>
-    ipcRenderer.invoke('skill-config-update', userId, skillName, skillConfig),
-  skillConfigDelete: (userId: string, skillName: string) =>
-    ipcRenderer.invoke('skill-config-delete', userId, skillName),
+  // interactive terminal (session preview terminal tabs)
+  terminalCreate: (options: {
+    id: string;
+    cwd?: string;
+    cols?: number;
+    rows?: number;
+  }) => ipcRenderer.invoke('terminal-create', options),
+  terminalInput: (id: string, data: string) =>
+    ipcRenderer.send('terminal-input', { id, data }),
+  terminalResize: (id: string, cols: number, rows: number) =>
+    ipcRenderer.send('terminal-resize', { id, cols, rows }),
+  terminalDispose: (id: string) => ipcRenderer.invoke('terminal-dispose', id),
+  terminalStop: (id: string) => ipcRenderer.invoke('terminal-stop', id),
+  onTerminalData: (
+    callback: (payload: { id: string; data: string }) => void
+  ) => {
+    const channel = 'terminal-data';
+    const listener = (_event: any, payload: { id: string; data: string }) =>
+      callback(payload);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
+  onTerminalExit: (
+    callback: (payload: { id: string; exitCode: number }) => void
+  ) => {
+    const channel = 'terminal-exit';
+    const listener = (_event: any, payload: { id: string; exitCode: number }) =>
+      callback(payload);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
+  // Skills: all operations via Brain REST API, no IPC
 });
 
 // --------- Preload scripts loading ---------

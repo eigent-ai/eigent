@@ -118,7 +118,7 @@ export function update(win: Electron.BrowserWindow) {
  * Registers update-related IPC handlers
  * Should be called once when the app starts
  */
-export function registerUpdateIpcHandlers() {
+export function registerUpdateIpcHandlers(beforeQuitAndInstall?: () => void) {
   // Checking for updates - errors are silent since users can't act on them
   ipcMain.handle('check-update', async () => {
     try {
@@ -162,8 +162,33 @@ export function registerUpdateIpcHandlers() {
 
   // Install now
   ipcMain.handle('quit-and-install', () => {
+    beforeQuitAndInstall?.();
     autoUpdater.quitAndInstall(false, true);
   });
+
+  // Dev-only: replay updater events from DevTools to exercise the top-bar
+  // update UI, e.g.
+  //   window.ipcRenderer.invoke('debug-update-event', 'download-progress', { percent: 40 })
+  if (!app.isPackaged) {
+    const allowedChannels = [
+      'update-can-available',
+      'download-progress',
+      'update-downloaded',
+      'update-error',
+    ];
+    ipcMain.handle(
+      'debug-update-event',
+      (
+        event: Electron.IpcMainInvokeEvent,
+        channel: string,
+        payload?: unknown
+      ) => {
+        if (!allowedChannels.includes(channel)) return false;
+        event.sender.send(channel, payload);
+        return true;
+      }
+    );
+  }
 }
 
 function startDownload(

@@ -12,8 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { mcpList as fetchMcpConfig } from '@/api/brain';
 import { fetchPost } from '@/api/http';
-import githubIcon from '@/assets/github.svg';
+import githubIcon from '@/assets/icon/github.svg';
+import {
+  getLocalPlatformName,
+  LOCAL_MODEL_OPTIONS,
+} from '@/components/Settings/Models/localModels';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,6 +28,7 @@ import {
   DialogHeader,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -31,12 +37,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useConfiguredModels } from '@/hooks/useConfiguredModels';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
+import { selectableConfiguredModels } from '@/lib/configuredModels';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { buildAgentModelConfig } from '@/lib/modelConfig';
+import {
+  workerModelOption,
+  type WorkerModelOption,
+} from '@/lib/workerModelOptions';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
-import { Bot, ChevronDown, ChevronUp, Edit, Eye, EyeOff } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useUsageNoticeStore } from '@/store/usageNoticeStore';
+import { Bot, Edit, Eye, EyeOff } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ToolSelect from './ToolSelect';
 
@@ -62,6 +78,8 @@ interface McpItem {
   mcp_name?: string;
 }
 
+type WorkerModelMode = 'eigent' | 'custom' | 'local';
+
 export function AddWorker({
   edit = false,
   workerInfo = null,
@@ -83,7 +101,8 @@ export function AddWorker({
     typeof isOpen !== 'undefined' && typeof onOpenChange !== 'undefined';
   const dialogOpen = isControlled ? isOpen : internalOpen;
   const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { chatStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const [showEnvConfig, setShowEnvConfig] = useState(false);
   const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
   const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
@@ -106,17 +125,68 @@ export function AddWorker({
 
   // Model configuration state
   const [showModelConfig, setShowModelConfig] = useState(false);
-  const [useCustomModel, setUseCustomModel] = useState(false);
-  const [customModelPlatform, setCustomModelPlatform] = useState('');
-  const [customModelType, setCustomModelType] = useState('');
+  const [workerModelMode, setWorkerModelMode] =
+    useState<WorkerModelMode>('eigent');
+  const [workerModelName, setWorkerModelName] = useState('');
+  const [modelSelectionTouched, setModelSelectionTouched] = useState(false);
+  const inventory = useConfiguredModels();
+  const { records, cloudModels, hidden, cloudAvailable } = inventory;
+  const planKey = useUsageNoticeStore((state) => state.subscription?.plan_key);
+  const eigentModelOptions = useMemo<WorkerModelOption[]>(
+    () =>
+      selectableConfiguredModels({
+        records,
+        cloudModels,
+        hidden,
+        cloudAvailable,
+        codexConnected: false,
+        codexModelType: '',
+        planKey,
+      }).flatMap((choice) =>
+        'cloudModel' in choice
+          ? [
+              {
+                value: choice.cloudModel.id,
+                label: choice.name,
+                model_platform: choice.cloudModel.model_platform,
+                model_type: choice.cloudModel.model_type,
+              },
+            ]
+          : []
+      ),
+    [records, cloudModels, hidden, cloudAvailable, planKey]
+  );
 
-  if (!chatStore) {
-    return null;
-  }
+  const { customModelOptions, localModelOptions } = useMemo(() => {
+    const customProviderIds = new Set(
+      INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => p.id)
+    );
+    const localProviderIds = new Set(LOCAL_MODEL_OPTIONS.map((m) => m.id));
 
-  const activeProjectId = projectStore.activeProjectId;
-  const activeTaskId = chatStore.activeTaskId;
-  const tasks = chatStore.tasks;
+    const nextCustomOptions = records
+      .filter((provider) => customProviderIds.has(provider.provider_name))
+      .map((provider) =>
+        workerModelOption(provider, provider.provider_name, records)
+      );
+    const nextLocalOptions = records
+      .filter((provider) => localProviderIds.has(provider.provider_name))
+      .map((provider) =>
+        workerModelOption(
+          provider,
+          getLocalPlatformName(provider.provider_name),
+          records
+        )
+      );
+
+    return {
+      customModelOptions: nextCustomOptions,
+      localModelOptions: nextLocalOptions,
+    };
+  }, [records]);
+
+  const activeProjectId = sessionProjectId;
+  const activeTaskId = chatStore?.activeTaskId ?? null;
+  const tasks = chatStore?.tasks ?? {};
 
   // environment variable management
   const initializeEnvValues = (mcp: McpItem) => {
@@ -266,15 +336,123 @@ export function AddWorker({
     setSecretVisible({});
     setNameError('');
     setShowModelConfig(false);
-    setUseCustomModel(false);
-    setCustomModelPlatform('');
-    setCustomModelType('');
+    setWorkerModelMode('eigent');
+    setWorkerModelName('');
+    setModelSelectionTouched(false);
   };
+
+  const workerModelOptions = useMemo<
+    Record<WorkerModelMode, WorkerModelOption[]>
+  >(
+    () => ({
+      eigent: eigentModelOptions,
+      custom: customModelOptions,
+      local: localModelOptions,
+    }),
+    [customModelOptions, eigentModelOptions, localModelOptions]
+  );
+
+  const activeWorkerModelOptions = workerModelOptions[workerModelMode];
+
+  useEffect(() => {
+    if (!dialogOpen || !edit || !workerInfo) return;
+    setWorkerName(workerInfo.workerInfo?.name || '');
+    setWorkerDescription(workerInfo.workerInfo?.description || '');
+    setSelectedTools(workerInfo.workerInfo?.selectedTools || []);
+    setWorkerModelMode('eigent');
+    setWorkerModelName('');
+    setModelSelectionTouched(false);
+    setShowModelConfig(
+      Number.isInteger(workerInfo.workerInfo?.model_provider_id)
+    );
+  }, [dialogOpen, edit, workerInfo]);
+
+  useEffect(() => {
+    if (
+      !dialogOpen ||
+      !edit ||
+      !showModelConfig ||
+      !workerInfo ||
+      modelSelectionTouched
+    )
+      return;
+    const providerId = workerInfo.workerInfo?.model_provider_id;
+    if (!Number.isInteger(providerId)) return;
+
+    const customOption = customModelOptions.find(
+      (option) => option.provider_id === providerId
+    );
+    if (customOption) {
+      setWorkerModelMode('custom');
+      setWorkerModelName(customOption.value);
+      return;
+    }
+
+    const localOption = localModelOptions.find(
+      (option) => option.provider_id === providerId
+    );
+    if (localOption) {
+      setWorkerModelMode('local');
+      setWorkerModelName(localOption.value);
+    }
+  }, [
+    customModelOptions,
+    dialogOpen,
+    edit,
+    localModelOptions,
+    modelSelectionTouched,
+    showModelConfig,
+    workerInfo,
+  ]);
+
+  useEffect(() => {
+    if (!showModelConfig) return;
+    const editingProviderId = workerInfo?.workerInfo?.model_provider_id;
+    if (
+      dialogOpen &&
+      edit &&
+      Number.isInteger(editingProviderId) &&
+      !modelSelectionTouched
+    ) {
+      return;
+    }
+    const options = activeWorkerModelOptions;
+    if (options.length === 0) {
+      setWorkerModelName('');
+      return;
+    }
+    if (!options.some((opt) => opt.value === workerModelName)) {
+      setWorkerModelName(options[0].value);
+    }
+  }, [
+    activeWorkerModelOptions,
+    dialogOpen,
+    edit,
+    modelSelectionTouched,
+    showModelConfig,
+    workerInfo,
+    workerModelName,
+  ]);
 
   // tool function
   const getCategoryIcon = (categoryName?: string) => {
-    if (!categoryName) return <Bot className="h-10 w-10 text-icon-primary" />;
-    return <Bot className="h-10 w-10 text-icon-primary" />;
+    if (!categoryName)
+      return (
+        <DsIcon
+          icon={Bot}
+          recipe="illustration"
+          illustrationSize={40}
+          className="text-ds-ink-default-default"
+        />
+      );
+    return (
+      <DsIcon
+        icon={Bot}
+        recipe="illustration"
+        illustrationSize={40}
+        className="text-ds-ink-default-default"
+      />
+    );
   };
 
   const getGithubRepoName = (homePage?: string) => {
@@ -297,9 +475,11 @@ export function AddWorker({
       setNameError(t('workforce.worker-name-already-exists'));
       return;
     }
-    let mcpLocal: any = {};
-    if (window.ipcRenderer) {
-      mcpLocal = await window.ipcRenderer.invoke('mcp-list');
+    let mcpLocal: any = { mcpServers: {} };
+    try {
+      mcpLocal = await fetchMcpConfig();
+    } catch {
+      // Backend may not be ready
     }
     const localTool: string[] = [];
     const mcpList: string[] = [];
@@ -318,6 +498,23 @@ export function AddWorker({
         }
       }
     }
+    const selectedModelOption = workerModelOptions[workerModelMode].find(
+      (option) => option.value === workerModelName
+    );
+    const customModelConfig =
+      showModelConfig && selectedModelOption
+        ? buildAgentModelConfig(selectedModelOption)
+        : undefined;
+    const modelProviderId =
+      showModelConfig && selectedModelOption?.provider_id
+        ? selectedModelOption.provider_id
+        : showModelConfig &&
+            edit &&
+            !modelSelectionTouched &&
+            Number.isInteger(workerInfo?.workerInfo?.model_provider_id)
+          ? workerInfo?.workerInfo?.model_provider_id
+          : undefined;
+
     if (edit) {
       const newWorkerList = workerList.map((worker) => {
         if (worker.type === workerInfo?.type) {
@@ -340,6 +537,7 @@ export function AddWorker({
               tools: localTool,
               mcp_tools: mcpLocal,
               selectedTools: JSON.parse(JSON.stringify(selectedTools)),
+              model_provider_id: modelProviderId,
             },
           };
           return {
@@ -370,27 +568,22 @@ export function AddWorker({
           tools: localTool,
           mcp_tools: mcpLocal,
           selectedTools: JSON.parse(JSON.stringify(selectedTools)),
+          model_provider_id: modelProviderId,
         },
       };
       setWorkerList([...workerList, worker]);
     } else {
-      // Build custom model config if custom model is enabled
-      const customModelConfig =
-        useCustomModel && customModelPlatform
-          ? {
-              model_platform: customModelPlatform,
-              model_type: customModelType || undefined,
-            }
-          : undefined;
-
-      fetchPost(`/task/${activeProjectId}/add-agent`, {
-        name: workerName,
-        description: workerDescription,
-        tools: localTool,
-        mcp_tools: mcpLocal,
-        email: email,
-        custom_model_config: customModelConfig,
-      });
+      // Add-worker custom model config is applied to this agent only.
+      if (activeProjectId) {
+        fetchPost(`/task/${activeProjectId}/add-agent`, {
+          name: workerName,
+          description: workerDescription,
+          tools: localTool,
+          mcp_tools: mcpLocal,
+          email: email,
+          custom_model_config: customModelConfig,
+        });
+      }
       const worker: Agent = {
         tasks: [],
         agent_id: workerName,
@@ -404,6 +597,7 @@ export function AddWorker({
           tools: localTool,
           mcp_tools: mcpLocal,
           selectedTools: JSON.parse(JSON.stringify(selectedTools)),
+          model_provider_id: modelProviderId,
         },
       };
       setWorkerList([...workerList, worker]);
@@ -414,10 +608,6 @@ export function AddWorker({
     // reset form
     resetForm();
   };
-
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
 
   return (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -436,14 +626,14 @@ export function AddWorker({
                 setSelectedTools(workerInfo?.workerInfo?.selectedTools || []);
               }}
             >
-              <Edit size={16} />
+              <DsIcon icon={Edit} />
               {t('workforce.edit')}
             </Button>
           )}
         </DialogTrigger>
         <DialogContent
-          size="sm"
-          className="gap-0 p-0"
+          size="md"
+          className="min-h-[60vh] gap-0 p-0"
           onInteractOutside={(e: any) => {
             if (isValidating) e.preventDefault();
           }}
@@ -469,14 +659,14 @@ export function AddWorker({
           {showEnvConfig ? (
             // environment configuration interface
             <>
-              <DialogContentSection className="flex flex-col gap-3 bg-white-100% p-md">
+              <DialogContentSection className="scrollbar-always-visible flex flex-col gap-3 overflow-y-auto p-md">
                 <div className="flex items-center gap-md">
                   {getCategoryIcon(activeMcp?.category?.name)}
                   <div>
-                    <div className="text-base font-bold leading-9 text-text-action">
+                    <div className="text-base leading-9 font-bold text-ds-ink-default-default">
                       {activeMcp?.name}
                     </div>
-                    <div className="text-sm font-bold leading-normal text-text-body">
+                    <div className="text-sm leading-normal font-bold text-ds-ink-default-default">
                       {getGithubRepoName(activeMcp?.home_page) && (
                         <div className="flex items-center">
                           <img
@@ -490,7 +680,7 @@ export function AddWorker({
                               verticalAlign: 'middle',
                             }}
                           />
-                          <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-ellipsis break-words text-xs font-medium leading-normal">
+                          <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-xs leading-normal font-medium break-words text-ellipsis">
                             {getGithubRepoName(activeMcp?.home_page)}
                           </span>
                         </div>
@@ -519,14 +709,14 @@ export function AddWorker({
                           backIcon={
                             isSensitiveKey(key) ? (
                               secretVisible[key] ? (
-                                <EyeOff
-                                  size={16}
-                                  className="text-button-transparent-icon-disabled"
+                                <DsIcon
+                                  icon={EyeOff}
+                                  className="text-ds-ink-muted-disabled"
                                 />
                               ) : (
-                                <Eye
-                                  size={16}
-                                  className="text-button-transparent-icon-disabled"
+                                <DsIcon
+                                  icon={Eye}
+                                  className="text-ds-ink-muted-disabled"
                                 />
                               )
                             ) : undefined
@@ -543,7 +733,7 @@ export function AddWorker({
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-white-100% p-md"
+                className="!rounded-b-xl p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}
@@ -568,11 +758,16 @@ export function AddWorker({
           ) : (
             // default add interface
             <>
-              <DialogContentSection className="flex flex-col gap-3 bg-white-100% p-md">
+              <DialogContentSection className="scrollbar-always-visible flex flex-col gap-3 overflow-y-auto p-md">
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-sm">
                     <div className="flex h-16 w-16 items-center justify-center">
-                      <Bot size={32} className="text-icon-primary" />
+                      <DsIcon
+                        icon={Bot}
+                        recipe="illustration"
+                        illustrationSize={32}
+                        className="text-ds-ink-default-default"
+                      />
                     </div>
                     <Input
                       size="sm"
@@ -609,82 +804,104 @@ export function AddWorker({
 
                 {/* Model Configuration Section */}
                 <div className="mt-2 flex flex-col gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-sm text-text-body hover:text-text-action"
-                    onClick={() => setShowModelConfig(!showModelConfig)}
-                  >
-                    {showModelConfig ? (
-                      <ChevronUp size={16} />
-                    ) : (
-                      <ChevronDown size={16} />
-                    )}
-                    {t('workforce.advanced-model-config')}
-                  </button>
+                  <div className="flex items-center justify-start gap-3">
+                    <span className="text-ds-text-base font-bold text-ds-ink-default-default">
+                      {t('workforce.use-custom-model')}
+                    </span>
+                    <Switch
+                      checked={showModelConfig}
+                      onCheckedChange={(checked) => {
+                        setModelSelectionTouched(true);
+                        setShowModelConfig(checked);
+                        if (!checked) {
+                          setWorkerModelName('');
+                        }
+                      }}
+                      aria-label={t('workforce.use-custom-model')}
+                      className="border-[0.5px] border-x-[0.5px] border-y-[0.5px] border-solid border-ds-hairline-default-default"
+                    />
+                  </div>
 
                   {showModelConfig && (
-                    <div className="flex flex-col gap-3 rounded-lg bg-surface-tertiary-subtle p-3">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={useCustomModel}
-                          onChange={(e) => setUseCustomModel(e.target.checked)}
-                          className="rounded border-border-subtle-strong"
-                        />
-                        {t('workforce.use-custom-model')}
-                      </label>
-
-                      {useCustomModel && (
-                        <>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs text-text-body">
-                              {t('workforce.model-platform')}
-                            </label>
-                            <Select
-                              value={customModelPlatform}
-                              onValueChange={setCustomModelPlatform}
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue
-                                  placeholder={t('workforce.select-platform')}
-                                />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {INIT_PROVODERS.map((provider) => (
-                                  <SelectItem
-                                    key={provider.id}
-                                    value={provider.id}
-                                  >
-                                    {provider.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs text-text-body">
-                              {t('workforce.model-type')}
-                            </label>
-                            <Input
-                              size="sm"
-                              placeholder={t(
-                                'workforce.model-type-placeholder'
-                              )}
-                              value={customModelType}
-                              onChange={(e) =>
-                                setCustomModelType(e.target.value)
-                              }
+                    <div className="flex flex-row gap-3 rounded-lg bg-ds-neutral-muted-default px-3 py-2">
+                      <div className="flex w-full flex-1 flex-col gap-1">
+                        <label className="text-ds-text-meta font-bold text-ds-ink-default-default">
+                          {t('workforce.model-platform')}
+                        </label>
+                        <Select
+                          value={workerModelMode}
+                          onValueChange={(value) => {
+                            setModelSelectionTouched(true);
+                            setWorkerModelMode(value as WorkerModelMode);
+                          }}
+                        >
+                          <SelectTrigger
+                            className="w-full"
+                            wrapperClassName="w-full min-w-0"
+                          >
+                            <SelectValue
+                              placeholder={t('workforce.select-platform')}
                             />
-                          </div>
-                        </>
-                      )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="eigent">
+                              {t('setting.eigent-cloud')}
+                            </SelectItem>
+                            <SelectItem value="custom">
+                              {t('setting.custom-model')}
+                            </SelectItem>
+                            <SelectItem value="local">
+                              {t('setting.local-model')}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex w-full flex-1 flex-col gap-1">
+                        <label className="text-ds-text-meta font-bold text-ds-ink-default-default">
+                          {t('workforce.model-type')}
+                        </label>
+                        <Select
+                          value={workerModelName}
+                          onValueChange={(value) => {
+                            setModelSelectionTouched(true);
+                            setWorkerModelName(value);
+                          }}
+                        >
+                          <SelectTrigger
+                            className="w-full"
+                            wrapperClassName="w-full min-w-0"
+                          >
+                            <SelectValue
+                              placeholder={t('setting.select-default-model')}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeWorkerModelOptions.length > 0 ? (
+                              activeWorkerModelOptions.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="__empty__" disabled>
+                                {t('layout.no-results', {
+                                  defaultValue: 'No results found.',
+                                })}
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   )}
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-white-100% p-md"
+                className="!rounded-b-xl bg-ds-neutral-subtle-default p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}

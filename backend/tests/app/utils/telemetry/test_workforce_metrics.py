@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from camel.societies.workforce.events import (
     LogEvent,
+    StreamChunkEvent,
     TaskAssignedEvent,
     TaskCompletedEvent,
     TaskCreatedEvent,
@@ -92,6 +93,17 @@ def test_log_worker_created(metrics_callback):
     # Verify span attributes were set
     assert mock_span.set_attribute.called
     assert mock_span.set_status.called
+
+
+def test_log_stream_chunk_is_supported_without_per_chunk_spans(
+    metrics_callback,
+):
+    """CAMEL stream callbacks must not create high-volume telemetry spans."""
+    metrics_callback.log_stream_chunk(
+        StreamChunkEvent(text="partial response")
+    )
+
+    metrics_callback.tracer.start_as_current_span.assert_not_called()
 
 
 def test_log_task_created(metrics_callback):

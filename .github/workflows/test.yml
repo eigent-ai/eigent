@@ -4,14 +4,152 @@ name: Test
   pull_request:
     branches:
       - main
+      - feat/workforce-bundle-product
   push:
     branches:
       - main
+      - feat/workforce-bundle-product
 
 permissions:
   contents: read
 
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  web-local-smoke:
+    name: Run Web + Local Brain Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        run: npm install --ignore-scripts
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          uv sync
+
+      - name: Run web + local brain smoke
+        run: bash scripts/smoke-web-local-brain.sh
+
+  frontend-quality:
+    name: Run Frontend Guardrails
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        run: npm install --ignore-scripts
+
+      - name: Run type check
+        run: npm run type-check
+
+      - name: Check Electron Access Guard
+        run: bash scripts/check-electron-access.sh
+
+      - name: Design tokens (engine + no hard-coded colors in UI)
+        run: npm run check:design-tokens
+
+      - name: Tailwind 4 sentinels
+        run: npm run verify:tailwind4
+
+      - name: Generated design-system artifacts
+        run: npm run check:design-system:clean-tree
+
+      - name: Check frontend formatting
+        env:
+          FORMAT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FORMAT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/check-changed-format.mjs
+
+      # Changed frontend tests include the real TS-to-Python execution bridge.
+      - name: Install uv for integration tests
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python for integration tests
+        run: uv python install 3.11
+
+      - name: Install backend dependencies for integration tests
+        working-directory: backend
+        run: uv sync
+
+      # The full suite currently contains known failures, so keep this gate
+      # focused on tests that the change adds or updates.
+      - name: Run changed frontend tests
+        env:
+          VITEST_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          VITEST_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/run-changed-vitest.mjs
+
+      - name: Upload changed-test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-changed-test-report
+          path: test-results/junit.xml
+          if-no-files-found: warn
+
+  preview-browser-electron:
+    name: Run Browser Preview Electron Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        run: npm install --ignore-scripts
+
+      - name: Install Electron runtime
+        run: npm rebuild electron
+
+      # The test bounds each phase itself; this only backs up a stall that
+      # blocks the Node event loop. A passing run takes under a minute.
+      - name: Run browser preview Electron test
+        timeout-minutes: 5
+        run: xvfb-run --auto-servernum npm run test:preview-browser
+
+      - name: Run event stream relay Electron test
+        run: xvfb-run --auto-servernum npm run test:stream-relay
+
   pytest:
     name: Run Python Tests
     runs-on: ubuntu-latest

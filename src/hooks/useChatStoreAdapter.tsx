@@ -12,63 +12,46 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { ChatStore } from '@/store/chatStore';
-import { ProjectStore, useProjectStore } from '@/store/projectStore';
-import { useEffect, useMemo, useReducer } from 'react';
-
-type ChatStateAction =
-  | { type: 'SET_STORE'; payload: ChatStore | null }
-  | { type: 'UPDATE_STATE'; payload: ChatStore };
-
-const chatStateReducer = (
-  state: ChatStore | null,
-  action: ChatStateAction
-): ChatStore | null => {
-  switch (action.type) {
-    case 'SET_STORE':
-      return action.payload;
-    case 'UPDATE_STATE':
-      // Only update if the state actually changed
-      if (state === action.payload) return state;
-      return action.payload;
-    default:
-      return state;
-  }
-};
+import {
+  type ProjectRuntimeStore,
+  useProjectRuntimeStore,
+} from '@/store/projectRuntimeStore';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 const useChatStoreAdapter = (): {
-  projectStore: ProjectStore;
+  projectStore: ProjectRuntimeStore;
+  projectId: string | null;
+  // TODO(PR-X3): This can be null while a Space is selected but no Project
+  // runtime is active. Existing legacy consumers still assume a ChatStore;
+  // finish nullable typing when projectRuntimeStore is fully split.
   chatStore: ChatStore;
 } => {
-  const projectStore = useProjectStore();
+  const projectStore = useProjectRuntimeStore();
+  const projectId = useSessionProjectId();
 
   // Get the active chat store from project store
   // This creates a hook-like interface for the vanilla store
-  const activeChatStore = projectStore.getActiveChatStore();
+  const activeChatStore = projectId
+    ? projectStore.getActiveChatStore(projectId)
+    : null;
 
-  // Create a state subscription to make the component reactive
-  const [chatState, dispatch] = useReducer(
-    chatStateReducer,
-    activeChatStore ? activeChatStore.getState() : null
+  // Read the newly selected store synchronously. The previous effect-based
+  // bridge rendered one frame with the new Project id but the old Project's
+  // large chat state, then rendered the new state again after the effect ran.
+  // Besides being observably inconsistent, that doubled the expensive
+  // markdown/work-log render on every Project switch.
+  const subscribe = useCallback(
+    (onStoreChange: () => void) =>
+      activeChatStore?.subscribe(onStoreChange) ?? (() => undefined),
+    [activeChatStore]
   );
-
-  useEffect(() => {
-    if (!activeChatStore) {
-      dispatch({ type: 'SET_STORE', payload: null });
-      return;
-    }
-
-    // Subscribe to store changes
-    const unsubscribe = activeChatStore.subscribe((state: ChatStore) => {
-      dispatch({ type: 'UPDATE_STATE', payload: state });
-    });
-
-    // Set initial state
-    const initialState = activeChatStore.getState();
-    dispatch({ type: 'UPDATE_STATE', payload: initialState });
-
-    return unsubscribe;
-  }, [activeChatStore]);
+  const getSnapshot = useCallback(
+    () => activeChatStore?.getState() ?? null,
+    [activeChatStore]
+  );
+  const chatState = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   // Create a chatStore-like object that mimics the original interface
   const chatStore = useMemo(() => {
@@ -92,6 +75,7 @@ const useChatStoreAdapter = (): {
 
   return {
     projectStore,
+    projectId,
     chatStore,
   };
 };

@@ -14,7 +14,9 @@
 
 import base64
 import os
+import re
 import time
+from datetime import datetime
 
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, text
@@ -22,6 +24,14 @@ from sqlmodel import Field
 
 from app.core.sqids import encode_user_id
 from app.model.abstract.model import AbstractModel, DefaultTimes
+
+SNAPSHOT_PATH_COMPONENT = re.compile(r"^[a-zA-Z0-9_.:-]{1,200}$")
+
+
+def _safe_snapshot_component(value: str, field_name: str) -> str:
+    if not value or value in {".", ".."} or not SNAPSHOT_PATH_COMPONENT.match(value):
+        raise ValueError(f"Invalid {field_name}: unsafe snapshot path component")
+    return value
 
 
 class ChatSnapshot(AbstractModel, DefaultTimes, table=True):
@@ -31,6 +41,7 @@ class ChatSnapshot(AbstractModel, DefaultTimes, table=True):
     camel_task_id: str = Field(index=True)
     browser_url: str
     image_path: str
+    storage_key: str | None = Field(default=None, index=True)
 
     @classmethod
     def get_user_dir(cls, user_id: int) -> str:
@@ -52,22 +63,65 @@ class ChatSnapshot(AbstractModel, DefaultTimes, table=True):
 class ChatSnapshotIn(BaseModel):
     api_task_id: str
     user_id: int | None = None
+    space_id: str | None = None
+    project_id: str | None = None
+    run_id: str | None = None
     camel_task_id: str
     browser_url: str
     image_base64: str
+    storage_key: str | None = None
 
     @staticmethod
-    def save_image(user_id: int, api_task_id: str, image_base64: str) -> str:
+    def save_image(
+        user_id: int,
+        api_task_id: str,
+        image_base64: str,
+        *,
+        space_id: str | None = None,
+        project_id: str | None = None,
+        run_id: str | None = None,
+    ) -> str:
         if "," in image_base64:
             image_base64 = image_base64.split(",", 1)[1]
-        user_dir = encode_user_id(user_id)
-        folder = os.path.join("app", "public", "upload", user_dir, api_task_id)
+        if space_id and project_id:
+            safe_space_id = _safe_snapshot_component(space_id, "space_id")
+            safe_project_id = _safe_snapshot_component(project_id, "project_id")
+            safe_run_id = _safe_snapshot_component(run_id or api_task_id, "run_id")
+            folder = os.path.join(
+                "app",
+                "public",
+                "upload",
+                "v2",
+                safe_space_id,
+                safe_project_id,
+                safe_run_id,
+            )
+            public_prefix = f"/public/upload/v2/{safe_space_id}/{safe_project_id}/{safe_run_id}"
+        else:
+            user_dir = encode_user_id(user_id)
+            safe_api_task_id = _safe_snapshot_component(api_task_id, "api_task_id")
+            folder = os.path.join("app", "public", "upload", user_dir, safe_api_task_id)
+            public_prefix = f"/public/upload/{user_dir}/{safe_api_task_id}"
         os.makedirs(folder, exist_ok=True)
         filename = f"{int(time.time() * 1000)}.jpg"
         file_path = os.path.join(folder, filename)
         with open(file_path, "wb") as f:
             f.write(base64.b64decode(image_base64))
-        return f"/public/upload/{user_dir}/{api_task_id}/{filename}"
+        return f"{public_prefix}/{filename}"
+
+
+class ChatSnapshotOut(BaseModel):
+    id: int
+    user_id: int
+    api_task_id: str
+    camel_task_id: str
+    browser_url: str
+    image_path: str
+    image_url: str
+    storage_key: str | None = None
+    deleted_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class ChatSnapshotUpdate(BaseModel):
@@ -76,3 +130,4 @@ class ChatSnapshotUpdate(BaseModel):
     camel_task_id: str | None = None
     browser_url: str | None = None
     image_path: str | None = None
+    storage_key: str | None = None

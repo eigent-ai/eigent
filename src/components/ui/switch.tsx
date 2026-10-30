@@ -16,13 +16,17 @@ import * as SwitchPrimitives from '@radix-ui/react-switch';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { DS_FOCUS_RING } from './semanticProps';
+import { mergeAliasStyles, switchTokenAliases } from './tokenAliases';
 
 export type SwitchSize = 'default' | 'sm';
+export type SwitchVariant = 'default' | 'solid' | 'outline';
 
 type SwitchProps = React.ComponentPropsWithoutRef<
   typeof SwitchPrimitives.Root
 > & {
   size?: SwitchSize;
+  variant?: SwitchVariant;
 };
 
 const sizeClasses = {
@@ -36,27 +40,55 @@ const sizeClasses = {
   },
 };
 
+const variantClasses: Record<SwitchVariant, { root: string; thumb: string }> = {
+  default: {
+    root: 'border-transparent data-[state=checked]:bg-ds-bg-success-default-default data-[state=unchecked]:bg-ds-neutral-subtle-default',
+    thumb:
+      'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
+  },
+  solid: {
+    root: 'border-transparent data-[state=checked]:bg-ds-bg-success-default-default data-[state=unchecked]:bg-ds-neutral-default-default',
+    thumb:
+      'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
+  },
+  outline: {
+    root: 'data-[state=checked]:bg-ds-bg-success-default-default data-[state=checked]:border-ds-border-success-default-default data-[state=unchecked]:bg-ds-neutral-default-default data-[state=unchecked]:border-ds-hairline-default-default',
+    thumb:
+      'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
+  },
+};
+
 const Switch = React.forwardRef<
   React.ElementRef<typeof SwitchPrimitives.Root>,
   SwitchProps
->(({ className, size = 'default', ...props }, ref) => (
-  <SwitchPrimitives.Root
-    className={cn(
-      'focus-visible:ring-ring focus-visible:ring-offset-background peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-switch-on-fill-track-fill data-[state=unchecked]:bg-switch-off-fill-track-fill',
-      sizeClasses[size].root,
-      className
-    )}
-    {...props}
-    ref={ref}
-  >
-    <SwitchPrimitives.Thumb
+>(
+  (
+    { className, size = 'default', variant = 'default', style, ...props },
+    ref
+  ) => (
+    <SwitchPrimitives.Root
       className={cn(
-        'pointer-events-none block rounded-full bg-switch-on-fill-thumb-fill shadow-none ring-0 transition-transform data-[state=unchecked]:translate-x-0',
-        sizeClasses[size].thumb
+        'peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-x-2 border-y-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        DS_FOCUS_RING,
+        'focus-visible:ring-offset-ds-neutral-subtle-default',
+        sizeClasses[size].root,
+        variantClasses[variant].root,
+        className
       )}
-    />
-  </SwitchPrimitives.Root>
-));
+      style={mergeAliasStyles(switchTokenAliases, style)}
+      {...props}
+      ref={ref}
+    >
+      <SwitchPrimitives.Thumb
+        className={cn(
+          'pointer-events-none block rounded-full shadow-ds-elevation-control ring-0 transition-transform data-[state=unchecked]:translate-x-0 motion-reduce:transition-none',
+          sizeClasses[size].thumb,
+          variantClasses[variant].thumb
+        )}
+      />
+    </SwitchPrimitives.Root>
+  )
+);
 Switch.displayName = SwitchPrimitives.Root.displayName;
 
 export { Switch };

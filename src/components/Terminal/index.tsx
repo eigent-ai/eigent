@@ -131,9 +131,9 @@ export default function TerminalComponent({
     const terminal = new Terminal({
       theme: {
         background: 'transparent', // transparent background
-        foreground: '#ffffff', // white foreground
-        cursor: '#00ff00', // green cursor
-        cursorAccent: '#00ff00', // cursor accent
+        foreground: '#ffffff',
+        cursor: '#00ff00',
+        cursorAccent: '#00ff00',
       },
       fontFamily: '"Courier New", Courier, monospace', // monospace font
       fontSize: 12, // font size
@@ -354,16 +354,16 @@ export default function TerminalComponent({
   return (
     <div
       ref={terminalContainerRef}
-      className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl border border-solid border-border-subtle-strong"
+      className="rounded-2xl relative flex h-full w-full flex-col overflow-hidden"
       style={{ fontFamily: '"Courier New", Courier, monospace' }}
     >
       {/* background blur effect */}
-      <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-black-100%"></div>
+      <div className="blur-bg inset-0 rounded-xl bg-terminal-viewport-surface pointer-events-none absolute"></div>
 
       {/* terminal container */}
       <div
         ref={terminalRef}
-        className="absolute inset-0 z-10"
+        className="inset-0 absolute z-10"
         style={{
           margin: '16px',
           width: 'calc(100% - 32px)',

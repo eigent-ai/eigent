@@ -13,27 +13,69 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import hashlib
+import inspect
+import json
 import logging
 import os
-import re
-import time
+from collections.abc import Mapping
+from contextlib import suppress
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
+from app.agent.utils import current_time_str
+from app.auth import require_local_control_principal
+from app.auth.local_control import LocalControlPrincipal
 from app.component import code
-from app.component.environment import sanitize_env_path, set_user_env_path
+from app.component.environment import env, sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
 from app.model.chat import (
     AddTaskRequest,
     Chat,
+    FollowUpRequestAdmitted,
+    FollowUpRequestCreate,
     HumanReply,
     McpServers,
+    RetireIdleRuntimeRequest,
     Status,
     SupplementChat,
     sse_json,
+)
+from app.model.model_platform import canonical_model_platform
+from app.run_context import (
+    RunContext,
+    apply_run_env_for_third_party,
+    stream_with_run_context,
+)
+from app.run_journal import (
+    AttemptEnvironmentBinding,
+    EventRecorder,
+    FollowUpRequestRecord,
+    IdempotencyConflictError,
+    InvalidRunTransitionError,
+    OptimisticConcurrencyError,
+    ProjectExecutionLeaseConflictError,
+    RunAttemptRecord,
+    RunEventDraft,
+    RunNotFoundError,
+    SQLiteRunJournal,
+    configured_run_journal_path,
+    get_default_run_journal,
+)
+from app.run_journal.transitions import (
+    RUN_TERMINAL_STATES,
+    RUN_UNSUCCESSFUL_STATES,
+)
+from app.run_runtime import RunCoordinator, get_default_run_coordinator
+from app.run_runtime.admission import (
+    WarmRunAdmission,
+    admission_to_thread,
+    drain_admission,
 )
 from app.service.chat_service import step_solve
 from app.service.task import (
@@ -46,14 +88,56 @@ from app.service.task import (
     ActionStopData,
     ActionSupplementData,
     ImprovePayload,
+    TaskLock,
+    commit_and_deliver,
     delete_task_lock,
     get_or_create_task_lock,
     get_task_lock,
+    get_task_lock_if_exists,
     set_current_task_id,
-    task_locks,
+)
+from app.utils.browser_launcher import (
+    ensure_cdp_browser_endpoint,
+    has_eigent_embedded_browser_target,
+    is_cdp_url_available,
+    normalize_cdp_url,
+)
+from app.utils.cdp_browser_state import (
+    clear_connected_cdp_browser_for_request,
+    get_connected_cdp_endpoint_for_request,
+)
+from app.utils.event_loop_utils import schedule_async_task_from_worker
+from app.utils.server.sync_step import sync_step_event
+from app.utils.workspace_paths import camel_log_root
+from app.utils.workspace_resolver import get_workspace_resolver
+from app.workspace_bundle.runtime import (
+    EnvironmentSetupRequiredError,
+    ResolvedRuntimeEnvironment,
+    RuntimeEnvironmentAssembler,
+)
+from app.workspace_config import (
+    EffectiveEnvironmentSpec,
+    ModelCapabilityConfigError,
+    ModelCapabilityRegistry,
+    UnsupportedThinkingEffortError,
+    WorkspaceBundleReconfigurationPendingError,
+    WorkspaceConfigError,
+    canonical_digest,
+)
+from app.workspace_config.admission import (
+    EnvironmentAdmissionService,
+    EnvironmentAdmissionTemplate,
+    LegacyEnvironmentImporter,
+)
+from app.workspace_git import get_default_workspace_git_coordinator
+from app.workspace_runtime.entry_guard import (
+    ManagedExecutionRequired,
+    guard_legacy_execution_entry,
 )
 
 router = APIRouter()
+_CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
+_NO_REGISTERED_MODELS = {"schema_version": 1, "revision": "none", "models": []}
 
 # Logger for chat controller
 chat_logger = logging.getLogger("chat_controller")
@@ -61,111 +145,1123 @@ chat_logger = logging.getLogger("chat_controller")
 # SSE timeout configuration (60 minutes in seconds)
 SSE_TIMEOUT_SECONDS = 60 * 60
 
+# CAMEL reads this as a process-level logging toggle, not as per-run state.
+os.environ.setdefault("CAMEL_MODEL_LOG_ENABLED", "true")
 
-async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
-    """Safely cleanup task lock with existence check.
 
-    Args:
-        task_lock: The task lock to cleanup
-        reason: Reason for cleanup (for logging)
+@dataclass(frozen=True)
+class _PreparedChatRun:
+    task_lock: TaskLock
+    run_context: RunContext
+    attempt_id: str
+    initial_action: ActionImproveData
 
-    Returns:
-        True if cleanup was performed, False otherwise
-    """
-    if not task_lock:
-        return False
 
-    # Check if task_lock still exists before attempting cleanup
-    if task_lock.id not in task_locks:
-        chat_logger.debug(
-            f"[{reason}] Task lock already removed, skipping cleanup",
-            extra={"task_id": task_lock.id},
+def _follow_up_response(record: FollowUpRequestRecord) -> dict[str, Any]:
+    return {
+        "request_id": record.request_id,
+        "project_id": record.project_id,
+        "content": record.content,
+        "attachment_paths": list(record.attachment_paths),
+        "review_handoff_ids": list(record.review_handoff_ids),
+        "delivery_mode": record.delivery_mode,
+        "status": record.status,
+        "admitted_run_id": record.admitted_run_id,
+        "source": record.source,
+        "source_command_id": record.source_command_id,
+        "last_error": record.last_error,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def _raise_follow_up_http_error(exc: Exception) -> None:
+    if isinstance(exc, ManagedExecutionRequired):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "managed_execution_required",
+                "message": "This Session requires the managed execution API.",
+            },
+        ) from exc
+    if isinstance(exc, RunNotFoundError):
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if isinstance(exc, (IdempotencyConflictError, InvalidRunTransitionError)):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, ValueError):
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    raise exc
+
+
+async def _record_canonical_user_message(
+    journal: SQLiteRunJournal,
+    *,
+    run_context: RunContext,
+    request_id: str,
+    content: str,
+    source: str,
+    attaches: list[str],
+    review_handoff_ids: list[str] | None = None,
+    session_model_selection: dict[str, Any] | None = None,
+) -> None:
+    """Persist admission input against the injected journal instance."""
+
+    await EventRecorder(journal).record_user_message(
+        project_id=run_context.project_id,
+        run_id=run_context.run_id,
+        request_id=request_id,
+        content=content,
+        source=source,
+        attachment_names=[Path(path).name for path in attaches],
+        review_handoff_ids=review_handoff_ids,
+        **(
+            {"session_model_selection": session_model_selection}
+            if session_model_selection is not None
+            else {}
+        ),
+    )
+
+
+def _workspace_bundle_admission_error(
+    exc: WorkspaceBundleReconfigurationPendingError,
+) -> UserException:
+    return UserException(
+        code.error,
+        f"{exc}. Open Workspace configuration > Local setup and sync the "
+        "pending changes.",
+        error_code=exc.code,
+    )
+
+
+def _environment_setup_error(
+    exc: EnvironmentSetupRequiredError,
+) -> UserException:
+    return UserException(
+        code.error,
+        "This Workspace needs local setup before the Run can start. Open "
+        "Workspace configuration and complete the missing bindings. "
+        f"({', '.join(exc.issues)})",
+        error_code=exc.code,
+    )
+
+
+_EXPLICIT_RESUME_INSTRUCTION = """
+Resume the interrupted Run from its persisted Project context and durable
+tool ledger. Continue only unfinished work. Treat completed tool calls and
+external side effects as already performed; do not repeat them unless the
+persisted result proves that repetition is both necessary and safe. If the
+durable context is insufficient, ask the user instead of guessing.
+""".strip()
+
+
+def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
+    from app.model.model_platform import is_eigent_cloud_model_endpoint
+
+    skill_config: dict[str, Any] = {}
+    skill_owner = data.skill_config_user_id()
+    if skill_owner:
+        try:
+            from app.service.skill_config_service import skill_config_load
+
+            skill_config = skill_config_load(skill_owner)
+        except Exception:
+            chat_logger.warning(
+                "Failed to import legacy skills into Personal Default Bundle",
+                exc_info=True,
+            )
+    mcp_configs = data.installed_mcp.get("mcpServers") or {}
+    template = LegacyEnvironmentImporter().build_template(
+        model_platform=data.model_platform,
+        model_type=data.model_type,
+        auth_source=data.auth_source,
+        requested_effort=data.thinking_effort,
+        api_mode=(data.extra_params or {}).get("api_mode"),
+        provider_override=(data.extra_params or {}).get("model_capability"),
+        is_cloud=is_eigent_cloud_model_endpoint(data.api_url),
+        allow_local_system=data.allow_local_system,
+        mcp_server_names=tuple(mcp_configs.keys()),
+        mcp_server_configs=mcp_configs,
+        skill_config=skill_config,
+        session_mode=data.session_mode,
+    )
+    if data.workspace_model_selection is None:
+        return replace(
+            template,
+            workspace_model_selection_checked=(
+                "workspace_model_selection" in data.model_fields_set
+            ),
         )
+    return replace(
+        template,
+        workspace_model_selection=data.workspace_model_selection,
+        workspace_model_selection_checked=True,
+        runtime_capability_manifest={
+            **template.runtime_capability_manifest,
+            "space_model_selection": data.workspace_model_selection.model_dump(
+                mode="json", exclude={"materialization_id"}
+            ),
+        },
+    )
+
+
+def _attempt_environment_binding(
+    attempt: RunAttemptRecord | None,
+) -> AttemptEnvironmentBinding | None:
+    if attempt is None or attempt.environment_spec_id is None:
+        return None
+    values = {
+        "environment_spec_digest": attempt.environment_spec_digest,
+        "bundle_revision_id": attempt.bundle_revision_id,
+        "permission_profile_revision": attempt.permission_profile_revision,
+        "thinking_effort_requested": attempt.thinking_effort_requested,
+        "thinking_effort_effective": attempt.thinking_effort_effective,
+        "provider_capability_revision": (attempt.provider_capability_revision),
+    }
+    if any(value is None for value in values.values()):
+        raise UserException(
+            code.error,
+            "The Run has an incomplete persisted EnvironmentSpec binding.",
+        )
+    return AttemptEnvironmentBinding(
+        environment_spec_id=attempt.environment_spec_id,
+        **values,
+    )
+
+
+def _planned_resume_attempt(
+    *,
+    run_id: str,
+    resume_request_id: str,
+    existing_attempt: RunAttemptRecord | None,
+    binding_source: RunAttemptRecord | None,
+) -> RunAttemptRecord:
+    if existing_attempt is not None:
+        return existing_attempt
+    attempt_id = (
+        "resume-"
+        + hashlib.sha256(
+            f"{run_id}\0{resume_request_id}".encode()
+        ).hexdigest()[:32]
+    )
+    if binding_source is not None:
+        return replace(
+            binding_source,
+            attempt_id=attempt_id,
+            attempt_number=binding_source.attempt_number + 1,
+            status="pending",
+            started_at=0,
+            ended_at=None,
+            outcome=None,
+            timeout_reason=None,
+            resume_request_id=resume_request_id,
+            resume_reason="explicit_resume",
+            elapsed_active_ms=0,
+            last_consumer_heartbeat_at=None,
+        )
+    return RunAttemptRecord(
+        attempt_id=attempt_id,
+        run_id=run_id,
+        attempt_number=1,
+        status="pending",
+        started_at=0,
+        ended_at=None,
+        outcome=None,
+        timeout_reason=None,
+        resume_request_id=resume_request_id,
+        resume_reason="explicit_resume",
+        policy_version="v1",
+        elapsed_active_ms=0,
+        last_consumer_heartbeat_at=None,
+    )
+
+
+def _apply_environment_to_task_lock(
+    task_lock: TaskLock,
+    spec: EffectiveEnvironmentSpec,
+    *,
+    template: EnvironmentAdmissionTemplate | None,
+    runtime_environment: ResolvedRuntimeEnvironment | None = None,
+) -> None:
+    task_lock.environment_admission_template = (
+        replace(
+            template,
+            workspace_model_selection=None,
+            workspace_model_selection_checked=False,
+        )
+        if template is not None
+        and (
+            template.workspace_model_selection is not None
+            or template.workspace_model_selection_checked
+        )
+        else template
+    )
+    task_lock.environment_spec_id = spec.spec_id
+    task_lock.thinking_effort_requested = spec.thinking_effort_requested.value
+    task_lock.thinking_effort_effective = spec.thinking_effort_effective.value
+    task_lock.provider_effort_parameter_name = spec.provider_parameter_name
+    task_lock.provider_effort_parameter_value = spec.provider_value
+    task_lock.provider_capability_revision = spec.provider_capability_revision
+    task_lock.provider_model_transport = (
+        spec.semantic_spec.get("runtime_capability_manifest", {})
+        .get("model_capability", {})
+        .get("api_mode")
+    )
+    task_lock.resolved_runtime_environment = runtime_environment
+
+
+def _space_root_for_run(run_context: RunContext) -> Path:
+    root = get_workspace_resolver().space_root(
+        run_context.space_id,
+        run_context.project_id,
+        run_context.email,
+        run_context.user_id,
+    )
+    return (root or run_context.working_directory).expanduser().resolve()
+
+
+def _assemble_runtime_environment(
+    journal: SQLiteRunJournal,
+    spec: EffectiveEnvironmentSpec,
+    run_context: RunContext,
+    principal: LocalControlPrincipal | None = None,
+) -> ResolvedRuntimeEnvironment | None:
+    # Global Skill settings are account-owned. Chat body / persisted RunContext
+    # identity is not an authenticated remote owner. Only the trusted Desktop
+    # capability may supply its local legacy email identity; remote Brain users
+    # resolve canonical settings for their authenticated principal exclusively.
+    user_id = None
+    email = ""
+    if isinstance(principal, LocalControlPrincipal):
+        if principal.kind == "brain_user":
+            user_id = principal.user_id or None
+        elif principal.kind == "desktop_renderer":
+            user_id = run_context.user_id
+            email = run_context.email
+    return RuntimeEnvironmentAssembler(
+        journal,
+        state_root=(configured_run_journal_path().parent / "workspace-git"),
+    ).assemble(
+        spec,
+        space_id=run_context.space_id,
+        space_root=_space_root_for_run(run_context),
+        user_id=user_id,
+        email=email,
+    )
+
+
+def _require_supported_bundle_session_mode(
+    session_mode: str | None,
+    runtime_environment: ResolvedRuntimeEnvironment | None,
+) -> None:
+    if runtime_environment is not None and session_mode != "single-agent":
+        raise EnvironmentSetupRequiredError(
+            ["bundle_session_mode_unsupported"]
+        )
+
+
+def _load_attempt_environment_spec(
+    journal: SQLiteRunJournal,
+    attempt: RunAttemptRecord,
+) -> EffectiveEnvironmentSpec | None:
+    if attempt.environment_spec_id is None:
+        return None
+    record = journal.get_effective_environment_spec(
+        attempt.environment_spec_id
+    )
+    if record is None:
+        raise UserException(
+            code.error,
+            "The Run's persisted EnvironmentSpec is unavailable.",
+        )
+    try:
+        spec = EffectiveEnvironmentSpec.model_validate(record.spec)
+    except Exception as exc:
+        raise UserException(
+            code.error,
+            "The Run's persisted EnvironmentSpec is invalid.",
+        ) from exc
+    record_binding = (
+        record.environment_spec_id,
+        record.environment_spec_digest,
+        record.bundle_revision_id,
+        record.manifest_digest,
+        record.semantic_spec_digest,
+        record.local_materialization_digest,
+        record.permission_profile_revision,
+        record.provider_capability_revision,
+    )
+    spec_binding = (
+        spec.spec_id,
+        spec.digest,
+        spec.bundle_revision_id,
+        spec.manifest_digest,
+        spec.semantic_spec_digest,
+        spec.local_materialization_digest,
+        spec.permission_profile_revision,
+        spec.provider_capability_revision,
+    )
+    attempt_binding = (
+        attempt.environment_spec_id,
+        attempt.environment_spec_digest,
+        attempt.bundle_revision_id,
+        attempt.permission_profile_revision,
+        attempt.thinking_effort_requested,
+        attempt.thinking_effort_effective,
+        attempt.provider_capability_revision,
+    )
+    expected_attempt_binding = (
+        spec.spec_id,
+        spec.digest,
+        spec.bundle_revision_id,
+        spec.permission_profile_revision,
+        spec.thinking_effort_requested.value,
+        spec.thinking_effort_effective.value,
+        spec.provider_capability_revision,
+    )
+    if (
+        record_binding != spec_binding
+        or attempt_binding != expected_attempt_binding
+    ):
+        raise UserException(
+            code.error,
+            "The Run's persisted EnvironmentSpec binding is inconsistent.",
+        )
+    return spec
+
+
+def _admitted_without_effort(
+    spec: EffectiveEnvironmentSpec,
+    template: EnvironmentAdmissionTemplate,
+) -> bool:
+    """Whether a pre-registration Attempt can resume on today's capability.
+
+    It was admitted for a model with no registered efforts, so it sends none
+    of its own (a requested effort was only recorded; an effort in the user's
+    own provider configuration is sent as written). Resume keeps that, so it
+    may continue after the model is registered, provided nothing else about
+    the model's capability changed.
+    """
+    current = template.provider_capability
+    pinned = spec.semantic_spec.get("runtime_capability_manifest", {}).get(
+        "model_capability", {}
+    )
+    if (
+        spec.provider_value != "provider_default"
+        or pinned.get("status") != "unknown_model"
+        or current.source != "catalog"
+        or pinned.get("api_mode") != current.transport
+        or template.model_capability_inputs is None
+    ):
         return False
+    unregistered = ModelCapabilityRegistry(_NO_REGISTERED_MODELS).resolve(
+        **template.model_capability_inputs
+    )
+    return (
+        unregistered.capability_revision == spec.provider_capability_revision
+    )
+
+
+def _validate_resume_model_capability(
+    data: Chat,
+    spec: EffectiveEnvironmentSpec,
+) -> EnvironmentAdmissionTemplate:
+    template = _legacy_environment_template(data)
+    current = template.provider_capability
+    if current.capability_revision != spec.provider_capability_revision and (
+        not _admitted_without_effort(spec, template)
+    ):
+        raise UserException(
+            code.error,
+            "The model capability changed after this task started, so it "
+            "can't be resumed. Send a new message to continue.",
+        )
+    persisted_model = spec.bound_model() or {}
+    if (
+        persisted_model.get("platform") != data.model_platform.lower()
+        or persisted_model.get("type") != data.model_type
+    ):
+        raise UserException(
+            code.error,
+            "Resume requires the original model, or an explicit environment "
+            "upgrade into a new Attempt.",
+        )
+    return template
+
+
+def _admission_request_id(
+    run_id: str,
+    *,
+    question: str,
+    attaches: list[str],
+    review_handoff_ids: list[str] | None = None,
+    project_context: str | None = None,
+) -> str:
+    # ``project_context`` is a rebuildable renderer projection and can change
+    # between retries.  It must never participate in durable admission
+    # identity.  Keep the parameter temporarily for call-site compatibility.
+    del project_context
+    canonical = json.dumps(
+        {
+            "question": question,
+            "attaches": attaches,
+            "review_handoff_ids": list(review_handoff_ids or []),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
+    return f"initial:{run_id}:{digest}"
+
+
+async def _classify_persisted_admission(
+    journal,
+    *,
+    run_id: str,
+    request_id: str,
+) -> tuple[str, object | None]:
+    """Classify an existing Run as retryable, duplicate, or conflicting."""
+
+    run = await asyncio.to_thread(journal.get_run, run_id)
+    if run is None:
+        return "new", None
+    attempts = await asyncio.to_thread(journal.list_run_attempts, run_id)
+    matching = next(
+        (
+            attempt
+            for attempt in attempts
+            if attempt.resume_request_id == request_id
+        ),
+        None,
+    )
+    if matching is None:
+        # Legacy attempts predate payload fingerprints. Their input cannot be
+        # proven equal to this request, so replay them but never re-execute.
+        if any(
+            attempt.resume_request_id == f"initial:{run_id}"
+            for attempt in attempts
+        ):
+            return "duplicate", None
+        if not attempts and run.status in {"pending", "running"}:
+            return "retry", None
+        return "conflict", None
+    if run.status in {"pending", "running"} and matching.status in {
+        "pending",
+        "running",
+    }:
+        return "retry", matching
+    return "duplicate", matching
+
+
+_WEAK_CONTINUATION_MESSAGES = frozenset(
+    {
+        "continue",
+        "continue.",
+        "go on",
+        "go on.",
+        "keep going",
+        "keep going.",
+        "proceed",
+        "proceed.",
+        "继续",
+        "继续。",
+        "继续吧",
+        "接着继续",
+    }
+)
+
+_UNKNOWN_SIDE_EFFECT_ACKNOWLEDGEMENTS = frozenset(
+    {
+        "i acknowledge the tool may have executed; do not retry it; continue",
+        "我确认该工具可能已经执行，不要重试，继续",
+        "我确认该工具可能已经执行，不要重试，继续。",
+    }
+)
+
+
+def _is_weak_continuation(content: str) -> bool:
+    return " ".join(content.strip().lower().split()) in (
+        _WEAK_CONTINUATION_MESSAGES
+    )
+
+
+def _acknowledges_unknown_side_effect(content: str) -> bool:
+    return " ".join(content.strip().lower().split()) in (
+        _UNKNOWN_SIDE_EFFECT_ACKNOWLEDGEMENTS
+    )
+
+
+def _continuation_http_error(
+    *, code_value: str, message: str, project_state_version: int
+) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": code_value,
+            "message": message,
+            "project_state_version": project_state_version,
+            "interaction_type": "continuation_clarification",
+        },
+    )
+
+
+async def _reject_pending_continuation(
+    journal: SQLiteRunJournal,
+    *,
+    project_id: str,
+    request_id: str,
+    code_value: str,
+    message: str,
+) -> None:
+    """Stop durable retries for a continuation needing new user intent."""
 
     try:
-        task_lock.status = Status.done
-        await delete_task_lock(task_lock.id)
-        chat_logger.info(
-            f"[{reason}] Task lock cleanup completed",
-            extra={"task_id": task_lock.id},
+        await asyncio.to_thread(
+            journal.reject_follow_up_request,
+            request_id=request_id,
+            project_id=project_id,
+            error=f"{code_value}: {message}",
+            reject_managed=True,
         )
-        return True
-    except Exception as e:
-        chat_logger.error(
-            f"[{reason}] Failed to cleanup task lock",
-            extra={"task_id": task_lock.id, "error": str(e)},
-            exc_info=True,
+    except ManagedExecutionRequired as exc:
+        _raise_follow_up_http_error(exc)
+    except RunNotFoundError:
+        # Direct messages are resolved before a queue row exists. The typed
+        # HTTP response is their complete clarification contract.
+        return
+
+
+async def _resolve_continuation_admission(
+    journal: SQLiteRunJournal,
+    *,
+    data: Chat | SupplementChat,
+    project_id: str,
+    run_id: str,
+) -> Chat | SupplementChat:
+    """Resolve weak continuation intent before any model inference."""
+
+    acknowledges_unknown = _acknowledges_unknown_side_effect(data.question)
+    if not _is_weak_continuation(data.question) and not acknowledges_unknown:
+        return data
+    active = await asyncio.to_thread(
+        journal.get_active_project_run, project_id
+    )
+    state = await asyncio.to_thread(
+        journal.get_project_execution_state, project_id
+    )
+    if active is not None and active.run_id != run_id:
+        raise _continuation_http_error(
+            code_value="follow_up_must_queue",
+            message="The active Run must finish or be stopped before this message is admitted.",
+            project_state_version=state.state_version,
         )
+
+    recent = await asyncio.to_thread(
+        journal.list_runs,
+        project_id=project_id,
+        limit=1,
+    )
+    latest = recent[0] if recent else None
+    latest_tool_calls = (
+        await asyncio.to_thread(journal.list_tool_calls, latest.run_id)
+        if latest
+        else []
+    )
+    latest_has_unknown_tool_outcome = any(
+        tool.status == "outcome_unknown" for tool in latest_tool_calls
+    )
+    if latest is not None and latest.status == "interrupted":
+        message = (
+            "The interrupted Run has an unknown external side effect. Review it and explicitly Resume or Cancel."
+            if latest_has_unknown_tool_outcome
+            else "The latest Run was interrupted. Use the explicit Resume action; the word continue never resumes it."
+        )
+        code_value = (
+            "continuation_outcome_unknown"
+            if latest_has_unknown_tool_outcome
+            else "continuation_resume_required"
+        )
+        await _reject_pending_continuation(
+            journal,
+            project_id=project_id,
+            request_id=run_id,
+            code_value=code_value,
+            message=message,
+        )
+        raise _continuation_http_error(
+            code_value=code_value,
+            message=message,
+            project_state_version=state.state_version,
+        )
+
+    frontier = state.frontier or {}
+    next_action = frontier.get("next_action")
+    remaining = frontier.get("remaining")
+    retry_failed_run = False
+    if latest is not None and latest.status in RUN_UNSUCCESSFUL_STATES:
+        blocked_by = frontier.get("blocked_by")
+        if (
+            latest_has_unknown_tool_outcome
+            or blocked_by == "external_tool_outcome_unknown"
+        ):
+            if not acknowledges_unknown:
+                message = (
+                    "The failed Run has an unknown external side effect. "
+                    "Review the durable tool outcome. To continue without "
+                    "replaying it, send exactly: I acknowledge the tool may "
+                    "have executed; do not retry it; continue"
+                )
+                await _reject_pending_continuation(
+                    journal,
+                    project_id=project_id,
+                    request_id=run_id,
+                    code_value="continuation_outcome_unknown",
+                    message=message,
+                )
+                raise _continuation_http_error(
+                    code_value="continuation_outcome_unknown",
+                    message=message,
+                    project_state_version=state.state_version,
+                )
+        retry_failed_run = True
+        if not isinstance(next_action, str) or not next_action.strip():
+            objective = frontier.get("objective")
+            if (
+                not latest_tool_calls
+                and isinstance(objective, str)
+                and objective.strip()
+            ):
+                # A provider/admission failure can terminate before the Agent
+                # produces a Todo frontier. Retrying the durable objective is
+                # safe only after proving no tool execution began; this is a
+                # new Run, never an implicit Resume.
+                next_action = objective.strip()
+    if not isinstance(next_action, str) or not next_action.strip():
+        message = (
+            "The saved Project frontier has no unfinished next action. "
+            "Say what new work you want to continue."
+        )
+        await _reject_pending_continuation(
+            journal,
+            project_id=project_id,
+            request_id=run_id,
+            code_value="continuation_clarification_required",
+            message=message,
+        )
+        raise _continuation_http_error(
+            code_value="continuation_clarification_required",
+            message=message,
+            project_state_version=state.state_version,
+        )
+    if not isinstance(remaining, list):
+        remaining = []
+    claim, created = await asyncio.to_thread(
+        journal.claim_continuation,
+        # The future Run id is the durable transport idempotency key. The
+        # payload-derived admission request id is intentionally not used as
+        # semantic Project identity.
+        request_id=run_id,
+        project_id=project_id,
+        intent="continue_project",
+        base_run_id=state.frontier_run_id,
+        next_action=next_action.strip(),
+    )
+    if not created and claim.request_id != run_id:
+        message = (
+            "The Project has not advanced since the previous continue "
+            "request. Clarify what should change instead of repeating it."
+        )
+        await _reject_pending_continuation(
+            journal,
+            project_id=project_id,
+            request_id=run_id,
+            code_value="continuation_duplicate_without_progress",
+            message=message,
+        )
+        raise _continuation_http_error(
+            code_value="continuation_duplicate_without_progress",
+            message=message,
+            project_state_version=state.state_version,
+        )
+    continuation_mode = (
+        "retry_failed_run" if retry_failed_run else "advance_frontier"
+    )
+    directive = (
+        "=== Durable Continuation Intent ===\n"
+        "intent: continue_project\n"
+        f"mode: {continuation_mode}\n"
+        f"project_state_version: {state.state_version}\n"
+        f"base_run_id: {state.frontier_run_id or ''}\n"
+        f"next_action: {next_action.strip()}\n"
+        f"remaining: {json.dumps(remaining, ensure_ascii=False)}\n"
+        "Continue from durable Project history. Do not repeat completed "
+        "external actions or the prior final answer.\n"
+        + (
+            "unknown_external_side_effect_acknowledged: true\n"
+            "A previous tool may already have executed. Do not replay it; "
+            "continue only with the saved next action.\n"
+            if acknowledges_unknown
+            else ""
+        )
+        + "=== End Durable Continuation Intent ==="
+    )
+    # The Workforce execution path does not consume ``project_context``.
+    # Put the resolved continuation in the actual model instruction so it
+    # cannot be silently discarded after the durable claim is recorded.
+    return data.model_copy(
+        update={"question": f"{data.question.strip()}\n\n{directive}"}
+    )
+
+
+def _is_remote_browser_hands(request: Request | None) -> bool:
+    hands = getattr(getattr(request, "state", None), "hands", None)
+    if hands is None:
         return False
+    get_manifest = getattr(hands, "get_capability_manifest", None)
+    if get_manifest is None or inspect.iscoroutinefunction(get_manifest):
+        return False
+    try:
+        manifest = get_manifest()
+    except Exception:
+        return False
+    if inspect.isawaitable(manifest):
+        if hasattr(manifest, "close"):
+            manifest.close()
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    return manifest.get("deployment") == "remote_cluster"
+
+
+async def _prepare_browser_for_request(
+    request: Request | None,
+    port: int,
+    target_url: str | None = None,
+) -> bool:
+    if env("EIGENT_RUNTIME", "").lower().strip() == "electron":
+        configured_port = env("EIGENT_ELECTRON_CDP_PORT", "").strip()
+        try:
+            embedded_port = int(configured_port) if configured_port else port
+        except (TypeError, ValueError):
+            embedded_port = port
+        endpoint = f"http://127.0.0.1:{embedded_port}"
+        has_owned_target = await asyncio.to_thread(
+            has_eigent_embedded_browser_target,
+            endpoint,
+            target_url,
+        )
+        if target_url and has_owned_target:
+            if request is not None:
+                request.state.browser_available = True
+                request.state.cdp_url = endpoint
+                request.state.browser_port = embedded_port
+            return True
+
+        chat_logger.warning(
+            "Electron embedded browser is unavailable; refusing external "
+            "browser fallback",
+            extra={
+                "port": embedded_port,
+                "target_url_supplied": bool(target_url),
+                "owned_target_available": has_owned_target,
+            },
+        )
+        if request is not None:
+            request.state.browser_available = False
+            request.state.cdp_url = None
+            request.state.browser_port = embedded_port
+        return False
+
+    existing_cdp_url = (
+        get_connected_cdp_endpoint_for_request(request)
+        or env("EIGENT_CDP_URL", "")
+    ).strip()
+    if existing_cdp_url:
+        is_available = await asyncio.to_thread(
+            is_cdp_url_available, existing_cdp_url
+        )
+        if is_available:
+            normalized_endpoint, _, selected_port = normalize_cdp_url(
+                existing_cdp_url
+            )
+            if request is not None:
+                request.state.browser_available = True
+                request.state.cdp_url = normalized_endpoint
+                request.state.browser_port = selected_port
+            return True
+        clear_connected_cdp_browser_for_request(request)
+
+    if _is_remote_browser_hands(request):
+        if request is not None:
+            request.state.browser_available = True
+            request.state.cdp_url = None
+            request.state.browser_port = port
+        return True
+
+    try:
+        endpoint = await asyncio.to_thread(ensure_cdp_browser_endpoint, port)
+    except Exception as e:
+        chat_logger.warning(
+            "Could not ensure CDP browser for web mode",
+            extra={"error": str(e), "port": port},
+        )
+        if request is not None:
+            request.state.browser_available = False
+            request.state.cdp_url = None
+            request.state.browser_port = port
+        return False
+
+    if endpoint:
+        _, _, selected_port = normalize_cdp_url(endpoint)
+        if request is not None:
+            request.state.browser_available = True
+            request.state.cdp_url = endpoint
+            request.state.browser_port = selected_port
+        return True
+
+    chat_logger.warning(
+        "CDP browser not available after ensure attempt",
+        extra={"port": port},
+    )
+    if request is not None:
+        request.state.browser_available = False
+        request.state.cdp_url = None
+        request.state.browser_port = port
+    return False
+
+
+def _browser_prepare_timeout_seconds() -> float:
+    raw = env("BROWSER_PREPARE_TIMEOUT_SECONDS", "8")
+    try:
+        timeout = float(raw)
+    except (TypeError, ValueError):
+        return 8.0
+    return timeout if timeout > 0 else 8.0
+
+
+async def _prepare_browser_for_request_with_timeout(
+    request: Request | None,
+    port: int,
+    target_url: str | None = None,
+) -> bool:
+    timeout = _browser_prepare_timeout_seconds()
+    try:
+        return await asyncio.wait_for(
+            _prepare_browser_for_request(request, port, target_url),
+            timeout=timeout,
+        )
+    except TimeoutError:
+        chat_logger.warning(
+            "Timed out preparing CDP browser",
+            extra={"port": port, "timeout_seconds": timeout},
+        )
+        if request is not None:
+            request.state.browser_available = False
+            request.state.cdp_url = None
+            request.state.browser_port = port
+        return False
+
+
+def _build_run_context(
+    data: Chat,
+    frozen_dirs,
+    request: Request,
+    camel_log: Path,
+) -> RunContext:
+    api_base_url = data.api_url or "https://api.openai.com/v1"
+    browser_port = int(
+        getattr(request.state, "browser_port", data.browser_port)
+    )
+    cdp_url = getattr(request.state, "cdp_url", None)
+    request_headers = request.headers
+    headers = request_headers if isinstance(request_headers, Mapping) else {}
+    auth_header = headers.get("authorization")
+    try:
+        from app.run_sync.runtime import configure_default_cloud_sync_worker
+
+        configure_default_cloud_sync_worker(
+            server_url=data.server_url,
+            authorization=auth_header,
+            desktop_instance_id=headers.get("x-desktop-instance-id"),
+        )
+    except Exception:
+        # Cloud sync is a freshness projection. Local Run admission and history
+        # remain available when its configuration cannot be refreshed.
+        chat_logger.exception("Failed to configure Run cloud sync")
+    permissions = {"workspace.read", "workspace.write"}
+    if data.allow_local_system:
+        permissions.update({"terminal", "local_system"})
+    if cdp_url or data.cdp_browsers:
+        permissions.add("browser")
+    permissions.update(
+        f"mcp:{name}" for name in (data.installed_mcp.get("mcpServers") or {})
+    )
+    credential_sources = {
+        "model": data.auth_source
+        or ("request_api_key" if data.api_key else "none"),
+        "cloud": "request_api_key" if data.is_cloud() else "none",
+        "search": "request_search_config" if data.search_config else "none",
+    }
+    return RunContext(
+        space_id=data.space_id or data.project_id,
+        project_id=data.project_id,
+        run_id=data.run_id or data.task_id,
+        task_id=data.task_id,
+        email=data.email,
+        user_id=str(data.user_id) if data.user_id is not None else None,
+        working_directory=frozen_dirs.working_directory,
+        task_output_root=frozen_dirs.task_output_root,
+        camel_log_dir=camel_log,
+        binding_source=frozen_dirs.binding_source,
+        workdir_mode=frozen_dirs.workdir_mode or data.workdir_mode,
+        browser_port=browser_port,
+        session_mode=data.session_mode,
+        cdp_url=cdp_url,
+        api_key=data.api_key,
+        api_base_url=api_base_url,
+        cloud_api_key=data.api_key if data.is_cloud() else None,
+        server_url=data.server_url,
+        auth_header=auth_header,
+        search_config=data.search_config or {},
+        extra_env={
+            "baseSnapshotId": frozen_dirs.base_snapshot_id or "",
+        },
+        model_platform=data.model_platform,
+        model_type=data.model_type,
+        model_parameters=dict(data.model_config_dict or {}),
+        permissions=frozenset(permissions),
+        credential_sources=credential_sources,
+        prompt_current_time=current_time_str(data.timezone),
+        timezone=data.timezone,
+    )
+
+
+def _queue_action_from_worker(task_lock, action, description: str) -> None:
+    schedule_async_task_from_worker(
+        task_lock.put_queue(action),
+        timeout=5.0,
+        description=description,
+    )
+
+
+def _camel_log_dir(
+    email: str,
+    project_id: str,
+    task_id: str,
+    user_id: str | int | None = None,
+) -> Path:
+    return camel_log_root(email, project_id, task_id, user_id)
 
 
 async def timeout_stream_wrapper(
     stream_generator,
-    timeout_seconds: int = SSE_TIMEOUT_SECONDS,
-    task_lock=None,
+    timeout_seconds: float = SSE_TIMEOUT_SECONDS,
+    run_id: str | None = None,
 ):
-    """Wraps a stream generator with timeout handling.
+    """Keep one transport subscriber alive without owning Run lifecycle."""
 
-    Closes the SSE connection if no data is received within the timeout period.
-    Triggers cleanup if timeout occurs to prevent resource leaks.
-    """
-    last_data_time = time.time()
     generator = stream_generator.__aiter__()
-    cleanup_triggered = False
+    pending_next: asyncio.Task | None = None
+
+    def current_run_id() -> str | None:
+        handle = getattr(stream_generator, "handle", None)
+        return getattr(handle, "run_id", run_id)
 
     try:
         while True:
-            elapsed = time.time() - last_data_time
-            remaining_timeout = timeout_seconds - elapsed
-
-            try:
-                data = await asyncio.wait_for(
-                    generator.__anext__(), timeout=remaining_timeout
-                )
-                last_data_time = time.time()
-                yield data
-            except TimeoutError:
-                chat_logger.warning(
-                    "SSE timeout: No data received, closing connection",
-                    extra={"timeout_seconds": timeout_seconds},
-                )
-                timeout_min = timeout_seconds // 60
+            if pending_next is None:
+                pending_next = asyncio.create_task(generator.__anext__())
+            done, _ = await asyncio.wait(
+                {pending_next},
+                timeout=timeout_seconds,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not done:
                 yield sse_json(
-                    "error",
+                    "heartbeat",
                     {
-                        "message": "Connection timeout: No data"
-                        f" received for {timeout_min}"
-                        " minutes"
+                        "scope": "transport",
+                        "run_id": current_run_id(),
                     },
                 )
-                cleanup_triggered = await _cleanup_task_lock_safe(
-                    task_lock, "TIMEOUT"
-                )
-                break
+                continue
+            try:
+                data = pending_next.result()
             except StopAsyncIteration:
                 break
+            pending_next = None
+            yield data
 
     except asyncio.CancelledError:
         chat_logger.info(
-            "[STREAM-CANCELLED] Stream cancelled, triggering cleanup"
+            "SSE subscriber detached; Run execution continues",
+            extra={"run_id": current_run_id()},
         )
-        if not cleanup_triggered:
-            await _cleanup_task_lock_safe(task_lock, "CANCELLED")
         raise
     except Exception as e:
         chat_logger.error(
-            "[STREAM-ERROR] Unexpected error in stream wrapper",
-            extra={"error": str(e)},
+            "SSE subscriber failed; Run lifecycle is unchanged",
+            extra={"run_id": current_run_id(), "error": str(e)},
             exc_info=True,
         )
-        if not cleanup_triggered:
-            await _cleanup_task_lock_safe(task_lock, "ERROR")
         raise
+    finally:
+        if pending_next is not None and not pending_next.done():
+            pending_next.cancel()
+            with suppress(asyncio.CancelledError):
+                await pending_next
+        close = getattr(generator, "aclose", None)
+        if close is not None:
+            await close()
 
 
-@router.post("/chat", name="start chat")
-async def post(data: Chat, request: Request):
+async def _replay_persisted_run(run_id: str):
+    """Replay durable history without implicitly restarting execution."""
+
+    events = await asyncio.to_thread(
+        get_default_run_journal().list_events,
+        run_id,
+    )
+    if not events:
+        yield sse_json(
+            "run_interrupted",
+            {
+                "run_id": run_id,
+                "message": "Run has durable state but no live consumer; "
+                "explicit resume is required.",
+            },
+        )
+        return
+
+    for event in events:
+        yield sse_json(
+            event.legacy_step or event.event_type,
+            event.payload,
+        )
+
+
+async def _prepare_chat_run(
+    data: Chat,
+    request: Request,
+    *,
+    resume_attempt: RunAttemptRecord | None = None,
+    admission_request_id: str | None = None,
+    warm_admission: WarmRunAdmission | None = None,
+    aborted_warm_attempt: RunAttemptRecord | None = None,
+) -> _PreparedChatRun:
+    """Bind fresh runtime inputs for a new Run or explicit Resume Attempt."""
+    if data.session_model_selection is not None and (
+        canonical_model_platform(data.session_model_selection.model_platform)
+        != canonical_model_platform(data.model_platform)
+        or data.session_model_selection.model_type != data.model_type
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Session model does not match the Run binding",
+        )
+    # TODO(brain-auth): Phase B should derive canonical user_id from
+    # request.state.brain_auth, then verify/replace Chat.email before any
+    # workspace snapshot, artifact path, or task lock is resolved.
     chat_logger.info(
         "Starting new chat session",
         extra={
@@ -176,6 +1272,13 @@ async def post(data: Chat, request: Request):
     )
 
     task_lock = get_or_create_task_lock(data.project_id)
+    # Never let a failed admission inherit an Agent/tool runtime from a prior
+    # Run in the same Project-scoped TaskLock.
+    task_lock.resolved_runtime_environment = None
+    # Persist only the non-sensitive execution shape needed by a later
+    # SupplementChat. The follow-up payload intentionally does not duplicate
+    # Chat model credentials or session configuration.
+    task_lock.runtime_session_mode = data.session_mode
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -184,54 +1287,315 @@ async def post(data: Chat, request: Request):
     if safe_env_path:
         load_dotenv(dotenv_path=safe_env_path)
 
-    os.environ["file_save_path"] = data.file_save_path()
-    os.environ["browser_port"] = str(data.browser_port)
-    os.environ["OPENAI_API_KEY"] = data.api_key
-    os.environ["OPENAI_API_BASE_URL"] = (
-        data.api_url or "https://api.openai.com/v1"
+    resolver = get_workspace_resolver()
+    try:
+        frozen_dirs = resolver.freeze_task_directories(data, task_lock)
+    except ValueError as exc:
+        raise UserException(code.error, str(exc)) from exc
+
+    try:
+        await asyncio.to_thread(
+            resolver.write_task_snapshot,
+            data.email,
+            frozen_dirs.snapshot,
+        )
+    except Exception:
+        chat_logger.warning(
+            "Failed to persist task workspace snapshot",
+            extra={"project_id": data.project_id, "task_id": data.task_id},
+            exc_info=True,
+        )
+
+    # Electron is restricted to its owned WebContentsView target. A standalone
+    # Brain used by the Web client may reuse RemoteHands or provision an
+    # external Chrome/Chromium endpoint.
+    electron_runtime = env("EIGENT_RUNTIME", "").lower().strip() == "electron"
+    embedded_target_url = next(
+        (
+            str(browser.get("targetUrl"))
+            for browser in data.cdp_browsers
+            if browser.get("managedBy") == "electron"
+            and browser.get("targetUrl")
+        ),
+        None,
     )
-    os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
+    if electron_runtime or not data.cdp_browsers:
+        browser_ready = await _prepare_browser_for_request_with_timeout(
+            request,
+            data.browser_port,
+            embedded_target_url,
+        )
+        if electron_runtime and not browser_ready:
+            # Never let an Electron request fall through to the shared CDP
+            # endpoint without an exact Eigent-owned target descriptor.
+            data.cdp_browsers = []
 
-    # Set user-specific search engine configuration if provided
-    if data.search_config:
-        for key, value in data.search_config.items():
-            if value:
-                os.environ[key] = value
-                chat_logger.debug(
-                    f"Set search config: {key}",
-                    extra={"project_id": data.project_id},
-                )
-
-    email_sanitized = re.sub(
-        r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]
-    ).strip(".")
-    camel_log = (
-        Path.home()
-        / ".eigent"
-        / email_sanitized
-        / ("project_" + data.project_id)
-        / ("task_" + data.task_id)
-        / "camel_logs"
+    camel_log = _camel_log_dir(
+        data.email,
+        data.project_id,
+        data.run_id or data.task_id,
+        data.user_id,
     )
     camel_log.mkdir(parents=True, exist_ok=True)
+    run_context = _build_run_context(data, frozen_dirs, request, camel_log)
+    journal = get_default_run_journal()
+    if isinstance(journal, SQLiteRunJournal):
+        # The request body is not an ownership authority. Persist only a
+        # candidate; CloudSync promotes it after device registration proves
+        # the authenticated Cloud account.
+        await asyncio.to_thread(
+            journal.register_memory_scope_owner_candidates,
+            project_id=run_context.project_id,
+            space_id=run_context.space_id,
+            claimed_account_owner_id=run_context.user_id,
+        )
+        await asyncio.to_thread(
+            journal.bind_memory_project_scopes,
+            project_id=run_context.project_id,
+            space_id=run_context.space_id,
+            user_id=run_context.user_id,
+        )
+    is_resume = data.resume_request_id is not None
+    if is_resume:
+        request_id = str(data.resume_request_id)
+        if (
+            isinstance(journal, SQLiteRunJournal)
+            and resume_attempt is not None
+        ):
+            attempt = resume_attempt
+            persisted_spec = await asyncio.to_thread(
+                _load_attempt_environment_spec,
+                journal,
+                resume_attempt,
+            )
+            needs_legacy_environment_backfill = persisted_spec is None
+            backfilled_environment = None
+            if needs_legacy_environment_backfill:
+                template = _legacy_environment_template(data)
+                try:
+                    backfilled_environment = await asyncio.to_thread(
+                        EnvironmentAdmissionService(journal).persist_for_run,
+                        run_id=run_context.run_id,
+                        space_id=run_context.space_id,
+                        working_directory=run_context.working_directory,
+                        space_root=_space_root_for_run(run_context),
+                        created_by=(run_context.user_id or "local-user"),
+                        template=template,
+                    )
+                except WorkspaceBundleReconfigurationPendingError as exc:
+                    raise _workspace_bundle_admission_error(exc) from exc
+                except EnvironmentSetupRequiredError as exc:
+                    raise _environment_setup_error(exc) from exc
+                persisted_spec = backfilled_environment.spec
+            else:
+                template = _validate_resume_model_capability(
+                    data,
+                    persisted_spec,
+                )
+            try:
+                runtime_environment = await asyncio.to_thread(
+                    _assemble_runtime_environment,
+                    journal,
+                    persisted_spec,
+                    run_context,
+                    getattr(request.state, "local_control_principal", None),
+                )
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            try:
+                _require_supported_bundle_session_mode(
+                    data.session_mode,
+                    runtime_environment,
+                )
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            if backfilled_environment is not None:
+                attempt = await asyncio.to_thread(
+                    journal.bind_pending_attempt_environment,
+                    resume_attempt.attempt_id,
+                    run_id=run_context.run_id,
+                    request_id=request_id,
+                    environment=backfilled_environment.binding,
+                )
+            _apply_environment_to_task_lock(
+                task_lock,
+                persisted_spec,
+                template=template,
+                runtime_environment=runtime_environment,
+            )
+            if needs_legacy_environment_backfill:
+                try:
+                    await asyncio.to_thread(
+                        get_default_workspace_git_coordinator().admit_run,
+                        space_id=run_context.space_id,
+                        project_id=run_context.project_id,
+                        run_id=run_context.run_id,
+                        task_id=run_context.task_id,
+                        session_mode=run_context.session_mode,
+                    )
+                except Exception:
+                    chat_logger.warning(
+                        "Failed to pin optional backfilled Resume Git workspace",
+                        extra={
+                            "space_id": run_context.space_id,
+                            "project_id": run_context.project_id,
+                            "run_id": run_context.run_id,
+                        },
+                        exc_info=True,
+                    )
+        else:
+            attempt = resume_attempt
+    else:
+        await asyncio.to_thread(
+            journal.ensure_run,
+            run_id=run_context.run_id,
+            project_id=run_context.project_id,
+            status="pending",
+        )
+        request_id = admission_request_id or _admission_request_id(
+            run_context.run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            review_handoff_ids=data.review_handoff_ids,
+            project_context=data.project_context,
+        )
+        environment = None
+        if isinstance(journal, SQLiteRunJournal):
+            template = _legacy_environment_template(data)
+            try:
+                environment = await asyncio.to_thread(
+                    EnvironmentAdmissionService(journal).persist_for_run,
+                    run_id=run_context.run_id,
+                    space_id=run_context.space_id,
+                    working_directory=run_context.working_directory,
+                    space_root=_space_root_for_run(run_context),
+                    created_by=(run_context.user_id or "local-user"),
+                    template=template,
+                )
+            except WorkspaceBundleReconfigurationPendingError as exc:
+                raise _workspace_bundle_admission_error(exc) from exc
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            try:
+                runtime_environment = await asyncio.to_thread(
+                    _assemble_runtime_environment,
+                    journal,
+                    environment.spec,
+                    run_context,
+                    getattr(request.state, "local_control_principal", None),
+                )
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            try:
+                _require_supported_bundle_session_mode(
+                    data.session_mode,
+                    runtime_environment,
+                )
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            _apply_environment_to_task_lock(
+                task_lock,
+                environment.spec,
+                template=template,
+                runtime_environment=runtime_environment,
+            )
+        if warm_admission is not None:
+            # A closed consumer does not change the identity of its aborted
+            # follow-up. Rearm that exact Attempt using its original binding;
+            # the existing one-time legacy backfill validates the fresh spec.
+            attempt = await warm_admission.prepare(
+                run_context,
+                request_id=request_id,
+                environment=_attempt_environment_binding(aborted_warm_attempt),
+            )
+            if environment is not None and environment.binding is not None:
+                try:
+                    attempt = await admission_to_thread(
+                        journal.bind_pending_attempt_environment,
+                        attempt.attempt_id,
+                        run_id=run_context.run_id,
+                        request_id=request_id,
+                        environment=environment.binding,
+                    )
+                except IdempotencyConflictError as exc:
+                    raise _follow_up_environment_changed_error(exc) from exc
+        else:
+            attempt = await asyncio.to_thread(
+                journal.create_run_attempt,
+                run_context.run_id,
+                request_id=request_id,
+                reason="initial_execution",
+                activate=False,
+                environment=(environment.binding if environment else None),
+            )
+        if isinstance(journal, SQLiteRunJournal) and warm_admission is None:
+            try:
+                await asyncio.to_thread(
+                    get_default_workspace_git_coordinator().admit_run,
+                    space_id=run_context.space_id,
+                    project_id=run_context.project_id,
+                    run_id=run_context.run_id,
+                    task_id=run_context.task_id,
+                    session_mode=run_context.session_mode,
+                )
+            except Exception:
+                # Git is optional at Run admission. A broken repository blocks
+                # later Git/file mutation, while pure conversation remains
+                # available for recovery and user guidance. The Attempt is
+                # created first so a failed Project lease admission can never
+                # leave a checkout writer without an owning Attempt.
+                chat_logger.warning(
+                    "Failed to pin optional Run Git workspace",
+                    extra={
+                        "space_id": run_context.space_id,
+                        "project_id": run_context.project_id,
+                        "run_id": run_context.run_id,
+                    },
+                    exc_info=True,
+                )
+        await _record_canonical_user_message(
+            journal,
+            run_context=run_context,
+            request_id=request_id,
+            content=data.question,
+            source="improve" if warm_admission is not None else "chat",
+            attaches=data.attaches or [],
+            review_handoff_ids=data.review_handoff_ids,
+            session_model_selection=(
+                {
+                    "space_id": run_context.space_id,
+                    "selection": data.session_model_selection.model_dump(
+                        mode="json", by_alias=True, exclude_none=True
+                    ),
+                }
+                if data.session_model_selection is not None
+                and warm_admission is None
+                else None
+            ),
+        )
+    if attempt is not None:
+        run_context = replace(run_context, attempt_id=attempt.attempt_id)
+    apply_run_env_for_third_party(run_context)
+    task_lock.run_context = run_context
 
-    os.environ["CAMEL_LOG_DIR"] = str(camel_log)
-
-    if data.is_cloud():
-        os.environ["cloud_api_key"] = data.api_key
-
+    # Canonical conversation and Run continuity live in SQLite RunJournal.
+    # Lightweight Memory is maintained from that cursor after terminal events;
+    # never duplicate the transcript into LocalMemory V1 here.
     # Set the initial current_task_id in task_lock
     set_current_task_id(data.project_id, data.task_id)
 
-    # Put initial action in queue to start processing
-    await task_lock.put_queue(
-        ActionImproveData(
-            data=ImprovePayload(
-                question=data.question,
-                attaches=data.attaches or [],
+    initial_action = ActionImproveData(
+        data=ImprovePayload(
+            question=(
+                _EXPLICIT_RESUME_INSTRUCTION if is_resume else data.question
             ),
-            new_task_id=data.task_id,
-        )
+            attaches=data.attaches or [],
+            project_context=data.project_context,
+        ),
+        new_task_id=data.task_id,
+        request_id=request_id,
+        run_id=run_context.run_id,
+        attempt_id=(attempt.attempt_id if attempt is not None else None),
     )
 
     chat_logger.info(
@@ -240,23 +1604,954 @@ async def post(data: Chat, request: Request):
             "project_id": data.project_id,
             "task_id": data.task_id,
             "log_dir": str(camel_log),
+            "working_directory": str(frozen_dirs.working_directory),
+            "binding_source": frozen_dirs.binding_source,
         },
     )
+    return _PreparedChatRun(
+        task_lock=task_lock,
+        run_context=run_context,
+        attempt_id=(attempt.attempt_id if attempt is not None else ""),
+        initial_action=initial_action,
+    )
+
+
+async def _start_aborted_warm_retry(
+    data: Chat,
+    request: Request,
+    *,
+    coordinator: RunCoordinator,
+    journal: SQLiteRunJournal,
+    attempt: RunAttemptRecord,
+    request_id: str,
+):
+    """Rebuild a closed consumer without converting a follow-up to initial."""
+    task_lock = get_or_create_task_lock(data.project_id)
+    admission = WarmRunAdmission(
+        journal, task_lock, logger=chat_logger, run_id=attempt.run_id
+    )
+    task_lock._warm_admission = admission
+    subscription = None
+    try:
+        prepared = await drain_admission(
+            _prepare_chat_run(
+                data,
+                request,
+                admission_request_id=request_id,
+                warm_admission=admission,
+                aborted_warm_attempt=attempt,
+            )
+        )
+
+        async def start_consumer() -> None:
+            nonlocal subscription
+
+            async def execution_stream():
+                # No command, including a queued Stop, may run inside this
+                # fresh consumer while its admission owner is still preparing.
+                # A failed publication cancels the pump without terminalizing
+                # the pending, retryable Attempt.
+                if not await asyncio.shield(
+                    asyncio.wrap_future(admission.publication)
+                ):
+                    raise asyncio.CancelledError
+                async for chunk in stream_with_run_context(
+                    step_solve(data, request, task_lock),
+                    lambda: task_lock.run_context,
+                ):
+                    yield chunk
+
+            subscription = await coordinator.start_with_subscription(
+                run_id=prepared.run_context.run_id,
+                stream_factory=execution_stream,
+                command_queue=task_lock.queue,
+            )
+
+        # The new consumer must exist before publication. Its envelope remains
+        # behind the same gate used by the warm path until the commit succeeds.
+        await admission.publish(
+            prepared.initial_action, before_publication=start_consumer
+        )
+        assert subscription is not None
+        return timeout_stream_wrapper(subscription, run_id=attempt.run_id)
+    except BaseException:
+
+        async def cleanup() -> None:
+            try:
+                if not admission.published:
+                    await admission.abort()
+                    if subscription is not None:
+                        await subscription.handle.cancel()
+                    if get_task_lock_if_exists(data.project_id) is task_lock:
+                        await delete_task_lock(data.project_id)
+            finally:
+                if subscription is not None:
+                    await subscription.aclose()
+
+        await drain_admission(cleanup(), propagate_cancellation=False)
+        raise
+    finally:
+        admission.finish()
+        if task_lock._warm_admission is admission:
+            task_lock._warm_admission = None
+
+
+async def start_chat_stream(data: Chat, request: Request):
+    """Admit one detached execution or attach this SSE to an existing one."""
+
+    run_id = data.run_id or data.task_id
+    journal = get_default_run_journal()
+    await guard_legacy_execution_entry(
+        journal, project_id=data.project_id, run_id=run_id
+    )
+    coordinator = get_default_run_coordinator()
+    if isinstance(journal, SQLiteRunJournal):
+        coordinator.bind_journal(journal)
+    async with coordinator.admission_scope(run_id, project_id=data.project_id):
+        if isinstance(journal, SQLiteRunJournal):
+            from app.workspace_runtime.entry_guard import (
+                ManagedExecutionRequired,
+            )
+            from app.workspace_runtime.routing import claim_legacy_session
+
+            try:
+                await asyncio.to_thread(
+                    claim_legacy_session, journal, data.project_id
+                )
+            except ManagedExecutionRequired:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "managed_execution_required"},
+                ) from None
+        subscription = await coordinator.attach_if_running(run_id)
+        if subscription is not None:
+            chat_logger.info(
+                "Attached retry to existing Run consumer",
+                extra={"run_id": run_id, "project_id": data.project_id},
+            )
+            return timeout_stream_wrapper(subscription, run_id=run_id)
+
+        existing_task_lock = get_task_lock_if_exists(data.project_id)
+        if existing_task_lock is not None:
+            queue_owner = await coordinator.get_queue_owner(
+                existing_task_lock.queue
+            )
+            if queue_owner is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "project_consumer_active",
+                        "message": "This Session still has a live task consumer.",
+                        "run_id": queue_owner.run_id,
+                    },
+                )
+
+        if data.resume_request_id:
+            run = await asyncio.to_thread(journal.get_run, run_id)
+            if run is None:
+                raise UserException(code.error, "The Run no longer exists.")
+            if run.project_id != data.project_id:
+                raise UserException(
+                    code.error, "The Run belongs to a different Project."
+                )
+            attempts = await asyncio.to_thread(
+                journal.list_run_attempts, run_id
+            )
+            existing_attempt = next(
+                (
+                    attempt
+                    for attempt in attempts
+                    if attempt.resume_request_id == data.resume_request_id
+                ),
+                None,
+            )
+            if existing_attempt is None and run.status != "interrupted":
+                raise UserException(
+                    code.error,
+                    f"Run cannot be resumed from state {run.status!r}.",
+                )
+            binding_source = existing_attempt or next(
+                (
+                    previous
+                    for previous in reversed(attempts)
+                    if previous.environment_spec_id is not None
+                ),
+                None,
+            )
+            planned_attempt = _planned_resume_attempt(
+                run_id=run_id,
+                resume_request_id=data.resume_request_id,
+                existing_attempt=existing_attempt,
+                binding_source=binding_source,
+            )
+            if (
+                existing_attempt is not None
+                and existing_attempt.status
+                not in {
+                    "pending",
+                    "running",
+                }
+            ):
+                raise UserException(
+                    code.error,
+                    "This Resume request already ended; start a new Resume action.",
+                )
+            try:
+                prepared = await _prepare_chat_run(
+                    data,
+                    request,
+                    resume_attempt=planned_attempt,
+                )
+                attempts_after_preflight = await asyncio.to_thread(
+                    journal.list_run_attempts,
+                    run_id,
+                )
+                attempt = next(
+                    (
+                        item
+                        for item in attempts_after_preflight
+                        if item.resume_request_id == data.resume_request_id
+                    ),
+                    None,
+                )
+                if attempt is None:
+                    attempt = await asyncio.to_thread(
+                        journal.create_run_attempt,
+                        run_id,
+                        request_id=data.resume_request_id,
+                        reason=planned_attempt.resume_reason,
+                        activate=False,
+                        attempt_id=planned_attempt.attempt_id,
+                        environment=_attempt_environment_binding(
+                            binding_source
+                        ),
+                    )
+                bound_context = replace(
+                    prepared.run_context,
+                    attempt_id=attempt.attempt_id,
+                )
+                prepared.task_lock.run_context = bound_context
+                prepared = replace(
+                    prepared,
+                    run_context=bound_context,
+                    attempt_id=attempt.attempt_id,
+                    initial_action=prepared.initial_action.model_copy(
+                        update={"attempt_id": attempt.attempt_id}
+                    ),
+                )
+                await prepared.task_lock.put_queue(prepared.initial_action)
+                execution_stream = step_solve(
+                    data, request, prepared.task_lock
+                )
+                subscription = await coordinator.start_with_subscription(
+                    run_id=prepared.run_context.run_id,
+                    stream_factory=lambda: stream_with_run_context(
+                        execution_stream,
+                        lambda: getattr(
+                            prepared.task_lock,
+                            "run_context",
+                            prepared.run_context,
+                        ),
+                    ),
+                    command_queue=prepared.task_lock.queue,
+                )
+            except Exception:
+                # Do not leave a durable pending Attempt with no consumer. A
+                # runtime preflight failure creates no Attempt; failures after
+                # admission close the exact idempotent Resume Attempt.
+                try:
+                    attempts_after_failure = await asyncio.to_thread(
+                        journal.list_run_attempts,
+                        run_id,
+                    )
+                    failed_attempt = next(
+                        (
+                            item
+                            for item in attempts_after_failure
+                            if item.resume_request_id == data.resume_request_id
+                            and item.status in {"pending", "running"}
+                        ),
+                        None,
+                    )
+                    if failed_attempt is None:
+                        failed_attempt = await asyncio.to_thread(
+                            journal.create_run_attempt,
+                            run_id,
+                            request_id=data.resume_request_id,
+                            reason=planned_attempt.resume_reason,
+                            activate=False,
+                            attempt_id=planned_attempt.attempt_id,
+                            environment=_attempt_environment_binding(
+                                binding_source
+                            ),
+                        )
+                    if failed_attempt is not None:
+                        await asyncio.to_thread(
+                            journal.append_event,
+                            run_id,
+                            RunEventDraft(
+                                event_id=(
+                                    "resume-admission-failed:"
+                                    f"{failed_attempt.attempt_id}"
+                                ),
+                                event_type="runtime.interrupted",
+                                payload={
+                                    "reason": "resume_admission_failed",
+                                    "attempt_id": failed_attempt.attempt_id,
+                                },
+                            ),
+                        )
+                        from app.run_sync.runtime import (
+                            notify_default_cloud_sync_worker,
+                        )
+
+                        notify_default_cloud_sync_worker()
+                except Exception:
+                    chat_logger.exception(
+                        "Failed to close a partial Resume admission",
+                        extra={"run_id": run_id},
+                    )
+                raise
+            return timeout_stream_wrapper(subscription, run_id=run_id)
+
+        request_id = _admission_request_id(
+            run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            review_handoff_ids=data.review_handoff_ids,
+            project_context=data.project_context,
+        )
+        admission, _attempt = await _classify_persisted_admission(
+            journal,
+            run_id=run_id,
+            request_id=request_id,
+        )
+        if admission == "conflict":
+            raise UserException(
+                code.error,
+                "This Run id is already bound to a different request.",
+            )
+        if admission == "duplicate":
+            chat_logger.info(
+                "Replaying persisted Run without implicit restart",
+                extra={"run_id": run_id, "project_id": data.project_id},
+            )
+            return _replay_persisted_run(run_id)
+
+        data = await _resolve_continuation_admission(
+            journal,
+            data=data,
+            project_id=data.project_id,
+            run_id=run_id,
+        )
+        if (
+            isinstance(_attempt, RunAttemptRecord)
+            and _attempt.status == "pending"
+            and _attempt.resume_reason == "follow_up_execution"
+            and _attempt.outcome == "warm_admission_aborted"
+        ):
+            return await _start_aborted_warm_retry(
+                data,
+                request,
+                coordinator=coordinator,
+                journal=journal,
+                attempt=_attempt,
+                request_id=request_id,
+            )
+        try:
+            if isinstance(journal, SQLiteRunJournal):
+                # Attempt admission refuses a Run while another one holds the
+                # Project execution lease, but only after preparation has
+                # persisted it. Refuse first, so the rejection leaves no
+                # pending Run behind.
+                owner = await asyncio.to_thread(
+                    journal.get_active_project_run, data.project_id
+                )
+                if owner is not None and owner.run_id != run_id:
+                    raise ProjectExecutionLeaseConflictError(
+                        project_id=data.project_id,
+                        owner_run_id=owner.run_id,
+                    )
+            prepared = await _prepare_chat_run(
+                data,
+                request,
+                admission_request_id=request_id,
+            )
+        except Exception as exc:
+            capability_refusal = isinstance(
+                exc,
+                (ModelCapabilityConfigError, UnsupportedThinkingEffortError),
+            )
+            permanent_refusal = capability_refusal or (
+                isinstance(exc, HTTPException) and exc.status_code == 422
+            )
+            if permanent_refusal and isinstance(journal, SQLiteRunJournal):
+                detail = (
+                    _model_capability_http_error(exc).detail
+                    if capability_refusal
+                    else getattr(exc, "detail", None)
+                )
+                message = (
+                    detail.get("message", str(detail))
+                    if isinstance(detail, dict)
+                    else str(detail or exc)
+                )
+                await asyncio.to_thread(
+                    journal.reject_unstarted_run,
+                    run_id,
+                    project_id=data.project_id,
+                    message=message,
+                    request_id=request_id,
+                    question=data.question,
+                    attachment_names=[
+                        Path(path).name for path in data.attaches or []
+                    ],
+                    review_handoff_ids=data.review_handoff_ids,
+                    error_code=(
+                        detail.get("code")
+                        if isinstance(detail, dict)
+                        else None
+                    ),
+                )
+            if _is_weak_continuation(data.question):
+                await asyncio.to_thread(
+                    journal.release_unadmitted_continuation,
+                    request_id=run_id,
+                )
+            raise
+        await prepared.task_lock.put_queue(prepared.initial_action)
+        execution_stream = step_solve(data, request, prepared.task_lock)
+        subscription = await coordinator.start_with_subscription(
+            run_id=prepared.run_context.run_id,
+            stream_factory=lambda: stream_with_run_context(
+                execution_stream,
+                lambda: getattr(
+                    prepared.task_lock, "run_context", prepared.run_context
+                ),
+            ),
+            command_queue=prepared.task_lock.queue,
+        )
+
+    return timeout_stream_wrapper(subscription, run_id=run_id)
+
+
+@router.post(
+    "/chat", name="start chat", dependencies=_CHAT_CONTROL_DEPENDENCIES
+)
+async def post(data: Chat, request: Request):
+    from app.workspace_config.models import WorkspaceModelSelectionChangedError
+
+    try:
+        stream = await start_chat_stream(data, request)
+    except WorkspaceModelSelectionChangedError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "workspace_model_selection_changed",
+                "message": str(exc),
+            },
+        ) from exc
+    except (ModelCapabilityConfigError, UnsupportedThinkingEffortError) as exc:
+        raise _model_capability_http_error(exc) from exc
+    except ProjectExecutionLeaseConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_run_active",
+                "message": (
+                    "Another Run in this Session must finish or be stopped "
+                    "before a new one starts."
+                ),
+                "run_id": exc.owner_run_id,
+            },
+        ) from exc
     return StreamingResponse(
-        timeout_stream_wrapper(
-            step_solve(data, request, task_lock), task_lock=task_lock
-        ),
+        stream,
         media_type="text/event-stream",
     )
 
 
-@router.post("/chat/{id}", name="improve chat")
-def improve(id: str, data: SupplementChat):
+def _model_capability_http_error(exc: WorkspaceConfigError) -> HTTPException:
+    return HTTPException(
+        status_code=422,
+        detail={
+            "code": (
+                "unsupported_thinking_effort"
+                if isinstance(exc, UnsupportedThinkingEffortError)
+                else "invalid_model_capability"
+            ),
+            "message": str(exc),
+        },
+    )
+
+
+def _follow_up_environment_changed_error(
+    exc: IdempotencyConflictError,
+) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "follow_up_environment_changed",
+            "message": (
+                "The Workspace environment changed after this follow-up was "
+                "stopped. Its Attempt keeps the original environment; restore "
+                f"those settings to retry it. ({exc})"
+            ),
+        },
+    )
+
+
+@router.get("/chat/{project_id}/status", name="get chat status")
+async def status(project_id: str):
+    task_lock = get_task_lock_if_exists(project_id)
+    if task_lock is None:
+        return {
+            "project_id": project_id,
+            "has_lock": False,
+            "status": "offline",
+            "current_task_id": None,
+            "run_id": None,
+            "consumer_alive": False,
+            "subscriber_count": 0,
+        }
+    run_context = getattr(task_lock, "run_context", None)
+    run_id = getattr(run_context, "run_id", None)
+    handle = (
+        await get_default_run_coordinator().get_handle(run_id)
+        if run_id is not None
+        else None
+    )
+    return {
+        "project_id": project_id,
+        "has_lock": True,
+        "status": task_lock.status.value,
+        "current_task_id": task_lock.current_task_id,
+        "run_id": run_id,
+        "consumer_alive": bool(handle and handle.consumer_alive),
+        "subscriber_count": handle.subscriber_count if handle else 0,
+    }
+
+
+@router.post(
+    "/chat/{project_id}/runtime/retire-idle",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def retire_idle_runtime(project_id: str, data: RetireIdleRuntimeRequest):
+    """Await disposal of a completed warm consumer before cold admission."""
+
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id, run_id=data.run_id
+    )
+    coordinator = get_default_run_coordinator()
+    async with coordinator.admission_scope(data.run_id, project_id=project_id):
+        task_lock = get_task_lock_if_exists(project_id)
+        if task_lock is None:
+            return {
+                "project_id": project_id,
+                "run_id": data.run_id,
+                "retired": False,
+                "consumer_alive": False,
+            }
+
+        run_context = getattr(task_lock, "run_context", None)
+        current_run_id = getattr(run_context, "run_id", None)
+        if current_run_id != data.run_id:
+            raise HTTPException(
+                status_code=409,
+                detail="The Project runtime moved to another Run.",
+            )
+        if task_lock.status != Status.done:
+            raise HTTPException(
+                status_code=409,
+                detail="The Project runtime is not idle.",
+            )
+
+        run = await asyncio.to_thread(
+            get_default_run_journal().get_run, data.run_id
+        )
+        if run is None or run.project_id != project_id:
+            raise HTTPException(status_code=404, detail="Run not found.")
+        if run.status not in RUN_TERMINAL_STATES:
+            raise HTTPException(
+                status_code=409,
+                detail="The Run has not reached a terminal state.",
+            )
+
+        owner = await coordinator.get_queue_owner(task_lock.queue)
+        if owner is None:
+            return {
+                "project_id": project_id,
+                "run_id": data.run_id,
+                "retired": False,
+                "consumer_alive": False,
+            }
+        if owner.run_id != data.run_id:
+            raise HTTPException(
+                status_code=409,
+                detail="The TaskLock queue belongs to another Run.",
+            )
+
+        await coordinator.retire(data.run_id, command_queue=task_lock.queue)
+        remaining = await coordinator.get_queue_owner(task_lock.queue)
+        if remaining is not None:
+            raise HTTPException(
+                status_code=503,
+                detail="The idle Project runtime did not stop.",
+            )
+        return {
+            "project_id": project_id,
+            "run_id": data.run_id,
+            "retired": True,
+            "consumer_alive": False,
+        }
+
+
+@router.post(
+    "/projects/{project_id}/follow-ups",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def enqueue_follow_up(project_id: str, data: FollowUpRequestCreate):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().put_follow_up_request,
+            request_id=data.request_id,
+            project_id=project_id,
+            content=data.content,
+            attachment_paths=data.attachment_paths,
+            review_handoff_ids=data.review_handoff_ids,
+            delivery_mode=data.delivery_mode,
+            source=data.source,
+            source_command_id=data.source_command_id,
+            reject_managed=True,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return _follow_up_response(record)
+
+
+@router.get(
+    "/projects/{project_id}/follow-ups",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def pending_follow_ups(project_id: str):
+    try:
+        records = await asyncio.to_thread(
+            get_default_run_journal().list_follow_up_requests,
+            project_id=project_id,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return {"items": [_follow_up_response(record) for record in records]}
+
+
+@router.get(
+    "/follow-ups/pending",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def pending_follow_ups_by_source(
+    source: str = "remote_control",
+):
+    try:
+        records = await asyncio.to_thread(
+            get_default_run_journal().list_pending_follow_up_requests_by_source,
+            source=source,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return {"items": [_follow_up_response(record) for record in records]}
+
+
+@router.get(
+    "/follow-ups/source-command/{source_command_id}",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def follow_up_by_source_command(source_command_id: str):
+    """Resolve a Remote Control enqueue after a renderer restart."""
+
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().get_follow_up_request_by_source_command_id,
+            source_command_id=source_command_id,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    if record is None:
+        raise HTTPException(status_code=404, detail="follow-up not found")
+    return _follow_up_response(record)
+
+
+@router.post(
+    "/projects/{project_id}/follow-ups/{request_id}/send-now",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def send_follow_up_now(project_id: str, request_id: str):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().set_follow_up_delivery_mode,
+            request_id=request_id,
+            project_id=project_id,
+            delivery_mode="send_now",
+            reject_managed=True,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return _follow_up_response(record)
+
+
+@router.delete(
+    "/projects/{project_id}/follow-ups/{request_id}",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def cancel_follow_up(project_id: str, request_id: str):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().cancel_follow_up_request,
+            request_id=request_id,
+            project_id=project_id,
+            reject_managed=True,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return _follow_up_response(record)
+
+
+@router.post(
+    "/projects/{project_id}/follow-ups/{request_id}/admitted",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def mark_follow_up_admitted(
+    project_id: str,
+    request_id: str,
+    data: FollowUpRequestAdmitted,
+):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=project_id
+    )
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().mark_follow_up_admitted,
+            request_id=request_id,
+            project_id=project_id,
+            run_id=data.run_id,
+            reject_managed=True,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return _follow_up_response(record)
+
+
+@router.post(
+    "/chat/{id}",
+    name="improve chat",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def improve(id: str, data: SupplementChat, request: Request):
+    try:
+        return await _admit_improve(id, data, request)
+    except ProjectExecutionLeaseConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_run_active",
+                "message": "Another task in this Session must finish before the next one starts.",
+                "run_id": exc.owner_run_id,
+            },
+        ) from exc
+
+
+async def _admit_improve(id: str, data: SupplementChat, request: Request):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=id, run_id=data.task_id
+    )
+    if data.task_id:
+        coordinator = get_default_run_coordinator()
+        async with coordinator.admission_scope(data.task_id, project_id=id):
+            request_id = _admission_request_id(
+                data.task_id,
+                question=data.question,
+                attaches=data.attaches or [],
+                review_handoff_ids=data.review_handoff_ids,
+                project_context=data.project_context,
+            )
+            admission, attempt = await _classify_persisted_admission(
+                get_default_run_journal(),
+                run_id=data.task_id,
+                request_id=request_id,
+            )
+            if admission == "conflict":
+                return Response(status_code=409)
+            if admission == "duplicate" or (
+                admission == "retry"
+                and getattr(attempt, "status", None) == "running"
+                and await coordinator.get_handle(data.task_id) is not None
+            ):
+                chat_logger.info(
+                    "Ignored duplicate follow-up Run admission",
+                    extra={"project_id": id, "run_id": data.task_id},
+                )
+                return Response(status_code=201)
+            data = await _resolve_continuation_admission(
+                get_default_run_journal(),
+                data=data,
+                project_id=id,
+                run_id=data.task_id,
+            )
+            try:
+                return await _improve_chat(
+                    id, data, request, admission_request_id=request_id
+                )
+            except BaseException:
+                if _is_weak_continuation(data.question):
+                    await drain_admission(
+                        asyncio.to_thread(
+                            get_default_run_journal().release_unadmitted_continuation,
+                            request_id=data.task_id,
+                        ),
+                        propagate_cancellation=False,
+                    )
+                raise
+    return await _improve_chat(id, data, request)
+
+
+async def _improve_chat(
+    id: str,
+    data: SupplementChat,
+    request: Request,
+    *,
+    admission_request_id: str | None = None,
+):
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=id, run_id=data.task_id
+    )
+    task_lock = get_task_lock(id)
+    previous = {
+        name: getattr(task_lock, name, None)
+        for name in (
+            "run_context",
+            "status",
+            "working_directory",
+            "task_output_root",
+            "new_folder_path",
+            "task_start_time",
+            "email",
+            "user_id",
+            "project_id",
+            "space_id",
+            "current_task_id",
+            "workdir_mode",
+            "base_snapshot_id",
+            "environment_spec_id",
+            "permission_profile_revision",
+            "environment_admission_template",
+            "resolved_runtime_environment",
+            "thinking_effort_requested",
+            "thinking_effort_effective",
+            "provider_effort_parameter_name",
+            "provider_effort_parameter_value",
+            "provider_capability_revision",
+            "provider_model_transport",
+        )
+    }
+    background_tasks = set(getattr(task_lock, "background_tasks", ()))
+    context = previous["run_context"]
+    coordinator = get_default_run_coordinator()
+    old_handle = (
+        await coordinator.get_handle(context.run_id)
+        if isinstance(context, RunContext)
+        else None
+    )
+    admission = WarmRunAdmission(
+        get_default_run_journal(),
+        task_lock,
+        logger=chat_logger,
+        run_id=data.task_id,
+    )
+    task_lock._warm_admission = admission
+    try:
+        return await _prepare_improve_chat(
+            id,
+            data,
+            request,
+            admission_request_id=admission_request_id,
+            warm_admission=admission,
+        )
+    except BaseException:
+        if not admission.published:
+
+            async def rollback():
+                try:
+                    await admission.abort()
+                finally:
+                    if (
+                        isinstance(context, RunContext)
+                        and data.task_id
+                        and data.task_id != context.run_id
+                        and old_handle is not None
+                        and await coordinator.get_handle(data.task_id)
+                        is old_handle
+                    ):
+                        restored = await coordinator.rebind_run(
+                            data.task_id, context.run_id
+                        )
+                        if not restored:
+                            chat_logger.critical(
+                                "Failed to roll back follow-up runtime binding",
+                                extra={
+                                    "previous_run_id": context.run_id,
+                                    "new_run_id": data.task_id,
+                                },
+                            )
+                    restore_environment = task_lock.run_context is not context
+                    for name, value in previous.items():
+                        setattr(task_lock, name, value)
+                    task_lock.background_tasks = background_tasks
+                    if isinstance(context, RunContext) and restore_environment:
+                        await asyncio.to_thread(
+                            apply_run_env_for_third_party, context
+                        )
+
+            await drain_admission(rollback(), propagate_cancellation=False)
+        raise
+    finally:
+        admission.finish()
+        if task_lock._warm_admission is admission:
+            task_lock._warm_admission = None
+
+
+async def _prepare_improve_chat(
+    id: str,
+    data: SupplementChat,
+    request: Request,
+    *,
+    admission_request_id: str | None = None,
+    warm_admission: WarmRunAdmission,
+):
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
     )
     task_lock = get_task_lock(id)
+
+    # Reuse an existing endpoint when possible to avoid tearing down
+    # a browser that was manually connected through the Browser page.
+    current_context = getattr(task_lock, "run_context", None)
+    previous_run_id = getattr(current_context, "run_id", None)
+    previous_status = task_lock.status
+    port = (
+        current_context.browser_port
+        if isinstance(current_context, RunContext)
+        else int(env("browser_port", "9222"))
+    )
+    await _prepare_browser_for_request_with_timeout(request, port)
 
     # Allow continuing conversation even after task is done
     # This supports multi-turn conversation after complex task completion
@@ -266,18 +2561,13 @@ def improve(id: str, data: SupplementChat):
         # Clear any existing background tasks since workforce was stopped
         if hasattr(task_lock, "background_tasks"):
             task_lock.background_tasks.clear()
-        # Note: conversation_history and last_task_result are preserved
+        # Durable Run events and Project memory preserve prior results.
 
         # Log context preservation
         if hasattr(task_lock, "conversation_history"):
             hist_len = len(task_lock.conversation_history)
             chat_logger.info(
                 f"[CONTEXT] Preserved {hist_len} conversation entries"
-            )
-        if hasattr(task_lock, "last_task_result"):
-            result_len = len(task_lock.last_task_result)
-            chat_logger.info(
-                f"[CONTEXT] Preserved task result: {result_len} chars"
             )
 
     # If task_id is provided, optimistically update
@@ -287,39 +2577,79 @@ def improve(id: str, data: SupplementChat):
     new_folder_path = None
     if data.task_id:
         try:
-            # Get current environment values needed to construct new path
-            current_email = None
-
-            # Extract email from current file_save_path if available
-            current_file_save_path = os.environ.get("file_save_path", "")
-            if current_file_save_path:
-                path_parts = Path(current_file_save_path).parts
-                if len(path_parts) >= 3 and "eigent" in path_parts:
-                    eigent_index = path_parts.index("eigent")
-                    if eigent_index + 1 < len(path_parts):
-                        current_email = path_parts[eigent_index + 1]
+            current_email = getattr(task_lock, "email", None)
 
             # If we have the necessary info, update
             # the file_save_path
             if current_email and id:
-                # Create new path using the existing
-                # pattern: email/project_{id}/task_{id}
-                new_folder_path = (
-                    Path.home()
-                    / "eigent"
-                    / current_email
-                    / f"project_{id}"
-                    / f"task_{data.task_id}"
+                resolver = get_workspace_resolver()
+                frozen_dirs = await admission_to_thread(
+                    resolver.freeze_task_directories_for,
+                    space_id=getattr(task_lock, "space_id", id),
+                    project_id=id,
+                    task_id=data.task_id,
+                    email=current_email,
+                    task_lock=task_lock,
+                    user_id=getattr(task_lock, "user_id", None),
                 )
-                new_folder_path.mkdir(parents=True, exist_ok=True)
-                os.environ["file_save_path"] = str(new_folder_path)
+                try:
+                    await admission_to_thread(
+                        resolver.write_task_snapshot,
+                        current_email,
+                        frozen_dirs.snapshot,
+                    )
+                except Exception:
+                    chat_logger.warning(
+                        "Failed to persist task workspace snapshot",
+                        extra={"project_id": id, "task_id": data.task_id},
+                        exc_info=True,
+                    )
+                new_folder_path = frozen_dirs.task_output_root
+                camel_log = _camel_log_dir(
+                    current_email,
+                    id,
+                    data.task_id,
+                    getattr(task_lock, "user_id", None),
+                )
+                await admission_to_thread(
+                    camel_log.mkdir, parents=True, exist_ok=True
+                )
+                current_context = getattr(task_lock, "run_context", None)
+                if isinstance(current_context, RunContext):
+                    updated_context = replace(
+                        current_context,
+                        run_id=data.task_id,
+                        task_id=data.task_id,
+                        working_directory=frozen_dirs.working_directory,
+                        task_output_root=frozen_dirs.task_output_root,
+                        camel_log_dir=camel_log,
+                        binding_source=frozen_dirs.binding_source,
+                        attempt_id=None,
+                        prompt_current_time=current_time_str(
+                            current_context.timezone
+                        ),
+                        browser_port=int(
+                            getattr(request.state, "browser_port", port)
+                        ),
+                        cdp_url=getattr(
+                            request.state, "cdp_url", current_context.cdp_url
+                        ),
+                    )
+                    task_lock.run_context = updated_context
+                    await admission_to_thread(
+                        apply_run_env_for_third_party, updated_context
+                    )
                 chat_logger.info(
                     f"Updated file_save_path to: {new_folder_path}"
                 )
 
                 # Store the new folder path in task_lock
                 # for potential cleanup and persistence
-                task_lock.new_folder_path = new_folder_path
+                task_lock.new_folder_path = (
+                    new_folder_path
+                    if frozen_dirs.binding_source == "default"
+                    else None
+                )
             else:
                 chat_logger.warning(
                     "Could not update"
@@ -336,15 +2666,151 @@ def improve(id: str, data: SupplementChat):
                 f" {e}"
             )
 
-    asyncio.run(
-        task_lock.put_queue(
-            ActionImproveData(
-                data=ImprovePayload(
-                    question=data.question,
-                    attaches=data.attaches or [],
-                ),
-                new_task_id=data.task_id,
+    # This is a follow-up turn within the same Project. Strictly open its
+    # canonical Run only when run_context was actually
+    # rotated to the supplied task_id. The workspace-rotation block above is
+    # wrapped in a best-effort try/except, so a missing email, a resolver
+    # failure, or any other swallowed exception can leave task_lock.run_context
+    # pointing at the previous finalized Run. Admission in that state would
+    # attach new Project History events to the wrong immutable run_id.
+    refreshed_context = getattr(task_lock, "run_context", None)
+    rotation_succeeded = (
+        data.task_id
+        and isinstance(refreshed_context, RunContext)
+        and refreshed_context.run_id == data.task_id
+    )
+    if rotation_succeeded:
+        coordinator = get_default_run_coordinator()
+        if previous_run_id is not None:
+            rebound = await coordinator.rebind_run(
+                previous_run_id,
+                refreshed_context.run_id,
             )
+            if not rebound:
+                # Runtime ownership is a prerequisite for admission. Restore
+                # the compatibility context before any canonical Run row,
+                # Attempt, or Memory event is written so the same request can
+                # be retried without leaving a replay-only orphan.
+                if isinstance(current_context, RunContext):
+                    task_lock.run_context = current_context
+                    await admission_to_thread(
+                        apply_run_env_for_third_party, current_context
+                    )
+                task_lock.status = previous_status
+                raise UserException(
+                    code.error,
+                    "The previous Run has no live consumer for this follow-up.",
+                )
+        resolved_request_id = admission_request_id or _admission_request_id(
+            refreshed_context.run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            review_handoff_ids=data.review_handoff_ids,
+            project_context=data.project_context,
+        )
+        journal = get_default_run_journal()
+        await admission_to_thread(
+            journal.ensure_run,
+            run_id=refreshed_context.run_id,
+            project_id=refreshed_context.project_id,
+            status="pending",
+        )
+        environment = None
+        template = getattr(
+            task_lock,
+            "environment_admission_template",
+            None,
+        )
+        if isinstance(journal, SQLiteRunJournal) and isinstance(
+            template,
+            EnvironmentAdmissionTemplate,
+        ):
+            try:
+                template = await admission_to_thread(
+                    template.refresh_model_capability
+                )
+                environment = await admission_to_thread(
+                    EnvironmentAdmissionService(journal).persist_for_run,
+                    run_id=refreshed_context.run_id,
+                    space_id=refreshed_context.space_id,
+                    working_directory=refreshed_context.working_directory,
+                    space_root=_space_root_for_run(refreshed_context),
+                    created_by=(refreshed_context.user_id or "local-user"),
+                    template=template,
+                )
+            except WorkspaceBundleReconfigurationPendingError as exc:
+                raise _workspace_bundle_admission_error(exc) from exc
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            except (
+                ModelCapabilityConfigError,
+                UnsupportedThinkingEffortError,
+            ) as exc:
+                raise _model_capability_http_error(exc) from exc
+            try:
+                runtime_environment = await admission_to_thread(
+                    _assemble_runtime_environment,
+                    journal,
+                    environment.spec,
+                    refreshed_context,
+                    getattr(request.state, "local_control_principal", None),
+                )
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            try:
+                _require_supported_bundle_session_mode(
+                    getattr(task_lock, "runtime_session_mode", None),
+                    runtime_environment,
+                )
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            _apply_environment_to_task_lock(
+                task_lock,
+                environment.spec,
+                template=template,
+                runtime_environment=runtime_environment,
+            )
+        attempt = await warm_admission.prepare(
+            refreshed_context,
+            request_id=resolved_request_id,
+            environment=(environment.binding if environment else None),
+        )
+        await drain_admission(
+            _record_canonical_user_message(
+                journal,
+                run_context=refreshed_context,
+                request_id=resolved_request_id,
+                content=data.question,
+                source="improve",
+                attaches=data.attaches or [],
+                review_handoff_ids=data.review_handoff_ids,
+            )
+        )
+        refreshed_context = replace(
+            refreshed_context,
+            attempt_id=attempt.attempt_id,
+        )
+        task_lock.run_context = refreshed_context
+    elif data.task_id:
+        # The client wanted a fresh run but rotation failed upstream. Don't
+        # touch durable memory; the in-process turn still proceeds so the
+        # user gets a response, but we leave a breadcrumb for diagnosis.
+        raise UserException(
+            code.error,
+            "Could not durably prepare the requested follow-up Run.",
+        )
+
+    await warm_admission.publish(
+        ActionImproveData(
+            data=ImprovePayload(
+                question=data.question,
+                attaches=data.attaches or [],
+                project_context=data.project_context,
+            ),
+            new_task_id=data.task_id,
+            request_id=(resolved_request_id if rotation_succeeded else None),
+            run_id=(refreshed_context.run_id if rotation_succeeded else None),
+            attempt_id=(attempt.attempt_id if rotation_succeeded else None),
         )
     )
     chat_logger.info(
@@ -354,28 +2820,43 @@ def improve(id: str, data: SupplementChat):
     return Response(status_code=201)
 
 
-@router.put("/chat/{id}", name="supplement task")
+@router.put(
+    "/chat/{id}",
+    name="supplement task",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 def supplement(id: str, data: SupplementChat):
     chat_logger.info("Chat supplement requested", extra={"task_id": id})
     task_lock = get_task_lock(id)
     if task_lock.status != Status.done:
         raise UserException(code.error, "Please wait task done")
-    asyncio.run(task_lock.put_queue(ActionSupplementData(data=data)))
+    _queue_action_from_worker(
+        task_lock,
+        ActionSupplementData(data=data),
+        "supplement task queue action",
+    )
     chat_logger.debug("Supplement data queued", extra={"task_id": id})
     return Response(status_code=201)
 
 
-@router.delete("/chat/{id}", name="stop chat")
-def stop(id: str):
+@router.delete(
+    "/chat/{id}",
+    name="stop chat",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def stop(id: str):
     """stop the task"""
+    await guard_legacy_execution_entry(
+        get_default_run_journal(), project_id=id
+    )
     chat_logger.info("=" * 80)
     chat_logger.info(
         "🛑 [STOP-BUTTON] DELETE /chat/{id} request received from frontend"
     )
     chat_logger.info(f"[STOP-BUTTON] project_id/task_id: {id}")
     chat_logger.info("=" * 80)
-    try:
-        task_lock = get_task_lock(id)
+    task_lock = get_task_lock_if_exists(id)
+    if task_lock is not None:
         chat_logger.info(
             "[STOP-BUTTON] Task lock retrieved,"
             f" task_lock.id: {task_lock.id},"
@@ -386,37 +2867,237 @@ def stop(id: str):
             " ActionStopData(Action.stop)"
             " to task_lock queue"
         )
-        asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
-        chat_logger.info(
-            "[STOP-BUTTON] ActionStopData queued"
-            " successfully, this will trigger"
-            " workforce.stop_gracefully()"
-        )
-    except Exception as e:
-        # Task lock may not exist if task is already
-        # finished or never started
+        try:
+            await task_lock.put_queue(ActionStopData(action=Action.stop))
+            chat_logger.info(
+                "[STOP-BUTTON] ActionStopData queued"
+                " successfully, this will trigger"
+                " workforce.stop_gracefully()"
+            )
+        except Exception as e:
+            chat_logger.warning(
+                "[STOP-BUTTON] Failed to queue ActionStopData",
+                extra={"task_id": id, "error": str(e)},
+            )
+    else:
         chat_logger.warning(
-            "[STOP-BUTTON] Task lock not found"
-            " or already stopped,"
-            f" task_id: {id},"
-            f" error: {str(e)}"
+            "[STOP-BUTTON] Task lock not found, task may already be stopped",
+            extra={"task_id": id},
         )
     return Response(status_code=204)
 
 
-@router.post("/chat/{id}/human-reply")
-def human_reply(id: str, data: HumanReply):
+@router.post("/chat/{id}/human-reply", dependencies=_CHAT_CONTROL_DEPENDENCIES)
+async def human_reply(id: str, data: HumanReply, request: Request):
     chat_logger.info(
         "Human reply received",
         extra={"task_id": id, "reply_length": len(data.reply)},
     )
-    task_lock = get_task_lock(id)
-    asyncio.run(task_lock.put_human_input(data.agent, data.reply))
+    task_lock = get_task_lock_if_exists(id)
+    if task_lock is None:
+        chat_logger.warning(
+            "Human reply ignored because task lock no longer exists",
+            extra={"task_id": id, "agent": data.agent},
+        )
+        raise UserException(
+            code.error,
+            "This task is no longer waiting for a human reply. Please send a new message.",
+        )
+
+    async def answer_waiter() -> bool:
+        try:
+            await task_lock.put_human_input(data.agent, data.reply)
+        except KeyError:
+            chat_logger.warning(
+                "Human reply target is no longer waiting for input",
+                extra={"task_id": id, "agent": data.agent},
+            )
+            return False
+        return True
+
+    run_context = getattr(task_lock, "run_context", None)
+    resolved_interaction_id: str | None = None
+    if isinstance(run_context, RunContext):
+        journal = get_default_run_journal()
+        pending_interactions = await asyncio.to_thread(
+            journal.list_human_interactions,
+            run_context.run_id,
+            pending_only=True,
+        )
+        current_run = await asyncio.to_thread(
+            journal.get_run, run_context.run_id
+        )
+        active_attempt_id = (
+            current_run.active_attempt_id if current_run is not None else None
+        )
+
+        def belongs_to_current_attempt(item: object) -> bool:
+            attempt_id = getattr(item, "attempt_id", None)
+            return attempt_id is None or attempt_id == active_attempt_id
+
+        matching_interactions = [
+            item
+            for item in reversed(pending_interactions)
+            if item.interaction_type != "approval"
+            and belongs_to_current_attempt(item)
+            and item.request.get("agent") == data.agent
+            and (
+                data.interaction_id is None
+                or item.interaction_id == data.interaction_id
+            )
+        ]
+        interaction = (
+            matching_interactions[0]
+            if len(matching_interactions) == 1
+            else None
+        )
+        pending_approval = next(
+            (
+                item
+                for item in reversed(pending_interactions)
+                if item.interaction_type == "approval"
+                and belongs_to_current_attempt(item)
+                and item.request.get("agent") == data.agent
+                and (
+                    data.interaction_id is None
+                    or item.interaction_id == data.interaction_id
+                )
+            ),
+            None,
+        )
+        if pending_approval is not None:
+            raise UserException(
+                code.error,
+                "This task is waiting for an approval decision. Use the "
+                "approval controls instead of sending a human reply.",
+            )
+        # Bind post-commit retries to their original durable interaction,
+        # even when the next question for this agent is already pending.
+        # Read this after the pending snapshot: a commit between the reads
+        # either leaves the original candidate or is found by request ID.
+        if data.interaction_id and interaction is None:
+            previous = await asyncio.to_thread(
+                journal.get_human_interaction, data.interaction_id
+            )
+            if (
+                previous is not None
+                and previous.run_id == run_context.run_id
+                and previous.request.get("agent") == data.agent
+                and previous.interaction_type != "approval"
+                and previous.status not in {"requested", "presented"}
+            ):
+                interaction = previous
+        elif not data.interaction_id and data.decision_request_id:
+            previous = await asyncio.to_thread(
+                journal.find_human_interactions_by_decision_request,
+                run_context.run_id,
+                data.decision_request_id,
+            )
+            if previous:
+                if (
+                    len(previous) != 1
+                    or previous[0].request.get("agent") != data.agent
+                    or previous[0].interaction_type == "approval"
+                ):
+                    raise UserException(
+                        code.error, "The reply request identity is ambiguous."
+                    )
+                interaction = previous[0]
+        if not data.interaction_id and not data.decision_request_id:
+            raise UserException(
+                code.error,
+                "This task requires an interaction or request ID for a human reply. Refresh the task and try again.",
+            )
+        if interaction is None:
+            raise UserException(
+                code.error,
+                "The requested human interaction is no longer pending.",
+            )
+        if interaction is not None:
+            reply_decision = {"agent": data.agent, "reply": data.reply}
+            request_id = data.decision_request_id or (
+                "legacy-human-reply:"
+                + canonical_digest(
+                    {
+                        "interaction_id": interaction.interaction_id,
+                        "decision": reply_decision,
+                    }
+                )
+            )
+            try:
+                _, decision_applied, delivered = await commit_and_deliver(
+                    answer_waiter,
+                    journal.resolve_human_interaction,
+                    interaction.interaction_id,
+                    include_transition=True,
+                    decision_request_id=request_id,
+                    decision=reply_decision,
+                    expected_version=interaction.version,
+                    expected_run_id=run_context.run_id,
+                    continue_active_attempt=True,
+                )
+            except (
+                IdempotencyConflictError,
+                InvalidRunTransitionError,
+                OptimisticConcurrencyError,
+            ) as exc:
+                raise UserException(
+                    code.error,
+                    "The requested human interaction is no longer pending.",
+                ) from exc
+            if not decision_applied:
+                # An overlapping retry read the same pending interaction, but
+                # only the transaction owner may answer a live waiter or emit
+                # the legacy mirror. Reuse the journal's atomic ownership bit.
+                return Response(status_code=201)
+            resolved_interaction_id = interaction.interaction_id
+            try:
+                from app.run_sync.runtime import (
+                    notify_default_cloud_sync_worker,
+                )
+
+                notify_default_cloud_sync_worker()
+            except Exception:
+                chat_logger.exception(
+                    "Failed to wake cloud sync after HumanInteraction decision"
+                )
+    else:
+        delivered = await answer_waiter()
+    if not delivered:
+        raise UserException(
+            code.error,
+            "This task is no longer waiting for a human reply. Please send a new message.",
+        )
+
+    reply_payload = {"agent": data.agent, "reply": data.reply}
+    if resolved_interaction_id is not None:
+        # The canonical decision and its compatibility mirror share identity,
+        # so replay can retain one receipt without comparing answer text.
+        reply_payload["interaction_id"] = resolved_interaction_id
+    task_lock.add_conversation("human_reply", reply_payload)
+    current_context = getattr(task_lock, "run_context", None)
+    if isinstance(current_context, RunContext):
+        await sync_step_event(
+            task_id=current_context.run_id,
+            project_id=id,
+            run_id=current_context.run_id,
+            step="human_reply",
+            data=reply_payload,
+            authorization=request.headers.get("authorization"),
+        )
+    else:
+        # A mutable Project TaskLock cannot prove which Run owns the event.
+        # Keep the in-process reply working for a legacy live task, but never
+        # attribute it to whichever task id happens to be current now.
+        chat_logger.warning(
+            "Skipped legacy human-reply event sync without immutable RunContext",
+            extra={"project_id": id, "agent": data.agent},
+        )
     chat_logger.debug("Human reply processed", extra={"task_id": id})
     return Response(status_code=201)
 
 
-@router.post("/chat/{id}/install-mcp")
+@router.post("/chat/{id}/install-mcp", dependencies=_CHAT_CONTROL_DEPENDENCIES)
 def install_mcp(id: str, data: McpServers):
     chat_logger.info(
         "Installing MCP servers",
@@ -426,16 +3107,20 @@ def install_mcp(id: str, data: McpServers):
         },
     )
     task_lock = get_task_lock(id)
-    asyncio.run(
-        task_lock.put_queue(
-            ActionInstallMcpData(action=Action.install_mcp, data=data)
-        )
+    _queue_action_from_worker(
+        task_lock,
+        ActionInstallMcpData(action=Action.install_mcp, data=data),
+        "install MCP queue action",
     )
     chat_logger.info("MCP installation queued", extra={"task_id": id})
     return Response(status_code=201)
 
 
-@router.post("/chat/{id}/add-task", name="add task to workforce")
+@router.post(
+    "/chat/{id}/add-task",
+    name="add task to workforce",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 def add_task(id: str, data: AddTaskRequest):
     """Add a new task to the workforce"""
     chat_logger.info(
@@ -454,7 +3139,11 @@ def add_task(id: str, data: AddTaskRequest):
             additional_info=data.additional_info,
             insert_position=data.insert_position,
         )
-        asyncio.run(task_lock.put_queue(add_task_action))
+        _queue_action_from_worker(
+            task_lock,
+            add_task_action,
+            "add task queue action",
+        )
         return Response(status_code=201)
 
     except Exception as e:
@@ -465,6 +3154,7 @@ def add_task(id: str, data: AddTaskRequest):
 @router.delete(
     "/chat/{project_id}/remove-task/{task_id}",
     name="remove task from workforce",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 def remove_task(project_id: str, task_id: str):
     """Remove a task from the workforce"""
@@ -478,7 +3168,11 @@ def remove_task(project_id: str, task_id: str):
         remove_task_action = ActionRemoveTaskData(
             task_id=task_id, project_id=project_id
         )
-        asyncio.run(task_lock.put_queue(remove_task_action))
+        _queue_action_from_worker(
+            task_lock,
+            remove_task_action,
+            "remove task queue action",
+        )
 
         chat_logger.info(
             "Task removal request queued for"
@@ -494,8 +3188,12 @@ def remove_task(project_id: str, task_id: str):
         raise UserException(code.error, f"Failed to remove task: {str(e)}")
 
 
-@router.post("/chat/{project_id}/skip-task", name="skip task in workforce")
-def skip_task(project_id: str):
+@router.post(
+    "/chat/{project_id}/skip-task",
+    name="skip task in workforce",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+def skip_task(project_id: str, expected_task_id: str | None = None):
     """
     Skip/Stop current task execution while preserving context.
     This endpoint is called when user clicks the Stop button.
@@ -503,7 +3201,7 @@ def skip_task(project_id: str):
     Behavior:
     - Stops workforce gracefully
     - Marks task as done
-    - Preserves conversation_history and last_task_result in task_lock
+    - Preserves prior results through durable Run events and Project memory
     - Sends 'end' event to frontend
     - Keeps SSE connection alive for multi-turn conversation
     """
@@ -515,7 +3213,18 @@ def skip_task(project_id: str):
     )
     chat_logger.info(f"[STOP-BUTTON] project_id: {project_id}")
     chat_logger.info("=" * 80)
-    task_lock = get_task_lock(project_id)
+    task_lock = get_task_lock_if_exists(project_id)
+    if task_lock is None:
+        chat_logger.warning(
+            "[STOP-BUTTON] Task lock not found, task may already be stopped",
+            extra={"project_id": project_id},
+        )
+        return Response(status_code=204)
+    if expected_task_id and task_lock.current_task_id != expected_task_id:
+        raise HTTPException(
+            status_code=409,
+            detail="The current task has changed. Review it before stopping.",
+        )
     chat_logger.info(
         "[STOP-BUTTON] Task lock retrieved,"
         f" task_lock.id: {task_lock.id},"
@@ -526,14 +3235,27 @@ def skip_task(project_id: str):
     try:
         # Queue the skip task action - this will
         # preserve context for multi-turn
-        skip_task_action = ActionSkipTaskData(project_id=project_id)
+        skip_task_action = ActionSkipTaskData(
+            project_id=project_id,
+            expected_task_id=expected_task_id or task_lock.current_task_id,
+        )
+        # Freeze the control target before queueing. An abort can restore the
+        # previous Run or a same-key retry can replace this preparation before
+        # the consumer reaches a repeated Stop.
+        skip_task_action._warm_admission = getattr(
+            task_lock, "_warm_admission", None
+        )
         chat_logger.info(
             "[STOP-BUTTON] Queueing"
             " ActionSkipTaskData"
             " (preserves context,"
             " marks as done)"
         )
-        asyncio.run(task_lock.put_queue(skip_task_action))
+        _queue_action_from_worker(
+            task_lock,
+            skip_task_action,
+            "skip task queue action",
+        )
 
         chat_logger.info(
             "[STOP-BUTTON] Skip request"

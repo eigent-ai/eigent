@@ -12,448 +12,742 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { proxyFetchGet } from '@/api/http';
+import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
+import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
+import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
+import { useAppCommand } from '@/components/Layout/AppCommandProvider';
+import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdown';
 import {
-  fetchDelete,
-  fetchPut,
-  proxyFetchDelete,
-  proxyFetchGet,
-} from '@/api/http';
-import defaultFolderIcon from '@/assets/Folder.svg';
-import giftWhiteIcon from '@/assets/gift-white.svg';
-import giftIcon from '@/assets/gift.svg';
-import EndNoticeDialog from '@/components/Dialog/EndNotice';
+  TOP_BAR_CONTROL_SELECTED_CLASS,
+  TOP_BAR_CONTROL_STATE_CLASS,
+  TOP_BAR_PILL_CLASS,
+} from '@/components/TopBar/controlStyles';
+import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
+import UpdateButton from '@/components/TopBar/UpdateButton';
+import { UserMenu } from '@/components/TopBar/UserMenu';
+import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { Input } from '@/components/ui/input';
+import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { share } from '@/lib/share';
+import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
+import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
+import { useHost } from '@/host';
+import {
+  createSpaceFromFolderPicker,
+  getFolderSpaceErrorMessage,
+} from '@/lib/createSpaceFromFolder';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+} from '@/lib/replay';
+import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
+import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
+import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
+import {
+  getActiveSpaceTriggerLabel,
+  getDefaultNewSpaceName,
+} from '@/lib/spaceLabel';
+import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
+import { cn } from '@/lib/utils';
+import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
+import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { useSidebarStore } from '@/store/sidebarStore';
-import { ChatTaskStatus } from '@/types/constants';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import {
-  ChevronDown,
-  ChevronLeft,
-  FileDown,
-  House,
+  getVisibleProjectMetasForSpace,
+  isDisposableBlankSpace,
+  useSpaceStore,
+} from '@/store/spaceStore';
+import {
+  ChevronsUpDown,
+  CircleHelp,
+  Folder,
   Minus,
-  Plus,
-  Power,
-  Settings,
+  PanelLeft,
+  PanelLeftOpen,
   Square,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 function HeaderWin() {
   const { t } = useTranslation();
+  const host = useHost();
   const titlebarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
   const navigate = useNavigate();
   const location = useLocation();
-  //Get Chatstore for the active project's task
-  const { chatStore, projectStore } = useChatStoreAdapter();
-  const { toggle } = useSidebarStore();
-  const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
+  const executeAppCommand = useAppCommand();
+  const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
+  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
+  const [renameSpaceValue, setRenameSpaceValue] = useState('');
+  const [renamingSpace, setRenamingSpace] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
+  const projectStore = useProjectRuntimeStore();
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const spacesById = useSpaceStore((s) => s.spaces);
+  const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
+  const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
+  const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
+  const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const workspaceSidebarHidden = usePageTabStore(
+    (s) => s.workspaceSidebarHidden
+  );
+  const toggleWorkspaceSidebar = usePageTabStore(
+    (s) => s.toggleWorkspaceSidebar
+  );
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
+  const closeSettings = useSettingsStore((state) => state.closeSettings);
   const appearance = useAuthStore((state) => state.appearance);
-  const [endDialogOpen, setEndDialogOpen] = useState(false);
-  const [endProjectLoading, setEndProjectLoading] = useState(false);
+  const email = useAuthStore((s) => s.email);
+  const userId = useAuthStore((s) => s.user_id);
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
     isInstalling || installationState === 'waiting-backend';
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
+    if (!host?.electronAPI?.getPlatform) return;
+    const p = host.electronAPI.getPlatform();
     setPlatform(p);
-  }, []);
-  const exportLog = async () => {
-    try {
-      const response = await window.electronAPI.exportLog();
+  }, [host]);
 
-      if (!response.success) {
-        alert(t('layout.export-cancelled') + response.error);
+  const isWorkspacePage = location.pathname === '/';
+  const isHomePage = isSettingsRoutePath(location.pathname);
+  const topBarLeadingInset = platform === 'darwin' ? 68 : 8;
+
+  const sidebarToggleLabel = workspaceSidebarHidden
+    ? t('layout.show-sidebar', { defaultValue: 'Show sidebar' })
+    : t('layout.hide-sidebar', { defaultValue: 'Hide sidebar' });
+
+  const activeSpaceTitle = useMemo(
+    () =>
+      getActiveSpaceTriggerLabel(
+        activeSpaceId ? spacesById[activeSpaceId]?.name : undefined,
+        t,
+        {
+          emptyLabelKey: activeSpaceId
+            ? 'layout.spaces-untitled'
+            : 'layout.spaces-select-space',
+        }
+      ),
+    [activeSpaceId, spacesById, t]
+  );
+
+  const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
+  const versionHistory = useWorkspaceSavePoint({
+    spaceId: activeSpaceId,
+    space: activeSpace,
+    email,
+    userId,
+    shortcut: true,
+  });
+  const canRenameActiveSpace = Boolean(
+    activeSpace &&
+    activeSpace.status === 'active' &&
+    activeSpace.sourceType !== 'legacy' &&
+    activeSpace.metadata?.legacy !== true
+  );
+
+  const activeSpaces = useMemo(
+    () =>
+      Object.values(spacesById)
+        .filter(
+          (space) =>
+            space.status !== 'archived' &&
+            !(
+              space.id === 'legacy_local' &&
+              activeSpaceId !== 'legacy_local' &&
+              getVisibleProjectMetasForSpace(projectsBySpaceId, space.id)
+                .length === 0
+            ) &&
+            (space.id === activeSpaceId ||
+              !isDisposableBlankSpace(space, projectsBySpaceId))
+        )
+        .sort((a, b) => b.updatedAt - a.updatedAt),
+    [activeSpaceId, projectsBySpaceId, spacesById]
+  );
+
+  const openHome = useCallback(() => {
+    void runAfterWorkspaceConfigurationSave(() => {
+      // Home is project-independent, but the active Space remains selected so
+      // its name and destination stay available in the top bar.
+      projectStore.setActiveProject(null);
+      closeSettings();
+      navigate('/home?section=spaces', {
+        state: isHomePage
+          ? location.state
+          : shellBackState(`${location.pathname}${location.search}`),
+      });
+    });
+  }, [
+    closeSettings,
+    isHomePage,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+    projectStore,
+  ]);
+
+  const openActiveSpaceHomeTab = useCallback(
+    (spaceTab: 'memory' | 'workspace-profile') => {
+      if (!activeSpaceId) return;
+      void runAfterWorkspaceConfigurationSave(() => {
+        projectStore.setActiveProject(null);
+        closeSettings();
+        navigate(
+          `/home?section=spaces&spaceId=${encodeURIComponent(activeSpaceId)}&spaceTab=${spaceTab}`,
+          {
+            state: isHomePage
+              ? location.state
+              : shellBackState(`${location.pathname}${location.search}`),
+          }
+        );
+      });
+    },
+    [
+      activeSpaceId,
+      closeSettings,
+      isHomePage,
+      location.pathname,
+      location.search,
+      location.state,
+      navigate,
+      projectStore,
+    ]
+  );
+
+  const openWorkspace = useCallback(() => {
+    void runAfterWorkspaceConfigurationSave(() => {
+      closeSettings();
+      navigate('/');
+    });
+  }, [closeSettings, navigate]);
+
+  const ensureProjectLoaded = useCallback(
+    async (projectId: string) => {
+      const project = projectStore.getProjectById(projectId);
+      const needsRemoteHistoryHydration =
+        project?.metadata?.remoteHistoryHydrationPending === true;
+      if (
+        projectStore.peekActiveChatStore(projectId) &&
+        !needsRemoteHistoryHydration
+      ) {
         return;
       }
-      if (response.savedPath) {
-        window.location.href =
-          'https://github.com/eigent-ai/eigent/issues/new/choose';
-        alert(t('layout.log-saved') + response.savedPath);
-      }
-    } catch (e: any) {
-      alert(t('layout.export-error') + e.message);
-    }
-  };
 
-  // create new project handler reused by plus icon and label
-  const createNewProject = () => {
-    //Handles refocusing id & nonduplicate internally
-    projectStore.createProject('new project');
-    navigate('/');
-  };
-
-  const summaryTask =
-    chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
-
-  const activeTaskTitle = useMemo(() => {
-    if (chatStore?.activeTaskId && summaryTask) {
-      return summaryTask.split('|')[0];
-    }
-    return t('layout.new-project');
-  }, [chatStore?.activeTaskId, summaryTask, t]);
-
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
-
-  const getReferFriendsLink = async () => {
-    try {
-      const res: any = await proxyFetchGet('/api/v1/user/invite_code');
-      if (res?.invite_code) {
-        const inviteLink = `https://www.eigent.ai/signup?invite_code=${res.invite_code}`;
-        await navigator.clipboard.writeText(inviteLink);
-        toast.success(t('layout.invitation-link-copied'));
-      } else {
-        toast.error(t('layout.failed-to-get-invite-code'));
-      }
-    } catch (error) {
-      console.error('Failed to get referral link:', error);
-      toast.error(t('layout.failed-to-get-invitation-link'));
-    }
-  };
-
-  //TODO: Mark ChatStore details as completed
-  const handleEndProject = async () => {
-    const taskId = chatStore.activeTaskId;
-    const projectId = projectStore.activeProjectId;
-
-    if (!taskId) {
-      toast.error(t('layout.no-active-project-to-end'));
-      return;
-    }
-
-    const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
-
-    setEndProjectLoading(true);
-    try {
-      const task = chatStore.tasks[taskId];
-
-      // Stop the task if it's running
-      if (task && task.status === ChatTaskStatus.RUNNING) {
-        await fetchPut(`/task/${taskId}/take-control`, {
-          action: 'stop',
-        });
-      }
-
-      // Stop Workforce
       try {
-        await fetchDelete(`/chat/${projectId}`);
-      } catch (error) {
-        console.log('Task may not exist on backend:', error);
-      }
-
-      // Delete from history using historyId
-      if (historyId && task.status !== ChatTaskStatus.FINISHED) {
-        try {
-          await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
-          // Remove from local store
-          chatStore.removeTask(taskId);
-        } catch (error) {
-          console.log('History may not exist:', error);
-        }
-      } else {
-        console.warn(
-          'No historyId found for project or task finished, skipping history deletion'
+        const historyProject = await proxyFetchGet(
+          `/api/v1/chat/histories/grouped/${projectId}`,
+          { include_tasks: true }
         );
+        const taskIdsList = (historyProject?.tasks ?? [])
+          .map((task: { task_id?: string | null }) => task.task_id)
+          .filter((taskId: string | null | undefined): taskId is string =>
+            Boolean(taskId)
+          );
+
+        if (taskIdsList.length === 0) {
+          if (needsRemoteHistoryHydration) {
+            projectStore.updateProject(projectId, {
+              metadata: { remoteHistoryHydrationPending: false },
+            });
+            return;
+          }
+          projectStore.appendInitChatStore(projectId);
+          return;
+        }
+
+        projectStore.setProjectNavLead(
+          projectId,
+          getSessionNavLeadFromHistoryProject(historyProject)
+        );
+
+        const firstTask = historyProject.tasks[0];
+        const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
+        if (needsRemoteHistoryHydration) {
+          await projectStore.mergeProjectHistory(
+            projectId,
+            historyProject.tasks,
+            firstTask?.question || historyProject.last_prompt || ''
+          );
+          return;
+        }
+        await projectStore.loadProjectFromHistory(
+          taskIdsList,
+          firstTask?.question || historyProject.last_prompt || '',
+          projectId,
+          firstTask?.id != null ? String(firstTask.id) : undefined,
+          historyProject.project_name,
+          undefined,
+          taskQuestionsById,
+          computeProjectFreshnessAnchor(historyProject)
+        );
+      } catch (error) {
+        console.error(
+          `Failed to load Project ${projectId} from history:`,
+          error
+        );
+        if (!projectStore.peekActiveChatStore(projectId)) {
+          projectStore.appendInitChatStore(projectId);
+        }
       }
+    },
+    [projectStore]
+  );
 
-      // Create a completely new project instead of just a new task
-      // This ensures we start fresh without any residual state
-      projectStore.createProject('new project');
-
-      // Navigate to home with replace to force refresh
-      navigate('/', { replace: true });
-
-      toast.success(t('layout.project-ended-successfully'), {
-        closeButton: true,
+  const handleCreateBlankSpace = useCallback(async () => {
+    try {
+      const spaceId = await createSpaceOnServer({
+        name: getDefaultNewSpaceName(t),
+        sourceType: 'blank',
+        setActive: false,
+        metadata: {
+          createdFrom: 'top_bar',
+          autoCreatedPlaceholder: true,
+        },
       });
+      await ensureScratchSpaceWorkspaceBinding({
+        email,
+        userId,
+        space: useSpaceStore.getState().getSpaceById(spaceId),
+      });
+      setActiveSpace(spaceId);
+      projectStore.setActiveProject(null);
+      setActiveWorkspaceTab('workforce');
+      requestWorkspaceChatFocus();
+      return true;
     } catch (error) {
-      console.error('Failed to end project:', error);
-      toast.error(t('layout.failed-to-end-project'), {
+      console.error('Failed to create Space:', error);
+      toast.error(t('layout.spaces-create-failed'), {
         closeButton: true,
       });
-    } finally {
-      setEndProjectLoading(false);
-      setEndDialogOpen(false);
+      return false;
     }
-  };
+  }, [
+    createSpaceOnServer,
+    email,
+    projectStore,
+    requestWorkspaceChatFocus,
+    setActiveSpace,
+    setActiveWorkspaceTab,
+    t,
+    userId,
+  ]);
 
-  const handleShare = async (taskId: string) => {
-    share(taskId);
-  };
+  const handleCreateSpaceFromFolder = useCallback(async () => {
+    try {
+      const spaceId = await createSpaceFromFolderPicker({
+        host,
+        email,
+        userId,
+        activeSpaceId,
+        projectStore,
+        createdFrom: 'top_bar_space_selector',
+      });
+      if (!spaceId) return false;
+      setActiveWorkspaceTab('workforce');
+      requestWorkspaceChatFocus();
+      return true;
+    } catch (error) {
+      console.warn('[TopBar] Failed to create folder Space:', error);
+      toast.error(getFolderSpaceErrorMessage(error, t), {
+        closeButton: true,
+      });
+      return false;
+    }
+  }, [
+    activeSpaceId,
+    email,
+    host,
+    projectStore,
+    requestWorkspaceChatFocus,
+    setActiveWorkspaceTab,
+    t,
+    userId,
+  ]);
 
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
+  const handleTopBarSpaceSelect = useCallback(
+    async (spaceId: string) => {
+      setSwitchingSpaceId(spaceId);
+      try {
+        const resolvedSpaceId = await resolveServerBackedSpaceId(
+          projectStore,
+          spaceId
+        );
+        const spaceStore = useSpaceStore.getState();
+        if (
+          resolvedSpaceId.startsWith('legacy_') ||
+          spaceStore.shouldSyncProjects(resolvedSpaceId)
+        ) {
+          await spaceStore.syncProjectsFromServer(resolvedSpaceId);
+        }
+        const projectsInSpace = useSpaceStore
+          .getState()
+          .getProjectsForSpace(resolvedSpaceId);
+        setActiveSpace(resolvedSpaceId);
+        if (projectsInSpace.length > 0) {
+          const lastVisitedProjectId =
+            spaceStore.lastVisitedProjectBySpace[resolvedSpaceId];
+          const targetProject =
+            projectsInSpace.find(
+              (project) => project.id === lastVisitedProjectId
+            ) ?? projectsInSpace[0];
+          projectStore.setActiveProject(targetProject.id);
+          await ensureProjectLoaded(targetProject.id);
+        } else {
+          projectStore.setActiveProject(null);
+        }
+        setActiveWorkspaceTab('workforce');
+        requestWorkspaceChatFocus();
+      } catch (error) {
+        console.error('Failed to switch Space:', error);
+        toast.error(t('layout.spaces-create-failed'), {
+          closeButton: true,
+        });
+      } finally {
+        setSwitchingSpaceId(null);
+      }
+    },
+    [
+      ensureProjectLoaded,
+      projectStore,
+      requestWorkspaceChatFocus,
+      setActiveSpace,
+      setActiveWorkspaceTab,
+      t,
+    ]
+  );
+
+  const openRenameSpaceDialog = useCallback(() => {
+    if (!canRenameActiveSpace || !activeSpace) return;
+    setRenameSpaceValue(activeSpace.name?.trim() || '');
+    setRenameSpaceDialogOpen(true);
+  }, [activeSpace, canRenameActiveSpace]);
+
+  const handleRenameSpace = useCallback(async () => {
+    const nextName = renameSpaceValue.trim();
+    if (!activeSpaceId || !nextName || renamingSpace) return;
+    setRenamingSpace(true);
+    try {
+      await renameSpaceOnServer(activeSpaceId, nextName);
+      toast.success(t('layout.spaces-rename-success'));
+      setRenameSpaceDialogOpen(false);
+    } catch (error) {
+      console.warn('[TopBar] Failed to rename Space:', error);
+      toast.error(t('layout.spaces-rename-failed'));
+    } finally {
+      setRenamingSpace(false);
+    }
+  }, [activeSpaceId, renameSpaceOnServer, renameSpaceValue, renamingSpace, t]);
 
   return (
     <div
-      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 ${
-        platform === 'darwin' ? 'pl-16' : 'pl-2'
-      }`}
+      className={cn(
+        'drag absolute top-0 right-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
+        platform === 'darwin' && 'pr-2'
+      )}
+      style={{ paddingLeft: topBarLeadingInset }}
       id="titlebar"
       ref={titlebarRef}
     >
-      {/* left */}
-      <div
-        className={`no-drag ml-2 mt-[1.5px] flex items-center justify-center gap-1 ${platform === 'darwin' ? 'w-8' : 'w-auto pr-4'}`}
+      <AlertDialog
+        isOpen={versionHistory.enableConfirmOpen}
+        onClose={() => versionHistory.setEnableConfirmOpen(false)}
+        onConfirm={() => {
+          versionHistory.setEnableConfirmOpen(false);
+          void versionHistory.enable(true);
+        }}
+        title={t('layout.workspace-version-enable-title')}
+        message={t('layout.workspace-version-enable-message')}
+        confirmText={t('layout.workspace-enable-version-history')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+      />
+      <WorkspaceVersionHistoryDialog
+        open={versionHistoryOpen}
+        onOpenChange={setVersionHistoryOpen}
+        spaceId={activeSpaceId}
+        email={email}
+        userId={userId}
+        actorId={userId == null ? email || 'local-user' : String(userId)}
+      />
+      <NewSpaceDialog
+        open={newSpaceDialogOpen}
+        onOpenChange={setNewSpaceDialogOpen}
+        onStartFromScratch={handleCreateBlankSpace}
+        onUseLocalFolder={handleCreateSpaceFromFolder}
+      />
+      <AlertDialog
+        isOpen={renameSpaceDialogOpen}
+        onClose={() => setRenameSpaceDialogOpen(false)}
+        onConfirm={() => void handleRenameSpace()}
+        title={t('layout.spaces-rename-title')}
+        confirmText={t('layout.save')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+        confirmDisabled={!renameSpaceValue.trim() || renamingSpace}
       >
-        <img src={defaultFolderIcon} alt="folder-icon" className="h-6 w-6" />
-        {platform !== 'darwin' && (
-          <span className="whitespace-nowrap text-label-md font-bold text-text-heading">
-            Eigent
-          </span>
-        )}
-      </div>
-
-      {/* center */}
-      <div className="drag flex h-full flex-1 items-center justify-between pr-2">
-        <div className="relative z-50 flex h-full items-center">
-          {location.pathname === '/history' && (
-            <div className="mr-1 flex items-center">
-              <Button
-                variant="ghost"
-                size="xs"
-                className="no-drag rounded-full"
-                onClick={() => navigate('/')}
-              >
-                <ChevronLeft className="h-4 w-4 text-text-label" />
-              </Button>
-            </div>
-          )}
-          {location.pathname !== '/history' && (
-            <div className="flex items-center">
-              <TooltipSimple
-                content={t('layout.home')}
-                side="bottom"
-                align="center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="no-drag rounded-full"
-                  onClick={() => navigate('/history')}
-                >
-                  <House className="h-4 w-4" />
-                </Button>
-              </TooltipSimple>
-              <TooltipSimple
-                content={t('layout.new-project')}
-                side="bottom"
-                align="center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="no-drag rounded-full"
-                  onClick={createNewProject}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </TooltipSimple>
-            </div>
-          )}
-          {location.pathname !== '/history' && (
+        <Input
+          autoFocus
+          value={renameSpaceValue}
+          placeholder={t('layout.spaces-rename-placeholder')}
+          onChange={(event) => setRenameSpaceValue(event.target.value)}
+          onEnter={() => {
+            if (renameSpaceValue.trim() && !renamingSpace) {
+              void handleRenameSpace();
+            }
+          }}
+        />
+      </AlertDialog>
+      {/* Two-sided global navigation: destinations on the left, utilities on the right. */}
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-between">
+        <TopBarPrimaryNavigation
+          sidebarHidden={workspaceSidebarHidden}
+          leadingInset={topBarLeadingInset}
+          sidebarControls={
             <>
-              {activeTaskTitle === t('layout.new-project') ? (
-                <TooltipSimple
-                  content={t('layout.new-project')}
-                  side="bottom"
-                  align="center"
+              <TooltipSimple
+                content={
+                  <ShortcutTooltipContent
+                    label={sidebarToggleLabel}
+                    shortcutId="toggle-workspace-sidebar"
+                  />
+                }
+                compact
+                side="bottom"
+                align="center"
+                variant="instant"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    'aria-pressed:!bg-transparent'
+                  )}
+                  onClick={toggleWorkspaceSidebar}
+                  aria-pressed={!workspaceSidebarHidden}
+                  aria-label={sidebarToggleLabel}
                 >
-                  <Button
-                    id="active-task-title-btn"
-                    variant="ghost"
-                    className="no-drag rounded-full text-base font-bold"
-                    onClick={toggle}
-                    size="sm"
-                  >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
-                      {t('layout.new-project')}
-                    </span>
-                    <ChevronDown />
-                  </Button>
-                </TooltipSimple>
-              ) : (
-                <TooltipSimple
-                  content={activeTaskTitle}
-                  side="bottom"
-                  align="center"
-                >
-                  <Button
-                    id="active-task-title-btn"
-                    variant="ghost"
-                    size="sm"
-                    className="no-drag text-base font-bold"
-                    onClick={toggle}
-                  >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
-                      {activeTaskTitle}
-                    </span>
-                    <ChevronDown />
-                  </Button>
-                </TooltipSimple>
-              )}
-            </>
-          )}
-        </div>
+                  {workspaceSidebarHidden ? (
+                    <DsIcon icon={PanelLeftOpen} aria-hidden />
+                  ) : (
+                    <DsIcon icon={PanelLeft} aria-hidden />
+                  )}
+                </Button>
+              </TooltipSimple>
 
-        {/* right */}
-        {location.pathname !== '/history' && (
-          <div
-            className={`${
-              platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
-          >
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string] &&
-              ((chatStore.tasks[chatStore.activeTaskId as string]?.messages
-                ?.length || 0) > 0 ||
-                chatStore.tasks[chatStore.activeTaskId as string]
-                  ?.hasMessages ||
-                chatStore.tasks[chatStore.activeTaskId as string]?.status !==
-                  ChatTaskStatus.PENDING) && (
-                <TooltipSimple
-                  content={t('layout.end-project')}
-                  side="bottom"
-                  align="end"
+              <TooltipSimple
+                content={
+                  <ShortcutTooltipContent
+                    label={t('layout.home')}
+                    shortcutId="navigate-home"
+                  />
+                }
+                compact
+                side="bottom"
+                align="center"
+                variant="delayed"
+              >
+                <button
+                  type="button"
+                  onClick={openHome}
+                  aria-label={t('layout.home')}
+                  aria-current={isHomePage ? 'page' : undefined}
+                  className={cn(
+                    TOP_BAR_PILL_CLASS,
+                    isHomePage && TOP_BAR_CONTROL_SELECTED_CLASS
+                  )}
                 >
-                  <Button
-                    onClick={() => setEndDialogOpen(true)}
-                    variant="ghost"
-                    size="xs"
-                    className="no-drag justify-center rounded-full bg-surface-cuation !text-text-cuation"
-                  >
-                    <Power />
-                    {t('layout.end-project')}
-                  </Button>
-                </TooltipSimple>
-              )}
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-                ChatTaskStatus.FINISHED && (
-                <TooltipSimple
-                  content={t('layout.share')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={() =>
-                      handleShare(chatStore.activeTaskId as string)
+                  <img
+                    src={
+                      appearance === 'dark'
+                        ? eigentAppIconWhite
+                        : eigentAppIconBlack
                     }
-                    variant="ghost"
-                    size="xs"
-                    className="no-drag rounded-full bg-surface-information !text-text-information"
+                    alt=""
+                    className="mt-[1px] h-[22px] w-[22px] shrink-0 select-none"
+                    width={16}
+                    height={16}
+                    draggable={false}
+                  />
+                  <span>{t('layout.home')}</span>
+                </button>
+              </TooltipSimple>
+            </>
+          }
+          contentControls={
+            isWorkspacePage ? (
+              <SpaceSwitchDropdown
+                contentSideOffset={6}
+                onOpenChange={(open) => {
+                  if (open && versionHistory.supported) {
+                    void versionHistory.loadStatus();
+                  }
+                }}
+                trigger={
+                  <button
+                    id="active-space-title-btn"
+                    type="button"
+                    className={TOP_BAR_PILL_CLASS}
+                    aria-haspopup="menu"
+                    aria-label={activeSpaceTitle}
                   >
-                    {t('layout.share')}
-                  </Button>
-                </TooltipSimple>
-              )}
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string] && (
-                <TooltipSimple
-                  content={t('layout.report-bug')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={exportLog}
-                    variant="ghost"
-                    size="icon"
-                    className="no-drag rounded-full"
-                  >
-                    <FileDown className="h-4 w-4" />
-                  </Button>
-                </TooltipSimple>
-              )}
-            <TooltipSimple
-              content={t('layout.refer-friends')}
-              side="bottom"
-              align="end"
-            >
-              <Button
-                onClick={getReferFriendsLink}
-                variant="ghost"
-                size="icon"
-                className="no-drag rounded-full"
+                    <DsIcon icon={Folder} className="shrink-0" aria-hidden />
+                    <span className="max-w-[220px] min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                      {activeSpaceTitle}
+                    </span>
+                    <DsIcon
+                      icon={ChevronsUpDown}
+                      className="shrink-0 text-ds-ink-subtle-default"
+                      aria-hidden
+                    />
+                  </button>
+                }
+                spaces={activeSpaces}
+                activeSpaceId={activeSpaceId}
+                switchingSpaceId={switchingSpaceId}
+                canRenameActiveSpace={canRenameActiveSpace}
+                onOpenCreateSpace={() => setNewSpaceDialogOpen(true)}
+                onRenameSpace={openRenameSpaceDialog}
+                onOpenSpaceSettings={() =>
+                  openActiveSpaceHomeTab('workspace-profile')
+                }
+                onOpenMemorySettings={() => openActiveSpaceHomeTab('memory')}
+                onSpaceSelect={handleTopBarSpaceSelect}
+                contentAlign="start"
+                triggerWrapperClassName="min-w-0 overflow-hidden rounded-full"
+                savePointMenu={
+                  versionHistory.supported
+                    ? {
+                        loading:
+                          versionHistory.loading ||
+                          versionHistory.status === null,
+                        saving: versionHistory.saving,
+                        enabled: versionHistory.status?.enabled === true,
+                        needsAttention:
+                          versionHistory.status?.enabled === true &&
+                          (versionHistory.status.state !== 'ready' ||
+                            versionHistory.status.diagnostics?.healthy ===
+                              false),
+                        pendingCount:
+                          versionHistory.status?.pending_managed_paths
+                            ?.length || 0,
+                        pendingTruncated:
+                          versionHistory.status
+                            ?.pending_managed_paths_truncated === true,
+                        onEnable: versionHistory.requestEnable,
+                        onSave: versionHistory.save,
+                        onOpenHistory: () => setVersionHistoryOpen(true),
+                      }
+                    : undefined
+                }
+              />
+            ) : (
+              <button
+                id="active-space-title-btn"
+                type="button"
+                className={TOP_BAR_PILL_CLASS}
+                aria-label={activeSpaceTitle}
+                onClick={openWorkspace}
               >
-                <img
-                  src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
-                  alt="gift-icon"
-                  className="h-4 w-4"
+                <DsIcon icon={Folder} className="shrink-0" aria-hidden />
+                <span className="max-w-[220px] min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                  {activeSpaceTitle}
+                </span>
+                <DsIcon
+                  icon={ChevronsUpDown}
+                  className="shrink-0 text-ds-ink-subtle-default"
+                  aria-hidden
                 />
-              </Button>
-            </TooltipSimple>
-            <TooltipSimple
-              content={t('layout.settings')}
-              side="bottom"
-              align="end"
+              </button>
+            )
+          }
+        />
+
+        <div
+          className={cn(
+            'no-drag relative z-50 flex h-7 shrink-0 items-center gap-0.5',
+            platform === 'darwin' && 'px-0'
+          )}
+        >
+          <UpdateButton />
+          <TooltipSimple
+            content={t('layout.support')}
+            side="bottom"
+            align="center"
+            variant="instant"
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'no-drag rounded-full',
+                TOP_BAR_CONTROL_STATE_CLASS
+              )}
+              aria-label={t('layout.support')}
+              onClick={() => executeAppCommand(APP_COMMAND.reportBug)}
+              buttonContent="icon-only"
             >
-              <Button
-                onClick={() => navigate('/history?tab=settings')}
-                variant="ghost"
-                size="icon"
-                className="no-drag rounded-full"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </TooltipSimple>
-          </div>
-        )}
-        {location.pathname === '/history' && (
-          <div
-            className={`${
-              platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
-          ></div>
-        )}
+              <DsIcon icon={CircleHelp} aria-hidden />
+            </Button>
+          </TooltipSimple>
+          <UserMenu />
+        </div>
       </div>
-      {/* Custom window controls only for Linux (Windows and macOS use native controls) */}
-      {platform !== 'darwin' && platform !== 'win32' && (
+
+      {/* Linux uses the in-app window controls; macOS and Windows use native chrome. */}
+      {platform === 'linux' && (
         <div
           className="no-drag flex h-full items-center"
           id="window-controls"
           ref={controlsRef}
         >
-          <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.minimizeWindow()}
+          <button
+            type="button"
+            aria-label={t('layout.minimize', { defaultValue: 'Minimize' })}
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
+            onClick={() => host?.electronAPI?.minimizeWindow()}
           >
-            <Minus className="h-4 w-4" />
-          </div>
-          <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.toggleMaximizeWindow()}
+            <DsIcon icon={Minus} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={t('layout.maximize', { defaultValue: 'Maximize' })}
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
+            onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
-            <Square className="h-4 w-4" />
-          </div>
-          <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.closeWindow()}
+            <DsIcon icon={Square} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={t('layout.close', { defaultValue: 'Close' })}
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
+            onClick={() => host?.electronAPI?.closeWindow(false)}
           >
-            <X className="h-4 w-4" />
-          </div>
+            <DsIcon icon={X} aria-hidden />
+          </button>
         </div>
       )}
-      <EndNoticeDialog
-        open={endDialogOpen}
-        onOpenChange={setEndDialogOpen}
-        onConfirm={handleEndProject}
-        loading={endProjectLoading}
-      />
     </div>
   );
 }

@@ -1,11 +1,15 @@
 {
   "update-check-failed": "فشل التحقق من التحديث",
-  "new-version-available": "في اصدار جديد",
+  "new-version-available": "يتوفر إصدار جديد",
+  "update": "تحديث",
   "download": "تنزيل",
   "update-error": "خطأ في التحديث",
   "downloading-update": "تنزيل التحديث",
   "complete": "مكتمل",
   "download-completed": "اكتمل التنزيل",
   "click-to-install-update": "انقر لتثبيت التحديث",
-  "install": "تثبيت"
+  "install": "تثبيت",
+  "downloading": "جارٍ تنزيل التحديث",
+  "launch-new-version": "تشغيل الإصدار الجديد",
+  "update-failed-retry": "فشل التحديث — انقر لإعادة المحاولة"
 }

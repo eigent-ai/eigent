@@ -1,0 +1,31 @@
+{
+  "$description": "Normative destination family for every shipping manifest tone. No tone may remain unassigned.",
+  "families": {
+    "neutral": { "kind": "primary-group", "group": "neutral" },
+    "brand": { "kind": "primary-group", "group": "accent" },
+    "success": { "kind": "feedback", "role": "success" },
+    "warning": { "kind": "feedback", "role": "warning" },
+    "error": { "kind": "feedback", "role": "error" },
+    "information": { "kind": "feedback", "role": "information" },
+    "caution": {
+      "kind": "retired",
+      "mapsTo": "error",
+      "reason": "Historical cuation/danger red (#e7000b), not warning amber. Merge at call sites."
+    },
+    "status-running": { "kind": "status", "mapsToFeedback": "information" },
+    "status-splitting": { "kind": "status", "mapsToFeedback": "information" },
+    "status-pending": { "kind": "status", "mapsToFeedback": "information" },
+    "status-reassigning": { "kind": "status", "mapsToFeedback": "information" },
+    "status-completed": { "kind": "status", "mapsToFeedback": "success" },
+    "status-error": { "kind": "status", "mapsToFeedback": "error" },
+    "status-blocked": { "kind": "status", "mapsToFeedback": "error" },
+    "status-paused": { "kind": "status", "mapsToFeedback": "warning" },
+    "status-skipped": { "kind": "status", "mapsToFeedback": "neutral" },
+    "status-cancelled": { "kind": "status", "mapsToFeedback": "neutral" },
+    "single-agent": { "kind": "category", "role": "agent-identity" },
+    "workforce": { "kind": "category", "role": "agent-identity" },
+    "browser": { "kind": "category", "role": "tool-identity" },
+    "terminal": { "kind": "category", "role": "tool-identity" },
+    "document": { "kind": "category", "role": "tool-identity" }
+  }
+}

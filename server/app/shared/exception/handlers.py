@@ -14,14 +14,15 @@
 
 """v1 exception handler registration."""
 
-from fastapi import Request, FastAPI
+from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import NoResultFound
+from loguru import logger
+from sqlalchemy.exc import NoResultFound, OperationalError
 
 from app.core import code
-from app.core.pydantic.i18n import trans, get_language
+from app.core.pydantic.i18n import get_language, trans
 from app.shared.exception import (
     NoPermissionException,
     TokenException,
@@ -62,4 +63,24 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=200,
             content={"code": code.not_found, "text": exception._message()},
+        )
+
+    @app.exception_handler(OperationalError)
+    async def database_operational_error(request: Request, exception: OperationalError):
+        sqlstate = getattr(exception.orig, "sqlstate", None) or getattr(exception.orig, "pgcode", None)
+        logger.warning(
+            "Database operation failed",
+            extra={
+                "path": request.url.path,
+                "sqlstate": sqlstate,
+                "database_error_type": type(exception.orig).__name__,
+            },
+        )
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": "1"},
+            content={
+                "code": "database_temporarily_unavailable",
+                "message": "Database is temporarily busy; retry the request.",
+            },
         )

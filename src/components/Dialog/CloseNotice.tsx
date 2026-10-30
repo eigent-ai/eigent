@@ -12,55 +12,61 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useCallback } from 'react';
+import AlertDialog from '@/components/ui/alertDialog';
+import type { CloseExecutionClass, CloseIntent } from '@/shared/windowClose';
 import { useTranslation } from 'react-i18next';
-import { Button } from '../ui/button';
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '../ui/dialog';
 
 interface Props {
   open: boolean;
+  intent: CloseIntent;
+  executionClass: CloseExecutionClass;
   onOpenChange: (open: boolean) => void;
-  trigger?: React.ReactNode;
+  onConfirm: () => void;
 }
+
 export default function CloseNoticeDialog({
   open,
+  intent,
+  executionClass,
   onOpenChange,
-  trigger,
+  onConfirm,
 }: Props) {
   const { t } = useTranslation();
-  const onSubmit = useCallback(() => {
-    window.electronAPI.closeWindow(true);
-  }, []);
+  const isQuit = intent === 'quit-app';
+  // A task started in this version streams live and is also recorded as a
+  // Run, so it reads as mixed. The Run is what decides what happens on quit.
+  const message =
+    executionClass === 'canonical-durable' || executionClass === 'mixed'
+      ? t(
+          isQuit
+            ? 'layout.close-durable-quit-message'
+            : 'layout.close-durable-window-message'
+        )
+      : executionClass === 'unknown'
+        ? t(
+            isQuit
+              ? 'layout.close-unknown-quit-message'
+              : 'layout.close-unknown-window-message'
+          )
+        : t(
+            isQuit
+              ? 'layout.close-legacy-quit-message'
+              : 'layout.close-legacy-window-message'
+          );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="gap-0 !rounded-xl border border-border-subtle-strong !bg-popup-surface p-0 shadow-sm sm:max-w-[600px]">
-        <DialogHeader className="!rounded-t-xl !bg-popup-surface p-md">
-          <DialogTitle className="m-0">{t('layout.close-notice')}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-md bg-popup-bg p-md">
-          {t('layout.a-task-is-currently-running')}
-        </div>
-        <DialogFooter className="!rounded-b-xl bg-white-100% p-md">
-          <DialogClose asChild>
-            <Button variant="ghost" size="md">
-              {t('layout.cancel')}
-            </Button>
-          </DialogClose>
-          <Button size="md" onClick={onSubmit} variant="primary">
-            {t('layout.yes')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <AlertDialog
+      isOpen={open}
+      onClose={() => onOpenChange(false)}
+      onConfirm={onConfirm}
+      title={t(
+        isQuit ? 'layout.shortcuts.quit' : 'layout.shortcuts.close-window'
+      )}
+      message={message}
+      confirmText={t(
+        isQuit ? 'layout.shortcuts.quit' : 'layout.shortcuts.close-window'
+      )}
+      cancelText={t('layout.cancel')}
+    />
   );
 }

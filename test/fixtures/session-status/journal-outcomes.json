@@ -1,0 +1,277 @@
+[
+  {
+    "summary": {
+      "run_id": "run-completed",
+      "project_id": "project-completed",
+      "status": "completed",
+      "version": 2,
+      "active_attempt_id": null,
+      "deadline_at": null,
+      "timeout_policy_version": "v1",
+      "created_at": 1700000000.0,
+      "updated_at": 1700000002.0,
+      "parent_run_id": null,
+      "timeout_policy": {},
+      "cancel_request_id": null,
+      "cancel_requested_at": null,
+      "origin": "local",
+      "resume_blocked_reason": null,
+      "terminal_reason": "completed",
+      "terminal_detail": null
+    },
+    "events": [
+      {
+        "event_id": "attempt:attempt-completed:created",
+        "run_id": "run-completed",
+        "sequence": 1,
+        "event_type": "run.attempt_created",
+        "payload": {
+          "attempt_id": "attempt-completed",
+          "attempt_number": 1,
+          "policy_version": "v1",
+          "reason": "initial_execution",
+          "status": "running",
+          "workload_profile": {
+            "budget_policy_ref": "budget.product-default.v1",
+            "capture_policy_ref": "capture.best-effort.v1",
+            "isolation_policy_ref": "isolation.product-default.v1",
+            "network_policy_ref": "network.product-default.v1",
+            "profile_version": "1",
+            "retention_policy_ref": "retention.product-default.v1",
+            "schema_version": 1,
+            "verifier_policy_ref": "verifier.noop.v1",
+            "workload_kind": "production"
+          },
+          "workload_profile_digest": "4786bb51388abddfbbe18decc88ada3e3e896b4aa9967970c2b99865d4999302"
+        },
+        "legacy_step": null,
+        "created_at": 1700000001.0,
+        "run_version": 1,
+        "project_id": "project-completed",
+        "origin": "local"
+      },
+      {
+        "event_id": "outcome-completed",
+        "run_id": "run-completed",
+        "sequence": 2,
+        "event_type": "run.completed",
+        "payload": {
+          "terminal_detail": null,
+          "terminal_reason": "completed"
+        },
+        "legacy_step": null,
+        "created_at": 1700000002.0,
+        "run_version": 2,
+        "project_id": "project-completed",
+        "origin": "local"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "run-failed",
+      "project_id": "project-failed",
+      "status": "failed",
+      "version": 2,
+      "active_attempt_id": null,
+      "deadline_at": null,
+      "timeout_policy_version": "v1",
+      "created_at": 1700000000.0,
+      "updated_at": 1700000002.0,
+      "parent_run_id": null,
+      "timeout_policy": {},
+      "cancel_request_id": null,
+      "cancel_requested_at": null,
+      "origin": "local",
+      "resume_blocked_reason": null,
+      "terminal_reason": "error",
+      "terminal_detail": null
+    },
+    "events": [
+      {
+        "event_id": "attempt:attempt-failed:created",
+        "run_id": "run-failed",
+        "sequence": 1,
+        "event_type": "run.attempt_created",
+        "payload": {
+          "attempt_id": "attempt-failed",
+          "attempt_number": 1,
+          "policy_version": "v1",
+          "reason": "initial_execution",
+          "status": "running",
+          "workload_profile": {
+            "budget_policy_ref": "budget.product-default.v1",
+            "capture_policy_ref": "capture.best-effort.v1",
+            "isolation_policy_ref": "isolation.product-default.v1",
+            "network_policy_ref": "network.product-default.v1",
+            "profile_version": "1",
+            "retention_policy_ref": "retention.product-default.v1",
+            "schema_version": 1,
+            "verifier_policy_ref": "verifier.noop.v1",
+            "workload_kind": "production"
+          },
+          "workload_profile_digest": "4786bb51388abddfbbe18decc88ada3e3e896b4aa9967970c2b99865d4999302"
+        },
+        "legacy_step": null,
+        "created_at": 1700000001.0,
+        "run_version": 1,
+        "project_id": "project-failed",
+        "origin": "local"
+      },
+      {
+        "event_id": "outcome-failed",
+        "run_id": "run-failed",
+        "sequence": 2,
+        "event_type": "run.failed",
+        "payload": {
+          "terminal_detail": null,
+          "terminal_reason": "error"
+        },
+        "legacy_step": null,
+        "created_at": 1700000002.0,
+        "run_version": 2,
+        "project_id": "project-failed",
+        "origin": "local"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "run-cancelled",
+      "project_id": "project-cancelled",
+      "status": "cancelled",
+      "version": 2,
+      "active_attempt_id": null,
+      "deadline_at": null,
+      "timeout_policy_version": "v1",
+      "created_at": 1700000000.0,
+      "updated_at": 1700000002.0,
+      "parent_run_id": null,
+      "timeout_policy": {},
+      "cancel_request_id": null,
+      "cancel_requested_at": null,
+      "origin": "local",
+      "resume_blocked_reason": null,
+      "terminal_reason": "user_cancelled",
+      "terminal_detail": null
+    },
+    "events": [
+      {
+        "event_id": "attempt:attempt-cancelled:created",
+        "run_id": "run-cancelled",
+        "sequence": 1,
+        "event_type": "run.attempt_created",
+        "payload": {
+          "attempt_id": "attempt-cancelled",
+          "attempt_number": 1,
+          "policy_version": "v1",
+          "reason": "initial_execution",
+          "status": "running",
+          "workload_profile": {
+            "budget_policy_ref": "budget.product-default.v1",
+            "capture_policy_ref": "capture.best-effort.v1",
+            "isolation_policy_ref": "isolation.product-default.v1",
+            "network_policy_ref": "network.product-default.v1",
+            "profile_version": "1",
+            "retention_policy_ref": "retention.product-default.v1",
+            "schema_version": 1,
+            "verifier_policy_ref": "verifier.noop.v1",
+            "workload_kind": "production"
+          },
+          "workload_profile_digest": "4786bb51388abddfbbe18decc88ada3e3e896b4aa9967970c2b99865d4999302"
+        },
+        "legacy_step": null,
+        "created_at": 1700000001.0,
+        "run_version": 1,
+        "project_id": "project-cancelled",
+        "origin": "local"
+      },
+      {
+        "event_id": "outcome-cancelled",
+        "run_id": "run-cancelled",
+        "sequence": 2,
+        "event_type": "run.cancelled",
+        "payload": {
+          "terminal_detail": null,
+          "terminal_reason": "user_cancelled"
+        },
+        "legacy_step": null,
+        "created_at": 1700000002.0,
+        "run_version": 2,
+        "project_id": "project-cancelled",
+        "origin": "local"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "run-interrupted",
+      "project_id": "project-interrupted",
+      "status": "interrupted",
+      "version": 2,
+      "active_attempt_id": null,
+      "deadline_at": null,
+      "timeout_policy_version": "v1",
+      "created_at": 1700000000.0,
+      "updated_at": 1700000002.0,
+      "parent_run_id": null,
+      "timeout_policy": {},
+      "cancel_request_id": null,
+      "cancel_requested_at": null,
+      "origin": "local",
+      "resume_blocked_reason": null,
+      "terminal_reason": "brain_restart",
+      "terminal_detail": "brain_restart"
+    },
+    "events": [
+      {
+        "event_id": "attempt:attempt-interrupted:created",
+        "run_id": "run-interrupted",
+        "sequence": 1,
+        "event_type": "run.attempt_created",
+        "payload": {
+          "attempt_id": "attempt-interrupted",
+          "attempt_number": 1,
+          "policy_version": "v1",
+          "reason": "initial_execution",
+          "status": "running",
+          "workload_profile": {
+            "budget_policy_ref": "budget.product-default.v1",
+            "capture_policy_ref": "capture.best-effort.v1",
+            "isolation_policy_ref": "isolation.product-default.v1",
+            "network_policy_ref": "network.product-default.v1",
+            "profile_version": "1",
+            "retention_policy_ref": "retention.product-default.v1",
+            "schema_version": 1,
+            "verifier_policy_ref": "verifier.noop.v1",
+            "workload_kind": "production"
+          },
+          "workload_profile_digest": "4786bb51388abddfbbe18decc88ada3e3e896b4aa9967970c2b99865d4999302"
+        },
+        "legacy_step": null,
+        "created_at": 1700000001.0,
+        "run_version": 1,
+        "project_id": "project-interrupted",
+        "origin": "local"
+      },
+      {
+        "event_id": "startup:runtime.interrupted:run-interrupted:1",
+        "run_id": "run-interrupted",
+        "sequence": 2,
+        "event_type": "runtime.interrupted",
+        "payload": {
+          "policy_version": "v1",
+          "previous_status": "running",
+          "reason": "brain_restart",
+          "terminal_detail": "brain_restart",
+          "terminal_reason": "brain_restart"
+        },
+        "legacy_step": null,
+        "created_at": 1700000002.0,
+        "run_version": 2,
+        "project_id": "project-interrupted",
+        "origin": "local"
+      }
+    ]
+  }
+]

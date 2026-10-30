@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
 
 // Zoom Controls Component
@@ -29,39 +31,43 @@ export const ZoomControls = ({
   onZoomOut,
   onZoomReset,
 }: ZoomControlsProps) => {
+  const { t } = useTranslation();
   return (
-    <div className="group absolute left-1/2 top-0 z-10 -translate-x-1/2">
-      <div className="bg-surface-hover-subtle/90 border-border-subtle-strong/50 flex translate-y-[calc(-100%-8px)] items-center gap-1 rounded-full border px-3 py-1.5 shadow-lg backdrop-blur-xl transition-transform duration-300 ease-out group-hover:translate-y-[20px]">
+    <div className="group absolute top-0 left-1/2 z-10 -translate-x-1/2">
+      <div className="zoom-controls-reveal flex items-center gap-1 rounded-full border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-default-default px-3 py-1.5 shadow-lg backdrop-blur-xl">
         <Button
-          size="icon"
+          size="xs"
+          buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomOut}
-          title="Zoom Out"
-          className="h-7 w-7 text-text-secondary hover:bg-fill-fill-transparent-hover hover:text-text-primary"
+          title={t('layout.zoom-out', { defaultValue: 'Zoom out' })}
+          className="h-7 w-7 text-ds-ink-muted-default hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
         >
-          <ZoomOut className="h-3.5 w-3.5" />
+          <DsIcon icon={ZoomOut} recipe="main-compact" />
         </Button>
-        <span className="min-w-[2.5rem] text-center text-xs font-medium tabular-nums text-text-primary">
+        <span className="min-w-[2.5rem] text-center text-xs font-medium text-ds-ink-default-default tabular-nums">
           {zoom}%
         </span>
         <Button
-          size="icon"
+          size="xs"
+          buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomIn}
-          title="Zoom In"
-          className="h-7 w-7 text-text-secondary hover:bg-fill-fill-transparent-hover hover:text-text-primary"
+          title={t('layout.zoom-in', { defaultValue: 'Zoom in' })}
+          className="h-7 w-7 text-ds-ink-muted-default hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
         >
-          <ZoomIn className="h-3.5 w-3.5" />
+          <DsIcon icon={ZoomIn} recipe="main-compact" />
         </Button>
-        <div className="mx-0.5 h-4 w-px bg-border-secondary" />
+        <div className="mx-0.5 h-4 w-px bg-ds-border-neutral-default-default" />
         <Button
-          size="icon"
+          size="xs"
+          buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomReset}
-          title="Reset Zoom"
-          className="h-7 w-7 text-text-secondary hover:bg-fill-fill-transparent-hover hover:text-text-primary"
+          title={t('layout.reset-zoom', { defaultValue: 'Reset zoom' })}
+          className="h-7 w-7 text-ds-ink-muted-default hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
         >
-          <RotateCcw className="h-3.5 w-3.5" />
+          <DsIcon icon={RotateCcw} recipe="main-compact" />
         </Button>
       </div>
     </div>

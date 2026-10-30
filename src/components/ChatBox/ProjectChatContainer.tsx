@@ -13,6 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useResolvedRunModels } from '@/hooks/useResolvedRunModels';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
+import { ChatTaskStatus } from '@/types/constants';
 import { AnimatePresence } from 'framer-motion';
 import React, {
   useCallback,
@@ -21,102 +28,232 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { ProjectSection } from './ProjectSection';
+import {
+  animateChatTimelineAnchor,
+  type ChatTimelineScrollAnimation,
+} from './chatTimelineScroll';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
+import { groupMessagesByQuery, ProjectSection } from './ProjectSection';
+import { previousRecordedRunModel } from './TimelineModes/ModelChangeDivider';
+
+const ACTIVE_LEGACY_TASK_STATUSES = new Set<string>([
+  ChatTaskStatus.PENDING,
+  ChatTaskStatus.RUNNING,
+  ChatTaskStatus.PAUSE,
+]);
 
 interface ProjectChatContainerProps {
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   className?: string;
-  // onPauseResume: () => void;  // Commented out - temporary not needed
-  onSkip: () => void;
-  isPauseResumeLoading: boolean;
+  /** Scroll viewport lives in ChatBox (full width) so the scrollbar sits on the panel edge. */
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  /** Bottom padding so scrolled content clears the fixed BottomBox overlay (px); measured in ChatBox. */
+  scrollBottomInsetPx: number;
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
+  onEditUserMessage,
   className = '',
-  // onPauseResume,  // Commented out - temporary not needed
-  onSkip,
-  isPauseResumeLoading,
+  scrollContainerRef,
+  scrollBottomInsetPx,
 }) => {
-  const { projectStore, chatStore } = useChatStoreAdapter();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
   const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
-  const [lastMessageCount, setLastMessageCount] = useState(0);
+  const [, setChatRevision] = useState(0);
+  const anchorFrameRef = useRef<number | null>(null);
+  const anchorAnimationRef = useRef<ChatTimelineScrollAnimation | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Get all chat stores for the active project
-  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectId = sessionProjectId;
   const chatStores = useMemo(
     () =>
       activeProjectId ? projectStore.getAllChatStores(activeProjectId) : [],
     [activeProjectId, projectStore]
   );
-
-  // Extract messages array to avoid complex expression in dependency array
-  const activeTaskId = chatStore?.activeTaskId as string;
-  const messages = useMemo(
-    () => chatStore?.tasks[activeTaskId]?.messages || [],
-    [chatStore, activeTaskId]
+  // Defensive dedup: if the same taskId surfaces through more than one
+  // chatStore (which can happen during the multi-chatStore -> single-chatStore
+  // transition, see PR-X4 in space-frontend-refactor-consolidated-review.md),
+  // render it exactly once. The earliest chatStore (sorted by createdAt in
+  // getAllChatStores) wins, matching insertion order.
+  const taskSections: Array<{
+    chatId: string;
+    chatStore: (typeof chatStores)[number]['chatStore'];
+    taskId: string;
+  }> = [];
+  const seenTaskIds = new Set<string>();
+  for (const { chatId, chatStore } of chatStores) {
+    const chatState = chatStore.getState();
+    for (const [taskId, task] of Object.entries(chatState.tasks)) {
+      if (seenTaskIds.has(taskId)) continue;
+      const hasUserMessage = (task.messages || []).some(
+        (msg: any) => msg.role === 'user' && msg.content
+      );
+      if (!hasUserMessage) continue;
+      seenTaskIds.add(taskId);
+      taskSections.push({ chatId, chatStore, taskId });
+    }
+  }
+  // A legacy Task id is its durable Run id.
+  const sectionRunIds = taskSections.map(({ taskId }) => taskId);
+  const resolvedModelsByRun = useResolvedRunModels(
+    activeProjectId,
+    taskSections.map(({ chatStore, taskId }) => {
+      const status = String(chatStore.getState().tasks[taskId]?.status ?? '');
+      return {
+        runId: taskId,
+        status,
+        active: ACTIVE_LEGACY_TASK_STATUSES.has(status),
+      };
+    })
   );
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    const scheduleRefresh = () => {
+      if (timeoutId) return;
+      timeoutId = setTimeout(() => {
+        setChatRevision((value) => value + 1);
+        timeoutId = null;
+      }, 100);
+    };
+    const unsubscribe = chatStores.map(({ chatStore }) =>
+      chatStore.subscribe(scheduleRefresh)
+    );
+    return () => {
+      unsubscribe.forEach((fn) => fn());
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [chatStores]);
 
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
-    if (containerRef.current) {
-      setTimeout(() => {
-        // Double check containerRef is still valid before scrolling
-        if (containerRef.current) {
-          containerRef.current.scrollTo({
-            top: containerRef.current.scrollHeight,
-            behavior: 'smooth',
-          });
+    if (!scrollContainerRef.current) return;
+    setTimeout(() => {
+      const root = scrollContainerRef.current;
+      if (!root) return;
+      root.scrollTo({
+        top: root.scrollHeight,
+        behavior: 'smooth',
+      });
+    }, 100);
+  }, [scrollContainerRef]);
+
+  const userQueryIds = taskSections.flatMap(({ chatStore, taskId }) => {
+    const task = chatStore.getState().tasks[taskId];
+    return groupMessagesByQuery(task?.messages || [])
+      .filter((group) => group.userMessage)
+      .map((group) => group.queryId);
+  });
+  const userQueryCount = userQueryIds.length;
+  const latestUserQueryId = userQueryIds.at(-1);
+  const previousUserQueryStateRef = useRef<{
+    count: number;
+    latestId?: string;
+  }>({ count: 0 });
+  const previousQueryProjectIdRef = useRef<string | null>(activeProjectId);
+
+  const scrollLatestQueryBelowHeader = useCallback(
+    (queryId: string) => {
+      if (anchorFrameRef.current !== null) {
+        cancelAnimationFrame(anchorFrameRef.current);
+      }
+      anchorAnimationRef.current?.stop();
+
+      const run = () => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        const targets = Array.from(
+          container.querySelectorAll<HTMLElement>('[data-query-id]')
+        );
+        const queryGroup = targets.find(
+          (candidate) => candidate.dataset.queryId === queryId
+        );
+        const target =
+          queryGroup?.querySelector<HTMLElement>('[data-user-query-anchor]') ||
+          queryGroup;
+        if (target) {
+          anchorAnimationRef.current = animateChatTimelineAnchor(
+            container,
+            target,
+            contentRef.current
+          );
         }
-      }, 100);
-    }
-  }, []);
+      };
 
-  // Monitor for new user messages and auto-scroll
+      anchorFrameRef.current = requestAnimationFrame(run);
+    },
+    [scrollContainerRef]
+  );
+
+  // The first query follows the existing bottom reveal. From the second query
+  // onward, keep the new user box flush with the top of the ChatBox viewport,
+  // just below the fixed Session header.
   useEffect(() => {
-    if (!chatStore || !activeProjectId) return;
+    if (previousQueryProjectIdRef.current !== activeProjectId) {
+      previousQueryProjectIdRef.current = activeProjectId;
+      previousUserQueryStateRef.current = {
+        count: userQueryCount,
+        latestId: latestUserQueryId,
+      };
+      return;
+    }
 
-    if (!activeTaskId) return;
+    const previousQueryState = previousUserQueryStateRef.current;
+    const addedQuery =
+      latestUserQueryId !== undefined &&
+      userQueryCount > previousQueryState.count &&
+      latestUserQueryId !== previousQueryState.latestId;
 
-    const task = chatStore.tasks[activeTaskId];
-    if (!task) return;
-
-    const currentMessageCount = messages.length;
-
-    // Check if a new user message was added
-    if (currentMessageCount > lastMessageCount) {
-      const lastMessage = messages[messages.length - 1];
-
-      // If the last message is from user, scroll to bottom
-      if (lastMessage && lastMessage.role === 'user') {
+    if (addedQuery) {
+      if (previousQueryState.count >= 1) {
+        scrollLatestQueryBelowHeader(latestUserQueryId);
+      } else {
         scrollToBottom();
       }
     }
-
-    // Use setTimeout to defer state update and avoid cascading renders
-    setTimeout(() => {
-      setLastMessageCount(currentMessageCount);
-    }, 0);
+    previousUserQueryStateRef.current = {
+      count: userQueryCount,
+      latestId: latestUserQueryId,
+    };
   }, [
-    messages,
-    lastMessageCount,
-    scrollToBottom,
     activeProjectId,
-    chatStore,
-    activeTaskId,
+    latestUserQueryId,
+    scrollLatestQueryBelowHeader,
+    scrollToBottom,
+    userQueryCount,
   ]);
 
-  // Reset message count when active task changes
+  useEffect(
+    () => () => {
+      if (anchorFrameRef.current !== null) {
+        cancelAnimationFrame(anchorFrameRef.current);
+      }
+      anchorAnimationRef.current?.stop();
+    },
+    []
+  );
+
+  // When switching projects, jump to the latest message (bottom) instead of
+  // staying at the top. Deferred so the switched-to project's messages have
+  // rendered; instant (not smooth) so we don't scroll through the whole
+  // history on every switch.
   useEffect(() => {
-    // Use setTimeout to defer state update and avoid cascading renders
-    setTimeout(() => {
-      setLastMessageCount(0);
-    }, 0);
-  }, [chatStore?.activeTaskId]);
+    if (!activeProjectId) return;
+    anchorAnimationRef.current?.stop();
+    if (contentRef.current) contentRef.current.style.minHeight = '';
+    const timer = setTimeout(() => {
+      const el = scrollContainerRef.current;
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [activeProjectId, scrollContainerRef]);
 
   // Intersection Observer for scroll-based animations
   useEffect(() => {
-    if (!containerRef.current) return;
+    const root = scrollContainerRef.current;
+    if (!root) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -130,92 +267,180 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
         });
       },
       {
-        root: containerRef.current,
+        root,
         rootMargin: '-20% 0px -60% 0px', // Trigger when query is in upper portion
         threshold: 0.1,
       }
     );
 
-    // Observe all query groups
-    const queryGroups =
-      containerRef.current.querySelectorAll('[data-query-id]');
+    const queryGroups = root.querySelectorAll('[data-query-id]');
     queryGroups.forEach((group) => observer.observe(group));
 
     return () => {
       queryGroups.forEach((group) => observer.unobserve(group));
     };
-  }, [chatStores]);
+  }, [chatStores, scrollContainerRef]);
 
-  // Handle scrollbar visibility on scroll
+  // Scroll to a specific query group when triggered from the sidebar
+  const scrollToQueryProjectId = useSessionPageTabStore(
+    (s) => s.scrollToQueryProjectId
+  );
+  const scrollToQueryId = useSessionPageTabStore((s) => s.scrollToQueryId);
+  const setScrollToQueryId = useSessionPageTabStore(
+    (s) => s.setScrollToQueryId
+  );
+
   useEffect(() => {
-    const scrollContainer = containerRef.current;
-    if (!scrollContainer) return;
+    if (
+      !scrollToQueryId ||
+      !scrollContainerRef.current ||
+      (scrollToQueryProjectId
+        ? scrollToQueryProjectId !== activeProjectId
+        : !isFocusedPane)
+    )
+      return;
 
-    const handleScroll = () => {
-      // Add scrolling class
-      scrollContainer.classList.add('scrolling');
+    const el = scrollContainerRef.current.querySelector(
+      `[data-query-id="${scrollToQueryId}"]`
+    );
+    if (el) {
+      const container = scrollContainerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const scrollOffset = elRect.top - containerRect.top + container.scrollTop;
+      container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
+    }
 
-      // Clear existing timeout
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
+    setScrollToQueryId(null);
+  }, [
+    scrollToQueryId,
+    scrollToQueryProjectId,
+    isFocusedPane,
+    activeProjectId,
+    setScrollToQueryId,
+    scrollContainerRef,
+  ]);
 
-      // Remove scrolling class after 1 second of no scrolling
-      scrollTimeoutRef.current = setTimeout(() => {
-        scrollContainer.classList.remove('scrolling');
-      }, 1000);
-    };
+  // Scroll to a historical Run when requested by the Session side panel.
+  const scrollToTurnRequest = useSessionPageTabStore(
+    (s) => s.scrollToTurnRequest
+  );
+  const setScrollToTurnRequest = useSessionPageTabStore(
+    (s) => s.setScrollToTurnRequest
+  );
 
-    scrollContainer.addEventListener('scroll', handleScroll);
+  useEffect(() => {
+    if (
+      !scrollToTurnRequest ||
+      scrollToTurnRequest.projectId !== activeProjectId ||
+      !scrollContainerRef.current
+    ) {
+      return;
+    }
 
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
+    const el = scrollContainerRef.current.querySelector(
+      `[data-turn-id="${scrollToTurnRequest.taskId}"]`
+    );
+    if (el) {
+      const container = scrollContainerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const scrollOffset = elRect.top - containerRect.top + container.scrollTop;
+      container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
+    }
+
+    setScrollToTurnRequest(null);
+  }, [
+    activeProjectId,
+    scrollToTurnRequest,
+    setScrollToTurnRequest,
+    scrollContainerRef,
+  ]);
+
+  // Surface the task box when the side-panel Progress section asks for it.
+  // TaskCard listens to the same counter to expand itself; we own the
+  // scroll. The `data-task-card="true"` attribute is set on a query
+  // group's outer wrapper only when its TaskCard is currently visible.
+  const taskBoxFocusRequestId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusRequestId
+  );
+  const taskBoxFocusProjectId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusProjectId
+  );
+  const taskBoxFocusTaskId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusTaskId
+  );
+  const handledTaskBoxFocusRef = useRef(taskBoxFocusRequestId);
+  useEffect(() => {
+    if (handledTaskBoxFocusRef.current === taskBoxFocusRequestId) return;
+    handledTaskBoxFocusRef.current = taskBoxFocusRequestId;
+    if (
+      !taskBoxFocusRequestId ||
+      (taskBoxFocusProjectId
+        ? taskBoxFocusProjectId !== activeProjectId
+        : !isFocusedPane)
+    ) {
+      return;
+    }
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const target = taskBoxFocusTaskId
+      ? container.querySelector<HTMLElement>(
+          `[data-turn-id="${taskBoxFocusTaskId}"] [data-task-card="true"]`
+        )
+      : Array.from(
+          container.querySelectorAll<HTMLElement>('[data-task-card="true"]')
+        ).at(-1);
+    if (!target) return;
+    // TaskCard's expand transition is ~300ms; do the scroll after a tick
+    // so the card has started animating, but anchor on its top edge so
+    // the final position is stable regardless of how tall it grows.
+    const containerRect = container.getBoundingClientRect();
+    const elRect = target.getBoundingClientRect();
+    const scrollOffset = elRect.top - containerRect.top + container.scrollTop;
+    container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
+  }, [
+    activeProjectId,
+    isFocusedPane,
+    taskBoxFocusProjectId,
+    taskBoxFocusRequestId,
+    taskBoxFocusTaskId,
+    scrollContainerRef,
+  ]);
 
   return (
-    <div
-      ref={containerRef}
-      className={`scrollbar-always-visible relative z-10 flex flex-1 flex-col overflow-y-scroll ${className}`}
-    >
-      <AnimatePresence mode="popLayout">
-        {chatStores.map(({ chatId, chatStore }) => {
-          const chatState = chatStore.getState();
-          const activeTaskId = chatState.activeTaskId;
-
-          if (!activeTaskId || !chatState.tasks[activeTaskId]) {
-            return null;
-          }
-
-          const task = chatState.tasks[activeTaskId];
-          const messages = task.messages || [];
-
-          // Only render if there are actual user messages (not just empty or system messages)
-          const hasUserMessages = messages.some(
-            (msg: any) => msg.role === 'user' && msg.content
-          );
-
-          if (!hasUserMessages) {
-            return null;
-          }
-
-          return (
-            <ProjectSection
-              key={chatId}
-              chatId={chatId}
-              chatStore={chatStore}
-              activeQueryId={activeQueryId}
-              onQueryActive={setActiveQueryId}
-              // onPauseResume={onPauseResume}  // Commented out - temporary not needed
-              onSkip={onSkip}
-              isPauseResumeLoading={isPauseResumeLoading}
-            />
-          );
-        })}
-      </AnimatePresence>
+    <div className={`relative z-10 w-full ${className}`}>
+      <div
+        ref={contentRef}
+        className="mx-auto w-full max-w-[736px] pt-0"
+        style={{ paddingBottom: scrollBottomInsetPx }}
+      >
+        <AnimatePresence mode="popLayout">
+          {taskSections.map(({ chatId, chatStore, taskId }, index) => {
+            return (
+              <ProjectSection
+                key={`${chatId}-${taskId}`}
+                chatId={chatId}
+                chatStore={chatStore}
+                taskId={taskId}
+                previousModel={
+                  index > 0
+                    ? previousRecordedRunModel(
+                        sectionRunIds,
+                        index,
+                        resolvedModelsByRun
+                      )
+                    : undefined
+                }
+                model={resolvedModelsByRun[taskId]}
+                activeQueryId={activeQueryId}
+                onQueryActive={setActiveQueryId}
+                onEditUserMessage={onEditUserMessage}
+              />
+            );
+          })}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

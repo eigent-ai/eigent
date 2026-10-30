@@ -37,12 +37,16 @@ export interface TriggeredTask {
    * If null, creates a new project or uses active project.
    */
   projectId: string | null;
+  /** Target Space ID for the project, when supplied by the backend event. */
+  spaceId?: string | null;
   /** Input data from webhook request or scheduled context */
   inputData: Record<string, any>;
   /** Timestamp when the task was triggered */
   timestamp: number;
   /** Formatted message content for display and processing */
   formattedMessage?: string;
+  /** The app found this execution itself and must report that it started. */
+  needsClaim?: boolean;
 }
 
 /**
@@ -94,11 +98,11 @@ export function formatTriggeredTaskMessage(task: TriggeredTask): string {
   }
 
   if (task.inputData && Object.keys(task.inputData).length > 0) {
-    parts.push('\n\n---\n**Trigger Context:**');
+    parts.push('\n\n---\n**Trigger context:**');
 
     // Format webhook data nicely
     if (task.triggerType === 'webhook') {
-      parts.push(`- **Source:** Webhook trigger "${task.triggerName}"`);
+      parts.push(`- **Source:** Webhook "${task.triggerName}"`);
 
       if (task.inputData.method) {
         parts.push(`- **Method:** ${task.inputData.method}`);
@@ -129,7 +133,7 @@ export function formatTriggeredTaskMessage(task: TriggeredTask): string {
         }
       }
     } else if (task.triggerType === 'slack_trigger') {
-      parts.push(`- **Source:** Slack trigger "${task.triggerName}"`);
+      parts.push(`- **Source:** Slack event "${task.triggerName}"`);
 
       // Slack event context
       if (task.inputData.event_type) {

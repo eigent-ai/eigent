@@ -19,11 +19,16 @@ Uses Redis to store revoked token JTIs. Keys: token:blacklist:{jti}
 TTL matches remaining token lifetime.
 """
 
+import json
+import os
+
 from app.core.environment import env_or_fail
 from redis import asyncio as aioredis
 
 _redis: aioredis.Redis | None = None
 BLACKLIST_PREFIX = "token:blacklist:"
+BLACKLIST_PUBSUB_PREFIX = "token_blacklist:"
+BLACKLIST_PUBSUB_CHANNEL = f"{BLACKLIST_PUBSUB_PREFIX}revoked"
 
 
 def _get_redis() -> aioredis.Redis:
@@ -57,7 +62,23 @@ async def blacklist_token(jti: str, ttl_seconds: int) -> None:
     try:
         r = _get_redis()
         key = f"{BLACKLIST_PREFIX}{jti}"
+        payload = json.dumps({"type": "token_blacklisted", "jti": jti})
         await r.set(key, "1", ex=ttl_seconds)
+        await r.publish(BLACKLIST_PUBSUB_CHANNEL, payload)
+        await _publish_to_session_redis_if_needed(payload)
     except Exception as e:
         from loguru import logger
         logger.error(f"Redis blacklist_token failed: {e}")
+
+
+async def _publish_to_session_redis_if_needed(payload: str) -> None:
+    auth_redis_url = os.getenv("redis_url")
+    session_redis_url = os.getenv("SESSION_REDIS_URL")
+    if not session_redis_url or not auth_redis_url or session_redis_url == auth_redis_url:
+        return
+
+    session_redis = aioredis.from_url(session_redis_url, encoding="utf-8", decode_responses=True)
+    try:
+        await session_redis.publish(BLACKLIST_PUBSUB_CHANNEL, payload)
+    finally:
+        await session_redis.aclose()

@@ -1,0 +1,176 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import asyncio
+import platform
+from dataclasses import dataclass
+from typing import Literal
+
+from camel.messages import BaseMessage
+
+from app.agent.agent_model import agent_model
+from app.agent.prompt import (
+    SINGLE_AGENT_SYS_PROMPT,
+    append_connected_app_mcp_notice,
+)
+from app.agent.utils import agent_current_time
+from app.hands.interface import IHands
+from app.model.chat import Chat
+from app.service.task import Agents
+from app.utils.file_utils import get_working_directory
+from app.workspace_bundle.runtime import ResolvedRuntimeEnvironment
+
+
+async def assemble_single_agent_toolkits(*args, **kwargs):
+    # Managed assembly must not import or initialize legacy third-party tools.
+    from app.agent.factory.toolkit_assembler import (
+        assemble_single_agent_toolkits as assemble,
+    )
+
+    return await assemble(*args, **kwargs)
+
+
+@dataclass(frozen=True)
+class AgentRuntimeConfig:
+    role: Literal["root", "subagent"] = "root"
+    depth: int = 0
+    max_depth: int = 1
+
+    @property
+    def can_delegate(self) -> bool:
+        return self.depth < self.max_depth
+
+
+async def single_agent(
+    options: Chat,
+    *,
+    task_id: str | None = None,
+    hands: IHands | None = None,
+    pause_event: asyncio.Event | None = None,
+    runtime: AgentRuntimeConfig | None = None,
+    runtime_environment: ResolvedRuntimeEnvironment | None = None,
+    managed_execution=None,
+):
+    """Create the root Single Agent using CAMEL-first tool assembly."""
+
+    runtime = runtime or AgentRuntimeConfig()
+    working_directory = (
+        managed_execution.working_directory
+        if managed_execution is not None
+        else get_working_directory(options)
+    )
+    current_task_id = task_id or options.task_id
+
+    if managed_execution is not None:
+        assembly = managed_execution.assemble(options)
+    else:
+        assembly = await assemble_single_agent_toolkits(
+            options,
+            task_id=current_task_id,
+            working_directory=working_directory,
+            hands=hands,
+            can_delegate=runtime.can_delegate,
+            current_depth=runtime.depth,
+            max_depth=runtime.max_depth,
+            runtime_environment=runtime_environment,
+        )
+
+    prompt_time = agent_current_time(options, task_id=current_task_id)
+    system_message = SINGLE_AGENT_SYS_PROMPT.format(
+        platform_system=platform.system(),
+        platform_machine=platform.machine(),
+        working_directory=working_directory,
+        now_str=prompt_time,
+    )
+    if managed_execution is None:
+        system_message = append_connected_app_mcp_notice(system_message)
+    else:
+        system_message += (
+            "\nOnly the supplied private-workspace file tools are available."
+        )
+    if runtime_environment is not None:
+        bundle_context = runtime_environment.prompt_context()
+        if bundle_context:
+            system_message = f"{system_message}\n\n{bundle_context}"
+
+    system_prompt = BaseMessage.make_assistant_message(
+        role_name="Single Agent",
+        content=system_message,
+    )
+    try:
+        agent = agent_model(
+            Agents.single_agent,
+            system_prompt,
+            options,
+            assembly.tools,
+            tool_names=assembly.tool_names,
+            toolkits_to_register_agent=assembly.toolkits_to_register_agent,
+            **(
+                {"managed_resources": managed_execution.model_resources}
+                if managed_execution is not None
+                else {}
+            ),
+        )
+    except BaseException:
+        # Without an Agent, nothing would release the assembled Browser
+        # reservation, Terminal sessions or MCP servers.
+        if managed_execution is None:
+            from app.agent.factory.toolkit_assembler import (
+                _rollback_runtime_assembly,
+            )
+
+            await _rollback_runtime_assembly(
+                assembly,
+                project_id=options.project_id,
+                options=options,
+                hands=hands,
+            )
+        raise
+    agent._prompt_current_time = prompt_time
+    agent._prompt_system_message = system_prompt
+    if pause_event is not None:
+        agent.pause_event = pause_event
+    if assembly.observable_todo_toolkit is not None:
+        assembly.observable_todo_toolkit.agent_id = agent.agent_id
+    agent._observable_todo_toolkit = assembly.observable_todo_toolkit
+    agent._runtime_cleanup_toolkits = tuple(assembly.cleanup_toolkits)
+
+    if assembly.browser_toolkit is not None:
+        agent._browser_toolkit = assembly.browser_toolkit
+        agent._cdp_port = assembly.browser_port
+        agent._cdp_url = assembly.browser_cdp_url
+        agent._cdp_session_id = assembly.browser_session_id
+        agent._cdp_task_id = options.task_id
+        agent._cdp_options = options
+        agent._cdp_owned_by_hands = assembly.browser_owned_by_hands
+
+        def release_cdp_from_agent(agent_instance):
+            port = getattr(agent_instance, "_cdp_port", None)
+            session_id = getattr(agent_instance, "_cdp_session_id", None)
+            if port is not None and session_id is not None:
+                if options.cdp_browsers:
+                    from app.agent.factory.browser import _cdp_pool_manager
+
+                    _cdp_pool_manager.release_browser(port, session_id)
+                elif hands is not None and getattr(
+                    agent_instance, "_cdp_owned_by_hands", False
+                ):
+                    try:
+                        hands.release_resource("browser", session_id)
+                    except Exception:
+                        pass
+
+        agent._cdp_acquire_callback = None
+        agent._cdp_release_callback = release_cdp_from_agent
+    return agent

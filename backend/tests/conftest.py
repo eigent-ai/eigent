@@ -15,8 +15,10 @@
 import asyncio
 import os
 import tempfile
+import threading
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,8 +26,21 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.auth import local_control
+
 # Load environment variables
 load_dotenv()
+
+
+@pytest.fixture(autouse=True)
+def reset_local_control_process_boundary(monkeypatch):
+    """Each test that supplies a capability models a fresh Brain process."""
+
+    monkeypatch.setattr(
+        local_control,
+        "_process_local_control_capability",
+        local_control._CAPABILITY_UNSET,
+    )
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -193,6 +208,7 @@ def mock_request():
     """Mock FastAPI Request object."""
     request = AsyncMock()
     request.is_disconnected = AsyncMock(return_value=False)
+    request.state = SimpleNamespace()
     return request
 
 
@@ -201,12 +217,16 @@ def app() -> FastAPI:
     """Create FastAPI test application."""
     from fastapi import FastAPI
 
+    from app.auth import require_local_control_principal
     from app.controller.chat_controller import router as chat_router
     from app.controller.model_controller import router as model_router
     from app.controller.task_controller import router as task_router
     from app.controller.tool_controller import router as tool_router
 
     app = FastAPI()
+    app.dependency_overrides[require_local_control_principal] = lambda: {
+        "kind": "test"
+    }
     app.include_router(chat_router)
     app.include_router(model_router)
     app.include_router(task_router)
@@ -276,6 +296,36 @@ def event_loop():
     """Create an instance of the default event loop for the test session."""
     loop = asyncio.new_event_loop()
     yield loop
+    loop.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def registered_main_event_loop():
+    """Provide the running main loop expected by worker-thread queue helpers."""
+    from app.utils.event_loop_utils import set_main_event_loop
+
+    loop = asyncio.new_event_loop()
+    ready = threading.Event()
+
+    def run_loop() -> None:
+        asyncio.set_event_loop(loop)
+        ready.set()
+        loop.run_forever()
+
+    thread = threading.Thread(
+        target=run_loop,
+        name="pytest-main-event-loop",
+        daemon=True,
+    )
+    thread.start()
+    ready.wait(timeout=5)
+    set_main_event_loop(loop)
+
+    yield loop
+
+    set_main_event_loop(None)
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=5)
     loop.close()
 
 

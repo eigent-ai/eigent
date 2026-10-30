@@ -50,9 +50,22 @@ repos:
     hooks:
       - id: bandit
         name: Bandit security check
+        # Husky and CI invoke this config from the Git repository root.
+        args: ["-c", "backend/pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]
+
+  # Keep local commits fast by scanning staged Python files above, while CI
+  # runs this full-tree hook to reject any repository-wide finding.
+  - repo: local
+    hooks:
+      - id: bandit-full
+        name: Bandit full backend security check
+        entry: bandit
+        language: python
+        additional_dependencies: ["bandit[toml]"]
         args: ["-c", "backend/pyproject.toml", "-r", "backend/"]
         pass_filenames: false
-        additional_dependencies: ["bandit[toml]"]
+        stages: [manual]
 
   - repo: https://github.com/executablebooks/mdformat
     rev: 0.7.22

@@ -24,6 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -47,8 +49,16 @@ import {
   useTriggerConfigQuery,
 } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { proxyCreateTrigger, proxyUpdateTrigger } from '@/service/triggerApi';
+import type { AutomationDraftV1 } from '@/lib/automationDraft';
+import { confirmScheduleTimezone } from '@/lib/triggerScheduleCompatibility';
+import {
+  proxyCreateTrigger,
+  proxyDeleteTrigger,
+  proxySaveAutomationSessionName,
+  proxyUpdateTrigger,
+} from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import {
   ListenerType,
@@ -58,6 +68,7 @@ import {
   TriggerStatus,
   TriggerType,
 } from '@/types';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   AlarmClockIcon,
   AlertTriangle,
@@ -67,11 +78,11 @@ import {
   Plus,
   Slack,
   WebhookIcon,
-  Zap,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { isOneTimeCron, parseCron } from './automationSchedule';
 import DynamicTriggerConfig, {
   filterExcludedFields,
   getDefaultTriggerConfig,
@@ -81,42 +92,73 @@ import DynamicTriggerConfig, {
 import { SchedulePicker, type ScheduleConfig } from './SchedulePicker';
 import { TriggerTaskInput } from './TriggerTaskInput';
 
+/** Prefills a new schedule automation, e.g. from an example card. */
+export type TriggerDraft = {
+  name: string;
+  taskPrompt: string;
+  /** UTC cron, as the trigger API stores it. */
+  cronExpression: string;
+};
+
+const DEFAULT_CRON = '0 0 * * *';
+
 type TriggerDialogProps = {
   selectedTrigger: Trigger | null;
+  draft?: TriggerDraft | null;
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   onTriggerCreated?: (triggerData: Trigger) => void;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   initialTaskPrompt?: string;
+  /** Captured source Session; the active Session may change while editing. */
+  sourceProjectId?: string;
+  initialDraft?: AutomationDraftV1 | null;
+  onCloseAutoFocus?: React.ComponentProps<
+    typeof DialogContent
+  >['onCloseAutoFocus'];
 };
 
 export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   selectedTrigger,
+  draft = null,
   onTriggerCreating,
   onTriggerCreated,
   isOpen,
   onOpenChange,
   initialTaskPrompt = '',
+  sourceProjectId,
+  initialDraft,
+  onCloseAutoFocus,
 }) => {
   const { t } = useTranslation();
+  const shouldReduceMotion = useReducedMotion();
   const { addTrigger, updateTrigger } = useTriggerStore();
   const { addLog } = useActivityLogStore();
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
+  const automationSessionRef = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isWebhookSuccessOpen, setIsWebhookSuccessOpen] = useState(false);
   const [createdWebhookUrl, setCreatedWebhookUrl] = useState<string>('');
   const [nameError, setNameError] = useState<string>('');
   const [taskPromptError, setTaskPromptError] = useState<string>('');
   const [formData, setFormData] = useState<TriggerInput>({
-    name: selectedTrigger?.name || '',
-    description: selectedTrigger?.description || '',
+    name: selectedTrigger?.name || draft?.name || initialDraft?.name || '',
+    description:
+      selectedTrigger?.description || initialDraft?.description || '',
     trigger_type: selectedTrigger?.trigger_type || TriggerType.Schedule,
     custom_cron_expression:
-      selectedTrigger?.custom_cron_expression || '0 0 * * *',
+      selectedTrigger?.custom_cron_expression ||
+      draft?.cronExpression ||
+      DEFAULT_CRON,
     listener_type: selectedTrigger?.listener_type || ListenerType.Workforce,
     webhook_method: selectedTrigger?.webhook_method || RequestType.POST,
     agent_model: selectedTrigger?.agent_model || '',
-    task_prompt: selectedTrigger?.task_prompt || initialTaskPrompt || '',
+    task_prompt:
+      selectedTrigger?.task_prompt ||
+      draft?.taskPrompt ||
+      initialDraft?.taskPrompt ||
+      initialTaskPrompt ||
+      '',
     max_executions_per_hour: selectedTrigger?.max_executions_per_hour,
     max_executions_per_day: selectedTrigger?.max_executions_per_day,
     webhook_url: selectedTrigger?.webhook_url,
@@ -135,6 +177,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   const [showScheduleErrors, setShowScheduleErrors] = useState<boolean>(false);
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({});
   const [activeTab, setActiveTab] = useState<'schedule' | 'app'>('schedule');
+  const [taskDraftReviewed, setTaskDraftReviewed] = useState(false);
+  const submitInFlightRef = useRef(false);
+  const initializedForOpenRef = useRef(false);
 
   // Stable callback for validation changes to prevent infinite loops
   const handleValidationChange = useCallback(
@@ -147,6 +192,15 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
   //Get projectStore for the active project's task
   const { projectStore } = useChatStoreAdapter();
+  const removeProject = projectStore.removeProject;
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
+  const activeProjectId = projectStore.activeProjectId;
+  const targetProjectId = selectedTrigger
+    ? activeProjectId
+    : sourceProjectId || activeProjectId;
+  const targetProjectMeta = useSpaceStore((state) =>
+    targetProjectId ? state.getProjectMeta(targetProjectId) : null
+  );
 
   // Fetch trigger config using query hook - only fetch when we have a valid app selected
   const shouldFetchConfig =
@@ -158,11 +212,24 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
   // Reset form when dialog opens
   useEffect(() => {
+    if (!isOpen) {
+      initializedForOpenRef.current = false;
+      // Closing without a saved Automation leaves its Session empty.
+      if (automationSessionRef.current) {
+        removeProject(automationSessionRef.current);
+        automationSessionRef.current = null;
+      }
+      return;
+    }
+    if (initializedForOpenRef.current) return;
+    initializedForOpenRef.current = true;
     if (isOpen) {
+      automationSessionRef.current = null;
       // Clear validation errors when dialog opens
       setNameError('');
       setTaskPromptError('');
       setShowScheduleErrors(false);
+      setTaskDraftReviewed(false);
 
       // If editing an existing trigger, populate the form with its data
       if (selectedTrigger) {
@@ -204,16 +271,20 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           setActiveTab('schedule');
         }
       } else {
-        // Reset form for new trigger, use initialTaskPrompt if provided
+        // Reset form for new trigger, prefilled from a draft or initialTaskPrompt
         setFormData({
-          name: '',
-          description: '',
+          name: draft?.name || initialDraft?.name || '',
+          description: initialDraft?.description || '',
           trigger_type: TriggerType.Schedule,
-          custom_cron_expression: '0 0 * * *',
+          custom_cron_expression: draft?.cronExpression || DEFAULT_CRON,
           listener_type: ListenerType.Workforce,
           webhook_method: RequestType.POST,
           agent_model: '',
-          task_prompt: initialTaskPrompt || '',
+          task_prompt:
+            draft?.taskPrompt ||
+            initialDraft?.taskPrompt ||
+            initialTaskPrompt ||
+            '',
           max_executions_per_hour: undefined,
           max_executions_per_day: undefined,
         });
@@ -224,7 +295,14 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         setActiveTab('schedule');
       }
     }
-  }, [isOpen, selectedTrigger, initialTaskPrompt]); // React to dialog state and trigger changes
+  }, [
+    isOpen,
+    selectedTrigger,
+    draft,
+    initialTaskPrompt,
+    initialDraft,
+    removeProject,
+  ]); // React to dialog state and trigger changes
 
   // Update schema when query data changes
   useEffect(() => {
@@ -239,6 +317,11 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (submitInFlightRef.current) return;
+    if (!selectedTrigger && sourceProjectId && !taskDraftReviewed) {
+      toast.error(t('chat.automation-review-required'));
+      return;
+    }
 
     if (!formData.name.trim()) {
       setNameError(t('triggers.name-required'));
@@ -277,12 +360,28 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
       return;
     }
 
+    // A stored schedule the editor cannot show is saved exactly as it was,
+    // including whether it runs only once.
+    const keepsStoredSchedule =
+      !!selectedTrigger &&
+      formData.custom_cron_expression ===
+        selectedTrigger.custom_cron_expression &&
+      parseCron(formData.custom_cron_expression) === null;
+    const isSingleExecution =
+      formData.trigger_type === TriggerType.Schedule &&
+      (keepsStoredSchedule
+        ? Boolean(selectedTrigger?.is_single_execution)
+        : isOneTimeCron(formData.custom_cron_expression));
+
+    submitInFlightRef.current = true;
     setIsLoading(true);
     onTriggerCreating?.(formData);
 
     try {
-      //Make sure we have an active project
-      if (!projectStore.activeProjectId) {
+      // A source Session not yet indexed by its Space is opened from the
+      // active Space, so it belongs there.
+      const targetSpaceId = targetProjectMeta?.spaceId || activeSpaceId;
+      if (!selectedTrigger && !targetSpaceId) {
         toast.error(t('triggers.project-id-required'));
         return;
       }
@@ -295,6 +394,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           name: formData.name,
           description: formData.description,
           custom_cron_expression: formData.custom_cron_expression,
+          is_single_execution: isSingleExecution,
           listener_type: formData.listener_type,
           webhook_method: formData.webhook_method,
           agent_model: formData.agent_model,
@@ -318,6 +418,18 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyUpdateTrigger(selectedTrigger.id, updateData);
+        const previous = selectedTrigger;
+        response = await confirmScheduleTimezone(
+          response,
+          updateData,
+          proxyUpdateTrigger,
+          () =>
+            proxyUpdateTrigger(previous.id, {
+              custom_cron_expression: previous.custom_cron_expression,
+              is_single_execution: previous.is_single_execution,
+              config: previous.config ?? {},
+            })
+        );
 
         // Update trigger in store
         updateTrigger(selectedTrigger.id, response);
@@ -325,27 +437,41 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         // Add activity log
         addLog({
           type: ActivityType.TriggerUpdated,
-          message: `Trigger "${response.name}" updated`,
-          projectId: projectStore.activeProjectId || undefined,
+          message: t('triggers.activity-updated', {
+            name: response.name,
+            defaultValue: 'Automation "{{name}}" updated',
+          }),
+          projectId: targetProjectId || undefined,
           triggerId: response.id,
           triggerName: response.name,
         });
 
         toast.success(t('triggers.updated-successfully'));
       } else {
-        // Creating new trigger
+        // Capture a dedicated Session once, including retries of this form.
+        automationSessionRef.current ??= projectStore.createProject(
+          t('triggers.automation-project-name', { name: formData.name }),
+          '',
+          undefined,
+          undefined,
+          undefined,
+          false,
+          { spaceId: targetSpaceId || undefined }
+        );
         const createData: TriggerInput = {
           name: formData.name,
           description: formData.description,
+          space_id: targetSpaceId || undefined,
           trigger_type: formData.trigger_type,
           custom_cron_expression: formData.custom_cron_expression,
+          is_single_execution: isSingleExecution,
           listener_type: formData.listener_type,
           webhook_method: formData.webhook_method,
           agent_model: formData.agent_model,
           task_prompt: formData.task_prompt,
           max_executions_per_hour: formData.max_executions_per_hour,
           max_executions_per_day: formData.max_executions_per_day,
-          project_id: projectStore.activeProjectId,
+          project_id: automationSessionRef.current || undefined,
         };
 
         // Include config based on trigger type
@@ -363,6 +489,27 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         }
 
         response = await proxyCreateTrigger(createData);
+        const created = response;
+        response = await confirmScheduleTimezone(
+          created,
+          createData,
+          proxyUpdateTrigger,
+          () => proxyDeleteTrigger(created.id)
+        );
+        const automationSessionId = automationSessionRef.current;
+        // The saved Automation owns its Session from here on.
+        automationSessionRef.current = null;
+        const automationSessionName = automationSessionId
+          ? projectStore.getProjectById(automationSessionId)?.name
+          : undefined;
+        if (automationSessionId && automationSessionName) {
+          void proxySaveAutomationSessionName(
+            automationSessionId,
+            automationSessionName
+          ).catch((error) => {
+            console.warn('Failed to save the Automation Session name:', error);
+          });
+        }
 
         // Add trigger to store
         addTrigger(response);
@@ -373,8 +520,11 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         // Add activity log
         addLog({
           type: ActivityType.TriggerCreated,
-          message: `Trigger "${response.name}" created`,
-          projectId: projectStore.activeProjectId || undefined,
+          message: t('triggers.activity-created', {
+            name: response.name,
+            defaultValue: 'Automation "{{name}}" created',
+          }),
+          projectId: targetProjectId || undefined,
           triggerId: response.id,
           triggerName: response.name,
         });
@@ -400,6 +550,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
       console.error('Failed to create trigger:', error);
       toast.error(t('triggers.failed-to-create'));
     } finally {
+      submitInFlightRef.current = false;
       setIsLoading(false);
     }
   };
@@ -410,7 +561,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         `${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`
       );
       toast.success(t('triggers.webhook-url-copied'));
-    } catch (err) {
+    } catch (_err) {
       toast.error(t('triggers.failed-to-copy'));
     }
   };
@@ -421,7 +572,38 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
       selectedTrigger?.config?.authentication_required;
 
     return (
-      <div className="flex w-full flex-col gap-6 py-6 pl-6 pr-4">
+      <div className="flex w-full flex-col gap-6">
+        {!selectedTrigger && sourceProjectId && (
+          <div className="flex flex-col gap-2 rounded-xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default p-3 text-ds-text-base text-ds-ink-default-default">
+            <p className="m-0 font-medium">
+              {t('chat.automation-source-session', {
+                name: targetProjectMeta?.name || sourceProjectId,
+              })}
+            </p>
+            {initialDraft?.schedule?.text && (
+              <p className="m-0">{initialDraft.schedule.text}</p>
+            )}
+            {(initialDraft?.requiredInputs.length || 0) > 0 && (
+              <ul className="m-0 list-disc pl-5">
+                {initialDraft?.requiredInputs.map((input) => (
+                  <li key={input.name}>
+                    {input.name}: {input.description}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {(initialDraft?.unresolved.length || 0) > 0 && (
+              <ul className="m-0 list-disc pl-5">
+                {initialDraft?.unresolved.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
+            <p className="m-0 text-ds-ink-muted-default">
+              {t('chat.automation-schedule-review-hint')}
+            </p>
+          </div>
+        )}
         {/* Trigger Name */}
         <Input
           id="name"
@@ -457,9 +639,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
         {/* Trigger Type */}
         <div className="space-y-3">
-          <Label className="text-sm font-bold">
-            {t('triggers.trigger-type')}
-          </Label>
+          <Label className="font-bold">{t('triggers.trigger-type')}</Label>
           <Tabs
             value={activeTab}
             onValueChange={(value) => {
@@ -478,32 +658,38 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
               // Don't change trigger_type when switching to app tab
               // The actual type will be set when user selects an app
             }}
-            className="w-full rounded-2xl bg-surface-disabled"
+            className="w-full rounded-2xl bg-ds-neutral-muted-default"
           >
-            <TabsList
-              variant="outline"
-              className="w-full rounded-t-2xl border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary px-4"
-            >
+            <TabsList appearance="default" className="w-full">
               <TabsTrigger
                 value="schedule"
-                className="flex-1"
+                className="flex-1 gap-2 text-ds-text-base"
                 disabled={!!selectedTrigger}
               >
-                <AlarmClockIcon className="h-4 w-4" />
+                <DsIcon icon={AlarmClockIcon} />
                 {t('triggers.schedule-trigger')}
               </TabsTrigger>
               <TabsTrigger
                 value="app"
-                className="flex-1"
+                className="flex-1 gap-2 text-ds-text-base"
                 disabled={!!selectedTrigger}
               >
-                <CableIcon className="h-4 w-4" />
+                <DsIcon icon={CableIcon} />
                 {t('triggers.app-trigger')}
               </TabsTrigger>
             </TabsList>
             <TabsContent value="schedule" className="px-6 py-4">
               <SchedulePicker
-                value={formData.custom_cron_expression || '0 0 * * *'}
+                timezone={
+                  selectedTrigger
+                    ? selectedTrigger.config?.timezone
+                    : configData?.schema_?.properties?.timezone
+                      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+                      : undefined
+                }
+                isEditing={!!selectedTrigger}
+                useDefaultTime={!selectedTrigger && !draft}
+                value={formData.custom_cron_expression || DEFAULT_CRON}
                 onChange={(cron) =>
                   setFormData({ ...formData, custom_cron_expression: cron })
                 }
@@ -518,12 +704,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             <TabsContent value="app" className="px-6 py-4">
               {!selectedApp ? (
                 <div className="space-y-4">
-                  <Label className="text-sm font-bold">
+                  <Label className="font-bold">
                     {t('triggers.select-app')}
                   </Label>
                   <div className="grid grid-cols-2 gap-3">
                     <Card
-                      className="relative flex h-24 cursor-pointer flex-col items-center justify-center gap-2 border-border-tertiary bg-surface-primary transition-colors hover:border-border-secondary"
+                      className="relative flex h-24 cursor-pointer flex-col items-center justify-center gap-2 border-ds-hairline-subtle-default bg-ds-neutral-subtle-default transition-colors hover:border-ds-hairline-default-default"
                       onClick={() => {
                         setSelectedApp('slack');
                         setFormData({
@@ -536,12 +722,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                       }}
                     >
                       <img src={slackIcon} alt="Slack" className="h-8 w-8" />
-                      <span className="text-body-md font-semibold text-text-heading">
+                      <span className="text-ds-text-body-large font-semibold text-ds-ink-default-default">
                         Slack
                       </span>
                     </Card>
                     <Card
-                      className="relative flex h-24 cursor-pointer flex-col items-center justify-center gap-2 border-border-tertiary bg-surface-primary transition-colors hover:border-border-secondary"
+                      className="relative flex h-24 cursor-pointer flex-col items-center justify-center gap-2 border-ds-hairline-subtle-default bg-ds-neutral-subtle-default transition-colors hover:border-ds-hairline-default-default"
                       onClick={() => {
                         setSelectedApp('webhook');
                         setFormData({
@@ -553,36 +739,40 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         setTriggerConfigSchema(null);
                       }}
                     >
-                      <WebhookIcon className="h-5 w-5" />
-                      <span className="text-body-md font-semibold text-text-heading">
+                      <DsIcon icon={WebhookIcon} />
+                      <span className="text-ds-text-body-large font-semibold text-ds-ink-default-default">
                         Webhook
                       </span>
                     </Card>
-                    <Card className="relative flex h-24 cursor-not-allowed flex-col items-center justify-center gap-2 border-border-tertiary bg-surface-primary opacity-50 transition-colors hover:border-border-secondary">
+                    <Card className="relative flex h-24 cursor-not-allowed flex-col items-center justify-center gap-2 border-ds-hairline-subtle-default bg-ds-neutral-subtle-default opacity-50 transition-colors hover:border-ds-hairline-default-default">
                       <Badge
                         variant="secondary"
-                        className="absolute right-2 top-2 text-xs"
+                        className="absolute top-2 right-2 text-xs"
                       >
-                        Coming Soon
+                        {t('layout.coming-soon-label', {
+                          defaultValue: 'Coming soon',
+                        })}
                       </Badge>
                       <img src={larkIcon} alt="Lark" className="h-8 w-8" />
-                      <span className="text-body-md font-semibold text-text-heading">
+                      <span className="text-ds-text-body-large font-semibold text-ds-ink-default-default">
                         Lark
                       </span>
                     </Card>
-                    <Card className="relative flex h-24 cursor-not-allowed flex-col items-center justify-center gap-2 border-border-tertiary bg-surface-primary opacity-50 transition-colors hover:border-border-secondary">
+                    <Card className="relative flex h-24 cursor-not-allowed flex-col items-center justify-center gap-2 border-ds-hairline-subtle-default bg-ds-neutral-subtle-default opacity-50 transition-colors hover:border-ds-hairline-default-default">
                       <Badge
                         variant="secondary"
-                        className="absolute right-2 top-2 text-xs"
+                        className="absolute top-2 right-2 text-xs"
                       >
-                        Coming Soon
+                        {t('layout.coming-soon-label', {
+                          defaultValue: 'Coming soon',
+                        })}
                       </Badge>
                       <img
                         src={telegramIcon}
                         alt="Telegram"
                         className="h-8 w-8"
                       />
-                      <span className="text-body-md font-semibold text-text-heading">
+                      <span className="text-ds-text-body-large font-semibold text-ds-ink-default-default">
                         Telegram
                       </span>
                     </Card>
@@ -592,11 +782,11 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 <div className="space-y-4">
                   <div className="mb-4 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      {selectedApp === 'slack' && <Slack className="h-5 w-5" />}
+                      {selectedApp === 'slack' && <DsIcon icon={Slack} />}
                       {selectedApp === 'webhook' && (
-                        <WebhookIcon className="h-5 w-5" />
+                        <DsIcon icon={WebhookIcon} />
                       )}
-                      <Label className="text-sm font-bold">
+                      <Label className="font-bold">
                         {selectedApp.charAt(0).toUpperCase() +
                           selectedApp.slice(1)}{' '}
                         Configuration
@@ -618,19 +808,22 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     )}
                   </div>
                   {!selectedTrigger || !formData.webhook_url ? (
-                    <div className="rounded-lg bg-surface-secondary p-3 text-sm text-text-label">
+                    <div className="rounded-lg bg-ds-neutral-default-default p-3 text-sm text-ds-ink-muted-default">
                       {t('triggers.webhook-url-after-creation')}
                     </div>
                   ) : (
                     <div
-                      className={`flex flex-row items-center justify-start gap-4 rounded-xl bg-surface-primary p-4 ${needsAuth ? 'border border-yellow-500' : ''}`}
+                      className={`flex flex-row items-center justify-start gap-4 rounded-xl bg-ds-neutral-subtle-default p-4 ${needsAuth ? 'border border-x border-y border-yellow-500' : ''}`}
                     >
-                      <div className="flex w-full items-center gap-2 break-all font-mono text-sm text-text-body">
+                      <div className="flex w-full items-center gap-2 font-mono text-sm break-all text-ds-ink-default-default">
                         {needsAuth && (
                           <TooltipSimple
                             content={t('triggers.verification-required')}
                           >
-                            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-yellow-600" />
+                            <DsIcon
+                              icon={AlertTriangle}
+                              className="shrink-0 text-yellow-600"
+                            />
                           </TooltipSimple>
                         )}
                         {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
@@ -640,7 +833,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         size="sm"
                         onClick={handleCopyWebhookUrl}
                       >
-                        <Copy />
+                        <DsIcon icon={Copy} />
                         {t('triggers.copy')}
                       </Button>
                     </div>
@@ -657,18 +850,23 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                   {selectedApp === 'webhook' && (
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label className="text-sm font-bold">
+                        <Label className="font-bold">
                           {t('triggers.webhook-method')}
                         </Label>
                         <Select
                           value={formData.webhook_method || RequestType.POST}
-                          onValueChange={(value: RequestType) =>
-                            setFormData({ ...formData, webhook_method: value })
+                          onValueChange={(value) =>
+                            setFormData({
+                              ...formData,
+                              webhook_method: value as RequestType,
+                            })
                           }
                         >
                           <SelectTrigger>
                             <SelectValue
-                              placeholder={t('triggers.select-method')}
+                              placeholder={t('triggers.select-method', {
+                                defaultValue: 'Select method',
+                              })}
                             />
                           </SelectTrigger>
                           <SelectContent>
@@ -685,12 +883,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                           className="border-none"
                         >
                           <AccordionTrigger className="bg-transparent py-2 hover:no-underline">
-                            <span className="text-sm font-bold text-text-heading">
+                            <span className="text-sm font-bold text-ds-ink-default-default">
                               {t('triggers.extra-settings')}
                             </span>
                           </AccordionTrigger>
                           <AccordionContent>
-                            <div className="flex flex-col gap-4 rounded-xl bg-surface-tertiary p-4 pt-2">
+                            <div className="flex flex-col gap-4 rounded-xl bg-ds-neutral-strong-default p-4 pt-2">
                               <DynamicTriggerConfig
                                 triggerType={TriggerType.Webhook}
                                 value={triggerConfig}
@@ -710,17 +908,32 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           </Tabs>
         </div>
 
+        {!selectedTrigger && sourceProjectId && (
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="task-automation-reviewed"
+              checked={taskDraftReviewed}
+              onCheckedChange={(checked) =>
+                setTaskDraftReviewed(checked === true)
+              }
+            />
+            <Label htmlFor="task-automation-reviewed">
+              {t('chat.automation-review-confirm')}
+            </Label>
+          </div>
+        )}
+
         {/* Execution Settings - Accordion */}
         {formData?.trigger_type !== TriggerType.Schedule && (
           <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="execution-settings" className="border-none">
               <AccordionTrigger className="bg-transparent py-2 hover:no-underline">
-                <span className="text-sm font-bold text-text-heading">
+                <span className="text-sm font-bold text-ds-ink-default-default">
                   {t('triggers.execution-settings')}
                 </span>
               </AccordionTrigger>
               <AccordionContent>
-                <div className="flex flex-col gap-4 rounded-lg bg-surface-disabled p-4 pt-2">
+                <div className="flex flex-col gap-4 rounded-lg bg-ds-neutral-muted-disabled p-4 pt-2">
                   <div className="flex items-center gap-2">
                     <Input
                       id="max_per_hour"
@@ -782,7 +995,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           <Button
             variant="primary"
             onClick={() => handleSubmit()}
-            disabled={isLoading}
+            disabled={
+              isLoading ||
+              (!selectedTrigger &&
+                Boolean(sourceProjectId) &&
+                !taskDraftReviewed)
+            }
           >
             {isLoading
               ? selectedTrigger
@@ -804,7 +1022,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           size="md"
           showCloseButton={true}
           onClose={handleClose}
+          onCloseAutoFocus={onCloseAutoFocus}
           aria-describedby={undefined}
+          className="h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)] min-h-0"
         >
           <DialogHeader title={getDialogTitle()} />
           <DialogContentSection className="scrollbar-overlay min-h-0 flex-1 p-0">
@@ -826,44 +1046,83 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           aria-describedby={undefined}
         >
           <DialogHeader
-            className="!rounded-t-xl border-b border-border-secondary !bg-popup-surface p-md"
+            className="!rounded-t-xl border-x-0 border-t-0 border-b border-ds-hairline-default-default p-md"
             title={t('triggers.webhook-created-title')}
           />
 
-          {/* Trigger Details Section */}
+          {/* Automation details section */}
           <div className="flex flex-col items-center justify-center gap-2 p-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-success shadow-sm">
-              <Zap className="h-8 w-8 text-text-success" />
-            </div>
-            <div className="flex flex-col gap-2 px-4 pt-2">
-              <div className="text-lg font-bold text-text-heading">
+            <motion.div
+              initial={
+                shouldReduceMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, transform: 'scale(0.95)' }
+              }
+              animate={
+                shouldReduceMotion
+                  ? { opacity: 1 }
+                  : { opacity: 1, transform: 'scale(1)' }
+              }
+              transition={{
+                duration: shouldReduceMotion ? 0.16 : 0.24,
+                ease: [0.23, 1, 0.32, 1],
+              }}
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-ds-bg-status-completed-subtle-default shadow-sm"
+            >
+              <DsIcon
+                icon={WebhookIcon}
+                recipe="illustration"
+                illustrationSize={32}
+                className="text-ds-icon-status-completed-default-default"
+              />
+            </motion.div>
+            <motion.div
+              initial={
+                shouldReduceMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, transform: 'translateY(4px)' }
+              }
+              animate={
+                shouldReduceMotion
+                  ? { opacity: 1 }
+                  : { opacity: 1, transform: 'translateY(0px)' }
+              }
+              transition={{
+                duration: shouldReduceMotion ? 0.16 : 0.2,
+                delay: shouldReduceMotion ? 0 : 0.05,
+                ease: [0.23, 1, 0.32, 1],
+              }}
+              className="flex flex-col gap-2 px-4 pt-2"
+            >
+              <div className="text-lg font-bold text-ds-ink-default-default">
                 {formData.name}
               </div>
               {formData.description && (
-                <div className="line-clamp-2 max-w-md text-sm text-text-label">
+                <div className="line-clamp-2 max-w-md text-sm text-ds-ink-muted-default">
                   {formData.description}
                 </div>
               )}
               <Badge variant="default">{formData.webhook_method}</Badge>
-            </div>
+            </motion.div>
           </div>
 
           {/* Webhook URL Section */}
           <div className="flex flex-col p-4">
             <div className="mb-4 flex items-center justify-start gap-2">
-              <Label className="text-sm font-semibold text-text-heading">
+              <Label className="font-semibold text-ds-ink-default-default">
                 {t('triggers.your-webhook-url')}
               </Label>
               <TooltipSimple content={t('triggers.webhook-instructions')}>
-                <CircleAlert
-                  className="h-4 w-4 cursor-pointer text-icon-primary"
+                <DsIcon
+                  icon={CircleAlert}
+                  className="cursor-pointer text-ds-ink-default-default"
                   onClick={(e) => e.stopPropagation()}
                 />
               </TooltipSimple>
             </div>
 
-            <div className="flex flex-row items-center justify-start gap-4 rounded-xl bg-surface-primary p-4">
-              <div className="w-full break-all font-mono text-sm text-text-body">
+            <div className="flex flex-row items-center justify-start gap-4 rounded-xl bg-ds-neutral-subtle-default p-4">
+              <div className="w-full font-mono text-sm break-all text-ds-ink-default-default">
                 {`${import.meta.env.VITE_PROXY_URL}/api${createdWebhookUrl}`}
               </div>
               <Button
@@ -871,7 +1130,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 size="sm"
                 onClick={handleCopyWebhookUrl}
               >
-                <Copy />
+                <DsIcon icon={Copy} />
                 {t('triggers.copy')}
               </Button>
             </div>
@@ -879,13 +1138,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
           {/* Info Tip Section */}
           {/* <div className="flex flex-col p-4">
-                        <div className="flex flex-row items-start justify-start bg-surface-information rounded-xl p-4">
-                            <Globe className="w-5 h-5 text-text-information" />
+                        <div className="flex flex-row items-start justify-start bg-ds-bg-status-splitting-subtle-default rounded-xl p-4">
+                            <Globe className="w-5 h-5 text-ds-text-status-splitting-strong-default" />
                             <div className="flex flex-col items-start justify-start gap-2 pl-4">
-                                <div className="text-label-sm font-semibold text-text-information">
+                                <div className="text-ds-text-base font-semibold text-ds-text-status-splitting-strong-default">
                                     {t("triggers.webhook-tip-title")}
                                 </div>
-                                <div className="text-label-sm text-text-information opacity-60 leading-relaxed">
+                                <div className="text-ds-text-base text-ds-text-status-splitting-strong-default opacity-60 leading-relaxed">
                                     {t("triggers.webhook-tip-description")}
                                 </div>
                             </div>
@@ -947,7 +1206,7 @@ export const TriggerDialogButton: React.FC<TriggerDialogButtonProps> = ({
       className={className}
       disabled={disabled}
     >
-      {buttonIcon || <Plus className="mr-2 h-4 w-4" />}
+      {buttonIcon || <DsIcon icon={Plus} className="mr-2" />}
       {buttonText || t('triggers.add-trigger')}
     </Button>
   );

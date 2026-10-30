@@ -18,6 +18,7 @@ from sqlmodel import Field, Column, SmallInteger, JSON, String, Float
 from sqlalchemy_utils import ChoiceType
 from pydantic import BaseModel
 from app.model.abstract.model import AbstractModel, DefaultTimes
+from app.shared.types.space_types import SkipReason
 from app.shared.types.trigger_types import ExecutionType, ExecutionStatus
 
 
@@ -68,6 +69,11 @@ class TriggerExecution(AbstractModel, DefaultTimes, table=True):
         default=None,
         description="Error message if execution failed"
     )
+    skip_reason: Optional[SkipReason] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Structured reason for skipped or guarded executions"
+    )
     
     # Retry configuration
     attempts: int = Field(
@@ -108,6 +114,7 @@ class TriggerExecutionUpdate(BaseModel):
     duration_seconds: Optional[float] = None
     output_data: Optional[dict] = None
     error_message: Optional[str] = None
+    skip_reason: Optional[SkipReason] = None
     attempts: Optional[int] = None
     tokens_used: Optional[int] = None
     tools_executed: Optional[dict] = None
@@ -126,6 +133,7 @@ class TriggerExecutionOut(BaseModel):
     input_data: Optional[dict] = None
     output_data: Optional[dict] = None
     error_message: Optional[str] = None
+    skip_reason: Optional[SkipReason] = None
     attempts: int
     max_retries: int
     tokens_used: Optional[int] = None

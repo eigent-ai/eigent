@@ -36,11 +36,14 @@ class ConfigGroup(str, Enum):
     GITHUB = "Github"
     GOOGLE_CALENDAR = "Google Calendar"
     GOOGLE_DRIVE_MCP = "Google Drive MCP"
+    GOOGLE_GMAIL = "Google Gmail"
     GOOGLE_GMAIL_MCP = "Google Gmail"
+    IMAGE_ANALYSIS = "Image Analysis"
     MCP_SEARCH = "MCP Search"
     PPTX = "PPTX"
     RAG = "RAG"
     TERMINAL = "Terminal"
+    CODEX = "Codex"
 
     @classmethod
     def get_all_values(cls) -> list[str]:

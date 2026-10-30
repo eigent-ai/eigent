@@ -1,0 +1,517 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
+import type { AutomationDraftV1 } from '@/lib/automationDraft';
+import { localTimeToUTC } from '@/lib/utils';
+import {
+  ListenerType,
+  RequestType,
+  TriggerStatus,
+  TriggerType,
+  type Trigger,
+} from '@/types';
+import { act, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useRef, useState } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  supportsTimezone: false,
+  timezoneConfig: { schema_: { properties: { timezone: {} } } },
+  proxyCreateTrigger: vi.fn(),
+  proxyDeleteTrigger: vi.fn(),
+  proxyUpdateTrigger: vi.fn(),
+  proxySaveAutomationSessionName: vi.fn(async () => undefined),
+  toastError: vi.fn(),
+  createProject: vi.fn(() => 'automation-session'),
+  getProjectById: vi.fn((id: string) =>
+    id === 'automation-session' ? { name: 'Automation: Weekly digest' } : null
+  ),
+  removeProject: vi.fn(),
+}));
+
+vi.mock('@/service/triggerApi', () => ({
+  proxyCreateTrigger: mocks.proxyCreateTrigger,
+  proxyDeleteTrigger: mocks.proxyDeleteTrigger,
+  proxySaveAutomationSessionName: mocks.proxySaveAutomationSessionName,
+  proxyUpdateTrigger: mocks.proxyUpdateTrigger,
+}));
+
+vi.mock('@/hooks/queries/useTriggerQueries', () => ({
+  useTriggerCacheInvalidation: () => ({
+    invalidateUserTriggerCount: vi.fn(),
+  }),
+  useTriggerConfigQuery: () => ({
+    data: mocks.supportsTimezone ? mocks.timezoneConfig : undefined,
+  }),
+}));
+
+vi.mock('@/hooks/useChatStoreAdapter', () => ({
+  default: () => ({
+    projectStore: {
+      activeProjectId: 'project-1',
+      createProject: mocks.createProject,
+      getProjectById: mocks.getProjectById,
+      removeProject: mocks.removeProject,
+    },
+  }),
+}));
+
+vi.mock('@/store/spaceStore', () => ({
+  useSpaceStore: (selector: (state: unknown) => unknown) =>
+    selector({
+      activeSpaceId: 'space-1',
+      getProjectMeta: (id: string) =>
+        id === 'source-project' ? { spaceId: 'source-space' } : null,
+    }),
+}));
+
+vi.mock('@/store/triggerStore', () => ({
+  useTriggerStore: () => ({ addTrigger: vi.fn(), updateTrigger: vi.fn() }),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { error: mocks.toastError, success: vi.fn() },
+}));
+
+const HOUR_ERROR = 'Enter a whole number from 0 to 23';
+
+function field(label: string): HTMLInputElement {
+  const title = screen.getByText(label, { selector: 'span' });
+  const input = title.parentElement?.parentElement?.querySelector('input');
+  if (!input) throw new Error(`No input rendered for ${label}`);
+  return input;
+}
+
+const WEEKLY_DRAFT: AutomationDraftV1 = {
+  version: 1,
+  kind: 'automation-draft',
+  name: 'Weekly digest',
+  description: 'Summarize the week',
+  taskPrompt: 'Summarize this week',
+  schedule: { text: 'Every Monday at 9:00' },
+  requiredInputs: [],
+  unresolved: [],
+};
+
+async function reviewAndCreate(user: ReturnType<typeof userEvent.setup>) {
+  const reviewed = screen.getByRole('checkbox', {
+    name: 'I reviewed the schedule and required inputs.',
+  });
+  if (reviewed.getAttribute('aria-checked') !== 'true') {
+    await user.click(reviewed);
+  }
+  await user.click(screen.getByRole('button', { name: 'Create' }));
+}
+
+describe('TriggerDialog schedule time validation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.proxyCreateTrigger.mockImplementation(async (data) => ({
+      id: 1,
+      ...data,
+    }));
+  });
+
+  it('blocks creating a daily Automation at 25:54 and creates it once the hour is valid', async () => {
+    const user = userEvent.setup();
+    render(
+      <TriggerDialog selectedTrigger={null} isOpen onOpenChange={vi.fn()} />
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('Enter automation name'),
+      'Nightly'
+    );
+    await user.type(
+      screen.getByPlaceholderText('What should this automation do?'),
+      'Say hello'
+    );
+
+    await user.clear(field('Minute'));
+    await user.type(field('Minute'), '54');
+    await user.keyboard('{Enter}');
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    // Type the invalid hour and go straight to Create without leaving the
+    // field first.
+    await user.clear(field('Hour'));
+    await user.type(field('Hour'), '25');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(mocks.proxyCreateTrigger).not.toHaveBeenCalled();
+    expect(screen.getByText(HOUR_ERROR)).toBeInTheDocument();
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      'Please fill in all required fields for the schedule'
+    );
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    await user.clear(field('Hour'));
+    await user.type(field('Hour'), '23');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    const { utcHour, utcMinute } = localTimeToUTC(23, 54);
+    expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1);
+    expect(mocks.proxyCreateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: 'automation-session',
+        space_id: 'space-1',
+        name: 'Nightly',
+        task_prompt: 'Say hello',
+        custom_cron_expression: `${utcMinute} ${utcHour} * * *`,
+      })
+    );
+  });
+});
+
+describe('TriggerDialog saving a schedule the editor cannot show', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.proxyUpdateTrigger.mockImplementation(async (id, data) => ({
+      id,
+      ...data,
+    }));
+  });
+
+  it.each([
+    ['0 9 * * 1,3-5', false],
+    ['0 9 1-5 1 *', true],
+    ['0 9 1,15 * *', false],
+  ])(
+    'keeps %s and its run-once setting when only the name changes',
+    async (cron, runsOnce) => {
+      const user = userEvent.setup();
+      const stored = {
+        id: 7,
+        name: 'Stored schedule',
+        task_prompt: 'Summarize the inbox',
+        trigger_type: TriggerType.Schedule,
+        status: TriggerStatus.Inactive,
+        custom_cron_expression: cron,
+        is_single_execution: runsOnce,
+        listener_type: ListenerType.Workforce,
+        webhook_method: RequestType.POST,
+        config: { max_failure_count: 5 },
+      } as unknown as Trigger;
+      render(
+        <TriggerDialog selectedTrigger={stored} isOpen onOpenChange={vi.fn()} />
+      );
+      expect(
+        screen.getByText(/This schedule can't be edited here/)
+      ).toBeInTheDocument();
+
+      const name = screen.getByPlaceholderText('Enter automation name');
+      await user.clear(name);
+      await user.type(name, 'Renamed schedule');
+      await user.click(screen.getByRole('button', { name: 'Update' }));
+
+      await vi.waitFor(() =>
+        expect(mocks.proxyUpdateTrigger).toHaveBeenCalledTimes(1)
+      );
+      expect(mocks.proxyUpdateTrigger).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({
+          name: 'Renamed schedule',
+          custom_cron_expression: cron,
+          is_single_execution: runsOnce,
+        })
+      );
+    }
+  );
+});
+
+describe('TriggerDialog opened from a Session', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.proxyCreateTrigger.mockImplementation(async (data) => ({
+      id: 2,
+      ...data,
+    }));
+  });
+
+  it('returns keyboard focus to its source control after Escape', async () => {
+    const user = userEvent.setup();
+    function SessionAutomation() {
+      const [open, setOpen] = useState(false);
+      const source = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={source} onClick={() => setOpen(true)}>
+            Session menu
+          </button>
+          <TriggerDialog
+            selectedTrigger={null}
+            isOpen={open}
+            onOpenChange={setOpen}
+            sourceProjectId="source-project"
+            initialTaskPrompt="Original request"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              source.current?.focus();
+            }}
+          />
+        </>
+      );
+    }
+    render(<SessionAutomation />);
+    const source = screen.getByRole('button', { name: 'Session menu' });
+    await user.click(source);
+    await vi.waitFor(() =>
+      expect(screen.getByPlaceholderText('Enter automation name')).toHaveFocus()
+    );
+    await user.keyboard('{Escape}');
+    await vi.waitFor(() => expect(source).toHaveFocus());
+    expect(mocks.proxyCreateTrigger).not.toHaveBeenCalled();
+  });
+
+  it('prefills the draft and creates a dedicated Session in the source Space after review', async () => {
+    const user = userEvent.setup();
+    render(
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen
+        onOpenChange={vi.fn()}
+        sourceProjectId="source-project"
+        initialTaskPrompt="Original request"
+        initialDraft={{
+          version: 1,
+          kind: 'automation-draft',
+          name: 'Weekly digest',
+          description: 'Summarize the week',
+          taskPrompt: 'Summarize this week',
+          schedule: { text: 'Every Monday at 9:00' },
+          requiredInputs: [{ name: 'Inbox', description: 'Which inbox' }],
+          unresolved: [],
+        }}
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Enter automation name')).toHaveValue(
+      'Weekly digest'
+    );
+    expect(
+      screen.getByPlaceholderText('What should this automation do?')
+    ).toHaveValue('Summarize this week');
+    expect(screen.getByText('Every Monday at 9:00')).toBeInTheDocument();
+    expect(screen.getByText('Inbox: Which inbox')).toBeInTheDocument();
+
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).toBeDisabled();
+
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: 'I reviewed the schedule and required inputs.',
+      })
+    );
+    expect(create).toBeEnabled();
+    await user.click(create);
+
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.proxyCreateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Weekly digest',
+        task_prompt: 'Summarize this week',
+        project_id: 'automation-session',
+        space_id: 'source-space',
+      })
+    );
+  });
+
+  it('creates in the active Space when the source Session is not indexed by a Space yet', async () => {
+    const user = userEvent.setup();
+    render(
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen
+        onOpenChange={vi.fn()}
+        sourceProjectId="unindexed-project"
+        initialTaskPrompt="Original request"
+        initialDraft={WEEKLY_DRAFT}
+      />
+    );
+
+    await reviewAndCreate(user);
+
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(mocks.createProject).toHaveBeenCalledWith(
+      'Automation: Weekly digest',
+      '',
+      undefined,
+      undefined,
+      undefined,
+      false,
+      { spaceId: 'space-1' }
+    );
+    expect(mocks.proxyCreateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: 'automation-session',
+        space_id: 'space-1',
+      })
+    );
+    expect(mocks.proxySaveAutomationSessionName).toHaveBeenCalledWith(
+      'automation-session',
+      'Automation: Weekly digest'
+    );
+  });
+});
+
+describe('TriggerDialog when creating an Automation fails', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function ClosableDialog() {
+    const [open, setOpen] = useState(true);
+    return (
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen={open}
+        onOpenChange={setOpen}
+        sourceProjectId="source-project"
+        initialTaskPrompt="Original request"
+        initialDraft={WEEKLY_DRAFT}
+      />
+    );
+  }
+
+  it('reuses its Session across retries and removes it when the dialog closes unsaved', async () => {
+    mocks.proxyCreateTrigger.mockRejectedValue(new Error('offline'));
+    const user = userEvent.setup();
+    render(<ClosableDialog />);
+
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(2)
+    );
+
+    expect(mocks.createProject).toHaveBeenCalledTimes(1);
+    for (const [data] of mocks.proxyCreateTrigger.mock.calls) {
+      expect(data).toEqual(
+        expect.objectContaining({ project_id: 'automation-session' })
+      );
+    }
+    expect(mocks.removeProject).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+
+    await vi.waitFor(() =>
+      expect(mocks.removeProject).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.removeProject).toHaveBeenCalledWith('automation-session');
+    expect(mocks.proxySaveAutomationSessionName).not.toHaveBeenCalled();
+  });
+
+  it('keeps the Session once a retry saves the Automation', async () => {
+    mocks.proxyCreateTrigger
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementation(async (data) => ({ id: 3, ...data }));
+    const user = userEvent.setup();
+    render(<ClosableDialog />);
+
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(mocks.proxyCreateTrigger).toHaveBeenCalledTimes(1)
+    );
+    await reviewAndCreate(user);
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByPlaceholderText('Enter automation name')
+      ).not.toBeInTheDocument()
+    );
+
+    expect(mocks.createProject).toHaveBeenCalledTimes(1);
+    expect(mocks.proxyCreateTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({ project_id: 'automation-session' })
+    );
+    expect(mocks.removeProject).not.toHaveBeenCalled();
+  });
+});
+
+it('keeps an existing UTC schedule without a zone when the server supports local schedules', async () => {
+  mocks.supportsTimezone = true;
+  mocks.proxyUpdateTrigger.mockImplementation(async (id, data) => ({
+    id,
+    ...data,
+  }));
+  const user = userEvent.setup();
+  render(
+    <TriggerDialog
+      selectedTrigger={
+        {
+          id: 7,
+          name: 'Legacy',
+          task_prompt: 'Say hello',
+          trigger_type: TriggerType.Schedule,
+          status: TriggerStatus.Inactive,
+          custom_cron_expression: '0 9 * * *',
+          is_single_execution: false,
+          config: {},
+        } as any
+      }
+      isOpen
+      onOpenChange={vi.fn()}
+    />
+  );
+  await user.click(screen.getByRole('button', { name: 'Update' }));
+  await vi.waitFor(() => expect(mocks.proxyUpdateTrigger).toHaveBeenCalled());
+  const submitted = mocks.proxyUpdateTrigger.mock.calls.at(-1)![1];
+  expect(submitted.config?.timezone).toBeUndefined();
+  expect(submitted.custom_cron_expression).toBe('0 9 * * *');
+  mocks.supportsTimezone = false;
+});
+
+it('removes a new Automation whose zone the server dropped when the UTC rewrite fails', async () => {
+  vi.clearAllMocks();
+  mocks.supportsTimezone = true;
+  mocks.proxyCreateTrigger.mockImplementation(async (data) => ({
+    id: 3,
+    ...data,
+    config: {},
+  }));
+  mocks.proxyUpdateTrigger.mockRejectedValue(new Error('offline'));
+  mocks.proxyDeleteTrigger.mockResolvedValue(undefined);
+  const user = userEvent.setup();
+  render(
+    <TriggerDialog selectedTrigger={null} isOpen onOpenChange={vi.fn()} />
+  );
+  await user.type(
+    screen.getByPlaceholderText('Enter automation name'),
+    'Nightly'
+  );
+  await user.type(
+    screen.getByPlaceholderText('What should this automation do?'),
+    'Say hello'
+  );
+  await user.click(screen.getByRole('button', { name: 'Create' }));
+  await vi.waitFor(() =>
+    expect(mocks.toastError).toHaveBeenCalledWith('Failed to create automation')
+  );
+  expect(mocks.proxyCreateTrigger.mock.calls[0][0].config?.timezone).toBe(
+    Intl.DateTimeFormat().resolvedOptions().timeZone
+  );
+  expect(mocks.proxyUpdateTrigger).toHaveBeenCalledTimes(1);
+  expect(mocks.proxyDeleteTrigger).toHaveBeenCalledWith(3);
+  mocks.supportsTimezone = false;
+  mocks.proxyUpdateTrigger.mockReset();
+});

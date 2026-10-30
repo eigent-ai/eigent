@@ -18,6 +18,8 @@ import pytest
 
 from app.utils.listen.toolkit_listen import (
     MAX_LENGTH,
+    _create_activate_data,
+    _create_deactivate_data,
     _format_args,
     _format_result,
     _truncate,
@@ -193,6 +195,33 @@ def _create_mock_toolkit(api_task_id="test_task_123"):
     toolkit.agent_name = "test_agent"
     toolkit.toolkit_name.return_value = "TestToolkit"
     return toolkit
+
+
+@pytest.mark.unit
+def test_toolkit_receipts_copy_the_canonical_tool_call_id():
+    mock_toolkit = _create_mock_toolkit()
+    checkpoint = MagicMock(tool_call_id="run-1:call-1")
+    with patch(
+        "app.utils.listen.toolkit_listen._current_tool_call_id",
+        return_value=checkpoint.tool_call_id,
+    ):
+        activate = _create_activate_data(
+            mock_toolkit,
+            "TestToolkit",
+            "read file",
+            "task-1",
+            "path='notes.md'",
+        )
+        deactivate = _create_deactivate_data(
+            mock_toolkit,
+            "TestToolkit",
+            "read file",
+            "task-1",
+            "done",
+        )
+
+    assert activate.data["tool_call_id"] == "run-1:call-1"
+    assert deactivate.data["tool_call_id"] == "run-1:call-1"
 
 
 @pytest.mark.unit

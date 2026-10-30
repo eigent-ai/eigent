@@ -1,0 +1,15 @@
+{
+  "contracts": {
+    "base": {
+      "version": 2,
+      "themeId": "eigent",
+      "contrast": 43,
+      "overrides": {
+        "tone": {},
+        "emphasis": {},
+        "state": {},
+        "cell": {}
+      }
+    }
+  }
+}
