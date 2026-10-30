@@ -50,24 +50,78 @@ const mockAuthState = {
   email: 'user@example.com' as string | null,
 };
 
-vi.mock('@/store/authStore', () => ({
-  useAuthStore: {
-    getState: () => ({ email: mockAuthState.email }),
-    subscribe: vi.fn(),
-  },
+vi.mock('@/i18n', () => ({
+  default: { t: (k: string) => k, language: 'en', changeLanguage: vi.fn() },
+  switchLanguage: vi.fn(),
+  LocaleEnum: {},
+  resolveLocale: (l: string) => l,
 }));
 
-// Electron API mocks
-const mockSkillWrite = vi.fn();
-const mockSkillDelete = vi.fn();
-const mockSkillConfigUpdate = vi.fn();
-const mockSkillConfigDelete = vi.fn();
-const mockSkillConfigToggle = vi.fn();
-const mockSkillConfigInit = vi.fn();
-const mockSkillConfigLoad = vi.fn();
-const mockSkillsScan = vi.fn();
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: {
+    getState: () => ({
+      email: mockAuthState.email,
+      user_id: mockAuthState.email ? 42 : undefined,
+    }),
+    subscribe: vi.fn(),
+  },
+  getAuthStore: () => ({
+    email: mockAuthState.email,
+    user_id: mockAuthState.email ? 42 : undefined,
+    language: 'en',
+  }),
+}));
+
+// Brain API mocks — the store now goes through '@/api/brain'
+const {
+  mockSkillWrite,
+  mockSkillRead,
+  mockSkillDelete,
+  mockSkillConfigUpdate,
+  mockSkillConfigDelete,
+  mockSkillConfigToggle,
+  mockSkillConfigInit,
+  mockSkillConfigLoad,
+  mockSkillsScan,
+} = vi.hoisted(() => ({
+  mockSkillWrite: vi.fn(),
+  mockSkillRead: vi.fn(),
+  mockSkillDelete: vi.fn(),
+  mockSkillConfigUpdate: vi.fn(),
+  mockSkillConfigDelete: vi.fn(),
+  mockSkillConfigToggle: vi.fn(),
+  mockSkillConfigInit: vi.fn(),
+  mockSkillConfigLoad: vi.fn(),
+  mockSkillsScan: vi.fn(),
+}));
+
+vi.mock('@/api/brain', () => ({
+  skillWrite: mockSkillWrite,
+  skillRead: mockSkillRead,
+  skillDelete: mockSkillDelete,
+  skillConfigUpdate: mockSkillConfigUpdate,
+  skillConfigDelete: mockSkillConfigDelete,
+  skillConfigToggle: mockSkillConfigToggle,
+  skillConfigInit: mockSkillConfigInit,
+  skillConfigLoad: mockSkillConfigLoad,
+  skillsScan: mockSkillsScan,
+}));
 
 beforeEach(() => {
+  // Sensible defaults for the brain API surface; individual tests override
+  mockSkillWrite.mockResolvedValue({ success: true });
+  mockSkillRead.mockResolvedValue({ success: false });
+  mockSkillDelete.mockResolvedValue({ success: true });
+  mockSkillConfigUpdate.mockResolvedValue({ success: true });
+  mockSkillConfigDelete.mockResolvedValue({ success: true });
+  mockSkillConfigToggle.mockResolvedValue({ success: true });
+  mockSkillConfigInit.mockResolvedValue({ success: true });
+  mockSkillConfigLoad.mockResolvedValue({
+    success: true,
+    config: { skills: {} },
+  });
+  mockSkillsScan.mockResolvedValue({ success: true, skills: [] });
+
   global.electronAPI = {
     skillWrite: mockSkillWrite,
     skillDelete: mockSkillDelete,
@@ -141,13 +195,18 @@ function defaultFsMocks(): void {
     '---\nname: Test Skill\ndescription: A skill for testing\n---\nBody'
   );
   mockSkillNameToDirName.mockReturnValue('test-skill');
-  mockSkillWrite.mockResolvedValue(undefined);
-  mockSkillDelete.mockResolvedValue(undefined);
-  mockSkillConfigUpdate.mockResolvedValue(undefined);
-  mockSkillConfigDelete.mockResolvedValue(undefined);
+  mockSkillWrite.mockResolvedValue({ success: true });
+  mockSkillRead.mockResolvedValue({ success: false });
+  mockSkillDelete.mockResolvedValue({ success: true });
+  mockSkillConfigUpdate.mockResolvedValue({ success: true });
+  mockSkillConfigDelete.mockResolvedValue({ success: true });
   mockSkillConfigToggle.mockResolvedValue({ success: true });
-  mockSkillConfigInit.mockResolvedValue(undefined);
-  mockSkillConfigLoad.mockResolvedValue({ success: true, config: null });
+  mockSkillConfigInit.mockResolvedValue({ success: true });
+  mockSkillConfigLoad.mockResolvedValue({
+    success: true,
+    config: { skills: {} },
+  });
+  mockSkillsScan.mockResolvedValue({ success: true, skills: [] });
   mockSkillsScan.mockResolvedValue({ success: true, skills: [] });
 }
 
@@ -202,8 +261,8 @@ describe('SkillsStore', () => {
     });
 
     it('should prepend new skills (most recent first)', async () => {
-      const input1 = createSkillInput({ name: 'First' });
-      const input2 = createSkillInput({ name: 'Second' });
+      const input1 = createSkillInput({ name: 'First', skillDirName: 'dir-first' });
+      const input2 = createSkillInput({ name: 'Second', skillDirName: 'dir-second' });
 
       await act(async () => {
         await useSkillsStore.getState().addSkill(input1);
@@ -303,22 +362,23 @@ describe('SkillsStore', () => {
       expect(skill.skillDirName).toBe('custom-dir');
     });
 
-    it('should call skillConfigUpdate with user ID derived from email', async () => {
+    it('should call skillConfigUpdate with userId and legacy email id', async () => {
       mockAuthState.email = 'dev@test.com';
 
       await act(async () => {
         await useSkillsStore.getState().addSkill(createSkillInput());
       });
 
-      // emailToUserId('dev@test.com') => 'dev'
+      // userId derives from user_id ('user_42'); legacy id from the email prefix
       expect(mockSkillConfigUpdate).toHaveBeenCalledWith(
-        'dev',
+        'user_42',
         'Test Skill',
         expect.objectContaining({
           enabled: true,
           scope: { isGlobal: true, selectedAgents: [] },
           isExample: false,
-        })
+        }),
+        'dev'
       );
     });
 
@@ -332,16 +392,16 @@ describe('SkillsStore', () => {
       expect(mockSkillConfigUpdate).not.toHaveBeenCalled();
     });
 
-    it('should add skill to store even if skillConfigUpdate fails', async () => {
+    it('should reject and not add the skill when skillConfigUpdate fails', async () => {
       mockSkillConfigUpdate.mockRejectedValue(new Error('Config error'));
 
       await act(async () => {
-        await useSkillsStore.getState().addSkill(createSkillInput());
+        await expect(
+          useSkillsStore.getState().addSkill(createSkillInput())
+        ).rejects.toThrow('Config error');
       });
 
-      const skills = useSkillsStore.getState().skills;
-      expect(skills).toHaveLength(1);
-      expect(skills[0].name).toBe('Test Skill');
+      expect(useSkillsStore.getState().skills).toHaveLength(0);
     });
 
     it('should NOT call skillConfigUpdate when hasSkillsFsApi is false', async () => {
@@ -354,14 +414,16 @@ describe('SkillsStore', () => {
       expect(mockSkillConfigUpdate).not.toHaveBeenCalled();
     });
 
-    it('should add skill to store even if skillWrite rejects', async () => {
+    it('should reject and not add the skill when skillWrite rejects', async () => {
       mockSkillWrite.mockRejectedValue(new Error('Write error'));
 
       await act(async () => {
-        await useSkillsStore.getState().addSkill(createSkillInput());
+        await expect(
+          useSkillsStore.getState().addSkill(createSkillInput())
+        ).rejects.toThrow('Write error');
       });
 
-      expect(useSkillsStore.getState().skills).toHaveLength(1);
+      expect(useSkillsStore.getState().skills).toHaveLength(0);
     });
   });
 
@@ -412,12 +474,13 @@ describe('SkillsStore', () => {
       });
 
       expect(mockSkillConfigUpdate).toHaveBeenCalledWith(
-        'user',
+        'user_42',
         'Test Skill',
         expect.objectContaining({
           enabled: true,
           scope: newScope,
-        })
+        }),
+        'user'
       );
     });
 
@@ -432,9 +495,10 @@ describe('SkillsStore', () => {
       });
 
       expect(mockSkillConfigUpdate).toHaveBeenCalledWith(
-        'user',
+        'user_42',
         'Test Skill',
-        expect.objectContaining({ enabled: false })
+        expect.objectContaining({ enabled: false }),
+        'user'
       );
     });
 
@@ -451,15 +515,15 @@ describe('SkillsStore', () => {
       expect(mockSkillConfigUpdate).not.toHaveBeenCalled();
     });
 
-    it('should revert skill on skillConfigUpdate error', async () => {
+    it('should revert skill and reject on skillConfigUpdate error', async () => {
       const skill = createFullSkill({ id: 'skill-1', enabled: true });
       useSkillsStore.setState({ skills: [skill] });
       mockSkillConfigUpdate.mockRejectedValue(new Error('Config fail'));
 
       await act(async () => {
-        await useSkillsStore.getState().updateSkill('skill-1', {
-          enabled: false,
-        });
+        await expect(
+          useSkillsStore.getState().updateSkill('skill-1', { enabled: false })
+        ).rejects.toThrow('Config fail');
       });
 
       // Should revert to original enabled value
@@ -481,15 +545,15 @@ describe('SkillsStore', () => {
       expect(mockSkillConfigUpdate).not.toHaveBeenCalled();
     });
 
-    it('should NOT call skillConfigUpdate when userId is null (email is null)', async () => {
+    it('should reject with SkillSignInRequiredError when signed out', async () => {
       mockAuthState.email = null;
       const skill = createFullSkill({ id: 'skill-1' });
       useSkillsStore.setState({ skills: [skill] });
 
       await act(async () => {
-        await useSkillsStore.getState().updateSkill('skill-1', {
-          enabled: false,
-        });
+        await expect(
+          useSkillsStore.getState().updateSkill('skill-1', { enabled: false })
+        ).rejects.toThrow('Sign in to save skill settings');
       });
 
       expect(mockSkillConfigUpdate).not.toHaveBeenCalled();
@@ -583,7 +647,11 @@ describe('SkillsStore', () => {
         await useSkillsStore.getState().deleteSkill('skill-1');
       });
 
-      expect(mockSkillConfigDelete).toHaveBeenCalledWith('user', 'My Skill');
+      expect(mockSkillConfigDelete).toHaveBeenCalledWith(
+        'user_42',
+        'My Skill',
+        'user'
+      );
     });
 
     it('should remove skill from store even if skillConfigDelete fails', async () => {
@@ -598,16 +666,18 @@ describe('SkillsStore', () => {
       expect(useSkillsStore.getState().skills).toHaveLength(0);
     });
 
-    it('should remove skill from store even if skillDelete rejects', async () => {
+    it('should reject and keep the skill when skillDelete rejects', async () => {
       const skill = createFullSkill({ id: 'skill-1' });
       useSkillsStore.setState({ skills: [skill] });
       mockSkillDelete.mockRejectedValue(new Error('FS delete fail'));
 
       await act(async () => {
-        await useSkillsStore.getState().deleteSkill('skill-1');
+        await expect(
+          useSkillsStore.getState().deleteSkill('skill-1')
+        ).rejects.toThrow('FS delete fail');
       });
 
-      expect(useSkillsStore.getState().skills).toHaveLength(0);
+      expect(useSkillsStore.getState().skills).toHaveLength(1);
     });
 
     it('should NOT call skillConfigDelete when email is null', async () => {
@@ -625,166 +695,7 @@ describe('SkillsStore', () => {
     });
   });
 
-  // =========================================================================
-  // toggleSkill
-  // =========================================================================
-  describe('toggleSkill', () => {
-    it('should toggle enabled from true to false', async () => {
-      const skill = createFullSkill({ id: 'skill-1', enabled: true });
-      useSkillsStore.setState({ skills: [skill] });
 
-      await act(async () => {
-        await useSkillsStore.getState().toggleSkill('skill-1');
-      });
-
-      expect(useSkillsStore.getState().skills[0].enabled).toBe(false);
-    });
-
-    it('should toggle enabled from false to true', async () => {
-      const skill = createFullSkill({ id: 'skill-1', enabled: false });
-      useSkillsStore.setState({ skills: [skill] });
-
-      await act(async () => {
-        await useSkillsStore.getState().toggleSkill('skill-1');
-      });
-
-      expect(useSkillsStore.getState().skills[0].enabled).toBe(true);
-    });
-
-    it('should do nothing when skill id is not found', async () => {
-      const skill = createFullSkill({ id: 'skill-1', enabled: true });
-      useSkillsStore.setState({ skills: [skill] });
-
-      await act(async () => {
-        await useSkillsStore.getState().toggleSkill('nonexistent');
-      });
-
-      expect(useSkillsStore.getState().skills[0].enabled).toBe(true);
-    });
-
-    it('should call skillConfigToggle with user ID, name, and new enabled value', async () => {
-      const skill = createFullSkill({
-        id: 'skill-1',
-        name: 'Toggle Me',
-        enabled: true,
-      });
-      useSkillsStore.setState({ skills: [skill] });
-
-      await act(async () => {
-        await useSkillsStore.getState().toggleSkill('skill-1');
-      });
-
-      expect(mockSkillConfigToggle).toHaveBeenCalledWith(
-        'user',
-        'Toggle Me',
-        false
-      );
-    });
-
-    it('should revert enabled on skillConfigToggle failure', async () => {
-      const skill = createFullSkill({ id: 'skill-1', enabled: true });
-      useSkillsStore.setState({ skills: [skill] });
-      mockSkillConfigToggle.mockRejectedValue(new Error('Toggle fail'));
-
-      await act(async () => {
-        await useSkillsStore.getState().toggleSkill('skill-1');
-      });
-
-      // Should revert back to true
-      expect(useSkillsStore.getState().skills[0].enabled).toBe(true);
-    });
-
-    it('should revert enabled when skillConfigToggle returns success: false', async () => {
-      const skill = createFullSkill({ id: 'skill-1', enabled: false });
-      useSkillsStore.setState({ skills: [skill] });
-      mockSkillConfigToggle.mockResolvedValue({
-        success: false,
-        error: 'Permission denied',
-      });
-
-      await act(async () => {
-        await useSkillsStore.getState().toggleSkill('skill-1');
-      });
-
-      // Should revert back to false
-      expect(useSkillsStore.getState().skills[0].enabled).toBe(false);
-    });
-
-    it('should NOT call skillConfigToggle when hasSkillsFsApi is false', async () => {
-      mockHasSkillsFsApi.mockReturnValue(false);
-      const skill = createFullSkill({ id: 'skill-1', enabled: true });
-      useSkillsStore.setState({ skills: [skill] });
-
-      await act(async () => {
-        await useSkillsStore.getState().toggleSkill('skill-1');
-      });
-
-      // UI still toggles
-      expect(useSkillsStore.getState().skills[0].enabled).toBe(false);
-      expect(mockSkillConfigToggle).not.toHaveBeenCalled();
-    });
-
-    it('should NOT call skillConfigToggle when email is null', async () => {
-      mockAuthState.email = null;
-      const skill = createFullSkill({ id: 'skill-1', enabled: true });
-      useSkillsStore.setState({ skills: [skill] });
-
-      await act(async () => {
-        await useSkillsStore.getState().toggleSkill('skill-1');
-      });
-
-      // UI still toggles
-      expect(useSkillsStore.getState().skills[0].enabled).toBe(false);
-      expect(mockSkillConfigToggle).not.toHaveBeenCalled();
-    });
-  });
-
-  // =========================================================================
-  // getSkillsByType
-  // =========================================================================
-  describe('getSkillsByType', () => {
-    it('should return only example skills when isExample=true', () => {
-      const exampleSkill = createFullSkill({ id: 'ex-1', isExample: true });
-      const userSkill = createFullSkill({ id: 'usr-1', isExample: false });
-      useSkillsStore.setState({ skills: [exampleSkill, userSkill] });
-
-      const result = useSkillsStore.getState().getSkillsByType(true);
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('ex-1');
-    });
-
-    it('should return only user skills when isExample=false', () => {
-      const exampleSkill = createFullSkill({ id: 'ex-1', isExample: true });
-      const userSkill = createFullSkill({ id: 'usr-1', isExample: false });
-      useSkillsStore.setState({ skills: [exampleSkill, userSkill] });
-
-      const result = useSkillsStore.getState().getSkillsByType(false);
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('usr-1');
-    });
-
-    it('should return empty array when no skills match', () => {
-      const userSkill = createFullSkill({ id: 'usr-1', isExample: false });
-      useSkillsStore.setState({ skills: [userSkill] });
-
-      const result = useSkillsStore.getState().getSkillsByType(true);
-      expect(result).toEqual([]);
-    });
-
-    it('should return empty array when store is empty', () => {
-      const result = useSkillsStore.getState().getSkillsByType(false);
-      expect(result).toEqual([]);
-    });
-
-    it('should return all skills when all match the type', () => {
-      const s1 = createFullSkill({ id: 'ex-1', isExample: true, name: 'A' });
-      const s2 = createFullSkill({ id: 'ex-2', isExample: true, name: 'B' });
-      useSkillsStore.setState({ skills: [s1, s2] });
-
-      const result = useSkillsStore.getState().getSkillsByType(true);
-      expect(result).toHaveLength(2);
-    });
-  });
 
   // =========================================================================
   // syncFromDisk
@@ -800,37 +711,42 @@ describe('SkillsStore', () => {
       expect(mockSkillsScan).not.toHaveBeenCalled();
     });
 
-    it('should do nothing when skillsScan returns success=false', async () => {
+    it('should reject when skillsScan returns success=false', async () => {
       mockSkillsScan.mockResolvedValue({ success: false });
 
       await act(async () => {
-        await useSkillsStore.getState().syncFromDisk();
+        await expect(
+          useSkillsStore.getState().syncFromDisk()
+        ).rejects.toThrow('Failed to load skills');
       });
 
       expect(useSkillsStore.getState().skills).toEqual([]);
     });
 
-    it('should do nothing when skillsScan returns no skills', async () => {
+    it('should reject when skillsScan returns no skills', async () => {
       mockSkillsScan.mockResolvedValue({ success: true, skills: null });
 
       await act(async () => {
-        await useSkillsStore.getState().syncFromDisk();
+        await expect(
+          useSkillsStore.getState().syncFromDisk()
+        ).rejects.toThrow('Failed to load skills');
       });
 
       expect(useSkillsStore.getState().skills).toEqual([]);
     });
 
-    it('should call skillConfigInit with userId', async () => {
+    it('should call skillConfigInit with userId and legacy id', async () => {
       mockAuthState.email = 'dev@test.com';
       mockSkillsScan.mockResolvedValue({ success: true, skills: [] });
       mockSkillConfigLoad.mockResolvedValue({ success: false });
 
       await act(async () => {
-        await useSkillsStore.getState().syncFromDisk();
+        await expect(
+          useSkillsStore.getState().syncFromDisk()
+        ).rejects.toThrow('Failed to load skill settings');
       });
 
-      // emailToUserId('dev@test.com') => 'dev'
-      expect(mockSkillConfigInit).toHaveBeenCalledWith('dev');
+      expect(mockSkillConfigInit).toHaveBeenCalledWith('user_42', 'dev');
     });
 
     it('should load config via skillConfigLoad', async () => {
@@ -841,7 +757,7 @@ describe('SkillsStore', () => {
         await useSkillsStore.getState().syncFromDisk();
       });
 
-      expect(mockSkillConfigLoad).toHaveBeenCalledWith('dev');
+      expect(mockSkillConfigLoad).toHaveBeenCalledWith('user_42', 'dev');
     });
 
     it('should create disk skills from scan results sorted by name', async () => {
@@ -966,13 +882,14 @@ describe('SkillsStore', () => {
       });
 
       expect(mockSkillConfigUpdate).toHaveBeenCalledWith(
-        'user',
+        'user_42',
         'Brand New',
         expect.objectContaining({
           enabled: true,
           scope: { isGlobal: true, selectedAgents: [] },
           isExample: false,
-        })
+        }),
+        'user'
       );
     });
 
@@ -1105,18 +1022,20 @@ describe('SkillsStore', () => {
       expect(skill.scope).toEqual({ isGlobal: true, selectedAgents: [] });
     });
 
-    it('should handle skillsScan throwing an error gracefully', async () => {
+    it('should propagate skillsScan failures as rejections', async () => {
       mockSkillsScan.mockRejectedValue(new Error('Scan failed'));
 
       await act(async () => {
-        await useSkillsStore.getState().syncFromDisk();
+        await expect(
+          useSkillsStore.getState().syncFromDisk()
+        ).rejects.toThrow('Scan failed');
       });
 
       // Store should remain unchanged (empty)
       expect(useSkillsStore.getState().skills).toEqual([]);
     });
 
-    it('should handle skillConfigLoad throwing an error gracefully', async () => {
+    it('should propagate skillConfigLoad failures as rejections', async () => {
       mockSkillConfigLoad.mockRejectedValue(new Error('Config load failed'));
       mockSkillsScan.mockResolvedValue({
         success: true,
@@ -1132,14 +1051,13 @@ describe('SkillsStore', () => {
       });
 
       await act(async () => {
-        await useSkillsStore.getState().syncFromDisk();
+        await expect(
+          useSkillsStore.getState().syncFromDisk()
+        ).rejects.toThrow('Config load failed');
       });
 
-      // Skills should still be loaded with defaults
-      const skills = useSkillsStore.getState().skills;
-      expect(skills).toHaveLength(1);
-      expect(skills[0].name).toBe('Resilient Skill');
-      expect(skills[0].enabled).toBe(true);
+      // Rejection keeps the last known state; nothing partial is applied
+      expect(useSkillsStore.getState().skills).toEqual([]);
     });
 
     it('should skip skillConfigInit and skillConfigLoad when userId is null', async () => {
@@ -1200,9 +1118,10 @@ describe('SkillsStore', () => {
 
       // Registration should use existing addedAt
       expect(mockSkillConfigUpdate).toHaveBeenCalledWith(
-        'user',
+        'user_42',
         'Existing',
-        expect.objectContaining({ addedAt: 1500000000000 })
+        expect.objectContaining({ addedAt: 1500000000000 }),
+        'user'
       );
     });
 
@@ -1243,53 +1162,6 @@ describe('SkillsStore', () => {
     });
   });
 
-  // =========================================================================
-  // emailToUserId (internal helper tested via side effects)
-  // =========================================================================
-  describe('emailToUserId (via store behavior)', () => {
-    it('should extract the part before @ as userId', async () => {
-      mockAuthState.email = 'john.doe@company.org';
-
-      await act(async () => {
-        await useSkillsStore.getState().addSkill(createSkillInput());
-      });
-
-      expect(mockSkillConfigUpdate).toHaveBeenCalledWith(
-        'john.doe',
-        expect.any(String),
-        expect.any(Object)
-      );
-    });
-
-    it('should replace special characters with underscores', async () => {
-      mockAuthState.email = 'user name@domain.com';
-
-      await act(async () => {
-        await useSkillsStore.getState().addSkill(createSkillInput());
-      });
-
-      // Space is replaced with _
-      expect(mockSkillConfigUpdate).toHaveBeenCalledWith(
-        'user_name',
-        expect.any(String),
-        expect.any(Object)
-      );
-    });
-
-    it('should handle email with dots', async () => {
-      mockAuthState.email = 'a.b.c@domain.com';
-
-      await act(async () => {
-        await useSkillsStore.getState().addSkill(createSkillInput());
-      });
-
-      expect(mockSkillConfigUpdate).toHaveBeenCalledWith(
-        'a.b.c',
-        expect.any(String),
-        expect.any(Object)
-      );
-    });
-  });
 
   // =========================================================================
   // Persist Partialize

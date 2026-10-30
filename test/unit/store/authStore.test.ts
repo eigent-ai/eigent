@@ -26,6 +26,16 @@
  */
 
 import { act } from '@testing-library/react';
+
+// Upstream's authStore -> spaceStore -> @/lib -> storageToast -> i18n ->
+// authStore import cycle explodes at module init when this store is the test
+// entry point; mock i18n to break it
+vi.mock('@/i18n', () => ({
+  default: { t: (k: string) => k, language: 'en', changeLanguage: vi.fn() },
+  switchLanguage: vi.fn(),
+  LocaleEnum: {},
+  resolveLocale: (l: string) => l,
+}));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getAuthStore,
