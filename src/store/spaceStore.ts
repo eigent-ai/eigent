@@ -131,6 +131,8 @@ interface SpaceStore {
   activeSpaceId: string | null;
   spaces: Record<string, Space>;
   lastVisitedProjectBySpace: Record<string, string>;
+  /** Active Space each account left at sign-out, reopened at sign-in. */
+  lastActiveSpaceIdByUser: Record<string, string>;
   projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>>;
   projectIdIndex: Record<string, string>;
   projectsSyncedAt: Record<string, number>;
@@ -202,6 +204,7 @@ const emptyEnvironmentScopedSpaceState = (): Pick<
   | 'activeSpaceId'
   | 'spaces'
   | 'lastVisitedProjectBySpace'
+  | 'lastActiveSpaceIdByUser'
   | 'projectsBySpaceId'
   | 'projectIdIndex'
   | 'projectsSyncedAt'
@@ -210,6 +213,7 @@ const emptyEnvironmentScopedSpaceState = (): Pick<
   activeSpaceId: null,
   spaces: {},
   lastVisitedProjectBySpace: {},
+  lastActiveSpaceIdByUser: {},
   projectsBySpaceId: {},
   projectIdIndex: {},
   projectsSyncedAt: {},
@@ -688,6 +692,7 @@ export const useSpaceStore = create<SpaceStore>()(
       activeSpaceId: null,
       spaces: {},
       lastVisitedProjectBySpace: {},
+      lastActiveSpaceIdByUser: {},
       projectsBySpaceId: {},
       projectIdIndex: {},
       projectsSyncedAt: {},
@@ -732,10 +737,23 @@ export const useSpaceStore = create<SpaceStore>()(
             }
           }
 
+          // Remember where the outgoing account was, so signing back in
+          // reopens that Space instead of the most recently updated one.
+          const departingSpace = state.activeSpaceId
+            ? state.spaces[state.activeSpaceId]
+            : undefined;
+          const lastActiveSpaceIdByUser = departingSpace?.userId
+            ? {
+                ...state.lastActiveSpaceIdByUser,
+                [String(departingSpace.userId)]: departingSpace.id,
+              }
+            : state.lastActiveSpaceIdByUser;
+
           const localLegacyId = legacySpaceIdForUser(DEFAULT_LOCAL_USER_ID);
           return {
             storageEnvironmentKey: getAuthEnvironmentKey(),
             spaces: nextSpaces,
+            lastActiveSpaceIdByUser,
             activeSpaceId: pickHydratedActiveSpaceId(
               nextSpaces,
               state.activeSpaceId,
@@ -816,9 +834,19 @@ export const useSpaceStore = create<SpaceStore>()(
                 legacySpaceIdsWithProjects.has(space.id)) &&
               !currentHydration.deletedSpaceIds.has(space.id)
           );
-          const shouldCreateInitialBlankSpace = !visibleOwnedSpaces.some(
-            (space) => space.status === 'active'
+          // The list holds only the signed-in account's Spaces. One with
+          // another owner means this hydration started with a placeholder or
+          // stale user id, so it cannot conclude the account has no Spaces.
+          // Relies on GET /spaces returning only the caller's own Spaces.
+          const listedForAnotherOwner = serverSpaces.some(
+            (space) =>
+              space.status === 'active' &&
+              Boolean(space.userId) &&
+              String(space.userId) !== ownerId
           );
+          const shouldCreateInitialBlankSpace =
+            !listedForAnotherOwner &&
+            !visibleOwnedSpaces.some((space) => space.status === 'active');
 
           if (shouldCreateInitialBlankSpace) {
             try {
@@ -927,12 +955,18 @@ export const useSpaceStore = create<SpaceStore>()(
               }
               nextSpaces[space.id] = merged;
             }
+            const currentActiveSpace = state.activeSpaceId
+              ? nextSpaces[state.activeSpaceId]
+              : undefined;
             return {
               spaces: nextSpaces,
               activeSpaceId: pickHydratedActiveSpaceId(
                 nextSpaces,
                 state.activeSpaceId,
-                localLegacyId
+                localLegacyId,
+                currentActiveSpace?.status === 'active'
+                  ? null
+                  : state.lastActiveSpaceIdByUser[ownerId]
               ),
             };
           });
@@ -1869,6 +1903,7 @@ export const useSpaceStore = create<SpaceStore>()(
           activeSpaceId: state.activeSpaceId ?? null,
           spaces: prunedSpaces.spaces,
           lastVisitedProjectBySpace: prunedSpaces.lastVisitedProjectBySpace,
+          lastActiveSpaceIdByUser: state.lastActiveSpaceIdByUser ?? {},
           projectsBySpaceId: pruned.projectsBySpaceId,
           projectIdIndex: pruned.projectIdIndex,
           projectsSyncedAt: {},
@@ -1879,6 +1914,7 @@ export const useSpaceStore = create<SpaceStore>()(
         activeSpaceId: state.activeSpaceId,
         spaces: state.spaces,
         lastVisitedProjectBySpace: state.lastVisitedProjectBySpace,
+        lastActiveSpaceIdByUser: state.lastActiveSpaceIdByUser,
         projectsBySpaceId: state.projectsBySpaceId,
         projectIdIndex: state.projectIdIndex,
       }),

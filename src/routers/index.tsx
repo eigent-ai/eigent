@@ -23,6 +23,7 @@ import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
+import { warnAuthClearedForEnvironment } from '@/lib/authEnvironment';
 import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
 import { LegacyRouteRedirect } from './LegacyRouteCompatibility';
 import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
@@ -94,7 +95,7 @@ const ProtectedRoute = () => {
 
       // If stored value exists and differs from current, logout
       if (storedProxyValue !== null && storedProxyValue !== currentProxyValue) {
-        console.warn('VITE_USE_LOCAL_PROXY value changed, logging out user');
+        warnAuthClearedForEnvironment(['local']);
         logout();
         dispatch({ type: 'LOGOUT' });
         return;

@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
+import {
+  changedAuthEnvironmentParts,
+  getAuthEnvironmentKey,
+  warnAuthClearedForEnvironment,
+} from '@/lib/authEnvironment';
 import {
   recordModelConfigured,
   recordModelTypeChanged,
@@ -198,8 +202,11 @@ const clearAuthForCurrentEnvironment = (
   });
   useSpaceStore.getState().resetForUser(null);
   if (hadAuth) {
-    console.warn(
-      '[authStore] Cleared persisted auth after API environment changed.'
+    warnAuthClearedForEnvironment(
+      changedAuthEnvironmentParts(
+        state.authEnvironmentKey,
+        currentEnvironmentKey
+      )
     );
   }
   return true;
@@ -461,6 +468,14 @@ const authStore = create<AuthState>()(
         const currentEnvironmentKey = getAuthEnvironmentKey();
         const environmentMatches =
           s.authEnvironmentKey === currentEnvironmentKey;
+        if (!environmentMatches && (s.token || s.email || s.user_id != null)) {
+          warnAuthClearedForEnvironment(
+            changedAuthEnvironmentParts(
+              s.authEnvironmentKey,
+              currentEnvironmentKey
+            )
+          );
+        }
         const authState = environmentMatches
           ? typeof s.token === 'string' && s.user_id == null
             ? // Existing session persisted without a user id (the local
