@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { approvalTargets } from '@/lib/approvalPresentation';
+import {
+  approvalRequestText,
+  approvalTargets,
+} from '@/lib/approvalPresentation';
 import { describe, expect, it } from 'vitest';
 
 const commandDigest = `terminal-command:sha256:${'c'.repeat(64)}`;
@@ -70,5 +73,25 @@ describe('approvalTargets', () => {
         displayArguments: { command: 'not a shell call' },
       })
     ).toEqual([]);
+  });
+});
+
+describe('approvalRequestText', () => {
+  it('puts each target on its own line under the question', () => {
+    expect(
+      approvalRequestText('The agent wants to run write_to_file.', [
+        'a.txt',
+        'b.txt',
+      ])
+    ).toBe('The agent wants to run write_to_file.\na.txt\nb.txt');
+  });
+
+  it('does not repeat a target the question already names', () => {
+    expect(approvalRequestText('Write a.txt?', ['a.txt'])).toBe('Write a.txt?');
+  });
+
+  it('keeps the question alone when there is no target', () => {
+    expect(approvalRequestText('  Continue?  ', undefined)).toBe('Continue?');
+    expect(approvalRequestText(undefined, [])).toBe('');
   });
 });

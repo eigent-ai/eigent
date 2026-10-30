@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { approvalTargets } from '@/lib/approvalPresentation';
 import { resolveSourceMessageId } from '@/lib/messageIdentity';
 import { remoteSubAgentProviderForActivity } from '@/lib/remoteSubAgent';
 import { runTerminalReason } from '@/lib/runTerminalReason';
@@ -784,6 +785,7 @@ function interactionNode(
   const payload = asRecord(data);
   const request = asRecord(payload.request ?? payload.prompt);
   const decision = payload.decision ?? payload.response ?? payload.reply;
+  const targets = interactionTargets(payload, request);
   return {
     ...base,
     kind: 'interaction',
@@ -823,7 +825,40 @@ function interactionNode(
         request.agent
       ) || undefined,
     options: interactionOptions(payload.options),
+    targets: targets.length ? targets : undefined,
   };
+}
+
+/**
+ * The files, URLs or command lines an approval acts on. The live ask frame
+ * carries them at the top level; the durable `approval.requested` event keeps
+ * them inside its prompt. Only the derived targets are kept on the node, never
+ * the display arguments they were read from.
+ */
+function interactionTargets(
+  payload: JsonRecord,
+  request: JsonRecord
+): string[] {
+  const action = [payload.action, request.action].find(isRecord) ?? {};
+  const targetResources = [
+    payload.target_resources,
+    request.target_resources,
+    action.target_resources,
+  ].find(Array.isArray) as unknown[] | undefined;
+  const displayArguments = [
+    payload.display_arguments,
+    request.display_arguments,
+    action.normalized_arguments,
+  ].find(isRecord);
+  return approvalTargets({
+    operation:
+      firstText(payload.operation, request.operation, action.operation) ||
+      undefined,
+    targetResources: targetResources?.filter(
+      (item): item is string => typeof item === 'string'
+    ),
+    displayArguments,
+  }).map((target) => target.value);
 }
 
 function normalizePlanTaskStatus(value: unknown): ChatPlanTaskStatus {

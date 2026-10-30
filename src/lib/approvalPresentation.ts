@@ -189,3 +189,19 @@ export function approvalTargets(input: {
     return true;
   });
 }
+
+/**
+ * An approval's question followed by what it acts on, one target per line, so
+ * a timeline receipt names the same file or command line as the card did. A
+ * target the question already names is not repeated.
+ */
+export function approvalRequestText(
+  question: string | null | undefined,
+  targets: readonly string[] | null | undefined
+): string {
+  const text = question?.trim() ?? '';
+  const extra = (targets ?? []).filter(
+    (target) => target.trim() !== '' && !text.includes(target)
+  );
+  return [text, ...extra].filter(Boolean).join('\n');
+}

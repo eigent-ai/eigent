@@ -18,6 +18,7 @@ import type {
   ChatInteractionNode,
 } from '../types';
 
+import { approvalRequestText } from '@/lib/approvalPresentation';
 import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import i18next from 'i18next';
 import { actionKindForActivities } from './actionKind';
@@ -272,7 +273,7 @@ function humanCall(id: string, node: ChatInteractionNode): TimelineCall {
     title: humanCallTitle(node),
     actionKind: 'message',
     status: interactionCallStatus(node),
-    input: node.prompt,
+    input: approvalRequestText(node.prompt, node.targets) || undefined,
     output: closed ? undefined : node.response,
     detail: reason || undefined,
     notice:

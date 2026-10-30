@@ -747,6 +747,23 @@ describe('timeline calls', () => {
     expect(call.outputLabel).toBe('Decision');
   });
 
+  it('lists what an approval acts on under its question', () => {
+    const [run] = composeTimelineRuns([
+      interaction('approval', {
+        status: 'requested',
+        response: undefined,
+        prompt: 'The agent wants to run write_to_file (filesystem.write).',
+        targets: ['/workspace/imp25/check.txt'],
+      }),
+    ]);
+    const call = toTimelineCall(run!.traceRows[0]!)!;
+
+    expect(call.input).toBe(
+      'The agent wants to run write_to_file (filesystem.write).\n' +
+        '/workspace/imp25/check.txt'
+    );
+  });
+
   it('distinguishes a rejection from an approval', () => {
     const request = {
       ...base,
