@@ -34,11 +34,15 @@ vi.mock('@/host', () => ({
 
 // Mock the stores
 vi.mock('../../../src/store/installationStore');
+const authStateHolder = vi.hoisted(() => ({ value: {} as any }));
 vi.mock('../../../src/store/authStore', async (importOriginal) => {
   const actual = await importOriginal<any>();
   return {
     ...actual,
-    useAuthStore: vi.fn(),
+    // The hook consumes both the hook form and useAuthStore.getState()
+    useAuthStore: Object.assign(vi.fn(), {
+      getState: () => authStateHolder.value,
+    }),
     getAuthStore: vi.fn(() => ({ language: 'en' })),
   };
 });
@@ -85,6 +89,7 @@ describe('useInstallationSetup Hook', () => {
     });
 
     vi.mocked(useAuthStore).mockReturnValue(mockAuthStore);
+    authStateHolder.value = mockAuthStore;
 
     // Mock console.log to avoid noise in tests
     vi.spyOn(console, 'log').mockImplementation(() => {});
