@@ -268,7 +268,10 @@ describe('Integration Test: Case 1 - New Project', () => {
           undefined,
           undefined,
           undefined,
-          userMessage
+          userMessage,
+        undefined,
+        undefined,
+        projectId
         );
 
       // IMPORTANT: Get the NEW active chatStore after startTask creates it

@@ -25,12 +25,12 @@ const mockImplementation = {
   fetchPut: vi.fn(() => Promise.resolve({ success: true })),
   getBaseURL: vi.fn(() => Promise.resolve('http://localhost:8000')),
   proxyFetchPost: vi.fn((url, _data) => {
-    // Mock history creation
-    if (url.includes('/api/chat/history')) {
+    // Mock history creation (matches /api/chat/history and /api/v1/chat/history)
+    if (url.includes('/chat/history')) {
       return Promise.resolve({ id: 'history-' + Date.now() });
     }
-    // Mock provider info
-    if (url.includes('/api/providers')) {
+    // Mock provider info (matches /api/providers and /api/v1/providers)
+    if (url.includes('/providers')) {
       return Promise.resolve({ items: [] });
     }
     return Promise.resolve({});
@@ -38,18 +38,18 @@ const mockImplementation = {
   proxyFetchPut: vi.fn(() => Promise.resolve({ success: true })),
   proxyFetchGet: vi.fn((url, _params) => {
     // Mock user key
-    if (url.includes('/api/user/key')) {
+    if (url.includes('/user/key')) {
       return Promise.resolve({
         value: 'test-api-key',
         api_url: 'https://api.openai.com',
       });
     }
-    // Mock providers
-    if (url.includes('/api/providers')) {
+    // Mock providers (matches /api/providers and /api/v1/providers)
+    if (url.includes('/providers')) {
       return Promise.resolve({ items: [] });
     }
     // Mock privacy settings
-    if (url.includes('/api/user/privacy')) {
+    if (url.includes('/user/privacy')) {
       return Promise.resolve({
         dataCollection: true,
         analytics: true,
@@ -57,17 +57,34 @@ const mockImplementation = {
       });
     }
     // Mock configs
-    if (url.includes('/api/configs')) {
+    if (url.includes('/api/v1/configs') || url.includes('/api/configs')) {
       return Promise.resolve([]);
     }
     // Mock snapshots - return empty array to prevent the error
-    if (url.includes('/api/chat/snapshots')) {
+    // Matches /api/chat/snapshots and /api/v1/chat/snapshots
+    if (url.includes('/chat/snapshots')) {
       return Promise.resolve([]);
     }
     return Promise.resolve({});
   }),
   uploadFile: vi.fn(),
+  sseTransport: vi.fn(() => Promise.resolve()),
   fetchDelete: vi.fn(),
+  fetchGet: vi.fn((url: string) => {
+    // Session execution routing — default everything to the legacy route
+    // so integration flows behave as a single-session app under test
+    const routeMatch = url.match(/\/projects\/([^/]+)\/execution-route/);
+    if (routeMatch) {
+      return Promise.resolve({
+        project_id: decodeURIComponent(routeMatch[1]),
+        route: 'legacy',
+      });
+    }
+    return Promise.resolve({});
+  }),
+  waitForBackendReady: vi.fn().mockResolvedValue(true),
+  proxyFetchDelete: vi.fn(),
+  checkBackendHealth: vi.fn().mockResolvedValue(true),
 };
 
 // Mock both relative and alias paths

@@ -17,9 +17,12 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+      // The lockfile-less install pulls the ancient `path` npm polyfill
+      // (via @quetzallabs/i18n); it must never shadow the Node builtin
+      { find: /^path$/, replacement: 'node:path' },
+    ],
   },
   test: {
     root: __dirname,
@@ -32,6 +35,14 @@ export default defineConfig({
     testTimeout: 1000 * 29,
     globals: true,
     setupFiles: ['test/setup.ts'],
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        maxForks: 2,
+        minForks: 1,
+        isolate: true,
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

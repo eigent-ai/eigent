@@ -15,6 +15,16 @@
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Entering the authStore -> spaceStore -> @/lib -> storageToast -> i18n
+// import cycle from this file leaves i18n's top-level getAuthStore() call
+// running against a half-initialized authStore; mock i18n to break the cycle
+vi.mock('@/i18n', () => ({
+  default: { t: (k: string) => k, language: 'en-us', changeLanguage: vi.fn() },
+  switchLanguage: vi.fn(),
+  LocaleEnum: {},
+  resolveLocale: (l: string) => l,
+}));
+
 import { useAuthStore } from '@/store/authStore';
 
 import { ThemeProvider } from '@/components/Layout/ThemeProvider';
