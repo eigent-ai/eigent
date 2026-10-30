@@ -597,5 +597,6 @@
   "automation-review-required": "만들기 전에 일정과 필요한 입력을 확인하세요.",
   "notice-use-own-api-key": "내 API 키 사용",
   "notice-credits-new": "작업을 실행하려면 크레딧을 추가하세요.",
-  "notice-credits-new-description": "플랜을 업그레이드하거나 내 모델의 API 키를 사용하세요."
+  "notice-credits-new-description": "플랜을 업그레이드하거나 내 모델의 API 키를 사용하세요.",
+  "space-model-fallback": "이 스페이스의 모델을 더 이상 사용할 수 없어 이 세션은 기본 모델을 사용합니다."
 }

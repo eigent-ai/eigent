@@ -605,5 +605,6 @@
   "automation-review-required": "Revisa el horario y los datos necesarios antes de crearla.",
   "notice-use-own-api-key": "Usar tu propia clave API",
   "notice-credits-new": "Añade créditos para empezar a ejecutar tareas.",
-  "notice-credits-new-description": "Mejora tu plan o usa la clave API de tu propio modelo."
+  "notice-credits-new-description": "Mejora tu plan o usa la clave API de tu propio modelo.",
+  "space-model-fallback": "El modelo de este espacio ya no está disponible, así que esta sesión usa tu modelo predeterminado."
 }

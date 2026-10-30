@@ -597,5 +597,6 @@
   "automation-review-required": "建立前請檢查排程和所需輸入。",
   "notice-use-own-api-key": "使用自己的 API 金鑰",
   "notice-credits-new": "新增額度即可開始執行任務。",
-  "notice-credits-new-description": "升級方案，或使用自己模型的 API 金鑰。"
+  "notice-credits-new-description": "升級方案，或使用自己模型的 API 金鑰。",
+  "space-model-fallback": "此空間的模型已無法使用，本工作階段將使用您的預設模型。"
 }

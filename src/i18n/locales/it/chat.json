@@ -605,5 +605,6 @@
   "automation-review-required": "Controlla pianificazione e dati richiesti prima di creare.",
   "notice-use-own-api-key": "Usa la tua chiave API",
   "notice-credits-new": "Aggiungi crediti per iniziare a eseguire attività.",
-  "notice-credits-new-description": "Passa a un piano superiore o usa la chiave API del tuo modello."
+  "notice-credits-new-description": "Passa a un piano superiore o usa la chiave API del tuo modello.",
+  "space-model-fallback": "Il modello di questo spazio non è più disponibile, quindi questa sessione usa il tuo modello predefinito."
 }

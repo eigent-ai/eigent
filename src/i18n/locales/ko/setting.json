@@ -2,7 +2,7 @@
   "model-list": {
     "all-providers": "모든 모델 제공업체",
     "default-model": "기본 모델",
-    "default-model-description": "변경하기 전까지 새 세션에는 이 기본 모델이 사용됩니다.",
+    "default-model-description": "변경하기 전까지 새 스페이스에는 이 기본 모델이 사용됩니다.",
     "add-provider": "제공업체 추가",
     "add-model": "모델 추가",
     "add-more": "더 추가",

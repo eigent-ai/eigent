@@ -605,5 +605,6 @@
   "automation-review-required": "Vérifiez la planification et les données requises avant de créer.",
   "notice-use-own-api-key": "Utiliser votre propre clé API",
   "notice-credits-new": "Ajoutez des crédits pour commencer à exécuter des tâches.",
-  "notice-credits-new-description": "Changez de forfait ou utilisez la clé API de votre propre modèle."
+  "notice-credits-new-description": "Changez de forfait ou utilisez la clé API de votre propre modèle.",
+  "space-model-fallback": "Le modèle de cet espace n’est plus disponible : cette session utilise votre modèle par défaut."
 }

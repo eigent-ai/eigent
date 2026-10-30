@@ -601,5 +601,6 @@
   "automation-review-required": "Review the schedule and required inputs before creating.",
   "notice-use-own-api-key": "Use your own API key",
   "notice-credits-new": "Add credits to start running tasks.",
-  "notice-credits-new-description": "Upgrade your plan or use your own model API key."
+  "notice-credits-new-description": "Upgrade your plan or use your own model API key.",
+  "space-model-fallback": "This Space's model is no longer available, so this session uses your default model."
 }

@@ -597,5 +597,6 @@
   "automation-review-required": "作成前にスケジュールと必要な入力を確認してください。",
   "notice-use-own-api-key": "自分の API キーを使用",
   "notice-credits-new": "タスクを実行するにはクレジットを追加してください。",
-  "notice-credits-new-description": "プランをアップグレードするか、自分のモデルの API キーを使用してください。"
+  "notice-credits-new-description": "プランをアップグレードするか、自分のモデルの API キーを使用してください。",
+  "space-model-fallback": "このスペースのモデルは利用できなくなったため、このセッションではデフォルトモデルを使用します。"
 }
