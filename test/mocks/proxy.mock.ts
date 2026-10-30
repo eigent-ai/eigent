@@ -57,7 +57,7 @@ const mockImplementation = {
       });
     }
     // Mock configs
-    if (url.includes('/configs')) {
+    if (url.includes('/api/v1/configs') || url.includes('/api/configs')) {
       return Promise.resolve([]);
     }
     // Mock snapshots - return empty array to prevent the error
