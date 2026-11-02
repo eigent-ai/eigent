@@ -55,6 +55,8 @@ const mocks = vi.hoisted(() => {
     activeChatStore,
     closeSettings: vi.fn(),
     ensureProjectRuntimeLoaded: vi.fn(),
+    getCurrentPinnedSpaceIds: vi.fn(() => ['space-a', 'space-b']),
+    openSpaceView: vi.fn(),
     openSettings: vi.fn(),
     openPreviewTab: vi.fn(),
     projectRuntimeState,
@@ -114,6 +116,7 @@ vi.mock('@/store/pageTabStore', () => ({
     Project: 'project',
     Triggers: 'triggers',
     Workforce: 'workforce',
+    SpaceWorkspace: 'space-workspace',
   },
   usePageTabStore: (
     selector: (state: {
@@ -147,8 +150,15 @@ vi.mock('@/store/spaceStore', () => {
       selector(mocks.spaceState),
     { getState: () => mocks.spaceState }
   );
-  return { useSpaceStore };
+  return {
+    getCurrentPinnedSpaceIds: mocks.getCurrentPinnedSpaceIds,
+    useSpaceStore,
+  };
 });
+
+vi.mock('@/hooks/useSpaceSwitch', () => ({
+  useSpaceSwitch: () => ({ openSpaceView: mocks.openSpaceView }),
+}));
 
 vi.mock('@/store/settingsStore', () => ({
   openSettings: mocks.openSettings,
@@ -420,7 +430,7 @@ describe('AppCommandProvider', () => {
     });
 
     expect(mocks.setActiveWorkspaceTab.mock.calls).toEqual([
-      ['workforce'],
+      ['space-workspace'],
       ['files', { clearFilesForProjectId: 'project-1' }],
       ['triggers'],
       ['dispatch'],
@@ -429,6 +439,24 @@ describe('AppCommandProvider', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(
       '/home?section=spaces&spaceId=space-1&spaceTab=workspace-profile'
     );
+  });
+
+  it('opens pinned Spaces in pin order and ignores an empty slot', () => {
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider({
+      onAppCommand: (callback) => {
+        nativeCommand = callback;
+        return vi.fn();
+      },
+    });
+
+    act(() => {
+      nativeCommand?.(APP_COMMAND.navigatePinnedSpace2);
+      nativeCommand?.(APP_COMMAND.navigatePinnedSpace1);
+      nativeCommand?.(APP_COMMAND.navigatePinnedSpace3);
+    });
+
+    expect(mocks.openSpaceView.mock.calls).toEqual([['space-b'], ['space-a']]);
   });
 
   it('asks for a Session instead of opening Automations in a Space without one', () => {

@@ -647,7 +647,12 @@
     "close-window": "Fenster schließen",
     "full-screen": "Vollbild umschalten",
     "minimize": "Minimieren",
-    "quit": "Eigent beenden"
+    "quit": "Eigent beenden",
+    "navigate-pinned-space-1": "Zum angehefteten Space 1",
+    "navigate-pinned-space-2": "Zum angehefteten Space 2",
+    "navigate-pinned-space-3": "Zum angehefteten Space 3",
+    "navigate-pinned-space-4": "Zum angehefteten Space 4",
+    "navigate-pinned-space-5": "Zum angehefteten Space 5"
   },
   "nativeMenu": {
     "file": "Datei",
@@ -1613,5 +1618,20 @@
   "session-window-loading": "Sitzung wird geöffnet…",
   "session-window-missing": "Diese Sitzung ist nicht mehr verfügbar",
   "session-window-close": "Fenster schließen",
-  "app-navigation": "App-Navigation"
+  "app-navigation": "App-Navigation",
+  "pin-space": "Space anheften",
+  "unpin-space": "Space lösen",
+  "space-open": "Öffnen",
+  "move-up": "Nach oben",
+  "move-down": "Nach unten",
+  "choose-pinned-spaces": "Angeheftete Spaces wählen",
+  "pinned-spaces": "Angeheftete Spaces",
+  "pinned-spaces-count": "{{count}} von {{max}}",
+  "pinned-spaces-active": "Aktiv",
+  "pinned-spaces-hint": "Zum Sortieren ziehen oder die Pfeiltasten verwenden. Die Reihenfolge bestimmt die Tastenkürzel.",
+  "pinned-space-move": "{{name}} verschieben, Position {{position}} von {{count}}",
+  "pinned-space-moved": "{{name}} auf Position {{position}} von {{count}} verschoben",
+  "other-spaces": "Weitere Spaces",
+  "space-status-waiting": "{{count}} warten auf deine Antwort",
+  "space-status-running": "{{count}} laufen"
 }

@@ -18,124 +18,69 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
+const savePointMenu = {
+  loading: false,
+  saving: false,
+  enabled: true,
+  needsAttention: false,
+  pendingCount: 1,
+  pendingTruncated: false,
+  onEnable: vi.fn(),
+  onSave: vi.fn(),
+  onOpenHistory: vi.fn(),
+};
+
+function renderMenu(pinned: boolean) {
+  const onToggle = vi.fn();
+  const onOpenSpaceSettings = vi.fn();
+  const onOpenMemorySettings = vi.fn();
+  render(
+    <MemoryRouter>
+      <SpaceSwitchDropdown
+        trigger={<button type="button">Current Space</button>}
+        activeSpaceId="space-1"
+        canRenameActiveSpace
+        onRenameSpace={vi.fn()}
+        onOpenSpaceSettings={onOpenSpaceSettings}
+        onOpenMemorySettings={onOpenMemorySettings}
+        pinMenu={{ pinned, onToggle }}
+        savePointMenu={savePointMenu}
+      />
+    </MemoryRouter>
+  );
+  return { onToggle, onOpenSpaceSettings, onOpenMemorySettings };
+}
+
 describe('SpaceSwitchDropdown', () => {
-  it('groups Space switching, creation, and current Space actions', async () => {
+  it('lists the Space actions in order, without other Spaces', async () => {
     const user = userEvent.setup();
-    const onOpenCreateSpace = vi.fn();
-    const onOpenSpaceSettings = vi.fn();
-    const onOpenMemorySettings = vi.fn();
-
-    render(
-      <MemoryRouter>
-        <SpaceSwitchDropdown
-          trigger={<button type="button">Current Space</button>}
-          spaces={[
-            {
-              id: 'space-1',
-              name: 'Design Space',
-              sourceType: 'blank',
-              status: 'active',
-              schemaVersion: 2,
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          ]}
-          activeSpaceId="space-1"
-          switchingSpaceId={null}
-          canRenameActiveSpace
-          onOpenCreateSpace={onOpenCreateSpace}
-          onRenameSpace={vi.fn()}
-          onOpenSpaceSettings={onOpenSpaceSettings}
-          onOpenMemorySettings={onOpenMemorySettings}
-          onSpaceSelect={vi.fn()}
-          savePointMenu={{
-            loading: false,
-            saving: false,
-            enabled: true,
-            needsAttention: false,
-            pendingCount: 1,
-            pendingTruncated: false,
-            onEnable: vi.fn(),
-            onSave: vi.fn(),
-            onOpenHistory: vi.fn(),
-          }}
-        />
-      </MemoryRouter>
-    );
+    const { onOpenSpaceSettings, onOpenMemorySettings } = renderMenu(false);
 
     await user.click(screen.getByRole('button', { name: 'Current Space' }));
-
     const menu = await screen.findByRole('menu');
-    const designSpaceItem = within(menu).getByRole('menuitem', {
-      name: 'Design Space',
-    });
-    const createSpaceItem = within(menu).getByRole('menuitem', {
-      name: 'Create new Space',
-    });
-    const currentSpaceLabel = within(menu).getByText('Current Space');
-    const versionHistoryItem = within(menu).getByRole('menuitem', {
-      name: 'Version history',
-    });
-    const renameItem = within(menu).getByRole('menuitem', {
-      name: 'Rename Space',
-    });
-    const spaceSettingsItem = within(menu).getByRole('menuitem', {
-      name: 'Space settings',
-    });
-    const memorySettingsItem = within(menu).getByRole('menuitem', {
-      name: 'Memory settings',
-    });
 
-    expect(within(menu).queryByText('Spaces', { exact: true })).toBeNull();
     expect(
-      designSpaceItem.compareDocumentPosition(createSpaceItem) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent?.trim())
+    ).toEqual([
+      'Rename Space',
+      'Space settings',
+      'Memory settings',
+      expect.stringMatching(/^Save changes/),
+      'Version history',
+      'Pin Space',
+    ]);
+    expect(within(menu).queryByRole('textbox')).toBeNull();
     expect(
-      createSpaceItem.compareDocumentPosition(currentSpaceLabel) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      currentSpaceLabel.compareDocumentPosition(renameItem) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      renameItem.compareDocumentPosition(spaceSettingsItem) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      spaceSettingsItem.compareDocumentPosition(memorySettingsItem) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(currentSpaceLabel).toHaveClass('text-ds-text-meta', 'font-medium');
-    const settingsSeparator = menu.querySelector(
-      '[data-space-settings-separator]'
-    ) as HTMLElement;
-    expect(settingsSeparator).toBeInTheDocument();
-    expect(settingsSeparator).toHaveClass('mx-2');
-    expect(
-      versionHistoryItem.compareDocumentPosition(settingsSeparator) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      settingsSeparator.compareDocumentPosition(renameItem) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(designSpaceItem.lastElementChild).toHaveClass(
-      'text-ds-accent-default-default'
+      within(menu).queryByRole('menuitem', { name: 'Create new Space' })
+    ).toBeNull();
+    expect(menu.querySelector('[data-space-settings-separator]')).toHaveClass(
+      'mx-2'
     );
-    expect(
-      within(menu).queryByRole('menuitem', { name: 'Start from scratch' })
-    ).not.toBeInTheDocument();
 
-    await user.click(createSpaceItem);
-    expect(onOpenCreateSpace).toHaveBeenCalledOnce();
-
-    await user.click(screen.getByRole('button', { name: 'Current Space' }));
     await user.click(
-      within(await screen.findByRole('menu')).getByRole('menuitem', {
-        name: 'Space settings',
-      })
+      within(menu).getByRole('menuitem', { name: 'Space settings' })
     );
     expect(onOpenSpaceSettings).toHaveBeenCalledOnce();
 
@@ -146,5 +91,23 @@ describe('SpaceSwitchDropdown', () => {
       })
     );
     expect(onOpenMemorySettings).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [false, 'Pin Space'],
+    [true, 'Unpin Space'],
+  ])('offers %s pin state as "%s"', async (pinned, label) => {
+    const user = userEvent.setup();
+    const { onToggle } = renderMenu(pinned);
+
+    await user.click(screen.getByRole('button', { name: 'Current Space' }));
+    await user.click(
+      within(await screen.findByRole('menu')).getByRole('menuitem', {
+        name: label,
+      })
+    );
+
+    expect(onToggle).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });

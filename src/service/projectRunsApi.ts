@@ -283,6 +283,36 @@ export function fetchActiveProjectRuns(
   ) as Promise<ProjectRunsResponse>;
 }
 
+export type RunAttentionState = 'running' | 'waiting';
+
+export interface ProjectRunAttention {
+  projectId: string;
+  state: RunAttentionState;
+}
+
+/** Keeps only well-formed rows; an unreadable response means no rows. */
+export function parseRunAttention(value: unknown): ProjectRunAttention[] {
+  if (!Array.isArray(value)) return [];
+  const rows: ProjectRunAttention[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== 'object') continue;
+    const { project_id: projectId, state } = row as Record<string, unknown>;
+    if (typeof projectId !== 'string' || !projectId) continue;
+    if (state !== 'running' && state !== 'waiting') continue;
+    rows.push({ projectId, state });
+  }
+  return rows;
+}
+
+/** Every Session with active work across all Spaces, from the local journal. */
+export async function fetchRunAttention(
+  signal?: AbortSignal
+): Promise<ProjectRunAttention[]> {
+  return parseRunAttention(
+    await fetchGet('/runs/attention', undefined, undefined, { signal })
+  );
+}
+
 /** Cancel one exact durable Run; callers own stable request-id generation. */
 export function cancelProjectRun(
   runId: string,

@@ -16,7 +16,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -24,25 +23,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
-import { Input } from '@/components/ui/input';
 import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
-import { usePageTabStore } from '@/store/pageTabStore';
-import type { Space } from '@/store/spaceStore';
-import type { TFunction } from 'i18next';
 import {
   Brain,
-  Check,
   CheckCircle2,
   GitBranch,
   Loader2,
   Pencil,
-  Plus,
+  Pin,
+  PinOff,
   RefreshCw,
   Save,
-  Search,
   Settings,
   Trash2,
   TriangleAlert,
@@ -54,21 +47,10 @@ import type {
   ReactElement,
   ReactNode,
 } from 'react';
-import {
-  cloneElement,
-  isValidElement,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { cloneElement, isValidElement, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from '@/components/Layout/AppSidebar';
-
-const SPACE_LIST_ITEM_HEIGHT_CLASS = 'h-8';
-const SPACE_LIST_MAX_HEIGHT_CLASS = 'max-h-40';
 
 export interface SpaceSwitchDropdownPendingChangesMenu {
   loading: boolean;
@@ -96,17 +78,20 @@ export interface SpaceSwitchDropdownSavePointMenu {
   onOpenHistory?: () => void;
 }
 
+export interface SpaceSwitchDropdownPinMenu {
+  pinned: boolean;
+  onToggle: () => void;
+}
+
 export interface SpaceSwitchDropdownProps {
   trigger: ReactElement;
-  spaces: Space[];
   activeSpaceId: string | null;
-  switchingSpaceId: string | null;
   canRenameActiveSpace: boolean;
-  onOpenCreateSpace: () => void;
   onRenameSpace: () => void;
   onOpenSpaceSettings?: () => void;
   onOpenMemorySettings?: () => void;
-  onSpaceSelect: (spaceId: string) => void | Promise<void>;
+  /** Pin Space / Unpin Space for the active Space. */
+  pinMenu?: SpaceSwitchDropdownPinMenu;
   contentAlign?: ComponentPropsWithoutRef<typeof DropdownMenuContent>['align'];
   contentClassName?: string;
   contentSideOffset?: number;
@@ -121,21 +106,18 @@ export interface SpaceSwitchDropdownProps {
   triggerTooltipEnabled?: boolean;
 }
 
-function getSpaceLabel(space: Space, t: TFunction) {
-  return getActiveSpaceTriggerLabel(space.name, t);
-}
-
+/**
+ * The Space menu behind the top-bar Space name: actions for the active Space.
+ * Switching Spaces happens on the rail and in Home, so it lists no Spaces.
+ */
 export function SpaceSwitchDropdown({
   trigger,
-  spaces,
   activeSpaceId,
-  switchingSpaceId,
   canRenameActiveSpace,
-  onOpenCreateSpace,
   onRenameSpace,
   onOpenSpaceSettings,
   onOpenMemorySettings,
-  onSpaceSelect,
+  pinMenu,
   contentAlign = 'start',
   contentClassName,
   contentSideOffset,
@@ -150,18 +132,7 @@ export function SpaceSwitchDropdown({
 }: SpaceSwitchDropdownProps) {
   const { t } = useTranslation();
   const [internalOpen, setInternalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const open = controlledOpen ?? internalOpen;
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const requestWorkspaceChatFocus = usePageTabStore(
-    (s) => s.requestWorkspaceChatFocus
-  );
-
-  const navigateToWorkspaceTab = useCallback(() => {
-    setActiveWorkspaceTab('workforce');
-    requestWorkspaceChatFocus();
-  }, [requestWorkspaceChatFocus, setActiveWorkspaceTab]);
 
   const setOpen = useCallback(
     (nextOpen: boolean) => {
@@ -183,26 +154,7 @@ export function SpaceSwitchDropdown({
     setOpen(true);
   }, [openOnHover, setOpen]);
 
-  const filteredSpaces = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return spaces;
-    return spaces.filter((space) =>
-      getSpaceLabel(space, t).toLowerCase().includes(query)
-    );
-  }, [searchQuery, spaces, t]);
-
-  useEffect(() => {
-    if (!open) return;
-    const frameId = requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [open]);
-
   const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      setSearchQuery('');
-    }
     setOpen(nextOpen);
   };
 
@@ -269,87 +221,60 @@ export function SpaceSwitchDropdown({
       <DropdownMenuContent
         align={contentAlign}
         sideOffset={contentSideOffset}
-        className={cn('min-w-[280px] overflow-hidden', contentClassName)}
+        className={cn('min-w-[240px] overflow-hidden', contentClassName)}
         onMouseEnter={openOnHover ? openFromHover : undefined}
       >
-        <div className="flex flex-col gap-1">
-          <Input
-            ref={searchInputRef}
-            size="sm"
-            value={searchQuery}
-            placeholder={t('layout.search-spaces')}
-            leadingIcon={
-              <DsIcon icon={Search} className="text-ds-ink-muted-default" />
-            }
-            className="w-full"
-            onChange={(event) => setSearchQuery(event.target.value)}
-            onKeyDown={(event) => event.stopPropagation()}
-          />
-
-          <div
-            className={cn(
-              'scrollbar-always-visible overflow-y-auto',
-              SPACE_LIST_MAX_HEIGHT_CLASS
-            )}
-          >
-            {filteredSpaces.length === 0 ? (
-              <div className="px-2 py-3 text-center text-ds-text-base text-ds-ink-muted-default">
-                {t('layout.search-no-results')}
-              </div>
-            ) : (
-              filteredSpaces.map((space) => (
-                <DropdownMenuItem
-                  key={space.id}
-                  className={cn('cursor-pointer', SPACE_LIST_ITEM_HEIGHT_CLASS)}
-                  disabled={switchingSpaceId !== null}
-                  onClick={() => {
-                    navigateToWorkspaceTab();
-                    void onSpaceSelect(space.id);
-                    setOpen(false);
-                  }}
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    {getSpaceLabel(space, t)}
-                  </span>
-                  {switchingSpaceId === space.id ? (
-                    <DsIcon
-                      icon={Loader2}
-                      className="shrink-0 animate-spin motion-reduce:animate-none"
-                      aria-hidden
-                    />
-                  ) : activeSpaceId === space.id ? (
-                    <DsIcon
-                      icon={Check}
-                      className="shrink-0 text-ds-accent-default-default"
-                      aria-hidden
-                    />
-                  ) : null}
-                </DropdownMenuItem>
-              ))
-            )}
-          </div>
-        </div>
-
-        <DropdownMenuSeparator />
-
         <DropdownMenuItem
-          className="gap-2"
-          onSelect={() => {
+          disabled={!canRenameActiveSpace}
+          onClick={() => {
             setOpen(false);
-            onOpenCreateSpace();
+            onRenameSpace();
           }}
         >
-          <DsIcon icon={Plus} aria-hidden />
-          {t('layout.spaces-create-new-space')}
+          <DsIcon icon={Pencil} aria-hidden />
+          <span>{t('layout.spaces-rename-space')}</span>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+        {onOpenSpaceSettings ? (
+          <DropdownMenuItem
+            className="gap-2"
+            disabled={!activeSpaceId}
+            onSelect={() => {
+              setOpen(false);
+              onOpenSpaceSettings();
+            }}
+          >
+            <DsIcon icon={Settings} aria-hidden />
+            <span>
+              {t('layout.space-settings', { defaultValue: 'Space settings' })}
+            </span>
+          </DropdownMenuItem>
+        ) : null}
 
-        <DropdownMenuLabel className="truncate px-2 py-1.5 font-normal text-ds-ink-muted-default">
-          <span className="text-ds-text-meta font-medium">
-            {t('layout.spaces-current-space')}
-          </span>
-        </DropdownMenuLabel>
+        {onOpenMemorySettings ? (
+          <DropdownMenuItem
+            className="gap-2"
+            disabled={!activeSpaceId}
+            onSelect={() => {
+              setOpen(false);
+              onOpenMemorySettings();
+            }}
+          >
+            <DsIcon icon={Brain} aria-hidden />
+            <span>
+              {t('setting.memory-settings', {
+                defaultValue: 'Memory settings',
+              })}
+            </span>
+          </DropdownMenuItem>
+        ) : null}
+
+        {pendingChangesMenu || savePointMenu ? (
+          <DropdownMenuSeparator
+            className="mx-2"
+            data-space-settings-separator
+          />
+        ) : null}
 
         {pendingChangesMenu ? (
           <DropdownMenuSub>
@@ -496,59 +421,24 @@ export function SpaceSwitchDropdown({
           </>
         ) : null}
 
-        {savePointMenu &&
-        (canRenameActiveSpace ||
-          onOpenSpaceSettings ||
-          onOpenMemorySettings) ? (
-          <DropdownMenuSeparator
-            className="mx-2"
-            data-space-settings-separator
-          />
-        ) : null}
-
-        <DropdownMenuItem
-          disabled={!canRenameActiveSpace}
-          onClick={() => {
-            setOpen(false);
-            onRenameSpace();
-          }}
-        >
-          <DsIcon icon={Pencil} aria-hidden />
-          <span>{t('layout.spaces-rename-space')}</span>
-        </DropdownMenuItem>
-
-        {onOpenSpaceSettings ? (
-          <DropdownMenuItem
-            className="gap-2"
-            disabled={!activeSpaceId}
-            onSelect={() => {
-              setOpen(false);
-              onOpenSpaceSettings();
-            }}
-          >
-            <DsIcon icon={Settings} aria-hidden />
-            <span>
-              {t('layout.space-settings', { defaultValue: 'Space settings' })}
-            </span>
-          </DropdownMenuItem>
-        ) : null}
-
-        {onOpenMemorySettings ? (
-          <DropdownMenuItem
-            className="gap-2"
-            disabled={!activeSpaceId}
-            onSelect={() => {
-              setOpen(false);
-              onOpenMemorySettings();
-            }}
-          >
-            <DsIcon icon={Brain} aria-hidden />
-            <span>
-              {t('setting.memory-settings', {
-                defaultValue: 'Memory settings',
-              })}
-            </span>
-          </DropdownMenuItem>
+        {pinMenu ? (
+          <>
+            <DropdownMenuSeparator className="mx-2" />
+            <DropdownMenuItem
+              className="gap-2"
+              onSelect={() => {
+                setOpen(false);
+                pinMenu.onToggle();
+              }}
+            >
+              <DsIcon icon={pinMenu.pinned ? PinOff : Pin} aria-hidden />
+              <span>
+                {pinMenu.pinned
+                  ? t('layout.unpin-space')
+                  : t('layout.pin-space')}
+              </span>
+            </DropdownMenuItem>
+          </>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>

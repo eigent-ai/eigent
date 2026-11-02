@@ -15,6 +15,7 @@
 import crypto from 'node:crypto';
 import {
   APP_COMMAND,
+  PINNED_SPACE_COMMANDS,
   type AppCommandHandled,
   type AppCommandId,
   type AppCommandRequest,
@@ -27,6 +28,7 @@ const NAVIGATION_COMMANDS = new Set<AppCommandId>([
   APP_COMMAND.navigateScheduled,
   APP_COMMAND.navigateDispatch,
   APP_COMMAND.navigateConfiguration,
+  ...PINNED_SPACE_COMMANDS,
 ]);
 
 interface QueuedCommand {

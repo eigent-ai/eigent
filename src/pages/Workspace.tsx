@@ -37,6 +37,8 @@ import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -56,6 +58,13 @@ import { SessionInOwnWindow } from '@/components/SessionWindow/SessionInOwnWindo
 import { useSessionSplitFocusTracking } from '@/hooks/useSessionSplitView';
 import { useMainWindowSessionWindows } from '@/hooks/useSessionWindows';
 import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
+
+// The Workspace page reuses Home's Space overview; load it on first open.
+const SpaceWorkspacePage = lazy(() =>
+  import('@/components/Workspace/SpaceWorkspacePage').then((module) => ({
+    default: module.SpaceWorkspacePage,
+  }))
+);
 
 export default function WorkspacePage() {
   const { t } = useTranslation();
@@ -440,6 +449,14 @@ export default function WorkspacePage() {
             <div className={workspaceMainForegroundClass}>
               <Session isNewProject />
             </div>
+          </div>
+        );
+      case 'space-workspace':
+        return (
+          <div className={mainPanelContentClass}>
+            <Suspense fallback={null}>
+              <SpaceWorkspacePage />
+            </Suspense>
           </div>
         );
       case 'dispatch':

@@ -647,7 +647,12 @@
     "close-window": "Close Window",
     "full-screen": "Toggle Full Screen",
     "minimize": "Minimize",
-    "quit": "Quit Eigent"
+    "quit": "Quit Eigent",
+    "navigate-pinned-space-1": "Go to pinned Space 1",
+    "navigate-pinned-space-2": "Go to pinned Space 2",
+    "navigate-pinned-space-3": "Go to pinned Space 3",
+    "navigate-pinned-space-4": "Go to pinned Space 4",
+    "navigate-pinned-space-5": "Go to pinned Space 5"
   },
   "nativeMenu": {
     "file": "File",
@@ -1613,5 +1618,20 @@
   "session-window-loading": "Opening session…",
   "session-window-missing": "This session is no longer available",
   "session-window-close": "Close window",
-  "app-navigation": "App navigation"
+  "app-navigation": "App navigation",
+  "pin-space": "Pin Space",
+  "unpin-space": "Unpin Space",
+  "space-open": "Open",
+  "move-up": "Move up",
+  "move-down": "Move down",
+  "choose-pinned-spaces": "Choose pinned Spaces",
+  "pinned-spaces": "Pinned Spaces",
+  "pinned-spaces-count": "{{count}} of {{max}}",
+  "pinned-spaces-active": "Active",
+  "pinned-spaces-hint": "Drag or use the arrow keys to reorder. The order sets the shortcuts.",
+  "pinned-space-move": "Move {{name}}, position {{position}} of {{count}}",
+  "pinned-space-moved": "{{name}} moved to position {{position}} of {{count}}",
+  "other-spaces": "Other Spaces",
+  "space-status-waiting": "{{count}} waiting for your reply",
+  "space-status-running": "{{count}} running"
 }

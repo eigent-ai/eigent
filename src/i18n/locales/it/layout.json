@@ -647,7 +647,12 @@
     "close-window": "Chiudi finestra",
     "full-screen": "Attiva/disattiva schermo intero",
     "minimize": "Riduci a icona",
-    "quit": "Esci da Eigent"
+    "quit": "Esci da Eigent",
+    "navigate-pinned-space-1": "Vai allo Spazio fissato 1",
+    "navigate-pinned-space-2": "Vai allo Spazio fissato 2",
+    "navigate-pinned-space-3": "Vai allo Spazio fissato 3",
+    "navigate-pinned-space-4": "Vai allo Spazio fissato 4",
+    "navigate-pinned-space-5": "Vai allo Spazio fissato 5"
   },
   "nativeMenu": {
     "file": "File",
@@ -1635,5 +1640,20 @@
   "session-window-loading": "Apertura della sessione…",
   "session-window-missing": "Questa sessione non è più disponibile",
   "session-window-close": "Chiudi finestra",
-  "app-navigation": "Navigazione dell'app"
+  "app-navigation": "Navigazione dell'app",
+  "pin-space": "Fissa Spazio",
+  "unpin-space": "Rimuovi Spazio fissato",
+  "space-open": "Apri",
+  "move-up": "Sposta su",
+  "move-down": "Sposta giù",
+  "choose-pinned-spaces": "Scegli Spazi fissati",
+  "pinned-spaces": "Spazi fissati",
+  "pinned-spaces-count": "{{count}} di {{max}}",
+  "pinned-spaces-active": "Attivo",
+  "pinned-spaces-hint": "Trascina o usa i tasti freccia per riordinare. L’ordine definisce le scorciatoie.",
+  "pinned-space-move": "Sposta {{name}}, posizione {{position}} di {{count}}",
+  "pinned-space-moved": "{{name}} spostato in posizione {{position}} di {{count}}",
+  "other-spaces": "Altri Spazi",
+  "space-status-waiting": "{{count}} in attesa della tua risposta",
+  "space-status-running": "{{count}} in esecuzione"
 }

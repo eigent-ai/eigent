@@ -647,7 +647,12 @@
     "close-window": "Закрыть окно",
     "full-screen": "Переключить полноэкранный режим",
     "minimize": "Свернуть",
-    "quit": "Завершить Eigent"
+    "quit": "Завершить Eigent",
+    "navigate-pinned-space-1": "Перейти к закреплённому Пространству 1",
+    "navigate-pinned-space-2": "Перейти к закреплённому Пространству 2",
+    "navigate-pinned-space-3": "Перейти к закреплённому Пространству 3",
+    "navigate-pinned-space-4": "Перейти к закреплённому Пространству 4",
+    "navigate-pinned-space-5": "Перейти к закреплённому Пространству 5"
   },
   "nativeMenu": {
     "file": "Файл",
@@ -1657,5 +1662,20 @@
   "session-window-loading": "Открытие сессии…",
   "session-window-missing": "Эта сессия больше недоступна",
   "session-window-close": "Закрыть окно",
-  "app-navigation": "Навигация по приложению"
+  "app-navigation": "Навигация по приложению",
+  "pin-space": "Закрепить Пространство",
+  "unpin-space": "Открепить Пространство",
+  "space-open": "Открыть",
+  "move-up": "Переместить вверх",
+  "move-down": "Переместить вниз",
+  "choose-pinned-spaces": "Выбрать закреплённые Пространства",
+  "pinned-spaces": "Закреплённые Пространства",
+  "pinned-spaces-count": "{{count}} из {{max}}",
+  "pinned-spaces-active": "Активно",
+  "pinned-spaces-hint": "Перетащите или используйте клавиши со стрелками, чтобы изменить порядок. Порядок задаёт сочетания клавиш.",
+  "pinned-space-move": "Переместить {{name}}, позиция {{position}} из {{count}}",
+  "pinned-space-moved": "{{name}} перемещено на позицию {{position}} из {{count}}",
+  "other-spaces": "Другие Пространства",
+  "space-status-waiting": "Ждут вашего ответа: {{count}}",
+  "space-status-running": "Выполняется: {{count}}"
 }
