@@ -31,6 +31,7 @@ import {
   CheckCircle2,
   GitBranch,
   Loader2,
+  PanelsTopLeft,
   Pencil,
   Pin,
   PinOff,
@@ -90,6 +91,8 @@ export interface SpaceSwitchDropdownProps {
   onRenameSpace: () => void;
   onOpenSpaceSettings?: () => void;
   onOpenMemorySettings?: () => void;
+  /** Home only: leave Home for this Space's view. Listed first. */
+  onOpenInSpaceView?: () => void;
   /** Pin Space / Unpin Space for the active Space. */
   pinMenu?: SpaceSwitchDropdownPinMenu;
   contentAlign?: ComponentPropsWithoutRef<typeof DropdownMenuContent>['align'];
@@ -107,8 +110,9 @@ export interface SpaceSwitchDropdownProps {
 }
 
 /**
- * The Space menu behind the top-bar Space name: actions for the active Space.
- * Switching Spaces happens on the rail and in Home, so it lists no Spaces.
+ * The Space menu behind the top-bar Space name: actions for the Space in
+ * context. Switching Spaces happens on the rail and in Home, so it lists no
+ * Spaces.
  */
 export function SpaceSwitchDropdown({
   trigger,
@@ -117,6 +121,7 @@ export function SpaceSwitchDropdown({
   onRenameSpace,
   onOpenSpaceSettings,
   onOpenMemorySettings,
+  onOpenInSpaceView,
   pinMenu,
   contentAlign = 'start',
   contentClassName,
@@ -224,6 +229,21 @@ export function SpaceSwitchDropdown({
         className={cn('min-w-[240px] overflow-hidden', contentClassName)}
         onMouseEnter={openOnHover ? openFromHover : undefined}
       >
+        {onOpenInSpaceView ? (
+          <>
+            <DropdownMenuItem
+              className="gap-2"
+              onSelect={() => {
+                setOpen(false);
+                onOpenInSpaceView();
+              }}
+            >
+              <DsIcon icon={PanelsTopLeft} aria-hidden />
+              <span>{t('layout.open-in-space-view')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="mx-2" />
+          </>
+        ) : null}
         <DropdownMenuItem
           disabled={!canRenameActiveSpace}
           onClick={() => {

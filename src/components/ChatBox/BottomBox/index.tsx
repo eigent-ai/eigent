@@ -128,6 +128,8 @@ interface BottomBoxCommonProps {
   modelSelectDisabled?: boolean;
   /** Restricted file workflows do not offer connector or skill pickers. */
   resourcePickersEnabled?: boolean;
+  /** First control in the footer, for example New session's Space chip. */
+  footerLeading?: ReactNode;
 
   // Loading states
   loading?: boolean;
@@ -165,6 +167,7 @@ export default function BottomBox({
   modelSelectProjectId,
   modelSelectDisabled,
   resourcePickersEnabled = true,
+  footerLeading,
   loading = false,
   noModelOverlay = false,
   onSelectModel,
@@ -447,6 +450,7 @@ export default function BottomBox({
               sessionMode={sessionMode!}
               onSessionModeChange={onSessionModeChange}
               projectId={modelSelectProjectId}
+              leading={footerLeading}
               interactive={sessionModeSelectInteractive}
               disabled={variantDisabled}
               modelSelectDisabled={

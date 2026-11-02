@@ -116,6 +116,8 @@ export function HeaderBox({
   const { t } = useTranslation();
   // A Session window has nowhere to go back to.
   const inSessionWindow = getSessionWindowRole() === 'session';
+  // Home has no Space landing to go back to; its header shows the name only.
+  const inHome = useSessionPageTabStore((s) => s.shellPlace === 'home');
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const titleRef = useRef<HTMLSpanElement>(null);
   const sessionMenuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -260,7 +262,7 @@ export function HeaderBox({
     >
       {/* Left: return to workspace, Session identity, and its controls. */}
       <div className="flex min-w-0 items-center gap-ds-4">
-        {showBack && !inSessionWindow ? (
+        {showBack && !inSessionWindow && !inHome ? (
           <TooltipSimple content={backTooltip} variant="instant" side="bottom">
             <Button
               type="button"

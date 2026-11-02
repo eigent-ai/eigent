@@ -34,14 +34,19 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
-import { useOpenSpaceHomeTab } from '@/hooks/useSpaceSwitch';
+import { useOpenSpaceHomeTab, useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
+import { isHomePagePath } from '@/lib/shellRoutes';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
+import {
+  usePageTabStore,
+  type ShellPlace,
+  type WorkspaceTabId,
+} from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
   ChevronDown,
@@ -57,6 +62,39 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
+/**
+ * The Space the top bar names, if any: the Space view's Space, the Space of a
+ * Session open in Home, or the Space whose Workspace page Home shows. Home's
+ * New session, All Spaces and Settings name none.
+ */
+export function getTopBarSpaceContext({
+  pathname,
+  search,
+  shellPlace,
+  activeWorkspaceTab,
+  activeSpaceId,
+}: {
+  pathname: string;
+  search: string;
+  shellPlace: ShellPlace;
+  activeWorkspaceTab: WorkspaceTabId;
+  activeSpaceId: string | null;
+}): { spaceId: string; inHome: boolean } | null {
+  if (pathname === '/') {
+    if (!activeSpaceId) return null;
+    if (shellPlace === 'space')
+      return { spaceId: activeSpaceId, inHome: false };
+    return activeWorkspaceTab === 'project'
+      ? { spaceId: activeSpaceId, inHome: true }
+      : null;
+  }
+  if (isHomePagePath(pathname)) {
+    const spaceId = new URLSearchParams(search).get('spaceId');
+    return spaceId ? { spaceId, inHome: true } : null;
+  }
+  return null;
+}
+
 function HeaderWin() {
   const { t } = useTranslation();
   const host = useHost();
@@ -66,6 +104,7 @@ function HeaderWin() {
   const location = useLocation();
   const executeAppCommand = useAppCommand();
   const openSpaceHomeTab = useOpenSpaceHomeTab();
+  const { openSpaceView } = useSpaceSwitch();
   const [renameSpaceId, setRenameSpaceId] = useState<string | null>(null);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
@@ -87,7 +126,19 @@ function HeaderWin() {
     setPlatform(p);
   }, [host]);
 
-  const isWorkspacePage = location.pathname === '/';
+  const shellPlace = usePageTabStore((s) => s.shellPlace);
+  const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
+  const contextSpace = getTopBarSpaceContext({
+    pathname: location.pathname,
+    search: location.search,
+    shellPlace,
+    activeWorkspaceTab,
+    activeSpaceId,
+  });
+  const contextSpaceId =
+    contextSpace && spacesById[contextSpace.spaceId]
+      ? contextSpace.spaceId
+      : null;
   const topBarLeadingInset = platform === 'darwin' ? 68 : 8;
 
   const sidebarToggleLabel = workspaceSidebarHidden
@@ -97,16 +148,23 @@ function HeaderWin() {
   const activeSpaceTitle = useMemo(
     () =>
       getActiveSpaceTriggerLabel(
-        activeSpaceId ? spacesById[activeSpaceId]?.name : undefined,
+        contextSpaceId ? spacesById[contextSpaceId]?.name : undefined,
         t,
         {
-          emptyLabelKey: activeSpaceId
+          emptyLabelKey: contextSpaceId
             ? 'layout.spaces-untitled'
             : 'layout.spaces-select-space',
         }
       ),
-    [activeSpaceId, spacesById, t]
+    [contextSpaceId, spacesById, t]
   );
+  const contextSpaceRecord = contextSpaceId ? spacesById[contextSpaceId] : null;
+  const canRenameContextSpace = canRenameSpace(contextSpaceRecord);
+  const contextSpacePinned = Boolean(
+    contextSpaceId && pinnedSpaceIds.includes(contextSpaceId)
+  );
+  // Save points act on the active Space's folder, so they stay with it.
+  const savePointsApply = contextSpaceId === activeSpaceId;
 
   const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
   const versionHistory = useWorkspaceSavePoint({
@@ -116,10 +174,6 @@ function HeaderWin() {
     userId,
     shortcut: true,
   });
-  const canRenameActiveSpace = canRenameSpace(activeSpace);
-  const activeSpacePinned = Boolean(
-    activeSpaceId && pinnedSpaceIds.includes(activeSpaceId)
-  );
 
   return (
     <div
@@ -197,11 +251,11 @@ function HeaderWin() {
             </TooltipSimple>
           }
           contentControls={
-            isWorkspacePage ? (
+            contextSpaceId ? (
               <SpaceSwitchDropdown
                 contentSideOffset={6}
                 onOpenChange={(open) => {
-                  if (open && versionHistory.supported) {
+                  if (open && savePointsApply && versionHistory.supported) {
                     void versionHistory.loadStatus();
                   }
                 }}
@@ -224,34 +278,33 @@ function HeaderWin() {
                     />
                   </button>
                 }
-                activeSpaceId={activeSpaceId}
-                canRenameActiveSpace={canRenameActiveSpace}
-                onRenameSpace={() => {
-                  if (canRenameActiveSpace) setRenameSpaceId(activeSpaceId);
-                }}
-                onOpenSpaceSettings={() => {
-                  if (activeSpaceId) {
-                    openSpaceHomeTab(activeSpaceId, 'workspace-profile');
-                  }
-                }}
-                onOpenMemorySettings={() => {
-                  if (activeSpaceId) openSpaceHomeTab(activeSpaceId, 'memory');
-                }}
-                pinMenu={
-                  activeSpaceId
-                    ? {
-                        pinned: activeSpacePinned,
-                        onToggle: () => {
-                          if (activeSpacePinned) unpinSpace(activeSpaceId);
-                          else pinSpaceOrChoose(activeSpaceId);
-                        },
-                      }
+                activeSpaceId={contextSpaceId}
+                canRenameActiveSpace={canRenameContextSpace}
+                onOpenInSpaceView={
+                  contextSpace?.inHome
+                    ? () => openSpaceView(contextSpaceId)
                     : undefined
                 }
+                onRenameSpace={() => {
+                  if (canRenameContextSpace) setRenameSpaceId(contextSpaceId);
+                }}
+                onOpenSpaceSettings={() =>
+                  openSpaceHomeTab(contextSpaceId, 'workspace-profile')
+                }
+                onOpenMemorySettings={() =>
+                  openSpaceHomeTab(contextSpaceId, 'memory')
+                }
+                pinMenu={{
+                  pinned: contextSpacePinned,
+                  onToggle: () => {
+                    if (contextSpacePinned) unpinSpace(contextSpaceId);
+                    else pinSpaceOrChoose(contextSpaceId);
+                  },
+                }}
                 contentAlign="start"
                 triggerWrapperClassName="min-w-0 overflow-hidden rounded-full"
                 savePointMenu={
-                  versionHistory.supported
+                  savePointsApply && versionHistory.supported
                     ? {
                         loading:
                           versionHistory.loading ||

@@ -69,6 +69,13 @@ import { SessionSidePanel } from './SidePanel';
  * centered composer; its Preview and Summary state live in a draft scope that
  * moves to the Session created by the first task.
  */
+export interface NewSessionComposerSlots {
+  /** Shown above the composer, for example Home's greeting. */
+  above?: ReactNode;
+  /** First control in the composer toolbar, for example a Space chip. */
+  footerLeading?: ReactNode;
+}
+
 interface SessionProps {
   /** New session page: no Project until the first task creates one. */
   isNewProject?: boolean;
@@ -76,12 +83,15 @@ interface SessionProps {
   projectId?: string | null;
   /** Extra controls at the right end of the Session header (split panes). */
   headerActions?: ReactNode;
+  /** New session only: content above the composer and in its toolbar. */
+  newSessionComposer?: NewSessionComposerSlots;
 }
 
 export default function Session({
   projectId,
   isNewProject = false,
   headerActions,
+  newSessionComposer,
 }: SessionProps) {
   const inheritedProjectId = useSessionProjectId();
   const id = projectId === undefined ? inheritedProjectId : projectId;
@@ -107,13 +117,18 @@ export default function Session({
         <SessionContent
           isNewProject={isNewProject}
           headerActions={headerActions}
+          newSessionComposer={newSessionComposer}
         />
       </div>
     </SessionPaneProvider>
   );
 }
 
-function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
+function SessionContent({
+  isNewProject = false,
+  headerActions,
+  newSessionComposer,
+}: SessionProps) {
   const { t } = useTranslation();
   const shouldReduceMotion = Boolean(useReducedMotion());
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -582,6 +597,8 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
                 embedded
                 sessionMode={displaySessionMode ?? SessionMode.SINGLE_AGENT}
                 onSessionModeChange={handleNewProjectSessionModeChange}
+                composerAbove={newSessionComposer?.above}
+                composerFooterLeading={newSessionComposer?.footerLeading}
               />
             ) : (
               <ChatBox />
