@@ -72,6 +72,7 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   realInterrupted: false,
   realTransport: false,
+  idleRunId: null as string | null,
   durableRun: null as any,
   host: null as any,
 }));
@@ -175,6 +176,9 @@ vi.mock('@/hooks/useInterruptedRunStatus', async (load) => {
             run: mocks.interrupted,
             setRun: mocks.setInterrupted,
             refresh: mocks.refreshInterrupted,
+            // The real hook settles once the status loaded and no Run is
+            // still interrupted; mirror that so queued admission can proceed.
+            settled: !mocks.interrupted,
           },
   };
 });
@@ -262,6 +266,16 @@ vi.mock('@/lib/events/appEvents', () => ({
   recordFeatureUsed: vi.fn(),
   recordTaskStopped: vi.fn(),
 }));
+vi.mock('@/store/chatStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/store/chatStore')>();
+  return {
+    ...actual,
+    // The mocked stream never processes END, so let a test state which
+    // finished Run still holds an idle live transport for a warm follow-up.
+    getIdleSSETransportTaskId: (taskIds: string[]) =>
+      mocks.idleRunId ?? actual.getIdleSSETransportTaskId(taskIds),
+  };
+});
 vi.mock('@/lib/runEvents', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/runEvents')>();
   vi.spyOn(actual.runEventIngressRegistry, 'ensureLocal').mockImplementation(
@@ -301,6 +315,7 @@ describe('ChatBox after an accepted Space model selection', () => {
     runDomainEventHub.clear();
     mocks.realInterrupted = false;
     mocks.realTransport = false;
+    mocks.idleRunId = null;
     mocks.durableRun = null;
     mocks.host = null;
     vi.stubGlobal(
@@ -1845,6 +1860,22 @@ describe('ChatBox after an accepted Space model selection', () => {
   it('automatically admits a queued follow-up using the accepted Session pin', async () => {
     await acceptInitialSpaceRun();
     const pin = { ...project.metadata.modelSelection };
+    // The first Run finished and its consumer idles: a queued follow-up joins
+    // it warm. A consumer still working holds the queue until it is done.
+    const finishedRunId = chat.getState().activeTaskId!;
+    mocks.idleRunId = finishedRunId;
+    const localGet = mocks.localGet.getMockImplementation()!;
+    mocks.localGet.mockImplementation(async (url, ...args) =>
+      url.endsWith('/status')
+        ? {
+            has_lock: true,
+            status: 'done',
+            run_id: finishedRunId,
+            consumer_alive: true,
+            subscriber_count: 1,
+          }
+        : localGet(url, ...args)
+    );
     project.queuedMessages = [
       {
         task_id: 'queued-1',
