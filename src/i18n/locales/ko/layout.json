@@ -647,7 +647,12 @@
     "close-window": "창 닫기",
     "full-screen": "전체 화면 전환",
     "minimize": "최소화",
-    "quit": "Eigent 종료"
+    "quit": "Eigent 종료",
+    "navigate-pinned-space-1": "고정된 스페이스로 이동 1",
+    "navigate-pinned-space-2": "고정된 스페이스로 이동 2",
+    "navigate-pinned-space-3": "고정된 스페이스로 이동 3",
+    "navigate-pinned-space-4": "고정된 스페이스로 이동 4",
+    "navigate-pinned-space-5": "고정된 스페이스로 이동 5"
   },
   "nativeMenu": {
     "file": "파일",
@@ -1591,5 +1596,20 @@
   "session-window-loading": "세션을 여는 중…",
   "session-window-missing": "이 세션을 더 이상 사용할 수 없습니다",
   "session-window-close": "창 닫기",
-  "app-navigation": "앱 탐색"
+  "app-navigation": "앱 탐색",
+  "pin-space": "스페이스 고정",
+  "unpin-space": "스페이스 고정 해제",
+  "space-open": "열기",
+  "move-up": "위로 이동",
+  "move-down": "아래로 이동",
+  "choose-pinned-spaces": "고정할 스페이스 선택",
+  "pinned-spaces": "고정된 스페이스",
+  "pinned-spaces-count": "{{count}} / {{max}}",
+  "pinned-spaces-active": "활성",
+  "pinned-spaces-hint": "드래그하거나 화살표 키로 순서를 바꾸세요. 순서에 따라 단축키가 정해집니다.",
+  "pinned-space-move": "{{name}} 이동, {{count}}개 중 {{position}}번째",
+  "pinned-space-moved": "{{name}}을(를) {{count}}개 중 {{position}}번째로 이동했습니다",
+  "other-spaces": "다른 스페이스",
+  "space-status-waiting": "{{count}}개가 답변을 기다리는 중",
+  "space-status-running": "{{count}}개 실행 중"
 }

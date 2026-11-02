@@ -40,6 +40,8 @@ export const WorkspaceTab = {
   Project: 'project',
   Dispatch: 'dispatch',
   NewProject: 'new-project',
+  /** The Space's Workspace page: its Sessions, Tasks, Automations and more. */
+  SpaceWorkspace: 'space-workspace',
 } as const;
 
 export type WorkspaceTabId = (typeof WorkspaceTab)[keyof typeof WorkspaceTab];

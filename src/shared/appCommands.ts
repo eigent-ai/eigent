@@ -35,7 +35,21 @@ export const APP_COMMAND = {
   navigateScheduled: 'navigate-scheduled',
   navigateDispatch: 'navigate-dispatch',
   navigateConfiguration: 'navigate-configuration',
+  navigatePinnedSpace1: 'navigate-pinned-space-1',
+  navigatePinnedSpace2: 'navigate-pinned-space-2',
+  navigatePinnedSpace3: 'navigate-pinned-space-3',
+  navigatePinnedSpace4: 'navigate-pinned-space-4',
+  navigatePinnedSpace5: 'navigate-pinned-space-5',
 } as const;
+
+/** Pinned Space shortcuts in pin order; index 0 opens the first pin. */
+export const PINNED_SPACE_COMMANDS = [
+  APP_COMMAND.navigatePinnedSpace1,
+  APP_COMMAND.navigatePinnedSpace2,
+  APP_COMMAND.navigatePinnedSpace3,
+  APP_COMMAND.navigatePinnedSpace4,
+  APP_COMMAND.navigatePinnedSpace5,
+] as const;
 
 export type AppCommandId = (typeof APP_COMMAND)[keyof typeof APP_COMMAND];
 
@@ -67,6 +81,7 @@ export const APP_COMMAND_IDS = [
   APP_COMMAND.navigateScheduled,
   APP_COMMAND.navigateDispatch,
   APP_COMMAND.navigateConfiguration,
+  ...PINNED_SPACE_COMMANDS,
 ] as const satisfies readonly AppCommandId[];
 
 export function isAppCommandId(value: unknown): value is AppCommandId {

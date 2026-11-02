@@ -647,7 +647,12 @@
     "close-window": "關閉視窗",
     "full-screen": "切換全螢幕",
     "minimize": "最小化",
-    "quit": "結束 Eigent"
+    "quit": "結束 Eigent",
+    "navigate-pinned-space-1": "前往釘選的空間 1",
+    "navigate-pinned-space-2": "前往釘選的空間 2",
+    "navigate-pinned-space-3": "前往釘選的空間 3",
+    "navigate-pinned-space-4": "前往釘選的空間 4",
+    "navigate-pinned-space-5": "前往釘選的空間 5"
   },
   "nativeMenu": {
     "file": "檔案",
@@ -1591,5 +1596,20 @@
   "session-window-loading": "正在開啟工作階段…",
   "session-window-missing": "此工作階段已無法使用",
   "session-window-close": "關閉視窗",
-  "app-navigation": "應用程式導覽"
+  "app-navigation": "應用程式導覽",
+  "pin-space": "釘選空間",
+  "unpin-space": "取消釘選空間",
+  "space-open": "開啟",
+  "move-up": "上移",
+  "move-down": "下移",
+  "choose-pinned-spaces": "選擇釘選的空間",
+  "pinned-spaces": "已釘選的空間",
+  "pinned-spaces-count": "{{count}} / {{max}}",
+  "pinned-spaces-active": "目前",
+  "pinned-spaces-hint": "拖曳或使用方向鍵調整順序。順序決定快捷鍵。",
+  "pinned-space-move": "移動 {{name}}，第 {{position}} 個，共 {{count}} 個",
+  "pinned-space-moved": "已將 {{name}} 移到第 {{position}} 個，共 {{count}} 個",
+  "other-spaces": "其他空間",
+  "space-status-waiting": "{{count}} 個等待你的回覆",
+  "space-status-running": "{{count}} 個正在執行"
 }

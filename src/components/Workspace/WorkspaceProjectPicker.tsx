@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
 import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdown';
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import AlertDialog from '@/components/ui/alertDialog';
@@ -21,18 +20,10 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
-import { useHost } from '@/host';
-import {
-  createSpaceFromFolderPicker,
-  getFolderSpaceErrorMessage,
-} from '@/lib/createSpaceFromFolder';
-import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import {
   getActiveSpaceTriggerLabel,
-  getDefaultNewSpaceName,
   isLocalWorkspaceSpace,
 } from '@/lib/spaceLabel';
-import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import {
   proxyApplySpaceProjectRun,
@@ -41,17 +32,11 @@ import {
   type SpaceOverlay,
 } from '@/service/spaceApi';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
-import {
-  getVisibleProjectMetasForSpace,
-  isDisposableBlankSpace,
-  useSpaceStore,
-} from '@/store/spaceStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { ChevronsUpDown, FolderIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 /** Shared chrome so read-only and dropdown trigger stay the same height (Button md = 32px). */
@@ -64,34 +49,23 @@ export interface WorkspaceProjectPickerProps {
 }
 
 /**
- * Space switcher for the workspace landing. Project switching lives in the
- * left sidebar; this control only creates/switches Spaces and exposes current
- * Project workdir actions.
+ * Space menu for the workspace landing. Spaces are switched on the rail and
+ * Sessions in the left sidebar; this control exposes the current Space and
+ * Session workdir actions.
  */
 export function WorkspaceProjectPicker({
   readOnly = false,
 }: WorkspaceProjectPickerProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const host = useHost();
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const spacesById = useSpaceStore((s) => s.spaces);
-  const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
-  const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
-  const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
   const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
   const refreshProjectOnServer = useSpaceStore((s) => s.refreshProjectOnServer);
   const { projectStore } = useChatStoreAdapter();
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const requestWorkspaceChatFocus = usePageTabStore(
-    (s) => s.requestWorkspaceChatFocus
-  );
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
-  const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
   const [pendingOverlays, setPendingOverlays] = useState<SpaceOverlay[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
   const [pendingLoadFailed, setPendingLoadFailed] = useState(false);
@@ -167,25 +141,6 @@ export function WorkspaceProjectPicker({
   });
   const versionHistorySupported = versionHistory.supported;
   const loadVersionHistoryStatus = versionHistory.loadStatus;
-  const activeSpaces = useMemo(
-    () =>
-      Object.values(spacesById)
-        .filter(
-          (space) =>
-            space.status !== 'archived' &&
-            !(
-              space.id === 'legacy_local' &&
-              activeSpaceId !== 'legacy_local' &&
-              getVisibleProjectMetasForSpace(projectsBySpaceId, space.id)
-                .length === 0
-            ) &&
-            (space.id === activeSpaceId ||
-              !isDisposableBlankSpace(space, projectsBySpaceId))
-        )
-        .sort((a, b) => b.updatedAt - a.updatedAt),
-    [activeSpaceId, projectsBySpaceId, spacesById]
-  );
-
   const loadPendingOverlays = useCallback(async () => {
     if (
       !activeProjectSpaceId ||
@@ -250,84 +205,6 @@ export function WorkspaceProjectPicker({
       }),
     [activeSpace, activeSpaceId, t]
   );
-
-  const activateSpace = useCallback(
-    async (spaceId: string) => {
-      setSwitchingSpaceId(spaceId);
-      try {
-        const resolvedSpaceId = await resolveServerBackedSpaceId(
-          projectStore,
-          spaceId
-        );
-        const spaceStore = useSpaceStore.getState();
-        if (
-          resolvedSpaceId.startsWith('legacy_') ||
-          spaceStore.shouldSyncProjects(resolvedSpaceId)
-        ) {
-          await spaceStore.syncProjectsFromServer(resolvedSpaceId);
-        }
-        const projectsInSpace = useSpaceStore
-          .getState()
-          .getProjectsForSpace(resolvedSpaceId);
-        if (projectsInSpace.length > 0) {
-          setActiveSpace(resolvedSpaceId);
-          const nextProject = projectsInSpace[0];
-          projectStore.setActiveProject(nextProject.id);
-        } else {
-          setActiveSpace(resolvedSpaceId);
-          projectStore.setActiveProject(null);
-        }
-        navigate('/');
-        setMenuOpen(false);
-      } catch (error) {
-        console.warn('[WorkspaceProjectPicker] Failed to switch Space:', error);
-        toast.error(t('layout.spaces-create-failed'));
-      } finally {
-        setSwitchingSpaceId(null);
-      }
-    },
-    [navigate, projectStore, setActiveSpace, t]
-  );
-
-  const handleNewSpace = useCallback(async () => {
-    try {
-      const spaceId = await createSpaceOnServer({
-        name: getDefaultNewSpaceName(t),
-        sourceType: 'blank',
-        setActive: false,
-        metadata: {
-          createdFrom: 'workspace_space_picker',
-          autoCreatedPlaceholder: true,
-        },
-      });
-      await ensureScratchSpaceWorkspaceBinding({
-        email,
-        userId,
-        space: useSpaceStore.getState().getSpaceById(spaceId),
-      });
-      setActiveSpace(spaceId);
-      projectStore.setActiveProject(null);
-      setActiveWorkspaceTab('workforce');
-      requestWorkspaceChatFocus();
-      navigate('/');
-      setMenuOpen(false);
-      return true;
-    } catch (error) {
-      console.error('Failed to create Space:', error);
-      toast.error(t('layout.spaces-create-failed'));
-      return false;
-    }
-  }, [
-    createSpaceOnServer,
-    email,
-    navigate,
-    projectStore,
-    requestWorkspaceChatFocus,
-    setActiveSpace,
-    setActiveWorkspaceTab,
-    t,
-    userId,
-  ]);
 
   const openRenameDialog = () => {
     if (!canRenameActiveSpace || !activeSpace) return;
@@ -528,41 +405,6 @@ export function WorkspaceProjectPicker({
     }
   };
 
-  const handleCreateSpaceFromFolder = async () => {
-    try {
-      const spaceId = await createSpaceFromFolderPicker({
-        host,
-        email,
-        userId,
-        activeSpaceId,
-        projectStore,
-        createdFrom: 'workspace_folder_space_picker',
-        onUnavailable: openFilesTab,
-      });
-      if (!spaceId) return false;
-      setActiveWorkspaceTab('workforce');
-      requestWorkspaceChatFocus();
-      navigate('/');
-      setMenuOpen(false);
-      return true;
-    } catch (error) {
-      console.warn(
-        '[WorkspaceProjectPicker] Failed to create folder Space:',
-        error
-      );
-      toast.error(getFolderSpaceErrorMessage(error, t));
-      return false;
-    }
-  };
-
-  const openFilesTab = () => {
-    const pid = projectStore.activeProjectId;
-    setActiveWorkspaceTab('files', {
-      clearFilesForProjectId: pid ?? undefined,
-    });
-    setMenuOpen(false);
-  };
-
   if (readOnly) {
     return (
       <div
@@ -599,12 +441,6 @@ export function WorkspaceProjectPicker({
         email={email}
         userId={userId}
         actorId={userId == null ? email || 'local-user' : String(userId)}
-      />
-      <NewSpaceDialog
-        open={newSpaceDialogOpen}
-        onOpenChange={setNewSpaceDialogOpen}
-        onStartFromScratch={handleNewSpace}
-        onUseLocalFolder={handleCreateSpaceFromFolder}
       />
       <AlertDialog
         isOpen={discardConfirmOpen}
@@ -683,13 +519,9 @@ export function WorkspaceProjectPicker({
             />
           </Button>
         }
-        spaces={activeSpaces}
         activeSpaceId={activeSpaceId}
-        switchingSpaceId={switchingSpaceId}
         canRenameActiveSpace={canRenameActiveSpace}
-        onOpenCreateSpace={() => setNewSpaceDialogOpen(true)}
         onRenameSpace={openRenameDialog}
-        onSpaceSelect={activateSpace}
         pendingChangesMenu={
           activeProjectId && !activeProjectDirectWrite
             ? {
