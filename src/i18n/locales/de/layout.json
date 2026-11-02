@@ -1612,5 +1612,6 @@
   "bring-session-back": "Hierher zurückholen",
   "session-window-loading": "Sitzung wird geöffnet…",
   "session-window-missing": "Diese Sitzung ist nicht mehr verfügbar",
-  "session-window-close": "Fenster schließen"
+  "session-window-close": "Fenster schließen",
+  "app-navigation": "App-Navigation"
 }

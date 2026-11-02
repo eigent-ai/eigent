@@ -1590,5 +1590,6 @@
   "bring-session-back": "ここに戻す",
   "session-window-loading": "セッションを開いています…",
   "session-window-missing": "このセッションは利用できなくなりました",
-  "session-window-close": "ウィンドウを閉じる"
+  "session-window-close": "ウィンドウを閉じる",
+  "app-navigation": "アプリのナビゲーション"
 }

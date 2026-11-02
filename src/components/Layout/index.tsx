@@ -13,13 +13,18 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { InstallDependencies } from '@/components/InstallStep/InstallDependencies';
+import { AppRail, shouldShowAppRail } from '@/components/Layout/AppRail';
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useDesktopUpdater } from '@/hooks/useDesktopUpdater';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useHost } from '@/host';
 import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
-import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
+import {
+  isSettingsPagePath,
+  isSettingsRoutePath,
+  shellBackState,
+} from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
@@ -50,20 +55,15 @@ export function SettingsRouteBridge() {
     if (!isOpen) return;
     let cancelled = false;
     const routeRequest = runAfterWorkspaceConfigurationSave(() => {
-      const searchParams = new URLSearchParams({
-        section: 'settings',
-        tab: activeSection,
-      });
+      const searchParams = new URLSearchParams({ tab: activeSection });
       if (activeSection === 'models' && modelProvider) {
         searchParams.set('provider', modelProvider);
       }
-      const destination = `/home?${searchParams.toString()}`;
+      const search = `?${searchParams.toString()}`;
+      const destination = `/settings${search}`;
       finishSettingsNavigation();
-      if (isSettingsRoutePath(location.pathname)) {
-        if (
-          location.pathname !== '/home' ||
-          location.search !== `?${searchParams.toString()}`
-        ) {
+      if (isSettingsPagePath(location.pathname)) {
+        if (location.search !== search) {
           navigate(destination, {
             replace: true,
             state: location.state,
@@ -72,9 +72,11 @@ export function SettingsRouteBridge() {
         return;
       }
       // Record the origin so the route layout can retain Workspace state while
-      // the full-page Home / Settings surface is active.
+      // Settings is open. Coming from Home, keep Home's own origin instead.
       navigate(destination, {
-        state: shellBackState(`${location.pathname}${location.search}`),
+        state: isSettingsRoutePath(location.pathname)
+          ? location.state
+          : shellBackState(`${location.pathname}${location.search}`),
       });
     });
     void routeRequest.then((completed) => {
@@ -165,6 +167,9 @@ const Layout = () => {
   const shouldShowMainContent = !actualShouldShowInstallScreen;
   const showTopBar =
     location.pathname === '/' || isSettingsRoutePath(location.pathname);
+  const showRail =
+    showTopBar &&
+    shouldShowAppRail(location.pathname, actualShouldShowInstallScreen);
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-ds-neutral-strong-default">
@@ -178,23 +183,27 @@ const Layout = () => {
         {showTopBar ? <TopBar /> : null}
       </div>
       <SettingsRouteBridge />
-      <div className="relative h-full min-h-0 flex-1 overflow-hidden">
-        {/* Installation screen */}
-        {actualShouldShowInstallScreen && <InstallDependencies />}
+      <div className="relative flex h-full min-h-0 flex-1 flex-row overflow-hidden">
+        {/* Rendered once here, so it doesn't remount as pages change. */}
+        {showRail ? <AppRail /> : null}
+        <div className="relative h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+          {/* Installation screen */}
+          {actualShouldShowInstallScreen && <InstallDependencies />}
 
-        {/* Main app content */}
-        {shouldShowMainContent && <Outlet />}
+          {/* Main app content */}
+          {shouldShowMainContent && <Outlet />}
 
-        {(backendError || (error && installationState === 'error')) && (
-          <InstallationErrorDialog
-            error={error || ''}
-            backendError={backendError}
-            installationState={installationState}
-            latestLog={latestLog}
-            retryInstallation={retryInstallation}
-            retryBackend={retryBackend}
-          />
-        )}
+          {(backendError || (error && installationState === 'error')) && (
+            <InstallationErrorDialog
+              error={error || ''}
+              backendError={backendError}
+              installationState={installationState}
+              latestLog={latestLog}
+              retryInstallation={retryInstallation}
+              retryBackend={retryBackend}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

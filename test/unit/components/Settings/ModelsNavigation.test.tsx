@@ -143,7 +143,7 @@ function renderPage(provider?: string) {
   return render(
     <MemoryRouter
       initialEntries={[
-        `/home?section=settings&tab=models${provider ? `&provider=${provider}` : ''}`,
+        `/settings?tab=models${provider ? `&provider=${provider}` : ''}`,
       ]}
     >
       <SettingModels />
@@ -661,7 +661,7 @@ describe('Models collections and configuration dialogs', () => {
         <SettingsRouteBridge />
         <Routes>
           <Route path="/" element={<div>Home</div>} />
-          <Route path="/home" element={<SettingModels />} />
+          <Route path="/settings" element={<SettingModels />} />
         </Routes>
       </MemoryRouter>
     );

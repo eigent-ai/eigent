@@ -18,7 +18,12 @@ import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 import { SIDEBAR_FOLD_SPRING } from './AppSidebar/constants';
 
-/** Fixed rail width. The sidebar is no longer resizable. */
+/**
+ * App rail width: the column of places left of every page, below the top bar.
+ * It stays when the sidebar folds.
+ */
+export const APP_SHELL_RAIL_WIDTH_PX = 48;
+/** Fixed sidebar width. The sidebar is no longer resizable. */
 export const APP_SHELL_SIDEBAR_WIDTH_PX = 240;
 /** Sidebar tabs sit inside the rail's shared `p-1` inset. */
 export const APP_SHELL_SIDEBAR_TAB_INSET_PX = 4;

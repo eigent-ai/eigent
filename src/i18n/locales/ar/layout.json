@@ -1700,5 +1700,6 @@
   "bring-session-back": "إعادتها إلى هنا",
   "session-window-loading": "جارٍ فتح الجلسة…",
   "session-window-missing": "لم تعد هذه الجلسة متاحة",
-  "session-window-close": "إغلاق النافذة"
+  "session-window-close": "إغلاق النافذة",
+  "app-navigation": "التنقل في التطبيق"
 }

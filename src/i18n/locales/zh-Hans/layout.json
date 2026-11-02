@@ -1590,5 +1590,6 @@
   "bring-session-back": "移回这里",
   "session-window-loading": "正在打开会话…",
   "session-window-missing": "此会话已不可用",
-  "session-window-close": "关闭窗口"
+  "session-window-close": "关闭窗口",
+  "app-navigation": "应用导航"
 }
