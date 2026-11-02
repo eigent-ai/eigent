@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHomeVisitStore } from '@/components/Home/homeVisit';
 import {
   AppRail,
   getAppRailPlace,
@@ -20,9 +21,10 @@ import {
   usePinnedSpacesChooser,
 } from '@/components/Layout/AppRail';
 import { APP_COMMAND } from '@/shared/appCommands';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore, type Space } from '@/store/spaceStore';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -121,6 +123,36 @@ describe('AppRail', () => {
       spaces: { 'space-research': space('space-research', 'Research') },
       pinnedSpaceIdsByUser: {},
     });
+    usePageTabStore.setState({ shellPlace: 'space' });
+  });
+
+  it('selects Home on the workspace route while Home is the place', () => {
+    usePageTabStore.setState({ shellPlace: 'home' });
+    renderRail('/');
+
+    expect(
+      within(rail()).getByRole('button', { name: 'Home' })
+    ).toHaveAttribute('aria-current', 'page');
+    // The Session's Space still has its (dashed) tile, unselected.
+    const tile = within(rail()).getByRole('button', { name: 'Research' });
+    expect(tile).not.toHaveAttribute('aria-current');
+    expect(tile).toHaveAttribute('data-space-rail-tile', 'unpinned');
+  });
+
+  it('starts a new Home visit each time Home becomes the place', () => {
+    const visit = useHomeVisitStore.getState().visit;
+    const { unmount } = renderRail('/home?section=spaces');
+    expect(useHomeVisitStore.getState().visit).toBe(visit + 1);
+
+    act(() => usePageTabStore.setState({ shellPlace: 'home' }));
+    expect(useHomeVisitStore.getState().visit).toBe(visit + 1);
+    unmount();
+
+    usePageTabStore.setState({ shellPlace: 'space' });
+    renderRail('/');
+    expect(useHomeVisitStore.getState().visit).toBe(visit + 1);
+    act(() => usePageTabStore.setState({ shellPlace: 'home' }));
+    expect(useHomeVisitStore.getState().visit).toBe(visit + 2);
   });
 
   it('lists Home, the active Space, Settings and the account menu in order', () => {
@@ -461,12 +493,13 @@ describe('rail helpers', () => {
   });
 
   it.each([
-    ['/', 'space'],
-    ['/home', 'home'],
-    ['/settings', 'settings'],
-    ['/history', null],
-  ])('maps %s to the %s place', (path, place) => {
-    expect(getAppRailPlace(path)).toBe(place);
+    ['/', 'space', 'space'],
+    ['/', 'home', 'home'],
+    ['/home', 'space', 'home'],
+    ['/settings', 'home', 'settings'],
+    ['/history', 'space', null],
+  ] as const)('maps %s with %s to the %s place', (path, shellPlace, place) => {
+    expect(getAppRailPlace(path, shellPlace)).toBe(place);
   });
 
   it.each([

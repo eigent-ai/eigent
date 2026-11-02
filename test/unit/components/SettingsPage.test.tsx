@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { usePinnedSpacesChooser } from '@/components/Layout/AppRail/pinnedSpaces';
 import SettingsSection from '@/components/Settings/SettingsSection';
 import HomePage from '@/pages/Home';
 import SettingsPage from '@/pages/Settings';
@@ -20,9 +21,10 @@ import { useModelVisibilityStore } from '@/store/modelVisibilityStore';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSkillsStore, type Skill } from '@/store/skillsStore';
-import { useSpaceStore } from '@/store/spaceStore';
+import { pinnedSpaceOwnerKey, useSpaceStore } from '@/store/spaceStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -146,17 +148,6 @@ vi.mock('@/hooks/queries/useTriggerQueries', () => ({
   useUserTriggerCountQuery: () => ({ data: 0 }),
 }));
 
-function openDropdown(trigger: HTMLElement) {
-  const event = new MouseEvent('pointerdown', {
-    bubbles: true,
-    cancelable: true,
-    button: 0,
-    ctrlKey: false,
-  });
-  Object.defineProperty(event, 'pointerType', { value: 'mouse' });
-  fireEvent(trigger, event);
-}
-
 vi.mock('@/service/historyApi', () => ({
   fetchGroupedHistoryTasks: vi.fn(() => new Promise(() => undefined)),
 }));
@@ -178,6 +169,19 @@ vi.mock('@/components/Settings/Privacy', () => ({
 }));
 
 // These tests exercise navigation and the real Skills surface, not model APIs.
+// Home's sidebar refreshes Session leads from the Brain; not under test here.
+vi.mock('@/hooks/useSessionNavStatuses', () => ({
+  useSessionNavStatuses: () => {},
+}));
+
+// Home's sidebar starts New session through the app command provider.
+vi.mock('@/components/Layout/AppCommandProvider', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/components/Layout/AppCommandProvider')
+  >()),
+  useAppCommand: () => () => {},
+}));
+
 vi.mock('@/components/Settings/Models', () => ({
   default: () => <div data-testid="models-settings" />,
 }));
@@ -534,8 +538,10 @@ describe('SettingsPage', () => {
     const settingsFrame = getSettingsHeader();
 
     const sidebar = screen.getByRole('complementary', { name: 'Home' });
-    const spacesTab = within(sidebar).getByRole('button', { name: 'Spaces' });
-    expect(spacesTab).toHaveAttribute('aria-current', 'page');
+    const allSpacesTab = within(sidebar).getByRole('button', {
+      name: 'All Spaces',
+    });
+    expect(allSpacesTab).toHaveAttribute('aria-current', 'page');
     expect(
       within(sidebar).queryByRole('button', { name: 'Models' })
     ).not.toBeInTheDocument();
@@ -997,7 +1003,7 @@ describe('SettingsPage', () => {
     );
   });
 
-  it('returns from Space detail to its workspace origin', async () => {
+  it("opens a Space's Workspace page from the Home sidebar", async () => {
     const user = userEvent.setup();
     const now = Date.now();
     useSpaceStore.setState((state) => ({
@@ -1027,23 +1033,93 @@ describe('SettingsPage', () => {
 
     renderSettingsPage([
       '/',
-      {
-        pathname: '/home',
-        search: '?section=spaces&spaceId=origin-space&spaceTab=projects',
-        state: { from: '/' },
-      },
+      { pathname: '/home', search: '?section=spaces', state: { from: '/' } },
     ]);
 
-    const spaceSidebar = await screen.findByRole('complementary', {
-      name: 'Spaces',
+    const homeSidebar = await screen.findByRole('complementary', {
+      name: 'Home',
     });
     await user.click(
-      within(spaceSidebar).getByRole('button', { name: 'Back' })
+      within(homeSidebar).getByRole('button', { name: 'Origin Space' })
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId('settings-location')).toHaveTextContent(/^\/$/)
+      expect(screen.getByTestId('settings-location')).toHaveTextContent(
+        '/home?section=spaces&spaceId=origin-space'
+      )
     );
+    expect(
+      await screen.findByRole('heading', { name: 'Workspace', level: 1 })
+    ).toBeInTheDocument();
+    expect(
+      within(homeSidebar).getByRole('button', { name: 'Origin Space' })
+    ).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('pins a Space from its Workspace page, or opens the chooser when 5 are pinned', async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    const makeSpace = (id: string, name: string) => ({
+      id,
+      name,
+      sourceType: 'folder' as const,
+      rootPath: `/work/${id}`,
+      status: 'active' as const,
+      schemaVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const pinnedIds = ['p-1', 'p-2', 'p-3', 'p-4'];
+    // The mocked account is user 7.
+    const ownerKey = pinnedSpaceOwnerKey(7);
+    usePinnedSpacesChooser.setState({ open: false });
+    useSpaceStore.setState((state) => ({
+      ...state,
+      spaces: {
+        ...state.spaces,
+        'pin-space': makeSpace('pin-space', 'Pin Me'),
+        'extra-space': makeSpace('extra-space', 'Extra'),
+        ...Object.fromEntries(
+          pinnedIds.map((id) => [id, makeSpace(id, `Pinned ${id}`)])
+        ),
+      },
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        ...Object.fromEntries(
+          ['pin-space', 'extra-space', ...pinnedIds].map((id) => [id, {}])
+        ),
+      },
+      // Synced already, so later Spaces hub renders don't sync them.
+      projectsSyncedAt: {
+        ...state.projectsSyncedAt,
+        ...Object.fromEntries(
+          ['pin-space', 'extra-space', ...pinnedIds].map((id) => [id, now])
+        ),
+      },
+      pinnedSpaceIdsByUser: { [ownerKey]: pinnedIds },
+    }));
+
+    renderSettingsPage('/home?section=spaces&spaceId=pin-space');
+    const header = document.querySelector(
+      '[data-content-header-frame]'
+    ) as HTMLElement;
+
+    await user.click(within(header).getByRole('button', { name: 'Pin Space' }));
+    expect(
+      within(header).getByRole('button', { name: 'Unpin Space' })
+    ).toBeInTheDocument();
+    expect(usePinnedSpacesChooser.getState().open).toBe(false);
+
+    act(() => {
+      useSpaceStore.setState((state) => ({
+        pinnedSpaceIdsByUser: {
+          [ownerKey]: [...pinnedIds, 'extra-space'],
+        },
+        spaces: state.spaces,
+      }));
+    });
+    await user.click(within(header).getByRole('button', { name: 'Pin Space' }));
+    expect(usePinnedSpacesChooser.getState().open).toBe(true);
   });
 
   it('switches to the Space detail layout without changing the shared shell', () => {
@@ -1102,122 +1178,49 @@ describe('SettingsPage', () => {
       'Last updated:'
     );
 
-    const homeSpaceCard = screen
+    const homeSpaceCard = within(screen.getByRole('main'))
       .getByText('Design Space')
       .closest('button') as HTMLElement;
     expect(homeSpaceCard).toBeInTheDocument();
     fireEvent.pointerDown(homeSpaceCard, { pointerType: 'mouse' });
     fireEvent.click(homeSpaceCard);
 
-    const detailSidebar = screen.getByRole('complementary', {
-      name: 'Spaces',
-    });
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="detail"]')
-    ).toHaveAttribute('data-space-navigation-direction', 'forward');
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="detail"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'full');
+    const homeSidebar = screen.getByRole('complementary', { name: 'Home' });
     const detailContent = document.querySelector(
       '[data-home-space-content-pane="detail"]'
     ) as HTMLElement;
+    expect(detailContent).toHaveAttribute(
+      'data-space-navigation-direction',
+      'forward'
+    );
     expect(detailContent).toHaveAttribute(
       'data-space-navigation-motion',
       'full'
     );
     expect(
-      within(detailSidebar).getByRole('button', { name: 'Design Space' })
+      within(homeSidebar).getByRole('button', { name: 'Design Space' })
     ).toHaveAttribute('aria-current', 'page');
-    const detailSidebarHeader = detailSidebar.querySelector(
-      'header'
-    ) as HTMLElement;
-    expect(detailSidebarHeader).not.toHaveClass('border-b');
     expect(
-      within(detailSidebarHeader).getByRole('button', { name: 'Back' })
-    ).toBeInTheDocument();
-    const newSpaceTab = within(detailSidebarHeader).getByRole('button', {
-      name: 'New Space',
-    });
-    expect(newSpaceTab).toHaveAttribute('data-variant', 'primary');
-    expect(newSpaceTab).toHaveClass('!rounded-full');
-    expect(newSpaceTab.querySelector('svg')).toHaveClass('lucide-plus');
-    const spaceSearch = within(detailSidebar).getByRole('searchbox', {
-      name: 'Search spaces...',
-    });
-    expect(spaceSearch.closest('.py-ds-8')).not.toHaveClass('px-ds-8');
-    expect(
-      newSpaceTab.compareDocumentPosition(spaceSearch) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(detailSidebar.querySelector('.uppercase')).not.toBeInTheDocument();
-    expect(
-      within(detailSidebar).queryByRole('button', { name: 'Untitled Space' })
+      within(homeSidebar).queryByRole('button', { name: 'Untitled Space' })
     ).not.toBeInTheDocument();
-    fireEvent.change(spaceSearch, { target: { value: 'missing' } });
-    expect(
-      within(detailSidebar).queryByRole('button', { name: 'Design Space' })
-    ).not.toBeInTheDocument();
-    expect(detailSidebar).toHaveTextContent('No results match your search.');
-    fireEvent.change(spaceSearch, { target: { value: '' } });
-    fireEvent.click(newSpaceTab);
-    expect(
-      screen.getByRole('dialog', { name: 'Create a new Space' })
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(
-      detailSidebar.querySelector('.lucide-check')
-    ).not.toBeInTheDocument();
-    const designSpaceTab = within(detailSidebar).getByRole('button', {
-      name: 'Design Space',
-    });
-    const spaceMoreButton = within(detailSidebar).getByRole('button', {
-      name: 'More actions: Design Space',
-    });
-    expect(spaceMoreButton.closest('.group')).toContainElement(designSpaceTab);
-
-    openDropdown(spaceMoreButton);
-    fireEvent.click(
-      within(screen.getByRole('menu')).getByRole('menuitem', {
-        name: 'Rename Space',
-      })
-    );
-    const renameDialog = screen.getByRole('alertdialog', {
-      name: 'Rename Space',
-    });
-    expect(within(renameDialog).getByPlaceholderText('Space name')).toHaveValue(
-      'Design Space'
-    );
-    fireEvent.click(
-      within(renameDialog).getByRole('button', { name: 'Cancel' })
-    );
-
-    openDropdown(spaceMoreButton);
-    fireEvent.click(
-      within(screen.getByRole('menu')).getByRole('menuitem', {
-        name: 'Delete',
-      })
-    );
-    const deleteDialog = screen.getByRole('alertdialog', { name: 'Delete' });
-    expect(deleteDialog).toHaveTextContent(
-      'Are you sure you want to delete this space and all its sessions?'
-    );
-    fireEvent.click(
-      within(deleteDialog).getByRole('button', { name: 'Cancel' })
-    );
     const detailHeader = document.querySelector(
       '[data-content-header-frame]'
     ) as HTMLElement;
     expect(detailHeader.querySelector('.px-ds-16')).toBeInTheDocument();
+    // The top bar names the Space, so the page title is "Workspace".
     const detailHeading = within(detailHeader).getByRole('heading', {
-      name: 'Design Space',
+      name: 'Workspace',
       level: 1,
     });
-    expect(detailHeading).toHaveClass('!text-ds-text-base');
-    const openWorkspaceButton = within(detailHeader).getByRole('button', {
-      name: 'Open workspace',
+    expect(detailHeading).toHaveClass('!text-ds-text-body-large');
+    expect(
+      within(detailHeader).getByRole('button', { name: 'Pin Space' })
+    ).toHaveAttribute('data-variant', 'secondary');
+    const openInSpaceViewButton = within(detailHeader).getByRole('button', {
+      name: 'Open in Space view',
     });
-    expect(openWorkspaceButton).toHaveAttribute('data-variant', 'primary');
-    expect(openWorkspaceButton).toHaveClass('!rounded-full');
+    expect(openInSpaceViewButton).toHaveAttribute('data-variant', 'primary');
+    expect(openInSpaceViewButton).toHaveClass('!rounded-full');
     expect(
       within(detailContent).getByText('Product design work')
     ).toBeInTheDocument();
@@ -1361,35 +1364,22 @@ describe('SettingsPage', () => {
 
     const { unmount } = renderSettingsPage('/home?section=spaces');
 
-    const spaceCard = screen
+    const spaceCard = within(screen.getByRole('main'))
       .getByText('Motion Space')
       .closest('button') as HTMLElement;
     fireEvent.pointerDown(spaceCard, { pointerType: 'mouse' });
     fireEvent.click(spaceCard);
 
-    const detailSidebar = screen.getByRole('complementary', {
-      name: 'Spaces',
-    });
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="detail"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'fade');
     expect(
       document.querySelector('[data-home-space-content-pane="detail"]')
     ).toHaveAttribute('data-space-navigation-motion', 'fade');
 
-    const backButton = within(detailSidebar).getByRole('button', {
-      name: 'Back',
-    });
-    backButton.focus();
-    fireEvent.keyDown(backButton, { key: 'Enter' });
-    fireEvent.click(backButton);
-    expect(
+    const allSpacesTab = within(
       screen.getByRole('complementary', { name: 'Home' })
-    ).toBeInTheDocument();
-
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="home"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'instant');
+    ).getByRole('button', { name: 'All Spaces' });
+    allSpacesTab.focus();
+    fireEvent.keyDown(allSpacesTab, { key: 'Enter' });
+    fireEvent.click(allSpacesTab);
     expect(
       document.querySelector('[data-home-space-content-pane="home"]')
     ).toHaveAttribute('data-space-navigation-motion', 'instant');

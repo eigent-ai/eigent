@@ -1721,5 +1721,16 @@
   "pinned-space-moved": "تم نقل {{name}} إلى الموضع {{position}} من {{count}}",
   "other-spaces": "مساحات أخرى",
   "space-status-waiting": "{{count}} بانتظار ردك",
-  "space-status-running": "{{count}} قيد التشغيل"
+  "space-status-running": "{{count}} قيد التشغيل",
+  "all-spaces": "كل المساحات",
+  "needs-you": "بانتظارك",
+  "fold-space": "طي {{name}}",
+  "unfold-space": "توسيع {{name}}",
+  "show-all-sessions": "عرض الكل ({{count}})",
+  "show-all-sessions-in-space": "عرض كل الجلسات ({{count}}) في {{name}}",
+  "open-in-space-view": "فتح في عرض المساحة",
+  "new-session-in-space": "في {{name}}",
+  "new-session-space": "مساحة هذه الجلسة",
+  "new-session-start-in": "البدء في",
+  "home-new-session-description": "اطلب من Eigent أتمتة مهامك"
 }

@@ -14,7 +14,10 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 
 import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
-import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
+import {
+  pinSpaceOrChoose,
+  usePinnedSpaceIds,
+} from '@/components/Layout/AppRail/pinnedSpaces';
 import ContentHeader, {
   CONTENT_HEADER_TITLE_CLASS,
   useFocusContentHeading,
@@ -24,11 +27,10 @@ import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { getSpaceStatusLabel, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
-import { usePageTabStore } from '@/store/pageTabStore';
-import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
@@ -40,6 +42,8 @@ import {
   HardDrive,
   ListChecks,
   MessageCircle,
+  Pin,
+  PinOff,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -51,7 +55,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useSpaceDetailData } from './hooks/useSpaceDetailData';
 import Projects from './Projects';
 import { SpaceDetailTabSkeleton } from './SpaceDetailLoadingSkeleton';
@@ -208,9 +212,9 @@ interface SpaceDetailProps {
   onTabChange: (tab: SpaceDetailTab) => void;
   onBack: () => void;
   /**
-   * `home` is the Space overview in Home, under a Home › Spaces breadcrumb.
-   * `space-view` is the Space's Workspace page next to the Space sidebar;
-   * the top bar already names the Space, so the title is just "Workspace".
+   * `home` is the Workspace page in Home, with Pin Space and Open in Space
+   * view. `space-view` is the same page next to the Space sidebar. The top
+   * bar names the Space either way, so the title is just "Workspace".
    */
   presentation?: 'home' | 'space-view';
 }
@@ -223,16 +227,7 @@ export default function SpaceDetail({
   presentation = 'home',
 }: SpaceDetailProps) {
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const setActiveSpace = useSpaceStore((state) => state.setActiveSpace);
-  const projectStore = useProjectRuntimeStore();
-  const setActiveWorkspaceTab = usePageTabStore(
-    (state) => state.setActiveWorkspaceTab
-  );
-  const requestWorkspaceChatFocus = usePageTabStore(
-    (state) => state.requestWorkspaceChatFocus
-  );
   const data = useSpaceDetailData(spaceId);
   const { space } = data;
   const spaceName = space?.name?.trim() || t('layout.spaces-untitled');
@@ -244,43 +239,15 @@ export default function SpaceDetail({
 
   const heading = useFocusContentHeading(spaceId);
   const inSpaceView = presentation === 'space-view';
-  const headerTitle = (lastSegment: string) =>
-    inSpaceView ? (
-      <h1 ref={heading} tabIndex={-1} className={CONTENT_HEADER_TITLE_CLASS}>
-        {t('layout.workspace-tab')}
-      </h1>
-    ) : (
-      <ContentBreadcrumb
-        headingRef={heading}
-        ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
-        segments={[
-          {
-            label: t('layout.home', { defaultValue: 'Home' }),
-            onClick: onBack,
-          },
-          {
-            label: t('layout.spaces', { defaultValue: 'Spaces' }),
-            onClick: onBack,
-          },
-          { label: lastSegment },
-        ]}
-      />
-    );
-
-  const handleOpenWorkspace = useCallback(() => {
-    setActiveSpace(spaceId);
-    projectStore.setActiveProject(null);
-    setActiveWorkspaceTab('workforce');
-    requestWorkspaceChatFocus();
-    navigate('/');
-  }, [
-    navigate,
-    projectStore,
-    requestWorkspaceChatFocus,
-    setActiveSpace,
-    setActiveWorkspaceTab,
-    spaceId,
-  ]);
+  const { openSpaceView } = useSpaceSwitch();
+  const pinned = usePinnedSpaceIds().includes(spaceId);
+  const unpinSpace = useSpaceStore((state) => state.unpinSpace);
+  // The top bar names the Space, so the page is just "Workspace".
+  const headerTitle = (
+    <h1 ref={heading} tabIndex={-1} className={CONTENT_HEADER_TITLE_CLASS}>
+      {t('layout.workspace-tab')}
+    </h1>
+  );
 
   if (!space) {
     return (
@@ -289,7 +256,7 @@ export default function SpaceDetail({
           persistent
           className="px-ds-16"
           titleAsChild
-          title={headerTitle(t('layout.space-unavailable'))}
+          title={headerTitle}
         />
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
           <DsIcon
@@ -372,20 +339,33 @@ export default function SpaceDetail({
         persistent
         className="px-ds-16"
         titleAsChild
-        title={headerTitle(spaceName)}
+        title={headerTitle}
         actions={
           inSpaceView ? undefined : (
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              buttonRadius="full"
-              onClick={handleOpenWorkspace}
-            >
-              {t('layout.open-workspace', {
-                defaultValue: 'Open workspace',
-              })}
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                buttonRadius="full"
+                onClick={() => {
+                  if (pinned) unpinSpace(spaceId);
+                  else pinSpaceOrChoose(spaceId);
+                }}
+              >
+                <DsIcon icon={pinned ? PinOff : Pin} aria-hidden />
+                {pinned ? t('layout.unpin-space') : t('layout.pin-space')}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                buttonRadius="full"
+                onClick={() => openSpaceView(spaceId)}
+              >
+                {t('layout.open-in-space-view')}
+              </Button>
+            </>
           )
         }
       />

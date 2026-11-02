@@ -1633,5 +1633,16 @@
   "pinned-space-moved": "{{name}} auf Position {{position}} von {{count}} verschoben",
   "other-spaces": "Weitere Spaces",
   "space-status-waiting": "Warten auf deine Antwort: {{count}}",
-  "space-status-running": "In Ausführung: {{count}}"
+  "space-status-running": "In Ausführung: {{count}}",
+  "all-spaces": "Alle Spaces",
+  "needs-you": "Wartet auf dich",
+  "fold-space": "{{name}} einklappen",
+  "unfold-space": "{{name}} ausklappen",
+  "show-all-sessions": "Alle {{count}} anzeigen",
+  "show-all-sessions-in-space": "Alle {{count}} Sitzungen in {{name}} anzeigen",
+  "open-in-space-view": "In der Space-Ansicht öffnen",
+  "new-session-in-space": "in {{name}}",
+  "new-session-space": "Space für diese Sitzung",
+  "new-session-start-in": "Starten in",
+  "home-new-session-description": "Lass Eigent deine Aufgaben automatisieren"
 }

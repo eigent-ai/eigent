@@ -1611,5 +1611,16 @@
   "pinned-space-moved": "已将 {{name}} 移到第 {{position}} 个，共 {{count}} 个",
   "other-spaces": "其他空间",
   "space-status-waiting": "{{count}} 个等待你的回复",
-  "space-status-running": "{{count}} 个正在运行"
+  "space-status-running": "{{count}} 个正在运行",
+  "all-spaces": "全部空间",
+  "needs-you": "等你回复",
+  "fold-space": "折叠 {{name}}",
+  "unfold-space": "展开 {{name}}",
+  "show-all-sessions": "显示全部 {{count}} 个",
+  "show-all-sessions-in-space": "显示 {{name}} 的全部 {{count}} 个会话",
+  "open-in-space-view": "在空间视图中打开",
+  "new-session-in-space": "在 {{name}}",
+  "new-session-space": "本会话所在空间",
+  "new-session-start-in": "开始于",
+  "home-new-session-description": "让 Eigent 帮你自动完成任务"
 }

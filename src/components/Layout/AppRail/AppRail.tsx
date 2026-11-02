@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHomeVisitTracking } from '@/components/Home/homeVisit';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import { APP_SHELL_RAIL_WIDTH_PX } from '@/components/Layout/AppShellLayout';
 import {
@@ -27,6 +28,7 @@ import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
 import { isHomePagePath, isSettingsPagePath } from '@/lib/shellRoutes';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { APP_COMMAND } from '@/shared/appCommands';
+import { usePageTabStore, type ShellPlace } from '@/store/pageTabStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -59,8 +61,12 @@ export function shouldShowAppRail(
 
 export type AppRailPlace = 'home' | 'space' | 'settings';
 
-export function getAppRailPlace(pathname: string): AppRailPlace | null {
-  if (pathname === '/') return 'space';
+/** `/` is Home or the Space view, whichever place the shell last showed. */
+export function getAppRailPlace(
+  pathname: string,
+  shellPlace: ShellPlace = 'space'
+): AppRailPlace | null {
+  if (pathname === '/') return shellPlace;
   if (isHomePagePath(pathname)) return 'home';
   if (isSettingsPagePath(pathname)) return 'settings';
   return null;
@@ -86,7 +92,9 @@ export default function AppRail() {
   const moveSpacePin = useSpaceStore((state) => state.moveSpacePin);
   const [renameSpaceId, setRenameSpaceId] = useState<string | null>(null);
   const reduceMotion = useReducedMotion();
-  const place = getAppRailPlace(location.pathname);
+  const shellPlace = usePageTabStore((state) => state.shellPlace);
+  const place = getAppRailPlace(location.pathname, shellPlace);
+  useHomeVisitTracking(place === 'home');
 
   const openHome = useCallback(() => {
     executeAppCommand(APP_COMMAND.navigateHome);

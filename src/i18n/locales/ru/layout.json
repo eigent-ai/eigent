@@ -1677,5 +1677,16 @@
   "pinned-space-moved": "{{name}} перемещено на позицию {{position}} из {{count}}",
   "other-spaces": "Другие Пространства",
   "space-status-waiting": "Ждут вашего ответа: {{count}}",
-  "space-status-running": "Выполняется: {{count}}"
+  "space-status-running": "Выполняется: {{count}}",
+  "all-spaces": "Все Пространства",
+  "needs-you": "Ждут вас",
+  "fold-space": "Свернуть {{name}}",
+  "unfold-space": "Развернуть {{name}}",
+  "show-all-sessions": "Показать все ({{count}})",
+  "show-all-sessions-in-space": "Показать все сессии в {{name}} ({{count}})",
+  "open-in-space-view": "Открыть в режиме Пространства",
+  "new-session-in-space": "в {{name}}",
+  "new-session-space": "Пространство для этой сессии",
+  "new-session-start-in": "Начать в",
+  "home-new-session-description": "Попросите Eigent автоматизировать ваши задачи"
 }
