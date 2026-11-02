@@ -46,6 +46,29 @@ export const WorkspaceTab = {
 
 export type WorkspaceTabId = (typeof WorkspaceTab)[keyof typeof WorkspaceTab];
 
+/**
+ * Which place owns the `/` route's sidebar. Home shows a Session or New
+ * session next to the Home sidebar; the Space view shows every Space tab next
+ * to the Space sidebar. The content is the same Workspace subtree in both.
+ */
+export type ShellPlace = 'home' | 'space';
+
+/**
+ * Tabs Home can show. The composer landing (`workforce`) counts, because
+ * Home draws it as New session. Every other tab belongs to the Space view.
+ */
+export function isHomePlaceTab(tab: WorkspaceTabId): boolean {
+  return (
+    tab === WorkspaceTab.Workforce ||
+    tab === WorkspaceTab.Project ||
+    tab === WorkspaceTab.NewProject
+  );
+}
+
+export function normalizeShellPlace(value: unknown): ShellPlace {
+  return value === 'home' ? 'home' : 'space';
+}
+
 export interface SessionBrowserNavigationState {
   url: string;
   title: string;
@@ -513,6 +536,15 @@ export interface PageTabState {
     options?: { clearFilesForProjectId?: string | null }
   ) => void;
   /**
+   * The place `/` shows. Persisted. Opening a tab Home can't show moves to
+   * the Space view.
+   */
+  shellPlace: ShellPlace;
+  setShellPlace: (place: ShellPlace) => void;
+  /** Spaces folded in the Home sidebar. Persisted. */
+  homeFoldedSpaceIds: string[];
+  setHomeSpaceFolded: (spaceId: string, folded: boolean) => void;
+  /**
    * Workspace rail visibility, toggled from the title bar. Only the workspace
    * shell honours this — Home and Settings always show their rail.
    */
@@ -848,8 +880,22 @@ export const usePageTabStore = create<PageTabState>()(
 
           return {
             activeWorkspaceTab: tab,
+            ...(isHomePlaceTab(tab) ? {} : { shellPlace: 'space' as const }),
             unviewedTabs: newUnviewedTabs,
             filesUnviewedForProjects: nextFilesProjects,
+          };
+        }),
+      shellPlace: 'space',
+      setShellPlace: (place) => set({ shellPlace: normalizeShellPlace(place) }),
+      homeFoldedSpaceIds: [],
+      setHomeSpaceFolded: (spaceId, folded) =>
+        set((state) => {
+          const isFolded = state.homeFoldedSpaceIds.includes(spaceId);
+          if (isFolded === folded) return state;
+          return {
+            homeFoldedSpaceIds: folded
+              ? [...state.homeFoldedSpaceIds, spaceId]
+              : state.homeFoldedSpaceIds.filter((id) => id !== spaceId),
           };
         }),
       workspaceSidebarHidden: false,
@@ -1100,6 +1146,7 @@ export const usePageTabStore = create<PageTabState>()(
           newUnviewedTabs.delete('triggers');
           return {
             activeWorkspaceTab: 'triggers',
+            shellPlace: 'space',
             unviewedTabs: newUnviewedTabs,
             triggerAddDialogRequestId: state.triggerAddDialogRequestId + 1,
           };
@@ -1752,9 +1799,24 @@ export const usePageTabStore = create<PageTabState>()(
         }
         return persistedState as PageTabState;
       },
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<PageTabState>;
+        return {
+          ...currentState,
+          ...persisted,
+          shellPlace: normalizeShellPlace(persisted.shellPlace),
+          homeFoldedSpaceIds: Array.isArray(persisted.homeFoldedSpaceIds)
+            ? persisted.homeFoldedSpaceIds.filter(
+                (id): id is string => typeof id === 'string'
+              )
+            : currentState.homeFoldedSpaceIds,
+        };
+      },
       partialize: (state) => ({
         sessionSummaryOpenByProject: state.sessionSummaryOpenByProject,
         workspaceSidebarHidden: state.workspaceSidebarHidden,
+        shellPlace: state.shellPlace,
+        homeFoldedSpaceIds: state.homeFoldedSpaceIds,
         chatTimelineDetailLevel: state.chatTimelineDetailLevel,
         narrativeInformationDensity: state.narrativeInformationDensity,
         customAgentFolderPathByProjectId:

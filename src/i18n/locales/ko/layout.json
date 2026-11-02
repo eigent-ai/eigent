@@ -1611,5 +1611,16 @@
   "pinned-space-moved": "{{name}}을(를) {{count}}개 중 {{position}}번째로 이동했습니다",
   "other-spaces": "다른 스페이스",
   "space-status-waiting": "{{count}}개가 답변을 기다리는 중",
-  "space-status-running": "{{count}}개 실행 중"
+  "space-status-running": "{{count}}개 실행 중",
+  "all-spaces": "모든 스페이스",
+  "needs-you": "응답 필요",
+  "fold-space": "{{name}} 접기",
+  "unfold-space": "{{name}} 펼치기",
+  "show-all-sessions": "모두 보기 ({{count}})",
+  "show-all-sessions-in-space": "{{name}}의 세션 모두 보기 ({{count}})",
+  "open-in-space-view": "스페이스 보기에서 열기",
+  "new-session-in-space": "{{name}}에서",
+  "new-session-space": "이 세션의 스페이스",
+  "new-session-start-in": "시작 위치",
+  "home-new-session-description": "Eigent에게 작업 자동화를 맡겨 보세요"
 }

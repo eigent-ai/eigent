@@ -22,6 +22,10 @@ import {
 } from '@/components/Background';
 import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
+import { GlobalSearchDialog } from '@/components/GlobalSearch';
+import { HomeNewSessionGreeting } from '@/components/Home/HomeNewSession';
+import HomeSidebar from '@/components/Home/HomeSidebar';
+import { NewSessionSpaceChip } from '@/components/Home/NewSessionSpaceChip';
 import AppShellLayout, {
   APP_SHELL_CONTENT_CLASS,
 } from '@/components/Layout/AppShellLayout';
@@ -48,7 +52,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { usePageTabStore, WorkspaceTab } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 
 import Session from '@/components/Session';
@@ -79,8 +83,18 @@ export default function WorkspacePage() {
     activeProjectId ? state.getProjectMeta(activeProjectId) : null
   );
 
-  const { activeWorkspaceTab, setHasAgentFiles, setActiveWorkspaceTab } =
-    usePageTabStore();
+  const {
+    activeWorkspaceTab: storedWorkspaceTab,
+    setHasAgentFiles,
+    setActiveWorkspaceTab,
+  } = usePageTabStore();
+  const shellPlace = usePageTabStore((s) => s.shellPlace);
+  const inHome = shellPlace === 'home';
+  // Home shows a Session or New session; its composer landing is New session.
+  const activeWorkspaceTab =
+    inHome && storedWorkspaceTab !== WorkspaceTab.Project
+      ? WorkspaceTab.NewProject
+      : storedWorkspaceTab;
   const workspaceSidebarHidden = usePageTabStore(
     (s) => s.workspaceSidebarHidden
   );
@@ -107,6 +121,19 @@ export default function WorkspacePage() {
   useMainWindowSessionWindows();
 
   const [, setActiveWebviewId] = useState<string | null>(null);
+  // ⌘K search belongs to the page, so it works next to either sidebar.
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setGlobalSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const [triggerSelectedId, setTriggerSelectedId] = useState<number | null>(
     null
@@ -138,6 +165,14 @@ export default function WorkspacePage() {
   useEffect(() => {
     checkLocalServerStale();
   }, []);
+
+  // Keep the stored tab in step with what Home shows, so shortcuts and the
+  // Session header read New session there too.
+  useLayoutEffect(() => {
+    if (activeWorkspaceTab !== storedWorkspaceTab) {
+      setActiveWorkspaceTab(activeWorkspaceTab);
+    }
+  }, [activeWorkspaceTab, setActiveWorkspaceTab, storedWorkspaceTab]);
 
   // Project-scoped tabs (except new-project shell) require an active project.
   // When opening files/triggers/runs/project from the workspace tab without a
@@ -447,7 +482,17 @@ export default function WorkspacePage() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <div className={workspaceMainForegroundClass}>
-              <Session isNewProject />
+              <Session
+                isNewProject
+                newSessionComposer={
+                  inHome
+                    ? {
+                        above: <HomeNewSessionGreeting />,
+                        footerLeading: <NewSessionSpaceChip />,
+                      }
+                    : undefined
+                }
+              />
             </div>
           </div>
         );
@@ -502,8 +547,14 @@ export default function WorkspacePage() {
 
   return (
     <ReactFlowProvider>
+      <GlobalSearchDialog
+        open={globalSearchOpen}
+        onOpenChange={setGlobalSearchOpen}
+      />
       <AppShellLayout
-        sidebar={<SpaceSidebar chatStore={chatStore} />}
+        sidebar={
+          inHome ? <HomeSidebar /> : <SpaceSidebar chatStore={chatStore} />
+        }
         sidebarHidden={workspaceSidebarHidden}
         /* Always mounted: hosts preview <webview> guests so their pages and
            history survive panel close, workspace-tab hops, and project

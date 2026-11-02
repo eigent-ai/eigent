@@ -115,9 +115,6 @@ vi.mock('@/components/Home/NewSpaceDialog', () => ({ default: () => null }));
 vi.mock('@/components/Home/HomeGreeting', () => ({ default: () => null }));
 vi.mock('@/components/Home/HomeHeader', () => ({ default: () => null }));
 vi.mock('@/components/Home/HomeSections', () => ({ default: () => null }));
-vi.mock('@/components/Home/HomeSidebarNav', () => ({
-  HomeSidebarNavGroup: () => null,
-}));
 vi.mock('@/lib/share', () => ({ share: vi.fn() }));
 vi.mock('@/lib/sessionStop', () => ({
   stopSessionForDeletion: mocks.stop,

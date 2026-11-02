@@ -16,7 +16,11 @@ import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
-import { WorkspaceTab, usePageTabStore } from '@/store/pageTabStore';
+import {
+  WorkspaceTab,
+  usePageTabStore,
+  type WorkspaceTabId,
+} from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -31,11 +35,16 @@ export interface SwitchToSpaceOptions {
    * Session id, or none.
    */
   project?: 'last' | string | null;
+  /**
+   * The tab to show afterwards: the composer landing by default, or `null`
+   * to leave the tab for the caller to choose.
+   */
+  tab?: WorkspaceTabId | null;
 }
 
 /**
  * Make a Space active and open one of its Sessions. Shared by the rail, the
- * pinned-Space shortcuts and, later, Home.
+ * pinned-Space shortcuts, Home and the composer's Space chip.
  */
 export function useSpaceSwitch() {
   const { t } = useTranslation();
@@ -46,7 +55,10 @@ export function useSpaceSwitch() {
   const switchToSpace = useCallback(
     async (
       spaceId: string,
-      { project = 'last' }: SwitchToSpaceOptions = {}
+      {
+        project = 'last',
+        tab = WorkspaceTab.Workforce,
+      }: SwitchToSpaceOptions = {}
     ) => {
       const projectStore = useProjectRuntimeStore.getState();
       const pageTabs = usePageTabStore.getState();
@@ -85,7 +97,7 @@ export function useSpaceSwitch() {
         } else {
           projectStore.setActiveProject(null);
         }
-        pageTabs.setActiveWorkspaceTab(WorkspaceTab.Workforce);
+        if (tab) pageTabs.setActiveWorkspaceTab(tab);
         pageTabs.requestWorkspaceChatFocus();
         return true;
       } catch (error) {
@@ -112,6 +124,7 @@ export function useSpaceSwitch() {
           if (!(await switchToSpace(spaceId))) return;
         }
         closeSettings();
+        usePageTabStore.getState().setShellPlace('space');
         navigate('/');
       });
     },

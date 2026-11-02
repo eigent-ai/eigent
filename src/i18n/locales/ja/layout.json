@@ -1611,5 +1611,16 @@
   "pinned-space-moved": "{{name}} を {{count}} 件中 {{position}} 番目に移動しました",
   "other-spaces": "その他のスペース",
   "space-status-waiting": "{{count}} 件が返信待ち",
-  "space-status-running": "{{count}} 件が実行中"
+  "space-status-running": "{{count}} 件が実行中",
+  "all-spaces": "すべてのスペース",
+  "needs-you": "対応が必要",
+  "fold-space": "{{name}} を折りたたむ",
+  "unfold-space": "{{name}} を展開",
+  "show-all-sessions": "すべて表示（{{count}}）",
+  "show-all-sessions-in-space": "{{name}} のセッションをすべて表示（{{count}}）",
+  "open-in-space-view": "スペースビューで開く",
+  "new-session-in-space": "{{name}} で",
+  "new-session-space": "このセッションのスペース",
+  "new-session-start-in": "開始先",
+  "home-new-session-description": "Eigent にタスクの自動化を依頼しましょう"
 }

@@ -1633,5 +1633,16 @@
   "pinned-space-moved": "{{name}} moved to position {{position}} of {{count}}",
   "other-spaces": "Other Spaces",
   "space-status-waiting": "{{count}} waiting for your reply",
-  "space-status-running": "{{count}} running"
+  "space-status-running": "{{count}} running",
+  "all-spaces": "All Spaces",
+  "needs-you": "Needs you",
+  "fold-space": "Fold {{name}}",
+  "unfold-space": "Unfold {{name}}",
+  "show-all-sessions": "Show all {{count}}",
+  "show-all-sessions-in-space": "Show all {{count}} sessions in {{name}}",
+  "open-in-space-view": "Open in Space view",
+  "new-session-in-space": "in {{name}}",
+  "new-session-space": "Space for this session",
+  "new-session-start-in": "Start in",
+  "home-new-session-description": "Ask Eigent to automate your tasks"
 }
