@@ -68,6 +68,7 @@ export function getKeyboardShortcutGroups(
   const isMac = platform === 'darwin';
   const primary = isMac ? '⌘' : 'Ctrl';
   const shift = isMac ? '⇧' : 'Shift';
+  const pinnedSpaceModifiers = isMac ? ['⌥', '⌘'] : ['Ctrl', 'Shift'];
 
   return [
     {
@@ -99,6 +100,12 @@ export function getKeyboardShortcutGroups(
           defaultLabel: 'Global Search',
           keys: [primary, 'K'],
         },
+        ...[1, 2, 3, 4, 5].map((position) => ({
+          id: `navigate-pinned-space-${position}`,
+          labelKey: `layout.shortcuts.navigate-pinned-space-${position}`,
+          defaultLabel: `Go to pinned Space ${position}`,
+          keys: [...pinnedSpaceModifiers, String(position)],
+        })),
         {
           id: 'toggle-workspace-sidebar',
           labelKey: 'layout.shortcuts.toggle-workspace-sidebar',
@@ -290,7 +297,9 @@ export function getKeyboardShortcutById(
 }
 
 export function formatKeyboardShortcutKeys(keys: readonly string[]): string {
-  return keys.some((key) => key === '⌘' || key === '⌃' || key === '⇧')
+  return keys.some(
+    (key) => key === '⌘' || key === '⌃' || key === '⇧' || key === '⌥'
+  )
     ? keys.join('')
     : keys.join('+');
 }

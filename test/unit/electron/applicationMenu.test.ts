@@ -359,6 +359,36 @@ describe('application menu', () => {
     expect(findItem(production, 'help.report-bug').label).toBe('Report a Bug…');
   });
 
+  it.each([
+    ['darwin', 'Command+Alt+'],
+    ['win32', 'Control+Shift+'],
+    ['linux', 'Control+Shift+'],
+  ] as const)(
+    'opens pinned Spaces 1–5 with hidden accelerators on %s',
+    (platform, prefix) => {
+      const harness = createOptions(platform, false);
+      const template = buildApplicationMenuTemplate(harness.options);
+      const items = [1, 2, 3, 4, 5].map((position) =>
+        findItem(template, `view.navigate-pinned-space-${position}`)
+      );
+
+      expect(items.map((item) => [item.accelerator, item.visible])).toEqual(
+        [1, 2, 3, 4, 5].map((position) => [`${prefix}${position}`, false])
+      );
+      expect(items.every((item) => item.registerAccelerator !== false)).toBe(
+        true
+      );
+      items.forEach(click);
+      expect(harness.dispatchRendererCommand.mock.calls).toEqual([
+        [APP_COMMAND.navigatePinnedSpace1],
+        [APP_COMMAND.navigatePinnedSpace2],
+        [APP_COMMAND.navigatePinnedSpace3],
+        [APP_COMMAND.navigatePinnedSpace4],
+        [APP_COMMAND.navigatePinnedSpace5],
+      ]);
+    }
+  );
+
   it.each(['darwin', 'win32', 'linux'] as const)(
     'installs no duplicate or renderer-reserved accelerator on %s',
     (platform) => {

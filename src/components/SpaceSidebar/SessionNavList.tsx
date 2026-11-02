@@ -39,7 +39,8 @@ export interface SessionNavListProps {
   onDeleteSession?: (sessionId: string) => void;
   onEndSession?: (sessionId: string) => void;
   onPinSession?: (sessionId: string) => void;
-  onNewSession: () => void;
+  /** Omit when the surrounding sidebar shows its own New session row. */
+  onNewSession?: () => void;
   /** Selected state for the New Session row. */
   newSessionActive?: boolean;
   openIn?: SessionOpenInActions;
@@ -88,27 +89,29 @@ export function SessionNavList({
       )}
     >
       {/* + New Session */}
-      <div className="flex w-full min-w-0 flex-col">
-        <NavTab
-          active={newSessionActive}
-          onClick={onNewSession}
-          leading={<DsIcon icon={Plus} className="shrink-0" aria-hidden />}
-          label={newSessionLabel}
-          tooltip={
-            <ShortcutTooltipContent
-              label={newSessionLabel}
-              shortcutId="new-project"
-            />
-          }
-          tooltipCompact
-          tooltipVariant="delayed"
-          ariaLabel={newSessionLabel}
-          ariaCurrentPage={newSessionActive}
-        />
-      </div>
+      {onNewSession ? (
+        <div className="flex w-full min-w-0 flex-col">
+          <NavTab
+            active={newSessionActive}
+            onClick={onNewSession}
+            leading={<DsIcon icon={Plus} className="shrink-0" aria-hidden />}
+            label={newSessionLabel}
+            tooltip={
+              <ShortcutTooltipContent
+                label={newSessionLabel}
+                shortcutId="new-project"
+              />
+            }
+            tooltipCompact
+            tooltipVariant="delayed"
+            ariaLabel={newSessionLabel}
+            ariaCurrentPage={newSessionActive}
+          />
+        </div>
+      ) : null}
 
       {/* Scrollable section list */}
-      <SidebarScrollArea className="mt-1 pb-1">
+      <SidebarScrollArea className={cn('pb-1', onNewSession && 'mt-1')}>
         {hasPinned && (
           <SidebarAccordionSection label={pinnedLabel}>
             <SessionNavListRows {...sharedRowProps} sessions={pinnedSessions} />

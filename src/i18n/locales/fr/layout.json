@@ -647,7 +647,12 @@
     "close-window": "Fermer la fenêtre",
     "full-screen": "Basculer en plein écran",
     "minimize": "Réduire",
-    "quit": "Quitter Eigent"
+    "quit": "Quitter Eigent",
+    "navigate-pinned-space-1": "Aller à l’Espace épinglé 1",
+    "navigate-pinned-space-2": "Aller à l’Espace épinglé 2",
+    "navigate-pinned-space-3": "Aller à l’Espace épinglé 3",
+    "navigate-pinned-space-4": "Aller à l’Espace épinglé 4",
+    "navigate-pinned-space-5": "Aller à l’Espace épinglé 5"
   },
   "nativeMenu": {
     "file": "Fichier",
@@ -1635,5 +1640,20 @@
   "session-window-loading": "Ouverture de la session…",
   "session-window-missing": "Cette session n’est plus disponible",
   "session-window-close": "Fermer la fenêtre",
-  "app-navigation": "Navigation de l'application"
+  "app-navigation": "Navigation de l'application",
+  "pin-space": "Épingler l’Espace",
+  "unpin-space": "Désépingler l’Espace",
+  "space-open": "Ouvrir",
+  "move-up": "Monter",
+  "move-down": "Descendre",
+  "choose-pinned-spaces": "Choisir les Espaces épinglés",
+  "pinned-spaces": "Espaces épinglés",
+  "pinned-spaces-count": "{{count}} sur {{max}}",
+  "pinned-spaces-active": "Actif",
+  "pinned-spaces-hint": "Faites glisser ou utilisez les flèches pour réorganiser. L’ordre définit les raccourcis.",
+  "pinned-space-move": "Déplacer {{name}}, position {{position}} sur {{count}}",
+  "pinned-space-moved": "{{name}} déplacé en position {{position}} sur {{count}}",
+  "other-spaces": "Autres Espaces",
+  "space-status-waiting": "{{count}} en attente de votre réponse",
+  "space-status-running": "{{count}} en cours"
 }

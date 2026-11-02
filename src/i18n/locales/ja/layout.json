@@ -647,7 +647,12 @@
     "close-window": "ウインドウを閉じる",
     "full-screen": "フルスクリーンの切り替え",
     "minimize": "しまう",
-    "quit": "Eigent を終了"
+    "quit": "Eigent を終了",
+    "navigate-pinned-space-1": "ピン留めしたスペースへ移動 1",
+    "navigate-pinned-space-2": "ピン留めしたスペースへ移動 2",
+    "navigate-pinned-space-3": "ピン留めしたスペースへ移動 3",
+    "navigate-pinned-space-4": "ピン留めしたスペースへ移動 4",
+    "navigate-pinned-space-5": "ピン留めしたスペースへ移動 5"
   },
   "nativeMenu": {
     "file": "ファイル",
@@ -1591,5 +1596,20 @@
   "session-window-loading": "セッションを開いています…",
   "session-window-missing": "このセッションは利用できなくなりました",
   "session-window-close": "ウィンドウを閉じる",
-  "app-navigation": "アプリのナビゲーション"
+  "app-navigation": "アプリのナビゲーション",
+  "pin-space": "スペースをピン留め",
+  "unpin-space": "スペースのピン留めを解除",
+  "space-open": "開く",
+  "move-up": "上へ移動",
+  "move-down": "下へ移動",
+  "choose-pinned-spaces": "ピン留めするスペースを選択",
+  "pinned-spaces": "ピン留めしたスペース",
+  "pinned-spaces-count": "{{count}} / {{max}}",
+  "pinned-spaces-active": "アクティブ",
+  "pinned-spaces-hint": "ドラッグまたは矢印キーで並べ替えます。順序がショートカットになります。",
+  "pinned-space-move": "{{name}} を移動（{{count}} 件中 {{position}} 番目）",
+  "pinned-space-moved": "{{name}} を {{count}} 件中 {{position}} 番目に移動しました",
+  "other-spaces": "その他のスペース",
+  "space-status-waiting": "{{count}} 件が返信待ち",
+  "space-status-running": "{{count}} 件が実行中"
 }

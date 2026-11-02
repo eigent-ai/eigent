@@ -16,6 +16,7 @@
 import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
 import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
 import ContentHeader, {
+  CONTENT_HEADER_TITLE_CLASS,
   useFocusContentHeading,
 } from '@/components/Layout/ContentHeader';
 import OverviewIconFrame from '@/components/Layout/OverviewIconFrame';
@@ -206,6 +207,12 @@ interface SpaceDetailProps {
   activeTab: SpaceDetailTab;
   onTabChange: (tab: SpaceDetailTab) => void;
   onBack: () => void;
+  /**
+   * `home` is the Space overview in Home, under a Home › Spaces breadcrumb.
+   * `space-view` is the Space's Workspace page next to the Space sidebar;
+   * the top bar already names the Space, so the title is just "Workspace".
+   */
+  presentation?: 'home' | 'space-view';
 }
 
 export default function SpaceDetail({
@@ -213,6 +220,7 @@ export default function SpaceDetail({
   activeTab,
   onTabChange,
   onBack,
+  presentation = 'home',
 }: SpaceDetailProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -235,6 +243,29 @@ export default function SpaceDetail({
   );
 
   const heading = useFocusContentHeading(spaceId);
+  const inSpaceView = presentation === 'space-view';
+  const headerTitle = (lastSegment: string) =>
+    inSpaceView ? (
+      <h1 ref={heading} tabIndex={-1} className={CONTENT_HEADER_TITLE_CLASS}>
+        {t('layout.workspace-tab')}
+      </h1>
+    ) : (
+      <ContentBreadcrumb
+        headingRef={heading}
+        ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
+        segments={[
+          {
+            label: t('layout.home', { defaultValue: 'Home' }),
+            onClick: onBack,
+          },
+          {
+            label: t('layout.spaces', { defaultValue: 'Spaces' }),
+            onClick: onBack,
+          },
+          { label: lastSegment },
+        ]}
+      />
+    );
 
   const handleOpenWorkspace = useCallback(() => {
     setActiveSpace(spaceId);
@@ -258,23 +289,7 @@ export default function SpaceDetail({
           persistent
           className="px-ds-16"
           titleAsChild
-          title={
-            <ContentBreadcrumb
-              headingRef={heading}
-              ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
-              segments={[
-                {
-                  label: t('layout.home', { defaultValue: 'Home' }),
-                  onClick: onBack,
-                },
-                {
-                  label: t('layout.spaces', { defaultValue: 'Spaces' }),
-                  onClick: onBack,
-                },
-                { label: t('layout.space-unavailable') },
-              ]}
-            />
-          }
+          title={headerTitle(t('layout.space-unavailable'))}
         />
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
           <DsIcon
@@ -357,35 +372,21 @@ export default function SpaceDetail({
         persistent
         className="px-ds-16"
         titleAsChild
-        title={
-          <ContentBreadcrumb
-            headingRef={heading}
-            ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
-            segments={[
-              {
-                label: t('layout.home', { defaultValue: 'Home' }),
-                onClick: onBack,
-              },
-              {
-                label: t('layout.spaces', { defaultValue: 'Spaces' }),
-                onClick: onBack,
-              },
-              { label: spaceName },
-            ]}
-          />
-        }
+        title={headerTitle(spaceName)}
         actions={
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            buttonRadius="full"
-            onClick={handleOpenWorkspace}
-          >
-            {t('layout.open-workspace', {
-              defaultValue: 'Open workspace',
-            })}
-          </Button>
+          inSpaceView ? undefined : (
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              buttonRadius="full"
+              onClick={handleOpenWorkspace}
+            >
+              {t('layout.open-workspace', {
+                defaultValue: 'Open workspace',
+              })}
+            </Button>
+          )
         }
       />
       <div className="flex min-h-0 flex-1 flex-col">
