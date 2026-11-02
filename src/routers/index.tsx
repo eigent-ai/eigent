@@ -15,22 +15,22 @@
 import { proxyFetchPost } from '@/api/http';
 import { isDesktop } from '@/client/platform';
 import { useAuthStore } from '@/store/authStore';
-import {
-  SETTINGS_SECTIONS,
-  type SettingsSectionId,
-} from '@/store/settingsStore';
 import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
 import { warnAuthClearedForEnvironment } from '@/lib/authEnvironment';
 import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
-import { LegacyRouteRedirect } from './LegacyRouteCompatibility';
+import {
+  LegacyRouteRedirect,
+  LegacySettingRedirect,
+} from './LegacyRouteCompatibility';
 import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
 const Workspace = lazy(() => import('@/pages/Workspace'));
+const Home = lazy(() => import('@/pages/Home'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
@@ -161,36 +161,6 @@ const ProtectedRoute = () => {
   );
 };
 
-/** Keep legacy Settings links working while Home is the canonical surface. */
-function SettingsRouteRedirect() {
-  const location = useLocation();
-  const searchParams = new URLSearchParams(location.search);
-  const sectionFromUrl = searchParams.get('section');
-  const isLegacySettingsSection = SETTINGS_SECTIONS.includes(
-    sectionFromUrl as SettingsSectionId
-  );
-
-  if (sectionFromUrl !== 'spaces') {
-    searchParams.set('section', 'settings');
-    if (
-      sectionFromUrl &&
-      isLegacySettingsSection &&
-      sectionFromUrl !== 'settings'
-    ) {
-      searchParams.set('tab', sectionFromUrl);
-    }
-  }
-
-  return (
-    <Navigate
-      to={`/home?${searchParams.toString()}`}
-      replace
-      state={location.state}
-    />
-  );
-}
-
-// Main route configuration
 const AppRoutes = () => (
   <Routes>
     <Route path="/login" element={<Login />} />
@@ -206,9 +176,9 @@ const AppRoutes = () => (
           element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
         >
           <Route index element={null} />
-          <Route path="/home" element={<Settings />} />
+          <Route path="/home" element={<Home />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
-        <Route path="/settings" element={<SettingsRouteRedirect />} />
         <Route
           path="/history"
           element={<LegacyRouteRedirect kind="history" />}
@@ -225,14 +195,8 @@ const AppRoutes = () => (
           path="/agent-plugins/import"
           element={<LegacyRouteRedirect kind="agent-plugin-import" />}
         />
-        <Route
-          path="/setting"
-          element={<Navigate to="/home?section=settings" replace />}
-        />
-        <Route
-          path="/setting/*"
-          element={<Navigate to="/home?section=settings" replace />}
-        />
+        <Route path="/setting" element={<LegacySettingRedirect />} />
+        <Route path="/setting/*" element={<LegacySettingRedirect />} />
       </Route>
     </Route>
     <Route path="*" element={<NotFound />} />

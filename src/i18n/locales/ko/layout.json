@@ -1590,5 +1590,6 @@
   "bring-session-back": "여기로 가져오기",
   "session-window-loading": "세션을 여는 중…",
   "session-window-missing": "이 세션을 더 이상 사용할 수 없습니다",
-  "session-window-close": "창 닫기"
+  "session-window-close": "창 닫기",
+  "app-navigation": "앱 탐색"
 }

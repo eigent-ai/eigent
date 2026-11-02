@@ -1656,5 +1656,6 @@
   "bring-session-back": "Вернуть сюда",
   "session-window-loading": "Открытие сессии…",
   "session-window-missing": "Эта сессия больше недоступна",
-  "session-window-close": "Закрыть окно"
+  "session-window-close": "Закрыть окно",
+  "app-navigation": "Навигация по приложению"
 }

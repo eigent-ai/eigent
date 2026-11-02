@@ -13,19 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
-import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
-import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdown';
 import {
-  TOP_BAR_CONTROL_SELECTED_CLASS,
   TOP_BAR_CONTROL_STATE_CLASS,
   TOP_BAR_PILL_CLASS,
 } from '@/components/TopBar/controlStyles';
 import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
 import UpdateButton from '@/components/TopBar/UpdateButton';
-import { UserMenu } from '@/components/TopBar/UserMenu';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -112,7 +108,6 @@ function HeaderWin() {
     (s) => s.requestWorkspaceChatFocus
   );
   const closeSettings = useSettingsStore((state) => state.closeSettings);
-  const appearance = useAuthStore((state) => state.appearance);
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
   const { isInstalling, installationState } = useInstallationUI();
@@ -126,7 +121,7 @@ function HeaderWin() {
   }, [host]);
 
   const isWorkspacePage = location.pathname === '/';
-  const isHomePage = isSettingsRoutePath(location.pathname);
+  const isShellPage = isSettingsRoutePath(location.pathname);
   const topBarLeadingInset = platform === 'darwin' ? 68 : 8;
 
   const sidebarToggleLabel = workspaceSidebarHidden
@@ -181,28 +176,6 @@ function HeaderWin() {
     [activeSpaceId, projectsBySpaceId, spacesById]
   );
 
-  const openHome = useCallback(() => {
-    void runAfterWorkspaceConfigurationSave(() => {
-      // Home is project-independent, but the active Space remains selected so
-      // its name and destination stay available in the top bar.
-      projectStore.setActiveProject(null);
-      closeSettings();
-      navigate('/home?section=spaces', {
-        state: isHomePage
-          ? location.state
-          : shellBackState(`${location.pathname}${location.search}`),
-      });
-    });
-  }, [
-    closeSettings,
-    isHomePage,
-    location.pathname,
-    location.search,
-    location.state,
-    navigate,
-    projectStore,
-  ]);
-
   const openActiveSpaceHomeTab = useCallback(
     (spaceTab: 'memory' | 'workspace-profile') => {
       if (!activeSpaceId) return;
@@ -212,7 +185,7 @@ function HeaderWin() {
         navigate(
           `/home?section=spaces&spaceId=${encodeURIComponent(activeSpaceId)}&spaceTab=${spaceTab}`,
           {
-            state: isHomePage
+            state: isShellPage
               ? location.state
               : shellBackState(`${location.pathname}${location.search}`),
           }
@@ -222,7 +195,7 @@ function HeaderWin() {
     [
       activeSpaceId,
       closeSettings,
-      isHomePage,
+      isShellPage,
       location.pathname,
       location.search,
       location.state,
@@ -520,79 +493,39 @@ function HeaderWin() {
           sidebarHidden={workspaceSidebarHidden}
           leadingInset={topBarLeadingInset}
           sidebarControls={
-            <>
-              <TooltipSimple
-                content={
-                  <ShortcutTooltipContent
-                    label={sidebarToggleLabel}
-                    shortcutId="toggle-workspace-sidebar"
-                  />
-                }
-                compact
-                side="bottom"
-                align="center"
-                variant="instant"
+            <TooltipSimple
+              content={
+                <ShortcutTooltipContent
+                  label={sidebarToggleLabel}
+                  shortcutId="toggle-workspace-sidebar"
+                />
+              }
+              compact
+              side="bottom"
+              align="center"
+              variant="instant"
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                buttonContent="icon-only"
+                className={cn(
+                  'no-drag rounded-full',
+                  TOP_BAR_CONTROL_STATE_CLASS,
+                  'aria-pressed:!bg-transparent'
+                )}
+                onClick={toggleWorkspaceSidebar}
+                aria-pressed={!workspaceSidebarHidden}
+                aria-label={sidebarToggleLabel}
               >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  buttonContent="icon-only"
-                  className={cn(
-                    'no-drag rounded-full',
-                    TOP_BAR_CONTROL_STATE_CLASS,
-                    'aria-pressed:!bg-transparent'
-                  )}
-                  onClick={toggleWorkspaceSidebar}
-                  aria-pressed={!workspaceSidebarHidden}
-                  aria-label={sidebarToggleLabel}
-                >
-                  {workspaceSidebarHidden ? (
-                    <DsIcon icon={PanelLeftOpen} aria-hidden />
-                  ) : (
-                    <DsIcon icon={PanelLeft} aria-hidden />
-                  )}
-                </Button>
-              </TooltipSimple>
-
-              <TooltipSimple
-                content={
-                  <ShortcutTooltipContent
-                    label={t('layout.home')}
-                    shortcutId="navigate-home"
-                  />
-                }
-                compact
-                side="bottom"
-                align="center"
-                variant="delayed"
-              >
-                <button
-                  type="button"
-                  onClick={openHome}
-                  aria-label={t('layout.home')}
-                  aria-current={isHomePage ? 'page' : undefined}
-                  className={cn(
-                    TOP_BAR_PILL_CLASS,
-                    isHomePage && TOP_BAR_CONTROL_SELECTED_CLASS
-                  )}
-                >
-                  <img
-                    src={
-                      appearance === 'dark'
-                        ? eigentAppIconWhite
-                        : eigentAppIconBlack
-                    }
-                    alt=""
-                    className="mt-[1px] h-[22px] w-[22px] shrink-0 select-none"
-                    width={16}
-                    height={16}
-                    draggable={false}
-                  />
-                  <span>{t('layout.home')}</span>
-                </button>
-              </TooltipSimple>
-            </>
+                {workspaceSidebarHidden ? (
+                  <DsIcon icon={PanelLeftOpen} aria-hidden />
+                ) : (
+                  <DsIcon icon={PanelLeft} aria-hidden />
+                )}
+              </Button>
+            </TooltipSimple>
           }
           contentControls={
             isWorkspacePage ? (
@@ -711,7 +644,6 @@ function HeaderWin() {
               <DsIcon icon={CircleHelp} aria-hidden />
             </Button>
           </TooltipSimple>
-          <UserMenu />
         </div>
       </div>
 

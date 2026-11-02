@@ -1634,5 +1634,6 @@
   "bring-session-back": "Riporta qui",
   "session-window-loading": "Apertura della sessione…",
   "session-window-missing": "Questa sessione non è più disponibile",
-  "session-window-close": "Chiudi finestra"
+  "session-window-close": "Chiudi finestra",
+  "app-navigation": "Navigazione dell'app"
 }

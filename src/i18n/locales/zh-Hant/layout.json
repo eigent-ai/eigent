@@ -1590,5 +1590,6 @@
   "bring-session-back": "移回這裡",
   "session-window-loading": "正在開啟工作階段…",
   "session-window-missing": "此工作階段已無法使用",
-  "session-window-close": "關閉視窗"
+  "session-window-close": "關閉視窗",
+  "app-navigation": "應用程式導覽"
 }

@@ -9,6 +9,13 @@
       "removal": "none"
     },
     {
+      "id": "app-shell-rail",
+      "owner": "app-shell",
+      "reason": "The 48px rail of places left of every page; the top bar's sidebar-control span and the content edge are measured from its width.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
       "id": "content-header-height",
       "owner": "app-shell",
       "reason": "Canonical content-header, panel headers, and file-tree counterparts use layout-row-header (40px). List rows use control-xl (40px), never 44px.",

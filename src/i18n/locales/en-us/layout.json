@@ -1612,5 +1612,6 @@
   "bring-session-back": "Bring back here",
   "session-window-loading": "Opening session…",
   "session-window-missing": "This session is no longer available",
-  "session-window-close": "Close window"
+  "session-window-close": "Close window",
+  "app-navigation": "App navigation"
 }
