@@ -546,6 +546,22 @@ async def active_local_execution():
     return {"active": active}
 
 
+@router.get("/runs/attention")
+async def project_attention():
+    """Which Sessions have active work, across every Space.
+
+    Read-only. ``waiting`` means a Run waits for the user's reply or decision;
+    it outranks ``running`` when a Session has both.
+    """
+    rows = await asyncio.to_thread(
+        get_default_run_journal().list_project_attention
+    )
+    return [
+        {"project_id": project_id, "state": state}
+        for project_id, state in rows
+    ]
+
+
 @router.get("/runs/{run_id}")
 async def get_run(
     run_id: str,
