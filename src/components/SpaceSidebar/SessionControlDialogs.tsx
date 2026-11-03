@@ -210,7 +210,8 @@ export function SessionControlDialogs() {
           });
         } catch (error) {
           console.warn(
-            `[SessionControlDialogs] Failed to archive server project ${projectId}:`,
+            '[SessionControlDialogs] Failed to archive server project:',
+            projectId,
             error
           );
         }
