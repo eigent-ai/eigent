@@ -1632,6 +1632,6 @@
   "pinned-space-move": "{{name}} verschieben, Position {{position}} von {{count}}",
   "pinned-space-moved": "{{name}} auf Position {{position}} von {{count}} verschoben",
   "other-spaces": "Weitere Spaces",
-  "space-status-waiting": "{{count}} warten auf deine Antwort",
-  "space-status-running": "{{count}} laufen"
+  "space-status-waiting": "Warten auf deine Antwort: {{count}}",
+  "space-status-running": "In Ausführung: {{count}}"
 }
