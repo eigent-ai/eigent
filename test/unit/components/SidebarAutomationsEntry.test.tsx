@@ -27,7 +27,10 @@ const mocks = vi.hoisted(() => {
   };
   const space = {
     activeSpaceId: 'space-a',
-    spaces: {},
+    spaces: { 'space-a': { id: 'space-a', name: 'Research' } } as Record<
+      string,
+      { id: string; name: string }
+    >,
     projectsBySpaceId: { 'space-a': [meta] },
     getProjectMeta: () => meta,
     getProjectsForSpace: vi.fn((): (typeof meta)[] => []),
@@ -57,6 +60,7 @@ const mocks = vi.hoisted(() => {
     runtime,
     page,
     invoke: vi.fn(),
+    executeAppCommand: vi.fn(),
     archive: vi.fn(),
     stop: vi.fn(),
     SessionStopError: class SessionStopError extends Error {},
@@ -144,7 +148,7 @@ vi.mock('@/components/GlobalSearch', () => ({
   GlobalSearchDialog: () => null,
 }));
 vi.mock('@/components/Layout/AppCommandProvider', () => ({
-  useAppCommand: () => vi.fn(),
+  useAppCommand: () => mocks.executeAppCommand,
 }));
 vi.mock('@/components/ui/shortcut-tooltip', () => ({
   ShortcutTooltipContent: () => null,
@@ -235,5 +239,41 @@ describe('Sidebar Automations entry', () => {
 
     expect(mocks.error).not.toHaveBeenCalled();
     expect(mocks.page.setActiveWorkspaceTab).toHaveBeenCalledWith('triggers');
+  });
+});
+
+describe('Space sidebar first rows', () => {
+  it('starts with the Space, then New session, in place of the Workspace tab', () => {
+    renderSidebar();
+
+    const names = screen
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label'));
+    expect(names.slice(0, 3)).toEqual([
+      'Research, Workspace',
+      'New session',
+      'Files',
+    ]);
+    expect(
+      screen.queryByRole('button', { name: 'Workspace' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens the Workspace page from the Space row', () => {
+    renderSidebar();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Research, Workspace' })
+    );
+    expect(mocks.page.setActiveWorkspaceTab).toHaveBeenCalledWith(
+      'space-workspace'
+    );
+  });
+
+  it('starts a New session from its row', () => {
+    renderSidebar();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+    expect(mocks.executeAppCommand).toHaveBeenCalledWith('new-project');
   });
 });

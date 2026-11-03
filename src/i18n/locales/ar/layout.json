@@ -1583,7 +1583,12 @@
     "close-window": "إغلاق النافذة",
     "full-screen": "تبديل ملء الشاشة",
     "minimize": "تصغير",
-    "quit": "إنهاء Eigent"
+    "quit": "إنهاء Eigent",
+    "navigate-pinned-space-1": "الانتقال إلى المساحة المثبتة 1",
+    "navigate-pinned-space-2": "الانتقال إلى المساحة المثبتة 2",
+    "navigate-pinned-space-3": "الانتقال إلى المساحة المثبتة 3",
+    "navigate-pinned-space-4": "الانتقال إلى المساحة المثبتة 4",
+    "navigate-pinned-space-5": "الانتقال إلى المساحة المثبتة 5"
   },
   "nativeMenu": {
     "file": "ملف",
@@ -1701,5 +1706,20 @@
   "session-window-loading": "جارٍ فتح الجلسة…",
   "session-window-missing": "لم تعد هذه الجلسة متاحة",
   "session-window-close": "إغلاق النافذة",
-  "app-navigation": "التنقل في التطبيق"
+  "app-navigation": "التنقل في التطبيق",
+  "pin-space": "تثبيت المساحة",
+  "unpin-space": "إلغاء تثبيت المساحة",
+  "space-open": "فتح",
+  "move-up": "نقل لأعلى",
+  "move-down": "نقل لأسفل",
+  "choose-pinned-spaces": "اختيار المساحات المثبتة",
+  "pinned-spaces": "المساحات المثبتة",
+  "pinned-spaces-count": "{{count}} من {{max}}",
+  "pinned-spaces-active": "نشطة",
+  "pinned-spaces-hint": "اسحب أو استخدم مفاتيح الأسهم لإعادة الترتيب. يحدد الترتيب الاختصارات.",
+  "pinned-space-move": "نقل {{name}}، الموضع {{position}} من {{count}}",
+  "pinned-space-moved": "تم نقل {{name}} إلى الموضع {{position}} من {{count}}",
+  "other-spaces": "مساحات أخرى",
+  "space-status-waiting": "{{count}} بانتظار ردك",
+  "space-status-running": "{{count}} قيد التشغيل"
 }

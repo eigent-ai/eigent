@@ -9024,6 +9024,41 @@ class SQLiteRunJournal:
                 is not None
             )
 
+    def list_project_attention(self) -> list[tuple[str, str]]:
+        """Return ``(project_id, state)`` for every Project with active work.
+
+        ``state`` is ``waiting`` when a Run waits for the user or holds an
+        open HumanInteraction (questions and Approvals alike), and
+        ``running`` otherwise. Waiting outranks running across a Project's
+        Runs. A bare pending Run with no Attempt is not work yet, matching
+        ``has_active_local_execution``.
+        """
+
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT r.project_id AS project_id,
+                    MAX(CASE WHEN r.status = 'waiting_for_user' OR EXISTS (
+                        SELECT 1 FROM human_interactions h
+                        WHERE h.run_id = r.run_id
+                        AND h.status IN ('requested', 'presented')
+                    ) THEN 1 ELSE 0 END) AS waiting
+                FROM runs r
+                WHERE r.status IN ('running', 'waiting_for_user')
+                   OR (r.status = 'pending' AND EXISTS (
+                       SELECT 1 FROM run_attempts a WHERE a.run_id = r.run_id
+                       AND a.status IN ('pending', 'running', 'waiting_for_user')
+                   ))
+                GROUP BY r.project_id
+                ORDER BY r.project_id"""
+            ).fetchall()
+        return [
+            (
+                str(row["project_id"]),
+                "waiting" if row["waiting"] else "running",
+            )
+            for row in rows
+        ]
+
     def list_runs(
         self,
         *,

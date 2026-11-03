@@ -19,4 +19,16 @@ export {
   type AppRailPlace,
 } from './AppRail';
 export { AppRailButton, AppRailItem } from './AppRailButton';
-export { SpaceRailTile, spaceRailTileInitial } from './SpaceRailTile';
+export {
+  getChoosableSpaces,
+  pinSpaceOrChoose,
+  usePinnedSpaceIds,
+  usePinnedSpacesChooser,
+} from './pinnedSpaces';
+export { PinnedSpacesChooser } from './PinnedSpacesChooser';
+export {
+  SpaceRailTile,
+  spaceRailStatusText,
+  spaceRailTileInitial,
+} from './SpaceRailTile';
+export { SpaceRailTileMenu } from './SpaceRailTileMenu';

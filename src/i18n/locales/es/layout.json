@@ -647,7 +647,12 @@
     "close-window": "Cerrar ventana",
     "full-screen": "Alternar pantalla completa",
     "minimize": "Minimizar",
-    "quit": "Salir de Eigent"
+    "quit": "Salir de Eigent",
+    "navigate-pinned-space-1": "Ir al Espacio fijado 1",
+    "navigate-pinned-space-2": "Ir al Espacio fijado 2",
+    "navigate-pinned-space-3": "Ir al Espacio fijado 3",
+    "navigate-pinned-space-4": "Ir al Espacio fijado 4",
+    "navigate-pinned-space-5": "Ir al Espacio fijado 5"
   },
   "nativeMenu": {
     "file": "Archivo",
@@ -1635,5 +1640,20 @@
   "session-window-loading": "Abriendo sesión…",
   "session-window-missing": "Esta sesión ya no está disponible",
   "session-window-close": "Cerrar ventana",
-  "app-navigation": "Navegación de la aplicación"
+  "app-navigation": "Navegación de la aplicación",
+  "pin-space": "Fijar Espacio",
+  "unpin-space": "Desfijar Espacio",
+  "space-open": "Abrir",
+  "move-up": "Subir",
+  "move-down": "Bajar",
+  "choose-pinned-spaces": "Elegir Espacios fijados",
+  "pinned-spaces": "Espacios fijados",
+  "pinned-spaces-count": "{{count}} de {{max}}",
+  "pinned-spaces-active": "Activo",
+  "pinned-spaces-hint": "Arrastra o usa las teclas de flecha para reordenar. El orden define los atajos.",
+  "pinned-space-move": "Mover {{name}}, posición {{position}} de {{count}}",
+  "pinned-space-moved": "{{name}} se movió a la posición {{position}} de {{count}}",
+  "other-spaces": "Otros Espacios",
+  "space-status-waiting": "{{count}} esperando tu respuesta",
+  "space-status-running": "{{count}} en ejecución"
 }
