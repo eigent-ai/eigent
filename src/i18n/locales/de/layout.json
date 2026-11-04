@@ -652,7 +652,11 @@
     "navigate-pinned-space-2": "Zum angehefteten Space 2",
     "navigate-pinned-space-3": "Zum angehefteten Space 3",
     "navigate-pinned-space-4": "Zum angehefteten Space 4",
-    "navigate-pinned-space-5": "Zum angehefteten Space 5"
+    "navigate-pinned-space-5": "Zum angehefteten Space 5",
+    "navigate-pinned-space-6": "Zum angehefteten Space 6",
+    "navigate-pinned-space-7": "Zum angehefteten Space 7",
+    "navigate-pinned-space-8": "Zum angehefteten Space 8",
+    "navigate-pinned-space-9": "Zum angehefteten Space 9"
   },
   "nativeMenu": {
     "file": "Datei",

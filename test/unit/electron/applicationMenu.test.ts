@@ -31,7 +31,10 @@ import {
   getNativeMenuMessages,
   resolveNativeMenuLocale,
 } from '../../../electron/main/commands/nativeMenuMessages';
-import { APP_COMMAND } from '../../../src/shared/appCommands';
+import {
+  APP_COMMAND,
+  PINNED_SPACE_COMMANDS,
+} from '../../../src/shared/appCommands';
 
 type MenuItem = Electron.MenuItemConstructorOptions;
 
@@ -364,28 +367,25 @@ describe('application menu', () => {
     ['win32', 'Control+Shift+'],
     ['linux', 'Control+Shift+'],
   ] as const)(
-    'opens pinned Spaces 1–5 with hidden accelerators on %s',
+    'opens pinned Spaces 1–9 with hidden accelerators on %s',
     (platform, prefix) => {
       const harness = createOptions(platform, false);
       const template = buildApplicationMenuTemplate(harness.options);
-      const items = [1, 2, 3, 4, 5].map((position) =>
+      const positions = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+      const items = positions.map((position) =>
         findItem(template, `view.navigate-pinned-space-${position}`)
       );
 
       expect(items.map((item) => [item.accelerator, item.visible])).toEqual(
-        [1, 2, 3, 4, 5].map((position) => [`${prefix}${position}`, false])
+        positions.map((position) => [`${prefix}${position}`, false])
       );
       expect(items.every((item) => item.registerAccelerator !== false)).toBe(
         true
       );
       items.forEach(click);
-      expect(harness.dispatchRendererCommand.mock.calls).toEqual([
-        [APP_COMMAND.navigatePinnedSpace1],
-        [APP_COMMAND.navigatePinnedSpace2],
-        [APP_COMMAND.navigatePinnedSpace3],
-        [APP_COMMAND.navigatePinnedSpace4],
-        [APP_COMMAND.navigatePinnedSpace5],
-      ]);
+      expect(harness.dispatchRendererCommand.mock.calls).toEqual(
+        PINNED_SPACE_COMMANDS.map((command) => [command])
+      );
     }
   );
 
