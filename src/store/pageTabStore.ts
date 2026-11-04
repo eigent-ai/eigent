@@ -76,6 +76,15 @@ export function normalizeHomeSpaceSort(value: unknown): HomeSpaceSort {
   return value === 'created' ? 'created' : 'updated';
 }
 
+/** Whether Home's sidebar groups Sessions under their Spaces or lists them all. */
+export type HomeSidebarGrouping = 'spaces' | 'list';
+
+export function normalizeHomeSidebarGrouping(
+  value: unknown
+): HomeSidebarGrouping {
+  return value === 'list' ? 'list' : 'spaces';
+}
+
 export interface SessionBrowserNavigationState {
   url: string;
   title: string;
@@ -554,6 +563,9 @@ export interface PageTabState {
   /** Spaces order in the Home sidebar. Persisted. */
   homeSpaceSort: HomeSpaceSort;
   setHomeSpaceSort: (sort: HomeSpaceSort) => void;
+  /** Home sidebar grouping. Persisted. */
+  homeSidebarGrouping: HomeSidebarGrouping;
+  setHomeSidebarGrouping: (grouping: HomeSidebarGrouping) => void;
   /**
    * Workspace rail visibility, toggled from the title bar. Only the workspace
    * shell honours this — Home and Settings always show their rail.
@@ -900,6 +912,9 @@ export const usePageTabStore = create<PageTabState>()(
       homeSpaceSort: 'updated',
       setHomeSpaceSort: (sort) =>
         set({ homeSpaceSort: normalizeHomeSpaceSort(sort) }),
+      homeSidebarGrouping: 'spaces',
+      setHomeSidebarGrouping: (grouping) =>
+        set({ homeSidebarGrouping: normalizeHomeSidebarGrouping(grouping) }),
       homeFoldedSpaceIds: [],
       setHomeSpaceFolded: (spaceId, folded) =>
         set((state) => {
@@ -1824,6 +1839,9 @@ export const usePageTabStore = create<PageTabState>()(
               )
             : currentState.homeFoldedSpaceIds,
           homeSpaceSort: normalizeHomeSpaceSort(persisted.homeSpaceSort),
+          homeSidebarGrouping: normalizeHomeSidebarGrouping(
+            persisted.homeSidebarGrouping
+          ),
         };
       },
       partialize: (state) => ({
@@ -1832,6 +1850,7 @@ export const usePageTabStore = create<PageTabState>()(
         shellPlace: state.shellPlace,
         homeFoldedSpaceIds: state.homeFoldedSpaceIds,
         homeSpaceSort: state.homeSpaceSort,
+        homeSidebarGrouping: state.homeSidebarGrouping,
         chatTimelineDetailLevel: state.chatTimelineDetailLevel,
         narrativeInformationDensity: state.narrativeInformationDensity,
         customAgentFolderPathByProjectId:
