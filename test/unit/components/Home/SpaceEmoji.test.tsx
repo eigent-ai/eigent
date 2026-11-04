@@ -1,0 +1,194 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+// Load the HTTP client first, as the app does at boot, so the auth store
+// and i18n settle their import cycle in the same order.
+import '@/api/http';
+
+import { SpaceEmojiPicker } from '@/components/Home/SpaceEmojiPicker';
+import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
+import { spaceEmoji } from '@/lib/spaceEmoji';
+import { useSpaceStore, type Space } from '@/store/spaceStore';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  toastError: vi.fn(),
+  rootProps: {} as Record<string, unknown>,
+}));
+
+vi.mock('sonner', () => ({ toast: { error: mocks.toastError } }));
+
+// The picker's own list needs real layout, so stand in with one emoji.
+vi.mock('frimousse', () => ({
+  EmojiPicker: {
+    Root: ({
+      children,
+      onEmojiSelect,
+      ...props
+    }: {
+      children: ReactNode;
+      onEmojiSelect: (emoji: { emoji: string; label: string }) => void;
+    }) => {
+      Object.assign(mocks.rootProps, props);
+      return (
+        <div>
+          <button
+            type="button"
+            onClick={() => onEmojiSelect({ emoji: '🚀', label: 'rocket' })}
+          >
+            Pick rocket
+          </button>
+          {children}
+        </div>
+      );
+    },
+    Search: () => null,
+    Viewport: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+    Loading: () => null,
+    Empty: () => null,
+    List: () => null,
+  },
+}));
+
+const space = (metadata?: Space['metadata']): Space => ({
+  id: 'space-research',
+  name: 'Research',
+  sourceType: 'folder',
+  rootPath: '/work/research',
+  status: 'active',
+  schemaVersion: 1,
+  createdAt: 0,
+  updatedAt: 0,
+  metadata,
+});
+
+const currentEmoji = () =>
+  spaceEmoji(useSpaceStore.getState().spaces['space-research']);
+
+function Picker() {
+  const current = useSpaceStore((state) => state.spaces['space-research']);
+  return <SpaceEmojiPicker space={current} name="Research" />;
+}
+
+async function openPicker() {
+  const user = userEvent.setup();
+  await user.click(
+    screen.getByRole('button', { name: 'Change emoji for Research' })
+  );
+  return user;
+}
+
+describe('Space emojis', () => {
+  const updateSpaceOnServer = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    updateSpaceOnServer.mockResolvedValue(undefined);
+    useSpaceStore.setState({
+      spaces: { 'space-research': space({ keep: 'me' }) },
+      updateSpaceOnServer,
+    });
+  });
+
+  it('reads only real emojis', () => {
+    expect(spaceEmoji(space({ emoji: '🚀' }))).toBe('🚀');
+    expect(spaceEmoji(space({ emoji: '👩🏽‍💻' }))).toBe('👩🏽‍💻');
+    expect(spaceEmoji(space({ emoji: '🇯🇵' }))).toBe('🇯🇵');
+    expect(spaceEmoji(space({ emoji: 'rocket' }))).toBeNull();
+    expect(spaceEmoji(space({ emoji: 7 }))).toBeNull();
+    expect(spaceEmoji(space())).toBeNull();
+  });
+
+  it('draws the chosen emoji, or the first letter without one', () => {
+    const { container, rerender } = render(
+      <SpaceGlyph name="Research" emoji={null} />
+    );
+    expect(container).toHaveTextContent('R');
+
+    rerender(<SpaceGlyph name="Research" emoji="🚀" />);
+    expect(container).toHaveTextContent('🚀');
+    expect(container).not.toHaveTextContent('R');
+  });
+
+  it('saves the chosen emoji with the Space, keeping its other metadata', async () => {
+    render(<Picker />);
+    const user = await openPicker();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Pick rocket' })
+    );
+
+    expect(currentEmoji()).toBe('🚀');
+    expect(updateSpaceOnServer).toHaveBeenCalledWith('space-research', {
+      metadata: { keep: 'me', emoji: '🚀' },
+    });
+  });
+
+  it('loads a pinned emoji list', async () => {
+    render(<Picker />);
+    await openPicker();
+    await screen.findByRole('button', { name: 'Pick rocket' });
+
+    expect(mocks.rootProps.emojibaseUrl).toMatch(
+      /emojibase-data@\d+\.\d+\.\d+$/
+    );
+  });
+
+  it('goes back to the first letter', async () => {
+    useSpaceStore.setState({
+      spaces: { 'space-research': space({ emoji: '🚀' }) },
+    });
+    render(<Picker />);
+    const user = await openPicker();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Use first letter' })
+    );
+
+    expect(currentEmoji()).toBeNull();
+    expect(updateSpaceOnServer).toHaveBeenCalledWith('space-research', {
+      metadata: { emoji: null },
+    });
+  });
+
+  it('restores the old emoji and says so when saving fails', async () => {
+    updateSpaceOnServer.mockRejectedValue(new Error('offline'));
+    useSpaceStore.setState({
+      spaces: { 'space-research': space({ emoji: '⭐' }) },
+    });
+    render(<Picker />);
+    const user = await openPicker();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Pick rocket' })
+    );
+    await vi.waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+
+    expect(currentEmoji()).toBe('⭐');
+  });
+
+  it('keeps a signed-out local Space on this device', async () => {
+    useSpaceStore.setState({
+      spaces: { 'space-research': space({ legacy: true }) },
+    });
+
+    await useSpaceStore.getState().setSpaceEmoji('space-research', '🚀');
+
+    expect(currentEmoji()).toBe('🚀');
+    expect(updateSpaceOnServer).not.toHaveBeenCalled();
+  });
+});

@@ -561,7 +561,7 @@ describe('HeaderBox chat timeline mode', () => {
           schemaVersion: 1,
           createdAt: 0,
           updatedAt: 0,
-          metadata: { icon: 'rocket' },
+          metadata: { emoji: '🚀' },
         },
       },
     });
@@ -571,7 +571,7 @@ describe('HeaderBox chat timeline mode', () => {
       '[data-session-space-icon]'
     ) as HTMLElement;
     expect(icon).toHaveAttribute('aria-label', 'Research and development');
-    expect(icon.querySelector('svg')).toHaveClass('lucide-rocket');
+    expect(icon).toHaveTextContent('🚀');
     useSpaceStore.setState({ projectIdIndex: {}, spaces: {} });
   });
 
