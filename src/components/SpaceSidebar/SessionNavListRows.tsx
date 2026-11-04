@@ -50,7 +50,7 @@ export interface SessionNavItem {
   achieved?: boolean;
   pinned?: boolean;
   source?: 'user' | 'trigger';
-  /** e.g. relative time, shown when `showRowMenu` is false. */
+  /** e.g. relative time or the Session's Space; hidden while the row menu shows. */
   trailing?: string;
   /** Shown in a split pane that does not have focus. */
   openInPane?: boolean;
@@ -353,8 +353,17 @@ function SessionNavRow({
                 aria-label={triggerSourceLabel}
               />
             ) : null}
-            {!showRowMenu && session.trailing ? (
-              <span className="shrink-0 pl-1 text-ds-text-meta text-ds-ink-muted-default tabular-nums">
+            {session.trailing ? (
+              // With a row menu, the trailing text gives way to it on hover,
+              // focus and while the menu is open.
+              <span
+                className={cn(
+                  'max-w-24 min-w-0 shrink truncate pl-1 text-ds-text-meta text-ds-ink-muted-default tabular-nums',
+                  showRowMenu &&
+                    'group-focus-within/session-item:hidden group-hover/session-item:hidden',
+                  showRowMenu && menuOpen && 'hidden'
+                )}
+              >
                 {session.trailing}
               </span>
             ) : null}

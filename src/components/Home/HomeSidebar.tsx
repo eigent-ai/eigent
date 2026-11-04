@@ -14,6 +14,7 @@
 
 import {
   getChoosableSpaces,
+  pinSpaceOrChoose,
   usePinnedSpaceIds,
 } from '@/components/Layout/AppRail/pinnedSpaces';
 import {
@@ -34,14 +35,8 @@ import {
   type SessionNavItem,
 } from '@/components/SpaceSidebar/SessionNavListRows';
 import { SidebarAccordionSection } from '@/components/SpaceSidebar/SidebarAccordionSection';
+import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
@@ -63,10 +58,11 @@ import { isHomePagePath } from '@/lib/shellRoutes';
 import {
   getActiveSpaceTriggerLabel,
   getSessionMetaDisplayName,
+  isLegacySpace,
 } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import type { RunAttentionState } from '@/service/projectRunsApi';
-import { usePageTabStore, type HomeSpaceSort } from '@/store/pageTabStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import {
@@ -77,23 +73,19 @@ import {
   type SpaceProjectMeta,
 } from '@/store/spaceStore';
 import type { TFunction } from 'i18next';
-import {
-  ChevronDown,
-  ChevronRight,
-  Ellipsis,
-  Folder,
-  Pin,
-  Plus,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, Folder, Plus } from 'lucide-react';
 import { useCallback, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   HOME_SPACE_RECENT_SESSIONS,
   nextNeedsYouOrder,
   orderBySnapshot,
   spaceLastActivity,
 } from './homeSidebarModel';
+import { HomeSidebarViewMenu } from './HomeSidebarViewMenu';
+import { HomeSpaceRowMenu } from './HomeSpaceRowMenu';
 import { useHomeVisitStore } from './homeVisit';
 import { useHomeNavigation } from './hooks/useHomeNavigation';
 import { useNewSpaceCreation } from './hooks/useNewSpaceCreation';
@@ -161,6 +153,18 @@ function SpaceStatusMark({ attention }: { attention?: SpaceAttention }) {
   );
 }
 
+/** Loads live row statuses for one Space's Sessions in the one-list view. */
+function SessionStatusLoader({
+  spaceId,
+  projectIds,
+}: {
+  spaceId: string;
+  projectIds: readonly string[];
+}) {
+  useSessionNavStatuses(projectIds, spaceId);
+  return null;
+}
+
 interface HomeSpaceGroupProps {
   space: Space;
   sessions: SpaceProjectMeta[];
@@ -177,6 +181,9 @@ interface HomeSpaceGroupProps {
   onPinSession: (projectId: string) => void;
   onEndSession: (projectId: string) => void;
   onDeleteSession: (projectId: string) => void;
+  canDeleteSpace: boolean;
+  onTogglePinSpace: () => void;
+  onDeleteSpace: () => void;
 }
 
 /**
@@ -199,6 +206,9 @@ function HomeSpaceGroup({
   onPinSession,
   onEndSession,
   onDeleteSession,
+  canDeleteSpace,
+  onTogglePinSpace,
+  onDeleteSpace,
 }: HomeSpaceGroupProps) {
   const { t } = useTranslation();
   const groupId = useId();
@@ -212,9 +222,7 @@ function HomeSpaceGroup({
     folded ? null : space.id
   );
 
-  const nameLabel = [name, pinned ? t('layout.pinned') : '', statusText]
-    .filter(Boolean)
-    .join(', ');
+  const nameLabel = [name, statusText].filter(Boolean).join(', ');
   const foldLabel = folded
     ? t('layout.unfold-space', { name })
     : t('layout.fold-space', { name });
@@ -223,7 +231,7 @@ function HomeSpaceGroup({
     <div data-home-space={space.id} className="flex min-w-0 flex-col">
       <div
         className={cn(
-          'group/space-row relative flex h-8 w-full min-w-0 items-center rounded-xl transition-colors duration-150',
+          'group/space-row relative flex h-8 w-full min-w-0 items-center rounded-xl pr-3 transition-colors duration-150',
           selected
             ? 'bg-ds-neutral-subtle-default'
             : 'hover:bg-ds-neutral-subtle-default'
@@ -271,7 +279,7 @@ function HomeSpaceGroup({
             aria-label={nameLabel}
             aria-current={selected ? 'page' : undefined}
             className={cn(
-              'no-drag flex h-full min-w-0 flex-1 items-center gap-ds-8 rounded-xl pr-3 pl-ds-8 text-left',
+              'no-drag flex h-full min-w-0 flex-1 items-center gap-ds-8 rounded-xl pl-ds-8 text-left',
               SPACE_ROW_FOCUS_CLASS
             )}
           >
@@ -285,16 +293,17 @@ function HomeSpaceGroup({
             >
               {name}
             </span>
-            {pinned ? (
-              <DsIcon
-                icon={Pin}
-                recipe="main-compact"
-                className="text-ds-ink-subtle-default"
-              />
-            ) : null}
             <SpaceStatusMark attention={attention} />
           </button>
         </TooltipSimple>
+        <HomeSpaceRowMenu
+          spaceName={name}
+          rootPath={space.rootPath}
+          pinned={pinned}
+          canDelete={canDeleteSpace}
+          onTogglePin={onTogglePinSpace}
+          onDelete={onDeleteSpace}
+        />
       </div>
       <div
         id={groupId}
@@ -368,7 +377,7 @@ export default function HomeSidebar() {
   );
   const foldedSpaceIds = usePageTabStore((state) => state.homeFoldedSpaceIds);
   const spaceSort = usePageTabStore((state) => state.homeSpaceSort);
-  const setSpaceSort = usePageTabStore((state) => state.setHomeSpaceSort);
+  const grouping = usePageTabStore((state) => state.homeSidebarGrouping);
   const setHomeSpaceFolded = usePageTabStore(
     (state) => state.setHomeSpaceFolded
   );
@@ -382,6 +391,25 @@ export default function HomeSidebar() {
   const sessionAttention = useSessionAttention();
   const activity = useHomeVisitStore((state) => state.activity);
   const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
+  const unpinSpace = useSpaceStore((state) => state.unpinSpace);
+  const deleteSpaceOnServer = useSpaceStore(
+    (state) => state.deleteSpaceOnServer
+  );
+  const [deleteSpaceId, setDeleteSpaceId] = useState<string | null>(null);
+  const [deletingSpace, setDeletingSpace] = useState(false);
+  const deleteSpace = useCallback(async () => {
+    if (!deleteSpaceId || deletingSpace) return;
+    setDeletingSpace(true);
+    try {
+      await deleteSpaceOnServer(deleteSpaceId);
+      setDeleteSpaceId(null);
+    } catch (error) {
+      console.warn('[HomeSidebar] Failed to delete Space:', error);
+      toast.error(t('layout.spaces-delete-failed'));
+    } finally {
+      setDeletingSpace(false);
+    }
+  }, [deleteSpaceId, deleteSpaceOnServer, deletingSpace, t]);
   const { createBlankSpace, createSpaceFromFolder } =
     useNewSpaceCreation('home_hub');
 
@@ -493,6 +521,37 @@ export default function HomeSidebar() {
     ];
   });
 
+  // One list: every listed Session, newest activity (or creation) first,
+  // each naming its Space.
+  const listSessions = useMemo(() => {
+    if (grouping !== 'list') return [];
+    const all = orderedSpaces.flatMap(
+      (space) => sessionsBySpace[space.id] ?? []
+    );
+    if (spaceSort === 'created') {
+      return [...all].sort((a, b) => b.createdAt - a.createdAt);
+    }
+    const byId = new Map(all.map((meta) => [meta.id, meta]));
+    return orderBySnapshot(
+      [...all].sort((a, b) => b.updatedAt - a.updatedAt).map((meta) => meta.id),
+      activity.sessions
+    ).map((id) => byId.get(id)!);
+  }, [activity.sessions, grouping, orderedSpaces, sessionsBySpace, spaceSort]);
+  const listItems = listSessions.map((meta) => ({
+    ...toSessionNavItem(meta, rowSources),
+    trailing: getActiveSpaceTriggerLabel(spaces[meta.spaceId]?.name, t),
+  }));
+  const listStatusTargets = useMemo(() => {
+    const bySpace = new Map<string, string[]>();
+    for (const meta of listSessions) {
+      bySpace.set(meta.spaceId, [
+        ...(bySpace.get(meta.spaceId) ?? []),
+        meta.id,
+      ]);
+    }
+    return [...bySpace].map(([spaceId, ids]) => ({ spaceId, ids }));
+  }, [listSessions]);
+
   const requestEndSession = useCallback(
     (projectId: string) => requestAction('end', projectId),
     [requestAction]
@@ -505,12 +564,23 @@ export default function HomeSidebar() {
   const newSessionLabel = t('layout.new-project');
   const allSpacesLabel = t('layout.all-spaces');
   const newSpaceLabel = t('layout.new-space');
-  const sortSpacesLabel = t('layout.sort-spaces');
   const homeLabel = t('layout.home');
 
   return (
     <>
       <SessionControlDialogs />
+      <AlertDialog
+        isOpen={deleteSpaceId !== null}
+        onClose={() => {
+          if (!deletingSpace) setDeleteSpaceId(null);
+        }}
+        onConfirm={() => void deleteSpace()}
+        title={t('layout.delete-space')}
+        message={t('layout.delete-space-confirmation')}
+        confirmText={t('layout.delete')}
+        cancelText={t('layout.cancel')}
+        confirmDisabled={deletingSpace}
+      />
       <NewSpaceDialog
         open={newSpaceDialogOpen}
         onOpenChange={setNewSpaceDialogOpen}
@@ -575,46 +645,14 @@ export default function HomeSidebar() {
                 </SidebarAccordionSection>
               ) : null}
               <SidebarAccordionSection
-                label={t('layout.spaces')}
+                label={
+                  grouping === 'list'
+                    ? t('layout.sessions-heading')
+                    : t('layout.spaces')
+                }
                 actions={
                   <>
-                    <DropdownMenu>
-                      <TooltipSimple
-                        content={sortSpacesLabel}
-                        compact
-                        side="bottom"
-                        variant="instant"
-                      >
-                        <span className="inline-flex">
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="xs"
-                              buttonContent="icon-only"
-                              aria-label={sortSpacesLabel}
-                            >
-                              <DsIcon icon={Ellipsis} aria-hidden />
-                            </Button>
-                          </DropdownMenuTrigger>
-                        </span>
-                      </TooltipSimple>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuRadioGroup
-                          value={spaceSort}
-                          onValueChange={(value) =>
-                            setSpaceSort(value as HomeSpaceSort)
-                          }
-                        >
-                          <DropdownMenuRadioItem value="updated">
-                            {t('layout.home-sort-updated')}
-                          </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="created">
-                            {t('layout.home-sort-created')}
-                          </DropdownMenuRadioItem>
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <HomeSidebarViewMenu />
                     <TooltipSimple
                       content={newSpaceLabel}
                       compact
@@ -635,31 +673,64 @@ export default function HomeSidebar() {
                   </>
                 }
               >
-                {orderedSpaces.map((space) => (
-                  <HomeSpaceGroup
-                    key={space.id}
-                    space={space}
-                    sessions={sessionsBySpace[space.id] ?? []}
-                    folded={foldedSpaceIds.includes(space.id)}
-                    selected={routeSpaceId === space.id}
-                    pinned={pinnedSpaceIds.includes(space.id)}
-                    attention={spaceAttention[space.id]}
-                    activeSessionId={activeSessionId}
-                    rowSources={rowSources}
-                    onToggleFold={() =>
-                      setHomeSpaceFolded(
-                        space.id,
-                        !foldedSpaceIds.includes(space.id)
-                      )
-                    }
-                    onOpenWorkspace={() => openSpaceWorkspace(space.id)}
-                    onShowAll={() => openSpaceWorkspace(space.id, 'projects')}
-                    onSessionClick={openSession}
-                    onPinSession={togglePinned}
-                    onEndSession={requestEndSession}
-                    onDeleteSession={requestDeleteSession}
-                  />
-                ))}
+                {grouping === 'list' ? (
+                  <>
+                    {listStatusTargets.map(({ spaceId, ids }) => (
+                      <SessionStatusLoader
+                        key={spaceId}
+                        spaceId={spaceId}
+                        projectIds={ids}
+                      />
+                    ))}
+                    <SessionNavListRows
+                      sessions={listItems}
+                      activeSessionId={activeSessionId}
+                      onSessionClick={openSession}
+                      onPinSession={togglePinned}
+                      onEndSession={requestEndSession}
+                      onDeleteSession={requestDeleteSession}
+                      folded={false}
+                    />
+                  </>
+                ) : null}
+                {grouping === 'list'
+                  ? null
+                  : orderedSpaces.map((space) => (
+                      <HomeSpaceGroup
+                        key={space.id}
+                        space={space}
+                        sessions={sessionsBySpace[space.id] ?? []}
+                        folded={foldedSpaceIds.includes(space.id)}
+                        selected={routeSpaceId === space.id}
+                        pinned={pinnedSpaceIds.includes(space.id)}
+                        attention={spaceAttention[space.id]}
+                        activeSessionId={activeSessionId}
+                        rowSources={rowSources}
+                        onToggleFold={() =>
+                          setHomeSpaceFolded(
+                            space.id,
+                            !foldedSpaceIds.includes(space.id)
+                          )
+                        }
+                        onOpenWorkspace={() => openSpaceWorkspace(space.id)}
+                        onShowAll={() =>
+                          openSpaceWorkspace(space.id, 'projects')
+                        }
+                        onSessionClick={openSession}
+                        onPinSession={togglePinned}
+                        onEndSession={requestEndSession}
+                        onDeleteSession={requestDeleteSession}
+                        canDeleteSpace={
+                          space.status === 'active' && !isLegacySpace(space)
+                        }
+                        onTogglePinSpace={() =>
+                          pinnedSpaceIds.includes(space.id)
+                            ? unpinSpace(space.id)
+                            : pinSpaceOrChoose(space.id)
+                        }
+                        onDeleteSpace={() => setDeleteSpaceId(space.id)}
+                      />
+                    ))}
               </SidebarAccordionSection>
             </SidebarScrollArea>
           </SidebarSection>

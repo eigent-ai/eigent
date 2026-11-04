@@ -123,4 +123,24 @@ describe('pageTabStore shell place', () => {
     ).toBe('updated');
     expect(merge(undefined, current).homeSpaceSort).toBe('updated');
   });
+
+  it('persists the sidebar grouping and restores only a known value', () => {
+    const options = usePageTabStore.persist.getOptions();
+    usePageTabStore.getState().setHomeSidebarGrouping('list');
+    expect(options.partialize!(usePageTabStore.getState())).toMatchObject({
+      homeSidebarGrouping: 'list',
+    });
+
+    const current = usePageTabStore.getInitialState();
+    const merge = options.merge!;
+    expect(
+      merge({ homeSidebarGrouping: 'list' }, current).homeSidebarGrouping
+    ).toBe('list');
+    expect(
+      merge(
+        { homeSidebarGrouping: 'folders' } as unknown as Partial<PageTabState>,
+        current
+      ).homeSidebarGrouping
+    ).toBe('spaces');
+  });
 });
