@@ -56,11 +56,16 @@ function space(id: string, name: string, updatedAt: number): Space {
 
 async function openChip() {
   const user = userEvent.setup();
-  const chip = screen.getByRole('combobox', { name: 'Space for this session' });
-  chip.focus();
-  await user.keyboard('[ArrowDown]');
-  return { user, listbox: await screen.findByRole('listbox') };
+  await user.click(
+    screen.getByRole('button', { name: /^Space for this session/ })
+  );
+  return { user, menu: await screen.findByRole('menu') };
 }
+
+const spaceRows = (menu: HTMLElement) =>
+  within(menu)
+    .getAllByRole('menuitem')
+    .map((item) => item.textContent?.trim());
 
 describe('NewSessionSpaceChip', () => {
   beforeAll(() => {
@@ -80,36 +85,60 @@ describe('NewSessionSpaceChip', () => {
     });
   });
 
-  it('starts on the Space worked in last', () => {
+  it('starts on the Space worked in last, styled like the footer menus', () => {
     render(<NewSessionSpaceChip />);
-    expect(
-      screen.getByRole('combobox', { name: 'Space for this session' })
-    ).toHaveTextContent('in Research');
+    const chip = screen.getByRole('button', {
+      name: 'Space for this session, Research',
+    });
+    expect(chip).toHaveTextContent('Research');
+    expect(chip).toHaveClass('rounded-xl', 'bg-ds-neutral-subtle-default');
   });
 
-  it('lists every Space and New Space, and switches Space on choice', async () => {
+  it('lists every Space under a search field, then New Space, and switches on choice', async () => {
     render(<NewSessionSpaceChip />);
-    const { user, listbox } = await openChip();
+    const { user, menu } = await openChip();
 
     expect(
-      within(listbox)
-        .getAllByRole('option')
-        .map((option) => option.textContent)
-    ).toEqual(['Research', 'Ops', 'New Space']);
+      within(menu).getByRole('textbox', { name: 'Search spaces...' })
+    ).toBeInTheDocument();
+    expect(menu.querySelector('[data-new-session-space-list]')).toHaveClass(
+      'max-h-60',
+      'overflow-y-auto'
+    );
+    expect(spaceRows(menu)).toEqual(['Research', 'Ops', 'Create new Space']);
 
-    await user.click(within(listbox).getByRole('option', { name: 'Ops' }));
+    await user.click(within(menu).getByRole('menuitem', { name: 'Ops' }));
     expect(mocks.switchToSpace).toHaveBeenCalledWith('space-ops', {
       project: null,
       tab: 'new-project',
     });
   });
 
+  it('filters the list by name', async () => {
+    render(<NewSessionSpaceChip />);
+    const { user, menu } = await openChip();
+
+    await user.type(
+      within(menu).getByRole('textbox', { name: 'Search spaces...' }),
+      'op'
+    );
+    expect(spaceRows(menu)).toEqual(['Ops', 'Create new Space']);
+
+    await user.type(
+      within(menu).getByRole('textbox', { name: 'Search spaces...' }),
+      'zzz'
+    );
+    expect(
+      within(menu).getByText('No results match your search.')
+    ).toBeVisible();
+  });
+
   it('opens New Space without switching', async () => {
     render(<NewSessionSpaceChip />);
-    const { user, listbox } = await openChip();
+    const { user, menu } = await openChip();
 
     await user.click(
-      within(listbox).getByRole('option', { name: 'New Space' })
+      within(menu).getByRole('menuitem', { name: 'Create new Space' })
     );
     expect(
       screen.getByRole('dialog', { name: 'Create a new Space' })
