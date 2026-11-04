@@ -652,7 +652,11 @@
     "navigate-pinned-space-2": "고정된 스페이스로 이동 2",
     "navigate-pinned-space-3": "고정된 스페이스로 이동 3",
     "navigate-pinned-space-4": "고정된 스페이스로 이동 4",
-    "navigate-pinned-space-5": "고정된 스페이스로 이동 5"
+    "navigate-pinned-space-5": "고정된 스페이스로 이동 5",
+    "navigate-pinned-space-6": "고정된 스페이스로 이동 6",
+    "navigate-pinned-space-7": "고정된 스페이스로 이동 7",
+    "navigate-pinned-space-8": "고정된 스페이스로 이동 8",
+    "navigate-pinned-space-9": "고정된 스페이스로 이동 9"
   },
   "nativeMenu": {
     "file": "파일",

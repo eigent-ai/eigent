@@ -652,7 +652,11 @@
     "navigate-pinned-space-2": "前往固定的空间 2",
     "navigate-pinned-space-3": "前往固定的空间 3",
     "navigate-pinned-space-4": "前往固定的空间 4",
-    "navigate-pinned-space-5": "前往固定的空间 5"
+    "navigate-pinned-space-5": "前往固定的空间 5",
+    "navigate-pinned-space-6": "前往固定的空间 6",
+    "navigate-pinned-space-7": "前往固定的空间 7",
+    "navigate-pinned-space-8": "前往固定的空间 8",
+    "navigate-pinned-space-9": "前往固定的空间 9"
   },
   "nativeMenu": {
     "file": "文件",

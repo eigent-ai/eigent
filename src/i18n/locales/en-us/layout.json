@@ -652,7 +652,11 @@
     "navigate-pinned-space-2": "Go to pinned Space 2",
     "navigate-pinned-space-3": "Go to pinned Space 3",
     "navigate-pinned-space-4": "Go to pinned Space 4",
-    "navigate-pinned-space-5": "Go to pinned Space 5"
+    "navigate-pinned-space-5": "Go to pinned Space 5",
+    "navigate-pinned-space-6": "Go to pinned Space 6",
+    "navigate-pinned-space-7": "Go to pinned Space 7",
+    "navigate-pinned-space-8": "Go to pinned Space 8",
+    "navigate-pinned-space-9": "Go to pinned Space 9"
   },
   "nativeMenu": {
     "file": "File",

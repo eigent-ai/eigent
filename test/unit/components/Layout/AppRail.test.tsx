@@ -391,26 +391,27 @@ describe('AppRail pinned Spaces', () => {
     ]);
   });
 
-  it('opens the chooser instead of pinning a sixth Space', async () => {
+  it('opens the chooser instead of pinning an eleventh Space', async () => {
     const user = userEvent.setup();
+    const letters = 'abcdefghijk'.split('');
     const many = Object.fromEntries(
-      ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => [
+      letters.map((id) => [
         `space-${id}`,
         space(`space-${id}`, `Space ${id.toUpperCase()}`),
       ])
     );
     useSpaceStore.setState({
-      activeSpaceId: 'space-f',
+      activeSpaceId: 'space-k',
       spaces: many,
       pinnedSpaceIdsByUser: {
-        local: ['space-a', 'space-b', 'space-c', 'space-d', 'space-e'],
+        local: letters.slice(0, 10).map((id) => `space-${id}`),
       },
     });
     renderRail('/');
 
     await user.pointer({
       keys: '[MouseRight]',
-      target: within(rail()).getByRole('button', { name: 'Space F' }),
+      target: within(rail()).getByRole('button', { name: 'Space K' }),
     });
     await user.click(
       within(await screen.findByRole('menu')).getByRole('menuitem', {
@@ -418,13 +419,15 @@ describe('AppRail pinned Spaces', () => {
       })
     );
 
-    expect(useSpaceStore.getState().pinnedSpaceIdsByUser.local).toHaveLength(5);
+    expect(useSpaceStore.getState().pinnedSpaceIdsByUser.local).toHaveLength(
+      10
+    );
     const chooser = await screen.findByRole('dialog', {
       name: 'Choose pinned Spaces',
     });
-    expect(within(chooser).getByText('5 of 5')).toBeInTheDocument();
+    expect(within(chooser).getByText('10 of 10')).toBeInTheDocument();
     expect(
-      within(chooser).getByRole('checkbox', { name: /Space F/ })
+      within(chooser).getByRole('checkbox', { name: /Space K/ })
     ).toBeDisabled();
     expect(
       within(chooser).getByRole('checkbox', { name: /Space A/ })
@@ -441,7 +444,7 @@ describe('AppRail pinned Spaces', () => {
     const chooser = await screen.findByRole('dialog', {
       name: 'Choose pinned Spaces',
     });
-    expect(within(chooser).getByText('2 of 5')).toBeInTheDocument();
+    expect(within(chooser).getByText('2 of 10')).toBeInTheDocument();
 
     await user.click(within(chooser).getByRole('checkbox', { name: /Ops/ }));
     expect(useSpaceStore.getState().pinnedSpaceIdsByUser.local).toEqual([
