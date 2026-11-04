@@ -146,6 +146,9 @@ vi.mock('@/lib/spaceLabel', async (importOriginal) => ({
 vi.mock('@/lib/workspaceConfigurationNavigationGuard', () => ({
   runAfterWorkspaceConfigurationSave: vi.fn(),
 }));
+vi.mock('@/components/Home/SpaceHeaderMenu', () => ({
+  SpaceHeaderMenu: () => null,
+}));
 vi.mock('@/components/GlobalSearch', () => ({
   GlobalSearchDialog: () => null,
 }));
