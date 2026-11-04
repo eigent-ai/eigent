@@ -99,7 +99,6 @@ interface SessionRowSources {
   t: TFunction;
   navLeadByProjectId: Readonly<Record<string, SessionNavLeadPresentation>>;
   historyLoadingProjectIds: Readonly<Record<string, true>>;
-  pinnedProjectIds: readonly string[];
   attention: Readonly<Record<string, RunAttentionState>>;
 }
 
@@ -129,7 +128,6 @@ function toSessionNavItem(
       isAchieved: achieved,
     }),
     achieved,
-    pinned: sources.pinnedProjectIds.includes(meta.id),
   };
 }
 
@@ -179,7 +177,6 @@ interface HomeSpaceGroupProps {
   onOpenWorkspace: () => void;
   onShowAll: () => void;
   onSessionClick: (projectId: string) => void;
-  onPinSession: (projectId: string) => void;
   onEndSession: (projectId: string) => void;
   onDeleteSession: (projectId: string) => void;
   canDeleteSpace: boolean;
@@ -204,7 +201,6 @@ function HomeSpaceGroup({
   onOpenWorkspace,
   onShowAll,
   onSessionClick,
-  onPinSession,
   onEndSession,
   onDeleteSession,
   canDeleteSpace,
@@ -317,7 +313,6 @@ function HomeSpaceGroup({
             )}
             activeSessionId={activeSessionId}
             onSessionClick={onSessionClick}
-            onPinSession={onPinSession}
             onEndSession={onEndSession}
             onDeleteSession={onDeleteSession}
             folded={false}
@@ -385,10 +380,6 @@ export default function HomeSidebar() {
   const setHomeSpaceFolded = usePageTabStore(
     (state) => state.setHomeSpaceFolded
   );
-  const pinnedProjectIds = useSessionControlsStore(
-    (state) => state.pinnedProjectIds
-  );
-  const togglePinned = useSessionControlsStore((state) => state.togglePinned);
   const requestAction = useSessionControlsStore((state) => state.requestAction);
   const pinnedSpaceIds = usePinnedSpaceIds();
   const spaceAttention = useSpaceAttention();
@@ -507,7 +498,6 @@ export default function HomeSidebar() {
     t,
     navLeadByProjectId,
     historyLoadingProjectIds,
-    pinnedProjectIds,
     attention: sessionAttention,
   };
 
@@ -690,7 +680,6 @@ export default function HomeSidebar() {
                       sessions={listItems}
                       activeSessionId={activeSessionId}
                       onSessionClick={openSession}
-                      onPinSession={togglePinned}
                       onEndSession={requestEndSession}
                       onDeleteSession={requestDeleteSession}
                       folded={false}
@@ -721,7 +710,6 @@ export default function HomeSidebar() {
                           openSpaceWorkspace(space.id, 'projects')
                         }
                         onSessionClick={openSession}
-                        onPinSession={togglePinned}
                         onEndSession={requestEndSession}
                         onDeleteSession={requestDeleteSession}
                         canDeleteSpace={
