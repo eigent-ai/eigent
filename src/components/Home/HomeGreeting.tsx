@@ -75,7 +75,7 @@ function OverviewStat({
 }
 
 /** "Good Afternoon Douglas!", from the time of day and the account name. */
-export function useHomeGreetingText(): string {
+function useHomeGreetingText(): string {
   const { t } = useTranslation();
   const username = useAuthStore((state) => state.username);
   const email = useAuthStore((state) => state.email);

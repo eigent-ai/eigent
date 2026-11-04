@@ -1672,6 +1672,5 @@
   "unfold-space": "Espandi {{name}}",
   "show-all-sessions": "Mostra tutte ({{count}})",
   "show-all-sessions-in-space": "Mostra tutte le {{count}} sessioni in {{name}}",
-  "new-session-space": "Spazio per questa sessione",
-  "home-new-session-description": "Chiedi a Eigent di automatizzare le tue attività"
+  "new-session-space": "Spazio per questa sessione"
 }

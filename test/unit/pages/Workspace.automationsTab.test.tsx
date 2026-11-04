@@ -141,9 +141,6 @@ vi.mock('@/components/SpaceSidebar', () => ({
 vi.mock('@/components/Home/HomeSidebar', () => ({
   default: () => <nav data-testid="home-sidebar" />,
 }));
-vi.mock('@/components/Home/HomeNewSession', () => ({
-  HomeNewSessionGreeting: () => null,
-}));
 vi.mock('@/components/Home/NewSessionSpaceChip', () => ({
   NewSessionSpaceChip: () => null,
 }));

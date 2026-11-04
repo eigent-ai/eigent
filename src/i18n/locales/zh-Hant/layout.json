@@ -1628,6 +1628,5 @@
   "unfold-space": "展開 {{name}}",
   "show-all-sessions": "顯示全部 {{count}} 個",
   "show-all-sessions-in-space": "顯示 {{name}} 的全部 {{count}} 個工作階段",
-  "new-session-space": "此工作階段所在空間",
-  "home-new-session-description": "讓 Eigent 幫你自動完成任務"
+  "new-session-space": "此工作階段所在空間"
 }
