@@ -228,7 +228,7 @@ function HomeSpaceGroup({
     : t('layout.fold-space', { name });
 
   return (
-    <div data-home-space={space.id} className="flex min-w-0 flex-col">
+    <div data-home-space={space.id} className="flex min-w-0 flex-col gap-0.5">
       <div
         className={cn(
           'group/space-row relative flex h-8 w-full min-w-0 items-center rounded-xl pr-3 transition-colors duration-150',
@@ -308,7 +308,7 @@ function HomeSpaceGroup({
       <div
         id={groupId}
         hidden={folded}
-        className="flex min-w-0 flex-col pl-ds-12"
+        className="flex min-w-0 flex-col gap-0.5"
       >
         {visibleSessions.length > 0 ? (
           <SessionNavListRows
@@ -321,13 +321,17 @@ function HomeSpaceGroup({
             onEndSession={onEndSession}
             onDeleteSession={onDeleteSession}
             folded={false}
+            nested
           />
         ) : null}
         {!folded && sessions.length > HOME_SPACE_RECENT_SESSIONS ? (
           <NavTab
             active={false}
             onClick={onShowAll}
-            leading={<span aria-hidden className="size-ds-icon-md shrink-0" />}
+            // Indented inside the row, under the Session titles.
+            leading={
+              <span aria-hidden className="ml-ds-12 size-ds-icon-md shrink-0" />
+            }
             label={
               <DsText
                 as="span"
