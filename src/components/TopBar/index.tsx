@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useShellHistory } from '@/hooks/useShellHistory';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
@@ -29,6 +30,8 @@ import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
+  ArrowLeft,
+  ArrowRight,
   CircleHelp,
   Minus,
   PanelLeft,
@@ -46,6 +49,7 @@ function HeaderWin() {
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
   const executeAppCommand = useAppCommand();
+  const { canGoBack, canGoForward, goBack, goForward } = useShellHistory();
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const spacesById = useSpaceStore((s) => s.spaces);
   const workspaceSidebarHidden = usePageTabStore(
@@ -109,39 +113,93 @@ function HeaderWin() {
           sidebarHidden={workspaceSidebarHidden}
           leadingInset={topBarLeadingInset}
           sidebarControls={
-            <TooltipSimple
-              content={
-                <ShortcutTooltipContent
-                  label={sidebarToggleLabel}
-                  shortcutId="toggle-workspace-sidebar"
-                />
-              }
-              compact
-              side="bottom"
-              align="center"
-              variant="instant"
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                className={cn(
-                  'no-drag rounded-full',
-                  TOP_BAR_CONTROL_STATE_CLASS,
-                  'aria-pressed:!bg-transparent'
-                )}
-                onClick={toggleWorkspaceSidebar}
-                aria-pressed={!workspaceSidebarHidden}
-                aria-label={sidebarToggleLabel}
+            <>
+              <TooltipSimple
+                content={
+                  <ShortcutTooltipContent
+                    label={sidebarToggleLabel}
+                    shortcutId="toggle-workspace-sidebar"
+                  />
+                }
+                compact
+                side="bottom"
+                align="center"
+                variant="instant"
               >
-                {workspaceSidebarHidden ? (
-                  <DsIcon icon={PanelLeftOpen} aria-hidden />
-                ) : (
-                  <DsIcon icon={PanelLeft} aria-hidden />
-                )}
-              </Button>
-            </TooltipSimple>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    'aria-pressed:!bg-transparent'
+                  )}
+                  onClick={toggleWorkspaceSidebar}
+                  aria-pressed={!workspaceSidebarHidden}
+                  aria-label={sidebarToggleLabel}
+                >
+                  {workspaceSidebarHidden ? (
+                    <DsIcon icon={PanelLeftOpen} aria-hidden />
+                  ) : (
+                    <DsIcon icon={PanelLeft} aria-hidden />
+                  )}
+                </Button>
+              </TooltipSimple>
+              <div className="flex shrink-0 items-center gap-0.5">
+                <TooltipSimple
+                  content={t('layout.back')}
+                  compact
+                  side="bottom"
+                  align="center"
+                  variant="instant"
+                >
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      buttonContent="icon-only"
+                      className={cn(
+                        'no-drag rounded-full',
+                        TOP_BAR_CONTROL_STATE_CLASS
+                      )}
+                      disabled={!canGoBack}
+                      onClick={goBack}
+                      aria-label={t('layout.back')}
+                    >
+                      <DsIcon icon={ArrowLeft} aria-hidden />
+                    </Button>
+                  </span>
+                </TooltipSimple>
+                <TooltipSimple
+                  content={t('layout.forward')}
+                  compact
+                  side="bottom"
+                  align="center"
+                  variant="instant"
+                >
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      buttonContent="icon-only"
+                      className={cn(
+                        'no-drag rounded-full',
+                        TOP_BAR_CONTROL_STATE_CLASS
+                      )}
+                      disabled={!canGoForward}
+                      onClick={goForward}
+                      aria-label={t('layout.forward')}
+                    >
+                      <DsIcon icon={ArrowRight} aria-hidden />
+                    </Button>
+                  </span>
+                </TooltipSimple>
+              </div>
+            </>
           }
           contentControls={null}
         />
