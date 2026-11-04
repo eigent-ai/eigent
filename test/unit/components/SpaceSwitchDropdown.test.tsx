@@ -30,7 +30,7 @@ const savePointMenu = {
   onOpenHistory: vi.fn(),
 };
 
-function renderMenu(pinned: boolean, onOpenInSpaceView?: () => void) {
+function renderMenu(pinned: boolean) {
   const onToggle = vi.fn();
   const onOpenSpaceSettings = vi.fn();
   const onOpenMemorySettings = vi.fn();
@@ -43,7 +43,6 @@ function renderMenu(pinned: boolean, onOpenInSpaceView?: () => void) {
         onRenameSpace={vi.fn()}
         onOpenSpaceSettings={onOpenSpaceSettings}
         onOpenMemorySettings={onOpenMemorySettings}
-        onOpenInSpaceView={onOpenInSpaceView}
         pinMenu={{ pinned, onToggle }}
         savePointMenu={savePointMenu}
       />
@@ -109,25 +108,6 @@ describe('SpaceSwitchDropdown', () => {
     );
 
     expect(onToggle).toHaveBeenCalledOnce();
-    expect(screen.queryByRole('menu')).toBeNull();
-  });
-
-  it('starts with Open in Space view in Home', async () => {
-    const user = userEvent.setup();
-    const onOpenInSpaceView = vi.fn();
-    renderMenu(true, onOpenInSpaceView);
-
-    await user.click(screen.getByRole('button', { name: 'Current Space' }));
-    const items = within(await screen.findByRole('menu')).getAllByRole(
-      'menuitem'
-    );
-    expect(items.map((item) => item.textContent?.trim()).slice(0, 2)).toEqual([
-      'Open in Space view',
-      'Rename Space',
-    ]);
-
-    await user.click(items[0]);
-    expect(onOpenInSpaceView).toHaveBeenCalledOnce();
     expect(screen.queryByRole('menu')).toBeNull();
   });
 });

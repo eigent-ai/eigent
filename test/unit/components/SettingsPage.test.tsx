@@ -1049,7 +1049,7 @@ describe('SettingsPage', () => {
       )
     );
     expect(
-      await screen.findByRole('heading', { name: 'Workspace', level: 1 })
+      await screen.findByRole('heading', { name: 'Origin Space', level: 1 })
     ).toBeInTheDocument();
     expect(
       within(homeSidebar).getByRole('button', { name: 'Origin Space' })
@@ -1208,17 +1208,20 @@ describe('SettingsPage', () => {
       '[data-content-header-frame]'
     ) as HTMLElement;
     expect(detailHeader.querySelector('.px-ds-16')).toBeInTheDocument();
-    // The top bar names the Space, so the page title is "Workspace".
+    // The title is the Space's name, and it opens the Space menu.
     const detailHeading = within(detailHeader).getByRole('heading', {
-      name: 'Workspace',
+      name: 'Design Space',
       level: 1,
     });
     expect(detailHeading).toHaveClass('!text-ds-text-body-large');
     expect(
+      within(detailHeading).getByRole('button', { name: 'Design Space' })
+    ).toHaveAttribute('aria-haspopup', 'menu');
+    expect(
       within(detailHeader).getByRole('button', { name: 'Pin Space' })
     ).toHaveAttribute('data-variant', 'secondary');
     const openInSpaceViewButton = within(detailHeader).getByRole('button', {
-      name: 'Open in Space view',
+      name: 'Open workspace',
     });
     expect(openInSpaceViewButton).toHaveAttribute('data-variant', 'primary');
     expect(openInSpaceViewButton).toHaveClass('!rounded-full');
@@ -1231,7 +1234,7 @@ describe('SettingsPage', () => {
       'Sessions',
       'Tasks',
       'Automations',
-      'Context',
+      'Files',
       'Memory',
       'Space settings',
     ]) {
@@ -1257,8 +1260,8 @@ describe('SettingsPage', () => {
       document.querySelector('[data-space-stat="Sessions"] svg')
     ).toHaveClass('lucide-message-circle');
     expect(
-      screen.getByRole('tab', { name: 'Context' }).querySelector('svg')
-    ).toHaveClass('lucide-library');
+      screen.getByRole('tab', { name: 'Files' }).querySelector('svg')
+    ).toHaveClass('lucide-inbox');
     expect(
       screen.getByRole('tab', { name: 'Space settings' }).querySelector('svg')
     ).toHaveClass('lucide-settings');
