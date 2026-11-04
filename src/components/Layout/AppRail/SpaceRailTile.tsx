@@ -12,13 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { DsText } from '@/components/ui/ds-text';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SpaceAttention } from '@/hooks/useSpaceAttention';
@@ -38,12 +38,6 @@ import {
   AppRailItem,
 } from './AppRailButton';
 
-/** The letter a Space tile shows until Spaces can carry their own icon. */
-export function spaceRailTileInitial(name: string): string {
-  const first = Array.from(name.trim())[0];
-  return first ? first.toLocaleUpperCase() : '?';
-}
-
 /** "1 waiting for your reply, 2 running", or nothing while the Space is idle. */
 export function spaceRailStatusText(
   attention: SpaceAttention | null | undefined,
@@ -61,6 +55,8 @@ export function spaceRailStatusText(
 
 interface SpaceRailTileProps {
   name: string;
+  /** Chosen icon; without one the tile shows the name's first letter. */
+  iconId?: string | null;
   /**
    * A pinned Space has a solid tile. The active Space keeps a dashed tile
    * until it is pinned, so the rail always shows where the Space view is.
@@ -78,6 +74,7 @@ interface SpaceRailTileProps {
 /** A Space on the rail: a 24px lettered tile inside a 32px control. */
 export function SpaceRailTile({
   name,
+  iconId = null,
   pinned = false,
   selected = false,
   attention,
@@ -138,9 +135,7 @@ export function SpaceRailTile({
             : 'border-dashed border-ds-hairline-default-default text-ds-ink-muted-default'
         )}
       >
-        <DsText as="span" role="meta" weight="semibold">
-          {spaceRailTileInitial(name)}
-        </DsText>
+        <SpaceGlyph name={name} iconId={iconId} />
         {status ? (
           <span
             data-space-rail-status={status}

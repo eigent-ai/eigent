@@ -17,10 +17,7 @@ import {
   pinSpaceOrChoose,
   usePinnedSpaceIds,
 } from '@/components/Layout/AppRail/pinnedSpaces';
-import {
-  spaceRailStatusText,
-  spaceRailTileInitial,
-} from '@/components/Layout/AppRail/SpaceRailTile';
+import { spaceRailStatusText } from '@/components/Layout/AppRail/SpaceRailTile';
 import {
   NavTab,
   SidebarNavGroup,
@@ -36,6 +33,7 @@ import {
   type SessionNavItem,
 } from '@/components/SpaceSidebar/SessionNavListRows';
 import { SidebarAccordionSection } from '@/components/SpaceSidebar/SidebarAccordionSection';
+import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -56,6 +54,7 @@ import {
 } from '@/lib/sessionNavLead';
 import { shouldListSession } from '@/lib/sessionOpen';
 import { isHomePagePath } from '@/lib/shellRoutes';
+import { spaceIconId } from '@/lib/spaceIcons';
 import {
   getActiveSpaceTriggerLabel,
   getSessionMetaDisplayName,
@@ -253,9 +252,11 @@ function HomeSpaceGroup({
             aria-hidden
             className="flex size-ds-icon-md items-center justify-center rounded-ds-4 bg-ds-neutral-muted-default text-ds-ink-default-default group-hover/space-row:hidden group-focus-visible/fold:hidden"
           >
-            <DsText as="span" role="meta" weight="semibold">
-              {spaceRailTileInitial(name)}
-            </DsText>
+            <SpaceGlyph
+              name={name}
+              iconId={spaceIconId(space)}
+              recipe="main-compact"
+            />
           </span>
           <span
             aria-hidden
