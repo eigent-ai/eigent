@@ -18,6 +18,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { useSkillsStore } from '@/store/skillsStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   act,
   fireEvent,
@@ -546,6 +547,32 @@ describe('HeaderBox chat timeline mode', () => {
     expect(
       screen.getByRole('button', { name: 'Open preview' })
     ).toBeInTheDocument();
+  });
+
+  it("leads with the Session's Space, naming it in full", () => {
+    useSpaceStore.setState({
+      projectIdIndex: { 'project-1': 'space-research' },
+      spaces: {
+        'space-research': {
+          id: 'space-research',
+          name: 'Research and development',
+          sourceType: 'folder',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: 0,
+          updatedAt: 0,
+          metadata: { icon: 'rocket' },
+        },
+      },
+    });
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+
+    const icon = document.querySelector(
+      '[data-session-space-icon]'
+    ) as HTMLElement;
+    expect(icon).toHaveAttribute('aria-label', 'Research and development');
+    expect(icon.querySelector('svg')).toHaveClass('lucide-rocket');
+    useSpaceStore.setState({ projectIdIndex: {}, spaces: {} });
   });
 
   it('has no Back button: the top bar owns Back and Forward', () => {

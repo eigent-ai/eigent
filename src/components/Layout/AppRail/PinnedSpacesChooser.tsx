@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -22,6 +23,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { spaceIconId } from '@/lib/spaceIcons';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import {
@@ -43,20 +45,17 @@ import {
   usePinnedSpaceIds,
   usePinnedSpacesChooser,
 } from './pinnedSpaces';
-import { spaceRailTileInitial } from './SpaceRailTile';
 
 const ROW_CLASS =
   'flex min-h-ds-control-lg min-w-0 items-center gap-ds-8 rounded-ds-menu-row px-ds-8';
 
-function SpaceInitial({ name }: { name: string }) {
+function SpaceInitial({ space, name }: { space: Space; name: string }) {
   return (
     <span
       aria-hidden
       className="flex size-ds-control-xs shrink-0 items-center justify-center rounded-ds-compact-control border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default text-ds-ink-default-default"
     >
-      <DsText as="span" role="meta" weight="semibold">
-        {spaceRailTileInitial(name)}
-      </DsText>
+      <SpaceGlyph name={name} iconId={spaceIconId(space)} />
     </span>
   );
 }
@@ -93,7 +92,7 @@ function ChooserRowLabel({
         disabled={disabled}
         onCheckedChange={(value) => onCheckedChange(value === true)}
       />
-      <SpaceInitial name={name} />
+      <SpaceInitial space={space} name={name} />
       <DsText
         as="span"
         role="base"
