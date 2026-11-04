@@ -465,14 +465,16 @@ describe('SettingsPage', () => {
     expect(
       screen.getByRole('button', { name: 'Extension' }).querySelector('svg')
     ).toHaveClass('lucide-puzzle');
+    // App-wide settings are the General tab, with no group heading of its own.
     expect(
       within(sidebar)
-        .getByRole('button', { name: 'Settings' })
+        .getByRole('button', { name: 'General' })
         .querySelector('svg')
     ).toHaveClass('lucide-settings');
     expect(
-      within(sidebar).queryByRole('button', { name: 'General' })
+      within(sidebar).queryByRole('button', { name: 'Settings' })
     ).not.toBeInTheDocument();
+    expect(within(sidebar).queryByText('Settings')).not.toBeInTheDocument();
     expect(
       within(sidebar).queryByRole('button', { name: 'Appearance' })
     ).not.toBeInTheDocument();
@@ -697,8 +699,11 @@ describe('SettingsPage', () => {
     renderSettingsPage();
 
     const sidebar = screen.getByRole('complementary', { name: 'Settings' });
-    await user.click(within(sidebar).getByRole('button', { name: 'Settings' }));
+    await user.click(within(sidebar).getByRole('button', { name: 'General' }));
 
+    expect(
+      await screen.findByRole('heading', { name: 'General', level: 1 })
+    ).toBeInTheDocument();
     const general = await screen.findByTestId('general-settings');
     const appearance = screen.getByTestId('appearance-settings');
     const privacy = screen.getByTestId('privacy-settings');
@@ -715,11 +720,13 @@ describe('SettingsPage', () => {
     expect(
       privacy.compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+    // One page: its title is the only heading, with none per category.
     expect(
-      screen.queryByRole('heading', {
-        name: /general|appearance|privacy|about/i,
-      })
+      screen.queryByRole('heading', { name: /appearance|privacy|about/i })
     ).not.toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: /general/i })).toHaveLength(
+      1
+    );
   });
 
   it('shows one Skills overview with source filters instead of ownership tabs', async () => {
