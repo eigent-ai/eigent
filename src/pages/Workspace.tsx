@@ -31,8 +31,6 @@ import AppShellLayout, {
 import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup';
 import SpaceSidebar from '@/components/SpaceSidebar';
 import TriggerPanel from '@/components/Trigger';
-import Workspace from '@/components/Workspace';
-import { SpaceOverviewPanel } from '@/components/Workspace/SpaceOverview';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
@@ -89,9 +87,11 @@ export default function WorkspacePage() {
   } = usePageTabStore();
   const shellPlace = usePageTabStore((s) => s.shellPlace);
   const inHome = shellPlace === 'home';
-  // Home shows a Session or New session; its composer landing is New session.
+  // The composer landing is New session everywhere, and Home shows only a
+  // Session or New session.
   const activeWorkspaceTab =
-    inHome && storedWorkspaceTab !== WorkspaceTab.Project
+    storedWorkspaceTab === WorkspaceTab.Workforce ||
+    (inHome && storedWorkspaceTab !== WorkspaceTab.Project)
       ? WorkspaceTab.NewProject
       : storedWorkspaceTab;
   const workspaceSidebarHidden = usePageTabStore(
@@ -398,9 +398,7 @@ export default function WorkspacePage() {
   const mainPanelContentClass = APP_SHELL_CONTENT_CLASS;
 
   const useWorkspacePatternBg =
-    activeWorkspaceTab === 'workforce' ||
-    activeWorkspaceTab === 'project' ||
-    activeWorkspaceTab === 'new-project';
+    activeWorkspaceTab === 'project' || activeWorkspaceTab === 'new-project';
   const workspacePatternKey = useMemo((): WorkspaceMainBackground => {
     if (!useWorkspacePatternBg) return 'empty';
     return (workspaceMainBackground ?? 'empty') as WorkspaceMainBackground;
@@ -446,18 +444,6 @@ export default function WorkspacePage() {
 
   const renderActiveWorkspaceTab = () => {
     switch (activeWorkspaceTab) {
-      case 'workforce':
-        return (
-          <div className={workspaceMainContentClass}>
-            {workspacePatternOverlayEl}
-            <div className={cn(workspaceMainForegroundClass, 'flex-row')}>
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <Workspace />
-              </div>
-              <SpaceOverviewPanel />
-            </div>
-          </div>
-        );
       case 'project':
         return (
           <div className={workspaceMainContentClass}>
