@@ -36,12 +36,11 @@ import {
   type PointerEvent,
   type ReactElement,
   type ReactNode,
-  type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
 
-/** Fixed gap between the sidebar's right edge and the tooltip. */
-export const SIDEBAR_TOOLTIP_GAP_PX = 8;
+/** Fixed gap between the hovered tab's right edge and the tooltip. */
+export const SIDEBAR_TOOLTIP_GAP_PX = 2;
 /** Keeps the tooltip this far inside the window's bottom edge. */
 const VIEWPORT_MARGIN_PX = 8;
 /** Grace period so moving between rows doesn't close and reopen the shell. */
@@ -76,18 +75,12 @@ interface ShellState {
 }
 
 /**
- * One tooltip for a whole sidebar. It sits a fixed gap outside the sidebar's
+ * One tooltip for a whole sidebar. It sits a fixed gap past the hovered tab's
  * right edge, lines up with the top of the hovered row, and slides to the
  * next row instead of closing and reopening; only its text changes. Near the
  * window's bottom it lines up with the row's bottom instead.
  */
-export function SidebarTooltipProvider({
-  sidebarRef,
-  children,
-}: {
-  sidebarRef: RefObject<HTMLElement | null>;
-  children: ReactNode;
-}) {
+export function SidebarTooltipProvider({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion();
   const [shell, setShell] = useState<ShellState | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -108,7 +101,6 @@ export function SidebarTooltipProvider({
     ({ owner, anchor, content, className, variant }: SidebarTooltipRequest) => {
       clearTimers();
       const place = () => {
-        const sidebar = sidebarRef.current?.getBoundingClientRect();
         const row = anchor.getBoundingClientRect();
         setShell({
           owner,
@@ -116,7 +108,7 @@ export function SidebarTooltipProvider({
           className,
           top: row.top,
           bottom: row.bottom,
-          left: (sidebar?.right ?? row.right) + SIDEBAR_TOOLTIP_GAP_PX,
+          left: row.right + SIDEBAR_TOOLTIP_GAP_PX,
           moving: shellOpen.current,
         });
       };
@@ -124,7 +116,7 @@ export function SidebarTooltipProvider({
       if (shellOpen.current) place();
       else showTimer.current = setTimeout(place, tooltipOpenDelayMs(variant));
     },
-    [sidebarRef]
+    []
   );
 
   const hide = useCallback((owner?: string) => {
