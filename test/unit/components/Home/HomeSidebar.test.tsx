@@ -203,10 +203,11 @@ describe('HomeSidebar', () => {
       shellPlace: 'home',
       activeWorkspaceTab: 'new-project',
       homeFoldedSpaceIds: [],
+      homeSpaceSort: 'updated',
     });
   });
 
-  it('starts with New session and All Spaces, and ends with New Space', async () => {
+  it('starts with New session and All Spaces, with New Space in the Spaces header', async () => {
     const user = userEvent.setup();
     renderSidebar();
 
@@ -225,12 +226,39 @@ describe('HomeSidebar', () => {
       '/home?section=spaces'
     );
 
-    await user.click(
-      within(sidebar()).getByRole('button', { name: 'New Space' })
-    );
+    const newSpace = within(sidebar()).getByRole('button', {
+      name: 'New Space',
+    });
+    expect(newSpace.closest('[data-section-header-actions]')).not.toBeNull();
+    await user.click(newSpace);
     expect(
       screen.getByRole('dialog', { name: 'Create a new Space' })
     ).toBeInTheDocument();
+  });
+
+  it('sorts Spaces by creation time from the Spaces header menu', async () => {
+    const user = userEvent.setup();
+    act(() => {
+      useSpaceStore.setState((state) => ({
+        spaces: {
+          ...state.spaces,
+          'space-research': { ...state.spaces['space-research'], createdAt: 1 },
+          'space-ops': { ...state.spaces['space-ops'], createdAt: 2 },
+        },
+      }));
+    });
+    renderSidebar();
+    expect(spaceNames()).toEqual(['space-research', 'space-ops']);
+
+    await user.click(
+      within(sidebar()).getByRole('button', { name: 'Sort Spaces' })
+    );
+    await user.click(
+      await screen.findByRole('menuitemradio', { name: 'Created time' })
+    );
+
+    expect(usePageTabStore.getState().homeSpaceSort).toBe('created');
+    expect(spaceNames()).toEqual(['space-ops', 'space-research']);
   });
 
   it('lists every Space with four recent Sessions, a pin mark and Show all', async () => {

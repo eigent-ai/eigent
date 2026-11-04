@@ -1617,6 +1617,7 @@
   "space-status-waiting": "{{count}} 个等待你的回复",
   "space-status-running": "{{count}} 个正在运行",
   "all-spaces": "全部空间",
+  "sort-spaces": "排序空间",
   "needs-you": "等你回复",
   "fold-space": "折叠 {{name}}",
   "unfold-space": "展开 {{name}}",

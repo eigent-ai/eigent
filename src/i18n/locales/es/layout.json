@@ -1661,6 +1661,7 @@
   "space-status-waiting": "{{count}} esperando tu respuesta",
   "space-status-running": "{{count}} en ejecución",
   "all-spaces": "Todos los Espacios",
+  "sort-spaces": "Ordenar Espacios",
   "needs-you": "Te necesita",
   "fold-space": "Contraer {{name}}",
   "unfold-space": "Expandir {{name}}",

@@ -1727,6 +1727,7 @@
   "space-status-waiting": "{{count}} بانتظار ردك",
   "space-status-running": "{{count}} قيد التشغيل",
   "all-spaces": "كل المساحات",
+  "sort-spaces": "ترتيب المساحات",
   "needs-you": "بانتظارك",
   "fold-space": "طي {{name}}",
   "unfold-space": "توسيع {{name}}",

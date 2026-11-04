@@ -1617,6 +1617,7 @@
   "space-status-waiting": "{{count}}개가 답변을 기다리는 중",
   "space-status-running": "{{count}}개 실행 중",
   "all-spaces": "모든 스페이스",
+  "sort-spaces": "스페이스 정렬",
   "needs-you": "응답 필요",
   "fold-space": "{{name}} 접기",
   "unfold-space": "{{name}} 펼치기",

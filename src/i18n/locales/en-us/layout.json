@@ -1639,6 +1639,7 @@
   "space-status-waiting": "{{count}} waiting for your reply",
   "space-status-running": "{{count}} running",
   "all-spaces": "All Spaces",
+  "sort-spaces": "Sort Spaces",
   "needs-you": "Needs you",
   "fold-space": "Fold {{name}}",
   "unfold-space": "Unfold {{name}}",
