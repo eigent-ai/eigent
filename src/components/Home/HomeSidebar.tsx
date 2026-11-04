@@ -586,7 +586,8 @@ export default function HomeSidebar() {
       />
       <SidebarShell ariaLabel={homeLabel}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-clip">
-          <SidebarSection>
+          {/* The gap sits here, not on the list, so scrolling stops below it. */}
+          <SidebarSection className="mb-3">
             <SidebarNavGroup>
               <NavTab
                 active={onWorkspaceRoute && !sessionTabOpen}
@@ -625,7 +626,10 @@ export default function HomeSidebar() {
               className="pb-1"
             >
               {needsYouItems.length > 0 ? (
-                <SidebarAccordionSection label={t('layout.needs-you')}>
+                <SidebarAccordionSection
+                  label={t('layout.needs-you')}
+                  className="mt-0"
+                >
                   <SessionNavListRows
                     sessions={needsYouItems}
                     activeSessionId={activeSessionId}
@@ -636,6 +640,7 @@ export default function HomeSidebar() {
                 </SidebarAccordionSection>
               ) : null}
               <SidebarAccordionSection
+                className={needsYouItems.length > 0 ? undefined : 'mt-0'}
                 label={
                   grouping === 'list'
                     ? t('layout.sessions-heading')
