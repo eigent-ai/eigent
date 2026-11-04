@@ -150,6 +150,7 @@ function SessionWindowContent({ target }: { target: SessionWindowTarget }) {
         <AppShellLayout
           sidebar={null}
           sidebarHidden
+          besideAppRail={false}
           /* Hosts the Session's preview <webview> guests in this window. */
           overlay={<PreviewBrowserLayer />}
         >
