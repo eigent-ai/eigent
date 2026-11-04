@@ -14,6 +14,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 
 import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
+import { SpaceHeaderMenu } from '@/components/Home/SpaceHeaderMenu';
 import {
   pinSpaceOrChoose,
   usePinnedSpaceIds,
@@ -212,9 +213,9 @@ interface SpaceDetailProps {
   onTabChange: (tab: SpaceDetailTab) => void;
   onBack: () => void;
   /**
-   * `home` is the Workspace page in Home, with Pin Space and Open in Space
-   * view. `space-view` is the same page next to the Space sidebar. The top
-   * bar names the Space either way, so the title is just "Workspace".
+   * `home` is the Workspace page in Home, with Pin Space and Open workspace.
+   * `space-view` is the same page next to the Space sidebar. Either way the
+   * title is the Space's name and opens its menu.
    */
   presentation?: 'home' | 'space-view';
 }
@@ -242,10 +243,15 @@ export default function SpaceDetail({
   const { openSpaceView } = useSpaceSwitch();
   const pinned = usePinnedSpaceIds().includes(spaceId);
   const unpinSpace = useSpaceStore((state) => state.unpinSpace);
-  // The top bar names the Space, so the page is just "Workspace".
+  // The title is the Space's name and its menu; a missing Space keeps the
+  // plain page name.
   const headerTitle = (
     <h1 ref={heading} tabIndex={-1} className={CONTENT_HEADER_TITLE_CLASS}>
-      {t('layout.workspace-tab')}
+      {space ? (
+        <SpaceHeaderMenu spaceId={spaceId} />
+      ) : (
+        t('layout.workspace-tab')
+      )}
     </h1>
   );
 
@@ -363,7 +369,7 @@ export default function SpaceDetail({
                 buttonRadius="full"
                 onClick={() => openSpaceView(spaceId)}
               >
-                {t('layout.open-in-space-view')}
+                {t('layout.open-workspace')}
               </Button>
             </>
           )

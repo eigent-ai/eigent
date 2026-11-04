@@ -1628,7 +1628,6 @@
   "unfold-space": "{{name}} を展開",
   "show-all-sessions": "すべて表示（{{count}}）",
   "show-all-sessions-in-space": "{{name}} のセッションをすべて表示（{{count}}）",
-  "open-in-space-view": "スペースビューで開く",
   "new-session-in-space": "{{name}} で",
   "new-session-space": "このセッションのスペース",
   "new-session-start-in": "開始先",

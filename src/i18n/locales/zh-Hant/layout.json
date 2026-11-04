@@ -1628,7 +1628,6 @@
   "unfold-space": "展開 {{name}}",
   "show-all-sessions": "顯示全部 {{count}} 個",
   "show-all-sessions-in-space": "顯示 {{name}} 的全部 {{count}} 個工作階段",
-  "open-in-space-view": "在空間檢視中開啟",
   "new-session-in-space": "在 {{name}}",
   "new-session-space": "此工作階段所在空間",
   "new-session-start-in": "開始於",

@@ -13,19 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
-import {
-  pinSpaceOrChoose,
-  usePinnedSpaceIds,
-} from '@/components/Layout/AppRail/pinnedSpaces';
-import {
-  canRenameSpace,
-  SpaceRenameDialog,
-} from '@/components/SpaceSidebar/SpaceRenameDialog';
-import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdown';
-import {
-  TOP_BAR_CONTROL_STATE_CLASS,
-  TOP_BAR_PILL_CLASS,
-} from '@/components/TopBar/controlStyles';
+import { TOP_BAR_CONTROL_STATE_CLASS } from '@/components/TopBar/controlStyles';
 import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
 import UpdateButton from '@/components/TopBar/UpdateButton';
 import AlertDialog from '@/components/ui/alertDialog';
@@ -33,67 +21,23 @@ import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
-import { useOpenSpaceHomeTab, useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
-import { isHomePagePath } from '@/lib/shellRoutes';
-import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
-import {
-  usePageTabStore,
-  type ShellPlace,
-  type WorkspaceTabId,
-} from '@/store/pageTabStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
-  ChevronDown,
   CircleHelp,
-  Folder,
   Minus,
   PanelLeft,
   PanelLeftOpen,
   Square,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
-
-/**
- * The Space the top bar names, if any: the Space view's Space, the Space of a
- * Session open in Home, or the Space whose Workspace page Home shows. Home's
- * New session, All Spaces and Settings name none.
- */
-export function getTopBarSpaceContext({
-  pathname,
-  search,
-  shellPlace,
-  activeWorkspaceTab,
-  activeSpaceId,
-}: {
-  pathname: string;
-  search: string;
-  shellPlace: ShellPlace;
-  activeWorkspaceTab: WorkspaceTabId;
-  activeSpaceId: string | null;
-}): { spaceId: string; inHome: boolean } | null {
-  if (pathname === '/') {
-    if (!activeSpaceId) return null;
-    if (shellPlace === 'space')
-      return { spaceId: activeSpaceId, inHome: false };
-    return activeWorkspaceTab === 'project'
-      ? { spaceId: activeSpaceId, inHome: true }
-      : null;
-  }
-  if (isHomePagePath(pathname)) {
-    const spaceId = new URLSearchParams(search).get('spaceId');
-    return spaceId ? { spaceId, inHome: true } : null;
-  }
-  return null;
-}
 
 function HeaderWin() {
   const { t } = useTranslation();
@@ -101,16 +45,9 @@ function HeaderWin() {
   const titlebarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
-  const location = useLocation();
   const executeAppCommand = useAppCommand();
-  const openSpaceHomeTab = useOpenSpaceHomeTab();
-  const { openSpaceView } = useSpaceSwitch();
-  const [renameSpaceId, setRenameSpaceId] = useState<string | null>(null);
-  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const spacesById = useSpaceStore((s) => s.spaces);
-  const unpinSpace = useSpaceStore((s) => s.unpinSpace);
-  const pinnedSpaceIds = usePinnedSpaceIds();
   const workspaceSidebarHidden = usePageTabStore(
     (s) => s.workspaceSidebarHidden
   );
@@ -126,46 +63,14 @@ function HeaderWin() {
     setPlatform(p);
   }, [host]);
 
-  const shellPlace = usePageTabStore((s) => s.shellPlace);
-  const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
-  const contextSpace = getTopBarSpaceContext({
-    pathname: location.pathname,
-    search: location.search,
-    shellPlace,
-    activeWorkspaceTab,
-    activeSpaceId,
-  });
-  const contextSpaceId =
-    contextSpace && spacesById[contextSpace.spaceId]
-      ? contextSpace.spaceId
-      : null;
   const topBarLeadingInset = platform === 'darwin' ? 68 : 8;
 
   const sidebarToggleLabel = workspaceSidebarHidden
     ? t('layout.show-sidebar', { defaultValue: 'Show sidebar' })
     : t('layout.hide-sidebar', { defaultValue: 'Hide sidebar' });
 
-  const activeSpaceTitle = useMemo(
-    () =>
-      getActiveSpaceTriggerLabel(
-        contextSpaceId ? spacesById[contextSpaceId]?.name : undefined,
-        t,
-        {
-          emptyLabelKey: contextSpaceId
-            ? 'layout.spaces-untitled'
-            : 'layout.spaces-select-space',
-        }
-      ),
-    [contextSpaceId, spacesById, t]
-  );
-  const contextSpaceRecord = contextSpaceId ? spacesById[contextSpaceId] : null;
-  const canRenameContextSpace = canRenameSpace(contextSpaceRecord);
-  const contextSpacePinned = Boolean(
-    contextSpaceId && pinnedSpaceIds.includes(contextSpaceId)
-  );
-  // Save points act on the active Space's folder, so they stay with it.
-  const savePointsApply = contextSpaceId === activeSpaceId;
-
+  // The Space menu lives on the Workspace page now; the save shortcut stays
+  // here because the top bar is always mounted.
   const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
   const versionHistory = useWorkspaceSavePoint({
     spaceId: activeSpaceId,
@@ -197,18 +102,6 @@ function HeaderWin() {
         confirmText={t('layout.workspace-enable-version-history')}
         cancelText={t('layout.cancel')}
         confirmVariant="primary"
-      />
-      <WorkspaceVersionHistoryDialog
-        open={versionHistoryOpen}
-        onOpenChange={setVersionHistoryOpen}
-        spaceId={activeSpaceId}
-        email={email}
-        userId={userId}
-        actorId={userId == null ? email || 'local-user' : String(userId)}
-      />
-      <SpaceRenameDialog
-        spaceId={renameSpaceId}
-        onClose={() => setRenameSpaceId(null)}
       />
       {/* Two-sided global navigation: destinations on the left, utilities on the right. */}
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-between">
@@ -250,87 +143,7 @@ function HeaderWin() {
               </Button>
             </TooltipSimple>
           }
-          contentControls={
-            contextSpaceId ? (
-              <SpaceSwitchDropdown
-                contentSideOffset={6}
-                onOpenChange={(open) => {
-                  if (open && savePointsApply && versionHistory.supported) {
-                    void versionHistory.loadStatus();
-                  }
-                }}
-                trigger={
-                  <button
-                    id="active-space-title-btn"
-                    type="button"
-                    className={TOP_BAR_PILL_CLASS}
-                    aria-haspopup="menu"
-                    aria-label={activeSpaceTitle}
-                  >
-                    <DsIcon icon={Folder} className="shrink-0" aria-hidden />
-                    <span className="max-w-[220px] min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {activeSpaceTitle}
-                    </span>
-                    <DsIcon
-                      icon={ChevronDown}
-                      className="shrink-0 text-ds-ink-subtle-default"
-                      aria-hidden
-                    />
-                  </button>
-                }
-                activeSpaceId={contextSpaceId}
-                canRenameActiveSpace={canRenameContextSpace}
-                onOpenInSpaceView={
-                  contextSpace?.inHome
-                    ? () => openSpaceView(contextSpaceId)
-                    : undefined
-                }
-                onRenameSpace={() => {
-                  if (canRenameContextSpace) setRenameSpaceId(contextSpaceId);
-                }}
-                onOpenSpaceSettings={() =>
-                  openSpaceHomeTab(contextSpaceId, 'workspace-profile')
-                }
-                onOpenMemorySettings={() =>
-                  openSpaceHomeTab(contextSpaceId, 'memory')
-                }
-                pinMenu={{
-                  pinned: contextSpacePinned,
-                  onToggle: () => {
-                    if (contextSpacePinned) unpinSpace(contextSpaceId);
-                    else pinSpaceOrChoose(contextSpaceId);
-                  },
-                }}
-                contentAlign="start"
-                triggerWrapperClassName="min-w-0 overflow-hidden rounded-full"
-                savePointMenu={
-                  savePointsApply && versionHistory.supported
-                    ? {
-                        loading:
-                          versionHistory.loading ||
-                          versionHistory.status === null,
-                        saving: versionHistory.saving,
-                        enabled: versionHistory.status?.enabled === true,
-                        needsAttention:
-                          versionHistory.status?.enabled === true &&
-                          (versionHistory.status.state !== 'ready' ||
-                            versionHistory.status.diagnostics?.healthy ===
-                              false),
-                        pendingCount:
-                          versionHistory.status?.pending_managed_paths
-                            ?.length || 0,
-                        pendingTruncated:
-                          versionHistory.status
-                            ?.pending_managed_paths_truncated === true,
-                        onEnable: versionHistory.requestEnable,
-                        onSave: versionHistory.save,
-                        onOpenHistory: () => setVersionHistoryOpen(true),
-                      }
-                    : undefined
-                }
-              />
-            ) : null
-          }
+          contentControls={null}
         />
 
         <div
