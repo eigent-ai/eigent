@@ -1639,6 +1639,7 @@
   "space-status-waiting": "Warten auf deine Antwort: {{count}}",
   "space-status-running": "In Ausführung: {{count}}",
   "all-spaces": "Alle Spaces",
+  "sort-spaces": "Spaces sortieren",
   "needs-you": "Wartet auf dich",
   "fold-space": "{{name}} einklappen",
   "unfold-space": "{{name}} ausklappen",

@@ -34,6 +34,14 @@ import {
   type SessionNavItem,
 } from '@/components/SpaceSidebar/SessionNavListRows';
 import { SidebarAccordionSection } from '@/components/SpaceSidebar/SidebarAccordionSection';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
@@ -58,7 +66,7 @@ import {
 } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import type { RunAttentionState } from '@/service/projectRunsApi';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { usePageTabStore, type HomeSpaceSort } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import {
@@ -69,7 +77,14 @@ import {
   type SpaceProjectMeta,
 } from '@/store/spaceStore';
 import type { TFunction } from 'i18next';
-import { ChevronDown, ChevronRight, LayoutGrid, Pin, Plus } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Ellipsis,
+  Folder,
+  Pin,
+  Plus,
+} from 'lucide-react';
 import { useCallback, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -352,6 +367,8 @@ export default function HomeSidebar() {
     (state) => state.activeWorkspaceTab
   );
   const foldedSpaceIds = usePageTabStore((state) => state.homeFoldedSpaceIds);
+  const spaceSort = usePageTabStore((state) => state.homeSpaceSort);
+  const setSpaceSort = usePageTabStore((state) => state.setHomeSpaceSort);
   const setHomeSpaceFolded = usePageTabStore(
     (state) => state.setHomeSpaceFolded
   );
@@ -400,17 +417,20 @@ export default function HomeSidebar() {
       spaces,
       projectsBySpaceId,
       activeSpaceId
-    )
-      .filter(
-        (space) =>
-          space.id === activeSpaceId ||
-          !isUnconfiguredPlaceholderSpace(space, projectsBySpaceId)
-      )
-      .sort(
-        (a, b) =>
-          spaceLastActivity(b, sessionsBySpace[b.id] ?? []) -
-          spaceLastActivity(a, sessionsBySpace[a.id] ?? [])
-      );
+    ).filter(
+      (space) =>
+        space.id === activeSpaceId ||
+        !isUnconfiguredPlaceholderSpace(space, projectsBySpaceId)
+    );
+    // Creation time never changes, so that order needs no per-visit snapshot.
+    if (spaceSort === 'created') {
+      return choosable.sort((a, b) => b.createdAt - a.createdAt);
+    }
+    choosable.sort(
+      (a, b) =>
+        spaceLastActivity(b, sessionsBySpace[b.id] ?? []) -
+        spaceLastActivity(a, sessionsBySpace[a.id] ?? [])
+    );
     const byId = new Map(choosable.map((space) => [space.id, space]));
     return orderBySnapshot(
       choosable.map((space) => space.id),
@@ -421,6 +441,7 @@ export default function HomeSidebar() {
     activity.spaces,
     projectsBySpaceId,
     sessionsBySpace,
+    spaceSort,
     spaces,
   ]);
 
@@ -484,6 +505,7 @@ export default function HomeSidebar() {
   const newSessionLabel = t('layout.new-project');
   const allSpacesLabel = t('layout.all-spaces');
   const newSpaceLabel = t('layout.new-space');
+  const sortSpacesLabel = t('layout.sort-spaces');
   const homeLabel = t('layout.home');
 
   return (
@@ -527,7 +549,7 @@ export default function HomeSidebar() {
                 active={onHomePage && !routeSpaceId}
                 onClick={openAllSpaces}
                 leading={
-                  <DsIcon icon={LayoutGrid} className="shrink-0" aria-hidden />
+                  <DsIcon icon={Folder} className="shrink-0" aria-hidden />
                 }
                 label={allSpacesLabel}
                 ariaLabel={allSpacesLabel}
@@ -552,7 +574,67 @@ export default function HomeSidebar() {
                   />
                 </SidebarAccordionSection>
               ) : null}
-              <SidebarAccordionSection label={t('layout.spaces')}>
+              <SidebarAccordionSection
+                label={t('layout.spaces')}
+                actions={
+                  <>
+                    <DropdownMenu>
+                      <TooltipSimple
+                        content={sortSpacesLabel}
+                        compact
+                        side="bottom"
+                        variant="instant"
+                      >
+                        <span className="inline-flex">
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="xs"
+                              buttonContent="icon-only"
+                              aria-label={sortSpacesLabel}
+                            >
+                              <DsIcon icon={Ellipsis} aria-hidden />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </span>
+                      </TooltipSimple>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuRadioGroup
+                          value={spaceSort}
+                          onValueChange={(value) =>
+                            setSpaceSort(value as HomeSpaceSort)
+                          }
+                        >
+                          <DropdownMenuRadioItem value="updated">
+                            {t('layout.home-sort-updated')}
+                          </DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="created">
+                            {t('layout.home-sort-created')}
+                          </DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <TooltipSimple
+                      content={newSpaceLabel}
+                      compact
+                      side="bottom"
+                      variant="instant"
+                    >
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        buttonContent="icon-only"
+                        aria-label={newSpaceLabel}
+                        onClick={() => setNewSpaceDialogOpen(true)}
+                      >
+                        <DsIcon icon={Plus} aria-hidden />
+                      </Button>
+                    </TooltipSimple>
+                  </>
+                }
+              >
                 {orderedSpaces.map((space) => (
                   <HomeSpaceGroup
                     key={space.id}
@@ -580,15 +662,6 @@ export default function HomeSidebar() {
                 ))}
               </SidebarAccordionSection>
             </SidebarScrollArea>
-          </SidebarSection>
-          <SidebarSection className="pt-ds-4">
-            <NavTab
-              active={false}
-              onClick={() => setNewSpaceDialogOpen(true)}
-              leading={<DsIcon icon={Plus} className="shrink-0" aria-hidden />}
-              label={newSpaceLabel}
-              ariaLabel={newSpaceLabel}
-            />
           </SidebarSection>
         </div>
       </SidebarShell>
