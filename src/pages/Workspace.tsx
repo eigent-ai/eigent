@@ -23,7 +23,6 @@ import {
 import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
-import { HomeNewSessionGreeting } from '@/components/Home/HomeNewSession';
 import HomeSidebar from '@/components/Home/HomeSidebar';
 import { NewSessionSpaceChip } from '@/components/Home/NewSessionSpaceChip';
 import AppShellLayout, {
@@ -487,7 +486,6 @@ export default function WorkspacePage() {
                 newSessionComposer={
                   inHome
                     ? {
-                        above: <HomeNewSessionGreeting />,
                         footerLeading: <NewSessionSpaceChip />,
                       }
                     : undefined

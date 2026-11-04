@@ -1628,6 +1628,5 @@
   "unfold-space": "{{name}} 펼치기",
   "show-all-sessions": "모두 보기 ({{count}})",
   "show-all-sessions-in-space": "{{name}}의 세션 모두 보기 ({{count}})",
-  "new-session-space": "이 세션의 스페이스",
-  "home-new-session-description": "Eigent에게 작업 자동화를 맡겨 보세요"
+  "new-session-space": "이 세션의 스페이스"
 }

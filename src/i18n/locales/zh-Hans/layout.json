@@ -1628,6 +1628,5 @@
   "unfold-space": "展开 {{name}}",
   "show-all-sessions": "显示全部 {{count}} 个",
   "show-all-sessions-in-space": "显示 {{name}} 的全部 {{count}} 个会话",
-  "new-session-space": "本会话所在空间",
-  "home-new-session-description": "让 Eigent 帮你自动完成任务"
+  "new-session-space": "本会话所在空间"
 }

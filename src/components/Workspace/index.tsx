@@ -86,8 +86,6 @@ interface WorkspaceProps {
   /** Controlled session mode when embedded in the new-project Session shell. */
   sessionMode?: SessionModeType;
   onSessionModeChange?: (mode: SessionModeType) => void;
-  /** Content above the composer, for example Home's greeting. */
-  composerAbove?: ReactNode;
   /** First control in the composer toolbar, for example a Space chip. */
   composerFooterLeading?: ReactNode;
 }
@@ -101,7 +99,6 @@ export default function Workspace({
   embedded = false,
   sessionMode: controlledSessionMode,
   onSessionModeChange,
-  composerAbove,
   composerFooterLeading,
 }: WorkspaceProps) {
   const { t } = useTranslation();
@@ -836,7 +833,6 @@ export default function Workspace({
                 variant === 'new-project' ? 'max-w-[736px]' : 'max-w-[600px]'
               )}
             >
-              {composerAbove}
               {workspaceComposerTop}
               {composerInput}
             </div>
