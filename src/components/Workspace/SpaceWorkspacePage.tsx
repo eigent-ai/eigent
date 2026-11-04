@@ -14,16 +14,19 @@
 
 import HomeHubRoot from '@/components/Home';
 import SpaceDetail from '@/components/Home/SpaceDetail';
-import type { SpaceDetailTab } from '@/components/Home/SpaceDetailTabsNav';
+import { isSpaceDetailTab } from '@/components/Home/SpaceDetailTabsNav';
 import { WorkspaceTab, usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import { useState } from 'react';
 
 function ActiveSpaceWorkspace({ spaceId }: { spaceId: string }) {
   const setActiveWorkspaceTab = usePageTabStore(
     (state) => state.setActiveWorkspaceTab
   );
-  const [tab, setTab] = useState<SpaceDetailTab>('projects');
+  // The sidebar's settings button and ⌘1 / ⌘5 choose the tab, so it lives in
+  // the store.
+  const storedTab = usePageTabStore((state) => state.spaceWorkspaceTab);
+  const setTab = usePageTabStore((state) => state.setSpaceWorkspaceTab);
+  const tab = isSpaceDetailTab(storedTab) ? storedTab : 'projects';
   return (
     <SpaceDetail
       spaceId={spaceId}
@@ -37,7 +40,7 @@ function ActiveSpaceWorkspace({ spaceId }: { spaceId: string }) {
 
 /**
  * The active Space's Workspace page in the Space view: the same overview
- * Home shows for a Space, opened from the Space's row in the sidebar.
+ * Home shows for a Space, opened from the sidebar's settings button or ⌘1.
  */
 export function SpaceWorkspacePage() {
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);

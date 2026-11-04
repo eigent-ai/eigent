@@ -207,15 +207,19 @@ function Stat({
   );
 }
 
+const SPACE_NAME_CLASS =
+  'block truncate !text-ds-text-section font-bold text-ds-ink-default-default';
+
 interface SpaceDetailProps {
   spaceId: string;
   activeTab: SpaceDetailTab;
   onTabChange: (tab: SpaceDetailTab) => void;
   onBack: () => void;
   /**
-   * `home` is the Workspace page in Home, with Pin Space and Open workspace.
-   * `space-view` is the same page next to the Space sidebar. Either way the
-   * title is the Space's name and opens its menu.
+   * `home` is the Workspace page in Home: its header's title is the Space's
+   * name and menu, beside Pin Space and Open workspace. `space-view` is the
+   * same page next to the Space sidebar, which already has both, so it has no
+   * header.
    */
   presentation?: 'home' | 'space-view';
 }
@@ -341,13 +345,13 @@ export default function SpaceDetail({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <ContentHeader
-        persistent
-        className="px-ds-16"
-        titleAsChild
-        title={headerTitle}
-        actions={
-          inSpaceView ? undefined : (
+      {inSpaceView ? null : (
+        <ContentHeader
+          persistent
+          className="px-ds-16"
+          titleAsChild
+          title={headerTitle}
+          actions={
             <>
               <Button
                 type="button"
@@ -372,9 +376,9 @@ export default function SpaceDetail({
                 {t('layout.open-workspace')}
               </Button>
             </>
-          )
-        }
-      />
+          }
+        />
+      )}
       <div className="flex min-h-0 flex-1 flex-col">
         <div
           data-space-detail-scroll-container
@@ -389,12 +393,21 @@ export default function SpaceDetail({
               )}
             >
               <div className="min-w-0 overflow-hidden">
-                <span
-                  className="block truncate !text-ds-text-section font-bold text-ds-ink-default-default"
-                  title={spaceName}
-                >
-                  {spaceName}
-                </span>
+                {/* Without the header, the Space's name is the page heading. */}
+                {inSpaceView ? (
+                  <h1
+                    ref={heading}
+                    tabIndex={-1}
+                    className={cn(SPACE_NAME_CLASS, 'm-0 outline-none')}
+                    title={spaceName}
+                  >
+                    {spaceName}
+                  </h1>
+                ) : (
+                  <span className={SPACE_NAME_CLASS} title={spaceName}>
+                    {spaceName}
+                  </span>
+                )}
                 <span className="mt-1 block !text-ds-text-base text-ds-ink-muted-default">
                   {space.description?.trim() || t('layout.no-description')}
                 </span>
