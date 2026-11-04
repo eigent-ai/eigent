@@ -1628,6 +1628,5 @@
   "unfold-space": "{{name}} を展開",
   "show-all-sessions": "すべて表示（{{count}}）",
   "show-all-sessions-in-space": "{{name}} のセッションをすべて表示（{{count}}）",
-  "new-session-space": "このセッションのスペース",
-  "home-new-session-description": "Eigent にタスクの自動化を依頼しましょう"
+  "new-session-space": "このセッションのスペース"
 }
