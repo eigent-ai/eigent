@@ -298,7 +298,11 @@ const mergeServerSpaceWithLocalBinding = (
 export const legacySpaceIdForUser = (userId?: string | number | null) =>
   `legacy_${canonicalUserId(userId)}`;
 
-export const MAX_PINNED_SPACES = 5;
+/**
+ * Ten pins plus the active Space's tile fit the rail at the 700px minimum
+ * window height, with room to spare.
+ */
+export const MAX_PINNED_SPACES = 10;
 
 export type PinSpaceResult = 'pinned' | 'already-pinned' | 'full' | 'missing';
 

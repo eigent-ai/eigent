@@ -50,7 +50,7 @@ const makeSpace = (id: string, userId = '2'): Space => ({
   updatedAt: 1,
 });
 
-const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'];
 
 const pinned = () => useSpaceStore.getState().pinnedSpaceIdsByUser['2'];
 
@@ -75,23 +75,27 @@ describe('spaceStore pinned Spaces', () => {
     expect(getCurrentPinnedSpaceIds()).toEqual(['b', 'a']);
   });
 
-  it('refuses a sixth pin', () => {
+  it('allows ten pins and refuses the eleventh', () => {
     const { pinSpace } = useSpaceStore.getState();
+    expect(MAX_PINNED_SPACES).toBe(10);
     for (const id of ids.slice(0, MAX_PINNED_SPACES)) {
       expect(pinSpace(id)).toBe('pinned');
     }
 
-    expect(pinSpace('f')).toBe('full');
-    expect(pinned()).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(pinSpace('k')).toBe('full');
+    expect(pinned()).toEqual(ids.slice(0, MAX_PINNED_SPACES));
   });
 
   it('unpins, then frees a slot for another Space', () => {
     const { pinSpace, unpinSpace } = useSpaceStore.getState();
-    for (const id of ids.slice(0, 5)) pinSpace(id);
+    for (const id of ids.slice(0, MAX_PINNED_SPACES)) pinSpace(id);
 
     unpinSpace('c');
-    expect(pinSpace('f')).toBe('pinned');
-    expect(pinned()).toEqual(['a', 'b', 'd', 'e', 'f']);
+    expect(pinSpace('k')).toBe('pinned');
+    expect(pinned()).toEqual([
+      ...ids.slice(0, MAX_PINNED_SPACES).filter((id) => id !== 'c'),
+      'k',
+    ]);
   });
 
   it('moves a pin and clamps the target', () => {
@@ -106,12 +110,10 @@ describe('spaceStore pinned Spaces', () => {
     expect(pinned()).toEqual(['a', 'b', 'c']);
   });
 
-  it('keeps the chooser list unique, known and at most five', () => {
-    useSpaceStore
-      .getState()
-      .setPinnedSpaces(['a', 'a', 'gone', 'b', 'c', 'd', 'e', 'f']);
+  it('keeps the chooser list unique, known and at most ten', () => {
+    useSpaceStore.getState().setPinnedSpaces(['a', 'a', 'gone', ...ids]);
 
-    expect(pinned()).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(pinned()).toEqual(ids.slice(0, MAX_PINNED_SPACES));
   });
 
   it('drops a deleted or archived Space from the pins', () => {

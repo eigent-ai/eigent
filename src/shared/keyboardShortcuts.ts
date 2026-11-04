@@ -100,7 +100,7 @@ export function getKeyboardShortcutGroups(
           defaultLabel: 'Global Search',
           keys: [primary, 'K'],
         },
-        ...[1, 2, 3, 4, 5].map((position) => ({
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((position) => ({
           id: `navigate-pinned-space-${position}`,
           labelKey: `layout.shortcuts.navigate-pinned-space-${position}`,
           defaultLabel: `Go to pinned Space ${position}`,
