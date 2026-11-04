@@ -164,12 +164,19 @@ export default function SettingsSidebar({
         <SidebarScrollArea
           role="navigation"
           ariaLabel={t('layout.settings', { defaultValue: 'Settings' })}
-          className="gap-4 pt-1"
+          // Centers the first heading on the rail's Home icon.
+          className="gap-4 pt-2"
         >
           {SETTINGS_NAVIGATION.map((group) => (
             <SidebarNavGroup
               key={group.scope}
-              label={t(group.labelKey, { defaultValue: group.defaultLabel })}
+              label={
+                group.label
+                  ? t(group.label.key, {
+                      defaultValue: group.label.defaultValue,
+                    })
+                  : undefined
+              }
             >
               {group.items.map((item) => {
                 const Icon = item.icon;
