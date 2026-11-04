@@ -103,6 +103,18 @@ describe('pageTabStore shell place', () => {
     expect(merge(undefined, current).shellPlace).toBe('space');
   });
 
+  it('opens the Workspace page on a chosen tab, in the Space view', () => {
+    usePageTabStore.setState({ shellPlace: 'home' });
+
+    usePageTabStore.getState().openSpaceWorkspaceTab('workspace-profile');
+
+    expect(usePageTabStore.getState()).toMatchObject({
+      activeWorkspaceTab: 'space-workspace',
+      spaceWorkspaceTab: 'workspace-profile',
+      shellPlace: 'space',
+    });
+  });
+
   it('persists the Spaces sort and restores only a known value', () => {
     const options = usePageTabStore.persist.getOptions();
     usePageTabStore.getState().setHomeSpaceSort('created');
