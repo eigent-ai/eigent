@@ -60,7 +60,7 @@ import {
   useSpaceStore,
 } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
-import { Cast, Inbox, Plus, Settings } from 'lucide-react';
+import { Cast, Inbox, Plus, Settings2 } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -516,7 +516,7 @@ export default function SpaceSidebar({
                       }
                     >
                       <DsIcon
-                        icon={Settings}
+                        icon={Settings2}
                         className="text-ds-ink-muted-default"
                         aria-hidden
                       />
