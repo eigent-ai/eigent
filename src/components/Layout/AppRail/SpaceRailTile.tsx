@@ -55,8 +55,8 @@ export function spaceRailStatusText(
 
 interface SpaceRailTileProps {
   name: string;
-  /** Chosen icon; without one the tile shows the name's first letter. */
-  iconId?: string | null;
+  /** Chosen emoji; without one the tile shows the name's first letter. */
+  emoji?: string | null;
   /**
    * A pinned Space has a solid tile. The active Space keeps a dashed tile
    * until it is pinned, so the rail always shows where the Space view is.
@@ -74,7 +74,7 @@ interface SpaceRailTileProps {
 /** A Space on the rail: a 24px lettered tile inside a 32px control. */
 export function SpaceRailTile({
   name,
-  iconId = null,
+  emoji = null,
   pinned = false,
   selected = false,
   attention,
@@ -135,7 +135,7 @@ export function SpaceRailTile({
             : 'border-dashed border-ds-hairline-default-default text-ds-ink-muted-default'
         )}
       >
-        <SpaceGlyph name={name} iconId={iconId} />
+        <SpaceGlyph name={name} emoji={emoji} />
         {status ? (
           <span
             data-space-rail-status={status}

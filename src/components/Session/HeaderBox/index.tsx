@@ -37,7 +37,7 @@ import {
   parseAutomationDraft,
   type AutomationDraftV1,
 } from '@/lib/automationDraft';
-import { spaceIconId } from '@/lib/spaceIcons';
+import { spaceEmoji } from '@/lib/spaceEmoji';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
@@ -274,7 +274,7 @@ export function HeaderBox({
             >
               <SpaceGlyph
                 name={sessionSpaceName}
-                iconId={spaceIconId(sessionSpace)}
+                emoji={spaceEmoji(sessionSpace)}
               />
             </span>
           </TooltipSimple>

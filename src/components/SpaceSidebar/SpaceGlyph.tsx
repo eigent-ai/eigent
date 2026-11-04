@@ -12,31 +12,44 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { DsIcon, type DsIconRecipe } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
-import { SPACE_ICONS } from '@/lib/spaceIcons';
+import { cn } from '@/lib/utils';
 
-/** The letter a Space shows until it has an icon of its own. */
+/** The letter a Space shows until it has an emoji of its own. */
 export function spaceInitial(name: string): string {
   const first = Array.from(name.trim())[0];
   return first ? first.toLocaleUpperCase() : '?';
 }
 
+const EMOJI_SIZE_CLASS = {
+  sm: '!text-ds-text-meta',
+  md: '!text-ds-text-base',
+  lg: '!text-ds-text-title',
+} as const;
+
 /**
- * What a Space tile shows: its chosen icon, or the first letter of its name.
+ * What a Space tile shows: its chosen emoji, or the first letter of its name.
  * The tile itself belongs to each surface.
  */
 export function SpaceGlyph({
   name,
-  iconId,
-  recipe = 'main',
+  emoji,
+  size = 'md',
 }: {
   name: string;
-  iconId: string | null;
-  recipe?: Exclude<DsIconRecipe, 'illustration'>;
+  emoji: string | null;
+  size?: keyof typeof EMOJI_SIZE_CLASS;
 }) {
-  const Icon = iconId ? SPACE_ICONS[iconId] : undefined;
-  if (Icon) return <DsIcon icon={Icon} recipe={recipe} aria-hidden />;
+  if (emoji) {
+    return (
+      <span
+        data-space-emoji
+        className={cn('leading-none', EMOJI_SIZE_CLASS[size])}
+      >
+        {emoji}
+      </span>
+    );
+  }
   return (
     <DsText as="span" role="meta" weight="semibold">
       {spaceInitial(name)}

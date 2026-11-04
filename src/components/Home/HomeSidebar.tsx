@@ -54,7 +54,7 @@ import {
 } from '@/lib/sessionNavLead';
 import { shouldListSession } from '@/lib/sessionOpen';
 import { isHomePagePath } from '@/lib/shellRoutes';
-import { spaceIconId } from '@/lib/spaceIcons';
+import { spaceEmoji } from '@/lib/spaceEmoji';
 import {
   getActiveSpaceTriggerLabel,
   getSessionMetaDisplayName,
@@ -252,11 +252,7 @@ function HomeSpaceGroup({
             aria-hidden
             className="flex size-ds-icon-md items-center justify-center rounded-ds-4 bg-ds-neutral-muted-default text-ds-ink-default-default group-hover/space-row:hidden group-focus-visible/fold:hidden"
           >
-            <SpaceGlyph
-              name={name}
-              iconId={spaceIconId(space)}
-              recipe="main-compact"
-            />
+            <SpaceGlyph name={name} emoji={spaceEmoji(space)} size="sm" />
           </span>
           <span
             aria-hidden
