@@ -178,21 +178,22 @@ function SessionNavRowMenu({
           sideOffset={6}
           onClick={(e) => e.stopPropagation()}
         >
-          <DropdownMenuItem
-            className="gap-2"
-            disabled={!onPinSession}
-            onSelect={() => onPinSession?.(sessionId)}
-          >
-            <DsIcon
-              icon={Pin}
-              className={cn(
-                '',
-                pinned && 'fill-current text-ds-accent-default-default'
-              )}
-              aria-hidden
-            />
-            {pinLabel}
-          </DropdownMenuItem>
+          {onPinSession ? (
+            <DropdownMenuItem
+              className="gap-2"
+              onSelect={() => onPinSession(sessionId)}
+            >
+              <DsIcon
+                icon={Pin}
+                className={cn(
+                  '',
+                  pinned && 'fill-current text-ds-accent-default-default'
+                )}
+                aria-hidden
+              />
+              {pinLabel}
+            </DropdownMenuItem>
+          ) : null}
           {hasOpenIn ? (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="gap-2">
