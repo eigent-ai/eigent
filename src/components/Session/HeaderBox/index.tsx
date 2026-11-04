@@ -36,7 +36,6 @@ import {
   parseAutomationDraft,
   type AutomationDraftV1,
 } from '@/lib/automationDraft';
-import { getSessionWindowRole } from '@/lib/sessionWindows';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -50,7 +49,6 @@ import {
 } from '@/types/chatTimeline';
 import {
   Archive,
-  ArrowLeft,
   EllipsisVertical,
   GalleryThumbnails,
   Pencil,
@@ -94,8 +92,6 @@ export interface HeaderBoxProps {
   className?: string;
   /** Show the chat timeline style control (hidden before a Session starts). */
   showTimelineStyle?: boolean;
-  /** Show the back-to-workspace button (hidden on the New session page). */
-  showBack?: boolean;
   /** Summary column toggle, shown beside Preview when provided. */
   summary?: SummaryToggleProps;
   /** Controls after the Preview toggle, such as closing a split pane. */
@@ -109,15 +105,12 @@ export function HeaderBox({
   projectAchieved = false,
   className,
   showTimelineStyle = true,
-  showBack = true,
   summary,
   trailingActions,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
   // A Session window has nowhere to go back to.
-  const inSessionWindow = getSessionWindowRole() === 'session';
   // Home has no Space landing to go back to; its header shows the name only.
-  const inHome = useSessionPageTabStore((s) => s.shellPlace === 'home');
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const titleRef = useRef<HTMLSpanElement>(null);
   const sessionMenuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -146,9 +139,6 @@ export function HeaderBox({
     return () => observer.disconnect();
   }, [projectName]);
   const { appearance } = useAuthStore();
-  const setActiveWorkspaceTab = useSessionPageTabStore(
-    (s) => s.setActiveWorkspaceTab
-  );
   const sessionPreviewOpen = useSessionPageTabStore(
     (s) => getSessionPreviewSlice(s).open
   );
@@ -220,9 +210,6 @@ export function HeaderBox({
     sessionMenuOpen,
   ]);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
-  const backTooltip = t('layout.back-tooltip', {
-    defaultValue: 'Back',
-  });
   const windowPreviewTooltip = sessionPreviewOpen
     ? t('layout.close-preview-tooltip', { defaultValue: 'Close preview' })
     : t('layout.open-preview-tooltip', { defaultValue: 'Open preview' });
@@ -260,23 +247,8 @@ export function HeaderBox({
       ref={headerRef}
       className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
     >
-      {/* Left: return to workspace, Session identity, and its controls. */}
+      {/* Left: Session identity and its controls. */}
       <div className="flex min-w-0 items-center gap-ds-4">
-        {showBack && !inSessionWindow && !inHome ? (
-          <TooltipSimple content={backTooltip} variant="instant" side="bottom">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              buttonContent="icon-only"
-              onClick={() => setActiveWorkspaceTab('workforce')}
-              className="no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
-              aria-label={backTooltip}
-            >
-              <DsIcon icon={ArrowLeft} recipe="main" />
-            </Button>
-          </TooltipSimple>
-        ) : null}
         {projectName && projectId ? (
           <DropdownMenu
             open={sessionMenuOpen}

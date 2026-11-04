@@ -537,17 +537,8 @@ describe('HeaderBox chat timeline mode', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('hides Back and Session actions on the New session header', () => {
-    render(
-      <HeaderBox
-        projectName="New session"
-        showBack={false}
-        showTimelineStyle={false}
-      />
-    );
-    expect(
-      screen.queryByRole('button', { name: 'Back' })
-    ).not.toBeInTheDocument();
+  it('hides Session actions on the New session header', () => {
+    render(<HeaderBox projectName="New session" showTimelineStyle={false} />);
     expect(
       screen.queryByRole('button', { name: /Session settings/ })
     ).not.toBeInTheDocument();
@@ -557,9 +548,11 @@ describe('HeaderBox chat timeline mode', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows Back on a Session header', () => {
+  it('has no Back button: the top bar owns Back and Forward', () => {
     render(<HeaderBox projectName="Timeline project" />);
-    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Back' })
+    ).not.toBeInTheDocument();
   });
 
   it('puts the Summary toggle next to Preview with keyboard focus and pressed state', async () => {

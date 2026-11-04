@@ -575,7 +575,6 @@ function SessionContent({
           }
           totalTokens={isNewProject ? 0 : (activeTask?.tokens ?? 0)}
           showTimelineStyle={!isNewProject}
-          showBack={!isNewProject}
           summary={{
             open: showSummary,
             onToggle: toggleSidePanel,
