@@ -14,8 +14,8 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 
 import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
+import { SpaceEmojiPicker } from '@/components/Home/SpaceEmojiPicker';
 import { SpaceHeaderMenu } from '@/components/Home/SpaceHeaderMenu';
-import { SpaceIconPicker } from '@/components/Home/SpaceIconPicker';
 import {
   pinSpaceOrChoose,
   usePinnedSpaceIds,
@@ -394,7 +394,7 @@ export default function SpaceDetail({
               )}
             >
               <div className="flex min-w-0 items-start gap-ds-12">
-                <SpaceIconPicker space={space} name={spaceName} />
+                <SpaceEmojiPicker space={space} name={spaceName} />
                 <div className="min-w-0 overflow-hidden">
                   {/* Without the header, the Space's name is the page heading. */}
                   {inSpaceView ? (

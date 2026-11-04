@@ -23,7 +23,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { spaceIconId } from '@/lib/spaceIcons';
+import { spaceEmoji } from '@/lib/spaceEmoji';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import {
@@ -55,7 +55,7 @@ function SpaceInitial({ space, name }: { space: Space; name: string }) {
       aria-hidden
       className="flex size-ds-control-xs shrink-0 items-center justify-center rounded-ds-compact-control border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default text-ds-ink-default-default"
     >
-      <SpaceGlyph name={name} iconId={spaceIconId(space)} />
+      <SpaceGlyph name={name} emoji={spaceEmoji(space)} />
     </span>
   );
 }
