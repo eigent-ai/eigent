@@ -77,6 +77,8 @@ export interface Space {
     legacy?: boolean;
     sharedMemoryEnabled?: boolean;
     preferredWorkdirMode?: 'worktree' | 'copy' | 'direct-write';
+    /** Chosen icon id; `null` or absent shows the name's first letter. */
+    icon?: string | null;
     [key: string]: unknown;
   };
 }
@@ -195,6 +197,8 @@ interface SpaceStore {
     rootPath: string,
     force?: boolean
   ) => Promise<void>;
+  /** Sets the Space's icon, or `null` for its first letter. */
+  setSpaceIcon: (spaceId: string, iconId: string | null) => Promise<void>;
   /** Refuses with `full` once `MAX_PINNED_SPACES` are pinned. */
   pinSpace: (spaceId: string) => PinSpaceResult;
   unpinSpace: (spaceId: string) => void;
@@ -1755,6 +1759,22 @@ export const useSpaceStore = create<SpaceStore>()(
                 : state.pinnedSpaceIdsByUser,
           };
         }),
+
+      setSpaceIcon: async (spaceId, iconId) => {
+        const space = get().spaces[spaceId];
+        if (!space) return;
+        const previous = space.metadata;
+        const metadata = { ...previous, icon: iconId };
+        get().updateSpace(spaceId, { metadata });
+        // A signed-out local Space lives only on this device.
+        if (space.metadata?.legacy === true) return;
+        try {
+          await get().updateSpaceOnServer(spaceId, { metadata });
+        } catch (error) {
+          get().updateSpace(spaceId, { metadata: previous });
+          throw error;
+        }
+      },
 
       renameSpaceOnServer: async (spaceId, name) => {
         const nextName = name.trim();

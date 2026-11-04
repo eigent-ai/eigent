@@ -15,6 +15,7 @@
 
 import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
 import { SpaceHeaderMenu } from '@/components/Home/SpaceHeaderMenu';
+import { SpaceIconPicker } from '@/components/Home/SpaceIconPicker';
 import {
   pinSpaceOrChoose,
   usePinnedSpaceIds,
@@ -392,25 +393,28 @@ export default function SpaceDetail({
                 'grid gap-6 lg:grid-cols-[minmax(220px,0.8fr)_minmax(420px,1.4fr)] lg:items-start'
               )}
             >
-              <div className="min-w-0 overflow-hidden">
-                {/* Without the header, the Space's name is the page heading. */}
-                {inSpaceView ? (
-                  <h1
-                    ref={heading}
-                    tabIndex={-1}
-                    className={cn(SPACE_NAME_CLASS, 'm-0 outline-none')}
-                    title={spaceName}
-                  >
-                    {spaceName}
-                  </h1>
-                ) : (
-                  <span className={SPACE_NAME_CLASS} title={spaceName}>
-                    {spaceName}
+              <div className="flex min-w-0 items-start gap-ds-12">
+                <SpaceIconPicker space={space} name={spaceName} />
+                <div className="min-w-0 overflow-hidden">
+                  {/* Without the header, the Space's name is the page heading. */}
+                  {inSpaceView ? (
+                    <h1
+                      ref={heading}
+                      tabIndex={-1}
+                      className={cn(SPACE_NAME_CLASS, 'm-0 outline-none')}
+                      title={spaceName}
+                    >
+                      {spaceName}
+                    </h1>
+                  ) : (
+                    <span className={SPACE_NAME_CLASS} title={spaceName}>
+                      {spaceName}
+                    </span>
+                  )}
+                  <span className="mt-1 block !text-ds-text-base text-ds-ink-muted-default">
+                    {space.description?.trim() || t('layout.no-description')}
                   </span>
-                )}
-                <span className="mt-1 block !text-ds-text-base text-ds-ink-muted-default">
-                  {space.description?.trim() || t('layout.no-description')}
-                </span>
+                </div>
               </div>
               <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-4 min-[560px]:grid-cols-2 xl:grid-cols-3">
                 <Stat
