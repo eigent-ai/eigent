@@ -555,6 +555,8 @@ describe('SettingsPage', () => {
     const collectionHeader = toolbar.closest('header');
     const list = document.querySelector('[data-home-spaces-list]');
     expect(collectionHeader).toBe(settingsFrame);
+    // The page is named like the sidebar tab that opens it.
+    expect(collectionHeader).toHaveTextContent('All Spaces');
     expect(collectionHeader).toHaveClass('min-h-ds-layout-row-header');
     expect(
       collectionHeader?.querySelector('[data-content-header-divider]')
