@@ -1694,8 +1694,6 @@
   "unfold-space": "Развернуть {{name}}",
   "show-all-sessions": "Показать все ({{count}})",
   "show-all-sessions-in-space": "Показать все сессии в {{name}} ({{count}})",
-  "new-session-in-space": "в {{name}}",
   "new-session-space": "Пространство для этой сессии",
-  "new-session-start-in": "Начать в",
   "home-new-session-description": "Попросите Eigent автоматизировать ваши задачи"
 }

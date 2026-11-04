@@ -1650,8 +1650,6 @@
   "unfold-space": "Unfold {{name}}",
   "show-all-sessions": "Show all {{count}}",
   "show-all-sessions-in-space": "Show all {{count}} sessions in {{name}}",
-  "new-session-in-space": "in {{name}}",
   "new-session-space": "Space for this session",
-  "new-session-start-in": "Start in",
   "home-new-session-description": "Ask Eigent to automate your tasks"
 }

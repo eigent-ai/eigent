@@ -1738,8 +1738,6 @@
   "unfold-space": "توسيع {{name}}",
   "show-all-sessions": "عرض الكل ({{count}})",
   "show-all-sessions-in-space": "عرض كل الجلسات ({{count}}) في {{name}}",
-  "new-session-in-space": "في {{name}}",
   "new-session-space": "مساحة هذه الجلسة",
-  "new-session-start-in": "البدء في",
   "home-new-session-description": "اطلب من Eigent أتمتة مهامك"
 }

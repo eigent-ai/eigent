@@ -1650,8 +1650,6 @@
   "unfold-space": "{{name}} ausklappen",
   "show-all-sessions": "Alle {{count}} anzeigen",
   "show-all-sessions-in-space": "Alle {{count}} Sitzungen in {{name}} anzeigen",
-  "new-session-in-space": "in {{name}}",
   "new-session-space": "Space für diese Sitzung",
-  "new-session-start-in": "Starten in",
   "home-new-session-description": "Lass Eigent deine Aufgaben automatisieren"
 }
