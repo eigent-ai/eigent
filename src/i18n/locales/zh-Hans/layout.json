@@ -1628,7 +1628,6 @@
   "unfold-space": "展开 {{name}}",
   "show-all-sessions": "显示全部 {{count}} 个",
   "show-all-sessions-in-space": "显示 {{name}} 的全部 {{count}} 个会话",
-  "open-in-space-view": "在空间视图中打开",
   "new-session-in-space": "在 {{name}}",
   "new-session-space": "本会话所在空间",
   "new-session-start-in": "开始于",

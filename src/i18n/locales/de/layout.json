@@ -1650,7 +1650,6 @@
   "unfold-space": "{{name}} ausklappen",
   "show-all-sessions": "Alle {{count}} anzeigen",
   "show-all-sessions-in-space": "Alle {{count}} Sitzungen in {{name}} anzeigen",
-  "open-in-space-view": "In der Space-Ansicht öffnen",
   "new-session-in-space": "in {{name}}",
   "new-session-space": "Space für diese Sitzung",
   "new-session-start-in": "Starten in",

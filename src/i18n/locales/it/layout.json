@@ -1672,7 +1672,6 @@
   "unfold-space": "Espandi {{name}}",
   "show-all-sessions": "Mostra tutte ({{count}})",
   "show-all-sessions-in-space": "Mostra tutte le {{count}} sessioni in {{name}}",
-  "open-in-space-view": "Apri nella vista dello Spazio",
   "new-session-in-space": "in {{name}}",
   "new-session-space": "Spazio per questa sessione",
   "new-session-start-in": "Inizia in",
