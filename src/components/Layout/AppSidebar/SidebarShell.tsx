@@ -110,7 +110,8 @@ export function SidebarNavGroup({
           {label}
         </div>
       ) : null}
-      <div className="flex w-full min-w-0 flex-col gap-1">{children}</div>
+      {/* Rows sit 2px apart, the same as every sidebar list. */}
+      <div className="flex w-full min-w-0 flex-col gap-0.5">{children}</div>
     </div>
   );
 }

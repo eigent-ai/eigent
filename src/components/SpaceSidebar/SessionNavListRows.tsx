@@ -84,6 +84,8 @@ export interface SessionNavListRowsProps {
    * neutral hover fill; sidebar keeps the subtle fill.
    */
   panelListHover?: boolean;
+  /** Rows under a parent row (a Space in Home): indented inside the row. */
+  nested?: boolean;
   /** When false, hide the trailing action area (session list and workspace recent: time only). */
   showRowMenu?: boolean;
   openIn?: SessionOpenInActions;
@@ -265,11 +267,13 @@ function SessionNavRow({
   onPinSession,
   onEndSession,
   onDeleteSession,
+  nested,
 }: {
   session: SessionNavItem;
   active: boolean;
   panelListHover: boolean;
   showRowMenu: boolean;
+  nested: boolean;
   triggerSourceLabel: string;
   inOwnWindowLabel: string;
   openIn?: SessionOpenInActions;
@@ -306,7 +310,10 @@ function SessionNavRow({
       >
         <div
           className={cn(
-            'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pr-3 pl-3',
+            'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pr-3',
+            // A nested row keeps its indent inside, so its fill spans the
+            // full sidebar width like its parent row.
+            nested ? 'pl-ds-24' : 'pl-3',
             'transition-colors duration-150',
             selected
               ? panelListHover
@@ -401,6 +408,7 @@ export function SessionNavListRows({
   panelListHover = false,
   showRowMenu = true,
   openIn,
+  nested = false,
 }: SessionNavListRowsProps) {
   const { t } = useTranslation();
   const triggerSourceLabel = t('layout.task-source-trigger');
@@ -464,6 +472,7 @@ export function SessionNavListRows({
             active={active}
             panelListHover={panelListHover}
             showRowMenu={showRowMenu}
+            nested={nested}
             triggerSourceLabel={triggerSourceLabel}
             inOwnWindowLabel={inOwnWindowLabel}
             openIn={openIn}

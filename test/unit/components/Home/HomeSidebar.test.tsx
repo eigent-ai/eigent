@@ -350,6 +350,17 @@ describe('HomeSidebar', () => {
       within(research).getByRole('button', { name: 'Research' })
     ).toBeInTheDocument();
     expect(research.querySelector('.lucide-pin')).toBeNull();
+    // Nested rows keep their indent inside, so hover fills span full width,
+    // and every row sits 2px apart.
+    const sessionRow = within(research)
+      .getByRole('button', { name: 'Weekly report' })
+      .closest('.group\\/session-item') as HTMLElement;
+    expect(sessionRow).toHaveClass('pl-ds-24');
+    const nestedRows = research.lastElementChild as HTMLElement;
+    expect(nestedRows).toContainElement(sessionRow);
+    expect(nestedRows).not.toHaveClass('pl-ds-12');
+    expect(nestedRows).toHaveClass('gap-0.5');
+    expect(research).toHaveClass('gap-0.5');
     expect(
       within(sidebar()).getByRole('button', { name: 'Ops, 1 running' })
     ).toBeInTheDocument();
