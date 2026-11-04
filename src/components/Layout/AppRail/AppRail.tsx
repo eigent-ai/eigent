@@ -169,19 +169,23 @@ export default function AppRail() {
         spaceId={renameSpaceId}
         onClose={() => setRenameSpaceId(null)}
       />
-      <AppRailButton
-        label={homeLabel}
-        tooltip={
-          <ShortcutTooltipContent
-            label={homeLabel}
-            shortcutId="navigate-home"
-          />
-        }
-        selected={place === 'home'}
-        onClick={openHome}
-      >
-        <DsIcon icon={House} aria-hidden />
-      </AppRailButton>
+      {/* The sidebar's first row sits below the shell's top inset (`py-ds-4`),
+          so Home starts there too and lines up with it. */}
+      <div className="w-full shrink-0 pt-ds-4">
+        <AppRailButton
+          label={homeLabel}
+          tooltip={
+            <ShortcutTooltipContent
+              label={homeLabel}
+              shortcutId="navigate-home"
+            />
+          }
+          selected={place === 'home'}
+          onClick={openHome}
+        >
+          <DsIcon icon={House} aria-hidden />
+        </AppRailButton>
+      </div>
 
       <span
         aria-hidden
