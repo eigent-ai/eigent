@@ -1617,6 +1617,7 @@
   "space-status-waiting": "{{count}} 件が返信待ち",
   "space-status-running": "{{count}} 件が実行中",
   "all-spaces": "すべてのスペース",
+  "sort-spaces": "スペースを並べ替え",
   "needs-you": "対応が必要",
   "fold-space": "{{name}} を折りたたむ",
   "unfold-space": "{{name}} を展開",

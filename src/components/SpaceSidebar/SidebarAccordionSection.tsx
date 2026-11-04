@@ -23,6 +23,11 @@ export interface SidebarAccordionSectionProps {
   children: ReactNode;
   defaultExpanded?: boolean;
   className?: string;
+  /**
+   * Controls at the header's right end. Like the chevron they show on hover
+   * or keyboard focus, and stay while one of their menus is open.
+   */
+  actions?: ReactNode;
 }
 
 /**
@@ -34,30 +39,42 @@ export function SidebarAccordionSection({
   children,
   defaultExpanded = true,
   className,
+  actions,
 }: SidebarAccordionSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   return (
     <div className={cn('mt-3 flex flex-col', className)}>
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="group/section-header flex w-full items-center gap-1 rounded-lg px-3 py-0.5 text-left"
-        aria-expanded={expanded}
-      >
-        <span className="text-ds-text-base font-normal text-ds-ink-subtle-default">
-          {label}
-        </span>
-        <DsIcon
-          icon={ChevronDown}
-          className={cn(
-            'shrink-0 !text-ds-ink-muted-default transition-[opacity,transform] duration-200',
-            !expanded && '-rotate-90',
-            expanded && 'opacity-0 group-hover/section-header:opacity-100'
-          )}
-          aria-hidden
-        />
-      </button>
+      <div className="group/section-header flex w-full min-w-0 items-center">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-1 rounded-lg px-3 py-0.5 text-left"
+          aria-expanded={expanded}
+        >
+          <span className="text-ds-text-base font-normal text-ds-ink-subtle-default">
+            {label}
+          </span>
+          <DsIcon
+            icon={ChevronDown}
+            className={cn(
+              'shrink-0 !text-ds-ink-muted-default transition-[opacity,transform] duration-200',
+              !expanded && '-rotate-90',
+              expanded &&
+                'opacity-0 group-focus-within/section-header:opacity-100 group-hover/section-header:opacity-100'
+            )}
+            aria-hidden
+          />
+        </button>
+        {actions ? (
+          <div
+            data-section-header-actions
+            className="flex shrink-0 items-center gap-ds-2 pr-ds-6 opacity-0 transition-opacity duration-150 group-focus-within/section-header:opacity-100 group-hover/section-header:opacity-100 has-[[data-state=open]]:opacity-100"
+          >
+            {actions}
+          </div>
+        ) : null}
+      </div>
 
       <motion.div
         initial={false}
