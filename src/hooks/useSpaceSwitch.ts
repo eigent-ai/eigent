@@ -115,13 +115,17 @@ export function useSpaceSwitch() {
 
   /**
    * Open a Space's view. The active Space keeps its Session and tab; any
-   * other Space becomes active on its last Session first.
+   * other Space becomes active and opens on New session.
    */
   const openSpaceView = useCallback(
     (spaceId: string) => {
       void runAfterWorkspaceConfigurationSave(async () => {
         if (useSpaceStore.getState().activeSpaceId !== spaceId) {
-          if (!(await switchToSpace(spaceId))) return;
+          const switched = await switchToSpace(spaceId, {
+            project: null,
+            tab: WorkspaceTab.NewProject,
+          });
+          if (!switched) return;
         }
         closeSettings();
         usePageTabStore.getState().setShellPlace('space');

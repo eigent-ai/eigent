@@ -97,9 +97,6 @@ vi.mock('@/components/Background', () => ({
 }));
 
 vi.mock('@/components/Dispatch', () => ({ WorkspaceDispatch: () => null }));
-vi.mock('@/components/Workspace/SpaceOverview', () => ({
-  SpaceOverviewPanel: () => null,
-}));
 vi.mock('@/components/Folder', () => ({ default: () => null }));
 vi.mock('@/components/Session', () => ({
   default: ({
@@ -192,24 +189,34 @@ describe('Workspace Automations tab without a selected Session', () => {
     expect(usePageTabStore.getState().activeWorkspaceTab).toBe('triggers');
   });
 
-  it('returns to the Space workspace when the Space has no Sessions', () => {
+  it('returns to New session when the Space has no Sessions', () => {
     render(<WorkspacePage />);
 
     expect(mocks.projectStore.setActiveProject).not.toHaveBeenCalled();
-    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('workforce');
+    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('new-project');
+  });
+
+  it('draws the old composer landing as New session in the Space view', () => {
+    usePageTabStore.setState({
+      activeWorkspaceTab: 'workforce',
+      shellPlace: 'space',
+    });
+    const { getByTestId } = render(<WorkspacePage />);
+
+    expect(getByTestId('session')).toHaveAttribute('data-new-session', 'true');
   });
 
   it('does not reopen a bounced add request once the Space has a Session', async () => {
     usePageTabStore.setState({ activeWorkspaceTab: 'workforce' });
     const { getByTestId } = render(<WorkspacePage />);
 
-    // Adding an automation in a Space with no Sessions returns to the Space
-    // workspace instead of opening the Automations tab.
+    // Adding an automation in a Space with no Sessions returns to New session
+    // instead of opening the Automations tab.
     act(() => {
       usePageTabStore.getState().requestOpenTriggerAddDialog();
     });
     await act(async () => {});
-    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('workforce');
+    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('new-project');
 
     // Later, with a Session selected, opening Automations must not pop up
     // the stale add dialog.
