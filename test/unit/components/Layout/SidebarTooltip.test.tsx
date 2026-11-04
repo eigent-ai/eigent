@@ -61,15 +61,16 @@ describe('SidebarRowTooltip', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('shows one shell outside the sidebar, moving between rows with new text', () => {
+  it('shows one shell beside the tab, moving between rows with new text', () => {
     const { research, ops } = renderRows();
 
     fireEvent.pointerEnter(research, { pointerType: 'mouse' });
     act(() => vi.runOnlyPendingTimers());
     const first = shell();
     expect(first).toHaveTextContent('Research');
-    // A fixed gap past the sidebar's right edge, not over the row.
-    expect(first).toHaveStyle({ left: `${240 + SIDEBAR_TOOLTIP_GAP_PX}px` });
+    // A fixed 2px gap past the hovered tab's right edge.
+    expect(SIDEBAR_TOOLTIP_GAP_PX).toBe(2);
+    expect(first).toHaveStyle({ left: `${200 + SIDEBAR_TOOLTIP_GAP_PX}px` });
 
     // Moving to the next row keeps the same element and swaps the text.
     fireEvent.pointerLeave(research, { pointerType: 'mouse' });
