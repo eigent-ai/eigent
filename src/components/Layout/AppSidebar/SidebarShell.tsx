@@ -13,7 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
+import { SidebarTooltipProvider } from './SidebarTooltip';
 
 export interface SidebarShellProps {
   children: ReactNode;
@@ -37,17 +38,22 @@ export function SidebarShell({
   className,
   ariaLabel,
 }: SidebarShellProps) {
+  const sidebarRef = useRef<HTMLElement>(null);
   return (
     <aside
+      ref={sidebarRef}
       aria-label={ariaLabel}
       className={cn(
         'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden rounded-2xl bg-ds-neutral-default-default px-ds-8 py-ds-4',
         className
       )}
     >
-      <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-y-clip">
-        {children}
-      </div>
+      {/* Every row tooltip in this sidebar shares one moving shell. */}
+      <SidebarTooltipProvider sidebarRef={sidebarRef}>
+        <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-y-clip">
+          {children}
+        </div>
+      </SidebarTooltipProvider>
     </aside>
   );
 }

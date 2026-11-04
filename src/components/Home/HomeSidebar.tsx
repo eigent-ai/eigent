@@ -28,6 +28,7 @@ import {
   SidebarSection,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
+import { SidebarRowTooltip } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import { SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS } from '@/components/SpaceSidebar/constants';
 import { SessionControlDialogs } from '@/components/SpaceSidebar/SessionControlDialogs';
 import {
@@ -230,6 +231,7 @@ function HomeSpaceGroup({
   return (
     <div data-home-space={space.id} className="flex min-w-0 flex-col gap-0.5">
       <div
+        data-sidebar-row
         className={cn(
           'group/space-row relative flex h-8 w-full min-w-0 items-center rounded-xl pr-3 transition-colors duration-150',
           selected
@@ -266,12 +268,10 @@ function HomeSpaceGroup({
             <DsIcon icon={folded ? ChevronRight : ChevronDown} />
           </span>
         </button>
-        <TooltipSimple
+        <SidebarRowTooltip
           content={name}
-          side="right"
-          align="center"
-          variant="instant"
           className={SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS}
+          rowSelector="[data-sidebar-row]"
         >
           <button
             type="button"
@@ -295,7 +295,7 @@ function HomeSpaceGroup({
             </span>
             <SpaceStatusMark attention={attention} />
           </button>
-        </TooltipSimple>
+        </SidebarRowTooltip>
         <HomeSpaceRowMenu
           spaceName={name}
           rootPath={space.rootPath}

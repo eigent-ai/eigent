@@ -92,6 +92,25 @@ function delayForTooltipVariant(variant: TooltipVariant): number | undefined {
   return undefined;
 }
 
+/** Open delay in ms for a variant, including the shared default. */
+function tooltipOpenDelayMs(variant: TooltipVariant): number {
+  return delayForTooltipVariant(variant) ?? TOOLTIP_DELAY_MS;
+}
+
+/**
+ * The tooltip surface for a tooltip drawn outside Radix (one shared shell
+ * that moves between triggers): the same classes and token aliases.
+ */
+function tooltipSurfaceProps(className?: string): {
+  className: string;
+  style: React.CSSProperties;
+} {
+  return {
+    className: cn(tooltipContentVariants({ variant: 'instant' }), className),
+    style: mergeAliasStyles(tooltipTokenAliases, undefined),
+  };
+}
+
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content> &
@@ -242,8 +261,10 @@ TooltipSimple.displayName = 'TooltipSimple';
 export {
   Tooltip,
   TooltipContent,
+  tooltipOpenDelayMs,
   TooltipProvider,
   TooltipSimple,
+  tooltipSurfaceProps,
   TooltipTrigger,
 };
 export type { TooltipVariant };

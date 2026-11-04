@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { sidebarTabButtonClass } from '@/components/Layout/AppSidebar';
+import { SidebarRowTooltip } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -294,17 +295,10 @@ function SessionNavRow({
 
   return (
     <div className="min-w-0">
-      {/* Tooltip trigger is the whole tab so it anchors to the row’s right edge,
-          not the inner title button. avoidCollisions={false} stops Floating UI
-          from treating the sidebar’s overflow clip as the boundary and shifting
-          the tip back over the row. */}
-      <TooltipSimple
+      {/* The whole tab triggers the sidebar's shared tooltip, which lines up
+          with the row's top outside the sidebar. */}
+      <SidebarRowTooltip
         content={session.title}
-        side="right"
-        align="start"
-        sideOffset={4}
-        avoidCollisions={false}
-        variant="instant"
         enabled={!menuOpen}
         className={SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS}
       >
@@ -391,7 +385,7 @@ function SessionNavRow({
             />
           ) : null}
         </div>
-      </TooltipSimple>
+      </SidebarRowTooltip>
     </div>
   );
 }
