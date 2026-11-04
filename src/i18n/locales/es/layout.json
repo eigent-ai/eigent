@@ -1672,8 +1672,6 @@
   "unfold-space": "Expandir {{name}}",
   "show-all-sessions": "Ver las {{count}}",
   "show-all-sessions-in-space": "Ver las {{count}} sesiones de {{name}}",
-  "new-session-in-space": "en {{name}}",
   "new-session-space": "Espacio de esta sesión",
-  "new-session-start-in": "Empezar en",
   "home-new-session-description": "Pide a Eigent que automatice tus tareas"
 }
