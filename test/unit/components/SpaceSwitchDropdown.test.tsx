@@ -65,11 +65,11 @@ describe('SpaceSwitchDropdown', () => {
         .map((item) => item.textContent?.trim())
     ).toEqual([
       'Rename Space',
+      'Pin Space',
       'Space settings',
       'Memory settings',
       expect.stringMatching(/^Save changes/),
       'Version history',
-      'Pin Space',
     ]);
     expect(within(menu).queryByRole('textbox')).toBeNull();
     expect(

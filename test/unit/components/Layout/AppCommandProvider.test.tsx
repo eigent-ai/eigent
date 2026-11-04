@@ -66,6 +66,7 @@ const mocks = vi.hoisted(() => {
     setActiveProject,
     setActiveWorkspaceTab: vi.fn(),
     setShellPlace: vi.fn(),
+    openSpaceWorkspaceTab: vi.fn(),
     setChatTimelineDetailLevel: vi.fn(),
     setNuwFileNum,
     spaceState,
@@ -117,6 +118,7 @@ vi.mock('@/store/pageTabStore', () => {
     requestToggleSessionSidePanel: mocks.requestToggleSessionSidePanel,
     setActiveWorkspaceTab: mocks.setActiveWorkspaceTab,
     setShellPlace: mocks.setShellPlace,
+    openSpaceWorkspaceTab: mocks.openSpaceWorkspaceTab,
     setChatTimelineDetailLevel: mocks.setChatTimelineDetailLevel,
     requestWorkspaceChatFocus: mocks.requestWorkspaceChatFocus,
     toggleSessionPreview: mocks.toggleSessionPreview,
@@ -454,17 +456,19 @@ describe('AppCommandProvider', () => {
     });
 
     expect(mocks.setActiveWorkspaceTab.mock.calls).toEqual([
-      ['space-workspace'],
       ['files', { clearFilesForProjectId: 'project-1' }],
       ['triggers'],
       ['dispatch'],
     ]);
+    // ⌘1 and ⌘5 open the Workspace page's Sessions and Space settings tabs.
+    expect(mocks.openSpaceWorkspaceTab.mock.calls).toEqual([
+      ['projects'],
+      ['workspace-profile'],
+    ]);
     // ⌘1 opens the Space view; the other tabs move there through the store.
     expect(mocks.setShellPlace).toHaveBeenCalledWith('space');
     expect(mocks.setNuwFileNum).toHaveBeenCalledWith('task-1', 0);
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      '/home?section=spaces&spaceId=space-1&spaceTab=workspace-profile'
-    );
+    expect(screen.getByTestId('location').textContent).toBe('/');
   });
 
   it('opens pinned Spaces in pin order and ignores an empty slot', () => {
