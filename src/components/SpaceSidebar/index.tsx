@@ -542,13 +542,6 @@ export default function SpaceSidebar({
                 ariaLabel={t('layout.new-project')}
                 ariaCurrentPage={activeWorkspaceTab === 'new-project'}
               />
-            </SidebarNavGroup>
-          </SidebarSection>
-
-          <SidebarSeparator />
-
-          <SidebarSection>
-            <SidebarNavGroup>
               <NavTab
                 active={activeWorkspaceTab === 'files'}
                 onClick={openFilesTab}
