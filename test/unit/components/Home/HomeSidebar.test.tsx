@@ -18,6 +18,7 @@ import '@/api/http';
 
 import HomeSidebar from '@/components/Home/HomeSidebar';
 import { useHomeVisitStore } from '@/components/Home/homeVisit';
+import { presentationForKind } from '@/lib/sessionNavLead';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
@@ -204,7 +205,10 @@ describe('HomeSidebar', () => {
     mocks.switchToSpace.mockResolvedValue(true);
     mocks.openSessionInShell.mockResolvedValue(undefined);
     mocks.openSessionWindow.mockResolvedValue(undefined);
-    useSessionControlsStore.setState({ unreadProjectIds: [] });
+    useSessionControlsStore.setState({
+      unreadProjectIds: [],
+      seenOutcomes: {},
+    });
     seedSpaces();
     useHomeVisitStore.setState({
       visit: 0,
@@ -371,6 +375,38 @@ describe('HomeSidebar', () => {
     );
     // No status, no dot.
     expect(dot('Pricing notes')).toBeNull();
+  });
+
+  it('drops a result dot once it is read, but keeps open questions', async () => {
+    const user = userEvent.setup();
+    mocks.sessionAttention = { 'r-1': 'waiting' };
+    useProjectRuntimeStore.setState({
+      navLeadByProjectId: {
+        'r-2': presentationForKind('finished'),
+        'r-3': presentationForKind('error'),
+      },
+    });
+    useSessionControlsStore.setState({ seenOutcomes: { 'r-3': 'error' } });
+    renderSidebar();
+
+    const dot = (name: string) =>
+      sessionRow(name).querySelector('[data-session-status-dot]');
+    expect(dot('Competitor scan')).toHaveAttribute(
+      'data-session-status-dot',
+      'finished'
+    );
+    expect(dot('Pricing notes')).toBeNull();
+    expect(dot('Weekly report')).toHaveAttribute(
+      'data-session-status-dot',
+      'hitl'
+    );
+
+    // An unread result offers Mark as read, which clears its dot.
+    fireEvent.contextMenu(sessionRow('Competitor scan'));
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Mark as read' })
+    );
+    expect(dot('Competitor scan')).toBeNull();
   });
 
   it('marks a Session unread and read from its menu', async () => {

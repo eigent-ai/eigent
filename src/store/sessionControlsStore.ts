@@ -16,6 +16,7 @@ import { create } from 'zustand';
 
 const PINNED_PROJECTS_KEY = 'eigent-pinned-projects';
 const UNREAD_PROJECTS_KEY = 'eigent-unread-sessions';
+const SEEN_OUTCOMES_KEY = 'eigent-seen-session-outcomes';
 
 export type SessionControlAction = 'rename' | 'end' | 'delete';
 
@@ -38,11 +39,32 @@ function readStoredIds(key: string): string[] {
 
 const readPinnedProjectIds = () => readStoredIds(PINNED_PROJECTS_KEY);
 
+function readSeenOutcomes(): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(
+      localStorage.getItem(SEEN_OUTCOMES_KEY) ?? '{}'
+    );
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
+      )
+    );
+  } catch {
+    return {};
+  }
+}
+
 interface SessionControlsState {
   pinnedProjectIds: string[];
   /** Sessions marked unread on this device. Opening one reads it. */
   unreadProjectIds: string[];
   setSessionUnread: (projectId: string, unread: boolean) => void;
+  /** Each Session's last result read on this device, by outcome key. */
+  seenOutcomes: Record<string, string>;
+  setSessionOutcomeSeen: (projectId: string, outcomeKey: string) => void;
   request: SessionControlRequest | null;
   refreshPinned: () => void;
   togglePinned: (projectId: string) => void;
@@ -69,6 +91,17 @@ export const useSessionControlsStore = create<SessionControlsState>(
         // The choice still holds until the app closes.
       }
       set({ unreadProjectIds });
+    },
+    seenOutcomes: readSeenOutcomes(),
+    setSessionOutcomeSeen: (projectId, outcomeKey) => {
+      if (get().seenOutcomes[projectId] === outcomeKey) return;
+      const seenOutcomes = { ...get().seenOutcomes, [projectId]: outcomeKey };
+      try {
+        localStorage.setItem(SEEN_OUTCOMES_KEY, JSON.stringify(seenOutcomes));
+      } catch {
+        // The mark still holds until the app closes.
+      }
+      set({ seenOutcomes });
     },
     request: null,
     refreshPinned: () => set({ pinnedProjectIds: readPinnedProjectIds() }),
@@ -97,3 +130,12 @@ export const useSessionControlsStore = create<SessionControlsState>(
       })),
   })
 );
+
+// A Session in its own window reads results there; keep this window in step.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === SEEN_OUTCOMES_KEY) {
+      useSessionControlsStore.setState({ seenOutcomes: readSeenOutcomes() });
+    }
+  });
+}
