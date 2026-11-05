@@ -13,8 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ChatBox from '@/components/ChatBox';
-import { ChatTimelineSkeleton } from '@/components/ChatBox/ChatTimelineSkeleton';
 import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
+import { SessionLoadingScan } from '@/components/ChatBox/SessionLoadingScan';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
@@ -518,8 +518,8 @@ function SessionContent({
     sessionExecution.state.route?.route === 'legacy'
   ) {
     return (
-      <div className="flex h-full w-full flex-col px-4 py-6">
-        <ChatTimelineSkeleton label={t('chat.timeline-history-loading')} />
+      <div className="relative h-full w-full">
+        <SessionLoadingScan active label={t('chat.timeline-history-loading')} />
       </div>
     );
   }
