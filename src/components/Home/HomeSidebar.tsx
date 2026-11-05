@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import eigentIconBlack from '@/assets/logo/icon_black.svg';
+import eigentIconWhite from '@/assets/logo/icon_white.svg';
 import {
   getChoosableSpaces,
   pinSpaceOrChoose,
@@ -62,6 +64,7 @@ import {
 } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import type { RunAttentionState } from '@/service/projectRunsApi';
+import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
@@ -351,6 +354,7 @@ function HomeSpaceGroup({
  */
 export default function HomeSidebar() {
   const { t } = useTranslation();
+  const appearance = useAuthStore((state) => state.appearance);
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { openAllSpaces, openSpaceWorkspace, openNewSession, openSession } =
@@ -589,6 +593,24 @@ export default function HomeSidebar() {
           {/* The gap sits here, not on the list, so scrolling stops below it. */}
           <SidebarSection className="mb-3">
             <SidebarNavGroup>
+              {/* One tab tall, like the Space sidebar's name row, so New
+                  session stays put between the two. Not a control. */}
+              <div
+                data-home-sidebar-brand
+                className="flex h-8 w-full min-w-0 shrink-0 items-center gap-3 px-3"
+              >
+                <img
+                  src={
+                    appearance === 'dark' ? eigentIconWhite : eigentIconBlack
+                  }
+                  alt=""
+                  draggable={false}
+                  className="-mx-0.5 size-5 shrink-0 select-none"
+                />
+                <span className="min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
+                  Eigent
+                </span>
+              </div>
               <NavTab
                 active={onWorkspaceRoute && !sessionTabOpen}
                 onClick={openNewSession}
