@@ -56,27 +56,31 @@ export async function ensureProjectRuntimeLoaded(
   projectId: string,
   options: EnsureProjectRuntimeLoadedOptions = {}
 ): Promise<void> {
+  const project = projectStore.getProjectById(projectId);
+  const needsRemoteHistoryHydration =
+    project?.metadata?.remoteHistoryHydrationPending === true;
+  const loaded =
+    projectStore.peekActiveChatStore(projectId) &&
+    !projectStore.historyLoadIncompleteProjectIds[projectId] &&
+    !needsRemoteHistoryHydration;
+  // Reading history changes nothing, so it runs alongside the route read;
+  // only what follows has to wait for the route.
+  const historyRead = loaded
+    ? null
+    : proxyFetchGet(`/api/v1/chat/histories/grouped/${projectId}`, {
+        include_tasks: true,
+      });
+  historyRead?.catch(() => undefined);
+
   const route = await readSessionExecutionRoute(executionScope(projectId));
   if (route.route === 'managed') {
     options.onHydrationStarted?.();
     return;
   }
-  const project = projectStore.getProjectById(projectId);
-  const needsRemoteHistoryHydration =
-    project?.metadata?.remoteHistoryHydrationPending === true;
-  if (
-    projectStore.peekActiveChatStore(projectId) &&
-    !projectStore.historyLoadIncompleteProjectIds[projectId] &&
-    !needsRemoteHistoryHydration
-  ) {
-    return;
-  }
+  if (!historyRead) return;
 
   try {
-    const historyProject = await proxyFetchGet(
-      `/api/v1/chat/histories/grouped/${projectId}`,
-      { include_tasks: true }
-    );
+    const historyProject = await historyRead;
     const tasks = withoutTriggerPlaceholderTasks<{
       id?: string | number | null;
       task_id?: string | null;

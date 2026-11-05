@@ -46,7 +46,6 @@ export function useHomeHubProjects() {
   const email = useAuthStore((s) => s.email);
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
-  const projectStore = useProjectRuntimeStore();
 
   const [projects, setProjects] = useState<ProjectGroupType[]>(() => {
     const snap = groupedHistorySnapshot;
@@ -170,7 +169,8 @@ export function useHomeHubProjects() {
         const targetProject = projects.find(
           (project) => project.project_id === projectId
         );
-        const chatState = projectStore
+        const chatState = useProjectRuntimeStore
+          .getState()
           .peekActiveChatStore(projectId)
           ?.getState();
         await deleteSessionTaskData({
@@ -192,7 +192,7 @@ export function useHomeHubProjects() {
           ipcRenderer,
         });
         assertSessionCleanupIdentity(identity);
-        projectStore.removeProject(projectId);
+        useProjectRuntimeStore.getState().removeProject(projectId);
         setProjects((prevProjects) => {
           const next = prevProjects.filter(
             (project) => project.project_id !== projectId
@@ -208,7 +208,7 @@ export function useHomeHubProjects() {
         return deleteCallback({ deleteWorkdir: false });
       }
     },
-    [ipcRenderer, projectStore, projects]
+    [ipcRenderer, projects]
   );
 
   /**

@@ -80,11 +80,9 @@ export default function WorkspacePage() {
     activeProjectId ? state.getProjectMeta(activeProjectId) : null
   );
 
-  const {
-    activeWorkspaceTab: storedWorkspaceTab,
-    setHasAgentFiles,
-    setActiveWorkspaceTab,
-  } = usePageTabStore();
+  const storedWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
+  const setHasAgentFiles = usePageTabStore((s) => s.setHasAgentFiles);
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const shellPlace = usePageTabStore((s) => s.shellPlace);
   const inHome = shellPlace === 'home';
   // The composer landing is New session everywhere, and Home shows only a
@@ -524,9 +522,7 @@ export default function WorkspacePage() {
   return (
     <ReactFlowProvider>
       <AppShellLayout
-        sidebar={
-          inHome ? <HomeSidebar /> : <SpaceSidebar chatStore={chatStore} />
-        }
+        sidebar={inHome ? <HomeSidebar /> : <SpaceSidebar />}
         sidebarHidden={workspaceSidebarHidden}
         /* Always mounted: hosts preview <webview> guests so their pages and
            history survive panel close, workspace-tab hops, and project

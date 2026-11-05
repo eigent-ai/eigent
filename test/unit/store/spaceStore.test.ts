@@ -1069,6 +1069,41 @@ describe('spaceStore server deletion', () => {
     );
   });
 
+  it('keeps a Session created while a Session list sync was on its way', async () => {
+    const api = await import('@/service/spaceApi');
+    let finishSync!: () => void;
+    vi.mocked(api.proxyFetchSpaceProjects).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSync = () =>
+          resolve([makeServerProject('project_deleted', 'space_deleted')]);
+      })
+    );
+    const sync = useSpaceStore
+      .getState()
+      .syncProjectsFromServer('space_deleted', []);
+    await vi.waitFor(() =>
+      expect(api.proxyFetchSpaceProjects).toHaveBeenCalledTimes(1)
+    );
+
+    useSpaceStore.getState().upsertProjectMetas([
+      {
+        id: 'project_new',
+        spaceId: 'space_deleted',
+        name: 'New work',
+        status: 'active',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    ]);
+    finishSync();
+    await sync;
+
+    expect(useSpaceStore.getState().getProjectMeta('project_new')).toBeTruthy();
+    expect(
+      useSpaceStore.getState().getProjectMeta('project_deleted')
+    ).toBeTruthy();
+  });
+
   it('still applies an in-flight Session list when Space deletion is rejected', async () => {
     const api = await import('@/service/spaceApi');
     let finishSync!: () => void;

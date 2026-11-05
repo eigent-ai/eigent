@@ -55,6 +55,9 @@ import { toast } from 'sonner';
 import type { AutomationExample } from './automationExampleData';
 import { scheduleToCron } from './automationSchedule';
 
+/** Each Space's last list, shown while it refreshes. */
+const lastTriggersBySpace = new Map<string, Trigger[]>();
+
 const NEW_ROW_HIGHLIGHT_MS = 6000;
 
 const byNewestFirst = (a: Trigger, b: Trigger) =>
@@ -114,8 +117,11 @@ export default function Overview({
 
   // A Space owns this list; changing Session must not clear its automations.
   useEffect(() => {
-    // Clear the previous Space before loading the next one.
-    setTriggers([]);
+    // Replace the previous Space's list, with this Space's last one if known.
+    const lastList = activeSpaceId
+      ? lastTriggersBySpace.get(activeSpaceId)
+      : undefined;
+    setTriggers(lastList ?? []);
 
     if (!activeSpaceId) {
       setListLoadState('idle');
@@ -123,11 +129,13 @@ export default function Overview({
     }
 
     let cancelled = false;
-    setListLoadState('loading');
+    setListLoadState(lastList ? 'ready' : 'loading');
     proxyFetchSpaceTriggers(activeSpaceId)
       .then((response) => {
+        const items = response.items || [];
+        lastTriggersBySpace.set(activeSpaceId, items);
         if (cancelled) return;
-        setTriggers(response.items || []);
+        setTriggers(items);
         setListLoadState('ready');
       })
       .catch((error) => {

@@ -120,6 +120,10 @@ export function useShellHistory() {
   const restore = useCallback(
     async (entry: ShellPlaceEntry) => {
       const pages = usePageTabStore.getState();
+      const sessionId =
+        entry.path === '/' && entry.workspaceTab === WorkspaceTab.Project
+          ? entry.projectId
+          : null;
       closeSettings();
       if (
         entry.spaceId &&
@@ -128,17 +132,22 @@ export function useShellHistory() {
         const switched = await switchToSpace(entry.spaceId, {
           project: entry.projectId,
           tab: null,
+          hydrate: !sessionId,
         });
         if (!switched) return;
       }
+      if (sessionId) {
+        // Move first, so a Session with history to load shows at once.
+        pages.setShellPlace(entry.shellPlace);
+        navigate(entry.path, { state: entry.routerState });
+        await openSessionInShell(sessionId);
+        pages.setShellPlace(entry.shellPlace);
+        return;
+      }
       if (entry.path === '/') {
-        if (entry.workspaceTab === WorkspaceTab.Project && entry.projectId) {
-          await openSessionInShell(entry.projectId);
-        } else {
-          useProjectRuntimeStore.getState().setActiveProject(entry.projectId);
-          pages.setSpaceWorkspaceTab(entry.spaceWorkspaceTab);
-          pages.setActiveWorkspaceTab(entry.workspaceTab as WorkspaceTabId);
-        }
+        useProjectRuntimeStore.getState().setActiveProject(entry.projectId);
+        pages.setSpaceWorkspaceTab(entry.spaceWorkspaceTab);
+        pages.setActiveWorkspaceTab(entry.workspaceTab as WorkspaceTabId);
         // Opening a tab can move to the Space view, so the place comes last.
         pages.setShellPlace(entry.shellPlace);
       }

@@ -99,8 +99,10 @@ vi.mock('@/store/spaceStore', () => ({
   getVisibleProjectMetasForSpace: () => [mocks.space.getProjectMeta()],
 }));
 vi.mock('@/store/projectRuntimeStore', () => ({
-  useProjectRuntimeStore: (selector?: any) =>
-    selector ? selector(mocks.runtime) : mocks.runtime,
+  useProjectRuntimeStore: Object.assign(
+    (selector?: any) => (selector ? selector(mocks.runtime) : mocks.runtime),
+    { getState: () => mocks.runtime }
+  ),
 }));
 vi.mock('@/store/pageTabStore', () => ({
   usePageTabStore: (selector: any) => selector(mocks.page),
@@ -193,7 +195,7 @@ vi.mock('sonner', () => ({
 async function openDialog() {
   render(
     <MemoryRouter>
-      <SpaceSidebar chatStore={null} />
+      <SpaceSidebar />
     </MemoryRouter>
   );
   fireEvent.click(
@@ -437,7 +439,7 @@ describe('Sidebar Session names', () => {
       mocks.meta.metadata = { historyId: 'history-a' };
       render(
         <MemoryRouter>
-          <SpaceSidebar chatStore={null} />
+          <SpaceSidebar />
         </MemoryRouter>
       );
 
@@ -453,7 +455,7 @@ describe('Sidebar Session names', () => {
     mocks.meta.name = 'Launch plan';
     render(
       <MemoryRouter>
-        <SpaceSidebar chatStore={null} />
+        <SpaceSidebar />
       </MemoryRouter>
     );
 

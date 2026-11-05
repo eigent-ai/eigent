@@ -3664,9 +3664,9 @@ function resolveProjectNavLead(
   return fallback;
 }
 
-const pushLiveNavLead = (projectId: string) => {
+/** Re-read a Session's lead from its Runs and chat state. */
+export const refreshProjectNavLead = (projectId: string) => {
   const state = projectStore.getState();
-  if (!navLeadSubscriptions.has(projectId)) return;
   const current = state.navLeadByProjectId[projectId];
   const lead = resolveProjectNavLead(
     state,
@@ -3675,6 +3675,10 @@ const pushLiveNavLead = (projectId: string) => {
   );
   if (navLeadsEqual(current, lead)) return;
   state.setProjectNavLead(projectId, lead);
+};
+
+const pushLiveNavLead = (projectId: string) => {
+  if (navLeadSubscriptions.has(projectId)) refreshProjectNavLead(projectId);
 };
 
 // Navigation only peeks at event stores, so cold or evicted Sessions never
