@@ -1687,5 +1687,7 @@
   "unfold-space": "Déplier {{name}}",
   "show-all-sessions": "Tout afficher ({{count}})",
   "show-all-sessions-in-space": "Afficher les {{count}} sessions de {{name}}",
+  "show-fewer-sessions": "Afficher moins",
+  "show-fewer-sessions-in-space": "Afficher moins de sessions de {{name}}",
   "new-session-space": "Espace de cette session"
 }

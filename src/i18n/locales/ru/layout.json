@@ -1709,5 +1709,7 @@
   "unfold-space": "Развернуть {{name}}",
   "show-all-sessions": "Показать все ({{count}})",
   "show-all-sessions-in-space": "Показать все сессии в {{name}} ({{count}})",
+  "show-fewer-sessions": "Показать меньше",
+  "show-fewer-sessions-in-space": "Показать меньше сессий в {{name}}",
   "new-session-space": "Пространство для этой сессии"
 }

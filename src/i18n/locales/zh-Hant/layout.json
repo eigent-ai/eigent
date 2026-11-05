@@ -1643,5 +1643,7 @@
   "unfold-space": "展開 {{name}}",
   "show-all-sessions": "顯示全部 {{count}} 個",
   "show-all-sessions-in-space": "顯示 {{name}} 的全部 {{count}} 個工作階段",
+  "show-fewer-sessions": "收合",
+  "show-fewer-sessions-in-space": "收合 {{name}} 的工作階段",
   "new-session-space": "此工作階段所在空間"
 }

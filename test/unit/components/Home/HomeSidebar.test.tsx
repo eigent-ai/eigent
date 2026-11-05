@@ -537,14 +537,27 @@ describe('HomeSidebar', () => {
       document.querySelector('[data-home-space-status="running"]')
     ).not.toBeNull();
 
+    // Show all lists the rest in place, without leaving Home.
+    const locationBefore = screen.getByTestId('location').textContent;
+    await user.click(showAll);
+    expect(
+      within(research).getByRole('button', { name: 'Old notes' })
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('location').textContent).toBe(locationBefore);
+
     await user.click(
+      within(research).getByRole('button', {
+        name: 'Show fewer sessions in Research',
+      })
+    );
+    expect(
+      within(research).queryByRole('button', { name: 'Old notes' })
+    ).not.toBeInTheDocument();
+    expect(
       within(research).getByRole('button', {
         name: 'Show all 5 sessions in Research',
       })
-    );
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      '/home?section=spaces&spaceId=space-research&spaceTab=projects'
-    );
+    ).toBeInTheDocument();
   });
 
   it('folds a Space from its icon and remembers the fold', async () => {
