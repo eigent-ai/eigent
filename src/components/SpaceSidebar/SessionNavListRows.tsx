@@ -63,8 +63,6 @@ export interface SessionNavItem {
   pinned?: boolean;
   /** Marked unread: the title stands out, and a nested row shows a dot. */
   unread?: boolean;
-  /** Its result has been read, so a nested row's status dot goes away. */
-  outcomeSeen?: boolean;
   source?: 'user' | 'trigger';
   /** e.g. relative time or the Session's Space; hidden while the row menu shows. */
   trailing?: string;
@@ -137,10 +135,9 @@ interface ContextMenuPoint {
 }
 
 /**
- * A nested row's status: the lead's colour, as a dot, until its result is
- * read. An unread Session with no other status shows the information colour.
- * With an End button on the row, the button takes the dot's place on hover and
- * focus.
+ * A nested row's status: the lead's colour, as a dot. An unread Session with
+ * no other status shows the information colour. With an End button on the
+ * row, the button takes the dot's place on hover and focus.
  */
 function SessionStatusDot({
   session,
@@ -150,17 +147,17 @@ function SessionStatusDot({
   coveredOnHover: boolean;
 }) {
   const { kind, iconClassName } = session.sessionLead;
-  const showsLead = kind !== 'idle' && !session.outcomeSeen;
-  const colorClass = showsLead
-    ? iconClassName
-    : session.unread
-      ? UNREAD_DOT_COLOR_CLASS
-      : null;
+  const colorClass =
+    kind !== 'idle'
+      ? iconClassName
+      : session.unread
+        ? UNREAD_DOT_COLOR_CLASS
+        : null;
   if (!colorClass) return null;
   return (
     <span
       aria-hidden
-      data-session-status-dot={showsLead ? kind : 'unread'}
+      data-session-status-dot={kind !== 'idle' ? kind : 'unread'}
       className={cn(
         'ml-ds-8 size-2 shrink-0 rounded-full bg-current',
         colorClass,
@@ -237,8 +234,7 @@ function SessionRowContextMenu({
   const { t } = useTranslation();
   // A result nobody has read counts as unread, so the menu can clear its dot.
   const unread =
-    session.unread ||
-    (isSessionOutcomeKind(session.sessionLead.kind) && !session.outcomeSeen);
+    session.unread || isSessionOutcomeKind(session.sessionLead.kind);
   return (
     <DropdownMenu
       open

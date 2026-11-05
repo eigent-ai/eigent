@@ -206,6 +206,7 @@ describe('HomeSidebar', () => {
     mocks.openSessionInShell.mockResolvedValue(undefined);
     mocks.openSessionWindow.mockResolvedValue(undefined);
     useSessionControlsStore.setState({
+      pinnedProjectIds: [],
       unreadProjectIds: [],
       seenOutcomes: {},
     });
@@ -335,7 +336,7 @@ describe('HomeSidebar', () => {
     expect(rows[5]).toContain('Ops');
   });
 
-  const sessionRow = (name: string) =>
+  const sessionRow = (name: string | RegExp) =>
     within(sidebar())
       .getByRole('button', { name })
       .closest('.group\\/session-item') as HTMLElement;
@@ -407,6 +408,62 @@ describe('HomeSidebar', () => {
       await screen.findByRole('menuitem', { name: 'Mark as read' })
     );
     expect(dot('Competitor scan')).toBeNull();
+  });
+
+  it('moves pinned Sessions out of their Space into Pinned, above Spaces', () => {
+    useSessionControlsStore.setState({ pinnedProjectIds: ['o-1', 'r-2'] });
+    renderSidebar();
+
+    const pinnedHeader = within(sidebar()).getByRole('button', {
+      name: 'Pinned',
+    });
+    const spacesHeader = within(sidebar()).getByRole('button', {
+      name: 'Spaces',
+    });
+    expect(
+      pinnedHeader.compareDocumentPosition(spacesHeader) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    // Pin order, each naming its Space.
+    const scan = sessionRow(/^Competitor scan/);
+    const invoices = sessionRow(/^Vendor invoices/);
+    expect(
+      invoices.compareDocumentPosition(scan) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(scan).toHaveTextContent('Research');
+    expect(scan.closest('[data-home-space]')).toBeNull();
+
+    // The Space lists the rest, so four unpinned Sessions need no Show all.
+    const research = sidebar().querySelector(
+      '[data-home-space="space-research"]'
+    ) as HTMLElement;
+    expect(
+      within(research).getByRole('button', { name: 'Old notes' })
+    ).toBeInTheDocument();
+    expect(
+      within(research).queryByRole('button', { name: /^Show all/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it('has no Pinned section without a pinned Session', () => {
+    renderSidebar();
+
+    expect(
+      within(sidebar()).queryByRole('button', { name: 'Pinned' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps a pinned Session out of One list', () => {
+    usePageTabStore.setState({ homeSidebarGrouping: 'list' });
+    useSessionControlsStore.setState({ pinnedProjectIds: ['r-2'] });
+    renderSidebar();
+
+    // One row, in Pinned, rather than a second one under Sessions.
+    expect(sessionRow(/^Competitor scan/)).toBeInTheDocument();
+    expect(
+      within(sidebar()).getByRole('button', { name: 'Pinned' })
+    ).toBeInTheDocument();
   });
 
   it('marks a Session unread and read from its menu', async () => {
