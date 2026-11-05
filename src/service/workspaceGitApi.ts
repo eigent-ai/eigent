@@ -159,6 +159,45 @@ export interface RunGitChangesUnavailable {
   project_id: string;
 }
 
+export type RunHarborTaskUnavailableReason =
+  | 'run_not_completed'
+  | 'run_git_not_recorded'
+  | 'run_git_not_finalized'
+  | 'run_changed_no_files'
+  | 'run_has_no_user_message';
+
+export interface RunHarborTaskAvailability {
+  run_id: string;
+  available: boolean;
+  reason: RunHarborTaskUnavailableReason | null;
+}
+
+export interface SavedRunHarborTask {
+  run_id: string;
+  name: string;
+  path: string;
+  notes: string[];
+}
+
+/** A saved Harbor task and the bundle Env Hub takes: the task and the Run's conversation. */
+export interface RunHarborTaskBundle extends SavedRunHarborTask {
+  title: string;
+  bundle: {
+    filename: string;
+    content_type: string;
+    size_bytes: number;
+    sha256: string;
+    conversation_turns: number;
+  };
+}
+
+/** Where Env Hub's create_upload action said to send the bundle. */
+export interface HarborTaskBundleUpload {
+  upload_url: string;
+  method: string;
+  headers: Record<string, string>;
+}
+
 export interface RunGitChangeContent extends ProjectGitChangeContent {
   run_id: string;
   project_id: string;
@@ -346,6 +385,44 @@ export const fetchRunGitChangeBlob = async (
     base_commit: input.baseCommit,
     target_commit: input.targetCommit,
   });
+
+/** Whether a finished Run can be saved as a Harbor task; reads the journal only. */
+export const fetchRunHarborTaskAvailability = async (
+  runId: string
+): Promise<RunHarborTaskAvailability> =>
+  fetchGet(`/runs/${encodeURIComponent(runId)}/git/harbor-task`);
+
+/** Save a finished Run as a Harbor task folder on this computer. */
+export const saveRunHarborTask = async (
+  runId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity
+): Promise<SavedRunHarborTask> =>
+  fetchPost(`/runs/${encodeURIComponent(runId)}/git/harbor-task`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+  });
+
+/** Save a finished Run as a Harbor task and bundle it with its conversation for Env Hub; nothing is sent. */
+export const bundleRunHarborTask = async (
+  runId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity
+): Promise<RunHarborTaskBundle> =>
+  fetchPost(`/runs/${encodeURIComponent(runId)}/git/harbor-task/bundle`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+  });
+
+/** Send the Run's bundle to the one-time upload URL Env Hub gave. */
+export const uploadRunHarborTaskBundle = async (
+  runId: string,
+  upload: HarborTaskBundleUpload
+): Promise<{ run_id: string; status_code: number }> =>
+  fetchPost(
+    `/runs/${encodeURIComponent(runId)}/git/harbor-task/bundle/upload`,
+    upload
+  );
 
 export const previewAdvancedGit = async (
   spaceId: string,

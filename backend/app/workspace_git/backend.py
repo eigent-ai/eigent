@@ -233,6 +233,15 @@ class GitPathBlob:
     size_bytes: int
 
 
+@dataclass(frozen=True)
+class GitTreeEntry:
+    relative_path: str
+    mode: str
+    object_type: str
+    oid: str
+    size_bytes: int | None
+
+
 class GitBackend:
     """Small typed backend; arbitrary command execution is intentionally absent."""
 
@@ -1077,6 +1086,55 @@ class GitBackend:
                 )
             )
         return tuple(blobs)
+
+    def tree_entries(
+        self,
+        repository_root: Path,
+        commit_oid: str,
+    ) -> tuple[GitTreeEntry, ...]:
+        """List every entry of one commit's whole tree, recursively."""
+
+        self._validate_object_name(commit_oid)
+        args = ("ls-tree", "-r", "-z", "-l", "--full-tree", commit_oid)
+        # A whole tree is machine-readable evidence like status: drain it with
+        # the status budget and never treat a truncated listing as complete.
+        if not _ADVANCED_COMMAND_SLOTS.acquire(timeout=self.timeout_seconds):
+            raise GitBackendError("Git tree listing concurrency limit reached")
+        try:
+            result = self._run_advanced_argv_acquired(
+                command=self._command(repository_root, args),
+                args=args,
+                identity=None,
+                output_limit=self.max_status_output_chars,
+            )
+        finally:
+            _ADVANCED_COMMAND_SLOTS.release()
+        if result.returncode != 0:
+            raise GitCommandError(
+                args=args, returncode=result.returncode, stderr=result.stderr
+            )
+        if result.stdout_truncated:
+            raise GitBackendError("Git tree listing was truncated")
+        entries: list[GitTreeEntry] = []
+        for record in result.stdout.split("\0"):
+            if not record:
+                continue
+            metadata, separator, raw_path = record.partition("\t")
+            parts = metadata.split()
+            if separator != "\t" or len(parts) != 4:
+                raise GitBackendError("Git returned malformed tree entries")
+            mode, object_type, oid, raw_size = parts
+            self._validate_object_name(oid)
+            entries.append(
+                GitTreeEntry(
+                    relative_path=self._normalize_relative_git_path(raw_path),
+                    mode=mode,
+                    object_type=object_type,
+                    oid=oid,
+                    size_bytes=int(raw_size) if raw_size.isdigit() else None,
+                )
+            )
+        return tuple(entries)
 
     def object_size(self, repository_root: Path, object_oid: str) -> int:
         self._validate_object_name(object_oid)

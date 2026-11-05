@@ -342,3 +342,44 @@ export async function createConnectorOAuthAuthorization(
     state: authorization?.state,
   };
 }
+
+/** A connector action that did not run, with the provider's message. */
+export class ConnectorActionError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'ConnectorActionError';
+    this.code = code;
+  }
+}
+
+/** Run one connector action for the signed-in user; its output. */
+export async function executeConnectorAction<T>(
+  actionId: string,
+  input: Record<string, unknown>
+): Promise<T> {
+  let response: any;
+  try {
+    response = await proxyFetchPost(
+      `/api/v1/connectors/actions/${encodeURIComponent(actionId)}/execute`,
+      { input }
+    );
+  } catch (error: any) {
+    const detail = error?.response?.data?.detail ?? error?.detail;
+    throw new ConnectorActionError(
+      detail?.message || error?.message || 'Connector action failed',
+      detail?.code
+    );
+  }
+  const reply = response?.data;
+  if (response?.ok === false || !reply || reply.success === false) {
+    throw new ConnectorActionError(
+      reply?.message ||
+        response?.detail?.message ||
+        `Connector action failed (${response?.status_code ?? 'unknown'})`,
+      reply?.data?.details?.code ?? reply?.errorCode
+    );
+  }
+  return reply.data as T;
+}

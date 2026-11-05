@@ -83,6 +83,7 @@ import { copyBrowserData } from './copy';
 import { getOrCreateDesktopInstanceId } from './desktopIdentity';
 import { inlineContentDisposition, resolveFileByteRange } from './fileRange';
 import { FileReader } from './fileReader';
+import { getHarborTasksDir } from './harborTasks';
 import {
   checkToolInstalled,
   findAvailablePort,
@@ -2449,6 +2450,13 @@ function registerIpcHandlers() {
   ipcMain.handle('reveal-local-path', async (event, targetPath: string) => {
     assertAppRendererSender(event);
     return revealWorkspaceLocalNode(targetPath, activeLocalFileRoots(), shell);
+  });
+
+  // Saved Harbor tasks live outside every Space, so this channel grants only
+  // the folder the backend writes them into.
+  ipcMain.handle('reveal-harbor-task', async (event, targetPath: string) => {
+    assertMainRendererSender(event);
+    return revealWorkspaceLocalNode(targetPath, [getHarborTasksDir()], shell);
   });
 
   ipcMain.handle('open-local-file', async (event, targetPath: string) => {

@@ -21,6 +21,7 @@ import * as net from 'net';
 import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
+import { getHarborTasksDir } from './harborTasks';
 import { PromiseReturnType } from './install-deps';
 import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
 import {
@@ -354,6 +355,7 @@ export async function startBackend(
     npm_config_cache: npmCacheDir,
     PATH: updatedPath,
     ...(bundledGitPath ? { EIGENT_BUNDLED_GIT: bundledGitPath } : {}),
+    EIGENT_HARBOR_TASKS_DIR: getHarborTasksDir(),
     ...extraEnv,
   };
 

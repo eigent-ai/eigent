@@ -77,8 +77,8 @@ vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: vi.fn(),
 }));
 
-vi.mock('../../../src/store/authStore', () => ({
-  useAuthStore: {
+vi.mock('../../../src/store/authStore', () => {
+  const state = {
     token: null,
     username: null,
     email: null,
@@ -91,24 +91,22 @@ vi.mock('../../../src/store/authStore', () => ({
     initState: 'carousel' as const,
     share_token: null,
     workerListData: {},
-  },
-  getAuthStore: vi.fn(() => ({
-    token: null,
-    username: null,
-    email: null,
-    user_id: null,
-    appearance: 'light',
-    language: 'system',
-    isFirstLaunch: true,
-    modelType: 'cloud' as const,
-    cloud_model_type: 'gpt-5.4' as const,
-    initState: 'carousel' as const,
-    share_token: null,
-    workerListData: {},
-  })),
-  useWorkerList: vi.fn(() => []),
-  getWorkerList: vi.fn(() => []),
-}));
+  };
+  // A hook like the real store (components select from it) that still reads
+  // as the state object.
+  const useAuthStore = Object.assign(
+    (selector?: (value: typeof state) => unknown) =>
+      selector ? selector(state) : state,
+    state,
+    { getState: () => state }
+  );
+  return {
+    useAuthStore,
+    getAuthStore: vi.fn(() => state),
+    useWorkerList: vi.fn(() => []),
+    getWorkerList: vi.fn(() => []),
+  };
+});
 
 vi.mock('../../../src/store/projectStore', () => {
   const state = () => ({

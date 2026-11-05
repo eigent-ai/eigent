@@ -22,8 +22,26 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 
 from app.auth import require_local_control_principal
+from app.harbor_task import (
+    BUNDLE_CONTENT_TYPE,
+    HarborTaskBundleError,
+    HarborTaskUnavailable,
+    build_bundle,
+    earlier_runs,
+    harbor_tasks_root,
+    resolve_harbor_task_source,
+    run_conversation,
+    run_instruction,
+    run_reference_text,
+    run_request_text,
+    save_harbor_task,
+    saved_bundle,
+    task_directory_name,
+    upload_bundle,
+)
 from app.run_journal import (
     IdempotencyConflictError,
     InvalidRunTransitionError,
@@ -180,6 +198,20 @@ class GitRunWorkspaceEditBody(BaseModel):
         pattern=r"^[0-9a-f]{64}$",
     )
     actor_id: str = Field(min_length=1, max_length=200)
+
+
+class HarborTaskSaveBody(BaseModel):
+    space_id: str = Field(min_length=1, max_length=256)
+    email: str = Field(min_length=1)
+    user_id: str | int | None = None
+
+
+class HarborTaskUploadBody(BaseModel):
+    """Where Env Hub's ``create_upload`` action said to send the bundle."""
+
+    upload_url: str = Field(min_length=1, max_length=8192)
+    method: str = Field(default="PUT", min_length=1, max_length=16)
+    headers: dict[str, str] = Field(default_factory=dict)
 
 
 class AdvancedGitPreviewBody(BaseModel):
@@ -1482,6 +1514,155 @@ async def run_git_change_blob(
         raise
     except Exception as exc:
         raise _git_error(exc) from exc
+
+
+def _harbor_task_error(exc: HarborTaskUnavailable) -> HTTPException:
+    return HTTPException(
+        status_code=404 if exc.reason == "run_not_found" else 409,
+        detail={"code": exc.reason, "message": str(exc)},
+    )
+
+
+@router.get("/runs/{run_id}/git/harbor-task")
+async def run_harbor_task_availability(run_id: str):
+    """Report whether one finished Run can be saved as a Harbor task."""
+
+    try:
+        resolve_harbor_task_source(_service().journal, run_id)
+    except HarborTaskUnavailable as exc:
+        if exc.reason == "run_not_found":
+            raise _harbor_task_error(exc) from exc
+        return {"run_id": run_id, "available": False, "reason": exc.reason}
+    return {"run_id": run_id, "available": True, "reason": None}
+
+
+async def _save_run_harbor_task(run_id: str, body: HarborTaskSaveBody):
+    """Save one finished Run as a Harbor task folder; the saved task and the
+    Space's root."""
+
+    root = _binding_root(
+        space_id=body.space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    service = _service()
+    try:
+        source = resolve_harbor_task_source(service.journal, run_id)
+    except HarborTaskUnavailable as exc:
+        raise _harbor_task_error(exc) from exc
+    repository = service.journal.get_space_git_repository(
+        space_id=body.space_id
+    )
+    if repository is None or repository.repository_id != source.repository_id:
+        raise HTTPException(status_code=404, detail="Run Git state not found")
+    _assert_repository_binding(repository, root)
+    if repository.repo_subdir:
+        raise _harbor_task_error(
+            HarborTaskUnavailable(
+                "unsupported_repository_layout",
+                "The Space is a folder inside a larger Git repository",
+            )
+        )
+    try:
+        instruction = run_instruction(
+            service.journal, run_id, workspace_root=root
+        )
+        saved = await run_in_threadpool(
+            save_harbor_task,
+            git=service.git,
+            repository_root=Path(repository.root_path),
+            source=source,
+            instruction=instruction,
+            reference_text=run_reference_text(service.journal, run_id),
+            destination_root=harbor_tasks_root(),
+            earlier=earlier_runs(service.journal, source),
+            request_text=run_request_text(service.journal, run_id),
+        )
+    except HarborTaskUnavailable as exc:
+        raise _harbor_task_error(exc) from exc
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    return saved, root, instruction
+
+
+@router.post("/runs/{run_id}/git/harbor-task", status_code=201)
+async def save_run_harbor_task(run_id: str, body: HarborTaskSaveBody):
+    """Save one finished Run as a Harbor task folder on this computer.
+
+    Everything comes from the Run's own record and its Content Repository
+    commits; nothing is sent anywhere and no model is called. The record also
+    decides which workspace files the task keeps.
+    """
+
+    saved, _, _ = await _save_run_harbor_task(run_id, body)
+    return {
+        "run_id": run_id,
+        "name": saved.name,
+        "path": str(saved.path),
+        "notes": list(saved.notes),
+    }
+
+
+def _bundle_error(exc: HarborTaskBundleError) -> HTTPException:
+    return HTTPException(
+        status_code=404 if exc.reason == "bundle_not_found" else 400,
+        detail={"code": exc.reason, "message": str(exc)},
+    )
+
+
+@router.post("/runs/{run_id}/git/harbor-task/bundle", status_code=201)
+async def bundle_run_harbor_task(run_id: str, body: HarborTaskSaveBody):
+    """Save one finished Run as a Harbor task and make the bundle Env Hub
+    takes: the task and the Run's conversation. Nothing is sent yet."""
+
+    saved, root, instruction = await _save_run_harbor_task(run_id, body)
+    conversation = run_conversation(
+        _service().journal, run_id, workspace_root=root
+    )
+    bundle = await run_in_threadpool(build_bundle, saved.path, conversation)
+    first_line = next(
+        (
+            line.strip()
+            for line in instruction.text.splitlines()
+            if line.strip()
+        ),
+        saved.name,
+    )
+    return {
+        "run_id": run_id,
+        "name": saved.name,
+        "path": str(saved.path),
+        "notes": list(saved.notes),
+        "title": first_line[:300],
+        "bundle": {
+            "filename": bundle.filename,
+            "content_type": BUNDLE_CONTENT_TYPE,
+            "size_bytes": bundle.size_bytes,
+            "sha256": bundle.sha256,
+            "conversation_turns": bundle.turns,
+        },
+    }
+
+
+@router.post("/runs/{run_id}/git/harbor-task/bundle/upload")
+async def upload_run_harbor_task_bundle(
+    run_id: str, body: HarborTaskUploadBody
+):
+    """Send the Run's bundle to the upload URL Env Hub gave the app. Only the
+    bundle made for this Run is sent, and only to an HTTPS URL."""
+
+    try:
+        path = saved_bundle(task_directory_name(run_id))
+        status = await run_in_threadpool(
+            upload_bundle,
+            path,
+            url=body.upload_url,
+            method=body.method,
+            headers=body.headers,
+        )
+    except HarborTaskBundleError as exc:
+        raise _bundle_error(exc) from exc
+    return {"run_id": run_id, "status_code": status}
 
 
 @router.get("/runs/{run_id}/git/workspace")

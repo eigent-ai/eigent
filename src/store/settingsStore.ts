@@ -30,12 +30,17 @@ export const SETTINGS_SECTIONS = [
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number];
 export type SettingsScope = 'global' | 'device' | 'settings';
 
-type SettingsOpenOptions = { modelProvider?: string };
+type SettingsOpenOptions = {
+  modelProvider?: string;
+  /** A connector to open in Connectors, e.g. `open:env_hub`. */
+  connectorTarget?: string;
+};
 
 interface SettingsState {
   isOpen: boolean;
   activeSection: SettingsSectionId;
   modelProvider: string | null;
+  connectorTarget: string | null;
   openSettings: (
     section?: SettingsSectionId,
     options?: SettingsOpenOptions
@@ -49,16 +54,22 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   isOpen: false,
   activeSection: 'models',
   modelProvider: null,
+  connectorTarget: null,
   openSettings: (section, options) =>
     set((state) => ({
       isOpen: true,
       modelProvider:
         section === 'models' ? (options?.modelProvider ?? null) : null,
+      connectorTarget:
+        section === 'connectors' ? (options?.connectorTarget ?? null) : null,
       activeSection: section ?? state.activeSection,
     })),
-  // The route bridge copies modelProvider into the destination URL.
-  finishSettingsNavigation: () => set({ isOpen: false, modelProvider: null }),
-  closeSettings: () => set({ isOpen: false, modelProvider: null }),
+  // The route bridge copies modelProvider and connectorTarget into the
+  // destination URL.
+  finishSettingsNavigation: () =>
+    set({ isOpen: false, modelProvider: null, connectorTarget: null }),
+  closeSettings: () =>
+    set({ isOpen: false, modelProvider: null, connectorTarget: null }),
   setActiveSection: (activeSection) => set({ activeSection }),
 }));
 

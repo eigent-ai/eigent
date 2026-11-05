@@ -70,6 +70,8 @@ interface AgentMessageCardProps {
   messageStep?: string;
   /** Shown only after markdown (and typewriter, if enabled) has finished rendering — e.g. generated file chips. */
   deferredFooter?: ReactNode;
+  /** Extra actions appended after Copy and feedback, e.g. Save as Harbor task. */
+  extraActions?: ReactNode;
   onTyping?: () => void;
   onMarkdownRenderComplete?: () => void;
 }
@@ -90,6 +92,7 @@ export function AgentMessageCard({
   feedbackRunId,
   messageStep,
   deferredFooter,
+  extraActions,
 }: AgentMessageCardProps) {
   const openFilePreview = useSessionPageTabStore((s) => s.openFilePreview);
   const [markdownAndTypingComplete, setMarkdownAndTypingComplete] = useState(
@@ -313,6 +316,7 @@ export function AgentMessageCard({
               className={`${feedback === 'down' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
+          {extraActions}
         </div>
       )}
     </div>
