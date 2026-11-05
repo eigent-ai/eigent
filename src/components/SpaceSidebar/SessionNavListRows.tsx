@@ -27,13 +27,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import {
+  presentationForKind,
+  type SessionNavLeadPresentation,
+} from '@/lib/sessionNavLead';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import {
   AppWindow,
   Archive,
   Columns2,
+  Mail,
+  MailOpen,
   MoreHorizontal,
   PanelsTopLeft,
   Pencil,
@@ -55,6 +60,8 @@ export interface SessionNavItem {
   sessionLead: SessionNavLeadPresentation;
   achieved?: boolean;
   pinned?: boolean;
+  /** Marked unread: the title stands out, and a nested row shows a dot. */
+  unread?: boolean;
   source?: 'user' | 'trigger';
   /** e.g. relative time or the Session's Space; hidden while the row menu shows. */
   trailing?: string;
@@ -81,6 +88,7 @@ export interface SessionOpenInActions {
 export interface SessionRowContextActions {
   onRename: (sessionId: string) => void;
   onPin: (sessionId: string) => void;
+  onSetUnread: (sessionId: string, unread: boolean) => void;
   onOpenInNewWindow: (sessionId: string) => void;
   /** Desktop opens a window; the web build opens a browser tab. */
   newWindowKind: 'window' | 'tab';
@@ -102,7 +110,10 @@ export interface SessionNavListRowsProps {
    * neutral hover fill; sidebar keeps the subtle fill.
    */
   panelListHover?: boolean;
-  /** Rows under a parent row (a Space in Home): indented inside the row. */
+  /**
+   * Rows under a parent row (a Space in Home): the name lines up with the
+   * parent's, and the status is a dot at the row's end instead of an icon.
+   */
   nested?: boolean;
   contextActions?: SessionRowContextActions;
   /** When false, hide the trailing action area (session list and workspace recent: time only). */
@@ -115,9 +126,47 @@ export interface SessionNavListRowsProps {
  */
 export const NAV_LIST_SESSIONS_RECENT_MAX = 5;
 
+const UNREAD_DOT_COLOR_CLASS = presentationForKind('running').iconClassName;
+
 interface ContextMenuPoint {
   x: number;
   y: number;
+}
+
+/**
+ * A nested row's status: the lead's colour, as a dot. An unread Session with
+ * no other status shows the information colour. With an End button on the
+ * row, the button takes the dot's place on hover and focus.
+ */
+function SessionStatusDot({
+  session,
+  coveredOnHover,
+}: {
+  session: SessionNavItem;
+  coveredOnHover: boolean;
+}) {
+  const { kind, iconClassName } = session.sessionLead;
+  const colorClass =
+    kind !== 'idle'
+      ? iconClassName
+      : session.unread
+        ? UNREAD_DOT_COLOR_CLASS
+        : null;
+  if (!colorClass) return null;
+  return (
+    <span
+      aria-hidden
+      data-session-status-dot={
+        session.unread && kind === 'idle' ? 'unread' : kind
+      }
+      className={cn(
+        'ml-ds-8 size-2 shrink-0 rounded-full bg-current',
+        colorClass,
+        coveredOnHover &&
+          'group-focus-within/session-item:hidden group-hover/session-item:hidden'
+      )}
+    />
+  );
 }
 
 /** The only hover action on a row with a right-click menu. */
@@ -221,6 +270,15 @@ function SessionRowContextMenu({
           {actions.newWindowKind === 'tab'
             ? t('layout.session-open-in-new-tab')
             : t('layout.session-open-in-new-window')}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="gap-2"
+          onSelect={() => actions.onSetUnread(session.id, !session.unread)}
+        >
+          <DsIcon icon={session.unread ? MailOpen : Mail} aria-hidden />
+          {session.unread
+            ? t('layout.session-mark-read')
+            : t('layout.session-mark-unread')}
         </DropdownMenuItem>
         <DropdownMenuItem
           className="gap-2"
@@ -484,7 +542,7 @@ function SessionNavRow({
             'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pr-3',
             // A nested row keeps its indent inside, so its fill spans the
             // full sidebar width like its parent row.
-            nested ? 'pl-ds-24' : 'pl-3',
+            nested ? 'pl-ds-40' : 'pl-3',
             'transition-colors duration-150',
             selected
               ? panelListHover
@@ -504,11 +562,14 @@ function SessionNavRow({
               'focus-visible:ring-2 focus-visible:ring-ds-hairline-subtle-default focus-visible:outline-none'
             )}
           >
-            <DsIcon icon={LeadIcon} className={leadClassName} />
+            {nested ? null : (
+              <DsIcon icon={LeadIcon} className={leadClassName} />
+            )}
             <span
               className={cn(
-                'min-w-0 flex-1 truncate text-ds-text-base font-medium',
-                active && session.openInPane !== undefined
+                'min-w-0 flex-1 truncate text-ds-text-base',
+                session.unread ? 'font-semibold' : 'font-medium',
+                session.unread || (active && session.openInPane !== undefined)
                   ? 'text-ds-ink-default-default'
                   : 'text-ds-ink-muted-default'
               )}
@@ -547,6 +608,14 @@ function SessionNavRow({
             ) : null}
           </button>
 
+          {nested ? (
+            <SessionStatusDot
+              session={session}
+              coveredOnHover={Boolean(
+                contextActions && onEndSession && !session.achieved
+              )}
+            />
+          ) : null}
           {contextActions ? (
             <SessionRowEndButton
               sessionId={session.id}

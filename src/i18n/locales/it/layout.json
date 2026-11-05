@@ -1664,6 +1664,8 @@
   "organize-one-list": "Un solo elenco",
   "spaces-view-options": "Opzioni di visualizzazione",
   "delete-space": "Elimina Spazio",
+  "session-mark-read": "Segna come letto",
+  "session-mark-unread": "Segna come non letto",
   "session-open-in-new-window": "Apri in una nuova finestra",
   "session-open-in-new-tab": "Apri in una nuova scheda",
   "global-search": "Cerca",

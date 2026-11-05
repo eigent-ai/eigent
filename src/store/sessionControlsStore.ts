@@ -15,6 +15,7 @@
 import { create } from 'zustand';
 
 const PINNED_PROJECTS_KEY = 'eigent-pinned-projects';
+const UNREAD_PROJECTS_KEY = 'eigent-unread-sessions';
 
 export type SessionControlAction = 'rename' | 'end' | 'delete';
 
@@ -24,11 +25,9 @@ export interface SessionControlRequest {
   projectId: string;
 }
 
-function readPinnedProjectIds(): string[] {
+function readStoredIds(key: string): string[] {
   try {
-    const parsed: unknown = JSON.parse(
-      localStorage.getItem(PINNED_PROJECTS_KEY) ?? '[]'
-    );
+    const parsed: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
     return Array.isArray(parsed)
       ? parsed.filter((id): id is string => typeof id === 'string')
       : [];
@@ -37,8 +36,13 @@ function readPinnedProjectIds(): string[] {
   }
 }
 
+const readPinnedProjectIds = () => readStoredIds(PINNED_PROJECTS_KEY);
+
 interface SessionControlsState {
   pinnedProjectIds: string[];
+  /** Sessions marked unread on this device. Opening one reads it. */
+  unreadProjectIds: string[];
+  setSessionUnread: (projectId: string, unread: boolean) => void;
   request: SessionControlRequest | null;
   refreshPinned: () => void;
   togglePinned: (projectId: string) => void;
@@ -49,6 +53,23 @@ interface SessionControlsState {
 export const useSessionControlsStore = create<SessionControlsState>(
   (set, get) => ({
     pinnedProjectIds: readPinnedProjectIds(),
+    unreadProjectIds: readStoredIds(UNREAD_PROJECTS_KEY),
+    setSessionUnread: (projectId, unread) => {
+      const current = get().unreadProjectIds;
+      if (current.includes(projectId) === unread) return;
+      const unreadProjectIds = unread
+        ? [...current, projectId]
+        : current.filter((id) => id !== projectId);
+      try {
+        localStorage.setItem(
+          UNREAD_PROJECTS_KEY,
+          JSON.stringify(unreadProjectIds)
+        );
+      } catch {
+        // The choice still holds until the app closes.
+      }
+      set({ unreadProjectIds });
+    },
     request: null,
     refreshPinned: () => set({ pinnedProjectIds: readPinnedProjectIds() }),
     togglePinned: (projectId) => {

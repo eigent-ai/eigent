@@ -41,7 +41,6 @@ import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
-import { DsText } from '@/components/ui/ds-text';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useSessionNavStatuses } from '@/hooks/useSessionNavStatuses';
@@ -105,6 +104,7 @@ interface SessionRowSources {
   navLeadByProjectId: Readonly<Record<string, SessionNavLeadPresentation>>;
   historyLoadingProjectIds: Readonly<Record<string, true>>;
   pinnedProjectIds: readonly string[];
+  unreadProjectIds: readonly string[];
   attention: Readonly<Record<string, RunAttentionState>>;
 }
 
@@ -118,17 +118,23 @@ function toSessionNavItem(
 ): SessionNavItem {
   const achieved = isProjectAchieved(meta.metadata);
   const attentionState = sources.attention[meta.id];
-  const cachedLead =
-    sources.navLeadByProjectId[meta.id] ??
-    (attentionState === 'waiting'
+  const attentionLead =
+    attentionState === 'waiting'
       ? presentationForKind('hitl')
       : attentionState === 'running'
         ? presentationForKind('running', true)
-        : undefined);
+        : undefined;
+  // A cached idle lead says nothing is known, so it can't hide live work.
+  const knownLead = sources.navLeadByProjectId[meta.id];
+  const cachedLead =
+    knownLead && knownLead.kind !== 'idle'
+      ? knownLead
+      : (attentionLead ?? knownLead);
   return {
     id: meta.id,
     title: getSessionMetaDisplayName(meta, sources.t),
     pinned: sources.pinnedProjectIds.includes(meta.id),
+    unread: sources.unreadProjectIds.includes(meta.id),
     sessionLead: resolveSessionNavLeadPresentation({
       cachedLead,
       isHistoryLoading: Boolean(sources.historyLoadingProjectIds[meta.id]),
@@ -331,18 +337,12 @@ function HomeSpaceGroup({
           <NavTab
             active={false}
             onClick={onShowAll}
-            // Indented inside the row, under the Session titles.
-            leading={
-              <span aria-hidden className="ml-ds-12 size-ds-icon-md shrink-0" />
-            }
+            // The spacer lines the label up with the Session names.
+            leading={<span aria-hidden className="size-ds-icon-md shrink-0" />}
             label={
-              <DsText
-                as="span"
-                role="meta"
-                className="text-ds-ink-muted-default"
-              >
+              <span className="text-ds-text-base font-medium text-ds-ink-subtle-default">
                 {t('layout.show-all-sessions', { count: sessions.length })}
-              </DsText>
+              </span>
             }
             ariaLabel={t('layout.show-all-sessions-in-space', {
               count: sessions.length,
@@ -394,6 +394,12 @@ export default function HomeSidebar() {
     (state) => state.pinnedProjectIds
   );
   const togglePinned = useSessionControlsStore((state) => state.togglePinned);
+  const unreadProjectIds = useSessionControlsStore(
+    (state) => state.unreadProjectIds
+  );
+  const setSessionUnread = useSessionControlsStore(
+    (state) => state.setSessionUnread
+  );
   const pinnedSpaceIds = usePinnedSpaceIds();
   const spaceAttention = useSpaceAttention();
   const sessionAttention = useSessionAttention();
@@ -512,6 +518,7 @@ export default function HomeSidebar() {
     navLeadByProjectId,
     historyLoadingProjectIds,
     pinnedProjectIds,
+    unreadProjectIds,
     attention: sessionAttention,
   };
 
@@ -573,6 +580,7 @@ export default function HomeSidebar() {
     () => ({
       onRename: (projectId) => requestAction('rename', projectId),
       onPin: togglePinned,
+      onSetUnread: setSessionUnread,
       onOpenInNewWindow: (projectId) => {
         const spaceId = useSpaceStore.getState().projectIdIndex[projectId];
         if (!spaceId) return;
@@ -588,7 +596,7 @@ export default function HomeSidebar() {
       },
       newWindowKind: isWeb() ? 'tab' : 'window',
     }),
-    [requestAction, t, togglePinned]
+    [requestAction, setSessionUnread, t, togglePinned]
   );
 
   const newSessionLabel = t('layout.new-project');
