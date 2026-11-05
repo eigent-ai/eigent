@@ -565,6 +565,9 @@ export interface PageTabState {
   /** Spaces folded in the Home sidebar. Persisted. */
   homeFoldedSpaceIds: string[];
   setHomeSpaceFolded: (spaceId: string, folded: boolean) => void;
+  /** Spaces showing every Session in the Home sidebar, until the app closes. */
+  homeExpandedSpaceIds: string[];
+  setHomeSpaceExpanded: (spaceId: string, expanded: boolean) => void;
   /** Spaces order in the Home sidebar. Persisted. */
   homeSpaceSort: HomeSpaceSort;
   setHomeSpaceSort: (sort: HomeSpaceSort) => void;
@@ -935,6 +938,17 @@ export const usePageTabStore = create<PageTabState>()(
             homeFoldedSpaceIds: folded
               ? [...state.homeFoldedSpaceIds, spaceId]
               : state.homeFoldedSpaceIds.filter((id) => id !== spaceId),
+          };
+        }),
+      homeExpandedSpaceIds: [],
+      setHomeSpaceExpanded: (spaceId, expanded) =>
+        set((state) => {
+          const isExpanded = state.homeExpandedSpaceIds.includes(spaceId);
+          if (isExpanded === expanded) return state;
+          return {
+            homeExpandedSpaceIds: expanded
+              ? [...state.homeExpandedSpaceIds, spaceId]
+              : state.homeExpandedSpaceIds.filter((id) => id !== spaceId),
           };
         }),
       workspaceSidebarHidden: false,

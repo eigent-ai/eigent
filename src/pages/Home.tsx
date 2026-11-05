@@ -18,6 +18,7 @@ import HomeHubRoot, {
   HomeSections,
 } from '@/components/Home';
 import HomeSidebar from '@/components/Home/HomeSidebar';
+import { HomeSidebarSlot } from '@/components/Home/HomeSidebarHost';
 import SpaceDetail, {
   isSpaceDetailTab,
   type SpaceDetailTab,
@@ -128,7 +129,14 @@ function HomePageContent() {
   );
 
   return (
-    <AppShellLayout sidebar={<HomeSidebar />} sidebarHidden={sidebarHidden}>
+    <AppShellLayout
+      sidebar={
+        <HomeSidebarSlot>
+          <HomeSidebar />
+        </HomeSidebarSlot>
+      }
+      sidebarHidden={sidebarHidden}
+    >
       <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
         <ContentHeaderFrame>
           <div className="relative min-h-0 flex-1">
