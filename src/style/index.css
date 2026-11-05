@@ -735,6 +735,36 @@ body {
   will-change: transform;
 }
 
+/* Session loading: the user's accent, 2% at the leading edge, fading to 0%. */
+.session-loading-scan {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in srgb, var(--ds-accent-default-default) 2%, transparent)
+  );
+  animation-name: session-loading-scan;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-loading-scan {
+    animation: none;
+  }
+}
+
+@keyframes session-loading-scan {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
 @keyframes progress-install-shimmer {
   0% {
     transform: translateX(50%);

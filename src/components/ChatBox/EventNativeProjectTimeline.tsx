@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ChatTimelineSkeleton } from '@/components/ChatBox/ChatTimelineSkeleton';
+import { SessionLoadingScan } from '@/components/ChatBox/SessionLoadingScan';
 import { Button } from '@/components/ui/button';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useResolvedRunModels } from '@/hooks/useResolvedRunModels';
@@ -660,9 +660,19 @@ export function EventNativeProjectTimeline({
     visibleNodes,
   ]);
 
+  const historyLoaded =
+    !hydration.hasOlderHistory &&
+    (hydration.status === 'ready' || hydration.status === 'idle');
+  const historyLoading =
+    visibleRuns.length === 0 &&
+    hydration.status !== 'error' &&
+    !hydration.olderHistoryError &&
+    !historyLoaded;
+
   return (
     <div
-      className="relative z-10 w-full"
+      // At least the panel's height, so the loading scan fills an empty one.
+      className="relative z-10 min-h-full w-full"
       data-chat-timeline-source="durable-events"
     >
       <div
@@ -753,25 +763,24 @@ export function EventNativeProjectTimeline({
               {t('chat.timeline-history-retry')}
             </Button>
           </div>
-        ) : hydration.olderHistoryError ? null : !hydration.hasOlderHistory &&
-          (hydration.status === 'ready' || hydration.status === 'idle') ? (
+        ) : !hydration.olderHistoryError && historyLoaded ? (
           <span
             className="block px-4 py-6 text-center text-ds-text-base font-normal text-ds-ink-muted-default"
             role="status"
           >
             {t('chat.timeline-empty')}
           </span>
-        ) : (
-          <ChatTimelineSkeleton
-            label={
-              hydration.status === 'retrying'
-                ? t('chat.timeline-history-reconnecting')
-                : t('chat.timeline-history-loading')
-            }
-          />
-        )}
+        ) : null}
         {floatingControl}
       </div>
+      <SessionLoadingScan
+        active={historyLoading}
+        label={
+          hydration.status === 'retrying'
+            ? t('chat.timeline-history-reconnecting')
+            : t('chat.timeline-history-loading')
+        }
+      />
     </div>
   );
 }
