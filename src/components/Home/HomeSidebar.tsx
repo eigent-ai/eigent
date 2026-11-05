@@ -56,6 +56,10 @@ import {
   type SessionNavLeadPresentation,
 } from '@/lib/sessionNavLead';
 import { shouldListSession } from '@/lib/sessionOpen';
+import {
+  isSessionOutcomeSeen,
+  markSessionOutcomeSeen,
+} from '@/lib/sessionOutcome';
 import { openSessionWindow } from '@/lib/sessionWindows';
 import { isHomePagePath } from '@/lib/shellRoutes';
 import { spaceEmoji } from '@/lib/spaceEmoji';
@@ -105,6 +109,7 @@ interface SessionRowSources {
   historyLoadingProjectIds: Readonly<Record<string, true>>;
   pinnedProjectIds: readonly string[];
   unreadProjectIds: readonly string[];
+  seenOutcomes: Readonly<Record<string, string>>;
   attention: Readonly<Record<string, RunAttentionState>>;
 }
 
@@ -130,16 +135,22 @@ function toSessionNavItem(
     knownLead && knownLead.kind !== 'idle'
       ? knownLead
       : (attentionLead ?? knownLead);
+  const sessionLead = resolveSessionNavLeadPresentation({
+    cachedLead,
+    isHistoryLoading: Boolean(sources.historyLoadingProjectIds[meta.id]),
+    isAchieved: achieved,
+  });
   return {
     id: meta.id,
     title: getSessionMetaDisplayName(meta, sources.t),
     pinned: sources.pinnedProjectIds.includes(meta.id),
     unread: sources.unreadProjectIds.includes(meta.id),
-    sessionLead: resolveSessionNavLeadPresentation({
-      cachedLead,
-      isHistoryLoading: Boolean(sources.historyLoadingProjectIds[meta.id]),
-      isAchieved: achieved,
-    }),
+    outcomeSeen: isSessionOutcomeSeen(
+      meta.id,
+      sessionLead.kind,
+      sources.seenOutcomes
+    ),
+    sessionLead,
     achieved,
   };
 }
@@ -404,6 +415,7 @@ export default function HomeSidebar() {
   const unreadProjectIds = useSessionControlsStore(
     (state) => state.unreadProjectIds
   );
+  const seenOutcomes = useSessionControlsStore((state) => state.seenOutcomes);
   const setSessionUnread = useSessionControlsStore(
     (state) => state.setSessionUnread
   );
@@ -526,6 +538,7 @@ export default function HomeSidebar() {
     historyLoadingProjectIds,
     pinnedProjectIds,
     unreadProjectIds,
+    seenOutcomes,
     attention: sessionAttention,
   };
 
@@ -587,7 +600,10 @@ export default function HomeSidebar() {
     () => ({
       onRename: (projectId) => requestAction('rename', projectId),
       onPin: togglePinned,
-      onSetUnread: setSessionUnread,
+      onSetUnread: (projectId, unread) => {
+        setSessionUnread(projectId, unread);
+        if (!unread) markSessionOutcomeSeen(projectId);
+      },
       onOpenInNewWindow: (projectId) => {
         const spaceId = useSpaceStore.getState().projectIdIndex[projectId];
         if (!spaceId) return;

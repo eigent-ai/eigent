@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
+import { markSessionOutcomeSeen } from '@/lib/sessionOutcome';
 import { openSessionWindow } from '@/lib/sessionWindows';
 import { executionScope } from '@/service/executionApi';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -71,6 +72,7 @@ export function shouldListSession(project: SpaceProjectMeta): boolean {
  */
 export async function openSessionInShell(projectId: string): Promise<void> {
   useSessionControlsStore.getState().setSessionUnread(projectId, false);
+  markSessionOutcomeSeen(projectId);
   const projectStore = useProjectRuntimeStore.getState();
   const setActiveWorkspaceTab =
     usePageTabStore.getState().setActiveWorkspaceTab;

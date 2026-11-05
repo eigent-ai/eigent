@@ -31,6 +31,7 @@ import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup
 import SpaceSidebar from '@/components/SpaceSidebar';
 import TriggerPanel from '@/components/Trigger';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useMarkSessionOutcomeSeen } from '@/hooks/useMarkSessionOutcomeSeen';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
@@ -117,6 +118,11 @@ export default function WorkspacePage() {
   );
   useSessionSplitFocusTracking();
   useMainWindowSessionWindows();
+  useMarkSessionOutcomeSeen(
+    activeWorkspaceTab === WorkspaceTab.Project && !activeProjectWindowed
+      ? activeProjectId
+      : null
+  );
 
   const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
