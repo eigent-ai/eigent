@@ -336,7 +336,7 @@ async def subscribe_executions(websocket: WebSocket):
                         "type": "heartbeat",
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     })
-                except:
+                except Exception:
                     break
         
         # Run both tasks concurrently
