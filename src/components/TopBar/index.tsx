@@ -12,6 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  GlobalSearchButton,
+  GlobalSearchHost,
+} from '@/components/GlobalSearch';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import { TOP_BAR_CONTROL_STATE_CLASS } from '@/components/TopBar/controlStyles';
 import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
@@ -107,6 +111,7 @@ function HeaderWin() {
         cancelText={t('layout.cancel')}
         confirmVariant="primary"
       />
+      <GlobalSearchHost />
       {/* Two-sided global navigation: destinations on the left, utilities on the right. */}
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-between">
         <TopBarPrimaryNavigation
@@ -201,7 +206,7 @@ function HeaderWin() {
               </div>
             </>
           }
-          contentControls={null}
+          contentControls={<GlobalSearchButton />}
         />
 
         <div
