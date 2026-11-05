@@ -34,7 +34,7 @@ import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { House, Settings } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { matchPath, useLocation } from 'react-router-dom';
 import { AppRailButton } from './AppRailButton';
@@ -79,7 +79,7 @@ export function getAppRailPlace(
  * Settings, and the account menu. It sits on the same chrome surface as the
  * top bar and stays when the page sidebar folds.
  */
-export default function AppRail() {
+function AppRail() {
   const { t } = useTranslation();
   const location = useLocation();
   const executeAppCommand = useAppCommand();
@@ -226,3 +226,5 @@ export default function AppRail() {
     </nav>
   );
 }
+
+export default memo(AppRail);

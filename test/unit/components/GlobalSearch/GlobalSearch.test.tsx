@@ -39,8 +39,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/components/Home', () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
-vi.mock('@/components/Home/context', () => ({
-  useHomeHub: () => ({
+vi.mock('@/components/Home/hooks/useHomeHubProjects', () => ({
+  useHomeHubProjects: () => ({
     projects: [
       {
         project_id: 'session-1',
@@ -48,6 +48,10 @@ vi.mock('@/components/Home/context', () => ({
         tasks: [{ task_id: 'task-1', question: 'Draft the launch plan' }],
       },
     ],
+  }),
+}));
+vi.mock('@/components/Home/hooks/useHomeHubTriggers', () => ({
+  useHomeHubTriggers: () => ({
     triggers: [{ id: 7, name: 'Morning digest', space_id: 'space-ops' }],
   }),
 }));

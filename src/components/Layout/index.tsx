@@ -15,7 +15,6 @@
 import { InstallDependencies } from '@/components/InstallStep/InstallDependencies';
 import { AppRail, shouldShowAppRail } from '@/components/Layout/AppRail';
 import TopBar from '@/components/TopBar';
-import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useDesktopUpdater } from '@/hooks/useDesktopUpdater';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useHost } from '@/host';
@@ -28,6 +27,7 @@ import {
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useEffect } from 'react';
@@ -107,22 +107,22 @@ export function SettingsRouteBridge() {
 const Layout = () => {
   const host = useHost();
   const location = useLocation();
-  const { projectStore } = useChatStoreAdapter();
+  const activeProjectId = useProjectRuntimeStore(
+    (state) => state.activeProjectId
+  );
+  const activeProjectSpaceId = useProjectRuntimeStore((state) =>
+    state.activeProjectId
+      ? state.projects[state.activeProjectId]?.spaceId
+      : null
+  );
   const {
     initState,
     isFirstLaunch,
     onboardingCompleted,
     setInitState: _setInitState,
   } = useAuthStore();
-  const activeProjectSpaceId = projectStore.activeProjectId
-    ? projectStore.projects[projectStore.activeProjectId]?.spaceId
-    : null;
   const activeWorkspaceRoot = useSpaceStore((state) =>
-    selectProjectWorkspaceRoot(
-      state,
-      projectStore.activeProjectId,
-      activeProjectSpaceId
-    )
+    selectProjectWorkspaceRoot(state, activeProjectId, activeProjectSpaceId)
   );
 
   const {

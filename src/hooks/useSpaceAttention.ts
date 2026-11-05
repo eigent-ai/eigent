@@ -132,7 +132,12 @@ function startPolling(ipcRenderer: AppHost['ipcRenderer']): () => void {
     inFlight = true;
     try {
       const rows = await fetchRunAttention(lifetime.signal);
-      if (!lifetime.signal.aborted) useRunAttentionRows.setState({ rows });
+      if (lifetime.signal.aborted) return;
+      // The usual answer repeats, and every reader would redraw for it.
+      const previous = useRunAttentionRows.getState().rows;
+      if (JSON.stringify(previous) !== JSON.stringify(rows)) {
+        useRunAttentionRows.setState({ rows });
+      }
     } catch {
       // The Brain may be starting or restarting; keep the last answer.
     } finally {

@@ -130,11 +130,8 @@ function AnimatedSettingsSection({
           : { opacity: 0, transform: 'translateY(6px)' }
       }
       animate={{ opacity: 1, transform: 'translateY(0px)' }}
-      exit={
-        shouldReduceMotion
-          ? { opacity: 1 }
-          : { opacity: 0, transform: 'translateY(-3px)' }
-      }
+      // Leaving is instant, so the next section never waits for this one.
+      exit={{ opacity: 0, transition: { duration: 0 } }}
       transition={{
         duration: shouldReduceMotion ? 0 : 0.14,
         ease: [0.23, 1, 0.32, 1],
