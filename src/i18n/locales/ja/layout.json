@@ -1620,6 +1620,8 @@
   "organize-one-list": "1つのリスト",
   "spaces-view-options": "表示オプション",
   "delete-space": "スペースを削除",
+  "session-open-in-new-window": "新しいウィンドウで開く",
+  "session-open-in-new-tab": "新しいタブで開く",
   "global-search": "検索",
   "global-search-all": "すべて",
   "global-search-recents": "最近",

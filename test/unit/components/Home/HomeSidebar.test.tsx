@@ -20,13 +20,21 @@ import HomeSidebar from '@/components/Home/HomeSidebar';
 import { useHomeVisitStore } from '@/components/Home/homeVisit';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import {
   pinnedSpaceOwnerKey,
   useSpaceStore,
   type Space,
   type SpaceProjectMeta,
 } from '@/store/spaceStore';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,6 +43,7 @@ const mocks = vi.hoisted(() => ({
   executeAppCommand: vi.fn(),
   switchToSpace: vi.fn(),
   openSessionInShell: vi.fn(),
+  openSessionWindow: vi.fn(),
   sessionAttention: {} as Record<string, 'running' | 'waiting'>,
   spaceAttention: {} as Record<string, { running: number; waiting: number }>,
 }));
@@ -55,6 +64,11 @@ vi.mock('@/lib/sessionOpen', async (importOriginal) => ({
 vi.mock('@/hooks/useSpaceAttention', () => ({
   useSpaceAttention: () => mocks.spaceAttention,
   useSessionAttention: () => mocks.sessionAttention,
+}));
+
+vi.mock('@/lib/sessionWindows', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/sessionWindows')>()),
+  openSessionWindow: mocks.openSessionWindow,
 }));
 
 vi.mock('@/hooks/useSessionNavStatuses', () => ({
@@ -189,6 +203,7 @@ describe('HomeSidebar', () => {
     mocks.spaceAttention = {};
     mocks.switchToSpace.mockResolvedValue(true);
     mocks.openSessionInShell.mockResolvedValue(undefined);
+    mocks.openSessionWindow.mockResolvedValue(undefined);
     seedSpaces();
     useHomeVisitStore.setState({
       visit: 0,
@@ -315,22 +330,74 @@ describe('HomeSidebar', () => {
     expect(rows[5]).toContain('Ops');
   });
 
-  it('offers no Pin on a Session row', async () => {
+  const sessionRow = (name: string) =>
+    within(sidebar())
+      .getByRole('button', { name })
+      .closest('.group\\/session-item') as HTMLElement;
+
+  it('shows only End session on a Session row, and ends the Session', async () => {
     const user = userEvent.setup();
+    const requestAction = vi.fn();
+    useSessionControlsStore.setState({ requestAction });
     renderSidebar();
 
-    const row = within(sidebar())
-      .getByRole('button', { name: 'Weekly report' })
-      .closest('.group\\/session-item') as HTMLElement;
-    await user.click(
-      within(row).getByRole('button', { name: /more|actions|options/i })
-    );
-    const items = within(await screen.findByRole('menu'))
-      .getAllByRole('menuitem')
-      .map((item) => item.textContent?.trim() ?? '');
+    const row = sessionRow('Weekly report');
+    const buttons = within(row)
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label') ?? button.textContent);
+    expect(buttons).toEqual(['Weekly report', 'End session']);
 
-    expect(items.length).toBeGreaterThan(0);
-    expect(items.some((item) => /pin/i.test(item))).toBe(false);
+    await user.click(within(row).getByRole('button', { name: 'End session' }));
+    expect(requestAction).toHaveBeenCalledWith('end', 'r-1');
+  });
+
+  it('opens the Session menu on right-click', async () => {
+    const user = userEvent.setup();
+    const requestAction = vi.fn();
+    const togglePinned = vi.fn();
+    useSessionControlsStore.setState({ requestAction, togglePinned });
+    renderSidebar();
+
+    const openMenu = async () => {
+      fireEvent.contextMenu(sessionRow('Weekly report'), {
+        clientX: 40,
+        clientY: 60,
+      });
+      return screen.findByRole('menu');
+    };
+
+    const menu = await openMenu();
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent?.trim())
+    ).toEqual([
+      'End session',
+      'Delete session',
+      'Rename session',
+      'Pin',
+      'Open in new window',
+    ]);
+
+    await user.click(
+      within(menu).getByRole('menuitem', { name: 'Rename session' })
+    );
+    expect(requestAction).toHaveBeenCalledWith('rename', 'r-1');
+
+    await user.click(
+      within(await openMenu()).getByRole('menuitem', { name: 'Pin' })
+    );
+    expect(togglePinned).toHaveBeenCalledWith('r-1');
+
+    await user.click(
+      within(await openMenu()).getByRole('menuitem', {
+        name: 'Open in new window',
+      })
+    );
+    expect(mocks.openSessionWindow).toHaveBeenCalledWith({
+      spaceId: 'space-research',
+      projectId: 'r-1',
+    });
   });
 
   it('pins a Space and deletes it from its row menu', async () => {

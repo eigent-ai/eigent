@@ -1642,6 +1642,8 @@
   "organize-one-list": "Eine Liste",
   "spaces-view-options": "Ansichtsoptionen",
   "delete-space": "Space löschen",
+  "session-open-in-new-window": "In neuem Fenster öffnen",
+  "session-open-in-new-tab": "In neuem Tab öffnen",
   "global-search": "Suchen",
   "global-search-all": "Alle",
   "global-search-recents": "Zuletzt verwendet",

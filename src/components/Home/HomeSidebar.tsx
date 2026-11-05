@@ -14,6 +14,7 @@
 
 import eigentIconBlack from '@/assets/logo/icon_black.svg';
 import eigentIconWhite from '@/assets/logo/icon_white.svg';
+import { isWeb } from '@/client/platform';
 import {
   getChoosableSpaces,
   pinSpaceOrChoose,
@@ -33,6 +34,7 @@ import { SessionControlDialogs } from '@/components/SpaceSidebar/SessionControlD
 import {
   SessionNavListRows,
   type SessionNavItem,
+  type SessionRowContextActions,
 } from '@/components/SpaceSidebar/SessionNavListRows';
 import { SidebarAccordionSection } from '@/components/SpaceSidebar/SidebarAccordionSection';
 import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
@@ -55,6 +57,7 @@ import {
   type SessionNavLeadPresentation,
 } from '@/lib/sessionNavLead';
 import { shouldListSession } from '@/lib/sessionOpen';
+import { openSessionWindow } from '@/lib/sessionWindows';
 import { isHomePagePath } from '@/lib/shellRoutes';
 import { spaceEmoji } from '@/lib/spaceEmoji';
 import {
@@ -101,6 +104,7 @@ interface SessionRowSources {
   t: TFunction;
   navLeadByProjectId: Readonly<Record<string, SessionNavLeadPresentation>>;
   historyLoadingProjectIds: Readonly<Record<string, true>>;
+  pinnedProjectIds: readonly string[];
   attention: Readonly<Record<string, RunAttentionState>>;
 }
 
@@ -124,6 +128,7 @@ function toSessionNavItem(
   return {
     id: meta.id,
     title: getSessionMetaDisplayName(meta, sources.t),
+    pinned: sources.pinnedProjectIds.includes(meta.id),
     sessionLead: resolveSessionNavLeadPresentation({
       cachedLead,
       isHistoryLoading: Boolean(sources.historyLoadingProjectIds[meta.id]),
@@ -181,6 +186,7 @@ interface HomeSpaceGroupProps {
   onSessionClick: (projectId: string) => void;
   onEndSession: (projectId: string) => void;
   onDeleteSession: (projectId: string) => void;
+  sessionContextActions: SessionRowContextActions;
   canDeleteSpace: boolean;
   onTogglePinSpace: () => void;
   onDeleteSpace: () => void;
@@ -205,6 +211,7 @@ function HomeSpaceGroup({
   onSessionClick,
   onEndSession,
   onDeleteSession,
+  sessionContextActions,
   canDeleteSpace,
   onTogglePinSpace,
   onDeleteSpace,
@@ -315,6 +322,7 @@ function HomeSpaceGroup({
             onSessionClick={onSessionClick}
             onEndSession={onEndSession}
             onDeleteSession={onDeleteSession}
+            contextActions={sessionContextActions}
             folded={false}
             nested
           />
@@ -382,6 +390,10 @@ export default function HomeSidebar() {
     (state) => state.setHomeSpaceFolded
   );
   const requestAction = useSessionControlsStore((state) => state.requestAction);
+  const pinnedProjectIds = useSessionControlsStore(
+    (state) => state.pinnedProjectIds
+  );
+  const togglePinned = useSessionControlsStore((state) => state.togglePinned);
   const pinnedSpaceIds = usePinnedSpaceIds();
   const spaceAttention = useSpaceAttention();
   const sessionAttention = useSessionAttention();
@@ -499,6 +511,7 @@ export default function HomeSidebar() {
     t,
     navLeadByProjectId,
     historyLoadingProjectIds,
+    pinnedProjectIds,
     attention: sessionAttention,
   };
 
@@ -554,6 +567,28 @@ export default function HomeSidebar() {
   const requestDeleteSession = useCallback(
     (projectId: string) => requestAction('delete', projectId),
     [requestAction]
+  );
+
+  const sessionContextActions = useMemo<SessionRowContextActions>(
+    () => ({
+      onRename: (projectId) => requestAction('rename', projectId),
+      onPin: togglePinned,
+      onOpenInNewWindow: (projectId) => {
+        const spaceId = useSpaceStore.getState().projectIdIndex[projectId];
+        if (!spaceId) return;
+        void openSessionWindow({ spaceId, projectId }).catch(
+          (error: unknown) => {
+            console.error(
+              '[HomeSidebar] Failed to open Session window:',
+              error
+            );
+            toast.error(t('layout.open-in-new-window-failed'));
+          }
+        );
+      },
+      newWindowKind: isWeb() ? 'tab' : 'window',
+    }),
+    [requestAction, t, togglePinned]
   );
 
   const newSessionLabel = t('layout.new-project');
@@ -706,6 +741,7 @@ export default function HomeSidebar() {
                       onSessionClick={openSession}
                       onEndSession={requestEndSession}
                       onDeleteSession={requestDeleteSession}
+                      contextActions={sessionContextActions}
                       folded={false}
                     />
                   </>
@@ -736,6 +772,7 @@ export default function HomeSidebar() {
                         onSessionClick={openSession}
                         onEndSession={requestEndSession}
                         onDeleteSession={requestDeleteSession}
+                        sessionContextActions={sessionContextActions}
                         canDeleteSpace={
                           space.status === 'active' && !isLegacySpace(space)
                         }
