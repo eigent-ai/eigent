@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient
 from app.auth.local_control import LOCAL_CONTROL_CAPABILITY_HEADER
 from app.controller import workspace_git_controller
 from app.router import register_routers
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.workspace_git import (
     ContentRepositoryService,
     GitBackend,
@@ -849,3 +849,167 @@ def test_run_workspace_api_stays_lazy_until_explicit_materialization(git_api):
     assert response.status_code == 200
     assert response.json()["integration_head"] == run_head
     assert response.json()["run"] is None
+
+
+def test_run_harbor_task_saves_a_finished_run(git_api, monkeypatch, tmp_path):
+    client, service, _, space = git_api
+    destination = tmp_path / "harbor-tasks"
+    monkeypatch.setenv("EIGENT_HARBOR_TASKS_DIR", str(destination))
+    response = client.post(
+        "/api/v1/spaces/space-1/git/bootstrap",
+        headers=_headers(),
+        json={"email": "user@example.com", "allow_init": True},
+    )
+    assert response.status_code == 200
+    seed = space / "seed.txt"
+    seed.write_text("seed\n", encoding="utf-8")
+    service.git.commit_paths(space, (seed,), message="seed")
+    service.journal.ensure_run(
+        run_id="run-harbor",
+        project_id="project-harbor",
+        status="pending",
+    )
+    service.journal.append_event(
+        "run-harbor",
+        RunEventDraft(
+            event_type="user.message",
+            payload={
+                "content": f"Update {space}/seed.txt",
+                "attachment_names": [],
+            },
+        ),
+    )
+    coordinator = WorkspaceGitCoordinator(
+        service.journal,
+        state_root=service.state_root,
+        git_backend=service.git,
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-harbor",
+        run_id="run-harbor",
+    )
+    assert admission is not None
+    workspace = coordinator.ensure_run_materialized(
+        run_id="run-harbor",
+        operation_request_id="materialize-harbor",
+        expected_repo_state_digest=service.git.repo_state_token(space).digest,
+        expected_project_version=admission.project.version,
+        expected_project_head=admission.project.integration_head,
+    )
+    run_seed = workspace.run_worktree / "seed.txt"
+    run_seed.write_text("updated\n", encoding="utf-8")
+    run_head = service.git.commit_paths(
+        workspace.run_worktree, (run_seed,), message="harbor changes"
+    )
+    coordinator.promote_run(
+        run_id="run-harbor",
+        operation_request_id="promote-harbor",
+        expected_run_state_digest=service.git.repo_state_token(
+            workspace.run_worktree
+        ).digest,
+        expected_project_version=workspace.project.version,
+        expected_project_head=str(workspace.project.integration_head),
+        expected_run_head=run_head,
+    )
+
+    response = client.get(
+        "/api/v1/runs/run-harbor/git/harbor-task", headers=_headers()
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_id": "run-harbor",
+        "available": False,
+        "reason": "run_not_completed",
+    }
+    body = {"space_id": "space-1", "email": "user@example.com"}
+    response = client.post(
+        "/api/v1/runs/run-harbor/git/harbor-task",
+        headers=_headers(),
+        json=body,
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "run_not_completed"
+
+    service.journal.append_event(
+        "run-harbor", RunEventDraft(event_type="run.completed", payload={})
+    )
+    response = client.get(
+        "/api/v1/runs/run-harbor/git/harbor-task", headers=_headers()
+    )
+    assert response.json()["available"] is True
+
+    response = client.post(
+        "/api/v1/runs/run-harbor/git/harbor-task",
+        headers=_headers(),
+        json=body,
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    task = destination / "task-run-harbor"
+    assert payload["name"] == "eigent/task-run-harbor"
+    assert payload["path"] == str(task)
+    assert str(space) not in response.text
+    assert (task / "instruction.md").read_text(encoding="utf-8") == (
+        "Update /app/seed.txt\n"
+    )
+    assert (task / "environment" / "workspace" / "seed.txt").read_text(
+        encoding="utf-8"
+    ) == "seed\n"
+    assert not (task / "solution" / "reference.patch").exists()
+
+    # for Env Hub: the task and the conversation as one bundle, then sent
+    # where Env Hub's connector said, the bundle made for this Run only
+    response = client.post(
+        "/api/v1/runs/run-harbor/git/harbor-task/bundle",
+        headers=_headers(),
+        json=body,
+    )
+    assert response.status_code == 201
+    made = response.json()
+    assert made["title"] == "Update /app/seed.txt"
+    assert made["bundle"]["filename"] == "task-run-harbor.env-hub.zip"
+    assert made["bundle"]["content_type"] == "application/zip"
+    assert made["bundle"]["conversation_turns"] == 1
+    assert str(space) not in response.text
+    bundle = destination / "task-run-harbor.env-hub.zip"
+    assert made["bundle"]["size_bytes"] == bundle.stat().st_size
+
+    sent = []
+
+    def fake_upload(path, *, url, method, headers):
+        sent.append((path, url, method, headers))
+        return 200
+
+    monkeypatch.setattr(workspace_git_controller, "upload_bundle", fake_upload)
+    upload = {
+        "upload_url": "https://storage.googleapis.com/b/upl?sig=1",
+        "method": "PUT",
+        "headers": {"Content-Type": "application/zip"},
+    }
+    response = client.post(
+        "/api/v1/runs/run-harbor/git/harbor-task/bundle/upload",
+        headers=_headers(),
+        json=upload,
+    )
+    assert response.status_code == 200
+    assert sent == [
+        (
+            bundle.resolve(),
+            upload["upload_url"],
+            "PUT",
+            {"Content-Type": "application/zip"},
+        )
+    ]
+    response = client.post(
+        "/api/v1/runs/run-never-saved/git/harbor-task/bundle/upload",
+        headers=_headers(),
+        json=upload,
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "bundle_not_found"
+
+    missing = client.get(
+        "/api/v1/runs/run-does-not-exist/git/harbor-task", headers=_headers()
+    )
+    assert missing.status_code == 404

@@ -14,7 +14,9 @@
 
 import { AgentMessageCard } from '@/components/ChatBox/MessageItem/AgentMessageCard';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
+import { SaveAsHarborTaskButton } from '@/components/ChatBox/MessageItem/SaveAsHarborTaskButton';
 import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
+import { SubmitToEnvHubButton } from '@/components/ChatBox/MessageItem/SubmitToEnvHubButton';
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
@@ -1173,6 +1175,20 @@ export function NarrativeTimeline({
                 feedbackMessageId={
                   run.finalAssistantResponse.messageId ??
                   run.finalAssistantResponse.sourceEventId
+                }
+                extraActions={
+                  <>
+                    <SaveAsHarborTaskButton
+                      runId={run.runId}
+                      projectId={run.projectId}
+                      completed={run.status === 'completed'}
+                    />
+                    <SubmitToEnvHubButton
+                      runId={run.runId}
+                      projectId={run.projectId}
+                      completed={run.status === 'completed'}
+                    />
+                  </>
                 }
                 feedbackRunId={run.runId}
                 id={run.finalAssistantResponse.id}

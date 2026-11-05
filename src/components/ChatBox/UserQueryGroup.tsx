@@ -42,7 +42,9 @@ import {
 } from './MessageItem/HumanInteractionCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
+import { SaveAsHarborTaskButton } from './MessageItem/SaveAsHarborTaskButton';
 import { SpaceWaitNotice } from './MessageItem/SpaceWaitNotice';
+import { SubmitToEnvHubButton } from './MessageItem/SubmitToEnvHubButton';
 import { TaskFailureSummary } from './MessageItem/TaskFailureSummary';
 import {
   getTaskRunDisplayStatus,
@@ -241,6 +243,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     );
 
   const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  const runCompleted =
+    activeTask?.durableRunStatus === 'completed' ||
+    projectedRunStatus === 'completed';
   // A restored Run keeps the status read when its Session was loaded. A
   // request raised after that reaches the same replay stream but only moves
   // the Run projection, so it may lift a status that has not ended.
@@ -620,6 +625,20 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   feedbackRunId={activeTaskId ?? undefined}
                   feedbackMessageId={message.feedbackMessageId}
                   messageStep={message.step}
+                  extraActions={
+                    <>
+                      <SaveAsHarborTaskButton
+                        runId={activeTaskId ?? undefined}
+                        projectId={activeProjectId}
+                        completed={runCompleted}
+                      />
+                      <SubmitToEnvHubButton
+                        runId={activeTaskId ?? undefined}
+                        projectId={activeProjectId}
+                        completed={runCompleted}
+                      />
+                    </>
+                  }
                   deferredFooter={
                     message.fileList?.length ||
                     task?.artifactManifestTruncated ||

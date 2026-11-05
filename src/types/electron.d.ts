@@ -312,6 +312,8 @@ interface ElectronAPI {
   ) => Promise<string>;
   /** Open a selected folder itself, or reveal and highlight a selected file. */
   revealLocalPath: (targetPath: string) => Promise<LocalPathActionResult>;
+  /** Open a saved Harbor task folder; only the Harbor tasks folder is allowed. */
+  revealHarborTask: (targetPath: string) => Promise<LocalPathActionResult>;
   /** Open a selected non-executable local file with its default OS app. */
   openLocalFile: (targetPath: string) => Promise<LocalPathActionResult>;
   openInIDE: (

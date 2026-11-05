@@ -323,6 +323,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ) => ipcRenderer.invoke('get-project-folder-path', email, projectId, userId),
   revealLocalPath: (targetPath: string) =>
     ipcRenderer.invoke('reveal-local-path', targetPath),
+  revealHarborTask: (targetPath: string) =>
+    ipcRenderer.invoke('reveal-harbor-task', targetPath),
   openLocalFile: (targetPath: string) =>
     ipcRenderer.invoke('open-local-file', targetPath),
   openInIDE: (targetPath: string, ide: 'vscode' | 'cursor' | 'system') =>

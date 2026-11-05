@@ -41,6 +41,7 @@ export function SettingsRouteBridge() {
   const isOpen = useSettingsStore((state) => state.isOpen);
   const activeSection = useSettingsStore((state) => state.activeSection);
   const modelProvider = useSettingsStore((state) => state.modelProvider);
+  const connectorTarget = useSettingsStore((state) => state.connectorTarget);
   const finishSettingsNavigation = useSettingsStore(
     (state) => state.finishSettingsNavigation
   );
@@ -56,6 +57,11 @@ export function SettingsRouteBridge() {
       });
       if (activeSection === 'models' && modelProvider) {
         searchParams.set('provider', modelProvider);
+      }
+      if (activeSection === 'connectors' && connectorTarget) {
+        searchParams.set('connectorView', 'add');
+        searchParams.set('connectorAdd', 'browse');
+        searchParams.set('connectorTarget', connectorTarget);
       }
       const destination = `/home?${searchParams.toString()}`;
       finishSettingsNavigation();
@@ -92,6 +98,7 @@ export function SettingsRouteBridge() {
     closeSettings,
     activeSection,
     modelProvider,
+    connectorTarget,
     isOpen,
     location.pathname,
     location.search,

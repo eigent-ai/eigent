@@ -144,6 +144,18 @@ class WorkspaceGitLifecycle:
             in {"primary_checkout", "explicit_worktree"}
         ):
             root = Path(binding.worktree_path)
+            if not root.is_dir():
+                # The Space's folder was moved or deleted: there is no
+                # repository to record the Run in. Nothing is persisted, so a
+                # folder that comes back (a remounted drive) is finalized at a
+                # later startup.
+                logger.info(
+                    "Terminal Git Run skipped: its Space folder is missing",
+                    extra={"run_id": run_id, "worktree_path": str(root)},
+                )
+                return GitRunFinalization(
+                    run_id, "workspace_missing", None, None
+                )
             ref_suffix = (
                 "completed"
                 if terminal_status == "completed"
