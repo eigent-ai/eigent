@@ -40,9 +40,11 @@ export function isSessionOutcomeSeen(
   kind: SessionNavLeadKind,
   seenOutcomes: Readonly<Record<string, string>>
 ): boolean {
+  const seen = seenOutcomes[projectId];
   return (
+    seen !== undefined &&
     isSessionOutcomeKind(kind) &&
-    seenOutcomes[projectId] === sessionOutcomeKey(projectId, kind)
+    seen === sessionOutcomeKey(projectId, kind)
   );
 }
 

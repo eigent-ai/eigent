@@ -686,15 +686,12 @@ describe('HomeSidebar', () => {
   });
 
   it('collects waiting Sessions in Needs you without moving them', () => {
-    const { rerender } = renderSidebar();
+    renderSidebar();
     expect(screen.queryByText('Needs you')).not.toBeInTheDocument();
 
     mocks.sessionAttention = { 'o-1': 'waiting', 'r-2': 'running' };
-    rerender(
-      <MemoryRouter>
-        <HomeSidebar />
-      </MemoryRouter>
-    );
+    // The mocked hook can't notify, so any store update redraws the sidebar.
+    act(() => useSessionControlsStore.setState({ seenOutcomes: {} }));
     const needsYou = screen
       .getByText('Needs you')
       .closest('div.flex-col') as HTMLElement;
@@ -703,11 +700,8 @@ describe('HomeSidebar', () => {
     ).toBeInTheDocument();
 
     mocks.sessionAttention = { 'r-1': 'waiting', 'o-1': 'waiting' };
-    rerender(
-      <MemoryRouter>
-        <HomeSidebar />
-      </MemoryRouter>
-    );
+    // The mocked hook can't notify, so any store update redraws the sidebar.
+    act(() => useSessionControlsStore.setState({ seenOutcomes: {} }));
     const rows = within(
       screen.getByText('Needs you').closest('div.flex-col') as HTMLElement
     )
@@ -734,6 +728,7 @@ describe('HomeSidebar', () => {
     expect(mocks.switchToSpace).toHaveBeenCalledWith('space-ops', {
       project: 'o-1',
       tab: null,
+      hydrate: false,
     });
     expect(usePageTabStore.getState().shellPlace).toBe('home');
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);

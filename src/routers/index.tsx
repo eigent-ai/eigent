@@ -29,9 +29,12 @@ import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
-const Workspace = lazy(() => import('@/pages/Workspace'));
-const Home = lazy(() => import('@/pages/Home'));
-const Settings = lazy(() => import('@/pages/Settings'));
+const loadWorkspace = () => import('@/pages/Workspace');
+const loadHome = () => import('@/pages/Home');
+const loadSettings = () => import('@/pages/Settings');
+const Workspace = lazy(loadWorkspace);
+const Home = lazy(loadHome);
+const Settings = lazy(loadSettings);
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
 const SessionWindow = lazy(() => import('@/pages/SessionWindow'));
@@ -161,46 +164,69 @@ const ProtectedRoute = () => {
   );
 };
 
-const AppRoutes = () => (
-  <Routes>
-    <Route path="/login" element={<Login />} />
-    <Route path="/signup" element={<Signup />} />
-    {ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK ? (
-      <Route path="/remote-control/:sessionId" element={<RemoteControl />} />
-    ) : null}
-    <Route element={<ProtectedRoute />}>
-      {/* A Session in its own window: no app shell, sidebar or top bar. */}
-      <Route path={SESSION_WINDOW_ROUTE} element={<SessionWindow />} />
-      <Route element={<Layout />}>
-        <Route
-          element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
-        >
-          <Route index element={null} />
-          <Route path="/home" element={<Home />} />
-          <Route path="/settings" element={<Settings />} />
+/** Fetch the main pages once the app is idle, so the first click doesn't. */
+function usePreloadPages() {
+  useEffect(() => {
+    const preload = () => {
+      void Promise.all([
+        loadWorkspace(),
+        loadHome(),
+        loadSettings(),
+        import('@/components/Workspace/SpaceWorkspacePage'),
+      ]).catch(() => undefined);
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(preload, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = setTimeout(preload, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+}
+
+const AppRoutes = () => {
+  usePreloadPages();
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      {ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK ? (
+        <Route path="/remote-control/:sessionId" element={<RemoteControl />} />
+      ) : null}
+      <Route element={<ProtectedRoute />}>
+        {/* A Session in its own window: no app shell, sidebar or top bar. */}
+        <Route path={SESSION_WINDOW_ROUTE} element={<SessionWindow />} />
+        <Route element={<Layout />}>
+          <Route
+            element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
+          >
+            <Route index element={null} />
+            <Route path="/home" element={<Home />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
+          <Route
+            path="/history"
+            element={<LegacyRouteRedirect kind="history" />}
+          />
+          <Route
+            path="/workspace-configuration"
+            element={<LegacyRouteRedirect kind="workspace-configuration" />}
+          />
+          <Route
+            path="/workspace-bundles/install"
+            element={<LegacyRouteRedirect kind="workspace-bundle-install" />}
+          />
+          <Route
+            path="/agent-plugins/import"
+            element={<LegacyRouteRedirect kind="agent-plugin-import" />}
+          />
+          <Route path="/setting" element={<LegacySettingRedirect />} />
+          <Route path="/setting/*" element={<LegacySettingRedirect />} />
         </Route>
-        <Route
-          path="/history"
-          element={<LegacyRouteRedirect kind="history" />}
-        />
-        <Route
-          path="/workspace-configuration"
-          element={<LegacyRouteRedirect kind="workspace-configuration" />}
-        />
-        <Route
-          path="/workspace-bundles/install"
-          element={<LegacyRouteRedirect kind="workspace-bundle-install" />}
-        />
-        <Route
-          path="/agent-plugins/import"
-          element={<LegacyRouteRedirect kind="agent-plugin-import" />}
-        />
-        <Route path="/setting" element={<LegacySettingRedirect />} />
-        <Route path="/setting/*" element={<LegacySettingRedirect />} />
       </Route>
-    </Route>
-    <Route path="*" element={<NotFound />} />
-  </Routes>
-);
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+};
 
 export default AppRoutes;

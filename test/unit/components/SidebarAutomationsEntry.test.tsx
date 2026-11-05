@@ -100,8 +100,10 @@ vi.mock('@/store/spaceStore', () => ({
   getVisibleProjectMetasForSpace: () => [mocks.space.getProjectMeta()],
 }));
 vi.mock('@/store/projectRuntimeStore', () => ({
-  useProjectRuntimeStore: (selector?: any) =>
-    selector ? selector(mocks.runtime) : mocks.runtime,
+  useProjectRuntimeStore: Object.assign(
+    (selector?: any) => (selector ? selector(mocks.runtime) : mocks.runtime),
+    { getState: () => mocks.runtime }
+  ),
 }));
 vi.mock('@/store/pageTabStore', () => ({
   usePageTabStore: (selector: any) => selector(mocks.page),
@@ -196,7 +198,7 @@ vi.mock('sonner', () => ({
 function renderSidebar() {
   render(
     <MemoryRouter>
-      <SpaceSidebar chatStore={null} />
+      <SpaceSidebar />
     </MemoryRouter>
   );
 }

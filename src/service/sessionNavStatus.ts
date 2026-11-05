@@ -19,6 +19,7 @@ import {
   projectRunSummaries,
 } from '@/service/projectRunsApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
+import { refreshProjectNavLead } from '@/store/projectStore';
 
 type Subscriber = {
   current: () => boolean;
@@ -64,6 +65,8 @@ async function readSummary(read: SummaryRead) {
         read.projectId,
         projectRunSummaries(read.projectId, response)
       );
+      // Sessions in other Spaces have no live subscription to do this.
+      refreshProjectNavLead(read.projectId);
     }
   } catch {
     // Offline/unsupported Brain keeps the last known or unknown presentation.

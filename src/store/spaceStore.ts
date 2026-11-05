@@ -1175,6 +1175,7 @@ export const useSpaceStore = create<SpaceStore>()(
           return;
         }
 
+        const syncStartedAt = Date.now();
         const context = {
           accountKey,
           spaceIds: new Set([spaceId]),
@@ -1251,8 +1252,22 @@ export const useSpaceStore = create<SpaceStore>()(
             const activeNamedProjects = namedProjects.filter(
               (project) => project.status !== 'archived'
             );
+            // The reply can't know a Session created while it was on its way.
+            const serverProjectIds = new Set(
+              namedProjects.map((project) => project.id)
+            );
+            const createdDuringSync = Object.values(
+              get().projectsBySpaceId[targetSpaceId] ?? {}
+            ).filter(
+              (meta) =>
+                meta.createdAt >= syncStartedAt &&
+                !serverProjectIds.has(meta.id)
+            );
             get().upsertProjectMetas(
-              activeNamedProjects.map(projectMetaFromServer),
+              [
+                ...activeNamedProjects.map(projectMetaFromServer),
+                ...createdDuringSync,
+              ],
               {
                 syncedSpaceId: targetSpaceId,
                 replaceSpace: true,

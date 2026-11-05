@@ -93,6 +93,7 @@ export function useHomeNavigation() {
           const switched = await switchToSpace(spaceId, {
             project: projectId,
             tab: null,
+            hydrate: false,
           });
           if (!switched) return;
         }

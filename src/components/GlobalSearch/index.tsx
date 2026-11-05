@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import HomeHubRoot from '@/components/Home';
-import { useHomeHub } from '@/components/Home/context';
+import { useHomeHubProjects } from '@/components/Home/hooks/useHomeHubProjects';
+import { useHomeHubTriggers } from '@/components/Home/hooks/useHomeHubTriggers';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import { getChoosableSpaces } from '@/components/Layout/AppRail/pinnedSpaces';
 import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
@@ -160,7 +160,8 @@ function useActiveSessionFiles(): GlobalSearchItem[] {
 
 function useSearchItems(): GlobalSearchItem[] {
   const { t } = useTranslation();
-  const { projects, triggers } = useHomeHub();
+  const { projects } = useHomeHubProjects();
+  const { triggers } = useHomeHubTriggers();
   const spaces = useSpaceStore((state) => state.spaces);
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const projectIdIndex = useSpaceStore((state) => state.projectIdIndex);
@@ -286,6 +287,10 @@ function useOpenSearchItem() {
           const switched = await switchToSpace(item.spaceId, {
             project: item.projectId ?? 'last',
             tab: null,
+            hydrate: !(
+              item.projectId &&
+              (item.type === 'sessions' || item.type === 'tasks')
+            ),
           });
           if (!switched) return;
         }
@@ -551,12 +556,7 @@ export function GlobalSearchHost(): ReactNode {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [setOpen]);
 
-  if (!open) return null;
-  return (
-    <HomeHubRoot>
-      <GlobalSearchDialog />
-    </HomeHubRoot>
-  );
+  return open ? <GlobalSearchDialog /> : null;
 }
 
 /** The top bar's search control, as wide as its content; opens the dialog. */

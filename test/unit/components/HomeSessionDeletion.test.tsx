@@ -78,7 +78,9 @@ vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: any) => selector(mocks.auth),
 }));
 vi.mock('@/store/projectRuntimeStore', () => ({
-  useProjectRuntimeStore: () => mocks.runtime,
+  useProjectRuntimeStore: Object.assign(() => mocks.runtime, {
+    getState: () => mocks.runtime,
+  }),
 }));
 vi.mock('@/store/projectStore', () => ({
   useProjectStore: { getState: () => mocks.runtime },

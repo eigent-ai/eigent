@@ -40,6 +40,11 @@ export interface SwitchToSpaceOptions {
    * to leave the tab for the caller to choose.
    */
   tab?: WorkspaceTabId | null;
+  /**
+   * Load the Session before returning. Pass `false` when the caller opens it
+   * with `openSessionInShell` next, which shows the Session while it loads.
+   */
+  hydrate?: boolean;
 }
 
 /**
@@ -58,6 +63,7 @@ export function useSpaceSwitch() {
       {
         project = 'last',
         tab = WorkspaceTab.Workforce,
+        hydrate = true,
       }: SwitchToSpaceOptions = {}
     ) => {
       const projectStore = useProjectRuntimeStore.getState();
@@ -69,9 +75,17 @@ export function useSpaceSwitch() {
           spaceId
         );
         const spaceStore = useSpaceStore.getState();
+        // Only choosing among the Space's Sessions needs the latest list.
+        // Otherwise `setActiveSpace` refreshes it in the background.
+        const needsSessionList =
+          project === 'last' ||
+          (project !== null &&
+            !spaceStore
+              .getProjectsForSpace(resolvedSpaceId)
+              .some((meta) => meta.id === project));
         if (
           resolvedSpaceId.startsWith('legacy_') ||
-          spaceStore.shouldSyncProjects(resolvedSpaceId)
+          (needsSessionList && spaceStore.shouldSyncProjects(resolvedSpaceId))
         ) {
           await spaceStore.syncProjectsFromServer(resolvedSpaceId);
         }
@@ -91,9 +105,11 @@ export function useSpaceSwitch() {
               : projectsInSpace.find((meta) => meta.id === project);
         if (targetProject) {
           projectStore.setActiveProject(targetProject.id);
-          await ensureProjectRuntimeLoaded(projectStore, targetProject.id, {
-            requireActiveSelection: true,
-          });
+          if (hydrate) {
+            await ensureProjectRuntimeLoaded(projectStore, targetProject.id, {
+              requireActiveSelection: true,
+            });
+          }
         } else {
           projectStore.setActiveProject(null);
         }

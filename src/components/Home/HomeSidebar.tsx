@@ -84,7 +84,7 @@ import {
 } from '@/store/spaceStore';
 import type { TFunction } from 'i18next';
 import { ChevronDown, ChevronRight, Folder, Plus } from 'lucide-react';
-import { useCallback, useId, useMemo, useState } from 'react';
+import { memo, useCallback, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -381,7 +381,7 @@ function HomeSpaceGroup({
  * and every Space with its recent Sessions. Spaces sort by last activity once
  * per Home visit, so rows don't move while it's open.
  */
-export default function HomeSidebar() {
+function HomeSidebar() {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
   const location = useLocation();
@@ -863,3 +863,5 @@ export default function HomeSidebar() {
     </>
   );
 }
+
+export default memo(HomeSidebar);
