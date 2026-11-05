@@ -1665,5 +1665,7 @@
   "unfold-space": "{{name}} ausklappen",
   "show-all-sessions": "Alle {{count}} anzeigen",
   "show-all-sessions-in-space": "Alle {{count}} Sitzungen in {{name}} anzeigen",
+  "show-fewer-sessions": "Weniger anzeigen",
+  "show-fewer-sessions-in-space": "Weniger Sitzungen in {{name}} anzeigen",
   "new-session-space": "Space für diese Sitzung"
 }

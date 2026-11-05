@@ -1687,5 +1687,7 @@
   "unfold-space": "Expandir {{name}}",
   "show-all-sessions": "Ver las {{count}}",
   "show-all-sessions-in-space": "Ver las {{count}} sesiones de {{name}}",
+  "show-fewer-sessions": "Mostrar menos",
+  "show-fewer-sessions-in-space": "Mostrar menos sesiones de {{name}}",
   "new-session-space": "Espacio de esta sesión"
 }
