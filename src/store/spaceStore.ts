@@ -77,6 +77,8 @@ export interface Space {
     legacy?: boolean;
     sharedMemoryEnabled?: boolean;
     preferredWorkdirMode?: 'worktree' | 'copy' | 'direct-write';
+    /** Chosen emoji; `null` or absent shows the name's first letter. */
+    emoji?: string | null;
     [key: string]: unknown;
   };
 }
@@ -195,6 +197,8 @@ interface SpaceStore {
     rootPath: string,
     force?: boolean
   ) => Promise<void>;
+  /** Sets the Space's emoji, or `null` for its first letter. */
+  setSpaceEmoji: (spaceId: string, emoji: string | null) => Promise<void>;
   /** Refuses with `full` once `MAX_PINNED_SPACES` are pinned. */
   pinSpace: (spaceId: string) => PinSpaceResult;
   unpinSpace: (spaceId: string) => void;
@@ -298,7 +302,11 @@ const mergeServerSpaceWithLocalBinding = (
 export const legacySpaceIdForUser = (userId?: string | number | null) =>
   `legacy_${canonicalUserId(userId)}`;
 
-export const MAX_PINNED_SPACES = 5;
+/**
+ * Ten pins plus the active Space's tile fit the rail at the 700px minimum
+ * window height, with room to spare.
+ */
+export const MAX_PINNED_SPACES = 10;
 
 export type PinSpaceResult = 'pinned' | 'already-pinned' | 'full' | 'missing';
 
@@ -1167,6 +1175,7 @@ export const useSpaceStore = create<SpaceStore>()(
           return;
         }
 
+        const syncStartedAt = Date.now();
         const context = {
           accountKey,
           spaceIds: new Set([spaceId]),
@@ -1243,8 +1252,22 @@ export const useSpaceStore = create<SpaceStore>()(
             const activeNamedProjects = namedProjects.filter(
               (project) => project.status !== 'archived'
             );
+            // The reply can't know a Session created while it was on its way.
+            const serverProjectIds = new Set(
+              namedProjects.map((project) => project.id)
+            );
+            const createdDuringSync = Object.values(
+              get().projectsBySpaceId[targetSpaceId] ?? {}
+            ).filter(
+              (meta) =>
+                meta.createdAt >= syncStartedAt &&
+                !serverProjectIds.has(meta.id)
+            );
             get().upsertProjectMetas(
-              activeNamedProjects.map(projectMetaFromServer),
+              [
+                ...activeNamedProjects.map(projectMetaFromServer),
+                ...createdDuringSync,
+              ],
               {
                 syncedSpaceId: targetSpaceId,
                 replaceSpace: true,
@@ -1751,6 +1774,22 @@ export const useSpaceStore = create<SpaceStore>()(
                 : state.pinnedSpaceIdsByUser,
           };
         }),
+
+      setSpaceEmoji: async (spaceId, emoji) => {
+        const space = get().spaces[spaceId];
+        if (!space) return;
+        const previous = space.metadata;
+        const metadata = { ...previous, emoji };
+        get().updateSpace(spaceId, { metadata });
+        // A signed-out local Space lives only on this device.
+        if (space.metadata?.legacy === true) return;
+        try {
+          await get().updateSpaceOnServer(spaceId, { metadata });
+        } catch (error) {
+          get().updateSpace(spaceId, { metadata: previous });
+          throw error;
+        }
+      },
 
       renameSpaceOnServer: async (spaceId, name) => {
         const nextName = name.trim();

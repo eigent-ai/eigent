@@ -18,6 +18,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { useSkillsStore } from '@/store/skillsStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   act,
   fireEvent,
@@ -537,17 +538,8 @@ describe('HeaderBox chat timeline mode', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('hides Back and Session actions on the New session header', () => {
-    render(
-      <HeaderBox
-        projectName="New session"
-        showBack={false}
-        showTimelineStyle={false}
-      />
-    );
-    expect(
-      screen.queryByRole('button', { name: 'Back' })
-    ).not.toBeInTheDocument();
+  it('hides Session actions on the New session header', () => {
+    render(<HeaderBox projectName="New session" showTimelineStyle={false} />);
     expect(
       screen.queryByRole('button', { name: /Session settings/ })
     ).not.toBeInTheDocument();
@@ -557,9 +549,37 @@ describe('HeaderBox chat timeline mode', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows Back on a Session header', () => {
+  it("leads with the Session's Space, naming it in full", () => {
+    useSpaceStore.setState({
+      projectIdIndex: { 'project-1': 'space-research' },
+      spaces: {
+        'space-research': {
+          id: 'space-research',
+          name: 'Research and development',
+          sourceType: 'folder',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: 0,
+          updatedAt: 0,
+          metadata: { emoji: '🚀' },
+        },
+      },
+    });
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+
+    const icon = document.querySelector(
+      '[data-session-space-icon]'
+    ) as HTMLElement;
+    expect(icon).toHaveAttribute('aria-label', 'Research and development');
+    expect(icon).toHaveTextContent('🚀');
+    useSpaceStore.setState({ projectIdIndex: {}, spaces: {} });
+  });
+
+  it('has no Back button: the top bar owns Back and Forward', () => {
     render(<HeaderBox projectName="Timeline project" />);
-    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Back' })
+    ).not.toBeInTheDocument();
   });
 
   it('puts the Summary toggle next to Preview with keyboard focus and pressed state', async () => {

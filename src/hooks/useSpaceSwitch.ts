@@ -16,7 +16,11 @@ import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
-import { WorkspaceTab, usePageTabStore } from '@/store/pageTabStore';
+import {
+  WorkspaceTab,
+  usePageTabStore,
+  type WorkspaceTabId,
+} from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -31,11 +35,21 @@ export interface SwitchToSpaceOptions {
    * Session id, or none.
    */
   project?: 'last' | string | null;
+  /**
+   * The tab to show afterwards: the composer landing by default, or `null`
+   * to leave the tab for the caller to choose.
+   */
+  tab?: WorkspaceTabId | null;
+  /**
+   * Load the Session before returning. Pass `false` when the caller opens it
+   * with `openSessionInShell` next, which shows the Session while it loads.
+   */
+  hydrate?: boolean;
 }
 
 /**
  * Make a Space active and open one of its Sessions. Shared by the rail, the
- * pinned-Space shortcuts and, later, Home.
+ * pinned-Space shortcuts, Home and the composer's Space chip.
  */
 export function useSpaceSwitch() {
   const { t } = useTranslation();
@@ -46,7 +60,11 @@ export function useSpaceSwitch() {
   const switchToSpace = useCallback(
     async (
       spaceId: string,
-      { project = 'last' }: SwitchToSpaceOptions = {}
+      {
+        project = 'last',
+        tab = WorkspaceTab.Workforce,
+        hydrate = true,
+      }: SwitchToSpaceOptions = {}
     ) => {
       const projectStore = useProjectRuntimeStore.getState();
       const pageTabs = usePageTabStore.getState();
@@ -57,9 +75,17 @@ export function useSpaceSwitch() {
           spaceId
         );
         const spaceStore = useSpaceStore.getState();
+        // Only choosing among the Space's Sessions needs the latest list.
+        // Otherwise `setActiveSpace` refreshes it in the background.
+        const needsSessionList =
+          project === 'last' ||
+          (project !== null &&
+            !spaceStore
+              .getProjectsForSpace(resolvedSpaceId)
+              .some((meta) => meta.id === project));
         if (
           resolvedSpaceId.startsWith('legacy_') ||
-          spaceStore.shouldSyncProjects(resolvedSpaceId)
+          (needsSessionList && spaceStore.shouldSyncProjects(resolvedSpaceId))
         ) {
           await spaceStore.syncProjectsFromServer(resolvedSpaceId);
         }
@@ -79,13 +105,15 @@ export function useSpaceSwitch() {
               : projectsInSpace.find((meta) => meta.id === project);
         if (targetProject) {
           projectStore.setActiveProject(targetProject.id);
-          await ensureProjectRuntimeLoaded(projectStore, targetProject.id, {
-            requireActiveSelection: true,
-          });
+          if (hydrate) {
+            await ensureProjectRuntimeLoaded(projectStore, targetProject.id, {
+              requireActiveSelection: true,
+            });
+          }
         } else {
           projectStore.setActiveProject(null);
         }
-        pageTabs.setActiveWorkspaceTab(WorkspaceTab.Workforce);
+        if (tab) pageTabs.setActiveWorkspaceTab(tab);
         pageTabs.requestWorkspaceChatFocus();
         return true;
       } catch (error) {
@@ -103,15 +131,20 @@ export function useSpaceSwitch() {
 
   /**
    * Open a Space's view. The active Space keeps its Session and tab; any
-   * other Space becomes active on its last Session first.
+   * other Space becomes active and opens on New session.
    */
   const openSpaceView = useCallback(
     (spaceId: string) => {
       void runAfterWorkspaceConfigurationSave(async () => {
         if (useSpaceStore.getState().activeSpaceId !== spaceId) {
-          if (!(await switchToSpace(spaceId))) return;
+          const switched = await switchToSpace(spaceId, {
+            project: null,
+            tab: WorkspaceTab.NewProject,
+          });
+          if (!switched) return;
         }
         closeSettings();
+        usePageTabStore.getState().setShellPlace('space');
         navigate('/');
       });
     },

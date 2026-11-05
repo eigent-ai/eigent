@@ -71,6 +71,9 @@ const mocks = vi.hoisted(() => {
     success: vi.fn(),
   };
 });
+vi.mock('@/components/Home/SpaceHeaderMenu', () => ({
+  SpaceHeaderMenu: () => <button type="button" aria-label="Space menu" />,
+}));
 vi.mock('@/api/http', () => ({
   fetchDelete: vi.fn(),
   fetchPut: vi.fn(),
@@ -97,8 +100,10 @@ vi.mock('@/store/spaceStore', () => ({
   getVisibleProjectMetasForSpace: () => [mocks.space.getProjectMeta()],
 }));
 vi.mock('@/store/projectRuntimeStore', () => ({
-  useProjectRuntimeStore: (selector?: any) =>
-    selector ? selector(mocks.runtime) : mocks.runtime,
+  useProjectRuntimeStore: Object.assign(
+    (selector?: any) => (selector ? selector(mocks.runtime) : mocks.runtime),
+    { getState: () => mocks.runtime }
+  ),
 }));
 vi.mock('@/store/pageTabStore', () => ({
   usePageTabStore: (selector: any) => selector(mocks.page),
@@ -193,7 +198,7 @@ vi.mock('sonner', () => ({
 function renderSidebar() {
   render(
     <MemoryRouter>
-      <SpaceSidebar chatStore={null} />
+      <SpaceSidebar />
     </MemoryRouter>
   );
 }
@@ -243,30 +248,31 @@ describe('Sidebar Automations entry', () => {
 });
 
 describe('Space sidebar first rows', () => {
-  it('starts with the Space, then New session, in place of the Workspace tab', () => {
+  it('starts with the Space menu and settings, then New session, then Files', () => {
     renderSidebar();
 
     const names = screen
       .getAllByRole('button')
       .map((button) => button.getAttribute('aria-label'));
-    expect(names.slice(0, 3)).toEqual([
-      'Research, Workspace',
+    expect(names.slice(0, 4)).toEqual([
+      'Space menu',
+      'Space settings',
       'New session',
       'Files',
     ]);
-    expect(
-      screen.queryByRole('button', { name: 'Workspace' })
-    ).not.toBeInTheDocument();
+    for (const removed of ['Workspace', 'Configuration']) {
+      expect(
+        screen.queryByRole('button', { name: removed })
+      ).not.toBeInTheDocument();
+    }
   });
 
-  it('opens the Workspace page from the Space row', () => {
+  it('opens Space settings from the row button', () => {
     renderSidebar();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Research, Workspace' })
-    );
-    expect(mocks.page.setActiveWorkspaceTab).toHaveBeenCalledWith(
-      'space-workspace'
+    fireEvent.click(screen.getByRole('button', { name: 'Space settings' }));
+    expect(mocks.executeAppCommand).toHaveBeenCalledWith(
+      'navigate-configuration'
     );
   });
 

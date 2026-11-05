@@ -54,6 +54,11 @@ export interface AppShellLayoutProps {
    * their own surface (or need several) can opt out.
    */
   contentSurface?: boolean;
+  /**
+   * The page sits right of the app rail, so its top-left corner rounds away
+   * from the rail and top bar. A Session's own window has no rail.
+   */
+  besideAppRail?: boolean;
   className?: string;
   contentClassName?: string;
 }
@@ -69,6 +74,7 @@ export default function AppShellLayout({
   overlay,
   sidebarHidden = false,
   contentSurface = true,
+  besideAppRail = true,
   className,
   contentClassName,
 }: AppShellLayoutProps) {
@@ -99,7 +105,13 @@ export default function AppShellLayout({
         className
       )}
     >
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden bg-ds-neutral-default-default">
+      <div
+        data-app-shell-columns
+        className={cn(
+          'flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden bg-ds-neutral-default-default',
+          besideAppRail && 'rounded-tl-ds-panel'
+        )}
+      >
         <motion.div
           ref={sidebarRailRef}
           className="h-full min-h-0 shrink-0 overflow-hidden"

@@ -12,20 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  GlobalSearchButton,
+  GlobalSearchHost,
+} from '@/components/GlobalSearch';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
-import {
-  pinSpaceOrChoose,
-  usePinnedSpaceIds,
-} from '@/components/Layout/AppRail/pinnedSpaces';
-import {
-  canRenameSpace,
-  SpaceRenameDialog,
-} from '@/components/SpaceSidebar/SpaceRenameDialog';
-import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdown';
-import {
-  TOP_BAR_CONTROL_STATE_CLASS,
-  TOP_BAR_PILL_CLASS,
-} from '@/components/TopBar/controlStyles';
+import { TOP_BAR_CONTROL_STATE_CLASS } from '@/components/TopBar/controlStyles';
 import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
 import UpdateButton from '@/components/TopBar/UpdateButton';
 import AlertDialog from '@/components/ui/alertDialog';
@@ -33,29 +25,26 @@ import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
-import { useOpenSpaceHomeTab } from '@/hooks/useSpaceSwitch';
+import { useShellHistory } from '@/hooks/useShellHistory';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
-import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
-  ChevronDown,
+  ArrowLeft,
+  ArrowRight,
   CircleHelp,
-  Folder,
   Minus,
   PanelLeft,
   PanelLeftOpen,
   Square,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
 
 function HeaderWin() {
   const { t } = useTranslation();
@@ -63,15 +52,10 @@ function HeaderWin() {
   const titlebarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
-  const location = useLocation();
   const executeAppCommand = useAppCommand();
-  const openSpaceHomeTab = useOpenSpaceHomeTab();
-  const [renameSpaceId, setRenameSpaceId] = useState<string | null>(null);
-  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const { canGoBack, canGoForward, goBack, goForward } = useShellHistory();
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const spacesById = useSpaceStore((s) => s.spaces);
-  const unpinSpace = useSpaceStore((s) => s.unpinSpace);
-  const pinnedSpaceIds = usePinnedSpaceIds();
   const workspaceSidebarHidden = usePageTabStore(
     (s) => s.workspaceSidebarHidden
   );
@@ -87,27 +71,14 @@ function HeaderWin() {
     setPlatform(p);
   }, [host]);
 
-  const isWorkspacePage = location.pathname === '/';
   const topBarLeadingInset = platform === 'darwin' ? 68 : 8;
 
   const sidebarToggleLabel = workspaceSidebarHidden
     ? t('layout.show-sidebar', { defaultValue: 'Show sidebar' })
     : t('layout.hide-sidebar', { defaultValue: 'Hide sidebar' });
 
-  const activeSpaceTitle = useMemo(
-    () =>
-      getActiveSpaceTriggerLabel(
-        activeSpaceId ? spacesById[activeSpaceId]?.name : undefined,
-        t,
-        {
-          emptyLabelKey: activeSpaceId
-            ? 'layout.spaces-untitled'
-            : 'layout.spaces-select-space',
-        }
-      ),
-    [activeSpaceId, spacesById, t]
-  );
-
+  // The Space menu lives on the Workspace page now; the save shortcut stays
+  // here because the top bar is always mounted.
   const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
   const versionHistory = useWorkspaceSavePoint({
     spaceId: activeSpaceId,
@@ -116,10 +87,6 @@ function HeaderWin() {
     userId,
     shortcut: true,
   });
-  const canRenameActiveSpace = canRenameSpace(activeSpace);
-  const activeSpacePinned = Boolean(
-    activeSpaceId && pinnedSpaceIds.includes(activeSpaceId)
-  );
 
   return (
     <div
@@ -144,140 +111,102 @@ function HeaderWin() {
         cancelText={t('layout.cancel')}
         confirmVariant="primary"
       />
-      <WorkspaceVersionHistoryDialog
-        open={versionHistoryOpen}
-        onOpenChange={setVersionHistoryOpen}
-        spaceId={activeSpaceId}
-        email={email}
-        userId={userId}
-        actorId={userId == null ? email || 'local-user' : String(userId)}
-      />
-      <SpaceRenameDialog
-        spaceId={renameSpaceId}
-        onClose={() => setRenameSpaceId(null)}
-      />
+      <GlobalSearchHost />
       {/* Two-sided global navigation: destinations on the left, utilities on the right. */}
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-between">
         <TopBarPrimaryNavigation
           sidebarHidden={workspaceSidebarHidden}
           leadingInset={topBarLeadingInset}
           sidebarControls={
-            <TooltipSimple
-              content={
-                <ShortcutTooltipContent
-                  label={sidebarToggleLabel}
-                  shortcutId="toggle-workspace-sidebar"
-                />
-              }
-              compact
-              side="bottom"
-              align="center"
-              variant="instant"
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                className={cn(
-                  'no-drag rounded-full',
-                  TOP_BAR_CONTROL_STATE_CLASS,
-                  'aria-pressed:!bg-transparent'
-                )}
-                onClick={toggleWorkspaceSidebar}
-                aria-pressed={!workspaceSidebarHidden}
-                aria-label={sidebarToggleLabel}
+            <>
+              <TooltipSimple
+                content={
+                  <ShortcutTooltipContent
+                    label={sidebarToggleLabel}
+                    shortcutId="toggle-workspace-sidebar"
+                  />
+                }
+                compact
+                side="bottom"
+                align="center"
+                variant="instant"
               >
-                {workspaceSidebarHidden ? (
-                  <DsIcon icon={PanelLeftOpen} aria-hidden />
-                ) : (
-                  <DsIcon icon={PanelLeft} aria-hidden />
-                )}
-              </Button>
-            </TooltipSimple>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    'aria-pressed:!bg-transparent'
+                  )}
+                  onClick={toggleWorkspaceSidebar}
+                  aria-pressed={!workspaceSidebarHidden}
+                  aria-label={sidebarToggleLabel}
+                >
+                  {workspaceSidebarHidden ? (
+                    <DsIcon icon={PanelLeftOpen} aria-hidden />
+                  ) : (
+                    <DsIcon icon={PanelLeft} aria-hidden />
+                  )}
+                </Button>
+              </TooltipSimple>
+              <div className="flex shrink-0 items-center gap-0.5">
+                <TooltipSimple
+                  content={t('layout.back')}
+                  compact
+                  side="bottom"
+                  align="center"
+                  variant="instant"
+                >
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      buttonContent="icon-only"
+                      className={cn(
+                        'no-drag rounded-full',
+                        TOP_BAR_CONTROL_STATE_CLASS
+                      )}
+                      disabled={!canGoBack}
+                      onClick={goBack}
+                      aria-label={t('layout.back')}
+                    >
+                      <DsIcon icon={ArrowLeft} aria-hidden />
+                    </Button>
+                  </span>
+                </TooltipSimple>
+                <TooltipSimple
+                  content={t('layout.forward')}
+                  compact
+                  side="bottom"
+                  align="center"
+                  variant="instant"
+                >
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      buttonContent="icon-only"
+                      className={cn(
+                        'no-drag rounded-full',
+                        TOP_BAR_CONTROL_STATE_CLASS
+                      )}
+                      disabled={!canGoForward}
+                      onClick={goForward}
+                      aria-label={t('layout.forward')}
+                    >
+                      <DsIcon icon={ArrowRight} aria-hidden />
+                    </Button>
+                  </span>
+                </TooltipSimple>
+              </div>
+            </>
           }
-          contentControls={
-            isWorkspacePage ? (
-              <SpaceSwitchDropdown
-                contentSideOffset={6}
-                onOpenChange={(open) => {
-                  if (open && versionHistory.supported) {
-                    void versionHistory.loadStatus();
-                  }
-                }}
-                trigger={
-                  <button
-                    id="active-space-title-btn"
-                    type="button"
-                    className={TOP_BAR_PILL_CLASS}
-                    aria-haspopup="menu"
-                    aria-label={activeSpaceTitle}
-                  >
-                    <DsIcon icon={Folder} className="shrink-0" aria-hidden />
-                    <span className="max-w-[220px] min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {activeSpaceTitle}
-                    </span>
-                    <DsIcon
-                      icon={ChevronDown}
-                      className="shrink-0 text-ds-ink-subtle-default"
-                      aria-hidden
-                    />
-                  </button>
-                }
-                activeSpaceId={activeSpaceId}
-                canRenameActiveSpace={canRenameActiveSpace}
-                onRenameSpace={() => {
-                  if (canRenameActiveSpace) setRenameSpaceId(activeSpaceId);
-                }}
-                onOpenSpaceSettings={() => {
-                  if (activeSpaceId) {
-                    openSpaceHomeTab(activeSpaceId, 'workspace-profile');
-                  }
-                }}
-                onOpenMemorySettings={() => {
-                  if (activeSpaceId) openSpaceHomeTab(activeSpaceId, 'memory');
-                }}
-                pinMenu={
-                  activeSpaceId
-                    ? {
-                        pinned: activeSpacePinned,
-                        onToggle: () => {
-                          if (activeSpacePinned) unpinSpace(activeSpaceId);
-                          else pinSpaceOrChoose(activeSpaceId);
-                        },
-                      }
-                    : undefined
-                }
-                contentAlign="start"
-                triggerWrapperClassName="min-w-0 overflow-hidden rounded-full"
-                savePointMenu={
-                  versionHistory.supported
-                    ? {
-                        loading:
-                          versionHistory.loading ||
-                          versionHistory.status === null,
-                        saving: versionHistory.saving,
-                        enabled: versionHistory.status?.enabled === true,
-                        needsAttention:
-                          versionHistory.status?.enabled === true &&
-                          (versionHistory.status.state !== 'ready' ||
-                            versionHistory.status.diagnostics?.healthy ===
-                              false),
-                        pendingCount:
-                          versionHistory.status?.pending_managed_paths
-                            ?.length || 0,
-                        pendingTruncated:
-                          versionHistory.status
-                            ?.pending_managed_paths_truncated === true,
-                        onEnable: versionHistory.requestEnable,
-                        onSave: versionHistory.save,
-                        onOpenHistory: () => setVersionHistoryOpen(true),
-                      }
-                    : undefined
-                }
-              />
-            ) : null
-          }
+          contentControls={<GlobalSearchButton />}
         />
 
         <div

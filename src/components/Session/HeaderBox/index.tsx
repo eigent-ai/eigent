@@ -16,6 +16,7 @@ import tokenDarkIcon from '@/assets/custom/token-dark.svg';
 import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
+import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,7 +37,8 @@ import {
   parseAutomationDraft,
   type AutomationDraftV1,
 } from '@/lib/automationDraft';
-import { getSessionWindowRole } from '@/lib/sessionWindows';
+import { spaceEmoji } from '@/lib/spaceEmoji';
+import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -44,13 +46,13 @@ import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice } from '@/store/pageTabStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { useSkillsStore } from '@/store/skillsStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
   DEFAULT_NARRATIVE_INFORMATION_DENSITY,
 } from '@/types/chatTimeline';
 import {
   Archive,
-  ArrowLeft,
   EllipsisVertical,
   GalleryThumbnails,
   Pencil,
@@ -94,8 +96,6 @@ export interface HeaderBoxProps {
   className?: string;
   /** Show the chat timeline style control (hidden before a Session starts). */
   showTimelineStyle?: boolean;
-  /** Show the back-to-workspace button (hidden on the New session page). */
-  showBack?: boolean;
   /** Summary column toggle, shown beside Preview when provided. */
   summary?: SummaryToggleProps;
   /** Controls after the Preview toggle, such as closing a split pane. */
@@ -109,13 +109,12 @@ export function HeaderBox({
   projectAchieved = false,
   className,
   showTimelineStyle = true,
-  showBack = true,
   summary,
   trailingActions,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
   // A Session window has nowhere to go back to.
-  const inSessionWindow = getSessionWindowRole() === 'session';
+  // Home has no Space landing to go back to; its header shows the name only.
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const titleRef = useRef<HTMLSpanElement>(null);
   const sessionMenuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -144,9 +143,6 @@ export function HeaderBox({
     return () => observer.disconnect();
   }, [projectName]);
   const { appearance } = useAuthStore();
-  const setActiveWorkspaceTab = useSessionPageTabStore(
-    (s) => s.setActiveWorkspaceTab
-  );
   const sessionPreviewOpen = useSessionPageTabStore(
     (s) => getSessionPreviewSlice(s).open
   );
@@ -217,10 +213,12 @@ export function HeaderBox({
     projectStore,
     sessionMenuOpen,
   ]);
-  const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
-  const backTooltip = t('layout.back-tooltip', {
-    defaultValue: 'Back',
+  const sessionSpace = useSpaceStore((state) => {
+    const spaceId = projectId ? state.projectIdIndex?.[projectId] : undefined;
+    return spaceId ? state.spaces?.[spaceId] : undefined;
   });
+  const sessionSpaceName = getActiveSpaceTriggerLabel(sessionSpace?.name, t);
+  const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const windowPreviewTooltip = sessionPreviewOpen
     ? t('layout.close-preview-tooltip', { defaultValue: 'Close preview' })
     : t('layout.open-preview-tooltip', { defaultValue: 'Open preview' });
@@ -258,21 +256,27 @@ export function HeaderBox({
       ref={headerRef}
       className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
     >
-      {/* Left: return to workspace, Session identity, and its controls. */}
+      {/* Left: Session identity and its controls. */}
       <div className="flex min-w-0 items-center gap-ds-4">
-        {showBack && !inSessionWindow ? (
-          <TooltipSimple content={backTooltip} variant="instant" side="bottom">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              buttonContent="icon-only"
-              onClick={() => setActiveWorkspaceTab('workforce')}
-              className="no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
-              aria-label={backTooltip}
+        {sessionSpace ? (
+          <TooltipSimple
+            content={sessionSpaceName}
+            compact
+            side="bottom"
+            align="start"
+            variant="instant"
+          >
+            <span
+              data-session-space-icon
+              tabIndex={0}
+              aria-label={sessionSpaceName}
+              className="flex size-ds-control-xs shrink-0 items-center justify-center rounded-ds-compact-control bg-ds-neutral-muted-default text-ds-ink-default-default outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
             >
-              <DsIcon icon={ArrowLeft} recipe="main" />
-            </Button>
+              <SpaceGlyph
+                name={sessionSpaceName}
+                emoji={spaceEmoji(sessionSpace)}
+              />
+            </span>
           </TooltipSimple>
         ) : null}
         {projectName && projectId ? (

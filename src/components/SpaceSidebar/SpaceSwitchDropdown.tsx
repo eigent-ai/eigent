@@ -51,6 +51,7 @@ import { cloneElement, isValidElement, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from '@/components/Layout/AppSidebar';
+import { DESTRUCTIVE_MENU_ITEM_CLASS } from './constants';
 
 export interface SpaceSwitchDropdownPendingChangesMenu {
   loading: boolean;
@@ -92,6 +93,8 @@ export interface SpaceSwitchDropdownProps {
   onOpenMemorySettings?: () => void;
   /** Pin Space / Unpin Space for the active Space. */
   pinMenu?: SpaceSwitchDropdownPinMenu;
+  /** Delete Space; the caller confirms first. */
+  onDeleteSpace?: () => void;
   contentAlign?: ComponentPropsWithoutRef<typeof DropdownMenuContent>['align'];
   contentClassName?: string;
   contentSideOffset?: number;
@@ -107,8 +110,9 @@ export interface SpaceSwitchDropdownProps {
 }
 
 /**
- * The Space menu behind the top-bar Space name: actions for the active Space.
- * Switching Spaces happens on the rail and in Home, so it lists no Spaces.
+ * The Space menu behind the Space's name, in the Workspace page's title and
+ * at the top of the Space sidebar: actions for that Space. Switching Spaces happens on the rail and in Home, so it lists no
+ * Spaces.
  */
 export function SpaceSwitchDropdown({
   trigger,
@@ -118,6 +122,7 @@ export function SpaceSwitchDropdown({
   onOpenSpaceSettings,
   onOpenMemorySettings,
   pinMenu,
+  onDeleteSpace,
   contentAlign = 'start',
   contentClassName,
   contentSideOffset,
@@ -234,6 +239,34 @@ export function SpaceSwitchDropdown({
           <DsIcon icon={Pencil} aria-hidden />
           <span>{t('layout.spaces-rename-space')}</span>
         </DropdownMenuItem>
+
+        {pinMenu ? (
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => {
+              setOpen(false);
+              pinMenu.onToggle();
+            }}
+          >
+            <DsIcon icon={pinMenu.pinned ? PinOff : Pin} aria-hidden />
+            <span>
+              {pinMenu.pinned ? t('layout.unpin-space') : t('layout.pin-space')}
+            </span>
+          </DropdownMenuItem>
+        ) : null}
+
+        {onDeleteSpace ? (
+          <DropdownMenuItem
+            className={DESTRUCTIVE_MENU_ITEM_CLASS}
+            onSelect={() => {
+              setOpen(false);
+              onDeleteSpace();
+            }}
+          >
+            <DsIcon icon={Trash2} aria-hidden />
+            <span>{t('layout.delete-space')}</span>
+          </DropdownMenuItem>
+        ) : null}
 
         {onOpenSpaceSettings ? (
           <DropdownMenuItem
@@ -418,26 +451,6 @@ export function SpaceSwitchDropdown({
                 })}
               </DropdownMenuItem>
             ) : null}
-          </>
-        ) : null}
-
-        {pinMenu ? (
-          <>
-            <DropdownMenuSeparator className="mx-2" />
-            <DropdownMenuItem
-              className="gap-2"
-              onSelect={() => {
-                setOpen(false);
-                pinMenu.onToggle();
-              }}
-            >
-              <DsIcon icon={pinMenu.pinned ? PinOff : Pin} aria-hidden />
-              <span>
-                {pinMenu.pinned
-                  ? t('layout.unpin-space')
-                  : t('layout.pin-space')}
-              </span>
-            </DropdownMenuItem>
           </>
         ) : null}
       </DropdownMenuContent>

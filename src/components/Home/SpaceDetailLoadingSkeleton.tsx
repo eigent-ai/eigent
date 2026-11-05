@@ -257,7 +257,7 @@ export function SpaceDetailTabSkeleton({ tab }: { tab: SpaceDetailTab }) {
         : tab === 'triggers'
           ? t('layout.automations', { defaultValue: 'Automations' })
           : tab === 'context'
-            ? t('layout.context', { defaultValue: 'Context' })
+            ? t('layout.files-tab', { defaultValue: 'Files' })
             : tab === 'memory'
               ? t('setting.memory', { defaultValue: 'Memory' })
               : t('layout.workspace-settings', {

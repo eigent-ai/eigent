@@ -33,7 +33,6 @@ import {
 import { DsIcon } from '@/components/ui/ds-icon';
 import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
 import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
-import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
 import { LocaleEnum, resolveLocale, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
@@ -42,6 +41,7 @@ import { APP_COMMAND } from '@/shared/appCommands';
 import { getKeyboardShortcutsHint } from '@/shared/keyboardShortcuts';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { refreshUsage, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import {
   ArrowUpRight,
@@ -115,7 +115,6 @@ export function UserMenu() {
     : '—';
   const credits = usage.credits;
   const planLoading = usage.refreshing;
-  const { chatStore } = useChatStoreAdapter();
   const email = useAuthStore((s) => s.email);
   const username = useAuthStore((s) => s.username);
   const language = useAuthStore((s) => s.language);
@@ -179,7 +178,13 @@ export function UserMenu() {
   };
 
   const handleLogout = () => {
-    chatStore?.clearTasks?.();
+    const projects = useProjectRuntimeStore.getState();
+    if (projects.activeProjectId) {
+      projects
+        .peekActiveChatStore(projects.activeProjectId)
+        ?.getState()
+        .clearTasks?.();
+    }
     resetInstallation();
     setNeedsBackendRestart(true);
     logout();

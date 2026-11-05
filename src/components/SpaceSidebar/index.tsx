@@ -12,11 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchPut } from '@/api/http';
 import { isWeb } from '@/client/platform';
-import { GlobalSearchDialog } from '@/components/GlobalSearch';
+import { SpaceHeaderMenu } from '@/components/Home/SpaceHeaderMenu';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
-import { spaceRailTileInitial } from '@/components/Layout/AppRail/SpaceRailTile';
 import {
   NavTab,
   SidebarNavGroup,
@@ -24,79 +22,48 @@ import {
   SidebarSeparator,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
-import {
-  DeleteSessionDialog,
-  type DeleteSessionFailure,
-  type DeleteSessionPhase,
-} from '@/components/Session/DeleteSessionDialog';
-import AlertDialog from '@/components/ui/alertDialog';
+import { SidebarRowTooltip } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
-import { DsText } from '@/components/ui/ds-text';
-import { Input } from '@/components/ui/input';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { useSessionNavStatuses } from '@/hooks/useSessionNavStatuses';
 import {
   getSplitViewUnavailableReason,
   useVisibleSessionPanes,
 } from '@/hooks/useSessionSplitView';
-import { useHost } from '@/host';
-import {
-  isProjectAchieved,
-  setProjectAchievedState,
-} from '@/lib/projectAchievement';
+import { isProjectAchieved } from '@/lib/projectAchievement';
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
-import {
-  assertSessionCleanupIdentity,
-  deleteSessionTaskData,
-} from '@/lib/sessionFileCleanup';
 import { resolveSessionNavLeadPresentation } from '@/lib/sessionNavLead';
-import { renameSession } from '@/lib/sessionRename';
-import { SessionStopError, stopSessionForDeletion } from '@/lib/sessionStop';
+import { openSessionInShell, shouldListSession } from '@/lib/sessionOpen';
 import { openSessionWindow } from '@/lib/sessionWindows';
-import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
-  getActiveSpaceTriggerLabel,
   getFilesTabBindingLabel,
   getSessionDisplayName,
   isUnboundUntitledSpace,
 } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON, AUTOMATION_OFF_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
-import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
-import { executionScope } from '@/service/executionApi';
 import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
-import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
-import { readSessionExecutionRoute } from '@/store/sessionExecutionStore';
 import {
   MAX_SESSION_PANES,
   useSessionSplitViewStore,
 } from '@/store/sessionSplitViewStore';
 import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
-import { useSettingsStore } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
   useSpaceStore,
 } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
-import { ChatTaskStatus } from '@/types/constants';
-import { Cast, Inbox, Plus, ToolCase } from 'lucide-react';
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { Cast, Inbox, Plus, Settings2 } from 'lucide-react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { SessionControlDialogs } from './SessionControlDialogs';
 import { SessionNavList } from './SessionNavList';
 import {
   NavTabReconnectSuffix,
@@ -106,23 +73,17 @@ import {
 const NO_PANES: string[] = [];
 
 export interface SpaceSidebarProps {
-  chatStore: ChatStore | null;
   className?: string;
 }
 
 let didAttemptBootSessionResume = false;
 
-export default function SpaceSidebar({
-  chatStore: _chatStore,
-  className,
-}: SpaceSidebarProps) {
+function SpaceSidebar({ className }: SpaceSidebarProps) {
   const executeAppCommand = useAppCommand();
   const filesTabDescriptionId = useId();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
+  const spaceWorkspaceTab = usePageTabStore((s) => s.spaceWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const requestWorkspaceChatFocus = usePageTabStore(
-    (s) => s.requestWorkspaceChatFocus
-  );
   const requestOpenTriggerAddDialog = usePageTabStore(
     (s) => s.requestOpenTriggerAddDialog
   );
@@ -133,14 +94,15 @@ export default function SpaceSidebar({
   const wsConnectionStatus = useTriggerStore((s) => s.wsConnectionStatus);
   const triggerReconnect = useTriggerStore((s) => s.triggerReconnect);
   const triggersListenerConnected = wsConnectionStatus === 'connected';
-  const projectStore = useProjectRuntimeStore();
+  const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
+  // Rows read each Session's chat store, so they refresh as Sessions load.
+  const loadedProjects = useProjectRuntimeStore((s) => s.projects);
   const navLeadByProjectId = useProjectRuntimeStore(
     (s) => s.navLeadByProjectId
   );
   const historyLoadingProjectIds = useProjectRuntimeStore(
     (s) => s.historyLoadingProjectIds
   );
-  const activeProjectId = projectStore.activeProjectId;
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const visiblePanes = useVisibleSessionPanes(activeSpaceId);
   const windowedProjectIds = useSessionWindowsStore((s) => s.openProjectIds);
@@ -154,34 +116,9 @@ export default function SpaceSidebar({
   const filesTabHasUnviewedFiles =
     !!activeProjectId && filesUnviewedForProjects.has(activeProjectId);
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const closeSettings = useSettingsStore((state) => state.closeSettings);
-  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
-  const [deleteProjectPhase, setDeleteProjectPhase] =
-    useState<DeleteSessionPhase>('idle');
-  const [deleteProjectFailure, setDeleteProjectFailure] =
-    useState<DeleteSessionFailure>(null);
-  const [deleteProjectWorkdir, setDeleteProjectWorkdir] = useState(false);
-  const deleteProjectIdentity = useRef<{
-    email: string | null;
-    userId: number | null;
-  } | null>(null);
-  const [achieveProjectId, setAchieveProjectId] = useState<string | null>(null);
-  const [achieveProjectLoading, setAchieveProjectLoading] = useState(false);
-  const [achieveDialogOpen, setAchieveDialogOpen] = useState(false);
   const pinnedProjectIds = useSessionControlsStore((s) => s.pinnedProjectIds);
   const togglePinned = useSessionControlsStore((s) => s.togglePinned);
   const refreshPinned = useSessionControlsStore((s) => s.refreshPinned);
-  const sessionControlRequest = useSessionControlsStore((s) => s.request);
-  const handledSessionControlRequest = useRef(
-    sessionControlRequest?.sequence ?? 0
-  );
-  const [renameProjectId, setRenameProjectId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [renameProjectLoading, setRenameProjectLoading] = useState(false);
-
   const scheduledTabLabel = t('layout.scheduled-tab');
 
   const triggersTabAriaLabel = useMemo(() => {
@@ -195,23 +132,10 @@ export default function SpaceSidebar({
 
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
-  const host = useHost();
   useSessionNavStatuses(
     projectMetasForActiveSpace.map((project) => project.id),
     activeSpaceId
   );
-  const ipcRenderer = host?.ipcRenderer;
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setGlobalSearchOpen(true);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
 
   const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
   const isActiveSpaceUnbound = isUnboundUntitledSpace(activeSpace, t);
@@ -242,135 +166,21 @@ export default function SpaceSidebar({
     userId,
   ]);
 
-  const projectHasStarted = useCallback(
-    (projectId: string) => {
-      const projectChatStore = projectStore.peekActiveChatStore(projectId);
-      const projectChatState = projectChatStore?.getState();
-      const projectTask = projectChatState?.activeTaskId
-        ? projectChatState.tasks[projectChatState.activeTaskId]
-        : undefined;
-      return Boolean(
-        projectTask &&
-        ((projectTask.messages?.length || 0) > 0 ||
-          projectTask.hasMessages ||
-          projectTask.status !== ChatTaskStatus.PENDING)
-      );
-    },
-    [projectStore]
-  );
-
-  const shouldShowSessionInNavList = useCallback(
-    (project: (typeof projectMetasForActiveSpace)[number]) => {
-      if (project.metadata?.historyId) return true;
-      const historyDisplayName =
-        typeof project.metadata?.historyDisplayName === 'string'
-          ? project.metadata.historyDisplayName.trim()
-          : '';
-      if (historyDisplayName) return true;
-
-      const normalizedName = (project.name ?? '').trim().toLowerCase();
-      if (
-        normalizedName &&
-        normalizedName !== 'new project' &&
-        normalizedName !== 'new space'
-      ) {
-        return true;
-      }
-
-      return projectHasStarted(project.id);
-    },
-    [projectHasStarted]
-  );
-
   const isSessionNavSelectionActive =
     activeWorkspaceTab === 'project' || activeWorkspaceTab === 'new-project';
 
   const ensureProjectLoaded = useCallback(
     (projectId: string, onHydrationStarted?: () => void) =>
-      ensureProjectRuntimeLoaded(projectStore, projectId, {
+      ensureProjectRuntimeLoaded(useProjectRuntimeStore.getState(), projectId, {
         onHydrationStarted,
         requireActiveSelection: true,
       }),
-    [projectStore]
+    []
   );
 
   const selectSession = useCallback(
-    async (projectId: string) => {
-      // A Session lives in one place: bring its own window forward instead.
-      if (
-        activeSpaceId &&
-        useSessionWindowsStore.getState().openProjectIds.includes(projectId)
-      ) {
-        void openSessionWindow({ spaceId: activeSpaceId, projectId });
-        return;
-      }
-      projectStore.setActiveProject(projectId);
-      try {
-        const route = await readSessionExecutionRoute(
-          executionScope(projectId)
-        );
-        if (useProjectRuntimeStore.getState().activeProjectId !== projectId)
-          return;
-        if (route.route === 'managed') {
-          setActiveWorkspaceTab('project');
-          return;
-        }
-      } catch {
-        if (useProjectRuntimeStore.getState().activeProjectId === projectId)
-          setActiveWorkspaceTab('project');
-        return;
-      }
-      const needsRemoteHistoryHydration =
-        projectStore.getProjectById(projectId)?.metadata
-          ?.remoteHistoryHydrationPending === true;
-
-      // Already loaded — flip to the live Session shell immediately.
-      if (
-        projectStore.peekActiveChatStore(projectId) &&
-        !projectStore.historyLoadIncompleteProjectIds[projectId] &&
-        !needsRemoteHistoryHydration
-      ) {
-        setActiveWorkspaceTab('project');
-        return;
-      }
-
-      // Enter the replay shell as soon as hydration has synchronously marked
-      // it loading. Session keeps loading history shells stable, while the
-      // durable stream continues projecting its backlog in the background.
-      await ensureProjectLoaded(projectId, () => {
-        if (useProjectRuntimeStore.getState().activeProjectId === projectId) {
-          setActiveWorkspaceTab('project');
-        }
-      });
-
-      // A slower, older click may finish after the user selected another
-      // Session. It must not change the shared shell for the newer selection.
-      if (projectStore.activeProjectId !== projectId) return;
-      if (projectStore.historyLoadIncompleteProjectIds[projectId]) return;
-
-      // History-loaded projects are known to have content. Trust the project
-      // type tag (set by createProject(REPLAY)) over `projectHasStarted`,
-      // which can read a transiently-empty chatStore during the brief
-      // window between loadProjectFromHistory's remove+create rebuild.
-      const meta = useSpaceStore.getState().getProjectMeta(projectId);
-      const projectInStore = projectStore.getProjectById(projectId);
-      const isReplayProject = Boolean(
-        meta?.metadata?.tags?.includes('replay') ||
-        projectInStore?.metadata?.tags?.includes('replay')
-      );
-      setActiveWorkspaceTab(
-        isReplayProject || projectHasStarted(projectId)
-          ? 'project'
-          : 'new-project'
-      );
-    },
-    [
-      activeSpaceId,
-      ensureProjectLoaded,
-      projectHasStarted,
-      projectStore,
-      setActiveWorkspaceTab,
-    ]
+    (projectId: string) => openSessionInShell(projectId),
+    []
   );
 
   // Split view shows the focused Session's split while a Session is open.
@@ -496,7 +306,7 @@ export default function SpaceSidebar({
     didAttemptBootSessionResume = true;
 
     if (activeWorkspaceTab !== 'workforce') return;
-    if (projectStore.activeProjectId) return;
+    if (useProjectRuntimeStore.getState().activeProjectId) return;
     if (!activeSpaceId) return;
     const lastVisitedId =
       useSpaceStore.getState().lastVisitedProjectBySpace[activeSpaceId];
@@ -504,7 +314,7 @@ export default function SpaceSidebar({
     const lastVisitedMeta = projectMetasForActiveSpace.find(
       (project) => project.id === lastVisitedId
     );
-    if (!lastVisitedMeta || !shouldShowSessionInNavList(lastVisitedMeta)) {
+    if (!lastVisitedMeta || !shouldListSession(lastVisitedMeta)) {
       return;
     }
     void selectSession(lastVisitedId);
@@ -516,12 +326,14 @@ export default function SpaceSidebar({
   const navSessions = useMemo(
     () =>
       projectMetasForActiveSpace
-        .filter((project) => shouldShowSessionInNavList(project))
+        .filter((project) => shouldListSession(project))
         .map((project) => {
           // `navLeadByProjectId` is kept live by `projectStore`'s chat-store
           // subscription registry — no need to peek into chat-store internals
           // here (those reads aren't tracked by React).
-          const projectChatStore = projectStore.peekActiveChatStore(project.id);
+          const projectChatStore = useProjectRuntimeStore
+            .getState()
+            .peekActiveChatStore(project.id);
           const projectChatState = projectChatStore?.getState();
           const activeTask = projectChatState?.activeTaskId
             ? projectChatState.tasks[projectChatState.activeTaskId]
@@ -551,14 +363,15 @@ export default function SpaceSidebar({
             splitViewUnavailableReason: splitViewUnavailableReason(project.id),
           };
         }),
+    // `loadedProjects` isn't read directly: rows read chat stores through it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       activeProjectId,
       historyLoadingProjectIds,
       navLeadByProjectId,
       pinnedProjectIds,
       projectMetasForActiveSpace,
-      projectStore,
-      shouldShowSessionInNavList,
+      loadedProjects,
       splitPanes,
       splitViewUnavailableReason,
       t,
@@ -566,45 +379,14 @@ export default function SpaceSidebar({
     ]
   );
 
-  const activeSpaceLabel = getActiveSpaceTriggerLabel(
-    activeSpaceId ? spacesById[activeSpaceId]?.name : undefined,
-    t
-  );
-
   const handleNewSession = useCallback(() => {
     executeAppCommand(APP_COMMAND.newProject);
   }, [executeAppCommand]);
 
-  const isConfigurationActive = useMemo(() => {
-    if (!activeSpaceId || !isSettingsRoutePath(location.pathname)) {
-      return false;
-    }
-    const searchParams = new URLSearchParams(location.search);
-    return (
-      searchParams.get('section') === 'spaces' &&
-      searchParams.get('spaceId') === activeSpaceId &&
-      searchParams.get('spaceTab') === 'workspace-profile'
-    );
-  }, [activeSpaceId, location.pathname, location.search]);
-
-  const openSpaceConfiguration = useCallback(() => {
-    if (!activeSpaceId) return;
-    void runAfterWorkspaceConfigurationSave(() => {
-      closeSettings();
-      navigate(
-        `/home?section=spaces&spaceId=${encodeURIComponent(activeSpaceId)}&spaceTab=workspace-profile`,
-        {
-          state: shellBackState(`${location.pathname}${location.search}`),
-        }
-      );
-    });
-  }, [
-    activeSpaceId,
-    closeSettings,
-    location.pathname,
-    location.search,
-    navigate,
-  ]);
+  const spaceSettingsLabel = t('layout.space-settings');
+  const isSpaceSettingsActive =
+    activeWorkspaceTab === 'space-workspace' &&
+    spaceWorkspaceTab === 'workspace-profile';
 
   const openFilesTab = useCallback(() => {
     let projectId = activeProjectId;
@@ -620,7 +402,7 @@ export default function SpaceSidebar({
             (project) => project.id === lastVisitedProjectId
           ) ?? projectsInSpace[0];
         projectId = targetProject.id;
-        projectStore.setActiveProject(projectId);
+        useProjectRuntimeStore.getState().setActiveProject(projectId);
       }
     }
 
@@ -629,6 +411,7 @@ export default function SpaceSidebar({
       return;
     }
 
+    const projectStore = useProjectRuntimeStore.getState();
     const projectChatStore = projectStore.peekActiveChatStore(projectId);
     const taskId = projectChatStore?.getState().activeTaskId;
     if (taskId) {
@@ -653,7 +436,6 @@ export default function SpaceSidebar({
     activeProjectId,
     activeSpaceId,
     ensureProjectLoaded,
-    projectStore,
     setActiveWorkspaceTab,
     t,
   ]);
@@ -676,24 +458,15 @@ export default function SpaceSidebar({
     [togglePinned]
   );
 
-  const requestDeleteSession = useCallback((projectId: string) => {
-    const auth = useAuthStore.getState();
-    deleteProjectIdentity.current = { email: auth.email, userId: auth.user_id };
-    setDeleteProjectFailure(null);
-    setDeleteProjectWorkdir(false);
-    setDeleteProjectId(projectId);
-  }, []);
-
-  const requestEndSession = useCallback((projectId: string) => {
-    setAchieveProjectId(projectId);
-    setAchieveDialogOpen(true);
-  }, []);
-
-  const requestRenameSession = useCallback((projectId: string) => {
-    const name = useSpaceStore.getState().getProjectMeta(projectId)?.name;
-    setRenameValue(name ?? '');
-    setRenameProjectId(projectId);
-  }, []);
+  const requestSessionAction = useSessionControlsStore((s) => s.requestAction);
+  const requestDeleteSession = useCallback(
+    (projectId: string) => requestSessionAction('delete', projectId),
+    [requestSessionAction]
+  );
+  const requestEndSession = useCallback(
+    (projectId: string) => requestSessionAction('end', projectId),
+    [requestSessionAction]
+  );
 
   useEffect(() => {
     refreshPinned();
@@ -701,269 +474,56 @@ export default function SpaceSidebar({
     return () => window.removeEventListener('storage', refreshPinned);
   }, [refreshPinned]);
 
-  useEffect(() => {
-    if (
-      !sessionControlRequest ||
-      sessionControlRequest.sequence <= handledSessionControlRequest.current
-    ) {
-      return;
-    }
-    handledSessionControlRequest.current = sessionControlRequest.sequence;
-    const { action, projectId } = sessionControlRequest;
-    if (action === 'rename') requestRenameSession(projectId);
-    if (action === 'end') requestEndSession(projectId);
-    if (action === 'delete') requestDeleteSession(projectId);
-  }, [
-    requestDeleteSession,
-    requestEndSession,
-    requestRenameSession,
-    sessionControlRequest,
-  ]);
-
-  const confirmRenameSession = useCallback(async () => {
-    const projectId = renameProjectId;
-    const name = renameValue.trim();
-    if (!projectId || !name || renameProjectLoading) return;
-    setRenameProjectLoading(true);
-    try {
-      await renameSession(
-        projectId,
-        name,
-        projectStore,
-        useSpaceStore.getState()
-      );
-      setRenameProjectId(null);
-    } catch (error) {
-      console.error('[SpaceSidebar] Failed to rename session:', error);
-      toast.error(t('layout.failed-to-rename-session'));
-    } finally {
-      setRenameProjectLoading(false);
-    }
-  }, [projectStore, renameProjectId, renameProjectLoading, renameValue, t]);
-
-  const confirmDeleteSession = useCallback(async () => {
-    const projectId = deleteProjectId;
-    if (!projectId || deleteProjectPhase !== 'idle') return;
-
-    setDeleteProjectPhase('stopping');
-    try {
-      const identity = deleteProjectIdentity.current;
-      if (!identity) throw new Error('Missing Session cleanup identity');
-      assertSessionCleanupIdentity(identity);
-      const projectMeta = useSpaceStore.getState().getProjectMeta(projectId);
-      const spaceId = projectMeta?.spaceId ?? activeSpaceId ?? undefined;
-      const wasActive = projectStore.activeProjectId === projectId;
-
-      const deferLocalCleanup = await stopSessionForDeletion(projectId);
-      setDeleteProjectPhase('deleting');
-      const chatState = projectStore.peekActiveChatStore(projectId)?.getState();
-      await deleteSessionTaskData({
-        projectId,
-        spaceId,
-        ...identity,
-        knownTasks: Object.keys(chatState?.tasks ?? {}).map((taskId) => ({
-          task_id: taskId,
-          project_id: projectId,
-        })),
-        deleteWorkdir: deleteProjectWorkdir,
-        deferLocalCleanup,
-        ipcRenderer,
-      });
-
-      assertSessionCleanupIdentity(identity);
-      if (spaceId) {
-        try {
-          const { proxyUpdateSpaceProject } =
-            await import('@/service/spaceApi');
-          assertSessionCleanupIdentity(identity);
-          await proxyUpdateSpaceProject(spaceId, projectId, {
-            status: 'archived',
-          });
-        } catch (error) {
-          console.warn(
-            `[SpaceSidebar] Failed to archive server project ${projectId}:`,
-            error
-          );
-        }
-      }
-
-      assertSessionCleanupIdentity(identity);
-      projectStore.removeProject(projectId);
-      setDeleteProjectId(null);
-
-      if (wasActive) {
-        setActiveWorkspaceTab('workforce');
-        requestWorkspaceChatFocus();
-      }
-
-      toast.success(t('layout.delete-project'));
-    } catch (error) {
-      console.error('[SpaceSidebar] Failed to delete project:', error);
-      const failure = error instanceof SessionStopError ? 'stop' : 'cleanup';
-      setDeleteProjectFailure(failure);
-      toast.error(
-        t(
-          failure === 'stop'
-            ? 'layout.delete-project-stop-failed'
-            : 'layout.delete-project-failed'
-        )
-      );
-    } finally {
-      setDeleteProjectPhase('idle');
-    }
-  }, [
-    activeSpaceId,
-    deleteProjectId,
-    deleteProjectPhase,
-    deleteProjectWorkdir,
-    ipcRenderer,
-    projectStore,
-    requestWorkspaceChatFocus,
-    setActiveWorkspaceTab,
-    t,
-  ]);
-
-  const confirmEndSession = useCallback(async () => {
-    const projectId = achieveProjectId;
-    if (!projectId) return;
-
-    setAchieveProjectLoading(true);
-    try {
-      const wasActive = projectStore.activeProjectId === projectId;
-      await ensureProjectLoaded(projectId);
-      const projectChatStore = projectStore.peekActiveChatStore(projectId);
-      const projectChatState = projectChatStore?.getState();
-      const taskId = projectChatState?.activeTaskId;
-      const task = taskId ? projectChatState?.tasks[taskId] : undefined;
-
-      const hasActiveRun =
-        task &&
-        (task.status === ChatTaskStatus.RUNNING ||
-          task.status === ChatTaskStatus.PAUSE ||
-          task.isPending);
-      if (taskId && hasActiveRun) {
-        await fetchPut(`/task/${taskId}/take-control`, { action: 'stop' });
-        projectChatStore?.getState().stopTask(taskId);
-        projectChatStore?.getState().setIsPending(taskId, false);
-      }
-
-      await setProjectAchievedState({
-        projectStore,
-        projectId,
-        achieved: true,
-      });
-      if (wasActive) {
-        setActiveWorkspaceTab('workforce');
-        requestWorkspaceChatFocus();
-      }
-      toast.success(t('layout.project-ended-successfully'), {
-        closeButton: true,
-      });
-    } catch (error) {
-      console.error('[SpaceSidebar] Failed to achieve project:', error);
-      toast.error(t('layout.failed-to-end-project'), {
-        closeButton: true,
-      });
-    } finally {
-      setAchieveProjectLoading(false);
-      setAchieveProjectId(null);
-      setAchieveDialogOpen(false);
-    }
-  }, [
-    achieveProjectId,
-    ensureProjectLoaded,
-    projectStore,
-    requestWorkspaceChatFocus,
-    setActiveWorkspaceTab,
-    t,
-  ]);
-
   return (
     <>
-      <GlobalSearchDialog
-        open={globalSearchOpen}
-        onOpenChange={setGlobalSearchOpen}
-      />
-      <AlertDialog
-        isOpen={renameProjectId != null}
-        onClose={() => {
-          if (!renameProjectLoading) setRenameProjectId(null);
-        }}
-        onConfirm={() => void confirmRenameSession()}
-        closeOnConfirm={false}
-        title={t('layout.rename-project')}
-        confirmText={t('layout.save')}
-        cancelText={t('layout.cancel')}
-        confirmVariant="primary"
-        confirmDisabled={!renameValue.trim() || renameProjectLoading}
-      >
-        <Input
-          autoFocus
-          value={renameValue}
-          onChange={(event) => setRenameValue(event.target.value)}
-          placeholder={t('layout.project-name')}
-          aria-label={t('layout.project-name')}
-        />
-      </AlertDialog>
-      <DeleteSessionDialog
-        projectId={deleteProjectId}
-        phase={deleteProjectPhase}
-        failure={deleteProjectFailure}
-        deleteWorkdir={deleteProjectWorkdir}
-        onDeleteWorkdirChange={setDeleteProjectWorkdir}
-        onClose={() => setDeleteProjectId(null)}
-        onConfirm={() => void confirmDeleteSession()}
-      />
-
-      <AlertDialog
-        isOpen={achieveDialogOpen}
-        onClose={() => {
-          if (achieveProjectLoading) return;
-          setAchieveDialogOpen(false);
-          setAchieveProjectId(null);
-        }}
-        onConfirm={() => void confirmEndSession()}
-        title={t('layout.achieve-project')}
-        message={t('layout.ending-this-project-will-stop')}
-        confirmText={t('layout.yes-end-project')}
-        cancelText={t('layout.cancel')}
-        confirmVariant="primary"
-        confirmTone="error"
-        confirmDisabled={achieveProjectLoading}
-      />
-
+      <SessionControlDialogs />
       <SidebarShell className={className} ariaLabel={t('layout.workspace-tab')}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-clip">
           <SidebarSection>
             <SidebarNavGroup>
-              {/* The Space itself: opens its Workspace page. */}
-              <NavTab
-                active={activeWorkspaceTab === 'space-workspace'}
-                onClick={() => setActiveWorkspaceTab('space-workspace')}
-                disabled={!activeSpaceId}
-                leading={
-                  <span
-                    aria-hidden
-                    data-space-sidebar-space-icon
-                    className="flex size-ds-icon-md shrink-0 items-center justify-center rounded-ds-4 bg-ds-neutral-muted-default text-ds-ink-default-default"
-                  >
-                    <DsText as="span" role="meta" weight="semibold">
-                      {spaceRailTileInitial(activeSpaceLabel)}
-                    </DsText>
-                  </span>
-                }
-                label={activeSpaceLabel}
-                tooltip={
-                  <ShortcutTooltipContent
-                    label={t('layout.workspace-tab')}
-                    shortcutId="navigate-workspace"
+              {/* The Space's name opens its menu; the button opens its
+                  settings on the Workspace page. */}
+              {activeSpaceId ? (
+                <div
+                  data-sidebar-row
+                  className="flex h-8 w-full min-w-0 items-center gap-ds-2"
+                >
+                  <SpaceHeaderMenu
+                    spaceId={activeSpaceId}
+                    appearance="sidebar"
                   />
-                }
-                tooltipCompact
-                tooltipVariant="delayed"
-                ariaLabel={`${activeSpaceLabel}, ${t('layout.workspace-tab')}`}
-                ariaCurrentPage={activeWorkspaceTab === 'space-workspace'}
-              />
+                  <SidebarRowTooltip
+                    content={
+                      <ShortcutTooltipContent
+                        label={spaceSettingsLabel}
+                        shortcutId="navigate-configuration"
+                      />
+                    }
+                    className="py-0"
+                    rowSelector="[data-sidebar-row]"
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      buttonRadius="full"
+                      buttonContent="icon-only"
+                      aria-label={spaceSettingsLabel}
+                      aria-pressed={isSpaceSettingsActive}
+                      className="no-drag shrink-0"
+                      onClick={() =>
+                        executeAppCommand(APP_COMMAND.navigateConfiguration)
+                      }
+                    >
+                      <DsIcon
+                        icon={Settings2}
+                        className="text-ds-ink-muted-default"
+                        aria-hidden
+                      />
+                    </Button>
+                  </SidebarRowTooltip>
+                </div>
+              ) : null}
               <NavTab
                 active={activeWorkspaceTab === 'new-project'}
                 onClick={handleNewSession}
@@ -1112,25 +672,6 @@ export default function SpaceSidebar({
                 ariaLabel={t('layout.dispatch-tab')}
                 ariaCurrentPage={activeWorkspaceTab === 'dispatch'}
               />
-              <NavTab
-                active={isConfigurationActive}
-                onClick={openSpaceConfiguration}
-                disabled={!activeSpaceId}
-                leading={
-                  <DsIcon icon={ToolCase} className="shrink-0" aria-hidden />
-                }
-                label={t('layout.configuration-tab')}
-                tooltip={
-                  <ShortcutTooltipContent
-                    label={t('layout.configuration-tab')}
-                    shortcutId="navigate-configuration"
-                  />
-                }
-                tooltipCompact
-                tooltipVariant="delayed"
-                ariaLabel={t('layout.configuration-tab')}
-                ariaCurrentPage={isConfigurationActive}
-              />
             </SidebarNavGroup>
           </SidebarSection>
 
@@ -1155,3 +696,5 @@ export default function SpaceSidebar({
     </>
   );
 }
+
+export default memo(SpaceSidebar);

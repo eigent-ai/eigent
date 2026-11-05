@@ -14,6 +14,7 @@
 
 import ChatBox from '@/components/ChatBox';
 import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
+import { SessionLoadingScan } from '@/components/ChatBox/SessionLoadingScan';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
@@ -69,6 +70,11 @@ import { SessionSidePanel } from './SidePanel';
  * centered composer; its Preview and Summary state live in a draft scope that
  * moves to the Session created by the first task.
  */
+export interface NewSessionComposerSlots {
+  /** First control in the composer toolbar, for example a Space chip. */
+  footerLeading?: ReactNode;
+}
+
 interface SessionProps {
   /** New session page: no Project until the first task creates one. */
   isNewProject?: boolean;
@@ -76,12 +82,15 @@ interface SessionProps {
   projectId?: string | null;
   /** Extra controls at the right end of the Session header (split panes). */
   headerActions?: ReactNode;
+  /** New session only: extra controls in the composer's toolbar. */
+  newSessionComposer?: NewSessionComposerSlots;
 }
 
 export default function Session({
   projectId,
   isNewProject = false,
   headerActions,
+  newSessionComposer,
 }: SessionProps) {
   const inheritedProjectId = useSessionProjectId();
   const id = projectId === undefined ? inheritedProjectId : projectId;
@@ -107,13 +116,18 @@ export default function Session({
         <SessionContent
           isNewProject={isNewProject}
           headerActions={headerActions}
+          newSessionComposer={newSessionComposer}
         />
       </div>
     </SessionPaneProvider>
   );
 }
 
-function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
+function SessionContent({
+  isNewProject = false,
+  headerActions,
+  newSessionComposer,
+}: SessionProps) {
   const { t } = useTranslation();
   const shouldReduceMotion = Boolean(useReducedMotion());
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -503,7 +517,11 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
     !chatStore &&
     sessionExecution.state.route?.route === 'legacy'
   ) {
-    return null;
+    return (
+      <div className="relative h-full w-full">
+        <SessionLoadingScan active label={t('chat.timeline-history-loading')} />
+      </div>
+    );
   }
 
   const sessionSidePanel =
@@ -562,7 +580,6 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
           }
           totalTokens={isNewProject ? 0 : (activeTask?.tokens ?? 0)}
           showTimelineStyle={!isNewProject}
-          showBack={!isNewProject}
           summary={{
             open: showSummary,
             onToggle: toggleSidePanel,
@@ -582,6 +599,7 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
                 embedded
                 sessionMode={displaySessionMode ?? SessionMode.SINGLE_AGENT}
                 onSessionModeChange={handleNewProjectSessionModeChange}
+                composerFooterLeading={newSessionComposer?.footerLeading}
               />
             ) : (
               <ChatBox />

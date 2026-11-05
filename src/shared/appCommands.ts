@@ -40,15 +40,27 @@ export const APP_COMMAND = {
   navigatePinnedSpace3: 'navigate-pinned-space-3',
   navigatePinnedSpace4: 'navigate-pinned-space-4',
   navigatePinnedSpace5: 'navigate-pinned-space-5',
+  navigatePinnedSpace6: 'navigate-pinned-space-6',
+  navigatePinnedSpace7: 'navigate-pinned-space-7',
+  navigatePinnedSpace8: 'navigate-pinned-space-8',
+  navigatePinnedSpace9: 'navigate-pinned-space-9',
 } as const;
 
-/** Pinned Space shortcuts in pin order; index 0 opens the first pin. */
+/**
+ * Pinned Space shortcuts in pin order; index 0 opens the first pin. Only the
+ * first nine pins get one: there is no tenth digit key that is free on every
+ * platform.
+ */
 export const PINNED_SPACE_COMMANDS = [
   APP_COMMAND.navigatePinnedSpace1,
   APP_COMMAND.navigatePinnedSpace2,
   APP_COMMAND.navigatePinnedSpace3,
   APP_COMMAND.navigatePinnedSpace4,
   APP_COMMAND.navigatePinnedSpace5,
+  APP_COMMAND.navigatePinnedSpace6,
+  APP_COMMAND.navigatePinnedSpace7,
+  APP_COMMAND.navigatePinnedSpace8,
+  APP_COMMAND.navigatePinnedSpace9,
 ] as const;
 
 export type AppCommandId = (typeof APP_COMMAND)[keyof typeof APP_COMMAND];

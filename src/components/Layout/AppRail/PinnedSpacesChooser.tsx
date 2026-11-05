@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -22,6 +23,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { spaceEmoji } from '@/lib/spaceEmoji';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import {
@@ -30,7 +32,7 @@ import {
   type Space,
 } from '@/store/spaceStore';
 import { Reorder, useDragControls, useReducedMotion } from 'framer-motion';
-import { GripVertical, SlidersHorizontal } from 'lucide-react';
+import { GripVertical, MoreHorizontal } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -43,20 +45,17 @@ import {
   usePinnedSpaceIds,
   usePinnedSpacesChooser,
 } from './pinnedSpaces';
-import { spaceRailTileInitial } from './SpaceRailTile';
 
 const ROW_CLASS =
   'flex min-h-ds-control-lg min-w-0 items-center gap-ds-8 rounded-ds-menu-row px-ds-8';
 
-function SpaceInitial({ name }: { name: string }) {
+function SpaceInitial({ space, name }: { space: Space; name: string }) {
   return (
     <span
       aria-hidden
       className="flex size-ds-control-xs shrink-0 items-center justify-center rounded-ds-compact-control border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default text-ds-ink-default-default"
     >
-      <DsText as="span" role="meta" weight="semibold">
-        {spaceRailTileInitial(name)}
-      </DsText>
+      <SpaceGlyph name={name} emoji={spaceEmoji(space)} />
     </span>
   );
 }
@@ -93,7 +92,7 @@ function ChooserRowLabel({
         disabled={disabled}
         onCheckedChange={(value) => onCheckedChange(value === true)}
       />
-      <SpaceInitial name={name} />
+      <SpaceInitial space={space} name={name} />
       <DsText
         as="span"
         role="base"
@@ -261,7 +260,7 @@ export function PinnedSpacesChooser() {
                 open && APP_RAIL_CONTROL_SELECTED_CLASS
               )}
             >
-              <DsIcon icon={SlidersHorizontal} aria-hidden />
+              <DsIcon icon={MoreHorizontal} aria-hidden />
             </Button>
           </PopoverTrigger>
         </TooltipSimple>

@@ -78,7 +78,9 @@ vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: any) => selector(mocks.auth),
 }));
 vi.mock('@/store/projectRuntimeStore', () => ({
-  useProjectRuntimeStore: () => mocks.runtime,
+  useProjectRuntimeStore: Object.assign(() => mocks.runtime, {
+    getState: () => mocks.runtime,
+  }),
 }));
 vi.mock('@/store/projectStore', () => ({
   useProjectStore: { getState: () => mocks.runtime },
@@ -115,9 +117,6 @@ vi.mock('@/components/Home/NewSpaceDialog', () => ({ default: () => null }));
 vi.mock('@/components/Home/HomeGreeting', () => ({ default: () => null }));
 vi.mock('@/components/Home/HomeHeader', () => ({ default: () => null }));
 vi.mock('@/components/Home/HomeSections', () => ({ default: () => null }));
-vi.mock('@/components/Home/HomeSidebarNav', () => ({
-  HomeSidebarNavGroup: () => null,
-}));
 vi.mock('@/lib/share', () => ({ share: vi.fn() }));
 vi.mock('@/lib/sessionStop', () => ({
   stopSessionForDeletion: mocks.stop,

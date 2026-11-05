@@ -20,6 +20,7 @@ import {
   normalizeThinkingEffort,
   type SessionModeType,
 } from '@/types/constants';
+import type { ReactNode } from 'react';
 import { ApprovalModeSelect } from './ApprovalModeSelect';
 import { ModelAndThinkingEffortSelect } from './ModelAndThinkingEffortSelect';
 
@@ -30,6 +31,8 @@ import { ModelAndThinkingEffortSelect } from './ModelAndThinkingEffortSelect';
 const COMPACT_WIDTH_THRESHOLD = 460;
 
 export interface BoxFooterProps {
+  /** Before the session mode control, for example New session's Space chip. */
+  leading?: ReactNode;
   /** Left side: single-agent / multi-agent mode control. */
   sessionMode: SessionModeType;
   onSessionModeChange?: (mode: SessionModeType) => void;
@@ -53,6 +56,7 @@ export interface BoxFooterProps {
  * footer gets narrow.
  */
 export function BoxFooter({
+  leading,
   sessionMode,
   onSessionModeChange,
   projectId,
@@ -99,6 +103,7 @@ export function BoxFooter({
       className="flex w-full items-center justify-between gap-2 px-3 py-1"
     >
       <div className="flex min-w-0 shrink items-center gap-1">
+        {leading}
         <ProjectModeToggle
           value={sessionMode}
           onValueChange={onSessionModeChange ?? (() => {})}

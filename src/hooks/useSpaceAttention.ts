@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useHost } from '@/host';
+import { useHost, type AppHost } from '@/host';
 import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
 import type { SessionNavLeadKind } from '@/lib/sessionNavLead';
 import {
@@ -22,7 +22,8 @@ import {
 } from '@/service/projectRunsApi';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
+import { create } from 'zustand';
 
 export const SPACE_ATTENTION_POLL_MS = 5_000;
 
@@ -48,9 +49,33 @@ export function liveRunAttentionState(
 }
 
 /**
- * Count each Session once per Space, at its strongest state: waiting outranks
- * running, whichever source reports it. A Session the index no longer knows
- * (deleted, or another account's) is skipped.
+ * Each Session's strongest state: waiting outranks running, whichever source
+ * reports it.
+ */
+export function mergeSessionAttention({
+  brain,
+  liveKinds,
+}: {
+  brain: readonly ProjectRunAttention[];
+  liveKinds: Readonly<Record<string, SessionNavLeadKind | undefined>>;
+}): Record<string, RunAttentionState> {
+  const stateByProject: Record<string, RunAttentionState> = {};
+  const raise = (projectId: string, state: RunAttentionState | null) => {
+    if (!state) return;
+    if (stateByProject[projectId] !== 'waiting') {
+      stateByProject[projectId] = state;
+    }
+  };
+  for (const row of brain) raise(row.projectId, row.state);
+  for (const [projectId, kind] of Object.entries(liveKinds)) {
+    raise(projectId, liveRunAttentionState(kind));
+  }
+  return stateByProject;
+}
+
+/**
+ * Count each Session once per Space, at its strongest state. A Session the
+ * index no longer knows (deleted, or another account's) is skipped.
  */
 export function mergeSpaceAttention({
   brain,
@@ -61,20 +86,10 @@ export function mergeSpaceAttention({
   liveKinds: Readonly<Record<string, SessionNavLeadKind | undefined>>;
   projectIdIndex: Readonly<Record<string, string>>;
 }): Record<string, SpaceAttention> {
-  const stateByProject = new Map<string, RunAttentionState>();
-  const raise = (projectId: string, state: RunAttentionState | null) => {
-    if (!state) return;
-    if (stateByProject.get(projectId) !== 'waiting') {
-      stateByProject.set(projectId, state);
-    }
-  };
-  for (const row of brain) raise(row.projectId, row.state);
-  for (const [projectId, kind] of Object.entries(liveKinds)) {
-    raise(projectId, liveRunAttentionState(kind));
-  }
-
   const bySpace: Record<string, SpaceAttention> = {};
-  for (const [projectId, state] of stateByProject) {
+  for (const [projectId, state] of Object.entries(
+    mergeSessionAttention({ brain, liveKinds })
+  )) {
     const spaceId = projectIdIndex[projectId];
     if (!spaceId) continue;
     const entry = (bySpace[spaceId] ??= { running: 0, waiting: 0 });
@@ -87,71 +102,117 @@ const windowIsAttended = () =>
   typeof document === 'undefined' ||
   (document.visibilityState === 'visible' && document.hasFocus());
 
+/** The Brain's last answer, shared by every mounted reader. */
+const useRunAttentionRows = create<{ rows: ProjectRunAttention[] }>(() => ({
+  rows: [],
+}));
+
+let pollReaders = 0;
+let stopPolling: (() => void) | null = null;
+
 /**
- * Running and waiting Sessions per Space, for status marks on Spaces that
- * aren't loaded. Polls the Brain every 5s while the window is focused, stops
- * while it's hidden or in the background, and keeps the last answer when a
- * read fails.
+ * Polls the Brain every 5s while the window is focused, stops while it's
+ * hidden or in the background, and keeps the last answer when a read fails.
+ * The rail and Home's sidebar both read it, so the first reader starts the
+ * poll and the last one stops it.
  */
-export function useSpaceAttention(): Record<string, SpaceAttention> {
+function startPolling(ipcRenderer: AppHost['ipcRenderer']): () => void {
+  const lifetime = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight = false;
+
+  const schedule = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+    if (lifetime.signal.aborted || !windowIsAttended()) return;
+    timer = setTimeout(() => void poll(), SPACE_ATTENTION_POLL_MS);
+  };
+  const poll = async () => {
+    if (inFlight || lifetime.signal.aborted) return;
+    inFlight = true;
+    try {
+      const rows = await fetchRunAttention(lifetime.signal);
+      if (lifetime.signal.aborted) return;
+      // The usual answer repeats, and every reader would redraw for it.
+      const previous = useRunAttentionRows.getState().rows;
+      if (JSON.stringify(previous) !== JSON.stringify(rows)) {
+        useRunAttentionRows.setState({ rows });
+      }
+    } catch {
+      // The Brain may be starting or restarting; keep the last answer.
+    } finally {
+      inFlight = false;
+      schedule();
+    }
+  };
+  const resume = () => {
+    if (windowIsAttended()) void poll();
+    else schedule();
+  };
+
+  void poll();
+  window.addEventListener('focus', resume);
+  window.addEventListener('blur', schedule);
+  document.addEventListener('visibilitychange', resume);
+  window.addEventListener(DURABLE_RUN_STATUS_CHANGED_EVENT, resume);
+  ipcRenderer?.on('backend-ready', resume);
+  return () => {
+    lifetime.abort();
+    if (timer !== undefined) clearTimeout(timer);
+    window.removeEventListener('focus', resume);
+    window.removeEventListener('blur', schedule);
+    document.removeEventListener('visibilitychange', resume);
+    window.removeEventListener(DURABLE_RUN_STATUS_CHANGED_EVENT, resume);
+    ipcRenderer?.off('backend-ready', resume);
+  };
+}
+
+function useRunAttentionPoll() {
   const ipcRenderer = useHost()?.ipcRenderer;
-  const [brain, setBrain] = useState<ProjectRunAttention[]>([]);
-  const projectIdIndex = useSpaceStore((state) => state.projectIdIndex);
+  useEffect(() => {
+    pollReaders += 1;
+    if (pollReaders === 1) stopPolling = startPolling(ipcRenderer);
+    return () => {
+      pollReaders -= 1;
+      if (pollReaders === 0) {
+        stopPolling?.();
+        stopPolling = null;
+      }
+    };
+  }, [ipcRenderer]);
+  return useRunAttentionRows((state) => state.rows);
+}
+
+function useLiveKinds(): Record<string, SessionNavLeadKind | undefined> {
   const navLeadByProjectId = useProjectRuntimeStore(
     (state) => state.navLeadByProjectId
   );
-
-  useEffect(() => {
-    const lifetime = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let inFlight = false;
-
-    const schedule = () => {
-      if (timer !== undefined) clearTimeout(timer);
-      timer = undefined;
-      if (lifetime.signal.aborted || !windowIsAttended()) return;
-      timer = setTimeout(() => void poll(), SPACE_ATTENTION_POLL_MS);
-    };
-    const poll = async () => {
-      if (inFlight || lifetime.signal.aborted) return;
-      inFlight = true;
-      try {
-        const rows = await fetchRunAttention(lifetime.signal);
-        if (!lifetime.signal.aborted) setBrain(rows);
-      } catch {
-        // The Brain may be starting or restarting; keep the last answer.
-      } finally {
-        inFlight = false;
-        schedule();
-      }
-    };
-    const resume = () => {
-      if (windowIsAttended()) void poll();
-      else schedule();
-    };
-
-    void poll();
-    window.addEventListener('focus', resume);
-    window.addEventListener('blur', schedule);
-    document.addEventListener('visibilitychange', resume);
-    window.addEventListener(DURABLE_RUN_STATUS_CHANGED_EVENT, resume);
-    ipcRenderer?.on('backend-ready', resume);
-    return () => {
-      lifetime.abort();
-      if (timer !== undefined) clearTimeout(timer);
-      window.removeEventListener('focus', resume);
-      window.removeEventListener('blur', schedule);
-      document.removeEventListener('visibilitychange', resume);
-      window.removeEventListener(DURABLE_RUN_STATUS_CHANGED_EVENT, resume);
-      ipcRenderer?.off('backend-ready', resume);
-    };
-  }, [ipcRenderer]);
-
   return useMemo(() => {
     const liveKinds: Record<string, SessionNavLeadKind | undefined> = {};
     for (const [projectId, lead] of Object.entries(navLeadByProjectId)) {
       liveKinds[projectId] = lead?.kind;
     }
-    return mergeSpaceAttention({ brain, liveKinds, projectIdIndex });
-  }, [brain, navLeadByProjectId, projectIdIndex]);
+    return liveKinds;
+  }, [navLeadByProjectId]);
+}
+
+/** Running and waiting Sessions per Space, for status marks on the rail. */
+export function useSpaceAttention(): Record<string, SpaceAttention> {
+  const brain = useRunAttentionPoll();
+  const liveKinds = useLiveKinds();
+  const projectIdIndex = useSpaceStore((state) => state.projectIdIndex);
+  return useMemo(
+    () => mergeSpaceAttention({ brain, liveKinds, projectIdIndex }),
+    [brain, liveKinds, projectIdIndex]
+  );
+}
+
+/** Each Session's running or waiting state, for Home's Needs you group. */
+export function useSessionAttention(): Record<string, RunAttentionState> {
+  const brain = useRunAttentionPoll();
+  const liveKinds = useLiveKinds();
+  return useMemo(
+    () => mergeSessionAttention({ brain, liveKinds }),
+    [brain, liveKinds]
+  );
 }

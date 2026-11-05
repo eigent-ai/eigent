@@ -12,17 +12,19 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHomeVisitStore } from '@/components/Home/homeVisit';
 import {
   AppRail,
   getAppRailPlace,
   shouldShowAppRail,
-  spaceRailTileInitial,
   usePinnedSpacesChooser,
 } from '@/components/Layout/AppRail';
+import { spaceInitial } from '@/components/SpaceSidebar/SpaceGlyph';
 import { APP_COMMAND } from '@/shared/appCommands';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore, type Space } from '@/store/spaceStore';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -121,6 +123,36 @@ describe('AppRail', () => {
       spaces: { 'space-research': space('space-research', 'Research') },
       pinnedSpaceIdsByUser: {},
     });
+    usePageTabStore.setState({ shellPlace: 'space' });
+  });
+
+  it('selects Home on the workspace route while Home is the place', () => {
+    usePageTabStore.setState({ shellPlace: 'home' });
+    renderRail('/');
+
+    expect(
+      within(rail()).getByRole('button', { name: 'Home' })
+    ).toHaveAttribute('aria-current', 'page');
+    // The Session's Space still has its (dashed) tile, unselected.
+    const tile = within(rail()).getByRole('button', { name: 'Research' });
+    expect(tile).not.toHaveAttribute('aria-current');
+    expect(tile).toHaveAttribute('data-space-rail-tile', 'unpinned');
+  });
+
+  it('starts a new Home visit each time Home becomes the place', () => {
+    const visit = useHomeVisitStore.getState().visit;
+    const { unmount } = renderRail('/home?section=spaces');
+    expect(useHomeVisitStore.getState().visit).toBe(visit + 1);
+
+    act(() => usePageTabStore.setState({ shellPlace: 'home' }));
+    expect(useHomeVisitStore.getState().visit).toBe(visit + 1);
+    unmount();
+
+    usePageTabStore.setState({ shellPlace: 'space' });
+    renderRail('/');
+    expect(useHomeVisitStore.getState().visit).toBe(visit + 1);
+    act(() => usePageTabStore.setState({ shellPlace: 'home' }));
+    expect(useHomeVisitStore.getState().visit).toBe(visit + 2);
   });
 
   it('lists Home, the active Space, Settings and the account menu in order', () => {
@@ -359,26 +391,27 @@ describe('AppRail pinned Spaces', () => {
     ]);
   });
 
-  it('opens the chooser instead of pinning a sixth Space', async () => {
+  it('opens the chooser instead of pinning an eleventh Space', async () => {
     const user = userEvent.setup();
+    const letters = 'abcdefghijk'.split('');
     const many = Object.fromEntries(
-      ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => [
+      letters.map((id) => [
         `space-${id}`,
         space(`space-${id}`, `Space ${id.toUpperCase()}`),
       ])
     );
     useSpaceStore.setState({
-      activeSpaceId: 'space-f',
+      activeSpaceId: 'space-k',
       spaces: many,
       pinnedSpaceIdsByUser: {
-        local: ['space-a', 'space-b', 'space-c', 'space-d', 'space-e'],
+        local: letters.slice(0, 10).map((id) => `space-${id}`),
       },
     });
     renderRail('/');
 
     await user.pointer({
       keys: '[MouseRight]',
-      target: within(rail()).getByRole('button', { name: 'Space F' }),
+      target: within(rail()).getByRole('button', { name: 'Space K' }),
     });
     await user.click(
       within(await screen.findByRole('menu')).getByRole('menuitem', {
@@ -386,13 +419,15 @@ describe('AppRail pinned Spaces', () => {
       })
     );
 
-    expect(useSpaceStore.getState().pinnedSpaceIdsByUser.local).toHaveLength(5);
+    expect(useSpaceStore.getState().pinnedSpaceIdsByUser.local).toHaveLength(
+      10
+    );
     const chooser = await screen.findByRole('dialog', {
       name: 'Choose pinned Spaces',
     });
-    expect(within(chooser).getByText('5 of 5')).toBeInTheDocument();
+    expect(within(chooser).getByText('10 of 10')).toBeInTheDocument();
     expect(
-      within(chooser).getByRole('checkbox', { name: /Space F/ })
+      within(chooser).getByRole('checkbox', { name: /Space K/ })
     ).toBeDisabled();
     expect(
       within(chooser).getByRole('checkbox', { name: /Space A/ })
@@ -409,7 +444,7 @@ describe('AppRail pinned Spaces', () => {
     const chooser = await screen.findByRole('dialog', {
       name: 'Choose pinned Spaces',
     });
-    expect(within(chooser).getByText('2 of 5')).toBeInTheDocument();
+    expect(within(chooser).getByText('2 of 10')).toBeInTheDocument();
 
     await user.click(within(chooser).getByRole('checkbox', { name: /Ops/ }));
     expect(useSpaceStore.getState().pinnedSpaceIdsByUser.local).toEqual([
@@ -461,12 +496,13 @@ describe('rail helpers', () => {
   });
 
   it.each([
-    ['/', 'space'],
-    ['/home', 'home'],
-    ['/settings', 'settings'],
-    ['/history', null],
-  ])('maps %s to the %s place', (path, place) => {
-    expect(getAppRailPlace(path)).toBe(place);
+    ['/', 'space', 'space'],
+    ['/', 'home', 'home'],
+    ['/home', 'space', 'home'],
+    ['/settings', 'home', 'settings'],
+    ['/history', 'space', null],
+  ] as const)('maps %s with %s to the %s place', (path, shellPlace, place) => {
+    expect(getAppRailPlace(path, shellPlace)).toBe(place);
   });
 
   it.each([
@@ -476,6 +512,6 @@ describe('rail helpers', () => {
     ['🚀 Launch', '🚀'],
     ['', '?'],
   ])('uses %j -> %j as the tile initial', (name, initial) => {
-    expect(spaceRailTileInitial(name)).toBe(initial);
+    expect(spaceInitial(name)).toBe(initial);
   });
 });

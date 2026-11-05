@@ -60,7 +60,14 @@ import { useSessionStartStore } from '@/store/sessionStartStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { SessionMode, type SessionModeType } from '@/types/constants';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -79,6 +86,8 @@ interface WorkspaceProps {
   /** Controlled session mode when embedded in the new-project Session shell. */
   sessionMode?: SessionModeType;
   onSessionModeChange?: (mode: SessionModeType) => void;
+  /** First control in the composer toolbar, for example a Space chip. */
+  composerFooterLeading?: ReactNode;
 }
 
 /**
@@ -90,6 +99,7 @@ export default function Workspace({
   embedded = false,
   sessionMode: controlledSessionMode,
   onSessionModeChange,
+  composerFooterLeading,
 }: WorkspaceProps) {
   const { t } = useTranslation();
   const host = useHost();
@@ -776,6 +786,7 @@ export default function Workspace({
           onSessionModeChange={setActiveProjectMode}
           sessionModeSelectInteractive
           modelSelectDisabled={isStartingDirectProject || isLegacyActiveSpace}
+          footerLeading={composerFooterLeading}
         />
       </div>
       <AddWorker

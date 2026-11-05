@@ -113,12 +113,15 @@ export function SessionNavList({
       {/* Scrollable section list */}
       <SidebarScrollArea className={cn('pb-1', onNewSession && 'mt-1')}>
         {hasPinned && (
-          <SidebarAccordionSection label={pinnedLabel}>
+          <SidebarAccordionSection label={pinnedLabel} className="mt-0">
             <SessionNavListRows {...sharedRowProps} sessions={pinnedSessions} />
           </SidebarAccordionSection>
         )}
         {hasUnpinned && (
-          <SidebarAccordionSection label={sessionsLabel}>
+          <SidebarAccordionSection
+            label={sessionsLabel}
+            className={hasPinned ? undefined : 'mt-0'}
+          >
             <SessionNavListRows
               {...sharedRowProps}
               sessions={unpinnedSessions}
