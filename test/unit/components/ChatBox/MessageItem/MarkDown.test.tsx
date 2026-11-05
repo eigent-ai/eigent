@@ -79,6 +79,26 @@ describe('shared MarkDown renderer', () => {
     await waitFor(() => expect(mocks.highlight).toHaveBeenCalled());
   });
 
+  it('shows a finished message on first paint when it has rendered before', async () => {
+    const content = 'A message **rendered once** before reopening.';
+    const first = render(
+      <MarkDown content={content} enableTypewriter={false} />
+    );
+    await waitFor(() =>
+      expect(first.container.querySelector('strong')).not.toBeNull()
+    );
+    first.unmount();
+
+    const { container } = render(
+      <MarkDown content={content} enableTypewriter={false} />
+    );
+
+    // No waiting: the render above already has the parsed text.
+    expect(container.querySelector('strong')).toHaveTextContent(
+      'rendered once'
+    );
+  });
+
   it('makes only an overflowing table scroll region focusable', () => {
     const scrollWidth = vi
       .spyOn(HTMLElement.prototype, 'scrollWidth', 'get')

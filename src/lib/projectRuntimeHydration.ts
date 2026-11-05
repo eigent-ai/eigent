@@ -130,7 +130,10 @@ export async function ensureProjectRuntimeLoaded(
       undefined,
       taskQuestionsById,
       computeProjectFreshnessAnchor(historyProject),
-      { requireActiveSelection: options.requireActiveSelection ?? true }
+      {
+        requireActiveSelection: options.requireActiveSelection ?? true,
+        groupedHistory: historyProject,
+      }
     );
     options.onHydrationStarted?.();
     await loadPromise;
