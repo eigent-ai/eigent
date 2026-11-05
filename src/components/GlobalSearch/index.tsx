@@ -559,7 +559,7 @@ export function GlobalSearchHost(): ReactNode {
   );
 }
 
-/** The 480px search field in the top bar; it opens the search dialog. */
+/** The 200px search field in the top bar; it opens the search dialog. */
 export function GlobalSearchButton() {
   const { t } = useTranslation();
   const setOpen = useGlobalSearchStore((state) => state.setOpen);
@@ -573,7 +573,7 @@ export function GlobalSearchButton() {
       type="button"
       data-global-search-button
       onClick={() => setOpen(true)}
-      className="no-drag ml-ds-8 flex h-7 w-[480px] max-w-full min-w-0 cursor-pointer items-center gap-ds-6 rounded-full border-0 border-x-0 border-y-0 bg-ds-neutral-default-default px-ds-10 text-left text-ds-ink-muted-default transition-colors outline-none hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
+      className="no-drag ml-ds-8 flex h-7 w-[200px] max-w-full min-w-0 cursor-pointer items-center gap-ds-6 rounded-full border-0 border-x-0 border-y-0 bg-ds-neutral-default-default px-ds-10 text-left text-ds-ink-muted-default transition-colors outline-none hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
     >
       <DsIcon icon={Search} className="shrink-0" aria-hidden />
       <span className="min-w-0 flex-1 truncate text-ds-text-base">
