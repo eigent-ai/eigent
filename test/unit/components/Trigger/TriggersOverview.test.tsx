@@ -156,9 +156,25 @@ describe('Workspace automations list', () => {
     expect(mocks.fetchSpaceTriggers).toHaveBeenNthCalledWith(2, 'space-1');
   });
 
+  it('shows a Space’s last list at once while it refreshes', async () => {
+    useSpaceStore.setState({ activeSpaceId: 'space-revisited' });
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({ items: [automation] });
+    const first = render(<Overview {...props} />);
+    await screen.findByText('Morning digest');
+    first.unmount();
+    useTriggerStore.setState({ triggers: [] });
+
+    // The refresh stays pending, so only the remembered list can show here.
+    render(<Overview {...props} />);
+
+    expect(await screen.findByText('Morning digest')).toBeInTheDocument();
+    expect(mocks.fetchSpaceTriggers).toHaveBeenCalledTimes(2);
+  });
+
   it('lists an automation created after the list failed to load', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    useSpaceStore.setState({ activeSpaceId: 'space-1' });
+    // A Space with no remembered list.
+    useSpaceStore.setState({ activeSpaceId: 'space-never-loaded' });
     mocks.fetchSpaceTriggers.mockRejectedValueOnce(new Error('network down'));
 
     render(<Overview {...props} />);
