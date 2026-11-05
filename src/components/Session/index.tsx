@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ChatBox from '@/components/ChatBox';
+import { ChatTimelineSkeleton } from '@/components/ChatBox/ChatTimelineSkeleton';
 import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { PreviewPanel } from '@/components/Session/PreviewPanel';
@@ -516,7 +517,11 @@ function SessionContent({
     !chatStore &&
     sessionExecution.state.route?.route === 'legacy'
   ) {
-    return null;
+    return (
+      <div className="flex h-full w-full flex-col px-4 py-6">
+        <ChatTimelineSkeleton label={t('chat.timeline-history-loading')} />
+      </div>
+    );
   }
 
   const sessionSidePanel =

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { ChatTimelineSkeleton } from '@/components/ChatBox/ChatTimelineSkeleton';
 import { Button } from '@/components/ui/button';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useResolvedRunModels } from '@/hooks/useResolvedRunModels';
@@ -135,34 +136,6 @@ export function prepareEventNativeTimelineWindow(
         ? presentedNodes.filter((node) => retained.has(node.id))
         : presentedNodes,
   };
-}
-
-/**
- * Placeholder rows sized to a short and a long message so the container keeps
- * its height when the real conversation replaces them.
- */
-function ChatTimelineSkeleton({ label }: { label: string }) {
-  return (
-    <div
-      aria-busy
-      aria-label={label}
-      className="flex w-full flex-col gap-3"
-      data-chat-timeline-skeleton
-      role="status"
-    >
-      {[
-        ['w-2/5', 'h-16'],
-        ['w-full', 'h-24'],
-        ['w-1/3', 'h-16'],
-      ].map(([width, height], index) => (
-        <div
-          key={`chat-skeleton-${index}`}
-          className={`${height} ${index % 2 === 0 ? 'ml-auto' : ''} ${width} animate-pulse rounded-xl bg-ds-neutral-strong-default`}
-        />
-      ))}
-      <span className="sr-only">{label}</span>
-    </div>
-  );
 }
 
 interface EventNativeProjectTimelineProps {

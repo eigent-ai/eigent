@@ -39,6 +39,9 @@ type SummaryRead = {
 const reads = new Map<string, SummaryRead>();
 let activeReads = 0;
 const MAX_ACTIVE_READS = 4;
+/** Remounts and refocus within this window reuse the last read. */
+export const SESSION_STATUS_FRESH_MS = 10_000;
+const lastReadAt = new Map<string, number>();
 
 function forget(read: SummaryRead) {
   if (reads.get(read.key) === read) reads.delete(read.key);
@@ -67,6 +70,7 @@ async function readSummary(read: SummaryRead) {
       );
       // Sessions in other Spaces have no live subscription to do this.
       refreshProjectNavLead(read.projectId);
+      lastReadAt.set(read.key, Date.now());
     }
   } catch {
     // Offline/unsupported Brain keeps the last known or unknown presentation.
@@ -98,7 +102,8 @@ export async function refreshSessionNavStatuses(
   projectIds: readonly string[],
   accountKey: string,
   isCurrent: (projectId: string) => boolean,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { skipFresh?: boolean }
 ): Promise<void> {
   const lifetime = new AbortController();
   const abort = () => lifetime.abort();
@@ -115,6 +120,12 @@ export async function refreshSessionNavStatuses(
         !lifetime.signal.aborted && accountIsCurrent() && isCurrent(projectId);
       if (!current()) return Promise.resolve();
       const key = JSON.stringify([accountKey, projectId]);
+      if (
+        options?.skipFresh &&
+        Date.now() - (lastReadAt.get(key) ?? 0) < SESSION_STATUS_FRESH_MS
+      ) {
+        return Promise.resolve();
+      }
       let read = reads.get(key);
       if (!read) {
         read = {
