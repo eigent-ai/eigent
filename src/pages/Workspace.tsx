@@ -22,7 +22,6 @@ import {
 } from '@/components/Background';
 import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
-import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import HomeSidebar from '@/components/Home/HomeSidebar';
 import { NewSessionSpaceChip } from '@/components/Home/NewSessionSpaceChip';
 import AppShellLayout, {
@@ -120,19 +119,6 @@ export default function WorkspacePage() {
   useMainWindowSessionWindows();
 
   const [, setActiveWebviewId] = useState<string | null>(null);
-  // ⌘K search belongs to the page, so it works next to either sidebar.
-  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setGlobalSearchOpen(true);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const [triggerSelectedId, setTriggerSelectedId] = useState<number | null>(
     null
@@ -531,10 +517,6 @@ export default function WorkspacePage() {
 
   return (
     <ReactFlowProvider>
-      <GlobalSearchDialog
-        open={globalSearchOpen}
-        onOpenChange={setGlobalSearchOpen}
-      />
       <AppShellLayout
         sidebar={
           inHome ? <HomeSidebar /> : <SpaceSidebar chatStore={chatStore} />
