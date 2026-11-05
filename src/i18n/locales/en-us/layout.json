@@ -1642,6 +1642,8 @@
   "organize-one-list": "One list",
   "spaces-view-options": "View options",
   "delete-space": "Delete Space",
+  "session-mark-read": "Mark as read",
+  "session-mark-unread": "Mark as unread",
   "session-open-in-new-window": "Open in new window",
   "session-open-in-new-tab": "Open in new tab",
   "global-search": "Search",

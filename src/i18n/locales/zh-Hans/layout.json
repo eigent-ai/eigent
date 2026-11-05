@@ -1620,6 +1620,8 @@
   "organize-one-list": "单一列表",
   "spaces-view-options": "视图选项",
   "delete-space": "删除空间",
+  "session-mark-read": "标记为已读",
+  "session-mark-unread": "标记为未读",
   "session-open-in-new-window": "在新窗口中打开",
   "session-open-in-new-tab": "在新标签页中打开",
   "global-search": "搜索",
