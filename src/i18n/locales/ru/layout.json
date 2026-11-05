@@ -1686,6 +1686,8 @@
   "organize-one-list": "Один список",
   "spaces-view-options": "Параметры вида",
   "delete-space": "Удалить Пространство",
+  "session-mark-read": "Отметить как прочитанное",
+  "session-mark-unread": "Отметить как непрочитанное",
   "session-open-in-new-window": "Открыть в новом окне",
   "session-open-in-new-tab": "Открыть в новой вкладке",
   "global-search": "Поиск",

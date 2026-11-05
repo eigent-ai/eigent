@@ -204,6 +204,7 @@ describe('HomeSidebar', () => {
     mocks.switchToSpace.mockResolvedValue(true);
     mocks.openSessionInShell.mockResolvedValue(undefined);
     mocks.openSessionWindow.mockResolvedValue(undefined);
+    useSessionControlsStore.setState({ unreadProjectIds: [] });
     seedSpaces();
     useHomeVisitStore.setState({
       visit: 0,
@@ -351,6 +352,54 @@ describe('HomeSidebar', () => {
     expect(requestAction).toHaveBeenCalledWith('end', 'r-1');
   });
 
+  it('shows a status as a dot, which End session covers on hover', () => {
+    mocks.sessionAttention = { 'r-1': 'waiting', 'r-2': 'running' };
+    renderSidebar();
+
+    const dot = (name: string) =>
+      sessionRow(name).querySelector('[data-session-status-dot]');
+    expect(dot('Weekly report')).toHaveAttribute(
+      'data-session-status-dot',
+      'hitl'
+    );
+    expect(dot('Weekly report')).toHaveClass(
+      '!text-ds-icon-warning-default-default',
+      'group-hover/session-item:hidden'
+    );
+    expect(dot('Competitor scan')).toHaveClass(
+      '!text-ds-icon-information-default-default'
+    );
+    // No status, no dot.
+    expect(dot('Pricing notes')).toBeNull();
+  });
+
+  it('marks a Session unread and read from its menu', async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    fireEvent.contextMenu(sessionRow('Pricing notes'));
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Mark as unread' })
+    );
+    expect(useSessionControlsStore.getState().unreadProjectIds).toContain(
+      'r-3'
+    );
+    expect(
+      sessionRow('Pricing notes').querySelector('[data-session-status-dot]')
+    ).toHaveAttribute('data-session-status-dot', 'unread');
+    expect(
+      within(sessionRow('Pricing notes')).getByText('Pricing notes')
+    ).toHaveClass('font-semibold');
+
+    fireEvent.contextMenu(sessionRow('Pricing notes'));
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Mark as read' })
+    );
+    expect(useSessionControlsStore.getState().unreadProjectIds).not.toContain(
+      'r-3'
+    );
+  });
+
   it('opens the Session menu on right-click', async () => {
     const user = userEvent.setup();
     const requestAction = vi.fn();
@@ -375,6 +424,7 @@ describe('HomeSidebar', () => {
       'Pin',
       'Rename session',
       'Open in new window',
+      'Mark as unread',
       'End session',
       'Delete session',
     ]);
@@ -461,7 +511,20 @@ describe('HomeSidebar', () => {
     const sessionRow = within(research)
       .getByRole('button', { name: 'Weekly report' })
       .closest('.group\\/session-item') as HTMLElement;
-    expect(sessionRow).toHaveClass('pl-ds-24');
+    expect(sessionRow).toHaveClass('pl-ds-40');
+    // The name lines up with the Space's, so the row has no leading icon.
+    expect(
+      within(sessionRow)
+        .getByRole('button', { name: 'Weekly report' })
+        .querySelector('svg')
+    ).toBeNull();
+    const showAll = within(research).getByRole('button', {
+      name: 'Show all 5 sessions in Research',
+    });
+    expect(within(showAll).getByText('Show all 5')).toHaveClass(
+      'text-ds-text-base',
+      'text-ds-ink-subtle-default'
+    );
     const nestedRows = research.lastElementChild as HTMLElement;
     expect(nestedRows).toContainElement(sessionRow);
     expect(nestedRows).not.toHaveClass('pl-ds-12');

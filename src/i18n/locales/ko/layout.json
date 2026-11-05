@@ -1620,6 +1620,8 @@
   "organize-one-list": "하나의 목록",
   "spaces-view-options": "보기 옵션",
   "delete-space": "스페이스 삭제",
+  "session-mark-read": "읽음으로 표시",
+  "session-mark-unread": "읽지 않음으로 표시",
   "session-open-in-new-window": "새 창에서 열기",
   "session-open-in-new-tab": "새 탭에서 열기",
   "global-search": "검색",
