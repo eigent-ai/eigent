@@ -53,6 +53,7 @@ import { isProjectAchieved } from '@/lib/projectAchievement';
 import {
   presentationForKind,
   resolveSessionNavLeadPresentation,
+  SESSION_NAV_IDLE_LEAD,
   type SessionNavLeadPresentation,
 } from '@/lib/sessionNavLead';
 import { shouldListSession } from '@/lib/sessionOpen';
@@ -145,12 +146,14 @@ function toSessionNavItem(
     title: getSessionMetaDisplayName(meta, sources.t),
     pinned: sources.pinnedProjectIds.includes(meta.id),
     unread: sources.unreadProjectIds.includes(meta.id),
-    outcomeSeen: isSessionOutcomeSeen(
+    // A result that has been read stops showing as a status.
+    sessionLead: isSessionOutcomeSeen(
       meta.id,
       sessionLead.kind,
       sources.seenOutcomes
-    ),
-    sessionLead,
+    )
+      ? SESSION_NAV_IDLE_LEAD
+      : sessionLead,
     achieved,
   };
 }
@@ -556,6 +559,25 @@ export default function HomeSidebar() {
     ];
   });
 
+  // Pinned Sessions leave their Space for the Pinned section, in pin order.
+  const pinnedSessions = useMemo(() => {
+    const listed = new Map(
+      orderedSpaces
+        .flatMap((space) => sessionsBySpace[space.id] ?? [])
+        .map((meta) => [meta.id, meta])
+    );
+    return pinnedProjectIds.flatMap((id) => {
+      const meta = listed.get(id);
+      return meta ? [meta] : [];
+    });
+  }, [orderedSpaces, pinnedProjectIds, sessionsBySpace]);
+  const pinnedItems = pinnedSessions.map((meta) => ({
+    ...toSessionNavItem(meta, rowSources),
+    trailing: getActiveSpaceTriggerLabel(spaces[meta.spaceId]?.name, t),
+  }));
+  const isUnpinned = (meta: SpaceProjectMeta) =>
+    !pinnedProjectIds.includes(meta.id);
+
   // One list: every listed Session, newest activity (or creation) first,
   // each naming its Space.
   const listSessions = useMemo(() => {
@@ -572,20 +594,21 @@ export default function HomeSidebar() {
       activity.sessions
     ).map((id) => byId.get(id)!);
   }, [activity.sessions, grouping, orderedSpaces, sessionsBySpace, spaceSort]);
-  const listItems = listSessions.map((meta) => ({
+  const listItems = listSessions.filter(isUnpinned).map((meta) => ({
     ...toSessionNavItem(meta, rowSources),
     trailing: getActiveSpaceTriggerLabel(spaces[meta.spaceId]?.name, t),
   }));
-  const listStatusTargets = useMemo(() => {
+  // Space groups load their own rows; these rows sit outside any group.
+  const statusTargets = useMemo(() => {
     const bySpace = new Map<string, string[]>();
-    for (const meta of listSessions) {
+    for (const meta of new Set([...listSessions, ...pinnedSessions])) {
       bySpace.set(meta.spaceId, [
         ...(bySpace.get(meta.spaceId) ?? []),
         meta.id,
       ]);
     }
     return [...bySpace].map(([spaceId, ids]) => ({ spaceId, ids }));
-  }, [listSessions]);
+  }, [listSessions, pinnedSessions]);
 
   const requestEndSession = useCallback(
     (projectId: string) => requestAction('end', projectId),
@@ -713,6 +736,13 @@ export default function HomeSidebar() {
               ariaLabel={homeLabel}
               className="pb-1"
             >
+              {statusTargets.map(({ spaceId, ids }) => (
+                <SessionStatusLoader
+                  key={spaceId}
+                  spaceId={spaceId}
+                  projectIds={ids}
+                />
+              ))}
               {needsYouItems.length > 0 ? (
                 <SidebarAccordionSection
                   label={t('layout.needs-you')}
@@ -727,8 +757,28 @@ export default function HomeSidebar() {
                   />
                 </SidebarAccordionSection>
               ) : null}
+              {pinnedItems.length > 0 ? (
+                <SidebarAccordionSection
+                  label={t('layout.pinned')}
+                  className={needsYouItems.length > 0 ? undefined : 'mt-0'}
+                >
+                  <SessionNavListRows
+                    sessions={pinnedItems}
+                    activeSessionId={activeSessionId}
+                    onSessionClick={openSession}
+                    onEndSession={requestEndSession}
+                    onDeleteSession={requestDeleteSession}
+                    contextActions={sessionContextActions}
+                    folded={false}
+                  />
+                </SidebarAccordionSection>
+              ) : null}
               <SidebarAccordionSection
-                className={needsYouItems.length > 0 ? undefined : 'mt-0'}
+                className={
+                  needsYouItems.length > 0 || pinnedItems.length > 0
+                    ? undefined
+                    : 'mt-0'
+                }
                 label={
                   grouping === 'list'
                     ? t('layout.sessions-heading')
@@ -758,24 +808,15 @@ export default function HomeSidebar() {
                 }
               >
                 {grouping === 'list' ? (
-                  <>
-                    {listStatusTargets.map(({ spaceId, ids }) => (
-                      <SessionStatusLoader
-                        key={spaceId}
-                        spaceId={spaceId}
-                        projectIds={ids}
-                      />
-                    ))}
-                    <SessionNavListRows
-                      sessions={listItems}
-                      activeSessionId={activeSessionId}
-                      onSessionClick={openSession}
-                      onEndSession={requestEndSession}
-                      onDeleteSession={requestDeleteSession}
-                      contextActions={sessionContextActions}
-                      folded={false}
-                    />
-                  </>
+                  <SessionNavListRows
+                    sessions={listItems}
+                    activeSessionId={activeSessionId}
+                    onSessionClick={openSession}
+                    onEndSession={requestEndSession}
+                    onDeleteSession={requestDeleteSession}
+                    contextActions={sessionContextActions}
+                    folded={false}
+                  />
                 ) : null}
                 {grouping === 'list'
                   ? null
@@ -783,7 +824,9 @@ export default function HomeSidebar() {
                       <HomeSpaceGroup
                         key={space.id}
                         space={space}
-                        sessions={sessionsBySpace[space.id] ?? []}
+                        sessions={(sessionsBySpace[space.id] ?? []).filter(
+                          isUnpinned
+                        )}
                         folded={foldedSpaceIds.includes(space.id)}
                         selected={routeSpaceId === space.id}
                         pinned={pinnedSpaceIds.includes(space.id)}
