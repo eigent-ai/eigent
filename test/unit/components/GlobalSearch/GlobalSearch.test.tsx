@@ -136,14 +136,14 @@ describe('global search', () => {
     });
   });
 
-  it('is a 480px button that opens the dialog, as ⌘K does', async () => {
+  it('is a 200px button that opens the dialog, as ⌘K does', async () => {
     const user = userEvent.setup();
     renderSearch();
 
     const button = document.querySelector(
       '[data-global-search-button]'
     ) as HTMLElement;
-    expect(button).toHaveClass('w-[480px]');
+    expect(button).toHaveClass('w-[200px]');
     await user.click(button);
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
