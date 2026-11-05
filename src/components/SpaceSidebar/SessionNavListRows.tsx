@@ -201,19 +201,10 @@ function SessionRowContextMenu({
       <DropdownMenuContent align="start" sideOffset={2}>
         <DropdownMenuItem
           className="gap-2"
-          disabled={!onEndSession || session.achieved}
-          onSelect={() => onEndSession?.(session.id)}
+          onSelect={() => actions.onPin(session.id)}
         >
-          <DsIcon icon={Archive} aria-hidden />
-          {t('layout.achieve-project', { defaultValue: 'End session' })}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className={DESTRUCTIVE_MENU_ITEM_CLASS}
-          disabled={!onDeleteSession}
-          onSelect={() => onDeleteSession?.(session.id)}
-        >
-          <DsIcon icon={Trash2} aria-hidden />
-          {t('layout.delete-project')}
+          <DsIcon icon={session.pinned ? PinOff : Pin} aria-hidden />
+          {session.pinned ? t('layout.unpin') : t('layout.pin')}
         </DropdownMenuItem>
         <DropdownMenuItem
           className="gap-2"
@@ -224,19 +215,29 @@ function SessionRowContextMenu({
         </DropdownMenuItem>
         <DropdownMenuItem
           className="gap-2"
-          onSelect={() => actions.onPin(session.id)}
-        >
-          <DsIcon icon={session.pinned ? PinOff : Pin} aria-hidden />
-          {session.pinned ? t('layout.unpin') : t('layout.pin')}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="gap-2"
           onSelect={() => actions.onOpenInNewWindow(session.id)}
         >
           <DsIcon icon={AppWindow} aria-hidden />
           {actions.newWindowKind === 'tab'
             ? t('layout.session-open-in-new-tab')
             : t('layout.session-open-in-new-window')}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="gap-2"
+          disabled={!onEndSession || session.achieved}
+          onSelect={() => onEndSession?.(session.id)}
+        >
+          <DsIcon icon={Archive} aria-hidden />
+          {t('layout.achieve-project', { defaultValue: 'End session' })}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className={DESTRUCTIVE_MENU_ITEM_CLASS}
+          disabled={!onDeleteSession}
+          onSelect={() => onDeleteSession?.(session.id)}
+        >
+          <DsIcon icon={Trash2} aria-hidden />
+          {t('layout.delete-project')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
