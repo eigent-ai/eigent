@@ -151,7 +151,10 @@ describe('Integration Test: Case 2 - same session new chat', () => {
         undefined,
         undefined,
         undefined,
-        userMessage
+        userMessage,
+        undefined,
+        undefined,
+        result.current.projectStore.activeProjectId
       );
 
       //Rerender to get the latest chatStore
@@ -300,7 +303,10 @@ describe('Integration Test: Case 2 - same session new chat', () => {
         undefined,
         undefined,
         undefined,
-        userMessage
+        userMessage,
+        undefined,
+        undefined,
+        result.current.projectStore.activeProjectId
       );
       rerender();
     });
@@ -387,7 +393,10 @@ describe('Integration Test: Case 2 - same session new chat', () => {
         undefined,
         undefined,
         undefined,
-        'Test manual events'
+        'Test manual events',
+        undefined,
+        undefined,
+        result.current.projectStore.activeProjectId
       );
       rerender();
     });
@@ -551,7 +560,10 @@ describe('Integration Test: Case 2 - same session new chat', () => {
         undefined,
         undefined,
         undefined,
-        userMessage1
+        userMessage1,
+        undefined,
+        undefined,
+        result.current.projectStore.activeProjectId
       );
       rerender();
     });
@@ -653,7 +665,10 @@ describe('Integration Test: Case 2 - same session new chat', () => {
         undefined,
         undefined,
         undefined,
-        userMessage2
+        userMessage2,
+        undefined,
+        undefined,
+        result.current.projectStore.activeProjectId
       );
       rerender();
     });
