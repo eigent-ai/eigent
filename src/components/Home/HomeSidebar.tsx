@@ -607,7 +607,7 @@ export default function HomeSidebar() {
                   draggable={false}
                   className="-mx-0.5 size-5 shrink-0 select-none"
                 />
-                <span className="min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
+                <span className="min-w-0 truncate font-display text-ds-text-body-large font-bold text-ds-ink-default-default">
                   Eigent
                 </span>
               </div>

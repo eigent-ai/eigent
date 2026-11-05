@@ -244,6 +244,7 @@ describe('HomeSidebar', () => {
       '[data-home-sidebar-brand]'
     ) as HTMLElement;
     expect(brand).toHaveTextContent('Eigent');
+    expect(within(brand).getByText('Eigent')).toHaveClass('font-display');
     expect(brand).toHaveClass('h-8');
     expect(brand.querySelector('img')).not.toBeNull();
     expect(within(brand).queryByRole('button')).toBeNull();
