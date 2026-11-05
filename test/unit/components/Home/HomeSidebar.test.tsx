@@ -372,12 +372,14 @@ describe('HomeSidebar', () => {
         .getAllByRole('menuitem')
         .map((item) => item.textContent?.trim())
     ).toEqual([
+      'Pin',
+      'Rename session',
+      'Open in new window',
       'End session',
       'Delete session',
-      'Rename session',
-      'Pin',
-      'Open in new window',
     ]);
+    // Delete stands apart, as in the Session page's menu.
+    expect(within(menu).getByRole('separator')).toBeInTheDocument();
 
     await user.click(
       within(menu).getByRole('menuitem', { name: 'Rename session' })
