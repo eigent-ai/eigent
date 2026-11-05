@@ -48,7 +48,7 @@ export function AppRailItem({
         <span
           aria-hidden
           data-app-rail-selection
-          className="pointer-events-none absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-ds-ink-default-default"
+          className="pointer-events-none absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-ds-accent-default-default"
         />
       ) : null}
       {children}
