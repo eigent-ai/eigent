@@ -1643,5 +1643,7 @@
   "unfold-space": "{{name}} を展開",
   "show-all-sessions": "すべて表示（{{count}}）",
   "show-all-sessions-in-space": "{{name}} のセッションをすべて表示（{{count}}）",
+  "show-fewer-sessions": "折りたたむ",
+  "show-fewer-sessions-in-space": "{{name}} のセッションを折りたたむ",
   "new-session-space": "このセッションのスペース"
 }

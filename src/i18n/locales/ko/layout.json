@@ -1643,5 +1643,7 @@
   "unfold-space": "{{name}} 펼치기",
   "show-all-sessions": "모두 보기 ({{count}})",
   "show-all-sessions-in-space": "{{name}}의 세션 모두 보기 ({{count}})",
+  "show-fewer-sessions": "간략히 보기",
+  "show-fewer-sessions-in-space": "{{name}}의 세션 간략히 보기",
   "new-session-space": "이 세션의 스페이스"
 }

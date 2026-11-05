@@ -188,7 +188,6 @@ interface HomeSpaceGroupProps {
   rowSources: SessionRowSources;
   onToggleFold: () => void;
   onOpenWorkspace: () => void;
-  onShowAll: () => void;
   onSessionClick: (projectId: string) => void;
   onEndSession: (projectId: string) => void;
   onDeleteSession: (projectId: string) => void;
@@ -200,7 +199,7 @@ interface HomeSpaceGroupProps {
 
 /**
  * One Space in Home: its icon folds the group, its name opens the Workspace
- * page, and up to four recent Sessions follow.
+ * page, and up to four recent Sessions follow. Show all lists the rest in place.
  */
 function HomeSpaceGroup({
   space,
@@ -213,7 +212,6 @@ function HomeSpaceGroup({
   rowSources,
   onToggleFold,
   onOpenWorkspace,
-  onShowAll,
   onSessionClick,
   onEndSession,
   onDeleteSession,
@@ -226,9 +224,12 @@ function HomeSpaceGroup({
   const groupId = useId();
   const name = getActiveSpaceTriggerLabel(space.name, t);
   const statusText = spaceRailStatusText(attention, t);
+  const [showAllSessions, setShowAllSessions] = useState(false);
   const visibleSessions = folded
     ? []
-    : sessions.slice(0, HOME_SPACE_RECENT_SESSIONS);
+    : showAllSessions
+      ? sessions
+      : sessions.slice(0, HOME_SPACE_RECENT_SESSIONS);
   useSessionNavStatuses(
     visibleSessions.map((session) => session.id),
     folded ? null : space.id
@@ -336,18 +337,24 @@ function HomeSpaceGroup({
         {!folded && sessions.length > HOME_SPACE_RECENT_SESSIONS ? (
           <NavTab
             active={false}
-            onClick={onShowAll}
+            onClick={() => setShowAllSessions((showAll) => !showAll)}
             // The spacer lines the label up with the Session names.
             leading={<span aria-hidden className="size-ds-icon-md shrink-0" />}
             label={
               <span className="text-ds-text-base font-medium text-ds-ink-subtle-default">
-                {t('layout.show-all-sessions', { count: sessions.length })}
+                {showAllSessions
+                  ? t('layout.show-fewer-sessions')
+                  : t('layout.show-all-sessions', { count: sessions.length })}
               </span>
             }
-            ariaLabel={t('layout.show-all-sessions-in-space', {
-              count: sessions.length,
-              name,
-            })}
+            ariaLabel={
+              showAllSessions
+                ? t('layout.show-fewer-sessions-in-space', { name })
+                : t('layout.show-all-sessions-in-space', {
+                    count: sessions.length,
+                    name,
+                  })
+            }
           />
         ) : null}
       </div>
@@ -774,9 +781,6 @@ export default function HomeSidebar() {
                           )
                         }
                         onOpenWorkspace={() => openSpaceWorkspace(space.id)}
-                        onShowAll={() =>
-                          openSpaceWorkspace(space.id, 'projects')
-                        }
                         onSessionClick={openSession}
                         onEndSession={requestEndSession}
                         onDeleteSession={requestDeleteSession}
