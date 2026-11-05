@@ -238,7 +238,12 @@ function HomeSpaceGroup({
   const groupId = useId();
   const name = getActiveSpaceTriggerLabel(space.name, t);
   const statusText = spaceRailStatusText(attention, t);
-  const [showAllSessions, setShowAllSessions] = useState(false);
+  const showAllSessions = usePageTabStore((state) =>
+    state.homeExpandedSpaceIds.includes(space.id)
+  );
+  const setHomeSpaceExpanded = usePageTabStore(
+    (state) => state.setHomeSpaceExpanded
+  );
   const visibleSessions = folded
     ? []
     : showAllSessions
@@ -351,7 +356,7 @@ function HomeSpaceGroup({
         {!folded && sessions.length > HOME_SPACE_RECENT_SESSIONS ? (
           <NavTab
             active={false}
-            onClick={() => setShowAllSessions((showAll) => !showAll)}
+            onClick={() => setHomeSpaceExpanded(space.id, !showAllSessions)}
             // The spacer lines the label up with the Session names.
             leading={<span aria-hidden className="size-ds-icon-md shrink-0" />}
             label={

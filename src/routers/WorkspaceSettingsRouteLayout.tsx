@@ -12,7 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { isSettingsRoutePath, SHELL_BACK_STATE_KEY } from '@/lib/shellRoutes';
+import { HomeSidebarHost } from '@/components/Home/HomeSidebarHost';
+import {
+  isHomePagePath,
+  isSettingsRoutePath,
+  SHELL_BACK_STATE_KEY,
+} from '@/lib/shellRoutes';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
@@ -37,6 +43,9 @@ export default function WorkspaceSettingsRouteLayout({
   const workspaceWasOrigin =
     typeof origin === 'string' && (origin === '/' || origin.startsWith('/?'));
   const shouldMountWorkspace = !settingsActive || workspaceWasOrigin;
+  const inHomePlace = usePageTabStore((state) => state.shellPlace === 'home');
+  // Settings keeps it too, so coming back from there doesn't rebuild it.
+  const showsHomeSidebar = isHomePagePath(location.pathname) || inHomePlace;
 
   // React 18 does not serialize the HTML inert boolean attribute correctly,
   // so reflect it explicitly until the app moves to a React version that does.
@@ -45,7 +54,10 @@ export default function WorkspaceSettingsRouteLayout({
   }, [settingsActive]);
 
   return (
-    <>
+    <HomeSidebarHost
+      enabled={showsHomeSidebar}
+      workspaceOnScreen={!settingsActive}
+    >
       {shouldMountWorkspace ? (
         <div
           ref={workspaceRef}
@@ -57,6 +69,6 @@ export default function WorkspaceSettingsRouteLayout({
         </div>
       ) : null}
       <Outlet />
-    </>
+    </HomeSidebarHost>
   );
 }

@@ -224,6 +224,7 @@ describe('HomeSidebar', () => {
       shellPlace: 'home',
       activeWorkspaceTab: 'new-project',
       homeFoldedSpaceIds: [],
+      homeExpandedSpaceIds: [],
       homeSpaceSort: 'updated',
       homeSidebarGrouping: 'spaces',
     });

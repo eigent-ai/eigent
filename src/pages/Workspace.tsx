@@ -23,6 +23,7 @@ import {
 import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
 import HomeSidebar from '@/components/Home/HomeSidebar';
+import { HomeSidebarSlot } from '@/components/Home/HomeSidebarHost';
 import { NewSessionSpaceChip } from '@/components/Home/NewSessionSpaceChip';
 import AppShellLayout, {
   APP_SHELL_CONTENT_CLASS,
@@ -522,7 +523,15 @@ export default function WorkspacePage() {
   return (
     <ReactFlowProvider>
       <AppShellLayout
-        sidebar={inHome ? <HomeSidebar /> : <SpaceSidebar />}
+        sidebar={
+          inHome ? (
+            <HomeSidebarSlot workspace>
+              <HomeSidebar />
+            </HomeSidebarSlot>
+          ) : (
+            <SpaceSidebar />
+          )
+        }
         sidebarHidden={workspaceSidebarHidden}
         /* Always mounted: hosts preview <webview> guests so their pages and
            history survive panel close, workspace-tab hops, and project
