@@ -541,6 +541,8 @@ interface LoadProjectFromHistoryOptions {
    * the Project the user selected most recently.
    */
   requireActiveSelection?: boolean;
+  /** The `grouped` history reply the caller already has, to avoid reading it again. */
+  groupedHistory?: { tasks?: unknown[] } | null;
 }
 
 interface ProjectStore {
@@ -2005,6 +2007,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         ? { userId: cacheUserId, projectId: loadProjectId }
         : null;
 
+    // Reading the cache changes nothing, so it runs alongside the Run read;
+    // whether its snapshot is still current is decided once both are back.
+    const cachedRead = cacheScope ? getCachedProject(cacheScope) : null;
+    cachedRead?.catch(() => undefined);
+
     try {
       // A local RunJournal entry is newer and stronger than both the legacy
       // cloud playback projection and an IndexedDB snapshot derived from it.
@@ -2100,7 +2107,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       // before mutating state if the active project no longer matches.
       if (cacheScope) {
         try {
-          const cached = await getCachedProject(cacheScope);
+          const cached = await cachedRead;
           if (get().activeProjectId !== loadProjectId) {
             return loadProjectId;
           }
@@ -2401,10 +2408,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       // server marks as done. See `polishCompletedHistoryTask` above for why.
       if (!cancelled && loadedChatStoresByTaskId.size > 0) {
         try {
-          const grouped = await proxyFetchGet(
-            `/api/v1/chat/histories/grouped/${projectId}`,
-            { include_tasks: true }
-          );
+          const grouped =
+            options?.groupedHistory ??
+            (await proxyFetchGet(
+              `/api/v1/chat/histories/grouped/${projectId}`,
+              { include_tasks: true }
+            ));
           const doneTaskIds = new Set<string>();
           const stoppedTaskIds = new Set<string>();
           for (const t of grouped?.tasks ?? []) {
