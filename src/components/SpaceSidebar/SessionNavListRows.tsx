@@ -36,12 +36,17 @@ import {
   Columns2,
   MoreHorizontal,
   PanelsTopLeft,
+  Pencil,
   Pin,
+  PinOff,
   Trash2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS } from './constants';
+import {
+  DESTRUCTIVE_MENU_ITEM_CLASS,
+  SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS,
+} from './constants';
 
 export interface SessionNavItem {
   id: string;
@@ -69,6 +74,18 @@ export interface SessionOpenInActions {
   newWindowKind?: 'window' | 'tab';
 }
 
+/**
+ * Session rows with one End session button on hover, and everything else on
+ * right-click, instead of the More menu.
+ */
+export interface SessionRowContextActions {
+  onRename: (sessionId: string) => void;
+  onPin: (sessionId: string) => void;
+  onOpenInNewWindow: (sessionId: string) => void;
+  /** Desktop opens a window; the web build opens a browser tab. */
+  newWindowKind: 'window' | 'tab';
+}
+
 export interface SessionNavListRowsProps {
   sessions: SessionNavItem[];
   activeSessionId?: string | null;
@@ -87,6 +104,7 @@ export interface SessionNavListRowsProps {
   panelListHover?: boolean;
   /** Rows under a parent row (a Space in Home): indented inside the row. */
   nested?: boolean;
+  contextActions?: SessionRowContextActions;
   /** When false, hide the trailing action area (session list and workspace recent: time only). */
   showRowMenu?: boolean;
   openIn?: SessionOpenInActions;
@@ -96,6 +114,134 @@ export interface SessionNavListRowsProps {
  * Renders compact Session rows; cap with `maxItems` for recency-prefixed UIs.
  */
 export const NAV_LIST_SESSIONS_RECENT_MAX = 5;
+
+interface ContextMenuPoint {
+  x: number;
+  y: number;
+}
+
+/** The only hover action on a row with a right-click menu. */
+function SessionRowEndButton({
+  sessionId,
+  achieved,
+  onEndSession,
+}: {
+  sessionId: string;
+  achieved?: boolean;
+  onEndSession?: (sessionId: string) => void;
+}) {
+  const { t } = useTranslation();
+  if (achieved || !onEndSession) return null;
+  const label = t('layout.achieve-project', { defaultValue: 'End session' });
+  return (
+    <div
+      className={cn(
+        'flex max-w-0 shrink-0 items-center justify-end overflow-hidden opacity-0',
+        'pointer-events-none',
+        'group-hover/session-item:pointer-events-auto group-hover/session-item:max-w-10 group-hover/session-item:opacity-100',
+        'focus-within:pointer-events-auto focus-within:max-w-10 focus-within:opacity-100'
+      )}
+    >
+      <TooltipSimple content={label} compact side="top" variant="instant">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          buttonRadius="full"
+          buttonContent="icon-only"
+          className="no-drag shrink-0"
+          aria-label={label}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEndSession(sessionId);
+          }}
+        >
+          <DsIcon
+            icon={Archive}
+            className="text-ds-ink-muted-default"
+            aria-hidden
+          />
+        </Button>
+      </TooltipSimple>
+    </div>
+  );
+}
+
+/** A Session row's right-click menu, opened where the pointer is. */
+function SessionRowContextMenu({
+  point,
+  session,
+  actions,
+  onClose,
+  onEndSession,
+  onDeleteSession,
+}: {
+  point: ContextMenuPoint;
+  session: SessionNavItem;
+  actions: SessionRowContextActions;
+  onClose: () => void;
+  onEndSession?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <DropdownMenu
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DropdownMenuTrigger asChild>
+        <span
+          aria-hidden
+          className="fixed size-0"
+          style={{ left: point.x, top: point.y }}
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" sideOffset={2}>
+        <DropdownMenuItem
+          className="gap-2"
+          disabled={!onEndSession || session.achieved}
+          onSelect={() => onEndSession?.(session.id)}
+        >
+          <DsIcon icon={Archive} aria-hidden />
+          {t('layout.achieve-project', { defaultValue: 'End session' })}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className={DESTRUCTIVE_MENU_ITEM_CLASS}
+          disabled={!onDeleteSession}
+          onSelect={() => onDeleteSession?.(session.id)}
+        >
+          <DsIcon icon={Trash2} aria-hidden />
+          {t('layout.delete-project')}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="gap-2"
+          onSelect={() => actions.onRename(session.id)}
+        >
+          <DsIcon icon={Pencil} aria-hidden />
+          {t('layout.rename-project')}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="gap-2"
+          onSelect={() => actions.onPin(session.id)}
+        >
+          <DsIcon icon={session.pinned ? PinOff : Pin} aria-hidden />
+          {session.pinned ? t('layout.unpin') : t('layout.pin')}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="gap-2"
+          onSelect={() => actions.onOpenInNewWindow(session.id)}
+        >
+          <DsIcon icon={AppWindow} aria-hidden />
+          {actions.newWindowKind === 'tab'
+            ? t('layout.session-open-in-new-tab')
+            : t('layout.session-open-in-new-window')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function SessionNavRowMenu({
   sessionId,
@@ -270,12 +416,14 @@ function SessionNavRow({
   onEndSession,
   onDeleteSession,
   nested,
+  contextActions,
 }: {
   session: SessionNavItem;
   active: boolean;
   panelListHover: boolean;
   showRowMenu: boolean;
   nested: boolean;
+  contextActions?: SessionRowContextActions;
   triggerSourceLabel: string;
   inOwnWindowLabel: string;
   openIn?: SessionOpenInActions;
@@ -285,6 +433,9 @@ function SessionNavRow({
   onDeleteSession?: (sessionId: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [contextPoint, setContextPoint] = useState<ContextMenuPoint | null>(
+    null
+  );
   const LeadIcon = session.sessionLead.Icon;
   const leadClassName = cn(
     session.sessionLead.iconClassName,
@@ -292,7 +443,8 @@ function SessionNavRow({
   );
   // Every Session shown in a split pane is highlighted; the focused one also
   // gets the default ink and `aria-current`, so focus is not color-only.
-  const selected = active || menuOpen || Boolean(session.openInPane);
+  const selected =
+    active || menuOpen || contextPoint !== null || Boolean(session.openInPane);
 
   return (
     <div className="min-w-0">
@@ -300,10 +452,33 @@ function SessionNavRow({
           with the row's top outside the sidebar. */}
       <SidebarRowTooltip
         content={session.title}
-        enabled={!menuOpen}
+        enabled={!menuOpen && contextPoint === null}
         className={SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS}
       >
         <div
+          onContextMenu={
+            contextActions
+              ? (event) => {
+                  event.preventDefault();
+                  setContextPoint({ x: event.clientX, y: event.clientY });
+                }
+              : undefined
+          }
+          onKeyDown={
+            contextActions
+              ? (event) => {
+                  if (
+                    event.key !== 'ContextMenu' &&
+                    !(event.key === 'F10' && event.shiftKey)
+                  ) {
+                    return;
+                  }
+                  event.preventDefault();
+                  const row = event.currentTarget.getBoundingClientRect();
+                  setContextPoint({ x: row.left, y: row.bottom });
+                }
+              : undefined
+          }
           className={cn(
             'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pr-3',
             // A nested row keeps its indent inside, so its fill spans the
@@ -371,7 +546,13 @@ function SessionNavRow({
             ) : null}
           </button>
 
-          {showRowMenu ? (
+          {contextActions ? (
+            <SessionRowEndButton
+              sessionId={session.id}
+              achieved={session.achieved}
+              onEndSession={onEndSession}
+            />
+          ) : showRowMenu ? (
             <SessionNavRowMenu
               sessionId={session.id}
               pinned={session.pinned}
@@ -387,6 +568,16 @@ function SessionNavRow({
           ) : null}
         </div>
       </SidebarRowTooltip>
+      {contextActions && contextPoint ? (
+        <SessionRowContextMenu
+          point={contextPoint}
+          session={session}
+          actions={contextActions}
+          onClose={() => setContextPoint(null)}
+          onEndSession={onEndSession}
+          onDeleteSession={onDeleteSession}
+        />
+      ) : null}
     </div>
   );
 }
@@ -404,6 +595,7 @@ export function SessionNavListRows({
   showRowMenu = true,
   openIn,
   nested = false,
+  contextActions,
 }: SessionNavListRowsProps) {
   const { t } = useTranslation();
   const triggerSourceLabel = t('layout.task-source-trigger');
@@ -468,6 +660,7 @@ export function SessionNavListRows({
             panelListHover={panelListHover}
             showRowMenu={showRowMenu}
             nested={nested}
+            contextActions={contextActions}
             triggerSourceLabel={triggerSourceLabel}
             inOwnWindowLabel={inOwnWindowLabel}
             openIn={openIn}
