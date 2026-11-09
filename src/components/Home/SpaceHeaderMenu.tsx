@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useNewSpaceCreation } from '@/components/Home/hooks/useNewSpaceCreation';
+import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
 import {
   pinSpaceOrChoose,
   usePinnedSpaceIds,
@@ -37,12 +39,31 @@ import { forwardRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+/**
+ * Mounted only while open: creating a Space reads the whole Session store,
+ * which the Space sidebar shouldn't redraw for.
+ */
+function SpaceMenuNewSpaceDialog({ onClose }: { onClose: () => void }) {
+  const { createBlankSpace, createSpaceFromFolder } =
+    useNewSpaceCreation('space_menu');
+  return (
+    <NewSpaceDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      onStartFromScratch={createBlankSpace}
+      onUseLocalFolder={createSpaceFromFolder}
+    />
+  );
+}
+
 interface SpaceHeaderMenuProps {
   spaceId: string;
   /**
    * `header` is the Workspace page's title, with Space settings and Memory
    * settings. `sidebar` is the Space sidebar's first row, which has its own
-   * settings button, so it lists Delete Space instead.
+   * settings button, so it lists New Space and Delete Space instead.
    */
   appearance?: 'header' | 'sidebar';
 }
@@ -72,6 +93,7 @@ export const SpaceHeaderMenu = forwardRef<
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   // Save points act on the active Space's folder, so they show only for it.
@@ -144,6 +166,9 @@ export const SpaceHeaderMenu = forwardRef<
         spaceId={renameOpen ? spaceId : null}
         onClose={() => setRenameOpen(false)}
       />
+      {newSpaceOpen ? (
+        <SpaceMenuNewSpaceDialog onClose={() => setNewSpaceOpen(false)} />
+      ) : null}
       <SpaceSwitchDropdown
         contentSideOffset={6}
         onOpenChange={(open) => {
@@ -206,6 +231,7 @@ export const SpaceHeaderMenu = forwardRef<
         onOpenMemorySettings={
           inSidebar ? undefined : () => openSpaceHomeTab(spaceId, 'memory')
         }
+        onCreateSpace={inSidebar ? () => setNewSpaceOpen(true) : undefined}
         onDeleteSpace={canDelete ? () => setDeleteOpen(true) : undefined}
         pinMenu={{
           pinned,

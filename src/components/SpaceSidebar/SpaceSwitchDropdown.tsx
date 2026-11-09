@@ -34,6 +34,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Plus,
   RefreshCw,
   Save,
   Settings,
@@ -104,6 +105,8 @@ export interface SpaceSwitchDropdownProps {
   triggerWrapperClassName?: string;
   pendingChangesMenu?: SpaceSwitchDropdownPendingChangesMenu;
   savePointMenu?: SpaceSwitchDropdownSavePointMenu;
+  /** Starts a new Space. The Space sidebar has no other way to. */
+  onCreateSpace?: () => void;
   /** Tooltip for the trigger (e.g. active space name when the sidebar is folded). */
   triggerTooltip?: ReactNode;
   triggerTooltipEnabled?: boolean;
@@ -122,6 +125,7 @@ export function SpaceSwitchDropdown({
   onOpenSpaceSettings,
   onOpenMemorySettings,
   pinMenu,
+  onCreateSpace,
   onDeleteSpace,
   contentAlign = 'start',
   contentClassName,
@@ -252,6 +256,19 @@ export function SpaceSwitchDropdown({
             <span>
               {pinMenu.pinned ? t('layout.unpin-space') : t('layout.pin-space')}
             </span>
+          </DropdownMenuItem>
+        ) : null}
+
+        {onCreateSpace ? (
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => {
+              setOpen(false);
+              onCreateSpace();
+            }}
+          >
+            <DsIcon icon={Plus} aria-hidden />
+            <span>{t('layout.spaces-create-new-space')}</span>
           </DropdownMenuItem>
         ) : null}
 
