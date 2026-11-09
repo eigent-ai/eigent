@@ -20,7 +20,8 @@ describe('SessionLoadingScan', () => {
   it('announces loading and takes no pointer input', () => {
     render(<SessionLoadingScan active label="Loading history" />);
 
-    const status = screen.getByRole('status', { name: 'Loading history' });
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent('Loading history');
     expect(status).toHaveAttribute('aria-busy', 'true');
     expect(status).toHaveClass('pointer-events-none', 'absolute', 'inset-0');
     expect(status.querySelector('.session-loading-scan')).not.toBeNull();

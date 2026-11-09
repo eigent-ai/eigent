@@ -376,9 +376,12 @@ describe('AppRail pinned Spaces', () => {
     const user = userEvent.setup();
     renderRail('/');
 
-    within(rail()).getByRole('button', { name: 'Ops' }).focus();
+    const tile = within(rail()).getByRole('button', { name: 'Ops' });
+    expect(tile).toHaveAttribute('aria-expanded', 'false');
+    tile.focus();
     await user.keyboard('{Shift>}{F10}{/Shift}');
     const menu = await screen.findByRole('menu');
+    expect(tile).toHaveAttribute('aria-expanded', 'true');
     expect(
       within(menu).queryByRole('menuitem', { name: 'Move up' })
     ).toBeNull();
