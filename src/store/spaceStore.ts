@@ -337,6 +337,28 @@ export const getPinnedSpaceIds = (
   return ids;
 };
 
+/**
+ * Write a new order for the pins on show, leaving a pin whose Space is briefly
+ * missing where it was, so it's still there when that Space comes back.
+ */
+const withHiddenPins = (
+  saved: readonly string[],
+  shown: readonly string[],
+  next: readonly string[]
+): string[] => {
+  const queue = [...next];
+  const result: string[] = [];
+  for (const spaceId of new Set(saved)) {
+    if (shown.includes(spaceId)) {
+      const replacement = queue.shift();
+      if (replacement !== undefined) result.push(replacement);
+    } else if (!next.includes(spaceId)) {
+      result.push(spaceId);
+    }
+  }
+  return [...result, ...queue];
+};
+
 const withoutPinnedSpaces = (
   pinnedSpaceIdsByUser: Record<string, string[]>,
   spaceIds: ReadonlySet<string>
@@ -1997,7 +2019,11 @@ export const useSpaceStore = create<SpaceStore>()(
         set({
           pinnedSpaceIdsByUser: {
             ...state.pinnedSpaceIdsByUser,
-            [ownerKey]: [...pinned, spaceId],
+            [ownerKey]: withHiddenPins(
+              state.pinnedSpaceIdsByUser[ownerKey] ?? [],
+              pinned,
+              [...pinned, spaceId]
+            ),
           },
         });
         return 'pinned';
@@ -2030,7 +2056,11 @@ export const useSpaceStore = create<SpaceStore>()(
           return {
             pinnedSpaceIdsByUser: {
               ...state.pinnedSpaceIdsByUser,
-              [ownerKey]: next,
+              [ownerKey]: withHiddenPins(
+                state.pinnedSpaceIdsByUser[ownerKey] ?? [],
+                pinned,
+                next
+              ),
             },
           };
         }),
@@ -2041,12 +2071,16 @@ export const useSpaceStore = create<SpaceStore>()(
           return {
             pinnedSpaceIdsByUser: {
               ...state.pinnedSpaceIdsByUser,
-              [ownerKey]: getPinnedSpaceIds(
-                {
-                  spaces: state.spaces,
-                  pinnedSpaceIdsByUser: { [ownerKey]: spaceIds },
-                },
-                ownerKey
+              [ownerKey]: withHiddenPins(
+                state.pinnedSpaceIdsByUser[ownerKey] ?? [],
+                getPinnedSpaceIds(state, ownerKey),
+                getPinnedSpaceIds(
+                  {
+                    spaces: state.spaces,
+                    pinnedSpaceIdsByUser: { [ownerKey]: spaceIds },
+                  },
+                  ownerKey
+                )
               ),
             },
           };
