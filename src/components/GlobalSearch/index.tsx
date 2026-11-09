@@ -122,6 +122,8 @@ function useActiveSessionFiles(): GlobalSearchItem[] {
   const [files, setFiles] = useState<GlobalSearchItem[]>([]);
 
   useEffect(() => {
+    // The last Session's files must not stand in while these load.
+    setFiles((current) => (current.length > 0 ? [] : current));
     if (!ipcRenderer || !activeProjectId) return;
     let cancelled = false;
     void Promise.resolve(
@@ -420,9 +422,9 @@ function GlobalSearchDialog() {
   return (
     <Dialog open onOpenChange={(next) => !next && close()}>
       <DialogContent
-        size="lg"
+        size="md"
         showCloseButton={false}
-        className="max-w-[680px] overflow-hidden p-0"
+        className="overflow-hidden p-0"
         overlayClassName="backdrop-blur-none"
       >
         <DialogTitle className="sr-only">
@@ -436,7 +438,7 @@ function GlobalSearchDialog() {
               onValueChange={setQuery}
               onKeyDown={onInputKeyDown}
               placeholder={t('layout.global-search')}
-              className="h-8 min-w-0 flex-1 border-0 border-x-0 border-y-0 bg-transparent text-ds-text-body-large text-ds-ink-default-default outline-none placeholder:text-ds-ink-subtle-default"
+              className="h-ds-control-md min-w-0 flex-1 rounded-ds-compact-control border-0 border-x-0 border-y-0 bg-transparent text-ds-text-body-large text-ds-ink-default-default outline-none placeholder:text-ds-ink-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
             />
             <button
               type="button"
@@ -448,7 +450,7 @@ function GlobalSearchDialog() {
             </button>
           </div>
           <div
-            role="tablist"
+            role="group"
             aria-label={t('layout.global-search')}
             className="flex flex-wrap items-center gap-ds-2 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-ds-12 py-ds-8"
           >
@@ -456,11 +458,10 @@ function GlobalSearchDialog() {
               <button
                 key={option}
                 type="button"
-                role="tab"
-                aria-selected={option === type}
+                aria-pressed={option === type}
                 onClick={() => setType(option)}
                 className={cn(
-                  'h-7 cursor-pointer rounded-ds-compact-control border-0 border-x-0 border-y-0 px-ds-8 text-ds-text-base text-ds-ink-default-default outline-none hover:bg-ds-neutral-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus',
+                  'h-ds-control-sm cursor-pointer rounded-ds-compact-control border-0 border-x-0 border-y-0 px-ds-8 text-ds-text-base text-ds-ink-default-default outline-none hover:bg-ds-neutral-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus',
                   option === type
                     ? 'bg-ds-neutral-muted-default'
                     : 'bg-transparent'
@@ -470,7 +471,7 @@ function GlobalSearchDialog() {
               </button>
             ))}
           </div>
-          <CommandList className="scrollbar-always-visible h-[400px] max-h-[60vh] overflow-y-auto p-ds-8">
+          <CommandList className="scrollbar-always-visible h-100 max-h-[60vh] overflow-y-auto p-ds-8">
             {results.length === 0 && !showRecents ? (
               <div className="px-ds-8 py-ds-16 text-center text-ds-text-base text-ds-ink-muted-default">
                 {t('layout.search-no-results')}
