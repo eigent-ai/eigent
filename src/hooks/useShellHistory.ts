@@ -27,6 +27,7 @@ import {
   type ShellPlaceEntry,
 } from '@/store/shellHistoryStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import { cancelPendingSpaceSwitch } from '@/store/spaceSwitchStore';
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -135,6 +136,8 @@ export function useShellHistory() {
           hydrate: !sessionId,
         });
         if (!switched) return;
+      } else {
+        cancelPendingSpaceSwitch();
       }
       if (sessionId) {
         // Move first, so a Session with history to load shows at once.

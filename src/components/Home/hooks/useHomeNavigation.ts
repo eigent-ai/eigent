@@ -22,6 +22,7 @@ import { APP_COMMAND } from '@/shared/appCommands';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import { cancelPendingSpaceSwitch } from '@/store/spaceSwitchStore';
 import { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -96,6 +97,8 @@ export function useHomeNavigation() {
             hydrate: false,
           });
           if (!switched) return;
+        } else {
+          cancelPendingSpaceSwitch();
         }
         closeSettings();
         usePageTabStore.getState().setShellPlace('home');
