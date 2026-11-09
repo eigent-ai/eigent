@@ -241,7 +241,6 @@ export const SpaceHeaderMenu = forwardRef<
           },
         }}
         contentAlign="start"
-        triggerWrapperClassName="min-w-0 overflow-hidden rounded-full"
         savePointMenu={
           savePointsApply && versionHistory.supported
             ? {

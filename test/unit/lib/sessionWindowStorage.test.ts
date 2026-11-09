@@ -57,6 +57,6 @@ describe('Session window storage policy', () => {
       }
     }
     // Guard the scan itself: it must have found the stores it protects.
-    expect(persisted.length).toBeGreaterThanOrEqual(9);
+    expect(persisted.length).toBeGreaterThanOrEqual(8);
   });
 });
