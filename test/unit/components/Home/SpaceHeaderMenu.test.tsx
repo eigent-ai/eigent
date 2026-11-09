@@ -35,6 +35,16 @@ vi.mock('@/hooks/useSpaceSwitch', () => ({
 vi.mock('@/components/Workspace/WorkspaceVersionHistoryDialog', () => ({
   WorkspaceVersionHistoryDialog: () => null,
 }));
+vi.mock('@/components/Home/hooks/useNewSpaceCreation', () => ({
+  useNewSpaceCreation: () => ({
+    createBlankSpace: vi.fn(),
+    createSpaceFromFolder: vi.fn(),
+  }),
+}));
+vi.mock('@/components/Home/NewSpaceDialog', () => ({
+  default: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="new-space-dialog" /> : null,
+}));
 
 const space: Space = {
   id: 'space-research',
@@ -76,7 +86,12 @@ describe('SpaceHeaderMenu', () => {
     render(<SpaceHeaderMenu spaceId={space.id} appearance="sidebar" />);
     const { user, menu, items } = await openMenu();
 
-    expect(items).toEqual(['Rename Space', 'Pin Space', 'Delete Space']);
+    expect(items).toEqual([
+      'Rename Space',
+      'Pin Space',
+      'Create new Space',
+      'Delete Space',
+    ]);
 
     await user.click(
       within(menu).getByRole('menuitem', { name: 'Delete Space' })
@@ -85,6 +100,17 @@ describe('SpaceHeaderMenu', () => {
     const confirm = await screen.findByRole('alertdialog');
     await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
     expect(deleteSpaceOnServer).toHaveBeenCalledWith(space.id);
+  });
+
+  it('starts a new Space from the sidebar menu', async () => {
+    render(<SpaceHeaderMenu spaceId={space.id} appearance="sidebar" />);
+    const { user, menu } = await openMenu();
+
+    expect(screen.queryByTestId('new-space-dialog')).toBeNull();
+    await user.click(
+      within(menu).getByRole('menuitem', { name: 'Create new Space' })
+    );
+    expect(await screen.findByTestId('new-space-dialog')).toBeInTheDocument();
   });
 
   it('keeps Space and Memory settings, without Delete, on the Workspace page', async () => {
