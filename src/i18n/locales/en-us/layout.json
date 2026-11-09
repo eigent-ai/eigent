@@ -1667,5 +1667,7 @@
   "show-all-sessions-in-space": "Show all {{count}} sessions in {{name}}",
   "show-fewer-sessions": "Show less",
   "show-fewer-sessions-in-space": "Show fewer sessions in {{name}}",
-  "new-session-space": "Space for this session"
+  "new-session-space": "Space for this session",
+  "spaces-switch-failed": "Failed to switch Space",
+  "space-emoji-load-failed": "Couldn't load emoji. Check your connection."
 }

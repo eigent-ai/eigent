@@ -1667,5 +1667,7 @@
   "show-all-sessions-in-space": "Alle {{count}} Sitzungen in {{name}} anzeigen",
   "show-fewer-sessions": "Weniger anzeigen",
   "show-fewer-sessions-in-space": "Weniger Sitzungen in {{name}} anzeigen",
-  "new-session-space": "Space für diese Sitzung"
+  "new-session-space": "Space für diese Sitzung",
+  "spaces-switch-failed": "Der Arbeitsbereich konnte nicht gewechselt werden",
+  "space-emoji-load-failed": "Emojis konnten nicht geladen werden. Prüfe deine Verbindung."
 }

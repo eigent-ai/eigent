@@ -16,24 +16,29 @@
 // and i18n settle their import cycle in the same order.
 import '@/api/http';
 
-import { SpaceEmojiPicker } from '@/components/Home/SpaceEmojiPicker';
+import {
+  EMOJI_LOAD_TIMEOUT_MS,
+  SpaceEmojiPicker,
+} from '@/components/Home/SpaceEmojiPicker';
 import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { spaceEmoji } from '@/lib/spaceEmoji';
 import { useSpaceStore, type Space } from '@/store/spaceStore';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   rootProps: {} as Record<string, unknown>,
+  loadEmojiData: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError } }));
 
 // The picker's own list needs real layout, so stand in with one emoji.
 vi.mock('frimousse', () => ({
+  defaultEmojiDataResolver: mocks.loadEmojiData,
   EmojiPicker: {
     Root: ({
       children,
@@ -58,7 +63,7 @@ vi.mock('frimousse', () => ({
     },
     Search: () => null,
     Viewport: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    Loading: () => null,
+    Loading: ({ children }: { children: ReactNode }) => <div>{children}</div>,
     Empty: () => null,
     List: () => null,
   },
@@ -146,6 +151,71 @@ describe('Space emojis', () => {
     expect(mocks.rootProps.emojibaseUrl).toMatch(
       /emojibase-data@\d+\.\d+\.\d+$/
     );
+  });
+
+  describe('when the emoji list cannot load', () => {
+    const resolve = () =>
+      (
+        mocks.rootProps.resolveEmojiData as (
+          locale: string,
+          options: object
+        ) => Promise<unknown>
+      )('en', {});
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('says so, and Retry tries again', async () => {
+      mocks.loadEmojiData.mockRejectedValue(new Error('offline'));
+      render(<Picker />);
+      const user = await openPicker();
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      await act(async () => {
+        await expect(resolve()).rejects.toThrow('offline');
+      });
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        "Couldn't load emoji"
+      );
+      await user.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('stops waiting for a request that never answers', async () => {
+      mocks.loadEmojiData.mockReturnValue(new Promise(() => undefined));
+      render(<Picker />);
+      await openPicker();
+
+      vi.useFakeTimers();
+      await act(async () => {
+        const pending = expect(resolve()).rejects.toThrow('Timed out');
+        await vi.advanceTimersByTimeAsync(EMOJI_LOAD_TIMEOUT_MS);
+        await pending;
+      });
+
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    it('stays quiet when the picker itself stopped the read', async () => {
+      mocks.loadEmojiData.mockRejectedValue(new Error('aborted'));
+      render(<Picker />);
+      await openPicker();
+
+      await act(async () => {
+        await expect(
+          (
+            mocks.rootProps.resolveEmojiData as (
+              locale: string,
+              options: object
+            ) => Promise<unknown>
+          )('en', { signal: AbortSignal.abort() })
+        ).rejects.toThrow('aborted');
+      });
+
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
   });
 
   it('goes back to the first letter', async () => {

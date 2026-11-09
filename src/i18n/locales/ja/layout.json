@@ -1645,5 +1645,7 @@
   "show-all-sessions-in-space": "{{name}} のセッションをすべて表示（{{count}}）",
   "show-fewer-sessions": "折りたたむ",
   "show-fewer-sessions-in-space": "{{name}} のセッションを折りたたむ",
-  "new-session-space": "このセッションのスペース"
+  "new-session-space": "このセッションのスペース",
+  "spaces-switch-failed": "Space の切り替えに失敗しました",
+  "space-emoji-load-failed": "絵文字を読み込めませんでした。接続を確認してください。"
 }

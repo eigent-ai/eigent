@@ -1755,5 +1755,7 @@
   "show-all-sessions-in-space": "عرض كل الجلسات ({{count}}) في {{name}}",
   "show-fewer-sessions": "عرض أقل",
   "show-fewer-sessions-in-space": "عرض جلسات أقل في {{name}}",
-  "new-session-space": "مساحة هذه الجلسة"
+  "new-session-space": "مساحة هذه الجلسة",
+  "spaces-switch-failed": "تعذّر الانتقال إلى المساحة",
+  "space-emoji-load-failed": "تعذّر تحميل الرموز التعبيرية. تحقق من اتصالك."
 }
