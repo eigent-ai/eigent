@@ -20,7 +20,10 @@ import {
 import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
 import { executionScope } from '@/service/executionApi';
 import type { ProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { readSessionExecutionRoute } from '@/store/sessionExecutionStore';
+import {
+  getSessionExecutionState,
+  readSessionExecutionRoute,
+} from '@/store/sessionExecutionStore';
 
 const TRIGGER_PLACEHOLDER_PREFIX = 'Project created via trigger:';
 
@@ -63,24 +66,29 @@ export async function ensureProjectRuntimeLoaded(
     projectStore.peekActiveChatStore(projectId) &&
     !projectStore.historyLoadIncompleteProjectIds[projectId] &&
     !needsRemoteHistoryHydration;
+  const readHistory = () =>
+    proxyFetchGet(`/api/v1/chat/histories/grouped/${projectId}`, {
+      include_tasks: true,
+    });
+  const scope = executionScope(projectId);
   // Reading history changes nothing, so it runs alongside the route read;
-  // only what follows has to wait for the route.
-  const historyRead = loaded
-    ? null
-    : proxyFetchGet(`/api/v1/chat/histories/grouped/${projectId}`, {
-        include_tasks: true,
-      });
-  historyRead?.catch(() => undefined);
+  // only what follows has to wait for the route. A Session already known to
+  // run elsewhere usually won't use it, so that one waits.
+  const earlyHistoryRead =
+    loaded || getSessionExecutionState(scope).route?.route === 'managed'
+      ? null
+      : readHistory();
+  earlyHistoryRead?.catch(() => undefined);
 
-  const route = await readSessionExecutionRoute(executionScope(projectId));
+  const route = await readSessionExecutionRoute(scope);
   if (route.route === 'managed') {
     options.onHydrationStarted?.();
     return;
   }
-  if (!historyRead) return;
+  if (loaded) return;
 
   try {
-    const historyProject = await historyRead;
+    const historyProject = await (earlyHistoryRead ?? readHistory());
     const tasks = withoutTriggerPlaceholderTasks<{
       id?: string | number | null;
       task_id?: string | null;
