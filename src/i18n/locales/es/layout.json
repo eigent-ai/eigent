@@ -1689,5 +1689,7 @@
   "show-all-sessions-in-space": "Ver las {{count}} sesiones de {{name}}",
   "show-fewer-sessions": "Mostrar menos",
   "show-fewer-sessions-in-space": "Mostrar menos sesiones de {{name}}",
-  "new-session-space": "Espacio de esta sesión"
+  "new-session-space": "Espacio de esta sesión",
+  "spaces-switch-failed": "No se ha podido cambiar de Espacio",
+  "space-emoji-load-failed": "No se han podido cargar los emojis. Comprueba tu conexión."
 }

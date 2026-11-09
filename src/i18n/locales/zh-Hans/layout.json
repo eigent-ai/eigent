@@ -1645,5 +1645,7 @@
   "show-all-sessions-in-space": "显示 {{name}} 的全部 {{count}} 个会话",
   "show-fewer-sessions": "收起",
   "show-fewer-sessions-in-space": "收起 {{name}} 的会话",
-  "new-session-space": "本会话所在空间"
+  "new-session-space": "本会话所在空间",
+  "spaces-switch-failed": "切换 Space 失败",
+  "space-emoji-load-failed": "无法加载表情。请检查网络连接。"
 }

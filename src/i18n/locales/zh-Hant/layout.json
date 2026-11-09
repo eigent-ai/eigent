@@ -1645,5 +1645,7 @@
   "show-all-sessions-in-space": "顯示 {{name}} 的全部 {{count}} 個工作階段",
   "show-fewer-sessions": "收合",
   "show-fewer-sessions-in-space": "收合 {{name}} 的工作階段",
-  "new-session-space": "此工作階段所在空間"
+  "new-session-space": "此工作階段所在空間",
+  "spaces-switch-failed": "切換 Space 失敗",
+  "space-emoji-load-failed": "無法載入表情符號。請檢查網路連線。"
 }
