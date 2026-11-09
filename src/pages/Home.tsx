@@ -41,7 +41,7 @@ import {
   useSpaceStore,
 } from '@/store/spaceStore';
 import { AnimatePresence } from 'framer-motion';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   Navigate,
   useLocation,
@@ -94,6 +94,20 @@ function HomePageContent() {
       navigateHome('?section=spaces');
     }
   }, [navigateHome, routeSpace, spaceId, visibleSpaceId]);
+
+  // A Space deleted while it's on screen leaves nothing to show here. A link
+  // to a Space that was never here keeps its own message, since Spaces may
+  // still be arriving.
+  const shownSpaceId = useRef<string | null>(null);
+  useEffect(() => {
+    if (routeSpace && spaceId) {
+      shownSpaceId.current = spaceId;
+      return;
+    }
+    const deleted = spaceId !== null && shownSpaceId.current === spaceId;
+    shownSpaceId.current = null;
+    if (deleted) navigateHome('?section=spaces');
+  }, [navigateHome, routeSpace, spaceId]);
 
   const handleSpaceTabChange = useCallback(
     (tab: SpaceDetailTab) => {
