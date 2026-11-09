@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useHost, type AppHost } from '@/host';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
 import type { SessionNavLeadKind } from '@/lib/sessionNavLead';
 import {
@@ -20,7 +21,10 @@ import {
   type ProjectRunAttention,
   type RunAttentionState,
 } from '@/service/projectRunsApi';
+import { refreshSessionNavStatuses } from '@/service/sessionNavStatus';
+import { getAuthStore } from '@/store/authStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
@@ -111,6 +115,49 @@ let pollReaders = 0;
 let stopPolling: (() => void) | null = null;
 
 /**
+ * A Session that isn't loaded here gets no live events, so nothing else tells
+ * this window that its work ended. When the Brain stops listing it, read how
+ * it ended. A Session still shown as active that the Brain doesn't list gets
+ * the same read, within the usual freshness window, so the status can't stick.
+ */
+function rereadSettledColdSessions(
+  previous: readonly ProjectRunAttention[],
+  rows: readonly ProjectRunAttention[],
+  signal: AbortSignal
+) {
+  const { navLeadByProjectId, peekActiveChatStore } =
+    useProjectRuntimeStore.getState();
+  const { projectIdIndex } = useSpaceStore.getState();
+  const { openProjectIds } = useSessionWindowsStore.getState();
+  const isCold = (projectId: string) =>
+    Boolean(projectIdIndex[projectId]) &&
+    !peekActiveChatStore(projectId) &&
+    !openProjectIds.includes(projectId);
+  const listed = new Set(rows.map((row) => row.projectId));
+  const dropped = previous
+    .map((row) => row.projectId)
+    .filter((projectId) => !listed.has(projectId) && isCold(projectId));
+  const unconfirmed = Object.entries(navLeadByProjectId)
+    .filter(
+      ([projectId, lead]) =>
+        liveRunAttentionState(lead?.kind) !== null &&
+        !listed.has(projectId) &&
+        !dropped.includes(projectId) &&
+        isCold(projectId)
+    )
+    .map(([projectId]) => projectId);
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  if (dropped.length > 0) {
+    void refreshSessionNavStatuses(dropped, accountKey, isCold, signal);
+  }
+  if (unconfirmed.length > 0) {
+    void refreshSessionNavStatuses(unconfirmed, accountKey, isCold, signal, {
+      skipFresh: true,
+    });
+  }
+}
+
+/**
  * Polls the Brain every 5s while the window is focused, stops while it's
  * hidden or in the background, and keeps the last answer when a read fails.
  * The rail and Home's sidebar both read it, so the first reader starts the
@@ -138,6 +185,7 @@ function startPolling(ipcRenderer: AppHost['ipcRenderer']): () => void {
       if (JSON.stringify(previous) !== JSON.stringify(rows)) {
         useRunAttentionRows.setState({ rows });
       }
+      rereadSettledColdSessions(previous, rows, lifetime.signal);
     } catch {
       // The Brain may be starting or restarting; keep the last answer.
     } finally {
