@@ -54,7 +54,6 @@ export function SessionLoadingScan({
         <motion.div
           key="scan"
           aria-busy
-          aria-label={label}
           className="pointer-events-none absolute inset-0 overflow-hidden"
           data-session-loading-scan
           exit={{ opacity: 0 }}

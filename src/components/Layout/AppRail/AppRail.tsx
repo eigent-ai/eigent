@@ -191,7 +191,7 @@ function AppRail() {
 
       <span
         aria-hidden
-        className="my-ds-2 w-ds-24 shrink-0 border-x-0 border-t-[0.5px] border-b-0 border-solid border-ds-hairline-subtle-default"
+        className="my-ds-2 w-ds-24 shrink-0 border-x-0 border-y-0 border-t-ds-hairline border-solid border-ds-hairline-subtle-default"
       />
 
       {/* Ten pins and the active tile fit at the minimum window height; a
