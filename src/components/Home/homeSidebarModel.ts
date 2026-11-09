@@ -39,10 +39,17 @@ export function orderBySnapshot(
   snapshot: Readonly<Record<string, number>>
 ): string[] {
   const rank = (id: string) => snapshot[id] ?? Number.POSITIVE_INFINITY;
-  return ids
-    .map((id, index) => ({ id, index }))
-    .sort((a, b) => rank(b.id) - rank(a.id) || a.index - b.index)
-    .map(({ id }) => id);
+  return (
+    ids
+      .map((id, index) => ({ id, index }))
+      // Compare instead of subtracting: two new ids are Infinity - Infinity.
+      .sort((a, b) => {
+        const [rankA, rankB] = [rank(a.id), rank(b.id)];
+        if (rankA === rankB) return a.index - b.index;
+        return rankA > rankB ? -1 : 1;
+      })
+      .map(({ id }) => id)
+  );
 }
 
 /**

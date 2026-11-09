@@ -31,6 +31,8 @@ interface HomeVisitState {
   visit: number;
   activity: HomeActivitySnapshot;
   startVisit: () => void;
+  /** Take the snapshot again, keeping the same visit. */
+  recapture: () => void;
 }
 
 function captureActivity(): HomeActivitySnapshot {
@@ -59,6 +61,7 @@ export const useHomeVisitStore = create<HomeVisitState>((set) => ({
   activity: { spaces: {}, sessions: {} },
   startVisit: () =>
     set((state) => ({ visit: state.visit + 1, activity: captureActivity() })),
+  recapture: () => set({ activity: captureActivity() }),
 }));
 
 /** Start a new Home visit whenever Home becomes the selected place. */
@@ -69,5 +72,17 @@ export function useHomeVisitTracking(homeSelected: boolean) {
       useHomeVisitStore.getState().startVisit();
     }
     wasSelected.current = homeSelected;
+    if (!homeSelected) return;
+    // Home may open before the first Spaces arrive. Sort those once too, or
+    // every row would count as new and keep moving for the whole visit.
+    if (Object.keys(useHomeVisitStore.getState().activity.spaces).length > 0) {
+      return;
+    }
+    const unsubscribe = useSpaceStore.subscribe((state) => {
+      if (Object.keys(state.spaces).length === 0) return;
+      unsubscribe();
+      useHomeVisitStore.getState().recapture();
+    });
+    return unsubscribe;
   }, [homeSelected]);
 }
