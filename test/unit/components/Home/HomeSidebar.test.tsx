@@ -735,6 +735,24 @@ describe('HomeSidebar', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
   });
 
+  it('opens New session when the switch shows the Session is gone', async () => {
+    const user = userEvent.setup();
+    mocks.switchToSpace.mockImplementationOnce(async () => {
+      useSpaceStore.setState({ projectIdIndex: {}, projectsBySpaceId: {} });
+      return true;
+    });
+    renderSidebar('/home?section=spaces');
+
+    await user.click(
+      within(sidebar()).getByRole('button', { name: 'Vendor invoices' })
+    );
+
+    await waitFor(() =>
+      expect(usePageTabStore.getState().activeWorkspaceTab).toBe('new-project')
+    );
+    expect(mocks.openSessionInShell).not.toHaveBeenCalled();
+  });
+
   it('opens a Session of the active Space without switching Spaces', async () => {
     const user = userEvent.setup();
     renderSidebar();
