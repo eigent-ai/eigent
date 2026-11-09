@@ -132,7 +132,7 @@ export function useSpaceSwitch() {
       } catch (error) {
         if (replaced()) return false;
         console.error('Failed to switch Space:', error);
-        toast.error(t('layout.spaces-create-failed'), {
+        toast.error(t('layout.spaces-switch-failed'), {
           closeButton: true,
         });
         return false;
