@@ -138,6 +138,25 @@ describe('spaceStore pinned Spaces', () => {
     expect(pinned()).toEqual(['a', 'b']);
   });
 
+  it("keeps a missing Space's pin through pinning, moving and choosing", () => {
+    useSpaceStore.getState().setPinnedSpaces(['a', 'b', 'c']);
+    const allSpaces = useSpaceStore.getState().spaces;
+    const { b: _removed, ...rest } = allSpaces;
+    useSpaceStore.setState({ spaces: rest });
+
+    useSpaceStore.getState().pinSpace('d');
+    expect(pinned()).toEqual(['a', 'b', 'c', 'd']);
+
+    useSpaceStore.getState().moveSpacePin('d', 0);
+    expect(pinned()).toEqual(['d', 'b', 'a', 'c']);
+
+    useSpaceStore.getState().setPinnedSpaces(['c']);
+    expect(pinned()).toEqual(['c', 'b']);
+
+    useSpaceStore.setState({ spaces: allSpaces });
+    expect(getCurrentPinnedSpaceIds()).toEqual(['c', 'b']);
+  });
+
   it('keeps each account its own pins', () => {
     useSpaceStore.getState().pinSpace('a');
     authStoreMock.state = { user_id: 7, email: 'other@example.com' };
