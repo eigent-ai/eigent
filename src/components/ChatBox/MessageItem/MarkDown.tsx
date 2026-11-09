@@ -24,6 +24,11 @@ import DOMPurify from 'dompurify';
 import { Marked, Renderer, type Tokens } from 'marked';
 import { memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  readRenderedMarkdown,
+  renderedMarkdownKey,
+  saveRenderedMarkdown,
+} from './renderedMarkdownCache';
 
 // Helper functions for path resolution
 function joinPath(...paths: string[]): string {
@@ -162,39 +167,6 @@ function createMarkdownParser(
     },
   });
   return parser;
-}
-
-const RENDERED_MARKDOWN_LIMIT = 500;
-const RENDERED_MARKDOWN_MAX_LENGTH = 100_000;
-/** Finished messages, so reopening a Session doesn't parse them all again. */
-const renderedMarkdown = new Map<string, string>();
-
-function renderedMarkdownKey(
-  content: string,
-  profile: MarkdownProfile,
-  labels: Record<string, string>,
-  contentBasePath?: string | null
-): string {
-  return JSON.stringify([profile, labels, contentBasePath ?? '', content]);
-}
-
-function readRenderedMarkdown(key: string): string | undefined {
-  const rendered = renderedMarkdown.get(key);
-  if (rendered !== undefined) {
-    // Most recently read goes last, so the oldest is first to leave.
-    renderedMarkdown.delete(key);
-    renderedMarkdown.set(key, rendered);
-  }
-  return rendered;
-}
-
-function saveRenderedMarkdown(key: string, html: string) {
-  if (key.length > RENDERED_MARKDOWN_MAX_LENGTH) return;
-  renderedMarkdown.set(key, html);
-  if (renderedMarkdown.size > RENDERED_MARKDOWN_LIMIT) {
-    const oldest = renderedMarkdown.keys().next().value;
-    if (oldest !== undefined) renderedMarkdown.delete(oldest);
-  }
 }
 
 export const MarkDown = memo(
