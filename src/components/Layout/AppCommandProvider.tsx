@@ -237,7 +237,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
             }
             setShellPlace('home');
             requestWorkspaceChatFocus();
-            navigate('/');
+            if (location.pathname !== '/') navigate('/');
           });
           return;
         case APP_COMMAND.navigateWorkspace:
