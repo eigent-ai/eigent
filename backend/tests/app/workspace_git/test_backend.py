@@ -131,3 +131,57 @@ def test_commit_paths_lists_non_ascii_filenames_unquoted(
     commit = backend.commit_paths(root, (target,), message="baseline")
 
     assert backend.show_commit_paths(root, commit) == ("отчёт.md",)
+
+
+def test_ignored_paths_sends_non_ascii_names_as_utf8(
+    tmp_path: Path, monkeypatch
+):
+    # cp1251 cannot encode 报告, and encodes Алексей to bytes Git does not
+    # read as the same name. Paths on Git's stdin must always be UTF-8.
+    monkeypatch.setattr(subprocess, "_text_encoding", lambda: "cp1251")
+    backend = GitBackend()
+    backend.init_repository(tmp_path)
+    (tmp_path / ".gitignore").write_text(
+        "Алексей.log\n报告.tmp\n", encoding="utf-8"
+    )
+
+    assert backend.ignored_paths(
+        tmp_path, ("Алексей.log", "报告.tmp", "отчёт.md")
+    ) == {"Алексей.log", "报告.tmp"}
+
+
+def test_tree_names_that_are_not_utf8_round_trip(tmp_path: Path):
+    # A Linux file name may hold bytes that are not UTF-8. Reading it from
+    # Git and writing it back must keep the same name, not U+FFFD.
+    backend = GitBackend()
+    backend.init_repository(tmp_path)
+    blob = subprocess.run(
+        [
+            backend.git_executable,
+            "-C",
+            str(tmp_path),
+            "hash-object",
+            "-w",
+            "--stdin",
+        ],
+        input=b"content\n",
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    tree = (
+        subprocess.run(
+            [backend.git_executable, "-C", str(tmp_path), "mktree", "-z"],
+            input=b"100644 blob " + blob + b"\tcaf\xe9.md\0",
+            capture_output=True,
+            check=True,
+        )
+        .stdout.strip()
+        .decode("ascii")
+    )
+
+    listing = backend._run(tmp_path, ("ls-tree", "-z", tree)).stdout
+    rebuilt = backend._run(
+        tmp_path, ("mktree", "-z"), input_text=listing
+    ).stdout.strip()
+
+    assert rebuilt == tree
