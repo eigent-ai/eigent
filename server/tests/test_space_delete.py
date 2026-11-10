@@ -217,6 +217,34 @@ def test_deleting_a_space_keeps_other_spaces_rows(fixture):
         assert len(_ids(engine, model)) == 1
 
 
+def test_space_with_a_deleted_promoted_session_can_be_deleted(fixture):
+    client, engine = fixture
+    # The Session started in space-b and was promoted into space-a, so its
+    # memory and pending changes still carry space-b.
+    _add_session(engine, "project-promoted", status="archived", space_id="space-b")
+    with Session(engine) as db:
+        db.add(ProjectMemory(user_id="7", space_id="space-b", project_id="project-promoted", key="note"))
+        db.add(
+            SpaceFileIndexOverlay(
+                space_id="space-b",
+                project_id="project-promoted",
+                run_id="run-1",
+                path="notes.md",
+                status="added",
+            )
+        )
+        db.get(Project, "project-promoted").space_id = "space-a"
+        db.commit()
+
+    response = client.delete("/spaces/space-a")
+
+    assert response.status_code == 204, response.text
+    assert _ids(engine, Space) == ["space-b"]
+    assert _ids(engine, Project) == ["project-b"]
+    assert _ids(engine, ProjectMemory) == []
+    assert _ids(engine, SpaceFileIndexOverlay) == []
+
+
 def test_unknown_space_is_not_found(fixture):
     client, _engine = fixture
     assert client.delete("/spaces/space-missing").status_code == 404

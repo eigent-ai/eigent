@@ -369,12 +369,22 @@ class SpaceService:
         # before the Space itself, so foreign keys never block the delete.
         if project_ids:
             s.execute(delete(ProjectExecutionRoute).where(ProjectExecutionRoute.project_id.in_(project_ids)))
-        s.execute(delete(SpaceFileIndexOverlay).where(SpaceFileIndexOverlay.space_id == space_id))
-        s.execute(delete(ProjectMemory).where(ProjectMemory.space_id == space_id))
+        # A promoted Project keeps rows under the Space it came from, so match
+        # on both columns.
+        s.execute(
+            delete(SpaceFileIndexOverlay).where(
+                or_(SpaceFileIndexOverlay.space_id == space_id, SpaceFileIndexOverlay.project_id.in_(project_ids))
+            )
+        )
+        s.execute(
+            delete(ProjectMemory).where(
+                or_(ProjectMemory.space_id == space_id, ProjectMemory.project_id.in_(project_ids))
+            )
+        )
         s.execute(delete(SpaceMemory).where(SpaceMemory.space_id == space_id))
         s.execute(delete(SpaceFileIndex).where(SpaceFileIndex.space_id == space_id))
         if project_ids:
-            s.execute(delete(Project).where(Project.id.in_(project_ids)))
+            s.execute(delete(Project).where(Project.user_id == canonical_user_id, Project.id.in_(project_ids)))
         s.delete(space)
         s.commit()
 
