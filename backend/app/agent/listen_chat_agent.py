@@ -83,7 +83,10 @@ from app.service.task import (
     ActionRequestUsageData,
     set_process_task,
 )
-from app.tool_validation import prewrite_validation_result
+from app.tool_validation import (
+    check_tool_arguments,
+    prewrite_validation_result,
+)
 from app.utils.event_loop_utils import _schedule_async_task
 
 # Logger for agent tracking
@@ -1064,7 +1067,10 @@ class ListenChatAgent(ChatAgent):
             return asyncio.run(self._aexecute_tool(tool_call_request))
 
         # Handle all sync tools ourselves to maintain ContextVar context
-        args = tool_call_request.args
+        argument_check = check_tool_arguments(
+            tool, func_name, tool_call_request.args
+        )
+        args = argument_check.arguments
         tool_call_id = tool_call_request.tool_call_id
 
         # Check if tool is wrapped by @listen_toolkit decorator
@@ -1103,6 +1109,10 @@ class ListenChatAgent(ChatAgent):
                 agent_name=self.agent_name,
                 task_id=self.process_task_id,
             )
+            if argument_check.rejection is not None:
+                # Arguments that cannot bind are rejected before approval
+                # or dispatch, so the model gets a named, retryable failure.
+                raise argument_check.rejection
             asyncio.run(
                 authorize_tool_checkpoint(
                     checkpoint,
@@ -1284,7 +1294,10 @@ class ListenChatAgent(ChatAgent):
         tool: FunctionTool = self._internal_tools[func_name]
 
         # Always handle tool execution ourselves to maintain ContextVar context
-        args = tool_call_request.args
+        argument_check = check_tool_arguments(
+            tool, func_name, tool_call_request.args
+        )
+        args = argument_check.arguments
         tool_call_id = tool_call_request.tool_call_id
         task_lock = get_task_lock(self.api_task_id)
 
@@ -1375,6 +1388,10 @@ class ListenChatAgent(ChatAgent):
         execution_error: Exception | None = None
         dispatched = False
         try:
+            if argument_check.rejection is not None:
+                # Arguments that cannot bind are rejected before approval
+                # or dispatch, so the model gets a named, retryable failure.
+                raise argument_check.rejection
             await authorize_tool_checkpoint(
                 checkpoint,
                 arguments=args,
