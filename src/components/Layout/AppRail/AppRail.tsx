@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHomeVisitTracking } from '@/components/Home/homeVisit';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import { APP_SHELL_RAIL_WIDTH_PX } from '@/components/Layout/AppShellLayout';
 import {
@@ -26,7 +27,8 @@ import { useOpenSpaceHomeTab, useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
 import { isHomePagePath, isSettingsPagePath } from '@/lib/shellRoutes';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
-import { APP_COMMAND } from '@/shared/appCommands';
+import { APP_COMMAND, PINNED_SPACE_COMMANDS } from '@/shared/appCommands';
+import { usePageTabStore, type ShellPlace } from '@/store/pageTabStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -59,8 +61,12 @@ export function shouldShowAppRail(
 
 export type AppRailPlace = 'home' | 'space' | 'settings';
 
-export function getAppRailPlace(pathname: string): AppRailPlace | null {
-  if (pathname === '/') return 'space';
+/** `/` is Home or the Space view, whichever place the shell last showed. */
+export function getAppRailPlace(
+  pathname: string,
+  shellPlace: ShellPlace = 'space'
+): AppRailPlace | null {
+  if (pathname === '/') return shellPlace;
   if (isHomePagePath(pathname)) return 'home';
   if (isSettingsPagePath(pathname)) return 'settings';
   return null;
@@ -68,7 +74,7 @@ export function getAppRailPlace(pathname: string): AppRailPlace | null {
 
 /**
  * The window's places, under the top bar and left of every page: Home, up to
- * five pinned Spaces, the active Space when it isn't pinned, the pin chooser,
+ * ten pinned Spaces, the active Space when it isn't pinned, the pin chooser,
  * Settings, and the account menu. It sits on the same chrome surface as the
  * top bar and stays when the page sidebar folds.
  */
@@ -86,7 +92,9 @@ export default function AppRail() {
   const moveSpacePin = useSpaceStore((state) => state.moveSpacePin);
   const [renameSpaceId, setRenameSpaceId] = useState<string | null>(null);
   const reduceMotion = useReducedMotion();
-  const place = getAppRailPlace(location.pathname);
+  const shellPlace = usePageTabStore((state) => state.shellPlace);
+  const place = getAppRailPlace(location.pathname, shellPlace);
+  useHomeVisitTracking(place === 'home');
 
   const openHome = useCallback(() => {
     executeAppCommand(APP_COMMAND.navigateHome);
@@ -122,7 +130,9 @@ export default function AppRail() {
           selected={place === 'space' && spaceId === activeSpaceId}
           attention={attention[spaceId]}
           shortcutId={
-            pinned ? `navigate-pinned-space-${pinIndex + 1}` : undefined
+            pinned && pinIndex < PINNED_SPACE_COMMANDS.length
+              ? PINNED_SPACE_COMMANDS[pinIndex]
+              : undefined
           }
           onClick={() => openSpaceView(spaceId)}
           menu={
@@ -159,29 +169,40 @@ export default function AppRail() {
         spaceId={renameSpaceId}
         onClose={() => setRenameSpaceId(null)}
       />
-      <AppRailButton
-        label={homeLabel}
-        tooltip={
-          <ShortcutTooltipContent
-            label={homeLabel}
-            shortcutId="navigate-home"
-          />
-        }
-        selected={place === 'home'}
-        onClick={openHome}
-      >
-        <DsIcon icon={House} aria-hidden />
-      </AppRailButton>
+      {/* The sidebar's first row sits below the shell's top inset (`py-ds-4`),
+          so Home starts there too and lines up with it. */}
+      <div className="w-full shrink-0 pt-ds-4">
+        <AppRailButton
+          label={homeLabel}
+          tooltip={
+            <ShortcutTooltipContent
+              label={homeLabel}
+              shortcutId="navigate-home"
+            />
+          }
+          selected={place === 'home'}
+          onClick={openHome}
+        >
+          <DsIcon icon={House} aria-hidden />
+        </AppRailButton>
+      </div>
 
       <span
         aria-hidden
         className="my-ds-2 w-ds-24 shrink-0 border-x-0 border-t-[0.5px] border-b-0 border-solid border-ds-hairline-subtle-default"
       />
 
-      <AnimatePresence initial={false}>
-        {pinnedIds.map((spaceId, index) => renderTile(spaceId, index))}
-        {showActiveTile ? renderTile(activeSpace.id, -1) : null}
-      </AnimatePresence>
+      {/* Ten pins and the active tile fit at the minimum window height; a
+          shorter window or a large zoom scrolls the tiles instead. */}
+      <div
+        data-app-rail-spaces
+        className="scrollbar-hide flex min-h-0 w-full flex-col items-center gap-ds-4 overflow-x-hidden overflow-y-auto"
+      >
+        <AnimatePresence initial={false}>
+          {pinnedIds.map((spaceId, index) => renderTile(spaceId, index))}
+          {showActiveTile ? renderTile(activeSpace.id, -1) : null}
+        </AnimatePresence>
+      </div>
       <PinnedSpacesChooser />
 
       <div className="min-h-0 flex-1" />

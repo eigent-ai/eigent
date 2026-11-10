@@ -16,30 +16,21 @@ import HomeHubRoot, {
   HomeGreeting,
   HomeHeader,
   HomeSections,
-  HomeSidebarNavGroup,
 } from '@/components/Home';
+import HomeSidebar from '@/components/Home/HomeSidebar';
 import SpaceDetail, {
   isSpaceDetailTab,
   type SpaceDetailTab,
 } from '@/components/Home/SpaceDetail';
-import SpaceDetailSidebar from '@/components/Home/SpaceDetailSidebar';
 import AppShellLayout from '@/components/Layout/AppShellLayout';
-import {
-  SidebarScrollArea,
-  SidebarSection,
-  SidebarShell,
-} from '@/components/Layout/AppSidebar';
 import { ContentHeaderFrame } from '@/components/Layout/ContentHeader';
 import {
   AnimatedContentPane,
-  AnimatedSidebarPane,
   useShellPaneMotion,
 } from '@/components/Layout/ShellPaneTransition';
 import {
   isLegacyHomeSettingsSearch,
   settingsPageSearch,
-  shellDetailBackTarget,
-  withoutShellDetailBackState,
 } from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { LegacyRouteWorkflowDialog } from '@/routers/LegacyRouteCompatibility';
@@ -50,7 +41,6 @@ import {
 } from '@/store/spaceStore';
 import { AnimatePresence } from 'framer-motion';
 import { useCallback, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   Navigate,
   useLocation,
@@ -58,28 +48,7 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 
-function HomeSidebar({ onShowSpaces }: { onShowSpaces: () => void }) {
-  const { t } = useTranslation();
-
-  return (
-    <SidebarShell ariaLabel={t('layout.home', { defaultValue: 'Home' })}>
-      <SidebarSection grow="fill">
-        <SidebarScrollArea
-          role="navigation"
-          ariaLabel={t('layout.home', { defaultValue: 'Home' })}
-          className="gap-4 pt-1"
-        >
-          <HomeSidebarNavGroup
-            activeSection="spaces"
-            onSectionChange={onShowSpaces}
-          />
-        </SidebarScrollArea>
-      </SidebarSection>
-    </SidebarShell>
-  );
-}
-
-/** Home: every Space, and one Space's details at `?spaceId=`. */
+/** Home: every Space, and one Space's Workspace page at `?spaceId=`. */
 function HomePageContent() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -119,38 +88,11 @@ function HomePageContent() {
     });
   }, [navigateHome]);
 
-  const handleSpaceDetailBack = useCallback(() => {
-    void runAfterWorkspaceConfigurationSave(() => {
-      const routeState = location.state as Record<string, unknown> | null;
-      const target = shellDetailBackTarget(routeState);
-      const currentRoute = `${location.pathname}${location.search}`;
-      if (target && target !== currentRoute) {
-        navigate(-1);
-        return;
-      }
-      navigate(
-        { pathname: '/home', search: '?section=spaces' },
-        { replace: true, state: withoutShellDetailBackState(routeState) }
-      );
-    });
-  }, [location.pathname, location.search, location.state, navigate]);
-
   useEffect(() => {
     if (spaceId && !visibleSpaceId && routeSpace) {
       navigateHome('?section=spaces');
     }
   }, [navigateHome, routeSpace, spaceId, visibleSpaceId]);
-
-  const handleSelectSpace = useCallback(
-    (nextSpaceId: string) => {
-      void runAfterWorkspaceConfigurationSave(() => {
-        navigateHome(
-          `?section=spaces&spaceId=${encodeURIComponent(nextSpaceId)}&spaceTab=${activeSpaceTab}`
-        );
-      });
-    },
-    [activeSpaceTab, navigateHome]
-  );
 
   const handleSpaceTabChange = useCallback(
     (tab: SpaceDetailTab) => {
@@ -165,31 +107,6 @@ function HomePageContent() {
   );
 
   const pane = visibleSpaceId ? 'detail' : 'home';
-  const sidebar = (
-    <div className="relative h-full min-h-0 w-full overflow-hidden">
-      <AnimatePresence
-        initial={false}
-        mode="sync"
-        custom={navigationMotionContext}
-      >
-        <AnimatedSidebarPane
-          key={pane}
-          pane={pane}
-          motionContext={navigationMotionContext}
-        >
-          {visibleSpaceId ? (
-            <SpaceDetailSidebar
-              selectedSpaceId={visibleSpaceId}
-              onBack={handleSpaceDetailBack}
-              onSelectSpace={handleSelectSpace}
-            />
-          ) : (
-            <HomeSidebar onShowSpaces={showSpaces} />
-          )}
-        </AnimatedSidebarPane>
-      </AnimatePresence>
-    </div>
-  );
 
   const content = visibleSpaceId ? (
     <SpaceDetail
@@ -211,7 +128,7 @@ function HomePageContent() {
   );
 
   return (
-    <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
+    <AppShellLayout sidebar={<HomeSidebar />} sidebarHidden={sidebarHidden}>
       <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
         <ContentHeaderFrame>
           <div className="relative min-h-0 flex-1">

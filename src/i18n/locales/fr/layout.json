@@ -652,7 +652,11 @@
     "navigate-pinned-space-2": "Aller à l’Espace épinglé 2",
     "navigate-pinned-space-3": "Aller à l’Espace épinglé 3",
     "navigate-pinned-space-4": "Aller à l’Espace épinglé 4",
-    "navigate-pinned-space-5": "Aller à l’Espace épinglé 5"
+    "navigate-pinned-space-5": "Aller à l’Espace épinglé 5",
+    "navigate-pinned-space-6": "Aller à l’Espace épinglé 6",
+    "navigate-pinned-space-7": "Aller à l’Espace épinglé 7",
+    "navigate-pinned-space-8": "Aller à l’Espace épinglé 8",
+    "navigate-pinned-space-9": "Aller à l’Espace épinglé 9"
   },
   "nativeMenu": {
     "file": "Fichier",
@@ -1655,5 +1659,16 @@
   "pinned-space-moved": "{{name}} déplacé en position {{position}} sur {{count}}",
   "other-spaces": "Autres Espaces",
   "space-status-waiting": "{{count}} en attente de votre réponse",
-  "space-status-running": "{{count}} en cours"
+  "space-status-running": "{{count}} en cours",
+  "all-spaces": "Tous les Espaces",
+  "needs-you": "Vous attend",
+  "fold-space": "Replier {{name}}",
+  "unfold-space": "Déplier {{name}}",
+  "show-all-sessions": "Tout afficher ({{count}})",
+  "show-all-sessions-in-space": "Afficher les {{count}} sessions de {{name}}",
+  "open-in-space-view": "Ouvrir dans la vue de l’Espace",
+  "new-session-in-space": "dans {{name}}",
+  "new-session-space": "Espace de cette session",
+  "new-session-start-in": "Commencer dans",
+  "home-new-session-description": "Demandez à Eigent d’automatiser vos tâches"
 }

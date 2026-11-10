@@ -652,7 +652,11 @@
     "navigate-pinned-space-2": "Go to pinned Space 2",
     "navigate-pinned-space-3": "Go to pinned Space 3",
     "navigate-pinned-space-4": "Go to pinned Space 4",
-    "navigate-pinned-space-5": "Go to pinned Space 5"
+    "navigate-pinned-space-5": "Go to pinned Space 5",
+    "navigate-pinned-space-6": "Go to pinned Space 6",
+    "navigate-pinned-space-7": "Go to pinned Space 7",
+    "navigate-pinned-space-8": "Go to pinned Space 8",
+    "navigate-pinned-space-9": "Go to pinned Space 9"
   },
   "nativeMenu": {
     "file": "File",
@@ -1633,5 +1637,16 @@
   "pinned-space-moved": "{{name}} moved to position {{position}} of {{count}}",
   "other-spaces": "Other Spaces",
   "space-status-waiting": "{{count}} waiting for your reply",
-  "space-status-running": "{{count}} running"
+  "space-status-running": "{{count}} running",
+  "all-spaces": "All Spaces",
+  "needs-you": "Needs you",
+  "fold-space": "Fold {{name}}",
+  "unfold-space": "Unfold {{name}}",
+  "show-all-sessions": "Show all {{count}}",
+  "show-all-sessions-in-space": "Show all {{count}} sessions in {{name}}",
+  "open-in-space-view": "Open in Space view",
+  "new-session-in-space": "in {{name}}",
+  "new-session-space": "Space for this session",
+  "new-session-start-in": "Start in",
+  "home-new-session-description": "Ask Eigent to automate your tasks"
 }

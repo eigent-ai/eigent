@@ -19,7 +19,7 @@ import { useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { useHost, type AppShellElectronAPI } from '@/host';
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { getSessionWindowRole } from '@/lib/sessionWindows';
-import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
+import { isHomePagePath, shellBackState } from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import {
   APP_COMMAND,
@@ -28,7 +28,11 @@ import {
 } from '@/shared/appCommands';
 import { normalizeNativeMenuLocale } from '@/shared/nativeMenu';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
-import { WorkspaceTab, usePageTabStore } from '@/store/pageTabStore';
+import {
+  isHomePlaceTab,
+  usePageTabStore,
+  WorkspaceTab,
+} from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings, useSettingsStore } from '@/store/settingsStore';
 import { getCurrentPinnedSpaceIds, useSpaceStore } from '@/store/spaceStore';
@@ -72,6 +76,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const requestWorkspaceChatFocus = usePageTabStore(
     (state) => state.requestWorkspaceChatFocus
   );
+  const setShellPlace = usePageTabStore((state) => state.setShellPlace);
   const activeWorkspaceTab = usePageTabStore(
     (state) => state.activeWorkspaceTab
   );
@@ -176,6 +181,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         case APP_COMMAND.newProject:
           void runAfterWorkspaceConfigurationSave(() => {
             closeSettings();
+            // From a Home page, New session opens in Home; elsewhere it stays
+            // in the place `/` showed last.
+            if (isHomePagePath(location.pathname)) setShellPlace('home');
             setActiveProject(null);
             setActiveWorkspaceTab(WorkspaceTab.NewProject);
             requestWorkspaceChatFocus();
@@ -217,14 +225,19 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           if (isSessionLayoutTab) requestToggleSessionSidePanel();
           return;
         case APP_COMMAND.navigateHome:
+          // Home keeps an open Session or New session; any Space view tab
+          // gives way to New session.
           void runAfterWorkspaceConfigurationSave(() => {
-            setActiveProject(null);
             closeSettings();
-            navigate('/home?section=spaces', {
-              state: isSettingsRoutePath(location.pathname)
-                ? location.state
-                : shellBackState(`${location.pathname}${location.search}`),
-            });
+            if (
+              !isHomePlaceTab(usePageTabStore.getState().activeWorkspaceTab)
+            ) {
+              setActiveProject(null);
+              setActiveWorkspaceTab(WorkspaceTab.NewProject);
+            }
+            setShellPlace('home');
+            requestWorkspaceChatFocus();
+            navigate('/');
           });
           return;
         case APP_COMMAND.navigateWorkspace:
@@ -236,6 +249,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
                 ? WorkspaceTab.SpaceWorkspace
                 : WorkspaceTab.Workforce
             );
+            setShellPlace('space');
             navigate('/');
           });
           return;
@@ -294,7 +308,6 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       isWorkspacePage,
       location.pathname,
       location.search,
-      location.state,
       navigate,
       openFilesTab,
       openPreviewTab,
@@ -304,6 +317,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       setActiveProject,
       setChatTimelineDetailLevel,
       setActiveWorkspaceTab,
+      setShellPlace,
       toggleSessionPreview,
       toggleWorkspaceSidebar,
     ]

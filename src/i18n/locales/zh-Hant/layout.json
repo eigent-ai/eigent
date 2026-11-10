@@ -652,7 +652,11 @@
     "navigate-pinned-space-2": "前往釘選的空間 2",
     "navigate-pinned-space-3": "前往釘選的空間 3",
     "navigate-pinned-space-4": "前往釘選的空間 4",
-    "navigate-pinned-space-5": "前往釘選的空間 5"
+    "navigate-pinned-space-5": "前往釘選的空間 5",
+    "navigate-pinned-space-6": "前往釘選的空間 6",
+    "navigate-pinned-space-7": "前往釘選的空間 7",
+    "navigate-pinned-space-8": "前往釘選的空間 8",
+    "navigate-pinned-space-9": "前往釘選的空間 9"
   },
   "nativeMenu": {
     "file": "檔案",
@@ -1611,5 +1615,16 @@
   "pinned-space-moved": "已將 {{name}} 移到第 {{position}} 個，共 {{count}} 個",
   "other-spaces": "其他空間",
   "space-status-waiting": "{{count}} 個等待你的回覆",
-  "space-status-running": "{{count}} 個正在執行"
+  "space-status-running": "{{count}} 個正在執行",
+  "all-spaces": "全部空間",
+  "needs-you": "等你回覆",
+  "fold-space": "收合 {{name}}",
+  "unfold-space": "展開 {{name}}",
+  "show-all-sessions": "顯示全部 {{count}} 個",
+  "show-all-sessions-in-space": "顯示 {{name}} 的全部 {{count}} 個工作階段",
+  "open-in-space-view": "在空間檢視中開啟",
+  "new-session-in-space": "在 {{name}}",
+  "new-session-space": "此工作階段所在空間",
+  "new-session-start-in": "開始於",
+  "home-new-session-description": "讓 Eigent 幫你自動完成任務"
 }

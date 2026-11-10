@@ -652,7 +652,11 @@
     "navigate-pinned-space-2": "Ir al Espacio fijado 2",
     "navigate-pinned-space-3": "Ir al Espacio fijado 3",
     "navigate-pinned-space-4": "Ir al Espacio fijado 4",
-    "navigate-pinned-space-5": "Ir al Espacio fijado 5"
+    "navigate-pinned-space-5": "Ir al Espacio fijado 5",
+    "navigate-pinned-space-6": "Ir al Espacio fijado 6",
+    "navigate-pinned-space-7": "Ir al Espacio fijado 7",
+    "navigate-pinned-space-8": "Ir al Espacio fijado 8",
+    "navigate-pinned-space-9": "Ir al Espacio fijado 9"
   },
   "nativeMenu": {
     "file": "Archivo",
@@ -1655,5 +1659,16 @@
   "pinned-space-moved": "{{name}} se movió a la posición {{position}} de {{count}}",
   "other-spaces": "Otros Espacios",
   "space-status-waiting": "{{count}} esperando tu respuesta",
-  "space-status-running": "{{count}} en ejecución"
+  "space-status-running": "{{count}} en ejecución",
+  "all-spaces": "Todos los Espacios",
+  "needs-you": "Te necesita",
+  "fold-space": "Contraer {{name}}",
+  "unfold-space": "Expandir {{name}}",
+  "show-all-sessions": "Ver las {{count}}",
+  "show-all-sessions-in-space": "Ver las {{count}} sesiones de {{name}}",
+  "open-in-space-view": "Abrir en la vista del Espacio",
+  "new-session-in-space": "en {{name}}",
+  "new-session-space": "Espacio de esta sesión",
+  "new-session-start-in": "Empezar en",
+  "home-new-session-description": "Pide a Eigent que automatice tus tareas"
 }

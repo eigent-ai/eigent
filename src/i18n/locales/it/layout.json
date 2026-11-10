@@ -652,7 +652,11 @@
     "navigate-pinned-space-2": "Vai allo Spazio fissato 2",
     "navigate-pinned-space-3": "Vai allo Spazio fissato 3",
     "navigate-pinned-space-4": "Vai allo Spazio fissato 4",
-    "navigate-pinned-space-5": "Vai allo Spazio fissato 5"
+    "navigate-pinned-space-5": "Vai allo Spazio fissato 5",
+    "navigate-pinned-space-6": "Vai allo Spazio fissato 6",
+    "navigate-pinned-space-7": "Vai allo Spazio fissato 7",
+    "navigate-pinned-space-8": "Vai allo Spazio fissato 8",
+    "navigate-pinned-space-9": "Vai allo Spazio fissato 9"
   },
   "nativeMenu": {
     "file": "File",
@@ -1655,5 +1659,16 @@
   "pinned-space-moved": "{{name}} spostato in posizione {{position}} di {{count}}",
   "other-spaces": "Altri Spazi",
   "space-status-waiting": "{{count}} in attesa della tua risposta",
-  "space-status-running": "{{count}} in esecuzione"
+  "space-status-running": "{{count}} in esecuzione",
+  "all-spaces": "Tutti gli Spazi",
+  "needs-you": "Ti aspetta",
+  "fold-space": "Comprimi {{name}}",
+  "unfold-space": "Espandi {{name}}",
+  "show-all-sessions": "Mostra tutte ({{count}})",
+  "show-all-sessions-in-space": "Mostra tutte le {{count}} sessioni in {{name}}",
+  "open-in-space-view": "Apri nella vista dello Spazio",
+  "new-session-in-space": "in {{name}}",
+  "new-session-space": "Spazio per questa sessione",
+  "new-session-start-in": "Inizia in",
+  "home-new-session-description": "Chiedi a Eigent di automatizzare le tue attività"
 }
