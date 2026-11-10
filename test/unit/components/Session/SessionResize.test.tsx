@@ -107,11 +107,9 @@ vi.mock('@/components/Session/HeaderBox', () => ({
     totalTokens,
     projectName,
     summary,
-    showBack = true,
   }: {
     totalTokens?: number;
     projectName?: string | null;
-    showBack?: boolean;
     summary?: {
       open: boolean;
       onToggle: () => void;
@@ -123,7 +121,6 @@ vi.mock('@/components/Session/HeaderBox', () => ({
       data-testid="session-header"
       data-total-tokens={totalTokens ?? 'unset'}
       data-project-name={projectName ?? 'unset'}
-      data-show-back={showBack}
     >
       <button
         aria-label="Summary"
@@ -499,10 +496,6 @@ describe('Session preview resize', () => {
       'data-total-tokens',
       '0'
     );
-    expect(screen.getByTestId('session-header')).toHaveAttribute(
-      'data-show-back',
-      'false'
-    );
     expect(screen.getByTestId('workspace')).toBeInTheDocument();
     expect(screen.queryByTestId('chat-box')).not.toBeInTheDocument();
     expect(screen.getByTestId('preview-panel')).toBeInTheDocument();
@@ -540,10 +533,6 @@ describe('Session preview resize', () => {
 
   it('starts with Summary closed and leaves no folded rail', () => {
     render(<Session />);
-    expect(screen.getByTestId('session-header')).toHaveAttribute(
-      'data-show-back',
-      'true'
-    );
     expect(
       screen.queryByTestId('session-side-panel-content')
     ).not.toBeInTheDocument();

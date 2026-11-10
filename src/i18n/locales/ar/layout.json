@@ -115,7 +115,6 @@
   "chat-history-title": "سجل الدردشة",
   "chat-history-tooltip": "سجل الدردشة",
   "back-to-workspace-tooltip": "العودة إلى مساحة العمل",
-  "back-tooltip": "رجوع",
   "open-preview-tooltip": "فتح المعاينة",
   "close-preview-tooltip": "إغلاق المعاينة",
   "task-list-add-hint": "فتح مساحة العمل والتركيز على الدردشة",
@@ -504,7 +503,6 @@
   "files-tab-remote": "بعيد",
   "scheduled-tab": "الأتمتة",
   "dispatch-tab": "الإرسال",
-  "configuration-tab": "التكوين",
   "workspace-work-with-remote-control": "التحكم عن بُعد",
   "dispatch-copy-link": "نسخ الرابط",
   "dispatch-link-copied": "تم نسخ الرابط",
@@ -1738,6 +1736,5 @@
   "unfold-space": "توسيع {{name}}",
   "show-all-sessions": "عرض الكل ({{count}})",
   "show-all-sessions-in-space": "عرض كل الجلسات ({{count}}) في {{name}}",
-  "new-session-space": "مساحة هذه الجلسة",
-  "home-new-session-description": "اطلب من Eigent أتمتة مهامك"
+  "new-session-space": "مساحة هذه الجلسة"
 }

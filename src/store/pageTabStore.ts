@@ -557,6 +557,11 @@ export interface PageTabState {
    */
   shellPlace: ShellPlace;
   setShellPlace: (place: ShellPlace) => void;
+  /** The tab the Space view's Workspace page shows. */
+  spaceWorkspaceTab: string;
+  setSpaceWorkspaceTab: (tab: string) => void;
+  /** Open the Space view's Workspace page on one of its tabs. */
+  openSpaceWorkspaceTab: (tab: string) => void;
   /** Spaces folded in the Home sidebar. Persisted. */
   homeFoldedSpaceIds: string[];
   setHomeSpaceFolded: (spaceId: string, folded: boolean) => void;
@@ -909,6 +914,12 @@ export const usePageTabStore = create<PageTabState>()(
         }),
       shellPlace: 'space',
       setShellPlace: (place) => set({ shellPlace: normalizeShellPlace(place) }),
+      spaceWorkspaceTab: 'projects',
+      setSpaceWorkspaceTab: (tab) => set({ spaceWorkspaceTab: tab }),
+      openSpaceWorkspaceTab: (tab) => {
+        set({ spaceWorkspaceTab: tab });
+        get().setActiveWorkspaceTab(WorkspaceTab.SpaceWorkspace);
+      },
       homeSpaceSort: 'updated',
       setHomeSpaceSort: (sort) =>
         set({ homeSpaceSort: normalizeHomeSpaceSort(sort) }),

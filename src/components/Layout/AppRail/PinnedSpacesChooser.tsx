@@ -30,7 +30,7 @@ import {
   type Space,
 } from '@/store/spaceStore';
 import { Reorder, useDragControls, useReducedMotion } from 'framer-motion';
-import { GripVertical, SlidersHorizontal } from 'lucide-react';
+import { GripVertical, MoreHorizontal } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -261,7 +261,7 @@ export function PinnedSpacesChooser() {
                 open && APP_RAIL_CONTROL_SELECTED_CLASS
               )}
             >
-              <DsIcon icon={SlidersHorizontal} aria-hidden />
+              <DsIcon icon={MoreHorizontal} aria-hidden />
             </Button>
           </PopoverTrigger>
         </TooltipSimple>

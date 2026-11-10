@@ -115,7 +115,6 @@
   "chat-history-title": "聊天历史",
   "chat-history-tooltip": "聊天历史",
   "back-to-workspace-tooltip": "返回工作区",
-  "back-tooltip": "返回",
   "open-preview-tooltip": "打开预览",
   "close-preview-tooltip": "关闭预览",
   "task-list-add-hint": "打开工作台并聚焦聊天输入框",
@@ -504,7 +503,6 @@
   "files-tab-remote": "远程",
   "scheduled-tab": "自动化",
   "dispatch-tab": "调度",
-  "configuration-tab": "配置",
   "workspace-work-with-remote-control": "远程控制",
   "dispatch-copy-link": "复制链接",
   "dispatch-link-copied": "链接已复制",
@@ -1628,6 +1626,5 @@
   "unfold-space": "展开 {{name}}",
   "show-all-sessions": "显示全部 {{count}} 个",
   "show-all-sessions-in-space": "显示 {{name}} 的全部 {{count}} 个会话",
-  "new-session-space": "本会话所在空间",
-  "home-new-session-description": "让 Eigent 帮你自动完成任务"
+  "new-session-space": "本会话所在空间"
 }

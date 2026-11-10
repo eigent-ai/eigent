@@ -296,6 +296,24 @@ describe('HomeSidebar', () => {
     expect(rows[5]).toContain('Ops');
   });
 
+  it('offers no Pin on a Session row', async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    const row = within(sidebar())
+      .getByRole('button', { name: 'Weekly report' })
+      .closest('.group\\/session-item') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: /more|actions|options/i })
+    );
+    const items = within(await screen.findByRole('menu'))
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent?.trim() ?? '');
+
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.some((item) => /pin/i.test(item))).toBe(false);
+  });
+
   it('pins a Space and deletes it from its row menu', async () => {
     const user = userEvent.setup();
     const deleteSpaceOnServer = vi.fn().mockResolvedValue(undefined);

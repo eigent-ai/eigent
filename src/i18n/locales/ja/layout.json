@@ -115,7 +115,6 @@
   "chat-history-title": "チャット履歴",
   "chat-history-tooltip": "チャット履歴",
   "back-to-workspace-tooltip": "ワークスペースに戻る",
-  "back-tooltip": "戻る",
   "open-preview-tooltip": "プレビューを開く",
   "close-preview-tooltip": "プレビューを閉じる",
   "task-list-add-hint": "ワークスペースを開きチャット入力にフォーカス",
@@ -504,7 +503,6 @@
   "files-tab-remote": "リモート",
   "scheduled-tab": "オートメーション",
   "dispatch-tab": "ディスパッチ",
-  "configuration-tab": "構成",
   "workspace-work-with-remote-control": "リモート操作",
   "dispatch-copy-link": "リンクをコピー",
   "dispatch-link-copied": "リンクをコピーしました",
@@ -1628,6 +1626,5 @@
   "unfold-space": "{{name}} を展開",
   "show-all-sessions": "すべて表示（{{count}}）",
   "show-all-sessions-in-space": "{{name}} のセッションをすべて表示（{{count}}）",
-  "new-session-space": "このセッションのスペース",
-  "home-new-session-description": "Eigent にタスクの自動化を依頼しましょう"
+  "new-session-space": "このセッションのスペース"
 }

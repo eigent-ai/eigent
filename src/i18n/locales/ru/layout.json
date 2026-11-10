@@ -115,7 +115,6 @@
   "chat-history-title": "История чата",
   "chat-history-tooltip": "История чата",
   "back-to-workspace-tooltip": "Назад к рабочему пространству",
-  "back-tooltip": "Назад",
   "open-preview-tooltip": "Открыть предпросмотр",
   "close-preview-tooltip": "Закрыть предпросмотр",
   "task-list-add-hint": "Открыть рабочее пространство и фокус на чате",
@@ -504,7 +503,6 @@
   "files-tab-remote": "Удалённо",
   "scheduled-tab": "Автоматизации",
   "dispatch-tab": "Удалённое управление",
-  "configuration-tab": "Конфигурация",
   "workspace-work-with-remote-control": "Удалённое управление",
   "dispatch-copy-link": "Копировать ссылку",
   "dispatch-link-copied": "Ссылка скопирована",
@@ -1694,6 +1692,5 @@
   "unfold-space": "Развернуть {{name}}",
   "show-all-sessions": "Показать все ({{count}})",
   "show-all-sessions-in-space": "Показать все сессии в {{name}} ({{count}})",
-  "new-session-space": "Пространство для этой сессии",
-  "home-new-session-description": "Попросите Eigent автоматизировать ваши задачи"
+  "new-session-space": "Пространство для этой сессии"
 }

@@ -115,7 +115,6 @@
   "chat-history-title": "채팅 기록",
   "chat-history-tooltip": "채팅 기록",
   "back-to-workspace-tooltip": "작업 공간으로 돌아가기",
-  "back-tooltip": "뒤로",
   "open-preview-tooltip": "미리보기 열기",
   "close-preview-tooltip": "미리보기 닫기",
   "task-list-add-hint": "워크스페이스를 열고 채팅 입력에 포커스",
@@ -504,7 +503,6 @@
   "files-tab-remote": "원격",
   "scheduled-tab": "자동화",
   "dispatch-tab": "디스패치",
-  "configuration-tab": "구성",
   "workspace-work-with-remote-control": "원격 제어",
   "dispatch-copy-link": "링크 복사",
   "dispatch-link-copied": "링크가 복사되었습니다",
@@ -1628,6 +1626,5 @@
   "unfold-space": "{{name}} 펼치기",
   "show-all-sessions": "모두 보기 ({{count}})",
   "show-all-sessions-in-space": "{{name}}의 세션 모두 보기 ({{count}})",
-  "new-session-space": "이 세션의 스페이스",
-  "home-new-session-description": "Eigent에게 작업 자동화를 맡겨 보세요"
+  "new-session-space": "이 세션의 스페이스"
 }

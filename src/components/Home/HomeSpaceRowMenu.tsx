@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DESTRUCTIVE_MENU_ITEM_CLASS } from '@/components/SpaceSidebar/constants';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -27,9 +28,6 @@ import { FolderOpen, MoreHorizontal, Pin, PinOff, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-
-const DESTRUCTIVE_ITEM_CLASS =
-  'gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default';
 
 /** The file manager's own name for "show this folder". */
 export function useRevealFolderLabel(): string {
@@ -141,7 +139,7 @@ export function HomeSpaceRowMenu({
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                className={DESTRUCTIVE_ITEM_CLASS}
+                className={DESTRUCTIVE_MENU_ITEM_CLASS}
                 onSelect={onDelete}
               >
                 <DsIcon icon={Trash2} aria-hidden />

@@ -16,6 +16,7 @@ import {
   pinSpaceOrChoose,
   usePinnedSpaceIds,
 } from '@/components/Layout/AppRail/pinnedSpaces';
+import { sidebarTabButtonClass } from '@/components/Layout/AppSidebar';
 import {
   canRenameSpace,
   SpaceRenameDialog,
@@ -27,21 +28,33 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import { useOpenSpaceHomeTab } from '@/hooks/useSpaceSwitch';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
-import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
+import { getActiveSpaceTriggerLabel, isLegacySpace } from '@/lib/spaceLabel';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ChevronDown, Folder } from 'lucide-react';
 import { forwardRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+
+interface SpaceHeaderMenuProps {
+  spaceId: string;
+  /**
+   * `header` is the Workspace page's title, with Space settings and Memory
+   * settings. `sidebar` is the Space sidebar's first row, which has its own
+   * settings button, so it lists Delete Space instead.
+   */
+  appearance?: 'header' | 'sidebar';
+}
 
 /**
- * The Workspace page's title: the Space's name, opening its menu (rename,
- * settings, Memory, pin, and the active Space's save points).
+ * The Space's name, opening its menu: rename, pin, the appearance's own
+ * actions, and the active Space's save points.
  */
 export const SpaceHeaderMenu = forwardRef<
   HTMLButtonElement,
-  { spaceId: string }
->(function SpaceHeaderMenu({ spaceId }, ref) {
+  SpaceHeaderMenuProps
+>(function SpaceHeaderMenu({ spaceId, appearance = 'header' }, ref) {
   const { t } = useTranslation();
   const space = useSpaceStore((state) => state.spaces[spaceId] ?? null);
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
@@ -53,6 +66,11 @@ export const SpaceHeaderMenu = forwardRef<
   const openSpaceHomeTab = useOpenSpaceHomeTab();
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
+  const deleteSpaceOnServer = useSpaceStore(
+    (state) => state.deleteSpaceOnServer
+  );
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
@@ -69,6 +87,23 @@ export const SpaceHeaderMenu = forwardRef<
     emptyLabelKey: 'layout.spaces-untitled',
   });
   const canRename = canRenameSpace(space);
+  const inSidebar = appearance === 'sidebar';
+  const canDelete =
+    inSidebar && space?.status === 'active' && !isLegacySpace(space);
+
+  const deleteSpace = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await deleteSpaceOnServer(spaceId);
+      setDeleteOpen(false);
+    } catch (error) {
+      console.warn('[SpaceHeaderMenu] Failed to delete Space:', error);
+      toast.error(t('layout.spaces-delete-failed'));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <>
@@ -93,6 +128,18 @@ export const SpaceHeaderMenu = forwardRef<
         userId={userId}
         actorId={userId == null ? email || 'local-user' : String(userId)}
       />
+      <AlertDialog
+        isOpen={deleteOpen}
+        onClose={() => {
+          if (!deleting) setDeleteOpen(false);
+        }}
+        onConfirm={() => void deleteSpace()}
+        title={t('layout.delete-space')}
+        message={t('layout.delete-space-confirmation')}
+        confirmText={t('layout.delete')}
+        cancelText={t('layout.cancel')}
+        confirmDisabled={deleting}
+      />
       <SpaceRenameDialog
         spaceId={renameOpen ? spaceId : null}
         onClose={() => setRenameOpen(false)}
@@ -105,36 +152,61 @@ export const SpaceHeaderMenu = forwardRef<
           }
         }}
         trigger={
-          <Button
-            ref={ref}
-            type="button"
-            variant="ghost"
-            size="sm"
-            buttonRadius="full"
-            className="-ml-ds-8 max-w-full min-w-0"
-            aria-haspopup="menu"
-            aria-label={name}
-          >
-            <DsIcon icon={Folder} className="shrink-0" aria-hidden />
-            <span className="min-w-0 truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
-              {name}
-            </span>
-            <DsIcon
-              icon={ChevronDown}
-              className="shrink-0 text-ds-ink-subtle-default"
-              aria-hidden
-            />
-          </Button>
+          inSidebar ? (
+            <button
+              ref={ref}
+              type="button"
+              aria-haspopup="menu"
+              aria-label={name}
+              data-space-sidebar-menu
+              className={cn(sidebarTabButtonClass(false), 'flex-1 gap-1')}
+            >
+              <span className="min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
+                {name}
+              </span>
+              <DsIcon
+                icon={ChevronDown}
+                className="shrink-0 text-ds-ink-subtle-default"
+                aria-hidden
+              />
+            </button>
+          ) : (
+            <Button
+              ref={ref}
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonRadius="full"
+              className="-ml-ds-8 max-w-full min-w-0"
+              aria-haspopup="menu"
+              aria-label={name}
+            >
+              <DsIcon icon={Folder} className="shrink-0" aria-hidden />
+              <span className="min-w-0 truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
+                {name}
+              </span>
+              <DsIcon
+                icon={ChevronDown}
+                className="shrink-0 text-ds-ink-subtle-default"
+                aria-hidden
+              />
+            </Button>
+          )
         }
         activeSpaceId={spaceId}
         canRenameActiveSpace={canRename}
         onRenameSpace={() => {
           if (canRename) setRenameOpen(true);
         }}
-        onOpenSpaceSettings={() =>
-          openSpaceHomeTab(spaceId, 'workspace-profile')
+        onOpenSpaceSettings={
+          inSidebar
+            ? undefined
+            : () => openSpaceHomeTab(spaceId, 'workspace-profile')
         }
-        onOpenMemorySettings={() => openSpaceHomeTab(spaceId, 'memory')}
+        onOpenMemorySettings={
+          inSidebar ? undefined : () => openSpaceHomeTab(spaceId, 'memory')
+        }
+        onDeleteSpace={canDelete ? () => setDeleteOpen(true) : undefined}
         pinMenu={{
           pinned,
           onToggle: () => {

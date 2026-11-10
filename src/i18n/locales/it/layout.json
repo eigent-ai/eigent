@@ -124,7 +124,6 @@
   "chat-history-title": "Cronologia chat",
   "chat-history-tooltip": "Cronologia chat",
   "back-to-workspace-tooltip": "Torna all’area di lavoro",
-  "back-tooltip": "Indietro",
   "open-preview-tooltip": "Apri anteprima",
   "close-preview-tooltip": "Chiudi anteprima",
   "task-list-add-hint": "Apri l'area di lavoro e focalizzati sulla chat",
@@ -513,7 +512,6 @@
   "files-tab-remote": "Remoto",
   "scheduled-tab": "Automazioni",
   "dispatch-tab": "Rilascia",
-  "configuration-tab": "Configurazione",
   "workspace-work-with-remote-control": "Controlla remoto",
   "dispatch-copy-link": "Copia link",
   "dispatch-link-copied": "Link copiato",
@@ -1672,6 +1670,5 @@
   "unfold-space": "Espandi {{name}}",
   "show-all-sessions": "Mostra tutte ({{count}})",
   "show-all-sessions-in-space": "Mostra tutte le {{count}} sessioni in {{name}}",
-  "new-session-space": "Spazio per questa sessione",
-  "home-new-session-description": "Chiedi a Eigent di automatizzare le tue attività"
+  "new-session-space": "Spazio per questa sessione"
 }

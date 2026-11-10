@@ -124,7 +124,6 @@
   "chat-history-title": "Chat history",
   "chat-history-tooltip": "Chat history",
   "back-to-workspace-tooltip": "Back to workspace",
-  "back-tooltip": "Back",
   "open-preview-tooltip": "Open preview",
   "close-preview-tooltip": "Close preview",
   "task-list-add-hint": "Open workspace and focus chat",
@@ -513,7 +512,6 @@
   "files-tab-remote": "Remote",
   "scheduled-tab": "Automations",
   "dispatch-tab": "Dispatch",
-  "configuration-tab": "Configuration",
   "workspace-work-with-remote-control": "Remote control",
   "dispatch-copy-link": "Copy link",
   "dispatch-link-copied": "Link copied",
@@ -1650,6 +1648,5 @@
   "unfold-space": "Unfold {{name}}",
   "show-all-sessions": "Show all {{count}}",
   "show-all-sessions-in-space": "Show all {{count}} sessions in {{name}}",
-  "new-session-space": "Space for this session",
-  "home-new-session-description": "Ask Eigent to automate your tasks"
+  "new-session-space": "Space for this session"
 }
