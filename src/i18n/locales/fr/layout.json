@@ -1610,7 +1610,7 @@
   "delete-space-stop-failed": "Une session de cet espace n'a pas pu être arrêtée, rien n'a donc été supprimé. Réessayez pour l'arrêter et terminer la suppression.",
   "delete-space-failed": "La suppression de l’espace n’a pas pu être terminée. Certaines sessions ont peut-être déjà été supprimées. Réessayez pour terminer la suppression de cet espace.",
   "delete-space-has-sessions": "Cet espace n'a pas pu être supprimé, car votre compte contient encore des sessions dans cet espace. Réessayez pour les supprimer et terminer la suppression de l'espace.",
-  "delete-space-has-bundles": "Cet espace possède des Workspace Bundles. Supprimez-les ou déplacez-les, puis réessayez de supprimer l'espace.",
+  "delete-space-has-bundles": "Cet espace est la source d'un Workspace Bundle que vous avez créé, il ne peut donc pas être supprimé. Eigent ne peut pas encore supprimer ni déplacer un Workspace Bundle, cet espace doit donc rester pour le moment.",
   "delete-project-workdir": "Supprimer aussi le répertoire de travail de la session",
   "delete-project-workdir-hint": "Les fichiers du répertoire de travail, y compris les modifications non publiées, seront définitivement supprimés.",
   "delete-project-workdir-pending-hint": "Ce répertoire de travail contient des modifications non publiées. Elles seront définitivement supprimées et ne pourront pas être récupérées.",

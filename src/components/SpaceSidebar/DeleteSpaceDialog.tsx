@@ -62,6 +62,8 @@ export function DeleteSpaceDialog({
     userId: number | null;
   } | null>(null);
   const busy = phase !== 'idle';
+  // Retrying can't help until the Workspace Bundle is gone.
+  const blocked = failure === 'has-bundles';
 
   useEffect(() => {
     setFailure(null);
@@ -73,7 +75,7 @@ export function DeleteSpaceDialog({
   }, [spaceId]);
 
   const confirm = useCallback(async () => {
-    if (!spaceId || busy || !identity.current) return;
+    if (!spaceId || busy || blocked || !identity.current) return;
     setFailure(null);
     try {
       await deleteSpaceAndSessions(spaceId, {
@@ -89,7 +91,7 @@ export function DeleteSpaceDialog({
     } finally {
       setPhase('idle');
     }
-  }, [busy, ipcRenderer, onClose, spaceId, t]);
+  }, [blocked, busy, ipcRenderer, onClose, spaceId, t]);
 
   return (
     <AlertDialog
@@ -102,12 +104,14 @@ export function DeleteSpaceDialog({
       message={t(
         failure ? MESSAGE_KEY[failure] : 'layout.delete-space-confirmation'
       )}
-      confirmText={t(failure && !busy ? 'layout.retry' : CONFIRM_KEY[phase])}
+      confirmText={t(
+        failure && !busy && !blocked ? 'layout.retry' : CONFIRM_KEY[phase]
+      )}
       closeOnConfirm={false}
       cancelText={t('layout.cancel')}
       confirmVariant="secondary"
       confirmTone="error"
-      confirmDisabled={busy}
+      confirmDisabled={busy || blocked}
     />
   );
 }

@@ -150,6 +150,17 @@ export const findWorkspaceBundle = async (
   }
 };
 
+/** The signed-in user's own Workspace Bundles, newest first. */
+export const listOwnedWorkspaceBundles = async (
+  limit = 200
+): Promise<CloudWorkspaceBundle[]> => {
+  const page = await proxyFetchGet('/api/v1/workspace-bundles', { limit });
+  if (!Array.isArray(page?.items)) {
+    throw new Error('Invalid Workspace Bundle list response');
+  }
+  return page.items;
+};
+
 export const findWorkspaceBundleBySlug = async (
   slug: string
 ): Promise<CloudWorkspaceBundle | null> => {

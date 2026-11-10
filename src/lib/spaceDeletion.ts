@@ -21,6 +21,7 @@ import {
   proxyFetchSpaceProjects,
   proxyUpdateSpaceProject,
 } from '@/service/spaceApi';
+import { listOwnedWorkspaceBundles } from '@/service/workspaceBundleAuthoringApi';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 
@@ -31,6 +32,14 @@ export type DeleteSpaceFailure =
 
 /** Stopping several Sessions at once stays well under the per-host limit. */
 const STOP_CONCURRENCY = 3;
+
+/** The Space is the source of a Workspace Bundle; nothing was touched. */
+export class SpaceHasBundlesError extends Error {
+  constructor() {
+    super('Space is the source of a Workspace Bundle');
+    this.name = 'SpaceHasBundlesError';
+  }
+}
 
 function statusOf(error: unknown) {
   return (error as { status?: number } | null)?.status;
@@ -51,6 +60,7 @@ function conflictCode(error: unknown): string | undefined {
 /** Maps a failed Space deletion to the explanation the dialog shows. */
 export function classifyDeleteSpaceFailure(error: unknown): DeleteSpaceFailure {
   if (error instanceof SessionStopError) return 'stop';
+  if (error instanceof SpaceHasBundlesError) return 'has-bundles';
   const code = conflictCode(error);
   if (code === 'space_has_projects') return 'has-sessions';
   if (code === 'space_has_bundles') return 'has-bundles';
@@ -79,6 +89,24 @@ async function forEachLimited<T>(
   await Promise.all(lanes);
 }
 
+/**
+ * The server refuses to delete a Space that is the source of a Workspace
+ * Bundle, so check first rather than deleting its Sessions and then failing.
+ */
+async function assertNoSourceBundles(spaceId: string) {
+  let bundles;
+  try {
+    bundles = await listOwnedWorkspaceBundles();
+  } catch (error) {
+    // Servers without Workspace Bundles (self-hosted) have no such route.
+    if (statusOf(error) === 404) return;
+    throw error;
+  }
+  if (bundles.some((bundle) => bundle.workspace_id === spaceId)) {
+    throw new SpaceHasBundlesError();
+  }
+}
+
 /** The Space's Sessions that have not been deleted yet, server and local. */
 async function liveSessionIds(spaceId: string): Promise<string[]> {
   const ids = new Set<string>();
@@ -103,7 +131,8 @@ async function liveSessionIds(spaceId: string): Promise<string[]> {
  * and mark it deleted on the server. The Space folder on disk is never
  * touched, nor are Session working directories.
  *
- * Every Session is stopped before anything is removed, so a Session that
+ * A Space that is the source of a Workspace Bundle is refused before anything
+ * is stopped. Every Session is stopped before anything is removed, so a Session that
  * cannot be stopped leaves the whole Space as it was. A later failure leaves
  * the remaining Sessions in place; calling this again finishes the job.
  */
@@ -121,6 +150,8 @@ export async function deleteSpaceAndSessions(
 ): Promise<void> {
   assertSessionCleanupIdentity(identity);
   onPhase?.('stopping');
+  await assertNoSourceBundles(spaceId);
+  assertSessionCleanupIdentity(identity);
   const sessionIds = await liveSessionIds(spaceId);
   const deferLocalCleanup = new Map<string, boolean>();
   await forEachLimited(sessionIds, STOP_CONCURRENCY, async (projectId) => {

@@ -138,6 +138,31 @@ describe('SpaceHeaderMenu', () => {
     expect(mocks.deleteSpaceAndSessions).toHaveBeenCalledTimes(2);
   });
 
+  it('explains that a Workspace Bundle source Space has to stay, without offering Retry', async () => {
+    const { SpaceHasBundlesError } = await import('@/lib/spaceDeletion');
+    mocks.deleteSpaceAndSessions.mockRejectedValue(new SpaceHasBundlesError());
+    render(<SpaceHeaderMenu spaceId={space.id} appearance="sidebar" />);
+    const { user, menu } = await openMenu();
+    await user.click(
+      within(menu).getByRole('menuitem', { name: 'Delete Space' })
+    );
+    const confirm = await screen.findByRole('alertdialog');
+    await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
+
+    expect(
+      await within(confirm).findByText(/source of a Workspace Bundle/)
+    ).toBeInTheDocument();
+    expect(within(confirm).queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(
+      within(confirm).getByRole('button', { name: 'Delete' })
+    ).toBeDisabled();
+    await user.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    );
+    expect(mocks.deleteSpaceAndSessions).toHaveBeenCalledTimes(1);
+  });
+
   it('starts a new Space from the sidebar menu', async () => {
     render(<SpaceHeaderMenu spaceId={space.id} appearance="sidebar" />);
     const { user, menu } = await openMenu();

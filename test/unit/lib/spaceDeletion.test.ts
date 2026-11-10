@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   assertSessionCleanupIdentity: vi.fn(),
   proxyFetchSpaceProjects: vi.fn(),
   proxyUpdateSpaceProject: vi.fn(),
+  listOwnedWorkspaceBundles: vi.fn(),
   deleteSpaceOnServer: vi.fn(),
   removeProject: vi.fn(),
   projectsBySpaceId: {} as Record<
@@ -41,6 +42,9 @@ vi.mock('@/lib/sessionFileCleanup', () => ({
 vi.mock('@/service/spaceApi', () => ({
   proxyFetchSpaceProjects: mocks.proxyFetchSpaceProjects,
   proxyUpdateSpaceProject: mocks.proxyUpdateSpaceProject,
+}));
+vi.mock('@/service/workspaceBundleAuthoringApi', () => ({
+  listOwnedWorkspaceBundles: mocks.listOwnedWorkspaceBundles,
 }));
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: {
@@ -66,6 +70,7 @@ import { SessionStopError } from '@/lib/sessionStop';
 import {
   classifyDeleteSpaceFailure,
   deleteSpaceAndSessions,
+  SpaceHasBundlesError,
 } from '@/lib/spaceDeletion';
 
 const identity = { email: 'person@example.test', userId: 7 };
@@ -86,6 +91,9 @@ describe('deleteSpaceAndSessions', () => {
     vi.clearAllMocks();
     mocks.calls = [];
     mocks.projectsBySpaceId = {};
+    mocks.listOwnedWorkspaceBundles.mockResolvedValue([
+      { id: 'bundle-other', workspace_id: 'space-b' },
+    ]);
     mocks.proxyFetchSpaceProjects.mockResolvedValue([
       project('session-open'),
       project('session-idle'),
@@ -205,6 +213,42 @@ describe('deleteSpaceAndSessions', () => {
     expect(mocks.deleteSpaceOnServer).toHaveBeenCalledWith('space-a');
   });
 
+  it('refuses a Space that is the source of a Workspace Bundle before touching anything', async () => {
+    mocks.listOwnedWorkspaceBundles.mockResolvedValue([
+      { id: 'bundle-other', workspace_id: 'space-b' },
+      { id: 'bundle-own', workspace_id: 'space-a' },
+    ]);
+
+    const failure = await deleteSpaceAndSessions('space-a', { identity }).then(
+      () => null,
+      (error: unknown) => classifyDeleteSpaceFailure(error)
+    );
+
+    expect(failure).toBe('has-bundles');
+    expect(mocks.stopSessionForDeletion).not.toHaveBeenCalled();
+    expect(mocks.deleteSessionTaskData).not.toHaveBeenCalled();
+    expect(mocks.proxyUpdateSpaceProject).not.toHaveBeenCalled();
+    expect(mocks.deleteSpaceOnServer).not.toHaveBeenCalled();
+  });
+
+  it('skips the Workspace Bundle check on a server without Bundles', async () => {
+    mocks.listOwnedWorkspaceBundles.mockRejectedValue(httpError(404));
+
+    await deleteSpaceAndSessions('space-a', { identity });
+
+    expect(mocks.deleteSpaceOnServer).toHaveBeenCalledWith('space-a');
+  });
+
+  it('deletes nothing when the Workspace Bundle check fails', async () => {
+    mocks.listOwnedWorkspaceBundles.mockRejectedValue(httpError(503));
+
+    await expect(
+      deleteSpaceAndSessions('space-a', { identity })
+    ).rejects.toMatchObject({ status: 503 });
+    expect(mocks.stopSessionForDeletion).not.toHaveBeenCalled();
+    expect(mocks.deleteSpaceOnServer).not.toHaveBeenCalled();
+  });
+
   it('keeps local files of Sessions whose backend could not be reached', async () => {
     mocks.stopSessionForDeletion.mockResolvedValue(true);
 
@@ -227,5 +271,8 @@ describe('classifyDeleteSpaceFailure', () => {
     expect(classifyDeleteSpaceFailure(httpError(409))).toBe('cleanup');
     expect(classifyDeleteSpaceFailure(new Error('offline'))).toBe('cleanup');
     expect(classifyDeleteSpaceFailure(new SessionStopError())).toBe('stop');
+    expect(classifyDeleteSpaceFailure(new SpaceHasBundlesError())).toBe(
+      'has-bundles'
+    );
   });
 });
