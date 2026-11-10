@@ -18,10 +18,15 @@ import '@/api/http';
 
 import { SpaceHeaderMenu } from '@/components/Home/SpaceHeaderMenu';
 import { useSpaceStore, type Space } from '@/store/spaceStore';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const mocks = vi.hoisted(() => ({ deleteSpaceAndSessions: vi.fn() }));
+vi.mock('@/lib/spaceDeletion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/spaceDeletion')>()),
+  deleteSpaceAndSessions: mocks.deleteSpaceAndSessions,
+}));
 vi.mock('@/hooks/useWorkspaceSavePoint', () => ({
   useWorkspaceSavePoint: () => ({
     supported: false,
@@ -71,14 +76,12 @@ async function openMenu() {
 }
 
 describe('SpaceHeaderMenu', () => {
-  const deleteSpaceOnServer = vi.fn().mockResolvedValue(undefined);
-
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.deleteSpaceAndSessions.mockResolvedValue(undefined);
     useSpaceStore.setState({
       activeSpaceId: space.id,
       spaces: { [space.id]: space },
-      deleteSpaceOnServer,
     });
   });
 
@@ -96,10 +99,43 @@ describe('SpaceHeaderMenu', () => {
     await user.click(
       within(menu).getByRole('menuitem', { name: 'Delete Space' })
     );
-    expect(deleteSpaceOnServer).not.toHaveBeenCalled();
+    expect(mocks.deleteSpaceAndSessions).not.toHaveBeenCalled();
+    const confirm = await screen.findByRole('alertdialog');
+    expect(confirm).toHaveTextContent(
+      'Are you sure you want to delete this space and all its sessions?'
+    );
+    await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
+    expect(mocks.deleteSpaceAndSessions).toHaveBeenCalledWith(
+      space.id,
+      expect.objectContaining({ identity: expect.any(Object) })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    );
+  });
+
+  it('keeps the dialog open and explains why the server refused the Space', async () => {
+    mocks.deleteSpaceAndSessions.mockRejectedValue(
+      Object.assign(new Error('Space has 1 project(s)'), {
+        status: 409,
+        response: { data: { detail: { code: 'space_has_projects' } } },
+      })
+    );
+    render(<SpaceHeaderMenu spaceId={space.id} appearance="sidebar" />);
+    const { user, menu } = await openMenu();
+    await user.click(
+      within(menu).getByRole('menuitem', { name: 'Delete Space' })
+    );
     const confirm = await screen.findByRole('alertdialog');
     await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
-    expect(deleteSpaceOnServer).toHaveBeenCalledWith(space.id);
+
+    expect(
+      await within(confirm).findByText(
+        /your account still lists sessions in it/
+      )
+    ).toBeInTheDocument();
+    await user.click(within(confirm).getByRole('button', { name: 'Retry' }));
+    expect(mocks.deleteSpaceAndSessions).toHaveBeenCalledTimes(2);
   });
 
   it('starts a new Space from the sidebar menu', async () => {

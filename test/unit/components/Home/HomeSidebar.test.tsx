@@ -41,6 +41,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  deleteSpaceAndSessions: vi.fn(),
   executeAppCommand: vi.fn(),
   switchToSpace: vi.fn(),
   openSessionInShell: vi.fn(),
@@ -77,6 +78,10 @@ vi.mock('@/hooks/useSessionNavStatuses', () => ({
 }));
 
 // The dialogs and Space creation have their own tests.
+vi.mock('@/lib/spaceDeletion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/spaceDeletion')>()),
+  deleteSpaceAndSessions: mocks.deleteSpaceAndSessions,
+}));
 vi.mock('@/components/SpaceSidebar/SessionControlDialogs', () => ({
   SessionControlDialogs: () => null,
 }));
@@ -546,10 +551,9 @@ describe('HomeSidebar', () => {
     });
   });
 
-  it('pins a Space and deletes it from its row menu', async () => {
+  it('pins a Space and deletes it with its Sessions from its row menu', async () => {
     const user = userEvent.setup();
-    const deleteSpaceOnServer = vi.fn().mockResolvedValue(undefined);
-    useSpaceStore.setState({ deleteSpaceOnServer });
+    mocks.deleteSpaceAndSessions.mockResolvedValue(undefined);
     renderSidebar();
 
     await user.click(
@@ -572,7 +576,13 @@ describe('HomeSidebar', () => {
     const confirm = await screen.findByRole('alertdialog');
     await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
 
-    expect(deleteSpaceOnServer).toHaveBeenCalledWith('space-ops');
+    expect(mocks.deleteSpaceAndSessions).toHaveBeenCalledWith(
+      'space-ops',
+      expect.objectContaining({ identity: expect.any(Object) })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    );
   });
 
   it('lists every Space with four recent Sessions and Show all, without a pin mark', async () => {

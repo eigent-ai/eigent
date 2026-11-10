@@ -18,7 +18,7 @@ import logging
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import or_, update
+from sqlalchemy import delete, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -27,6 +27,7 @@ from app.domains.space.service.folder_binding import (
     same_folder_reference,
 )
 from app.model.chat.chat_history import ChatHistory
+from app.model.memory import ProjectMemory, SpaceMemory
 from app.model.project import (
     Project,
     ProjectIn,
@@ -36,7 +37,19 @@ from app.model.project import (
     ProjectWorkdirMode,
 )
 from app.model.project.project import PROJECT_CREATION_INTENT_KEY
-from app.model.space import Space, SpaceIn, SpaceOut, SpaceSourceType, SpaceStatus, SpaceUpdate
+from app.model.remote_control import ProjectExecutionRoute
+from app.model.space import (
+    Space,
+    SpaceFileIndex,
+    SpaceFileIndexOverlay,
+    SpaceIn,
+    SpaceOut,
+    SpaceSourceType,
+    SpaceStatus,
+    SpaceUpdate,
+)
+from app.model.trigger.trigger import Trigger
+from app.model.trigger.trigger_execution import TriggerExecution
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -330,11 +343,38 @@ class SpaceService:
                 Project.space_id == space_id,
             )
         ).all()
-        if projects:
+        # Deleting a Session archives its Project, so archived Projects are
+        # already deleted for the user and must not keep the Space alive.
+        live_projects = [project for project in projects if project.status != ProjectStatus.ARCHIVED]
+        if live_projects:
             raise SpaceHasProjectsError(
-                len(projects),
-                [{"id": project.id, "name": project.name} for project in projects[:10]],
+                len(live_projects),
+                [{"id": project.id, "name": project.name} for project in live_projects[:10]],
             )
+        project_ids = [project.id for project in projects]
+        in_space = or_(Trigger.space_id == space_id, Trigger.project_id.in_(project_ids))
+        trigger_ids = s.exec(select(Trigger.id).where(Trigger.user_id == canonical_user_id, in_space)).all()
+        if trigger_ids:
+            # Automations of a deleted Space must not keep starting Tasks.
+            s.execute(delete(TriggerExecution).where(TriggerExecution.trigger_id.in_(trigger_ids)))
+            s.execute(delete(Trigger).where(Trigger.id.in_(trigger_ids)))
+        history_user_id = int(canonical_user_id) if canonical_user_id.isdigit() else canonical_user_id
+        s.execute(
+            delete(ChatHistory).where(
+                ChatHistory.user_id == history_user_id,
+                or_(ChatHistory.space_id == space_id, ChatHistory.project_id.in_(project_ids)),
+            )
+        )
+        # Remove every row that references the Space or its archived Projects
+        # before the Space itself, so foreign keys never block the delete.
+        if project_ids:
+            s.execute(delete(ProjectExecutionRoute).where(ProjectExecutionRoute.project_id.in_(project_ids)))
+        s.execute(delete(SpaceFileIndexOverlay).where(SpaceFileIndexOverlay.space_id == space_id))
+        s.execute(delete(ProjectMemory).where(ProjectMemory.space_id == space_id))
+        s.execute(delete(SpaceMemory).where(SpaceMemory.space_id == space_id))
+        s.execute(delete(SpaceFileIndex).where(SpaceFileIndex.space_id == space_id))
+        if project_ids:
+            s.execute(delete(Project).where(Project.id.in_(project_ids)))
         s.delete(space)
         s.commit()
 
