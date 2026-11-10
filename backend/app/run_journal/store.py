@@ -8053,8 +8053,9 @@ class SQLiteRunJournal:
 
         This is bookkeeping only: no file, Git ref or ToolCall outcome is
         changed. The operation's own unfinished ChangeSet items stop being
-        tracked, and its ChangeSet is discarded once it was quarantined and
-        nothing else on it is unresolved.
+        tracked. Once nothing else on a quarantined ChangeSet is unresolved,
+        it reopens when its Run is interrupted (Resume writes to it again)
+        and is discarded otherwise.
         """
         if expected_status not in {"prepared", "needs_attention"}:
             raise InvalidRunTransitionError(
@@ -8118,14 +8119,29 @@ class SQLiteRunJournal:
                 (change_set_id, change_set_id),
             ).fetchone()
             if unresolved is None:
+                owner = connection.execute(
+                    """
+                    SELECT runs.status FROM runs
+                    JOIN git_change_sets USING (run_id)
+                    WHERE git_change_sets.change_set_id = ?
+                    """,
+                    (change_set_id,),
+                ).fetchone()
+                # Resume reuses the Run's ChangeSet, so an interrupted Run
+                # gets it back open; only a Run that can never write again
+                # has it discarded.
+                resolved_state = (
+                    "open"
+                    if owner is not None and owner["status"] == "interrupted"
+                    else "discarded"
+                )
                 connection.execute(
                     """
                     UPDATE git_change_sets
-                    SET state = 'discarded', version = version + 1,
-                        updated_at = ?
+                    SET state = ?, version = version + 1, updated_at = ?
                     WHERE change_set_id = ? AND state = 'needs_attention'
                     """,
-                    (timestamp, change_set_id),
+                    (resolved_state, timestamp, change_set_id),
                 )
             else:
                 connection.execute(

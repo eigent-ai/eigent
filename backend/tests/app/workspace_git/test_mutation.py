@@ -1495,6 +1495,56 @@ def test_dismiss_blocked_operation_leaves_files_and_tool_outcomes_untouched(
         )
 
 
+def test_resumed_task_writes_normally_after_its_operation_is_dismissed(
+    tmp_path, journal
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    prepared = _prepare_direct(direct, space, "edit-1", "seed.txt")
+    (space / "seed.txt").write_text("half-written", "utf-8")
+    direct.reconcile_startup()
+    # A restart interrupts the Run; it can still be resumed.
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="run-1-interrupted",
+            event_type="run.interrupted",
+            payload={"reason": "test"},
+        ),
+    )
+    repository_id = prepared.change_set.repository_id
+    direct.dismiss_blocked_operation(
+        repository_id=repository_id,
+        intent_id=prepared.intent.intent_id,
+    )
+    (change_set,) = journal.list_git_change_sets()
+    assert change_set.state == "open"
+
+    # Resume reuses the same Run, so it writes to the same ChangeSet.
+    later = _prepare_direct(direct, space, "write-after-resume", "later.txt")
+    assert later.change_set.change_set_id == change_set.change_set_id
+    (space / "later.txt").write_text("resumed write", "utf-8")
+    commit = direct.complete_file_write(
+        later,
+        operation_request_id="write-after-resume",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+
+    assert commit is not None
+    assert backend.current_head(space) == commit
+    assert direct.list_blocked_operations(repository_id) == ()
+    assert (space / "seed.txt").read_text() == "half-written"
+    changed = subprocess.run(
+        ["git", "show", "--name-only", "--format=", commit],
+        cwd=space,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert changed == ["later.txt"]
+
+
 def test_checkpoint_blocked_operation_saves_reviewed_content(
     tmp_path, journal
 ):
