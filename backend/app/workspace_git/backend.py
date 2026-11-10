@@ -1772,16 +1772,21 @@ class GitBackend:
             # Git rejects even implicit :(literal) magic for this command.
             environment["GIT_LITERAL_PATHSPECS"] = "0"
         command = self._command(cwd, args)
+        # Git reads and writes paths as UTF-8 on every platform. Never fall
+        # back to the locale codec (cp1251, cp1252, ...) on Windows, or a
+        # non-English user folder decodes into a different path.
+        text_encoding = encoding or "utf-8"
         command_input: str | bytes | None = input_text
         if preserve_newlines and input_text is not None:
-            command_input = input_text.encode(encoding or "utf-8")
+            command_input = input_text.encode(text_encoding)
         try:
             completed = subprocess.run(
                 command,
                 check=False,
                 capture_output=True,
                 text=not preserve_newlines,
-                encoding=None if preserve_newlines else encoding,
+                encoding=None if preserve_newlines else text_encoding,
+                errors=None if preserve_newlines else "replace",
                 input=command_input,
                 timeout=self.timeout_seconds,
                 env=environment,
@@ -1794,8 +1799,8 @@ class GitBackend:
         errors = completed.stderr
         if preserve_newlines:
             # Text mode would change CR/CRLF bytes inside NUL-delimited paths.
-            output = output.decode(encoding or "utf-8")
-            errors = errors.decode(encoding or "utf-8")
+            output = output.decode(text_encoding)
+            errors = errors.decode(text_encoding)
         stdout = output[: self.max_output_chars]
         stderr = errors[: self.max_output_chars]
         if check and completed.returncode != 0:
@@ -1860,6 +1865,8 @@ class GitBackend:
             f"core.hooksPath={self.hooks_path}",
             "-c",
             "core.fsmonitor=false",
+            "-c",
+            "core.quotepath=false",
             "-c",
             "core.untrackedCache=false",
             "-c",
