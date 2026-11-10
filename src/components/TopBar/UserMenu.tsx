@@ -188,12 +188,12 @@ export function UserMenu() {
 
   return (
     <>
-      <DropdownMenu dir="rtl" open={open} onOpenChange={handleMenuOpenChange}>
+      <DropdownMenu open={open} onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             buttonContent="icon-only"
-            size="sm"
+            size="md"
             buttonRadius="full"
             className={cn(
               'no-drag',
@@ -212,10 +212,10 @@ export function UserMenu() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          align="start"
+          side="right"
+          align="end"
           sideOffset={8}
           className="min-w-56"
-          style={{ direction: 'ltr' }}
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
           <DropdownMenuLabel
@@ -304,7 +304,6 @@ export function UserMenu() {
               className="min-w-44"
               sideOffset={6}
               alignOffset={-4}
-              style={{ direction: 'ltr' }}
             >
               {LANGUAGE_OPTIONS.map((option) => {
                 const selected = language === option.key;

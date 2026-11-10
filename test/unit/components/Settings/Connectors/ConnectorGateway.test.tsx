@@ -93,7 +93,7 @@ const recommendedProvider = {
   actions: [{ id: 'messages-send', name: 'Send message' }],
 };
 
-function renderGateway(initialEntry = '/home?section=settings&tab=connectors') {
+function renderGateway(initialEntry = '/settings?tab=connectors') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <SettingsHeaderProvider activeSection="connectors">
@@ -109,7 +109,7 @@ function renderGatewayWithSidebar() {
   return render(
     <MemoryRouter
       initialEntries={[
-        '/home?section=settings&tab=connectors&connectorId=open%3Agoogle_drive',
+        '/settings?tab=connectors&connectorId=open%3Agoogle_drive',
       ]}
     >
       <SettingsHeaderProvider activeSection="connectors">
@@ -369,7 +369,7 @@ describe('ConnectorGateway presentation', () => {
       }
     );
     renderGateway(
-      '/home?section=settings&tab=connectors&connectorView=add&connectorAdd=browse&connectorTarget=open%3Amissing'
+      '/settings?tab=connectors&connectorView=add&connectorAdd=browse&connectorTarget=open%3Amissing'
     );
 
     expect(
@@ -382,9 +382,7 @@ describe('ConnectorGateway presentation', () => {
 
   it('renders the installed connector breadcrumb from a URL selection', async () => {
     const user = userEvent.setup();
-    renderGateway(
-      '/home?section=settings&tab=connectors&connectorId=open%3Agoogle_drive'
-    );
+    renderGateway('/settings?tab=connectors&connectorId=open%3Agoogle_drive');
 
     const detail = await waitFor(() => {
       const page = document.querySelector('[data-connector-detail]');
@@ -395,9 +393,11 @@ describe('ConnectorGateway presentation', () => {
     const breadcrumb = within(detail).getByRole('navigation', {
       name: 'Breadcrumb',
     });
+    // Settings has no landing page, so its breadcrumb root is plain text.
+    expect(within(breadcrumb).getByText('Settings')).toBeVisible();
     expect(
-      within(breadcrumb).getByRole('button', { name: 'Home' })
-    ).toBeVisible();
+      within(breadcrumb).queryByRole('button', { name: 'Settings' })
+    ).not.toBeInTheDocument();
     expect(
       within(breadcrumb).getByRole('button', { name: 'Connectors' })
     ).toBeVisible();

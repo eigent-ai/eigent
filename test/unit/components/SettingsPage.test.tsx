@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import SettingsSection from '@/components/Settings/SettingsSection';
+import HomePage from '@/pages/Home';
 import SettingsPage from '@/pages/Settings';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { useModelVisibilityStore } from '@/store/modelVisibilityStore';
@@ -30,7 +31,7 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/brain', async (importOriginal) => ({
@@ -221,8 +222,7 @@ function LocationProbe() {
 
 function renderSettingsPage(
   initialEntry:
-    | SettingsInitialEntry
-    | SettingsInitialEntry[] = '/home?section=settings&tab=models'
+    SettingsInitialEntry | SettingsInitialEntry[] = '/settings?tab=models'
 ) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -241,7 +241,11 @@ function renderSettingsPage(
         initialEntries={initialEntries}
         initialIndex={initialEntries.length - 1}
       >
-        <SettingsPage />
+        <Routes>
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={null} />
+        </Routes>
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>
@@ -403,12 +407,12 @@ describe('SettingsPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const main = screen.getByRole('main');
     const sidebar = screen.getByRole('complementary', {
-      name: 'Home',
+      name: 'Settings',
     });
     const modelsSettings = await screen.findByTestId('models-settings');
     expect(main).toContainElement(modelsSettings);
     expect(
-      within(sidebar).getByRole('navigation', { name: 'Home' })
+      within(sidebar).getByRole('navigation', { name: 'Settings' })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Workspace Bundle' })
@@ -426,23 +430,14 @@ describe('SettingsPage', () => {
       'h-8',
       'w-full'
     );
-    const homeLabel = within(sidebar).getByText('Home');
     const globalSettingLabel = within(sidebar).getByText('Global Settings');
+    // Home has its own page; Settings lists only app-wide sections.
+    expect(within(sidebar).queryByText('Home')).not.toBeInTheDocument();
     expect(
-      homeLabel.compareDocumentPosition(globalSettingLabel) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      within(sidebar).getByRole('button', { name: 'Spaces' })
-    ).toBeInTheDocument();
+      within(sidebar).queryByRole('button', { name: 'Spaces' })
+    ).not.toBeInTheDocument();
     expect(
       within(sidebar).queryByRole('button', { name: 'Sessions' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByRole('button', { name: 'Tasks' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByRole('button', { name: 'Automations' })
     ).not.toBeInTheDocument();
     expect(globalSettingLabel).toBeInTheDocument();
     expect(
@@ -501,7 +496,7 @@ describe('SettingsPage', () => {
 
     renderSettingsPage();
 
-    const sidebar = screen.getByRole('complementary', { name: 'Home' });
+    const sidebar = screen.getByRole('complementary', { name: 'Settings' });
 
     await waitFor(() => {
       expect(
@@ -532,20 +527,18 @@ describe('SettingsPage', () => {
     });
   });
 
-  it('switches between Home and Settings sections in the same shell', async () => {
+  it('shows the Spaces hub on its own Home page', async () => {
     const user = userEvent.setup();
 
-    renderSettingsPage();
+    renderSettingsPage('/home?section=spaces');
     const settingsFrame = getSettingsHeader();
 
-    const spacesTab = screen.getByRole('button', { name: 'Spaces' });
-    const modelsTab = screen.getByRole('button', { name: 'Models' });
-    await user.click(spacesTab);
-
-    await waitFor(() => {
-      expect(spacesTab).toHaveAttribute('aria-current', 'page');
-      expect(modelsTab).not.toHaveAttribute('aria-current');
-    });
+    const sidebar = screen.getByRole('complementary', { name: 'Home' });
+    const spacesTab = within(sidebar).getByRole('button', { name: 'Spaces' });
+    expect(spacesTab).toHaveAttribute('aria-current', 'page');
+    expect(
+      within(sidebar).queryByRole('button', { name: 'Models' })
+    ).not.toBeInTheDocument();
 
     const overview = document.querySelector(
       '[data-home-spaces-overview]'
@@ -688,13 +681,6 @@ describe('SettingsPage', () => {
     await user.click(
       within(agentPluginDialog).getByRole('button', { name: 'Close' })
     );
-
-    await user.click(modelsTab);
-
-    await waitFor(() => {
-      expect(modelsTab).toHaveAttribute('aria-current', 'page');
-      expect(spacesTab).not.toHaveAttribute('aria-current');
-    });
   });
 
   it('combines the app settings categories into one vertical page', async () => {
@@ -702,7 +688,7 @@ describe('SettingsPage', () => {
 
     renderSettingsPage();
 
-    const sidebar = screen.getByRole('complementary', { name: 'Home' });
+    const sidebar = screen.getByRole('complementary', { name: 'Settings' });
     await user.click(within(sidebar).getByRole('button', { name: 'Settings' }));
 
     const general = await screen.findByTestId('general-settings');
@@ -794,9 +780,7 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Skills', level: 1 })
     ).toHaveFocus();
-    await user.click(
-      screen.getByRole('button', { name: 'Spaces', exact: true })
-    );
+    await user.click(screen.getByRole('button', { name: 'Channels' }));
     await user.click(screen.getByRole('button', { name: 'Skills' }));
 
     expect(
@@ -849,7 +833,7 @@ describe('SettingsPage', () => {
     );
     expect(skillLink).toHaveAttribute(
       'href',
-      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global&skillId=global%3Aresearch'
+      '/settings?tab=skills&skillSearch=research&skillFilter=global&skillId=global%3Aresearch'
     );
     await user.click(skillLink);
     await waitFor(() =>
@@ -908,7 +892,7 @@ describe('SettingsPage', () => {
       await screen.findByRole('combobox', { name: 'Skill source' })
     ).toHaveTextContent('Global');
     expect(screen.getByTestId('settings-location')).toHaveTextContent(
-      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global'
+      '/settings?tab=skills&skillSearch=research&skillFilter=global'
     );
     unmount();
     sync.mockRestore();
