@@ -12,56 +12,98 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { CreditRecoveryActions } from '@/components/ChatBox/CreditRecoveryActions';
+import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export interface UsageLimitBannerProps {
   message: string;
+  description?: string;
   actionLabel: string;
   severity: 'warning' | 'danger';
+  refreshing?: boolean;
+  refreshError?: string;
   onAction: () => void;
-  onDismiss: () => void;
+  onRefresh?: () => void;
+  onDismiss?: () => void;
+  /** Replaces the default buttons with Upgrade plan, Refresh, and own-key actions. */
+  creditRecovery?: boolean;
 }
 
 export function UsageLimitBanner({
   message,
+  description,
   actionLabel,
   severity,
+  refreshing,
+  refreshError,
   onAction,
+  onRefresh,
   onDismiss,
+  creditRecovery,
 }: UsageLimitBannerProps) {
-  const isDanger = severity === 'danger';
-
+  const { t } = useTranslation();
   return (
-    <div
+    <aside
+      data-usage-notice
       className={cn(
-        'flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border px-4 py-2 shadow-sm',
-        isDanger
-          ? 'border-text-error/30 bg-surface-error-subtle text-text-error'
-          : 'border-border-warning bg-surface-warning text-text-warning'
+        '@container w-full rounded-ds-card border border-x border-y px-ds-16 py-ds-12',
+        severity === 'danger'
+          ? 'border-ds-border-error-default-default bg-ds-bg-error-subtle-default text-ds-text-error-strong-default'
+          : 'border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default text-ds-text-warning-strong-default'
       )}
     >
-      <div className="min-w-0 flex-1 truncate text-body-sm font-medium">
-        {message}
+      <div className="flex flex-col gap-ds-12 @lg:flex-row @lg:items-center">
+        <div className="min-w-0 flex-1 break-words">
+          <DsText role="base" weight="medium">
+            {message}
+          </DsText>
+          {description && <DsText role="base">{description}</DsText>}
+          {refreshError && <DsText role="meta">{refreshError}</DsText>}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
+          {creditRecovery ? (
+            <CreditRecoveryActions
+              refreshing={refreshing}
+              onRefresh={onRefresh ?? onAction}
+            />
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!onRefresh && refreshing}
+              onClick={onAction}
+            >
+              {actionLabel}
+            </Button>
+          )}
+          {onRefresh && !creditRecovery && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={refreshing}
+              onClick={onRefresh}
+            >
+              {t(refreshing ? 'chat.notice-refreshing' : 'chat.notice-refresh')}
+            </Button>
+          )}
+          {onDismiss && (
+            <Button
+              size="sm"
+              variant="ghost"
+              buttonContent="icon-only"
+              onClick={onDismiss}
+              aria-label={t('chat.dismiss-usage-notice')}
+            >
+              <DsIcon icon={X} />
+            </Button>
+          )}
+        </div>
       </div>
-      <button
-        type="button"
-        onClick={onAction}
-        className={cn(
-          'shrink-0 whitespace-nowrap text-body-sm font-semibold underline underline-offset-4',
-          isDanger ? 'text-text-error' : 'text-text-heading'
-        )}
-      >
-        {actionLabel}
-      </button>
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label="Dismiss usage notice"
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-icon-secondary transition-colors hover:bg-fill-fill-transparent-hover hover:text-icon-primary"
-      >
-        <X className="size-4" />
-      </button>
-    </div>
+    </aside>
   );
 }

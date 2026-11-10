@@ -15,7 +15,13 @@
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
 import { getPreviewWebview } from '@/components/Session/PreviewPanel/tabs/browser/webviewRegistry';
 import { HostProvider } from '@/host';
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import i18n from '@/i18n';
+import {
+  getSessionPreviewSlice,
+  NEW_SESSION_DRAFT_SCOPE,
+  usePageTabStore,
+} from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,6 +53,7 @@ describe('PreviewBrowserLayer', () => {
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
       previewBrowserViewport: null,
+      previewBrowserViewportByProject: {},
     });
     usePageTabStore.getState().setSessionPreviewProject('project-a');
     usePageTabStore.getState().toggleSessionPreview();
@@ -54,6 +61,37 @@ describe('PreviewBrowserLayer', () => {
     const chooserId = getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
       .id;
     usePageTabStore.getState().choosePreviewTabType(chooserId, 'browser');
+  });
+
+  it('shows two pane browsers with independent bounds and parks only the removed viewport', async () => {
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://a.example', 'project-a');
+    store.openBrowserPreview('https://b.example', 'project-b');
+    store.setPreviewBrowserViewport(
+      { x: 0, y: 0, width: 600, height: 500 },
+      'project-a'
+    );
+    store.setPreviewBrowserViewport(
+      { x: 600, y: 0, width: 600, height: 500 },
+      'project-b'
+    );
+    const tabA = getBrowserTab();
+    const tabB = usePageTabStore
+      .getState()
+      .sessionPreviewByProject['project-b'].tabs.find(
+        (t) => t.type === 'browser'
+      )!;
+    renderLayer();
+    await waitFor(() =>
+      expect(guestContainer(tabA.webviewId)!.style.opacity).toBe('1')
+    );
+    expect(guestContainer(tabB.webviewId)!.style.left).toBe('600px');
+    act(() => store.setPreviewBrowserViewport(null, 'project-a'));
+    await waitFor(() =>
+      expect(guestContainer(tabA.webviewId)!.style.visibility).toBe('hidden')
+    );
+    expect(guestContainer(tabB.webviewId)!.style.visibility).not.toBe('hidden');
+    store.setPreviewBrowserViewport(null, 'project-b');
   });
 
   it('mounts a <webview> guest once a browser tab has a URL', () => {
@@ -76,6 +114,55 @@ describe('PreviewBrowserLayer', () => {
     expect(getPreviewWebview(tab.webviewId)).toBe(webview);
   });
 
+  it('does not reuse another pane viewport when focus moves to a browser without bounds', async () => {
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://a.example', 'project-a');
+    store.openBrowserPreview('https://b.example', 'project-b');
+    store.setPreviewBrowserViewport(
+      { x: 40, y: 0, width: 600, height: 500 },
+      'project-a'
+    );
+    const tabA = getBrowserTab();
+    const tabB = getSessionPreviewSlice(
+      usePageTabStore.getState(),
+      'project-b'
+    ).tabs.find((tab) => tab.type === 'browser')!;
+    renderLayer();
+    act(() => store.setSessionPreviewProject('project-b'));
+    await waitFor(() =>
+      expect(guestContainer(tabA.webviewId)!.style.opacity).toBe('1')
+    );
+    expect(guestContainer(tabB.webviewId)!.style.visibility).toBe('hidden');
+    expect(guestContainer(tabA.webviewId)!.style.left).toBe('40px');
+  });
+
+  it('focuses the owning Session when its guest gains focus and cleans up on unmount', async () => {
+    const runtime = useProjectRuntimeStore.getState();
+    runtime.createProject('A', undefined, 'project-a');
+    runtime.createProject('B', undefined, 'project-b');
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://a.example', 'project-a');
+    store.setPreviewBrowserViewport(
+      { x: 0, y: 0, width: 600, height: 500 },
+      'project-a'
+    );
+    const tab = getBrowserTab();
+    const layer = renderLayer();
+    await waitFor(() =>
+      expect(guestContainer(tab.webviewId)!.style.opacity).toBe('1')
+    );
+    const guest = getPreviewWebview(tab.webviewId)!;
+    act(() => guest.dispatchEvent(new FocusEvent('focus')));
+    expect(useProjectRuntimeStore.getState().activeProjectId).toBe('project-a');
+    expect(usePageTabStore.getState().sessionPreviewProjectId).toBe(
+      'project-a'
+    );
+    layer.unmount();
+    act(() => runtime.setActiveProject('project-b'));
+    guest.dispatchEvent(new FocusEvent('focus'));
+    expect(useProjectRuntimeStore.getState().activeProjectId).toBe('project-b');
+  });
+
   it('positions the active guest over the published viewport and parks it when closed', async () => {
     renderLayer();
     const tab = getBrowserTab();
@@ -91,6 +178,7 @@ describe('PreviewBrowserLayer', () => {
     const container = guestContainer(tab.webviewId)!;
     expect(container.style.left).toBe('100px');
     expect(container.style.width).toBe('640px');
+    expect(container.style.borderRadius).toBe('0');
     expect(container.style.visibility).not.toBe('hidden');
 
     // Closing the panel parks the guest (kept alive, hidden) — no unmount.
@@ -132,6 +220,87 @@ describe('PreviewBrowserLayer', () => {
     expect(guestContainer(tabA.webviewId)!.style.visibility).not.toBe('hidden');
   });
 
+  it('remounts a handed-off preview under its owner after renderer hydration', async () => {
+    const url = 'http://localhost:8080/index.html';
+    usePageTabStore.getState().openBrowserPreview(url, 'project-a');
+    const tab = getBrowserTab();
+    const layer = renderLayer();
+    const originalGuest = getPreviewWebview(tab.webviewId);
+    expect(originalGuest).toBeDefined();
+    const saved = window.localStorage.getItem('eigent-page-tab')!;
+
+    layer.unmount();
+    expect(getPreviewWebview(tab.webviewId)).toBeUndefined();
+    usePageTabStore.setState({ sessionPreviewByProject: {} });
+    window.localStorage.setItem('eigent-page-tab', saved);
+    await usePageTabStore.persist.rehydrate();
+    usePageTabStore.getState().setSessionPreviewProject('project-b');
+    renderLayer();
+    // Cold background tabs mount lazily when their owning Session is selected.
+    expect(guestContainer(tab.webviewId)).toBeNull();
+
+    act(() => {
+      usePageTabStore.getState().setSessionPreviewProject('project-a');
+      usePageTabStore
+        .getState()
+        .setPreviewBrowserViewport({ x: 0, y: 0, width: 800, height: 600 });
+    });
+    const restoredGuest = getPreviewWebview(tab.webviewId);
+    expect(restoredGuest).toBeDefined();
+    expect(restoredGuest).not.toBe(originalGuest);
+    expect(restoredGuest?.getAttribute('src')).toBe(url);
+    expect(getBrowserTab().webviewId).toBe(tab.webviewId);
+    expect(guestContainer(tab.webviewId)?.style.visibility).not.toBe('hidden');
+  });
+
+  it('keeps a New session draft page live when its tab moves to the started Session', () => {
+    usePageTabStore.setState({
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
+      sessionSummaryOpenByProject: {},
+    });
+    usePageTabStore
+      .getState()
+      .setSessionPreviewProject(NEW_SESSION_DRAFT_SCOPE);
+    usePageTabStore.getState().openPreviewTab('browser');
+    renderLayer();
+    const tab = getBrowserTab();
+    act(() => {
+      usePageTabStore
+        .getState()
+        .updateBrowserPreviewTab(tab.id, { url: 'https://example.com/' });
+    });
+    const webview = guestContainer(tab.webviewId)!.querySelector(
+      'webview'
+    ) as HTMLElement & Record<string, unknown>;
+
+    act(() => {
+      usePageTabStore.getState().handOffNewSessionDraft('started');
+    });
+
+    // Same element: the page is not reloaded by the handoff.
+    expect(guestContainer(tab.webviewId)!.querySelector('webview')).toBe(
+      webview
+    );
+    webview.getURL = () => 'https://example.com/next';
+    webview.getTitle = () => 'Next';
+    webview.isLoading = () => false;
+    act(() => {
+      webview.dispatchEvent(new Event('did-navigate'));
+    });
+    // Navigation now lands in the started Session's slice.
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject.started.tabs
+    ).toContainEqual(
+      expect.objectContaining({ url: 'https://example.com/next' })
+    );
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject[
+        NEW_SESSION_DRAFT_SCOPE
+      ]
+    ).toBeUndefined();
+  });
+
   it('feeds guest navigation events back into the per-project store slice', () => {
     renderLayer();
     const tab = getBrowserTab();
@@ -166,6 +335,100 @@ describe('PreviewBrowserLayer', () => {
     expect(
       usePageTabStore.getState().sessionPreviewByProject['project-a'].tabs
     ).toContainEqual(updated);
+  });
+
+  it('shows a main-frame failure and keeps it visible until a retry finishes', () => {
+    renderLayer();
+    act(() =>
+      usePageTabStore.getState().openBrowserPreview('http://localhost:8080/')
+    );
+    const tab = getBrowserTab();
+    const guest = getPreviewWebview(tab.webviewId)!;
+    guest.getURL = () => 'chrome-error://chromewebdata/';
+    guest.isLoading = () => false;
+    const fail = (code: number, main = true) => {
+      const event = Object.assign(new Event('did-fail-load'), {
+        errorCode: code,
+        isMainFrame: main,
+        validatedURL: 'http://localhost:8080/',
+      });
+      act(() => guest.dispatchEvent(event));
+    };
+    fail(-105, false);
+    fail(-3);
+    expect(getBrowserTab().navigation.loadError).toBeUndefined();
+    fail(-102);
+    act(() => guest.dispatchEvent(new Event('did-stop-loading')));
+    expect(getBrowserTab().navigation).toMatchObject({
+      isLoading: false,
+      loadError: { code: -102, url: 'http://localhost:8080/' },
+    });
+    expect(getBrowserTab().url).toBe('http://localhost:8080/');
+    expect(guestContainer(tab.webviewId)!.style.visibility).toBe('hidden');
+    act(() => guest.dispatchEvent(new Event('did-finish-load')));
+    expect(getBrowserTab().navigation.loadError).toBeDefined();
+    guest.getURL = () => 'http://localhost:8080/';
+    act(() => guest.dispatchEvent(new Event('did-start-loading')));
+    expect(getBrowserTab().navigation.loadError).toEqual({
+      code: -102,
+      url: 'http://localhost:8080/',
+    });
+    expect(guestContainer(tab.webviewId)!.style.visibility).toBe('hidden');
+    act(() => guest.dispatchEvent(new Event('did-finish-load')));
+    expect(getBrowserTab().navigation.loadError).toBeUndefined();
+  });
+
+  it('retries the last successfully reported URL when Chromium omits the failed URL', () => {
+    renderLayer();
+    act(() =>
+      usePageTabStore.getState().openBrowserPreview('http://localhost:8080/')
+    );
+    const tab = getBrowserTab();
+    const guest = getPreviewWebview(tab.webviewId)!;
+    guest.getURL = () => 'http://localhost:8080/report';
+    guest.isLoading = () => false;
+    act(() => guest.dispatchEvent(new Event('did-navigate')));
+    guest.getURL = () => 'chrome-error://chromewebdata/';
+
+    act(() =>
+      guest.dispatchEvent(
+        Object.assign(new Event('did-fail-load'), {
+          errorCode: -102,
+          isMainFrame: true,
+          validatedURL: '',
+        })
+      )
+    );
+
+    expect(getBrowserTab().navigation.loadError?.url).toBe(
+      'http://localhost:8080/report'
+    );
+  });
+
+  it('keeps the current guest mounted when the language changes', async () => {
+    renderLayer();
+    const tab = getBrowserTab();
+    act(() => {
+      usePageTabStore
+        .getState()
+        .updateBrowserPreviewTab(tab.id, { url: 'https://example.com/' });
+    });
+
+    const webview = guestContainer(tab.webviewId)!.querySelector('webview');
+    expect(webview).not.toBeNull();
+
+    await act(async () => {
+      await i18n.changeLanguage('de');
+    });
+
+    expect(guestContainer(tab.webviewId)!.querySelector('webview')).toBe(
+      webview
+    );
+    expect(getBrowserTab().title).toBe('Neuer Tab');
+
+    await act(async () => {
+      await i18n.changeLanguage('en-US');
+    });
   });
 
   it('evicts guests of projects left out of scope beyond the idle window', () => {

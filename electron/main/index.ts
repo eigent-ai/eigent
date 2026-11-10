@@ -21,6 +21,7 @@ import {
   Menu,
   nativeTheme,
   protocol,
+  screen,
   session,
   shell,
 } from 'electron';
@@ -34,9 +35,53 @@ import fs, { existsSync } from 'node:fs';
 import http from 'node:http';
 import os, { homedir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
+import {
+  APP_COMMAND_CHANNEL,
+  APP_COMMAND_HANDLED_CHANNEL,
+  APP_SHELL_NOT_READY_CHANNEL,
+  APP_SHELL_READY_CHANNEL,
+  APP_SHELL_READY_PROBE_CHANNEL,
+  isAppCommandHandled,
+  isAppShellLifecycleMessage,
+  type AppCommandId,
+} from '../../src/shared/appCommands';
+import { FILE_PREVIEW_LIMITS } from '../../src/shared/filePreviewContract';
+import {
+  NATIVE_MENU_LOCALE_CHANNEL,
+  type NativeMenuLocale,
+} from '../../src/shared/nativeMenu';
+import {
+  SUBFRAME_LOAD_FAILED_CHANNEL,
+  subframeLoadFailureFromEvent,
+} from '../../src/shared/subframeLoadFailure';
+import {
+  isWindowCloseResponse,
+  WINDOW_CLOSE_RESPONSE_CHANNEL,
+} from '../../src/shared/windowClose';
+import { AppShellReadinessGate } from './appShellReadinessGate';
+import {
+  isBrainStreamRelayDisabled,
+  registerBrainStreamRelay,
+  type BrainStreamRelay,
+} from './brainStreamRelay';
+import { CloseCoordinator } from './closeCoordinator';
+import { installApplicationMenu } from './commands/applicationMenu';
+import {
+  installContextMenu,
+  type ContextMenuSurfaceKind,
+} from './commands/contextMenu';
+import {
+  applyNativeMenuLocaleChange,
+  getNativeMenuMessages,
+  getNativeQuitMessages,
+  resolveNativeMenuLocale,
+} from './commands/nativeMenuMessages';
 import { copyBrowserData } from './copy';
+import { getOrCreateDesktopInstanceId } from './desktopIdentity';
+import { inlineContentDisposition, resolveFileByteRange } from './fileRange';
 import { FileReader } from './fileReader';
 import {
   checkToolInstalled,
@@ -49,7 +94,30 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
+import {
+  authorizeLocalFilePath,
+  authorizeLocalPreviewPath,
+  isMainRendererSender,
+} from './localFileSecurity';
+import { filePathFromLocalFileUrl } from './localFileUrl';
+import {
+  authorizeWorkspaceLocalNode,
+  openWorkspaceLocalFile,
+  rememberBoundedPathGrant,
+  revealAuthorizedLocalNode,
+  revealUserVisibleLocalNode,
+  revealWorkspaceLocalNode,
+} from './localPathActions';
 import { setRoundedCorners } from './native/macos-window';
+import { confirmNativeQuit } from './nativeQuitGuard';
+import { RendererAppCommandCoordinator } from './rendererAppCommandCoordinator';
+import { registerReviewChangesIpcHandlers } from './reviewChanges';
+import {
+  isSessionWindowTarget,
+  SessionWindowManager,
+  sessionWindowRoute,
+  type SessionWindowTarget,
+} from './sessionWindows';
 import {
   completeCodexOAuthCallback,
   getCodexResolverEnv,
@@ -64,6 +132,7 @@ import {
   readGlobalEnvKey,
   removeEnvKey,
   updateEnvBlock,
+  writeEnvFile,
 } from './utils/envUtil';
 import { createDiagnosticsZip, zipDirectories, zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
@@ -73,6 +142,18 @@ import {
   isBinaryExists,
 } from './utils/process';
 import { WebViewManager } from './webview';
+import {
+  loadWindowStartupState,
+  persistWindowState,
+  resolveWindowStartupState,
+  type PersistedWindowStateV2,
+} from './windowState';
+import {
+  closeWorkspaceSecretBroker,
+  ensureWorkspaceSecretBroker,
+  getDefaultWorkspaceSecretVault,
+  registerWorkspaceSecretIpcHandlers,
+} from './workspaceSecrets';
 
 const userData = app.getPath('userData');
 
@@ -89,13 +170,231 @@ const VITE_PUBLIC = VITE_DEV_SERVER_URL
 let win: BrowserWindow | null = null;
 let createWindowPromise: Promise<void> | null = null;
 let webViewManager: WebViewManager | null = null;
+let sessionWindows: SessionWindowManager<BrowserWindow> | null = null;
+const SESSION_WINDOW_DEFAULT_SIZE = { width: 960, height: 760 };
+const SESSION_WINDOW_MINIMUM_SIZE = { width: 480, height: 480 };
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let backendStartPromise: Promise<BackendStartResult> | null = null;
+let brainStreamRelay: BrainStreamRelay | null = null;
+const localControlCapability = crypto.randomBytes(32).toString('base64url');
+let desktopInstanceId: string | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
+const LEGACY_DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
+// Space roots each app window registered for local previews, by webContents id.
+const localFileRootsByRenderer = new Map<number, Set<string>>();
+function activeLocalFileRoots(): string[] {
+  const roots = new Set<string>();
+  for (const windowRoots of localFileRootsByRenderer.values())
+    windowRoots.forEach((root) => roots.add(root));
+  return [...roots];
+}
+let protocolUrlQueue: string[] = [];
+let isWindowReady = false;
+let nativeMenuLocale: NativeMenuLocale | null = null;
+const appShellReadinessGate = new AppShellReadinessGate({
+  announceReadyProbe: () => {
+    const target = win;
+    if (!target || target.isDestroyed() || target.webContents.isDestroyed()) {
+      return;
+    }
+    target.webContents.send(APP_SHELL_READY_PROBE_CHANNEL);
+  },
+});
+const rendererAppCommands = new RendererAppCommandCoordinator({
+  send: (request) => {
+    const target = win;
+    if (!target || target.isDestroyed() || target.webContents.isDestroyed()) {
+      throw new Error('main renderer is unavailable');
+    }
+    target.webContents.send(APP_COMMAND_CHANNEL, request);
+  },
+  diagnostic: (message) => log.warn(message),
+});
+const closeCoordinator = new CloseCoordinator({
+  // Eigent owns a single application window. Closing it exits the app on
+  // every platform so shutdown cleanup also stops the local backend.
+  defaultIntent: 'quit-app',
+  quit: () => app.quit(),
+  shouldGuard: () => rendererAppCommands.isReady(),
+  // Main spawns the only Brain; without it no task or stream can be running.
+  mayHaveRunningWork: () => isPythonProcessRunning(),
+  confirmQuitWithoutRenderer: () =>
+    confirmNativeQuit({
+      lookup: async () => {
+        if (!isPythonProcessRunning()) throw new Error('Brain unavailable');
+        const response = await axios.get(
+          `http://127.0.0.1:${backendPort}/runs/active`,
+          {
+            timeout: 2500,
+            headers: { 'X-Eigent-Local-Capability': localControlCapability },
+          }
+        );
+        return response.data;
+      },
+      confirm: async (unknown) => {
+        const text = getNativeQuitMessages(
+          nativeMenuLocale ?? app.getLocale(),
+          unknown
+        );
+        const result = await dialog.showMessageBox({
+          type: 'question',
+          title: text.title,
+          message: text.title,
+          detail: text.message,
+          buttons: [text.cancel, text.title],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        });
+        return result.response === 1;
+      },
+    }),
+  diagnostic: (message) => log.info(message),
+});
+let isQuitCleanupInProgress = false;
+let windowStateSaveTimer: NodeJS.Timeout | null = null;
+const allowDeveloperTools =
+  !app.isPackaged || app.commandLine.hasSwitch('enable-devtools');
+
+function getCurrentNativeMenuMessages() {
+  nativeMenuLocale ??= resolveNativeMenuLocale(app.getLocale());
+  return getNativeMenuMessages(nativeMenuLocale);
+}
+
+function installSurfaceContextMenu(
+  contents: Electron.WebContents,
+  ownerWindow: BrowserWindow,
+  surfaceKind: ContextMenuSurfaceKind
+): () => void {
+  return installContextMenu({
+    contents,
+    getMessages: getCurrentNativeMenuMessages,
+    isDevelopment: allowDeveloperTools,
+    menuApi: Menu,
+    ownerWindow,
+    surfaceKind,
+  });
+}
+
+async function dispatchRendererAppCommand(
+  commandId: AppCommandId
+): Promise<void> {
+  try {
+    if (!win || win.isDestroyed()) {
+      await createWindow();
+    } else if (createWindowPromise) {
+      await createWindowPromise;
+    }
+
+    const target = win;
+    if (!target || target.isDestroyed()) return;
+    if (!target.isVisible()) target.show();
+    target.focus();
+    rendererAppCommands.dispatch(commandId);
+  } catch (error) {
+    log.error(`[APP COMMAND] Failed to dispatch ${commandId}:`, error);
+  }
+}
+
+function installNativeApplicationMenu(): void {
+  const platform =
+    process.platform === 'darwin' || process.platform === 'win32'
+      ? process.platform
+      : 'linux';
+
+  installApplicationMenu(Menu, {
+    appName: app.getName(),
+    dispatchRendererCommand: (commandId) => {
+      void dispatchRendererAppCommand(commandId);
+    },
+    isDevelopment: allowDeveloperTools,
+    messages: getCurrentNativeMenuMessages(),
+    onOpenExternalError: (error) => {
+      log.error('[APPLICATION MENU] Failed to open external URL:', error);
+    },
+    openExternal: (url) => shell.openExternal(url),
+    platform,
+    requestQuit: () => closeCoordinator.request('quit-app'),
+    closeSecondaryWindow: () => {
+      const focused = BrowserWindow.getFocusedWindow();
+      if (!focused || !sessionWindows?.ownsContents(focused.webContents.id))
+        return false;
+      focused.close();
+      return true;
+    },
+  });
+}
+
+function persistBrowserWindowState(target: BrowserWindow | null = win): void {
+  if (windowStateSaveTimer) {
+    clearTimeout(windowStateSaveTimer);
+    windowStateSaveTimer = null;
+  }
+  if (!target || target.isDestroyed()) return;
+
+  try {
+    persistWindowState(userData, target);
+  } catch (error) {
+    log.warn('[WINDOW STATE] Failed to persist window state:', error);
+  }
+}
+
+function scheduleWindowStateSave(target: BrowserWindow): void {
+  if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
+  windowStateSaveTimer = setTimeout(() => {
+    windowStateSaveTimer = null;
+    persistBrowserWindowState(target);
+  }, 250);
+}
+
+/**
+ * Real paths the user picked in a native file dialog this session.
+ *
+ * Chat attachments are chosen from anywhere on disk, so they are legitimately
+ * outside every Space root. The dialog itself is the user's authorization, and
+ * recording the exact picked path lets those attachments stay revealable
+ * without granting the renderer free rein over the file system.
+ */
+const userSelectedLocalPaths = new Set<string>();
+const USER_SELECTED_PATH_LIMIT = 512;
+
+function rememberUserSelectedLocalPath(realPath: string): void {
+  rememberBoundedPathGrant(
+    userSelectedLocalPaths,
+    realPath,
+    USER_SELECTED_PATH_LIMIT
+  );
+}
+
+function resolveDesktopInstanceId(legacyRendererId?: string | null): string {
+  if (!desktopInstanceId) {
+    desktopInstanceId = getOrCreateDesktopInstanceId(
+      userData,
+      legacyRendererId
+    );
+  }
+  return desktopInstanceId;
+}
+
+async function primeDesktopInstanceIdFromRenderer(): Promise<void> {
+  if (desktopInstanceId || !win || win.isDestroyed()) return;
+  let legacyRendererId: string | null = null;
+  try {
+    legacyRendererId = await win.webContents.executeJavaScript(
+      `window.localStorage.getItem(${JSON.stringify(
+        LEGACY_DESKTOP_INSTANCE_STORAGE_KEY
+      )})`,
+      true
+    );
+  } catch (error) {
+    log.warn('Unable to read legacy renderer device identity', error);
+  }
+  resolveDesktopInstanceId(legacyRendererId);
+}
 
 const PREVIEW_WEBVIEW_PARTITION = 'persist:session-preview';
 
@@ -108,6 +407,64 @@ const isHttpOrHttpsUrl = (url: unknown): url is string => {
     return false;
   }
 };
+
+function isMainRendererFrame(
+  event: Pick<Electron.IpcMainInvokeEvent, 'sender' | 'senderFrame'>
+): boolean {
+  return Boolean(
+    win &&
+    !win.isDestroyed() &&
+    isMainRendererSender(event.sender.id, win.webContents.id) &&
+    event.senderFrame === event.sender.mainFrame
+  );
+}
+
+/** The main window or a Session window: both run the app renderer. */
+function isAppRendererFrame(
+  event: Pick<Electron.IpcMainInvokeEvent, 'sender' | 'senderFrame'>
+): boolean {
+  if (isMainRendererFrame(event)) return true;
+  return Boolean(
+    sessionWindows?.ownsContents(event.sender.id) &&
+    event.senderFrame === event.sender.mainFrame
+  );
+}
+
+// Settings-only surfaces (workspace secrets) stay with the main window.
+function assertMainRendererSender(event: Electron.IpcMainInvokeEvent): void {
+  if (!isMainRendererFrame(event)) {
+    throw new Error('This operation is restricted to the main renderer');
+  }
+}
+
+function assertAppRendererSender(event: Electron.IpcMainInvokeEvent): void {
+  if (!isAppRendererFrame(event)) {
+    throw new Error('This operation is restricted to the app renderer');
+  }
+}
+
+function localFileAllowedRoots(): string[] {
+  // Only active Space roots plus the renderer's static application assets are
+  // readable through localfile://. In particular, HOME, userData and the OS
+  // temp directory are not trust boundaries for agent-authored HTML.
+  return [...activeLocalFileRoots(), RENDERER_DIST, VITE_PUBLIC];
+}
+
+async function requireAuthorizedPreviewFile(
+  event: Electron.IpcMainInvokeEvent,
+  filePath: string
+): Promise<string> {
+  assertAppRendererSender(event);
+  const authorization = await authorizeLocalPreviewPath(
+    filePath,
+    activeLocalFileRoots(),
+    [RENDERER_DIST, VITE_PUBLIC]
+  );
+  if (!authorization.allowed) {
+    throw new Error('Preview file is outside the active workspace');
+  }
+  return authorization.filePath;
+}
 
 // CDP Browser Pool
 interface CdpBrowser {
@@ -128,8 +485,7 @@ type BackendStartOptions = {
 };
 
 type BackendStartResult =
-  | { success: true; port: number }
-  | { success: false; error: string };
+  { success: true; port: number } | { success: false; error: string };
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -179,18 +535,176 @@ function notifyBackendReady(result: BackendStartResult): void {
     return;
   }
 
-  win.webContents.send(
-    'backend-ready',
-    result.success
-      ? {
-          success: true,
-          port: result.port,
-        }
+  const payload = result.success
+    ? {
+        success: true,
+        port: result.port,
+      }
+    : {
+        success: false,
+        error: result.error,
+      };
+  win.webContents.send('backend-ready', payload);
+  for (const sessionWindow of sessionWindows?.allWindows() ?? [])
+    sessionWindow.webContents.send('backend-ready', payload);
+  // Session windows open after the Brain answers, as they did before quit.
+  if (result.success) getSessionWindows().restore();
+}
+
+// ==================== Session windows ====================
+/** The app window (main or Session) that owns `sender`, if any. */
+function appWindowForSender(
+  sender: Electron.WebContents
+): BrowserWindow | null {
+  if (win && !win.isDestroyed() && sender.id === win.webContents.id) return win;
+  if (!sessionWindows?.ownsContents(sender.id)) return null;
+  const owner = BrowserWindow.fromWebContents(sender);
+  return owner && !owner.isDestroyed() ? owner : null;
+}
+
+function getSessionWindows(): SessionWindowManager<BrowserWindow> {
+  if (!sessionWindows) {
+    let saveTimer: NodeJS.Timeout | null = null;
+    sessionWindows = new SessionWindowManager<BrowserWindow>({
+      userDataPath: userData,
+      createWindow: createSessionAppWindow,
+      onClosed: (target) =>
+        relaySessionWindowMessage(null, { type: 'closed', ...target }),
+      scheduleSave: (save) => {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          saveTimer = null;
+          save();
+        }, 250);
+      },
+    });
+  }
+  return sessionWindows;
+}
+
+/** Forwards a renderer message to every other app window. */
+function relaySessionWindowMessage(
+  senderId: number | null,
+  message: unknown
+): void {
+  if (!message || typeof message !== 'object') return;
+  const type = (message as { type?: unknown }).type;
+  if (typeof type !== 'string' || type.length > 64) return;
+  const targets = [
+    ...(win && !win.isDestroyed() ? [win] : []),
+    ...(sessionWindows?.allWindows() ?? []),
+  ];
+  for (const target of targets) {
+    if (target.webContents.id === senderId) continue;
+    target.webContents.send('session-window:message', message);
+  }
+  // Requests the main window answers with a dialog need it in front.
+  if (type === 'session-control' && win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+}
+
+/**
+ * A window that shows one Session: same frame, preload and partition as the
+ * main window, so the Session behaves exactly as it does there.
+ */
+function createSessionAppWindow(
+  target: SessionWindowTarget,
+  state: PersistedWindowStateV2 | null
+): BrowserWindow {
+  const placement = resolveWindowStartupState({
+    displays: screen.getAllDisplays(),
+    primaryDisplay: screen.getPrimaryDisplay(),
+    persistedState: state,
+    minimumSize: SESSION_WINDOW_MINIMUM_SIZE,
+  });
+  const bounds =
+    placement.source === 'persisted'
+      ? placement.bounds
       : {
-          success: false,
-          error: result.error,
-        }
+          width: Math.min(
+            SESSION_WINDOW_DEFAULT_SIZE.width,
+            placement.bounds.width
+          ),
+          height: Math.min(
+            SESSION_WINDOW_DEFAULT_SIZE.height,
+            placement.bounds.height
+          ),
+        };
+  const sessionWindow = new BrowserWindow({
+    title: 'Eigent',
+    ...bounds,
+    minWidth: placement.minimumSize.width,
+    minHeight: placement.minimumSize.height,
+    ...appWindowChromeOptions(),
+  });
+  const disposeContextMenu = installSurfaceContextMenu(
+    sessionWindow.webContents,
+    sessionWindow,
+    'main-renderer'
   );
+  sessionWindow.on('closed', disposeContextMenu);
+  installPreviewGuestGuards(sessionWindow);
+  setupExternalLinkHandling(sessionWindow);
+  sessionWindow.once('ready-to-show', () => {
+    if (sessionWindow.isDestroyed()) return;
+    if (process.platform === 'darwin') {
+      try {
+        setRoundedCorners(sessionWindow, 20);
+      } catch (error) {
+        log.error('[MacOS] Failed to apply rounded corners:', error);
+      }
+    }
+    if (placement.shouldMaximize) sessionWindow.maximize();
+    else sessionWindow.show();
+  });
+
+  const route = sessionWindowRoute(target);
+  const load = () => {
+    if (sessionWindow.isDestroyed()) return;
+    if (VITE_DEV_SERVER_URL) {
+      void sessionWindow.loadURL(`${VITE_DEV_SERVER_URL}#${route}`);
+    } else {
+      void sessionWindow.loadFile(indexHtml, { hash: route });
+    }
+  };
+
+  // Same recovery as the main window: reload a crashed renderer, retry a
+  // failed document load, and tell the page when a preview subframe failed.
+  sessionWindow.webContents.on('render-process-gone', (_event, details) => {
+    log.error(
+      '[SESSION WINDOW] Renderer gone:',
+      details.reason,
+      details.exitCode
+    );
+    setTimeout(load, 1000);
+  });
+  sessionWindow.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const subframeFailure = subframeLoadFailureFromEvent(
+        errorCode,
+        validatedURL,
+        isMainFrame
+      );
+      if (subframeFailure && !sessionWindow.isDestroyed()) {
+        sessionWindow.webContents.send(
+          SUBFRAME_LOAD_FAILED_CHANNEL,
+          subframeFailure
+        );
+      }
+      // -3 is ERR_ABORTED: a replaced navigation, not a broken document.
+      if (!isMainFrame || errorCode === -3) return;
+      log.error(
+        `[SESSION WINDOW] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
+      );
+      setTimeout(load, 2000);
+    }
+  );
+
+  load();
+  return sessionWindow;
 }
 
 function checkBackendHealth(port: number): Promise<boolean> {
@@ -417,10 +931,6 @@ async function closeBrowserViaCdp(port: number): Promise<void> {
     log.warn(`[CDP CLOSE] Best-effort close failed for port ${port}: ${err}`);
   }
 }
-
-// Protocol URL queue for handling URLs before window is ready
-let protocolUrlQueue: string[] = [];
-let isWindowReady = false;
 
 // ==================== path config ====================
 const preload = path.join(__dirname, '../preload/index.mjs');
@@ -787,6 +1297,27 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   registerCodexSubscriptionAuthIpcHandlers(ipcMain);
   registerTerminalIpcHandlers();
+  registerReviewChangesIpcHandlers();
+  registerWorkspaceSecretIpcHandlers(
+    ipcMain,
+    getDefaultWorkspaceSecretVault(),
+    assertMainRendererSender
+  );
+  // Event streams to the Brain this process runs bypass the renderer's
+  // per-host connection limit. Only app window main frames may use it.
+  const streamRelayDisabled = isBrainStreamRelayDisabled();
+  if (streamRelayDisabled) {
+    log.info('[StreamRelay] Disabled by EIGENT_DISABLE_STREAM_RELAY');
+  }
+  brainStreamRelay = registerBrainStreamRelay({
+    ipcMain,
+    enabled: !streamRelayDisabled,
+    getManagedBackendPort: () =>
+      isPythonProcessRunning() ? backendPort : null,
+    isTrustedSender: (event) =>
+      isAppRendererFrame(event as Electron.IpcMainInvokeEvent),
+    log,
+  });
 
   // ==================== auth callback ====================
   ipcMain.handle('get-auth-callback-url', async () => {
@@ -798,6 +1329,19 @@ function registerIpcHandlers() {
   ipcMain.handle('get-browser-port', () => {
     log.info('Getting browser port');
     return browser_port;
+  });
+
+  ipcMain.handle('get-embedded-browser-runtime', () => {
+    const targets = webViewManager?.listAvailableBrowserToolkitTargets() ?? [];
+    const targetAvailable = targets.length > 0;
+    log.info(
+      `[PROJECT BROWSER] Embedded runtime requested: port=${browser_port}, available_targets=${targets.length}`
+    );
+    return {
+      port: browser_port,
+      targetAvailable,
+      targets,
+    };
   });
 
   // Set browser port
@@ -1059,6 +1603,62 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
+  // Session windows call the same local Brain as the main window, so every
+  // app window (and only its main frame) may read these.
+  ipcMain.handle('get-local-control-capability', (event) => {
+    if (!isAppRendererFrame(event)) {
+      throw new Error(
+        'Local control capability is restricted to the app renderer'
+      );
+    }
+    return localControlCapability;
+  });
+  ipcMain.handle('get-desktop-instance-id', (event, legacyRendererId) => {
+    if (!isAppRendererFrame(event)) {
+      throw new Error('Desktop identity is restricted to the app renderer');
+    }
+    return resolveDesktopInstanceId(
+      typeof legacyRendererId === 'string' ? legacyRendererId : null
+    );
+  });
+  ipcMain.handle(
+    'set-local-file-preview-roots',
+    async (event, roots: unknown) => {
+      assertAppRendererSender(event);
+      // TODO(security): replace this renderer-declared, process-global root set
+      // with main-authoritative, per-surface capabilities. A compromised main
+      // renderer can currently register a broad existing directory (including
+      // a filesystem root), and the replace semantics let concurrent preview
+      // surfaces clear one another's grants. This check is bug containment,
+      // not a renderer-compromise boundary.
+      if (!Array.isArray(roots) || roots.length > 4) {
+        throw new Error('Invalid local file preview roots');
+      }
+
+      const nextRoots = new Set<string>();
+      for (const root of roots) {
+        if (typeof root !== 'string' || !path.isAbsolute(root)) {
+          throw new Error('Local file preview roots must be absolute paths');
+        }
+        const realRoot = await fsp.realpath(root);
+        const stats = await fsp.stat(realRoot);
+        if (!stats.isDirectory()) {
+          throw new Error('Local file preview roots must be directories');
+        }
+        nextRoots.add(realRoot);
+      }
+
+      // Each window replaces only its own grants, so a Session window cannot
+      // clear the main window's Space root or the other way round.
+      const sender = event.sender;
+      if (!localFileRootsByRenderer.has(sender.id))
+        sender.once('destroyed', () =>
+          localFileRootsByRenderer.delete(sender.id)
+        );
+      localFileRootsByRenderer.set(sender.id, nextRoots);
+      return { success: true, roots: nextRoots.size };
+    }
+  );
 
   // ==================== restart app handler ====================
   ipcMain.handle('restart-app', async () => {
@@ -1069,6 +1669,7 @@ function registerIpcHandlers() {
 
     // Schedule relaunch after a short delay
     setTimeout(() => {
+      closeCoordinator.markAppQuitInProgress();
       app.relaunch();
       app.quit();
     }, 100);
@@ -1087,7 +1688,10 @@ function registerIpcHandlers() {
     }
   });
   ipcMain.handle('get-system-language', getSystemLanguage);
-  ipcMain.handle('is-fullscreen', () => win?.isFullScreen() || false);
+  ipcMain.handle(
+    'is-fullscreen',
+    (event) => appWindowForSender(event.sender)?.isFullScreen() || false
+  );
   ipcMain.handle('get-home-dir', () => {
     const platform = process.platform;
     return platform === 'win32' ? process.env.USERPROFILE : process.env.HOME;
@@ -1179,9 +1783,20 @@ function registerIpcHandlers() {
 
   ipcMain.handle('read-file-dataurl', async (event, filePath) => {
     try {
-      const file = fs.readFileSync(filePath);
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      const stats = await fsp.stat(authorizedPath);
+      if (stats.size > FILE_PREVIEW_LIMITS.imageBytes) {
+        throw new Error(
+          `FILE_PREVIEW_TOO_LARGE:${stats.size}:${FILE_PREVIEW_LIMITS.imageBytes}`
+        );
+      }
+      const file = fs.readFileSync(authorizedPath);
       const mimeType =
-        mime.getType(path.extname(filePath)) || 'application/octet-stream';
+        mime.getType(path.extname(authorizedPath)) ||
+        'application/octet-stream';
       return `data:${mimeType};base64,${file.toString('base64')}`;
     } catch (error: any) {
       log.error('Failed to read file as data URL:', filePath, error);
@@ -1587,33 +2202,89 @@ function registerIpcHandlers() {
   });
 
   // ==================== window control handler ====================
-  ipcMain.on('window-close', (_, data) => {
-    if (data.isForceQuit) {
-      return app?.quit();
-    }
-    return win?.close();
+  ipcMain.on('window-close', (event) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    return closeCoordinator.request('quit-app');
   });
-  ipcMain.on('window-minimize', () => win?.minimize());
-  ipcMain.on('window-toggle-maximize', () => {
-    if (win?.isMaximized()) {
-      win?.unmaximize();
+  ipcMain.on(WINDOW_CLOSE_RESPONSE_CHANNEL, (event, response: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isWindowCloseResponse(response)) return;
+    closeCoordinator.respond(response);
+  });
+  ipcMain.on(NATIVE_MENU_LOCALE_CHANNEL, (event, locale: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    applyNativeMenuLocaleChange(nativeMenuLocale, locale, (nextLocale) => {
+      nativeMenuLocale = nextLocale;
+      installNativeApplicationMenu();
+    });
+  });
+  ipcMain.on(APP_SHELL_READY_CHANNEL, (event, message: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (
+      !appShellReadinessGate.canAcceptReady() ||
+      !isAppShellLifecycleMessage(message)
+    ) {
+      return;
+    }
+    rendererAppCommands.markReady(message.epoch);
+    closeCoordinator.markRendererReady();
+    log.info(`[APP SHELL] Renderer ready epoch=${message.epoch}`);
+  });
+  ipcMain.on(APP_SHELL_NOT_READY_CHANNEL, (event, message: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isAppShellLifecycleMessage(message)) return;
+    if (rendererAppCommands.markNotReady('listener-unmounted', message.epoch)) {
+      closeCoordinator.markRendererUnavailable('listener-unmounted');
+      log.info(`[APP SHELL] Renderer listeners removed epoch=${message.epoch}`);
+    }
+  });
+  ipcMain.on(APP_COMMAND_HANDLED_CHANNEL, (event, receipt: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isAppCommandHandled(receipt)) return;
+    if (!rendererAppCommands.handleReceipt(receipt)) {
+      log.warn(
+        `[APP COMMAND] Ignored stale handled receipt request=${receipt.requestId} epoch=${receipt.epoch}`
+      );
+    }
+  });
+  ipcMain.on('window-minimize', (event) =>
+    appWindowForSender(event.sender)?.minimize()
+  );
+  ipcMain.on('window-toggle-maximize', (event) => {
+    const target = appWindowForSender(event.sender);
+    if (target?.isMaximized()) {
+      target.unmaximize();
     } else {
-      win?.maximize();
+      target?.maximize();
     }
   });
 
   // ==================== file operation handler ====================
   ipcMain.handle('select-file', async (event, options = {}) => {
-    const result = await dialog.showOpenDialog(win!, {
-      properties: ['openFile', 'multiSelections'],
-      ...options,
-    });
+    assertAppRendererSender(event);
+    // Attach the picker to the window that asked, main or Session window.
+    const result = await dialog.showOpenDialog(
+      appWindowForSender(event.sender) ?? win!,
+      {
+        properties: ['openFile', 'multiSelections'],
+        ...options,
+      }
+    );
 
     if (!result.canceled && result.filePaths.length > 0) {
       const files = result.filePaths.map((filePath) => ({
         filePath,
         fileName: filePath.split(/[/\\]/).pop() || '',
       }));
+
+      // Picking a file here is the user's own grant to reveal it later, even
+      // though attachments routinely live outside every Space root.
+      await Promise.all(
+        result.filePaths.map(async (filePath) => {
+          const realPath = await fsp.realpath(filePath).catch(() => null);
+          if (realPath) rememberUserSelectedLocalPath(realPath);
+        })
+      );
 
       return {
         success: true,
@@ -1628,19 +2299,82 @@ function registerIpcHandlers() {
     };
   });
 
+  ipcMain.handle('select-agent-plugin-source', async (event) => {
+    // Agent plugin import lives in Settings, which only the main window has.
+    assertMainRendererSender(event);
+
+    const sourceChoice = await dialog.showMessageBox(win!, {
+      type: 'question',
+      title: 'Import Agent Plugin',
+      message: 'Choose the Agent Plugin source',
+      detail:
+        'A plugin directory is the standard package format. Archives are supported only as an Eigent import transport.',
+      buttons: ['Plugin directory', 'Archive', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    });
+    if (sourceChoice.response === 2) {
+      return { canceled: true };
+    }
+
+    const sourceKind = sourceChoice.response === 0 ? 'directory' : 'archive';
+    const result = await dialog.showOpenDialog(win!, {
+      title:
+        sourceKind === 'directory'
+          ? 'Select Agent Plugin directory'
+          : 'Select Agent Plugin archive',
+      properties: sourceKind === 'directory' ? ['openDirectory'] : ['openFile'],
+      filters:
+        sourceKind === 'archive'
+          ? [
+              {
+                name: 'Agent Plugin archives',
+                extensions: ['zip'],
+              },
+            ]
+          : undefined,
+    });
+    if (result.canceled || result.filePaths.length !== 1) {
+      return { canceled: true };
+    }
+
+    const selectedPath = await fsp.realpath(result.filePaths[0]);
+    const selectedStat = await fsp.stat(selectedPath);
+    if (
+      (sourceKind === 'directory' && !selectedStat.isDirectory()) ||
+      (sourceKind === 'archive' &&
+        (!selectedStat.isFile() ||
+          path.extname(selectedPath).toLowerCase() !== '.zip'))
+    ) {
+      throw new Error('Selected Agent Plugin source has an invalid type');
+    }
+
+    return {
+      canceled: false,
+      source_path: selectedPath,
+      display_name: path.basename(selectedPath),
+      source_kind: sourceKind,
+    };
+  });
+
   // Handle drag-and-drop files - convert File objects to file paths
   ipcMain.handle(
     'process-dropped-files',
     async (event, fileData: Array<{ name: string; path?: string }>) => {
+      assertAppRendererSender(event);
       try {
         // In Electron with contextIsolation, we need to get file paths differently
         // The renderer will send us file metadata, and we'll use webUtils if needed
         const files = fileData
           .filter((f) => f.path) // Only process files with valid paths
-          .map((f) => ({
-            filePath: fs.realpathSync(f.path!),
-            fileName: f.name,
-          }));
+          .map((f) => {
+            const filePath = fs.realpathSync(f.path!);
+            // Drag-and-drop is an explicit user gesture equivalent to picking
+            // the exact path in the native file dialog.
+            rememberUserSelectedLocalPath(filePath);
+            return { filePath, fileName: f.name };
+          });
 
         if (files.length === 0) {
           return {
@@ -1667,7 +2401,8 @@ function registerIpcHandlers() {
   // path-based attachment flow; pasted File objects carry no filesystem path.
   ipcMain.handle(
     'save-pasted-file',
-    async (_event, fileName: string, data: ArrayBuffer) => {
+    async (event, fileName: string, data: ArrayBuffer) => {
+      assertAppRendererSender(event);
       try {
         const pastedDir = path.join(app.getPath('temp'), 'eigent-pasted');
         await fsp.mkdir(pastedDir, { recursive: true });
@@ -1680,7 +2415,10 @@ function registerIpcHandlers() {
         const unique = crypto.randomUUID();
         const filePath = path.join(pastedDir, `${stamp}-${unique}-${safeName}`);
         await fsp.writeFile(filePath, Buffer.from(new Uint8Array(data)));
-        return { success: true, filePath, fileName: safeName };
+        const realPath = await fsp.realpath(filePath);
+        // The paste gesture created this exact attachment on the user's behalf.
+        rememberUserSelectedLocalPath(realPath);
+        return { success: true, filePath: realPath, fileName: safeName };
       } catch (error: any) {
         log.error('Failed to save pasted file:', error);
         return { success: false, error: error.message };
@@ -1688,19 +2426,34 @@ function registerIpcHandlers() {
     }
   );
 
-  ipcMain.handle('reveal-in-folder', async (event, filePath: string) => {
+  ipcMain.handle('reveal-in-folder', async (event, targetPath: string) => {
+    assertAppRendererSender(event);
     try {
-      const stats = await fs.promises
-        .stat(filePath.replace(/\/$/, ''))
-        .catch(() => null);
-      if (stats && stats.isDirectory()) {
-        shell.openPath(filePath);
-      } else {
-        shell.showItemInFolder(filePath);
-      }
-    } catch (e) {
-      log.error('reveal in folder failed', e);
+      // Same containment rules as 'reveal-local-path'; this channel additionally
+      // serves chat attachments, which the user picked outside the workspace.
+      return await revealUserVisibleLocalNode(
+        targetPath,
+        activeLocalFileRoots(),
+        userSelectedLocalPaths,
+        shell
+      );
+    } catch (error) {
+      log.error('Reveal in folder failed', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to reveal path',
+      };
     }
+  });
+
+  ipcMain.handle('reveal-local-path', async (event, targetPath: string) => {
+    assertAppRendererSender(event);
+    return revealWorkspaceLocalNode(targetPath, activeLocalFileRoots(), shell);
+  });
+
+  ipcMain.handle('open-local-file', async (event, targetPath: string) => {
+    assertAppRendererSender(event);
+    return openWorkspaceLocalFile(targetPath, activeLocalFileRoots(), shell);
   });
 
   // Skills: all operations via Brain REST API (backend). No IPC.
@@ -1708,7 +2461,7 @@ function registerIpcHandlers() {
   // ==================== read file handler ====================
   ipcMain.handle('read-file', async (_event, filePath: string) => {
     try {
-      log.info('Reading file:', filePath);
+      log.debug('Reading file:', filePath);
 
       // Check if file exists
       if (!fs.existsSync(filePath)) {
@@ -1810,7 +2563,20 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'open-in-ide',
-    async (_event, folderPath: string, ide: string) => {
+    async (event, targetPath: string, ide: string) => {
+      assertAppRendererSender(event);
+      if (ide !== 'vscode' && ide !== 'cursor' && ide !== 'system') {
+        return { success: false, error: 'Unsupported editor' };
+      }
+
+      const node = await authorizeWorkspaceLocalNode(targetPath, [
+        ...activeLocalFileRoots(),
+      ]);
+      if (!node.success) return node;
+      if (ide === 'system') {
+        return revealAuthorizedLocalNode(node, shell);
+      }
+
       const getIDECommand = (): string => {
         const platform = process.platform;
         const homeDir = homedir();
@@ -1825,9 +2591,7 @@ function registerIpcHandlers() {
             for (const p of vscodePaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] VS Code not found on macOS, using system file manager'
-            );
+            log.warn('[IDE] VS Code not found on macOS');
             return '';
           } else if (platform === 'win32') {
             // Windows: Check common VS Code paths
@@ -1838,26 +2602,14 @@ function registerIpcHandlers() {
                 'Local',
                 'Programs',
                 'Microsoft VS Code',
-                'bin',
-                'code.cmd'
-              ),
-              path.join(
-                homeDir,
-                'AppData',
-                'Local',
-                'Programs',
-                'Microsoft VS Code',
                 'Code.exe'
               ),
-              'C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd',
               'C:\\Program Files\\Microsoft VS Code\\Code.exe',
             ];
             for (const p of vscodePaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] VS Code not found on Windows, using system file manager'
-            );
+            log.warn('[IDE] VS Code not found on Windows');
             return '';
           }
           return 'code'; // Linux
@@ -1871,24 +2623,11 @@ function registerIpcHandlers() {
             for (const p of cursorPaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] Cursor not found on macOS, using system file manager'
-            );
+            log.warn('[IDE] Cursor not found on macOS');
             return '';
           } else if (platform === 'win32') {
             // Windows: Check common Cursor paths
             const cursorPaths = [
-              path.join(
-                homeDir,
-                'AppData',
-                'Local',
-                'Programs',
-                'Cursor',
-                'resources',
-                'app',
-                'bin',
-                'cursor.cmd'
-              ),
               path.join(
                 homeDir,
                 'AppData',
@@ -1902,9 +2641,7 @@ function registerIpcHandlers() {
             for (const p of cursorPaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] Cursor not found on Windows, using system file manager'
-            );
+            log.warn('[IDE] Cursor not found on Windows');
             return '';
           }
           return 'cursor'; // Linux
@@ -1914,37 +2651,24 @@ function registerIpcHandlers() {
 
       const cmd = getIDECommand();
       if (!cmd) {
-        // IDE not found or 'system' selected - open with system file manager
-        const errorMsg = await shell.openPath(folderPath);
-        if (errorMsg) {
-          log.error('[IDE] shell.openPath error:', errorMsg);
-          return { success: false, error: errorMsg };
-        }
-        return { success: true };
+        const editorName = ide === 'vscode' ? 'Visual Studio Code' : 'Cursor';
+        return { success: false, error: `${editorName} is not installed` };
       }
 
       return new Promise<{ success: boolean; error?: string }>((resolve) => {
-        // Use shell: true so .cmd/.bat wrappers work on Windows
-        const child = spawn(cmd, [folderPath], {
-          shell: true,
+        const child = spawn(cmd, [node.path], {
+          shell: false,
           stdio: 'ignore',
           detached: true,
         });
         child.unref();
 
-        child.on('error', (error) => {
-          log.warn(
-            `[IDE] ${cmd} not found, falling back to system file manager:`,
-            error.message
-          );
-          shell.openPath(folderPath).then((errorMsg) => {
-            resolve(
-              errorMsg ? { success: false, error: errorMsg } : { success: true }
-            );
-          });
+        child.once('error', (error) => {
+          log.warn(`[IDE] Failed to open ${node.path} with ${cmd}:`, error);
+          resolve({ success: false, error: error.message });
         });
 
-        child.on('spawn', () => {
+        child.once('spawn', () => {
           resolve({ success: true });
         });
       });
@@ -1983,7 +2707,7 @@ function registerIpcHandlers() {
     }
     let lines = content.split(/\r?\n/);
     lines = updateEnvBlock(lines, { [key]: value });
-    fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
+    writeEnvFile(ENV_PATH, lines.join('\n'));
 
     // Also write to global .env file for backend process to read
     const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
@@ -1998,7 +2722,7 @@ function registerIpcHandlers() {
     let globalLines = globalContent.split(/\r?\n/);
     globalLines = updateEnvBlock(globalLines, { [key]: value });
     try {
-      fs.writeFileSync(GLOBAL_ENV_PATH, globalLines.join('\n'), 'utf-8');
+      writeEnvFile(GLOBAL_ENV_PATH, globalLines.join('\n'));
       log.info(`env-write: wrote ${key} to both user and global .env files`);
     } catch (error) {
       log.error('global env-write error:', error);
@@ -2020,7 +2744,7 @@ function registerIpcHandlers() {
     }
     let lines = content.split(/\r?\n/);
     lines = removeEnvKey(lines, key);
-    fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf-8');
+    writeEnvFile(ENV_PATH, lines.join('\n'));
     log.info('env-remove success', ENV_PATH);
 
     // Also remove from global .env file
@@ -2031,7 +2755,7 @@ function registerIpcHandlers() {
         : '';
       let globalLines = globalContent.split(/\r?\n/);
       globalLines = removeEnvKey(globalLines, key);
-      fs.writeFileSync(GLOBAL_ENV_PATH, globalLines.join('\n'), 'utf-8');
+      writeEnvFile(GLOBAL_ENV_PATH, globalLines.join('\n'));
       log.info(
         `env-remove: removed ${key} from both user and global .env files`
       );
@@ -2052,29 +2776,103 @@ function registerIpcHandlers() {
     return { value: readGlobalEnvKey(key) };
   });
 
-  // ==================== new window handler ====================
-  ipcMain.handle('open-win', (_, arg) => {
-    const childWindow = new BrowserWindow({
-      webPreferences: {
-        preload,
-        nodeIntegration: true,
-        contextIsolation: false,
-      },
-    });
-
-    if (VITE_DEV_SERVER_URL) {
-      childWindow.loadURL(`${VITE_DEV_SERVER_URL}#${arg}`);
-    } else {
-      childWindow.loadFile(indexHtml, { hash: arg });
+  // ==================== Session window handlers ====================
+  // The main window opens a Session in its own window; a second request for
+  // the same Session focuses the window that is already open.
+  ipcMain.handle('session-window:open', (event, target: unknown) => {
+    if (!isMainRendererFrame(event)) {
+      throw new Error('Only the main window opens Session windows');
     }
+    if (!isSessionWindowTarget(target)) {
+      throw new Error('Invalid Session window target');
+    }
+    getSessionWindows().open(target);
+    return { success: true };
+  });
+  ipcMain.handle('session-window:list', (event) => {
+    assertAppRendererSender(event);
+    return getSessionWindows().openProjectIds();
+  });
+  // Messages between app windows: presence, sidebar status, requests for the
+  // main window. Main only relays them; renderers validate what they accept.
+  ipcMain.on('session-window:post', (event, message: unknown) => {
+    if (!isAppRendererFrame(event)) return;
+    relaySessionWindowMessage(event.sender.id, message);
+  });
+  // "Open in main window": hand the Session back and close this window.
+  ipcMain.handle('session-window:return-to-main', (event) => {
+    const target = sessionWindows?.targetForContents(event.sender.id);
+    if (!target || event.senderFrame !== event.sender.mainFrame)
+      throw new Error('Not a Session window');
+    relaySessionWindowMessage(event.sender.id, {
+      type: 'open-in-main',
+      ...target,
+    });
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+    sessionWindows?.close(target.projectId);
+    return { success: true };
   });
 
   // ==================== FileReader handler ====================
   ipcMain.handle(
     'open-file',
-    async (_, type: string, filePath: string, isShowSourceCode: boolean) => {
+    async (
+      event,
+      type: string,
+      filePath: string,
+      isShowSourceCode: boolean
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.openFile(type, filePath, isShowSourceCode);
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      return manager.openFile(type, authorizedPath, isShowSourceCode);
+    }
+  );
+
+  ipcMain.handle(
+    'get-file-preview-metadata',
+    async (event, filePath: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      return manager.getPreviewMetadata(authorizedPath);
+    }
+  );
+
+  ipcMain.handle(
+    'preview-office-buffer',
+    async (event, type: string, bytes: Uint8Array) => {
+      assertAppRendererSender(event);
+      if (!(bytes instanceof Uint8Array)) {
+        throw new Error('Invalid remote Office preview payload');
+      }
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.previewOfficeBuffer(type, bytes);
+    }
+  );
+
+  ipcMain.handle('preview-csv-file', async (event, filePath: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    const authorizedPath = await requireAuthorizedPreviewFile(event, filePath);
+    return manager.previewCsvFile(authorizedPath);
+  });
+
+  ipcMain.handle(
+    'preview-text-file',
+    async (event, filePath: string, limit?: number) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      return manager.previewTextFile(authorizedPath, limit);
     }
   );
 
@@ -2141,10 +2939,31 @@ function registerIpcHandlers() {
   );
 
   ipcMain.handle(
-    'delete-task-files',
-    async (_, email: string, taskId: string, projectId?: string) => {
+    'get-camel-log-file-list',
+    async (
+      _,
+      email: string,
+      taskId: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.deleteTaskFiles(email, taskId, projectId);
+      return manager.getCamelLogFileList(email, taskId, projectId, userId);
+    }
+  );
+
+  ipcMain.handle(
+    'delete-task-files',
+    async (
+      _,
+      email: string,
+      taskId: string,
+      projectId?: string,
+      userId?: string | number | null,
+      spaceId?: string
+    ) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.deleteTaskFiles(email, taskId, projectId, userId, spaceId);
     }
   );
 
@@ -2184,6 +3003,30 @@ function registerIpcHandlers() {
   );
 
   ipcMain.handle(
+    'get-workspace-file-list',
+    async (event, workspaceRoot: string, requestedRelativePaths: unknown) => {
+      if (
+        typeof workspaceRoot !== 'string' ||
+        !Array.isArray(requestedRelativePaths) ||
+        requestedRelativePaths.length >
+          FILE_PREVIEW_LIMITS.workspaceResolverPaths ||
+        requestedRelativePaths.some((value) => typeof value !== 'string')
+      ) {
+        throw new Error('Invalid workspace file resolver request');
+      }
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const authorizedRoot = await requireAuthorizedPreviewFile(
+        event,
+        workspaceRoot
+      );
+      return manager.getWorkspaceFileList(
+        authorizedRoot,
+        requestedRelativePaths
+      );
+    }
+  );
+
+  ipcMain.handle(
     'get-project-file-list',
     async (
       _,
@@ -2215,9 +3058,16 @@ function registerIpcHandlers() {
     { name: 'webview-destroy', method: 'destroyWebview' },
   ];
 
+  // Calls that place a view on screen move the agent browser views into the
+  // window that asked, so a Session window shows them in its own content.
+  const presentingWebviewMethods = new Set(['showWebview', 'setSize']);
   webviewHandlers.forEach(({ name, method }) => {
-    ipcMain.handle(name, async (_, ...args) => {
+    ipcMain.handle(name, async (event, ...args) => {
       const manager = checkManagerInstance(webViewManager, 'WebViewManager');
+      if (presentingWebviewMethods.has(method)) {
+        const presenter = appWindowForSender(event.sender);
+        if (presenter) manager.presentIn(presenter);
+      }
       return manager[method as keyof typeof manager](...args);
     });
   });
@@ -2303,7 +3153,7 @@ function registerIpcHandlers() {
   });
 
   // ==================== register update related handler ====================
-  registerUpdateIpcHandlers();
+  registerUpdateIpcHandlers(() => closeCoordinator.markAppQuitInProgress());
 }
 
 // ==================== ensure eigent directories ====================
@@ -2501,6 +3351,10 @@ const startBackendAfterInstall = async () => {
   // Add a small delay to ensure any previous processes are fully cleaned up
   await new Promise((resolve) => setTimeout(resolve, 500));
 
+  // Existing installations originally stored the device id in renderer
+  // localStorage. Migrate it before the Brain environment first resolves the
+  // new main-process-owned identity file.
+  await primeDesktopInstanceIdFromRenderer();
   await checkAndStartBackend();
 };
 
@@ -2536,39 +3390,14 @@ async function createWindow() {
   return createWindowPromise;
 }
 
-async function createWindowInternal() {
+/**
+ * Frame, background and renderer settings shared by the main window and Session
+ * windows, so both look and behave like the same app.
+ */
+function appWindowChromeOptions(): Electron.BrowserWindowConstructorOptions {
   const isMac = process.platform === 'darwin';
   const isWindows = process.platform === 'win32';
-
-  // Ensure .eigent directories exist before anything else
-  ensureEigentDirectories();
-  await seedDefaultSkillsIfEmpty();
-
-  // Load persisted CDP browser pool from disk
-  loadCdpPool();
-
-  log.info(
-    `[PROJECT BROWSER WINDOW] Creating BrowserWindow which will start Chrome with CDP on port ${browser_port}`
-  );
-  log.info(
-    `[PROJECT BROWSER WINDOW] Current user data path: ${app.getPath(
-      'userData'
-    )}`
-  );
-  log.info(
-    `[PROJECT BROWSER WINDOW] Command line switch user-data-dir: ${app.commandLine.getSwitchValue(
-      'user-data-dir'
-    )}`
-  );
-
-  // Platform-specific window configuration
-  // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
-  win = new BrowserWindow({
-    title: 'Eigent',
-    width: 1280,
-    height: 960,
-    minWidth: 1100,
-    minHeight: 700,
+  return {
     // Use native frame on Windows for better native integration
     frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen
@@ -2590,71 +3419,90 @@ async function createWindowInternal() {
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
     // Rounded corners on macOS and Linux (as original)
     roundedCorners: !isWindows,
-    // Windows-specific options
-    ...(isWindows && {
-      autoHideMenuBar: true, // Hide menu bar on Windows for cleaner look
+    // Keep the Windows/Linux menu discoverable through Alt without changing
+    // the existing clean shell chrome.
+    ...(!isMac && {
+      autoHideMenuBar: true,
     }),
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
       partition: 'persist:main_window',
-      webSecurity: false,
+      webSecurity: true,
       preload,
       nodeIntegration: true,
       contextIsolation: true,
       webviewTag: true,
       spellcheck: false,
     },
+  };
+}
+
+async function createWindowInternal() {
+  // Ensure .eigent directories exist before anything else
+  ensureEigentDirectories();
+  await seedDefaultSkillsIfEmpty();
+
+  // Load persisted CDP browser pool from disk
+  loadCdpPool();
+
+  log.info(
+    `[PROJECT BROWSER WINDOW] Creating BrowserWindow which will start Chrome with CDP on port ${browser_port}`
+  );
+  log.info(
+    `[PROJECT BROWSER WINDOW] Current user data path: ${app.getPath(
+      'userData'
+    )}`
+  );
+  log.info(
+    `[PROJECT BROWSER WINDOW] Command line switch user-data-dir: ${app.commandLine.getSwitchValue(
+      'user-data-dir'
+    )}`
+  );
+
+  const startupWindowState = loadWindowStartupState({
+    userDataPath: userData,
+    displays: screen.getAllDisplays(),
+    primaryDisplay: screen.getPrimaryDisplay(),
+  });
+  log.info(
+    `[WINDOW STATE] Restoring ${startupWindowState.source}: ${JSON.stringify(
+      startupWindowState.bounds
+    )}`
+  );
+
+  // Platform-specific window configuration
+  // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
+  appShellReadinessGate.markDocumentLoading();
+  rendererAppCommands.markNotReady('window-created');
+  win = new BrowserWindow({
+    title: 'Eigent',
+    ...startupWindowState.bounds,
+    minWidth: startupWindowState.minimumSize.width,
+    minHeight: startupWindowState.minimumSize.height,
+    ...appWindowChromeOptions(),
   });
 
-  // Renderer <webview> guests (session preview browser) host arbitrary web
-  // content, and the host window itself runs with elevated webPreferences.
-  // Enforce safe guest settings at attach time so no tag attribute (even one
-  // forged by a compromised renderer) can grant a guest host privileges.
-  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
-    delete webPreferences.preload;
-    webPreferences.nodeIntegration = false;
-    webPreferences.contextIsolation = true;
-    webPreferences.webSecurity = true;
-    webPreferences.partition = PREVIEW_WEBVIEW_PARTITION;
-
-    if (
-      params.partition !== PREVIEW_WEBVIEW_PARTITION ||
-      !isHttpOrHttpsUrl(params.src)
-    ) {
-      event.preventDefault();
+  const createdWindow = win;
+  const disposeMainContextMenu = installSurfaceContextMenu(
+    createdWindow.webContents,
+    createdWindow,
+    'main-renderer'
+  );
+  createdWindow.on('move', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('resize', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('maximize', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('unmaximize', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('close', () => persistBrowserWindowState(createdWindow));
+  createdWindow.on('closed', () => {
+    disposeMainContextMenu();
+    if (windowStateSaveTimer) {
+      clearTimeout(windowStateSaveTimer);
+      windowStateSaveTimer = null;
     }
   });
 
-  // Route window.open / target=_blank into the same guest instead of spawning
-  // popup windows, and only allow web URLs. Together with the attach guard
-  // above, this is the only main-process involvement the guests need.
-  win.webContents.on('did-attach-webview', (_event, contents) => {
-    const preventUnsafeNavigation = (
-      event: Electron.Event,
-      navigationUrl: string
-    ) => {
-      if (!isHttpOrHttpsUrl(navigationUrl)) {
-        event.preventDefault();
-      }
-    };
-    const guestNavigationEvents = contents as unknown as {
-      on: (
-        eventName: string,
-        listener: (event: Electron.Event, navigationUrl: string) => void
-      ) => void;
-    };
-
-    guestNavigationEvents.on('will-navigate', preventUnsafeNavigation);
-    guestNavigationEvents.on('will-frame-navigate', preventUnsafeNavigation);
-    guestNavigationEvents.on('will-redirect', preventUnsafeNavigation);
-    contents.setWindowOpenHandler(({ url }) => {
-      if (isHttpOrHttpsUrl(url)) {
-        void contents.loadURL(url);
-      }
-      return { action: 'deny' };
-    });
-  });
+  installPreviewGuestGuards(createdWindow);
 
   if (process.platform === 'darwin') {
     win.once('ready-to-show', () => {
@@ -2669,8 +3517,23 @@ async function createWindowInternal() {
   }
 
   // ==================== Handle renderer crashes and failed loads ====================
+  win.webContents.on('did-start-navigation', (event) => {
+    const didReplaceMainDocument =
+      appShellReadinessGate.markDocumentNavigationStarted(
+        event.isMainFrame,
+        event.isSameDocument
+      );
+    if (didReplaceMainDocument) {
+      rendererAppCommands.markNotReady('main-frame-navigation');
+    }
+  });
+  win.webContents.on('did-finish-load', () => {
+    appShellReadinessGate.markDocumentLoaded();
+  });
   win.webContents.on('render-process-gone', (event, details) => {
     log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
+    appShellReadinessGate.markDocumentLoading();
+    rendererAppCommands.markNotReady('render-process-gone');
     if (win && !win.isDestroyed()) {
       // Reload the window after a brief delay
       setTimeout(() => {
@@ -2688,13 +3551,28 @@ async function createWindowInternal() {
 
   win.webContents.on(
     'did-fail-load',
-    (event, errorCode, errorDescription, validatedURL) => {
+    (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const shouldRetry = appShellReadinessGate.markDocumentLoadFailed(
+        isMainFrame,
+        errorCode
+      );
+      if (shouldRetry) rendererAppCommands.markNotReady('did-fail-load');
       log.error(
         `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
       );
+      const subframeFailure = subframeLoadFailureFromEvent(
+        errorCode,
+        validatedURL,
+        isMainFrame
+      );
+      if (subframeFailure && !createdWindow.isDestroyed()) {
+        createdWindow.webContents.send(
+          SUBFRAME_LOAD_FAILED_CHANNEL,
+          subframeFailure
+        );
+      }
       // Retry loading after a delay
-      if (errorCode !== -3) {
-        // -3 is USER_CANCELLED, don't retry
+      if (shouldRetry) {
         setTimeout(() => {
           if (win && !win.isDestroyed()) {
             log.info('[RENDERER] Retrying load after failure...');
@@ -2772,7 +3650,10 @@ async function createWindowInternal() {
 
   // ==================== initialize manager ====================
   fileReader = new FileReader(win);
-  webViewManager = new WebViewManager(win);
+  webViewManager = new WebViewManager(win, {
+    installContextMenu: (contents, ownerWindow) =>
+      installSurfaceContextMenu(contents, ownerWindow, 'automation-view'),
+  });
 
   // create multiple webviews
   log.info(
@@ -2784,8 +3665,6 @@ async function createWindowInternal() {
   log.info('[PROJECT BROWSER] WebViewManager initialized with webviews');
 
   // ==================== set event listeners ====================
-  setupWindowEventListeners();
-  setupDevToolsShortcuts();
   setupExternalLinkHandling();
   handleBeforeClose();
 
@@ -2973,7 +3852,8 @@ async function createWindowInternal() {
 
   // Show window now that content is loaded (or timeout reached)
   if (win && !win.isDestroyed()) {
-    win.show();
+    if (startupWindowState.shouldMaximize) win.maximize();
+    else win.show();
     log.info('Window shown after content loaded');
   }
 
@@ -2981,9 +3861,6 @@ async function createWindowInternal() {
   isWindowReady = true;
   log.info('Window is ready, processing queued protocol URLs...');
   processQueuedProtocolUrls();
-
-  // Wait for React components to mount and register event listeners
-  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Now check and install dependencies
   let res: PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
@@ -3016,52 +3893,9 @@ async function createWindowInternal() {
   await startBackendAfterInstall();
 }
 
-// ==================== window event listeners ====================
-const setupWindowEventListeners = () => {
-  if (!win) return;
-
-  // close default menu
-  Menu.setApplicationMenu(null);
-};
-
-// ==================== devtools shortcuts ====================
-const setupDevToolsShortcuts = () => {
-  if (!win) return;
-  if (app.isPackaged) return;
-
-  const toggleDevTools = () => win?.webContents.toggleDevTools();
-
-  win.webContents.on('before-input-event', (event, input) => {
-    // F12 key
-    if (input.key === 'F12' && input.type === 'keyDown') {
-      toggleDevTools();
-    }
-
-    // Ctrl+Shift+I (Windows/Linux) or Cmd+Shift+I (Mac)
-    if (
-      input.control &&
-      input.shift &&
-      input.key.toLowerCase() === 'i' &&
-      input.type === 'keyDown'
-    ) {
-      toggleDevTools();
-    }
-
-    // Mac Cmd+Shift+I
-    if (
-      input.meta &&
-      input.shift &&
-      input.key.toLowerCase() === 'i' &&
-      input.type === 'keyDown'
-    ) {
-      toggleDevTools();
-    }
-  });
-};
-
 // ==================== external link handle ====================
-const setupExternalLinkHandling = () => {
-  if (!win) return;
+const setupExternalLinkHandling = (appWindow: BrowserWindow | null = win) => {
+  if (!appWindow) return;
 
   // Helper function to check if URL is external
   const isExternalUrl = (url: string): boolean => {
@@ -3083,7 +3917,7 @@ const setupExternalLinkHandling = () => {
   };
 
   // handle new window open
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  appWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isExternalUrl(url)) {
       shell.openExternal(url);
       return { action: 'deny' };
@@ -3092,7 +3926,7 @@ const setupExternalLinkHandling = () => {
   });
 
   // handle navigation
-  win.webContents.on('will-navigate', (event, url) => {
+  appWindow.webContents.on('will-navigate', (event, url) => {
     // Only prevent navigation and open external URLs
     // Allow internal navigation like hash changes
     if (isExternalUrl(url)) {
@@ -3101,7 +3935,79 @@ const setupExternalLinkHandling = () => {
     }
     // For internal URLs (localhost, hash navigation), allow navigation to proceed
   });
+
+  // srcDoc report previews are sandboxed child frames. Never turn a scripted
+  // child-frame navigation into an outbound request: it could encode local
+  // workspace contents in the URL even when connect-src is disabled.
+  appWindow.webContents.on('will-frame-navigate', (details) => {
+    if (!details.isMainFrame && isExternalUrl(details.url)) {
+      details.preventDefault();
+      log.warn('[HTML PREVIEW] Blocked external frame navigation');
+    }
+  });
 };
+
+/** Guards for preview `<webview>` guests; applied to every app window. */
+function installPreviewGuestGuards(appWindow: BrowserWindow): void {
+  // Renderer <webview> guests (session preview browser) host arbitrary web
+  // content, and the host window itself runs with elevated webPreferences.
+  // Enforce safe guest settings at attach time so no tag attribute (even one
+  // forged by a compromised renderer) can grant a guest host privileges.
+  appWindow.webContents.on(
+    'will-attach-webview',
+    (event, webPreferences, params) => {
+      delete webPreferences.preload;
+      webPreferences.nodeIntegration = false;
+      webPreferences.contextIsolation = true;
+      webPreferences.webSecurity = true;
+      webPreferences.partition = PREVIEW_WEBVIEW_PARTITION;
+
+      if (
+        params.partition !== PREVIEW_WEBVIEW_PARTITION ||
+        !isHttpOrHttpsUrl(params.src)
+      ) {
+        event.preventDefault();
+      }
+    }
+  );
+
+  // Route window.open / target=_blank into the same guest instead of spawning
+  // popup windows, and only allow web URLs. Together with the attach guard
+  // above, this is the only main-process involvement the guests need.
+  appWindow.webContents.on('did-attach-webview', (_event, contents) => {
+    const disposeGuestContextMenu = installSurfaceContextMenu(
+      contents,
+      appWindow,
+      'preview-guest'
+    );
+    contents.once('destroyed', disposeGuestContextMenu);
+
+    const preventUnsafeNavigation = (
+      event: Electron.Event,
+      navigationUrl: string
+    ) => {
+      if (!isHttpOrHttpsUrl(navigationUrl)) {
+        event.preventDefault();
+      }
+    };
+    const guestNavigationEvents = contents as unknown as {
+      on: (
+        eventName: string,
+        listener: (event: Electron.Event, navigationUrl: string) => void
+      ) => void;
+    };
+
+    guestNavigationEvents.on('will-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-frame-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-redirect', preventUnsafeNavigation);
+    contents.setWindowOpenHandler(({ url }) => {
+      if (isHttpOrHttpsUrl(url)) {
+        void contents.loadURL(url);
+      }
+      return { action: 'deny' };
+    });
+  });
+}
 
 // ==================== check and start backend ====================
 async function restartBackendService(): Promise<BackendStartResult> {
@@ -3158,6 +4064,7 @@ const checkAndStartBackend = async (
       if (isToolInstalled.success) {
         log.info('Tool installed, starting backend service...');
         const codexResolverEnv = await getCodexResolverEnv();
+        const workspaceSecretBroker = await ensureWorkspaceSecretBroker();
         const exampleSkillsDir = getExampleSkillsSourceDir();
 
         // Start backend and wait for health check to pass
@@ -3169,6 +4076,13 @@ const checkAndStartBackend = async (
           {
             ...codexResolverEnv,
             EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+            EIGENT_LOCAL_CONTROL_CAPABILITY: localControlCapability,
+            EIGENT_DESKTOP_INSTANCE_ID: resolveDesktopInstanceId(),
+            EIGENT_ELECTRON_CDP_PORT: String(browser_port),
+            EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT:
+              workspaceSecretBroker.endpoint,
+            EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY:
+              workspaceSecretBroker.capability,
           }
         );
 
@@ -3285,18 +4199,7 @@ const cleanupPythonProcess = async () => {
 
 // before close
 const handleBeforeClose = () => {
-  let isQuitting = false;
-
-  app.on('before-quit', () => {
-    isQuitting = true;
-  });
-
-  win?.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      win?.webContents.send('before-close');
-    }
-  });
+  if (win) closeCoordinator.bindWindow(win);
 };
 
 // ==================== app event handle ====================
@@ -3351,95 +4254,76 @@ app.whenReady().then(async () => {
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, _webContents) => {
     item.once('done', (_event, _state) => {
-      shell.showItemInFolder(item.getURL().replace('localfile://', ''));
+      const itemUrl = item.getURL();
+      if (itemUrl.startsWith('localfile:')) {
+        shell.showItemInFolder(filePathFromLocalFileUrl(itemUrl));
+      }
     });
   });
 
   // ==================== protocol handle ====================
   // Register protocol handler for both default session and main window session
   const protocolHandler = async (request: Request) => {
-    const url = decodeURIComponent(request.url.replace('localfile://', ''));
+    const url = filePathFromLocalFileUrl(request.url);
     const normalizedUrl = url.replace(/^\/([A-Za-z]:[\\/])/, '$1');
     const filePath = path.resolve(path.normalize(normalizedUrl));
 
     log.info(`[PROTOCOL] Handling localfile request: ${request.url}`);
     log.info(`[PROTOCOL] Resolved path: ${filePath}`);
 
-    // Security: Restrict file access to allowed directories only.
-    // Without this check, path traversal (e.g. /../../../etc/passwd)
-    // would allow reading arbitrary files on the filesystem.
-    const allowedBases = [
-      os.homedir(),
-      app.getPath('userData'),
-      app.getPath('temp'),
-    ];
-
-    const isPathAllowed = allowedBases.some((base) => {
-      const resolvedBase = path.resolve(base);
-      return (
-        filePath === resolvedBase ||
-        filePath.startsWith(resolvedBase + path.sep)
-      );
-    });
-
-    if (!isPathAllowed) {
+    const authorization = await authorizeLocalFilePath(
+      filePath,
+      localFileAllowedRoots()
+    );
+    if (!authorization.allowed) {
       log.error(
-        `[PROTOCOL] Security: Blocked access to path outside allowed directories: ${filePath}`
+        `[PROTOCOL] Security: Blocked local file (${authorization.reason}): ${filePath}`
       );
-      return new Response('Forbidden', { status: 403 });
+      return new Response(
+        authorization.reason === 'missing' ? 'File Not Found' : 'Forbidden',
+        { status: authorization.reason === 'missing' ? 404 : 403 }
+      );
     }
+    const authorizedFilePath = authorization.filePath;
 
     try {
       // Check if file exists
-      const fileExists = await fsp
-        .access(filePath)
-        .then(() => true)
-        .catch(() => false);
-      if (!fileExists) {
-        log.error(`[PROTOCOL] File not found: ${filePath}`);
-        return new Response('File Not Found', { status: 404 });
+      const stats = await fsp.stat(authorizedFilePath);
+      if (!stats.isFile()) return new Response('Not Found', { status: 404 });
+      const contentType =
+        mime.getType(authorizedFilePath) || 'application/octet-stream';
+      const resolvedRange = resolveFileByteRange(
+        request.headers.get('range'),
+        stats.size
+      );
+      if (resolvedRange.status === 416) {
+        return new Response('Range Not Satisfiable', {
+          status: 416,
+          headers: { 'Content-Range': `bytes */${stats.size}` },
+        });
+      }
+      const { start, end, status } = resolvedRange;
+
+      const contentLength = stats.size === 0 ? 0 : end - start + 1;
+      const headers: Record<string, string> = {
+        'Accept-Ranges': 'bytes',
+        'Content-Type': contentType,
+        'Content-Length': contentLength.toString(),
+        'Content-Disposition': inlineContentDisposition(
+          path.basename(authorizedFilePath)
+        ),
+      };
+      if (status === 206) {
+        headers['Content-Range'] = `bytes ${start}-${end}/${stats.size}`;
+      }
+      if (request.method === 'HEAD' || stats.size === 0) {
+        return new Response(null, { status, headers });
       }
 
-      const data = await fsp.readFile(filePath);
-      log.info(`[PROTOCOL] Successfully read file, size: ${data.length} bytes`);
-
-      // set correct Content-Type according to file extension
-      const ext = path.extname(filePath).toLowerCase();
-      let contentType = 'application/octet-stream';
-
-      switch (ext) {
-        case '.pdf':
-          contentType = 'application/pdf';
-          break;
-        case '.html':
-        case '.htm':
-          contentType = 'text/html';
-          break;
-        case '.png':
-          contentType = 'image/png';
-          break;
-        case '.jpg':
-        case '.jpeg':
-          contentType = 'image/jpeg';
-          break;
-        case '.gif':
-          contentType = 'image/gif';
-          break;
-        case '.svg':
-          contentType = 'image/svg+xml';
-          break;
-        case '.webp':
-          contentType = 'image/webp';
-          break;
-      }
-
-      log.info(`[PROTOCOL] Returning file with Content-Type: ${contentType}`);
-
-      return new Response(new Uint8Array(data), {
-        headers: {
-          'Content-Type': contentType,
-          'Content-Length': data.length.toString(),
-        },
+      const stream = fs.createReadStream(authorizedFilePath, { start, end });
+      return new Response(Readable.toWeb(stream) as BodyInit, {
+        status,
+        headers,
       });
     } catch (err) {
       log.error(`[PROTOCOL] Error reading file: ${err}`);
@@ -3461,6 +4345,7 @@ app.whenReady().then(async () => {
   // ==================== initialize app ====================
   initializeApp();
   registerIpcHandlers();
+  installNativeApplicationMenu();
   createWindow();
 });
 
@@ -3478,13 +4363,14 @@ app.on('window-all-closed', () => {
   }
 
   // Reset window state
+  closeCoordinator.unbindWindow();
+  rendererAppCommands.markNotReady('window-all-closed');
   win = null;
   isWindowReady = false;
+  appShellReadinessGate.markDocumentLoading();
   protocolUrlQueue = [];
 
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.quit();
 });
 
 // ==================== app activate event ====================
@@ -3511,18 +4397,34 @@ app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
 
+  if (!closeCoordinator.isAppQuitInProgress()) {
+    event.preventDefault();
+    closeCoordinator.request('quit-app');
+    return;
+  }
+
+  closeCoordinator.markAppQuitInProgress();
+  // Keep the Session windows' saved list as it is at quit, then close them.
+  sessionWindows?.markQuitting();
+  for (const sessionWindow of sessionWindows?.allWindows() ?? [])
+    sessionWindow.destroy();
+
   // Stop CDP health-check polling
   stopCdpHealthCheck();
 
   // Prevent default quit to ensure cleanup completes
   event.preventDefault();
 
+  if (isQuitCleanupInProgress) return;
+  isQuitCleanupInProgress = true;
+
   try {
     // NOTE: Profile sync removed - we now use app userData directly for all partitions
     // No need to sync between different profile directories
 
     // Clean up resources
-    disposeAllTerminals();
+    await disposeAllTerminals();
+    brainStreamRelay?.closeAll();
 
     if (webViewManager) {
       webViewManager.destroy();
@@ -3530,12 +4432,14 @@ app.on('before-quit', async (event) => {
     }
 
     if (win && !win.isDestroyed()) {
+      persistBrowserWindowState(win);
       win.destroy();
       win = null;
     }
 
     // Wait for Python process cleanup
     await cleanupPythonProcess();
+    await closeWorkspaceSecretBroker();
 
     // Clean up file reader if exists
     if (fileReader) {
@@ -3549,6 +4453,8 @@ app.on('before-quit', async (event) => {
 
     // Reset protocol handling state
     isWindowReady = false;
+    appShellReadinessGate.markDocumentLoading();
+    rendererAppCommands.markNotReady('app-exit');
     protocolUrlQueue = [];
 
     log.info('All cleanup completed, exiting...');

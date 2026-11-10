@@ -22,6 +22,7 @@ are handled by custom_cron_expression. This config only handles:
 """
 
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional, Tuple
 from pydantic import Field, field_validator
 
@@ -52,6 +53,18 @@ class ScheduleTriggerConfig(BaseTriggerConfig):
         }
     """
     
+    timezone: Optional[str] = Field(default=None, description="IANA time zone for local cron times")
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except (ZoneInfoNotFoundError, ValueError, TypeError) as exc:
+                raise ValueError("Timezone must be an IANA time zone") from exc
+        return value
+
     # Date for one-time execution (YYYY-MM-DD format)
     # Required when is_single_execution=True because cron has no year
     date: Optional[str] = Field(
@@ -109,17 +122,21 @@ class ScheduleTriggerConfig(BaseTriggerConfig):
         if check_date is None:
             check_date = datetime.now(timezone.utc)
         
+        zone = ZoneInfo(self.timezone) if self.timezone else timezone.utc
+        if check_date.tzinfo is None:
+            check_date = check_date.replace(tzinfo=timezone.utc)
+
         # One-time execution: check if date has passed
         if self.date:
             execution_date = datetime.strptime(self.date, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, tzinfo=timezone.utc
+                hour=23, minute=59, second=59, microsecond=999999, tzinfo=zone
             )
             return check_date > execution_date
         
         # Recurring with expiration: check if expiration date has passed
         if self.expirationDate:
             expiration = datetime.strptime(self.expirationDate, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, tzinfo=timezone.utc
+                hour=23, minute=59, second=59, microsecond=999999, tzinfo=zone
             )
             return check_date > expiration
         

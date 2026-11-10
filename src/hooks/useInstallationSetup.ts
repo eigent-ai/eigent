@@ -14,6 +14,7 @@
 
 import { checkBackendHealth, resetBaseURL } from '@/api/http';
 import { useHost } from '@/host';
+import i18n from '@/i18n';
 import { useAuthStore } from '@/store/authStore';
 import {
   getConnectionConfig,
@@ -304,7 +305,12 @@ export const useInstallationSetup = () => {
         // setSuccess() will be called in handleBackendReady to prevent premature state change
         checkAndSetDone();
       } else {
-        setError(data.error || 'Installation failed');
+        setError(
+          data.error ||
+            i18n.t('layout.installation-failed', {
+              defaultValue: 'Installation failed',
+            })
+        );
       }
     };
 
@@ -343,7 +349,12 @@ export const useInstallationSetup = () => {
           '[useInstallationSetup] Backend failed to start:',
           data.error
         );
-        setBackendError(data.error || 'Backend startup failed');
+        setBackendError(
+          data.error ||
+            i18n.t('layout.backend-startup-failed', {
+              defaultValue: 'Backend startup failed',
+            })
+        );
       }
     };
 

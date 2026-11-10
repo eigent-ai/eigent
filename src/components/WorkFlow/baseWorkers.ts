@@ -17,12 +17,7 @@ export const BASE_WORKFLOW_AGENTS: Agent[] = [
   {
     tasks: [],
     agent_id: 'developer_agent',
-    tools: [
-      'Human Toolkit',
-      'Terminal Toolkit',
-      'Note Taking Toolkit',
-      'Web Deploy Toolkit',
-    ],
+    tools: ['Human Toolkit', 'Terminal Toolkit', 'Note Taking Toolkit'],
     name: 'Developer Agent',
     type: 'developer_agent',
     log: [],

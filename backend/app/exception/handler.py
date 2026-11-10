@@ -59,7 +59,13 @@ async def token_exception(request: Request, e: TokenException):
 
 async def user_exception(request: Request, e: UserException):
     logger.info(f"User exception on {request.url.path}: {e.description}")
-    return JSONResponse(content={"code": e.code, "text": e.description})
+    payload: dict[str, int | str] = {
+        "code": e.code,
+        "text": e.description,
+    }
+    if e.error_code is not None:
+        payload["error_code"] = e.error_code
+    return JSONResponse(content=payload)
 
 
 async def no_permission(request: Request, exception: NoPermissionException):

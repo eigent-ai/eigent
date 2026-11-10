@@ -13,6 +13,9 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from collections.abc import Callable
+from contextvars import Context, copy_context
+from threading import Lock
+from typing import Any
 
 from camel.toolkits import AgentToolkit, FunctionTool, RegisteredAgentToolkit
 
@@ -44,6 +47,33 @@ class DepthLimitedAgentToolkit(AgentToolkit, AbstractToolkit):
         super().__init__(timeout=timeout)
         self.current_depth = current_depth
         self.max_depth = max_depth
+        self._child_contexts: dict[int, Context] = {}
+        self._child_context_lock = Lock()
+
+    def _submit_agent_task(
+        self, agent_id: str, agent: Any, prompt: str
+    ) -> Any:
+        """Capture the admitted Run context before CAMEL changes threads."""
+
+        agent_key = id(agent)
+        with self._child_context_lock:
+            self._child_contexts[agent_key] = copy_context()
+        try:
+            return super()._submit_agent_task(agent_id, agent, prompt)
+        except Exception:
+            with self._child_context_lock:
+                self._child_contexts.pop(agent_key, None)
+            raise
+
+    def _run_agent_step(self, agent: Any, prompt: str) -> Any:
+        # ThreadPoolExecutor.submit does not copy ContextVars. Run the cloned
+        # ListenChatAgent inside the exact submission context so each child
+        # tool keeps the parent Run/Attempt audit and permission boundary.
+        with self._child_context_lock:
+            context = self._child_contexts.pop(id(agent), None)
+        if context is None:
+            return super()._run_agent_step(agent, prompt)
+        return context.run(super()._run_agent_step, agent, prompt)
 
     def _resolve_child_tools(
         self,

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import {
   Circle,
@@ -22,12 +23,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 export type TaskStateType =
-  | 'all'
-  | 'done'
-  | 'reassigned'
-  | 'ongoing'
-  | 'pending'
-  | 'failed';
+  'all' | 'done' | 'reassigned' | 'ongoing' | 'pending' | 'failed';
 
 export interface TaskStateProps {
   all?: number;
@@ -79,14 +75,14 @@ export const TaskState = ({
         {/* All */}
         {all && (forceVisible || all > 0) ? (
           <div
-            className={`group flex items-center gap-xs rounded-md px-2 py-0.5 transition-colors duration-200 hover:bg-ds-bg-neutral-subtle-default ${
+            className={`group flex items-center gap-xs rounded-md px-2 py-0.5 transition-colors duration-200 hover:bg-ds-neutral-subtle-default ${
               isSelected('all')
-                ? 'bg-ds-bg-neutral-subtle-default'
+                ? 'bg-ds-neutral-subtle-default'
                 : 'bg-transparent'
             } ${clickable ? 'cursor-pointer' : ''}`}
             onClick={() => handleStateClick('all')}
           >
-            <span className="text-xs font-normal text-ds-text-neutral-default-default">
+            <span className="text-xs font-normal text-ds-ink-default-default">
               {t('chat.all')} <span className={numberClass}>{all}</span>
             </span>
           </div>
@@ -95,19 +91,18 @@ export const TaskState = ({
         {/* Done */}
         {done && (forceVisible || done > 0) ? (
           <div
-            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 transition-[background-color,opacity] duration-200 hover:bg-ds-bg-neutral-subtle-default ${
-              isSelected('done') && 'bg-ds-bg-neutral-subtle-default'
+            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 transition-[background-color,opacity] duration-200 hover:bg-ds-neutral-subtle-default ${
+              isSelected('done') && 'bg-ds-neutral-subtle-default'
             } ${clickable && 'cursor-pointer hover:opacity-80'}`}
             onClick={() => handleStateClick('done')}
           >
-            <CircleCheckBig
-              className={`h-[10px] w-[10px] text-ds-icon-neutral-muted-default group-hover:text-ds-icon-status-completed-default-default ${
-                (isSelected('done') || forceVisible) &&
-                '!text-ds-icon-status-completed-default-default'
-              }`}
+            <DsIcon
+              icon={CircleCheckBig}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-completed-default-default ${(isSelected('done') || forceVisible) && '!text-ds-icon-status-completed-default-default'}`}
             />
             <span
-              className={`text-xs font-normal leading-tight text-ds-text-neutral-muted-default transition-colors duration-200 group-hover:text-ds-text-status-completed-strong-default ${
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-status-completed-strong-default ${
                 (isSelected('done') || forceVisible) &&
                 '!text-ds-text-status-completed-strong-default'
               }`}
@@ -120,19 +115,18 @@ export const TaskState = ({
         {/* Reassigned */}
         {reAssignTo && (forceVisible || reAssignTo > 0) ? (
           <div
-            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 transition-[background-color,opacity] duration-200 hover:bg-ds-bg-neutral-subtle-default ${
-              isSelected('reassigned') && 'bg-ds-bg-neutral-subtle-default'
+            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 transition-[background-color,opacity] duration-200 hover:bg-ds-neutral-subtle-default ${
+              isSelected('reassigned') && 'bg-ds-neutral-subtle-default'
             } ${clickable && 'cursor-pointer hover:opacity-80'}`}
             onClick={() => handleStateClick('reassigned')}
           >
-            <CircleSlash2
-              className={`h-[10px] w-[10px] text-ds-icon-neutral-muted-default group-hover:text-ds-icon-status-pending-default-default ${
-                (isSelected('reassigned') || forceVisible) &&
-                '!text-ds-icon-status-pending-default-default'
-              }`}
+            <DsIcon
+              icon={CircleSlash2}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-pending-default-default ${(isSelected('reassigned') || forceVisible) && '!text-ds-icon-status-pending-default-default'}`}
             />
             <span
-              className={`text-xs font-normal leading-tight text-ds-text-neutral-muted-default transition-colors duration-200 group-hover:text-ds-text-warning-strong-default ${
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-warning-strong-default ${
                 (isSelected('reassigned') || forceVisible) &&
                 '!text-ds-text-warning-strong-default'
               }`}
@@ -146,24 +140,20 @@ export const TaskState = ({
         {/* Ongoing */}
         {progress && (forceVisible || progress > 0) ? (
           <div
-            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default ${
-              isSelected('ongoing') && 'bg-ds-bg-neutral-subtle-default'
+            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 hover:bg-ds-neutral-subtle-default ${
+              isSelected('ongoing') && 'bg-ds-neutral-subtle-default'
             } ${
               clickable && 'cursor-pointer transition-opacity hover:opacity-80'
             }`}
             onClick={() => handleStateClick('ongoing')}
           >
-            <LoaderCircle
-              className={`h-[10px] w-[10px] text-ds-icon-neutral-muted-default group-hover:text-ds-icon-status-splitting-default-default ${
-                (isSelected('ongoing') || forceVisible) &&
-                '!text-ds-icon-status-splitting-default-default'
-              } ${
-                chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-                  'running' && 'animate-spin'
-              }`}
+            <DsIcon
+              icon={LoaderCircle}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-splitting-default-default ${(isSelected('ongoing') || forceVisible) && '!text-ds-icon-status-splitting-default-default'} ${chatStore.tasks[chatStore.activeTaskId as string]?.status === 'running' && 'animate-spin'}`}
             />
             <span
-              className={`text-xs font-normal leading-tight text-ds-text-neutral-muted-default transition-colors duration-200 group-hover:text-ds-text-status-splitting-strong-default ${
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-status-splitting-strong-default ${
                 (isSelected('ongoing') || forceVisible) &&
                 '!text-ds-text-status-splitting-strong-default'
               }`}
@@ -177,19 +167,18 @@ export const TaskState = ({
         {/* Failed */}
         {failed && (forceVisible || failed > 0) ? (
           <div
-            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 transition-[background-color,opacity] duration-200 hover:bg-ds-bg-neutral-subtle-default ${
-              isSelected('failed') && 'bg-ds-bg-neutral-subtle-default'
+            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 transition-[background-color,opacity] duration-200 hover:bg-ds-neutral-subtle-default ${
+              isSelected('failed') && 'bg-ds-neutral-subtle-default'
             } ${clickable && 'cursor-pointer hover:opacity-80'}`}
             onClick={() => handleStateClick('failed')}
           >
-            <CircleSlash2
-              className={`h-[10px] w-[10px] text-ds-icon-neutral-muted-default group-hover:text-ds-icon-status-error-default-default ${
-                (isSelected('failed') || forceVisible) &&
-                '!text-ds-icon-status-error-default-default'
-              }`}
+            <DsIcon
+              icon={CircleSlash2}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-error-default-default ${(isSelected('failed') || forceVisible) && '!text-ds-icon-status-error-default-default'}`}
             />
             <span
-              className={`text-xs font-normal leading-tight text-ds-text-neutral-muted-default transition-colors duration-200 group-hover:text-ds-text-status-error-strong-default ${
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-status-error-strong-default ${
                 (isSelected('failed') || forceVisible) &&
                 '!text-ds-text-status-error-strong-default'
               }`}
@@ -210,14 +199,13 @@ export const TaskState = ({
             }`}
             onClick={() => handleStateClick('pending')}
           >
-            <Circle
-              className={`h-[10px] w-[10px] text-ds-icon-neutral-muted-default group-hover:text-ds-icon-status-pending-default-default ${
-                (isSelected('pending') || forceVisible) &&
-                'text-ds-icon-status-pending-default-default'
-              }`}
+            <DsIcon
+              icon={Circle}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-pending-default-default ${(isSelected('pending') || forceVisible) && 'text-ds-icon-status-pending-default-default'}`}
             />
             <span
-              className={`text-xs font-normal leading-tight text-ds-text-neutral-muted-default group-hover:text-ds-text-status-pending-strong-default ${
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default group-hover:text-ds-text-status-pending-strong-default ${
                 (isSelected('pending') || forceVisible) &&
                 'text-ds-text-status-pending-strong-default'
               }`}

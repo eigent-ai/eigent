@@ -12,50 +12,37 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
+import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
+import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
 import { cn } from '@/lib/utils';
+import {
+  formatKeyboardShortcutKeys,
+  getKeyboardShortcutById,
+} from '@/shared/keyboardShortcuts';
 import type { PreviewTabKind } from '@/store/pageTabStore';
-import { ChevronRight, SquareTerminal } from 'lucide-react';
-import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PREVIEW_TAB_KINDS } from '../tabKinds';
-import type { TerminalSource } from './terminal/terminalSources';
-import { useSessionTerminalSources } from './terminal/useSessionTerminalSources';
 
 export interface ChooserTabProps {
   /** Open the given content kind (replaces this chooser tab in place). */
   onChoose: (kind: PreviewTabKind) => void;
-  /** Open one of the project's agent terminal streams (servers / scripts). */
-  onChooseAgentStream?: (source: TerminalSource) => void;
+  /** Kinds to offer; defaults to all. */
+  kinds?: PreviewTabKind[];
 }
 
-/**
- * The default starter tab. Lists every content kind as a vertical row —
- * picking one turns this tab into that kind — plus a project section with
- * the agent terminal streams of this session (started servers, background
- * scripts), which open as read-only terminal tabs.
- */
-export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
+/** The four default view types. Session processes are listed in Summary. */
+export function ChooserTab({ onChoose, kinds }: ChooserTabProps) {
   const { t } = useTranslation();
-  const sources = useSessionTerminalSources({ trackOutput: false });
-  // Newest first, with still-running streams (servers, watchers) on top.
-  const projectStreams = useMemo(() => {
-    const newestFirst = [...sources].reverse();
-    return [
-      ...newestFirst.filter((source) => source.status === 'running'),
-      ...newestFirst.filter((source) => source.status !== 'running'),
-    ];
-  }, [sources]);
-
+  const shortcutPlatform = useDesktopShortcutPlatform();
   return (
     <div className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-y-auto p-4">
       <div className="w-full max-w-[420px]">
-        <p className="mb-3 px-1 text-sm font-medium text-ds-text-neutral-muted-default">
-          {t('layout.preview-chooser-title', {
-            defaultValue: 'Open a new view',
-          })}
-        </p>
         <div className="flex flex-col gap-1.5">
-          {PREVIEW_TAB_KINDS.map(
+          {PREVIEW_TAB_KINDS.filter(
+            ({ kind }) => !kinds || kinds.includes(kind)
+          ).map(
             ({
               kind,
               icon: Icon,
@@ -63,83 +50,52 @@ export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
               defaultLabel,
               descriptionKey,
               defaultDescription,
-            }) => (
-              <button
-                key={kind}
-                type="button"
-                onClick={() => onChoose(kind)}
-                className={cn(
-                  'group flex w-full items-center gap-3 rounded-xl border-solid border-transparent bg-ds-bg-neutral-default-default px-3 py-2.5 text-left transition-colors',
-                  'hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-default-hover'
-                )}
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default">
-                  <Icon className="h-[18px] w-[18px]" aria-hidden />
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-medium text-ds-text-neutral-default-default">
-                    {t(labelKey, { defaultValue: defaultLabel })}
-                  </span>
-                  <span className="truncate text-xs text-ds-text-neutral-muted-default">
-                    {t(descriptionKey, { defaultValue: defaultDescription })}
-                  </span>
-                </span>
-                <ChevronRight
-                  className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default opacity-0 transition-opacity group-hover:opacity-100"
-                  aria-hidden
-                />
-              </button>
-            )
-          )}
-        </div>
+            }) => {
+              const label = t(labelKey, { defaultValue: defaultLabel });
+              const shortcutId =
+                kind === 'browser'
+                  ? 'open-preview-browser'
+                  : kind === 'terminal'
+                    ? 'open-preview-terminal'
+                    : undefined;
+              const shortcut = shortcutId
+                ? getKeyboardShortcutById(shortcutPlatform, shortcutId)
+                : undefined;
 
-        {onChooseAgentStream && projectStreams.length > 0 ? (
-          <>
-            <p className="mb-2 mt-6 px-1 text-sm font-medium text-ds-text-neutral-muted-default">
-              {t('layout.preview-chooser-project-title', {
-                defaultValue: 'From this project',
-              })}
-            </p>
-            <div className="flex flex-col gap-1.5">
-              {projectStreams.map((source) => (
+              return (
                 <button
-                  key={source.id}
+                  key={kind}
                   type="button"
-                  onClick={() => onChooseAgentStream(source)}
+                  onClick={() => onChoose(kind)}
                   className={cn(
-                    'group flex w-full items-center gap-3 rounded-xl border-solid border-transparent bg-ds-bg-neutral-default-default px-3 py-2.5 text-left transition-colors',
-                    'hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-default-hover'
+                    'group flex w-full items-center gap-3 rounded-xl border border-x border-y border-solid border-transparent bg-ds-neutral-default-default px-3 py-2.5 text-left transition-colors',
+                    'hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover',
+                    DS_FOCUS_RING
                   )}
                 >
-                  <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default">
-                    <SquareTerminal className="h-[18px] w-[18px]" aria-hidden />
-                    {source.status === 'running' ? (
-                      <span
-                        aria-hidden
-                        className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full bg-ds-bg-status-running-default-default"
-                      />
-                    ) : null}
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-subtle-default text-ds-ink-default-default">
+                    <DsIcon icon={Icon} />
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-ds-text-neutral-default-default">
-                      {source.agentName}
+                    <span className="text-sm font-medium text-ds-ink-default-default">
+                      {label}
                     </span>
-                    <span className="truncate text-xs text-ds-text-neutral-muted-default">
-                      {source.taskLabel ||
-                        t('layout.preview-chooser-stream-desc', {
-                          defaultValue: 'Command output from this session.',
-                        })}
+                    <span className="truncate text-xs text-ds-ink-muted-default">
+                      {t(descriptionKey, {
+                        defaultValue: defaultDescription,
+                      })}
                     </span>
                   </span>
-                  <ChevronRight
-                    className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default opacity-0 transition-opacity group-hover:opacity-100"
-                    aria-hidden
-                  />
+                  {shortcut ? (
+                    <ShortcutKeycap aria-hidden>
+                      {formatKeyboardShortcutKeys(shortcut.keys)}
+                    </ShortcutKeycap>
+                  ) : null}
                 </button>
-              ))}
-            </div>
-          </>
-        ) : null}
+              );
+            }
+          )}
+        </div>
       </div>
     </div>
   );

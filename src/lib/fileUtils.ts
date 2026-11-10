@@ -17,6 +17,7 @@ import { isWeb } from '@/client/platform';
 import type { FileAttachment } from '@/components/ChatBox/BottomBox/InputBox';
 import type { AppHost } from '@/host';
 import { createHost } from '@/host';
+import i18next from 'i18next';
 
 /**
  * Process dropped files: resolve paths via Electron, send through IPC,
@@ -50,7 +51,9 @@ export async function processDroppedFiles(
     if (uploadedFiles.length === 0) {
       return {
         success: false,
-        error: 'Failed to upload dropped files.',
+        error: i18next.t('layout.file-upload-dropped-failed', {
+          defaultValue: 'Failed to upload dropped files.',
+        }),
       };
     }
 
@@ -80,7 +83,9 @@ export async function processDroppedFiles(
   if (!electronAPI) {
     return {
       success: false,
-      error: 'Desktop file access is unavailable.',
+      error: i18next.t('layout.desktop-file-access-unavailable', {
+        defaultValue: 'Desktop file access is unavailable.',
+      }),
     };
   }
 
@@ -97,7 +102,10 @@ export async function processDroppedFiles(
   if (validFiles.length === 0) {
     return {
       success: false,
-      error: 'Unable to access file paths. Please use the file picker instead.',
+      error: i18next.t('layout.file-path-access-failed', {
+        defaultValue:
+          'Unable to access file paths. Please use the file picker instead.',
+      }),
     };
   }
 
@@ -105,7 +113,11 @@ export async function processDroppedFiles(
   if (!result.success || !result.files) {
     return {
       success: false,
-      error: result.error || 'Failed to process dropped files',
+      error:
+        result.error ||
+        i18next.t('layout.file-drop-process-failed', {
+          defaultValue: 'Failed to process dropped files',
+        }),
     };
   }
 
@@ -143,7 +155,9 @@ export async function processPastedFiles(
   if (!electronAPI?.savePastedFile) {
     return {
       success: false,
-      error: 'Desktop file access is unavailable.',
+      error: i18next.t('layout.desktop-file-access-unavailable', {
+        defaultValue: 'Desktop file access is unavailable.',
+      }),
     };
   }
 
@@ -171,7 +185,12 @@ export async function processPastedFiles(
   }
 
   if (savedFiles.length === 0) {
-    return { success: false, error: 'Failed to save pasted file.' };
+    return {
+      success: false,
+      error: i18next.t('layout.file-paste-save-failed', {
+        defaultValue: 'Failed to save pasted file.',
+      }),
+    };
   }
 
   const mergedFiles = [

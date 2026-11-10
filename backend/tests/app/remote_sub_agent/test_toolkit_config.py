@@ -20,6 +20,7 @@ from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
 )
 from app.agent.toolkit.remote_sub_agent_toolkit import RemoteSubAgentToolkit
+from app.remote_sub_agent.config import RemoteSubAgentConfig
 
 pytestmark = pytest.mark.unit
 
@@ -89,3 +90,44 @@ def test_factory_helper_attaches_remote_tool_and_notice_when_enabled():
     assert [tool.func.__name__ for tool in tools] == ["run_remote_sub_agent"]
     assert "remote-suitable work" in system_message
     assert "/tmp/work" in system_message
+
+
+def test_toolkit_enabled_with_complete_modelark_config():
+    config = {
+        "enabled": True,
+        "provider": "modelark_agents",
+        "modelark_agents": {
+            "api_key": "test-key",
+            "base_url": "https://ark.ap-southeast.bytepluses.com/api/v3",
+            "agent_name": "agent-1",
+            "environment_id": "env-1",
+        },
+    }
+
+    assert RemoteSubAgentToolkit.is_enabled(config) is True
+
+    config["modelark_agents"] = {
+        **config["modelark_agents"],
+        "environment_id": "",
+    }
+    assert RemoteSubAgentToolkit.is_enabled(config) is False
+
+
+def test_chat_config_keeps_the_modelark_block():
+    config = RemoteSubAgentConfig.model_validate(
+        {
+            "enabled": True,
+            "provider": "modelark_agents",
+            "modelark_agents": {
+                "api_key": "test-key",
+                "base_url": "https://ark.ap-southeast.bytepluses.com/api/v3",
+                "agent_name": "agent-1",
+                "environment_id": "env-1",
+                "max_wall_time_seconds": 900,
+            },
+        }
+    )
+
+    assert config.modelark_agents is not None
+    assert config.modelark_agents.environment_id == "env-1"
+    assert RemoteSubAgentToolkit.is_enabled(config) is True

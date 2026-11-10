@@ -13,6 +13,9 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import json
+import threading
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,13 +27,368 @@ from camel.responses import ChatAgentResponse
 from camel.toolkits import FunctionTool
 from camel.types.agents import ToolCallingRecord
 
-from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.listen_chat_agent import (
+    ListenChatAgent,
+    _reported_tool_error,
+    _tool_failure_outcome_known,
+    default_agent_stall_timeout,
+    default_step_timeout,
+)
 from app.model.chat import Chat
+from app.run_runtime.active_timeout import (
+    pause_active_execution_timeout,
+    refresh_active_execution_timeout,
+)
+from app.run_runtime.tool_checkpoint import (
+    ToolCheckpointError,
+    ToolInvocationNotDispatchedError,
+    UnsafeToolOutcomeError,
+)
 from app.service.task import process_task
 
 _LCA = "app.agent.listen_chat_agent"
 
 pytestmark = pytest.mark.unit
+
+
+def test_reported_tool_error_detects_adapter_error_mapping():
+    error = _reported_tool_error({"error": "remote write failed"})
+
+    assert isinstance(error, RuntimeError)
+    assert str(error) == "remote write failed"
+    assert _reported_tool_error({"result": "ok"}) is None
+
+
+def test_wrapped_pre_dispatch_error_is_a_known_tool_outcome():
+    try:
+        raise ToolInvocationNotDispatchedError("workspace is leased")
+    except ToolInvocationNotDispatchedError:
+        try:
+            # CAMEL FunctionTool currently wraps tool exceptions this way.
+            raise ValueError("Execution of function shell_exec failed")
+        except ValueError as wrapped:
+            assert _tool_failure_outcome_known(
+                wrapped,
+                checkpoint_dispatched=True,
+            )
+
+
+def test_unrelated_post_dispatch_error_remains_outcome_unknown():
+    assert not _tool_failure_outcome_known(
+        TimeoutError("provider outcome unknown"),
+        checkpoint_dispatched=True,
+    )
+
+
+def test_long_running_defaults_have_no_hard_cap_and_keep_stall_watchdog():
+    def configured_value(name, default):
+        assert name in {
+            "AGENT_STEP_TIMEOUT_SECONDS",
+            "AGENT_STALL_TIMEOUT_SECONDS",
+        }
+        return default
+
+    with patch(
+        "app.run_runtime.timeout_config.env",
+        side_effect=configured_value,
+    ):
+        assert default_step_timeout() is None
+        assert default_agent_stall_timeout() == 1800
+
+
+@pytest.mark.asyncio
+async def test_agent_step_timeout_excludes_durable_human_wait():
+    agent = object.__new__(ListenChatAgent)
+    agent.model_backend = MagicMock()
+    agent.model_backend.model_config_dict = {"stream": False}
+    agent.step_timeout = 0.02
+    agent.stall_timeout = None
+    response = MagicMock(spec=ChatAgentResponse)
+
+    async def parent_step(_agent, _message, _response_format):
+        async with pause_active_execution_timeout():
+            await asyncio.sleep(0.04)
+        return response
+
+    with patch.object(
+        ChatAgent,
+        "_astep_non_streaming_task",
+        new=parent_step,
+    ):
+        result = await agent._astep_with_active_timeout("wait for approval")
+
+    assert result is response
+
+
+@pytest.mark.asyncio
+async def test_agent_stall_watchdog_renews_after_progress():
+    agent = object.__new__(ListenChatAgent)
+    agent.model_backend = MagicMock()
+    agent.model_backend.model_config_dict = {"stream": False}
+    agent.step_timeout = None
+    agent.stall_timeout = 0.02
+    response = MagicMock(spec=ChatAgentResponse)
+
+    async def progressing_step(_agent, _message, _response_format):
+        for _ in range(3):
+            await asyncio.sleep(0.012)
+            refresh_active_execution_timeout()
+        return response
+
+    with patch.object(
+        ChatAgent,
+        "_astep_non_streaming_task",
+        new=progressing_step,
+    ):
+        result = await agent._astep_with_active_timeout("long task")
+
+    assert result is response
+
+
+@pytest.mark.asyncio
+async def test_agent_stall_watchdog_cancels_no_progress():
+    agent = object.__new__(ListenChatAgent)
+    agent.model_backend = MagicMock()
+    agent.model_backend.model_config_dict = {"stream": False}
+    agent.step_timeout = None
+    agent.stall_timeout = 0.01
+
+    async def stalled_step(_agent, _message, _response_format):
+        await asyncio.sleep(0.03)
+
+    with (
+        patch.object(
+            ChatAgent,
+            "_astep_non_streaming_task",
+            new=stalled_step,
+        ),
+        pytest.raises(TimeoutError, match="made no progress"),
+    ):
+        await agent._astep_with_active_timeout("stalled task")
+
+
+@pytest.mark.asyncio
+async def test_streaming_agent_stall_watchdog_renews_on_chunks():
+    agent = object.__new__(ListenChatAgent)
+    agent.step_timeout = None
+    agent.stall_timeout = 0.02
+    agent._send_agent_deactivate = MagicMock()
+
+    async def progressing_stream():
+        for index in range(3):
+            await asyncio.sleep(0.012)
+            yield SimpleNamespace(
+                msg=SimpleNamespace(content=str(index)),
+                info={},
+            )
+
+    chunks = [
+        chunk async for chunk in agent._astream_chunks(progressing_stream())
+    ]
+
+    assert [chunk.msg.content for chunk in chunks] == ["0", "1", "2"]
+
+
+@pytest.mark.asyncio
+async def test_streaming_agent_stall_watchdog_cancels_no_progress():
+    agent = object.__new__(ListenChatAgent)
+    agent.step_timeout = None
+    agent.stall_timeout = 0.01
+    agent._send_agent_deactivate = MagicMock()
+
+    async def stalled_stream():
+        await asyncio.sleep(0.03)
+        yield SimpleNamespace(msg=SimpleNamespace(content="late"), info={})
+
+    with pytest.raises(TimeoutError, match="made no progress"):
+        async for _chunk in agent._astream_chunks(stalled_stream()):
+            pass
+
+
+def _malformed_tool_arguments_error() -> json.JSONDecodeError:
+    return json.JSONDecodeError(
+        "Expecting property name enclosed in double quotes",
+        '{"path":"report.csv",\ncontent:"..."}',
+        22,
+    )
+
+
+def test_sync_model_response_retries_malformed_json_with_error_feedback():
+    agent = object.__new__(ListenChatAgent)
+    agent.agent_name = "single_agent"
+    original_messages = [{"role": "user", "content": "Create the report"}]
+    response = MagicMock()
+
+    with patch.object(
+        ChatAgent,
+        "_get_model_response",
+        side_effect=[
+            _malformed_tool_arguments_error(),
+            _malformed_tool_arguments_error(),
+            response,
+        ],
+    ) as parent:
+        result = agent._get_model_response(
+            original_messages,
+            current_iteration=11,
+            tool_schemas=[{"name": "write_file"}],
+        )
+
+    assert result is response
+    assert parent.call_count == 3
+    assert original_messages == [
+        {"role": "user", "content": "Create the report"}
+    ]
+    for retry_index, call in enumerate(parent.call_args_list[1:], start=1):
+        retry_messages = call.args[0]
+        assert retry_messages[:-1] == original_messages
+        feedback = retry_messages[-1]["content"]
+        assert "Expecting property name enclosed in double quotes" in feedback
+        assert "before any new tool call was executed" in feedback
+        assert f"correction retry {retry_index} of 2" in feedback
+
+
+@pytest.mark.asyncio
+async def test_async_model_response_retries_malformed_json_twice():
+    agent = object.__new__(ListenChatAgent)
+    agent.agent_name = "single_agent"
+    original_messages = [{"role": "user", "content": "Create the report"}]
+    response = MagicMock()
+
+    with patch.object(
+        ChatAgent,
+        "_aget_model_response",
+        new=AsyncMock(
+            side_effect=[
+                _malformed_tool_arguments_error(),
+                _malformed_tool_arguments_error(),
+                response,
+            ]
+        ),
+    ) as parent:
+        result = await agent._aget_model_response(original_messages)
+
+    assert result is response
+    assert parent.await_count == 3
+    assert original_messages == [
+        {"role": "user", "content": "Create the report"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_model_response_raises_after_two_correction_retries():
+    agent = object.__new__(ListenChatAgent)
+    agent.agent_name = "single_agent"
+    errors = [_malformed_tool_arguments_error() for _ in range(3)]
+
+    with patch.object(
+        ChatAgent,
+        "_aget_model_response",
+        new=AsyncMock(side_effect=errors),
+    ) as parent:
+        with pytest.raises(json.JSONDecodeError) as raised:
+            await agent._aget_model_response(
+                [{"role": "user", "content": "Create the report"}]
+            )
+
+    assert raised.value is errors[-1]
+    assert parent.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_async_model_response_does_not_retry_unrelated_errors():
+    agent = object.__new__(ListenChatAgent)
+    agent.agent_name = "single_agent"
+
+    with patch.object(
+        ChatAgent,
+        "_aget_model_response",
+        new=AsyncMock(side_effect=RuntimeError("provider unavailable")),
+    ) as parent:
+        with pytest.raises(RuntimeError, match="provider unavailable"):
+            await agent._aget_model_response(
+                [{"role": "user", "content": "Create the report"}]
+            )
+
+    assert parent.await_count == 1
+
+
+def test_sync_tool_soft_error_is_recorded_as_known_failure_not_raised():
+    def vendor_search():
+        return {"error": "rate limited"}
+
+    tool = FunctionTool(vendor_search)
+    agent = object.__new__(ListenChatAgent)
+    agent._internal_tools = {"vendor_search": tool}
+    agent.api_task_id = "project-1"
+    agent.agent_name = "searcher"
+    agent.process_task_id = "process-1"
+    agent.mask_tool_output = False
+    agent._secure_result_store = {}
+    agent._record_tool_calling = MagicMock(return_value="recorded")
+    checkpoint = MagicMock()
+    request = ToolCallRequest(
+        tool_name="vendor_search",
+        args={},
+        tool_call_id="call-1",
+    )
+
+    with (
+        patch(f"{_LCA}.get_task_lock", return_value=MagicMock()),
+        patch(f"{_LCA}.prepare_tool_checkpoint", return_value=checkpoint),
+        patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+        patch(f"{_LCA}.dispatch_tool_checkpoint"),
+        patch(f"{_LCA}.finish_tool_checkpoint") as finish,
+        patch(f"{_LCA}._schedule_async_task"),
+    ):
+        assert agent._execute_tool(request) == "recorded"
+
+    finish.assert_called_once()
+    assert finish.call_args.kwargs["result"] == {"error": "rate limited"}
+    assert isinstance(finish.call_args.kwargs["error"], RuntimeError)
+    assert finish.call_args.kwargs["outcome_known"] is True
+
+
+def test_sync_tool_pre_dispatch_marker_is_recorded_as_known_failure():
+    def terminal_command():
+        raise ToolInvocationNotDispatchedError("workspace is leased")
+
+    tool = FunctionTool(terminal_command)
+    agent = object.__new__(ListenChatAgent)
+    agent._internal_tools = {"terminal_command": tool}
+    agent.api_task_id = "project-1"
+    agent.agent_name = "developer"
+    agent.process_task_id = "process-1"
+    agent.mask_tool_output = False
+    agent._secure_result_store = {}
+    agent._record_tool_calling = MagicMock(return_value="recorded")
+    checkpoint = MagicMock()
+    request = ToolCallRequest(
+        tool_name="terminal_command",
+        args={},
+        tool_call_id="call-lease-conflict",
+    )
+
+    with (
+        patch(f"{_LCA}.get_task_lock", return_value=MagicMock()),
+        patch(f"{_LCA}.prepare_tool_checkpoint", return_value=checkpoint),
+        patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+        patch(f"{_LCA}.dispatch_tool_checkpoint"),
+        patch(f"{_LCA}.finish_tool_checkpoint") as finish,
+        patch(f"{_LCA}._schedule_async_task"),
+    ):
+        assert agent._execute_tool(request) == "recorded"
+
+    finish.assert_called_once()
+    # CAMEL intentionally wraps tool exceptions in ValueError. The marker is
+    # retained as __context__, which is what the checkpoint outcome classifier
+    # must inspect.
+    assert isinstance(finish.call_args.kwargs["error"], ValueError)
+    assert isinstance(
+        finish.call_args.kwargs["error"].__context__,
+        ToolInvocationNotDispatchedError,
+    )
+    assert finish.call_args.kwargs["outcome_known"] is True
 
 
 class TestListenChatAgent:
@@ -281,15 +639,19 @@ class TestListenChatAgent:
                 api_task_id=api_task_id, agent_name=agent_name, model="gpt-4"
             )
             agent.process_task_id = "test_process_task"
+            agent.model_backend.model_config_dict = {"stream": False}
 
-            # Mock the parent astep method
+            # Mock CAMEL's non-streaming task. ListenChatAgent owns the outer
+            # pause-aware timeout so durable approval waits do not consume it.
             mock_response = MagicMock()
             mock_response.msg = MagicMock()
             mock_response.msg.content = "Test response message"
             mock_response.info = {"usage": {"total_tokens": 100}}
 
             with patch.object(
-                ChatAgent, "astep", return_value=mock_response
+                ChatAgent,
+                "_astep_non_streaming_task",
+                return_value=mock_response,
             ) as mock_parent_astep:
                 result = await agent.astep("Test async input")
 
@@ -311,6 +673,13 @@ class TestListenChatAgent:
 
         with (
             patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+            patch(
+                f"{_LCA}.prepare_tool_checkpoint",
+                return_value=MagicMock(),
+            ),
+            patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+            patch(f"{_LCA}.dispatch_tool_checkpoint"),
+            patch(f"{_LCA}.finish_tool_checkpoint"),
             patch("camel.models.ModelFactory.create") as mock_create_model,
             patch("asyncio.create_task"),
         ):
@@ -362,6 +731,13 @@ class TestListenChatAgent:
 
         with (
             patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+            patch(
+                f"{_LCA}.prepare_tool_checkpoint",
+                return_value=MagicMock(),
+            ),
+            patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+            patch(f"{_LCA}.dispatch_tool_checkpoint"),
+            patch(f"{_LCA}.finish_tool_checkpoint"),
             patch("camel.models.ModelFactory.create") as mock_create_model,
         ):
             # Mock the model backend creation
@@ -410,6 +786,8 @@ class TestListenChatAgent:
         api_task_id = "test_api_task_123"
         agent_name = "TestAgent"
         observed_process_task_ids: list[str] = []
+        observed_thread_ids: list[int] = []
+        owner_thread_id = threading.get_ident()
 
         class SyncTool:
             is_async = False
@@ -419,10 +797,18 @@ class TestListenChatAgent:
 
             def __call__(self, **kwargs):
                 observed_process_task_ids.append(process_task.get(""))
+                observed_thread_ids.append(threading.get_ident())
                 return f"ok:{kwargs['arg1']}"
 
         with (
             patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+            patch(
+                f"{_LCA}.prepare_tool_checkpoint",
+                return_value=MagicMock(),
+            ),
+            patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+            patch(f"{_LCA}.dispatch_tool_checkpoint"),
+            patch(f"{_LCA}.finish_tool_checkpoint"),
             patch("camel.models.ModelFactory.create") as mock_create_model,
         ):
             mock_backend = MagicMock()
@@ -451,6 +837,7 @@ class TestListenChatAgent:
             assert result.tool_name == "stream_tool"
             assert result.result == "ok:value1"
             assert observed_process_task_ids == ["follow_up_task_123"]
+            assert observed_thread_ids != [owner_thread_id]
             assert mock_task_lock.put_queue.call_count >= 2
 
     def test_listen_chat_agent_clone(self, mock_task_lock):
@@ -512,6 +899,106 @@ class TestListenChatAgent:
 
                 assert result is cloned_agent
                 mock_clone_constructor.assert_called_once()
+
+    def test_clone_assigns_a_distinct_electron_target(self, mock_task_lock):
+        from app.agent.factory.browser import _cdp_pool_manager
+
+        task_id = "electron-clone-task"
+        first_target = "about:blank#eigent-browser-toolkit=101"
+        second_target = "about:blank#eigent-browser-toolkit=102"
+        browsers = [
+            {
+                "port": 9222,
+                "managedBy": "electron",
+                "targetUrl": first_target,
+            },
+            {
+                "port": 9222,
+                "managedBy": "electron",
+                "targetUrl": second_target,
+            },
+        ]
+        _cdp_pool_manager.acquire_browser(browsers, "parent-session", task_id)
+
+        try:
+            with (
+                patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+                patch("camel.models.ModelFactory.create") as create_model,
+            ):
+                backend = MagicMock()
+                backend.model_type = "gpt-4"
+                backend.current_model = MagicMock()
+                backend.current_model.model_type = "gpt-4"
+                backend.models = "gpt-4"
+                backend.scheduling_strategy = MagicMock()
+                backend.scheduling_strategy.__name__ = "round_robin"
+                create_model.return_value = backend
+
+                agent = ListenChatAgent(
+                    api_task_id="project-1",
+                    agent_name="Browser Agent",
+                    model="gpt-4",
+                )
+                agent._original_system_message = "browser system"
+                agent.memory = MagicMock()
+                agent.memory.window_size = 10
+                agent.memory.get_context_creator.return_value.token_limit = (
+                    4000
+                )
+                agent._external_tool_schemas = {}
+                agent.response_terminators = []
+                agent._cdp_acquire_callback = MagicMock()
+                agent._cdp_release_callback = MagicMock()
+                agent._cdp_options = SimpleNamespace(cdp_browsers=browsers)
+                agent._cdp_task_id = task_id
+
+                browser_config = SimpleNamespace(
+                    cdp_url="http://127.0.0.1:9222"
+                )
+                toolkit = MagicMock()
+                toolkit.config_loader.get_browser_config.return_value = (
+                    browser_config
+                )
+                toolkit._owned_target_url = first_target
+                toolkit._allow_owned_target_clone = False
+                toolkit._ws_config = {"ownedTargetUrl": first_target}
+                agent._browser_toolkit = toolkit
+
+                observed: dict[str, object] = {}
+
+                def clone_tools():
+                    observed["owned_target_url"] = toolkit._owned_target_url
+                    observed["allow_owned_target_clone"] = (
+                        toolkit._allow_owned_target_clone
+                    )
+                    observed["ws_owned_target_url"] = toolkit._ws_config.get(
+                        "ownedTargetUrl"
+                    )
+                    return [], []
+
+                cloned_agent = MagicMock()
+                with (
+                    patch(
+                        f"{_LCA}.ListenChatAgent",
+                        return_value=cloned_agent,
+                    ),
+                    patch.object(
+                        agent, "_clone_tools", side_effect=clone_tools
+                    ),
+                ):
+                    assert agent.clone() is cloned_agent
+
+                assert observed == {
+                    "owned_target_url": second_target,
+                    "allow_owned_target_clone": True,
+                    "ws_owned_target_url": second_target,
+                }
+                assert toolkit._owned_target_url == first_target
+                assert toolkit._allow_owned_target_clone is False
+                assert toolkit._ws_config["ownedTargetUrl"] == first_target
+                assert cloned_agent._cdp_session_id != "parent-session"
+        finally:
+            _cdp_pool_manager.release_by_task(task_id)
 
     def test_listen_chat_agent_with_tools(self, mock_task_lock):
         """Test ListenChatAgent with tools."""
@@ -625,6 +1112,66 @@ class TestListenChatAgent:
             # Should handle task lock errors gracefully
             with pytest.raises(Exception):
                 agent.step("Test message")
+
+
+def _checkpoint_test_agent() -> ListenChatAgent:
+    agent = object.__new__(ListenChatAgent)
+    agent._internal_tools = {}
+    agent._tool_checkpoint_error_lock = threading.Lock()
+    agent._tool_checkpoint_error = None
+    return agent
+
+
+def test_unregistered_streamed_tool_fails_instead_of_completing_checkpoint():
+    agent = _checkpoint_test_agent()
+
+    with pytest.raises(ToolCheckpointError, match="not registered"):
+        agent._execute_tool_from_stream_data(
+            {
+                "id": "call-1",
+                "function": {"name": "unknown_write", "arguments": "{}"},
+            }
+        )
+
+
+def test_sync_stream_propagates_checkpoint_error_swallowed_by_camel():
+    agent = _checkpoint_test_agent()
+    failure = UnsafeToolOutcomeError("external outcome unknown")
+
+    def swallowed(parent, *_args, **_kwargs):
+        parent._remember_tool_checkpoint_error(failure)
+        return
+        yield
+
+    with patch.object(
+        ChatAgent,
+        "_execute_tools_sync_with_status_accumulator",
+        new=swallowed,
+    ):
+        with pytest.raises(UnsafeToolOutcomeError, match="outcome unknown"):
+            list(agent._execute_tools_sync_with_status_accumulator({}, []))
+
+
+@pytest.mark.asyncio
+async def test_async_stream_propagates_checkpoint_error_swallowed_by_camel():
+    agent = _checkpoint_test_agent()
+    failure = UnsafeToolOutcomeError("external outcome unknown")
+
+    async def swallowed(parent, *_args, **_kwargs):
+        parent._remember_tool_checkpoint_error(failure)
+        return
+        yield
+
+    with patch.object(
+        ChatAgent,
+        "_execute_tools_async_with_status_accumulator",
+        new=swallowed,
+    ):
+        with pytest.raises(UnsafeToolOutcomeError, match="outcome unknown"):
+            async for _ in agent._execute_tools_async_with_status_accumulator(
+                {}, MagicMock(), {}, []
+            ):
+                pass
 
 
 @pytest.mark.model_backend

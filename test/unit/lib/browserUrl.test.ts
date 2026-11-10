@@ -13,7 +13,14 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { normalizeBrowserUrl } from '@/lib/browserUrl';
-import { describe, expect, it } from 'vitest';
+import i18next from 'i18next';
+import { beforeAll, describe, expect, it } from 'vitest';
+
+beforeAll(async () => {
+  if (!i18next.isInitialized) {
+    await i18next.init({ lng: 'en', resources: {} });
+  }
+});
 
 describe('normalizeBrowserUrl', () => {
   it('normalizes bare hostnames to HTTPS', () => {

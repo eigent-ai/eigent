@@ -23,6 +23,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -235,11 +236,13 @@ const TextInputField: React.FC<FieldProps> = ({
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">
+      <Label>
         {label}
-        {isRequired && <span className="ml-1 text-red-500">*</span>}
+        {isRequired && (
+          <span className="ml-1 text-ds-text-error-strong-default">*</span>
+        )}
       </Label>
-      <div className="gap-2 flex">
+      <div className="flex gap-2">
         <div className="relative flex-1">
           <Input
             type={isSecret && !showSecret ? 'password' : 'text'}
@@ -254,13 +257,9 @@ const TextInputField: React.FC<FieldProps> = ({
             <button
               type="button"
               onClick={handleToggleSecret}
-              className="hover:text-ds-icon-neutral-default-hover right-3 text-ds-icon-neutral-default-default absolute top-1/2 -translate-y-1/2"
+              className="absolute top-1/2 right-3 -translate-y-1/2 text-ds-ink-default-default hover:text-ds-ink-default-hover"
             >
-              {showSecret ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
+              {showSecret ? <DsIcon icon={EyeOff} /> : <DsIcon icon={Eye} />}
             </button>
           )}
         </div>
@@ -272,15 +271,15 @@ const TextInputField: React.FC<FieldProps> = ({
             disabled={disabled || isSaving}
           >
             {isSaving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <DsIcon icon={Loader2} className="animate-spin" />
             ) : isSaved ? (
               <>
-                <Save className="mr-1 h-4 w-4" />
+                <DsIcon icon={Save} className="mr-1" />
                 {t('triggers.dynamic.update')}
               </>
             ) : (
               <>
-                <Plus className="mr-1 h-4 w-4" />
+                <DsIcon icon={Plus} className="mr-1" />
                 {t('triggers.dynamic.add')}
               </>
             )}
@@ -288,14 +287,12 @@ const TextInputField: React.FC<FieldProps> = ({
         )}
       </div>
       {showError && (
-        <p className="gap-1 text-xs text-red-500 flex items-center">
-          <CircleAlert className="h-3 w-3" />
+        <p className="flex items-center gap-1 !text-ds-text-meta text-ds-text-error-strong-default">
+          <DsIcon icon={CircleAlert} recipe="main-compact" />
           {validationError}
         </p>
       )}
-      {notice && (
-        <p className="text-xs text-ds-text-neutral-muted-default">{notice}</p>
-      )}
+      {notice && <p className="text-xs text-ds-ink-muted-default">{notice}</p>}
     </div>
   );
 };
@@ -318,12 +315,14 @@ const SwitchField: React.FC<FieldProps> = ({
   return (
     <div className="flex items-center justify-between">
       <div className="space-y-0.5">
-        <Label className="text-sm">
+        <Label>
           {label}
-          {isRequired && <span className="ml-1 text-red-500">*</span>}
+          {isRequired && (
+            <span className="ml-1 text-ds-text-error-strong-default">*</span>
+          )}
         </Label>
         {notice && (
-          <p className="text-xs text-ds-text-neutral-muted-default">{notice}</p>
+          <p className="text-xs text-ds-ink-muted-default">{notice}</p>
         )}
       </div>
       <Switch
@@ -399,29 +398,31 @@ const MultiSelectField: React.FC<FieldProps> = ({
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">
+      <Label>
         {label}
-        {isRequired && <span className="ml-1 text-red-500">*</span>}
+        {isRequired && (
+          <span className="ml-1 text-ds-text-error-strong-default">*</span>
+        )}
       </Label>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           disabled={disabled || requiresCredentials}
-          className="font-normal w-full justify-between"
+          className="w-full justify-between font-normal"
         >
           {requiresCredentials ? (
-            <span className="text-ds-text-neutral-muted-default">
+            <span className="text-ds-ink-muted-default">
               {t('triggers.dynamic.save-credentials-first')}
             </span>
           ) : isLoading ? (
-            <span className="gap-2 flex items-center">
-              <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="flex items-center gap-2">
+              <DsIcon icon={Loader2} className="animate-spin" />
               {t('triggers.dynamic.loading')}
             </span>
           ) : (
             <span>{getDisplayLabel()}</span>
           )}
         </PopoverTrigger>
-        <PopoverContent className="p-0 w-full" align="start">
+        <PopoverContent className="w-full p-0" align="start">
           <Command>
             <CommandInput placeholder={t('triggers.dynamic.search')} />
             <CommandList>
@@ -435,14 +436,14 @@ const MultiSelectField: React.FC<FieldProps> = ({
                   >
                     <div
                       className={cn(
-                        'border-primary mr-2 h-4 w-4 rounded-sm flex items-center justify-center border',
+                        'mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-x border-y border-solid border-ds-hairline-default-default',
                         selectedValues.includes(option.value)
-                          ? 'bg-primary text-primary-foreground'
+                          ? 'bg-ds-accent-default-default !text-ds-accent-on-default'
                           : 'opacity-50'
                       )}
                     >
                       {selectedValues.includes(option.value) && (
-                        <Check className="h-3 w-3" />
+                        <DsIcon icon={Check} recipe="main-compact" />
                       )}
                     </div>
                     {option.label}
@@ -454,29 +455,27 @@ const MultiSelectField: React.FC<FieldProps> = ({
         </PopoverContent>
       </Popover>
       {showError && (
-        <p className="gap-1 text-xs text-red-500 flex items-center">
-          <CircleAlert className="h-3 w-3" />
+        <p className="flex items-center gap-1 !text-ds-text-meta text-ds-text-error-strong-default">
+          <DsIcon icon={CircleAlert} recipe="main-compact" />
           {errorMessage}
         </p>
       )}
-      {notice && (
-        <p className="text-xs text-ds-text-neutral-muted-default">{notice}</p>
-      )}
+      {notice && <p className="text-xs text-ds-ink-muted-default">{notice}</p>}
 
       {/* Selected badges */}
       {selectedValues.length > 0 && (
-        <div className="mt-2 gap-1 flex flex-wrap">
+        <div className="mt-2 flex flex-wrap gap-1">
           {selectedValues.map((val) => {
             const opt = options.find((o) => o.value === val);
             return (
               <Badge
                 key={val}
                 variant="secondary"
-                className="text-xs hover:bg-ds-bg-status-error-subtle-default/50 cursor-pointer"
+                className="cursor-pointer text-xs hover:bg-ds-bg-status-error-subtle-default/50"
                 onClick={() => handleToggle(val)}
               >
                 {opt?.label || val}
-                <X className="ml-1 h-3 w-3" />
+                <DsIcon icon={X} recipe="main-compact" className="ml-1" />
               </Badge>
             );
           })}
@@ -554,11 +553,13 @@ const MultiTextInputField: React.FC<FieldProps> = ({
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">
+      <Label>
         {label}
-        {isRequired && <span className="ml-1 text-red-500">*</span>}
+        {isRequired && (
+          <span className="ml-1 text-ds-text-error-strong-default">*</span>
+        )}
       </Label>
-      <div className="gap-2 flex">
+      <div className="flex gap-2">
         <Input
           value={newValue}
           onChange={(e) => setNewValue(e.target.value)}
@@ -577,36 +578,34 @@ const MultiTextInputField: React.FC<FieldProps> = ({
           onClick={handleAdd}
           disabled={disabled || !newValue.trim()}
         >
-          <Plus className="h-4 w-4" />
+          <DsIcon icon={Plus} />
         </Button>
       </div>
       {itemError && (
-        <p className="gap-1 text-xs text-red-500 flex items-center">
-          <CircleAlert className="h-3 w-3" />
+        <p className="flex items-center gap-1 !text-ds-text-meta text-ds-text-error-strong-default">
+          <DsIcon icon={CircleAlert} recipe="main-compact" />
           {itemError}
         </p>
       )}
       {showError && !itemError && (
-        <p className="gap-1 text-xs text-red-500 flex items-center">
-          <CircleAlert className="h-3 w-3" />
+        <p className="flex items-center gap-1 !text-ds-text-meta text-ds-text-error-strong-default">
+          <DsIcon icon={CircleAlert} recipe="main-compact" />
           {validationError}
         </p>
       )}
-      {notice && (
-        <p className="text-xs text-ds-text-neutral-muted-default">{notice}</p>
-      )}
+      {notice && <p className="text-xs text-ds-ink-muted-default">{notice}</p>}
 
       {values.length > 0 && (
-        <div className="mt-2 gap-1 flex flex-wrap">
+        <div className="mt-2 flex flex-wrap gap-1">
           {values.map((val) => (
             <Badge
               key={val}
               variant="secondary"
-              className="text-xs hover:bg-ds-bg-status-error-subtle-default/50 cursor-pointer"
+              className="cursor-pointer text-xs hover:bg-ds-bg-status-error-subtle-default/50"
               onClick={() => handleRemove(val)}
             >
               {val}
-              <X className="ml-1 h-3 w-3" />
+              <DsIcon icon={X} recipe="main-compact" className="ml-1" />
             </Badge>
           ))}
         </div>
@@ -678,9 +677,11 @@ const NumberInputField: React.FC<FieldProps> = ({
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">
+      <Label>
         {label}
-        {isRequired && <span className="ml-1 text-red-500">*</span>}
+        {isRequired && (
+          <span className="ml-1 text-ds-text-error-strong-default">*</span>
+        )}
       </Label>
       <Input
         type="number"
@@ -694,14 +695,12 @@ const NumberInputField: React.FC<FieldProps> = ({
         className={showError ? 'border-red-500' : ''}
       />
       {showError && (
-        <p className="gap-1 text-xs text-red-500 flex items-center">
-          <CircleAlert className="h-3 w-3" />
+        <p className="flex items-center gap-1 !text-ds-text-meta text-ds-text-error-strong-default">
+          <DsIcon icon={CircleAlert} recipe="main-compact" />
           {validationError}
         </p>
       )}
-      {notice && (
-        <p className="text-xs text-ds-text-neutral-muted-default">{notice}</p>
-      )}
+      {notice && <p className="text-xs text-ds-ink-muted-default">{notice}</p>}
     </div>
   );
 };
@@ -1123,9 +1122,12 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
   if (isLoadingSchema) {
     return (
-      <div className="py-8 flex items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-ds-text-neutral-muted-default" />
-        <span className="ml-2 text-ds-text-neutral-muted-default">
+      <div className="flex items-center justify-center py-8">
+        <DsIcon
+          icon={Loader2}
+          className="animate-spin text-ds-ink-muted-default"
+        />
+        <span className="ml-2 text-ds-ink-muted-default">
           {t('triggers.dynamic.loading-config')}
         </span>
       </div>
@@ -1134,7 +1136,7 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
   if (!schema) {
     return (
-      <div className="py-8 text-ds-text-neutral-muted-default text-center">
+      <div className="py-8 text-center text-ds-ink-muted-default">
         {t('triggers.dynamic.no-config-available')}
       </div>
     );
@@ -1148,20 +1150,26 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
       {credentials.length > 0 && (
         <div className="space-y-4">
           {showSectionTitles && (
-            <div className="gap-2 flex items-center">
-              <Label className="text-sm font-bold text-ds-text-neutral-default-default">
+            <div className="flex items-center gap-2">
+              <Label className="font-bold text-ds-ink-default-default">
                 {t('triggers.dynamic.credentials')}
               </Label>
               <TooltipSimple content={t('triggers.dynamic.credentials-notice')}>
-                <CircleAlert className="h-4 w-4 text-ds-icon-neutral-default-default cursor-pointer" />
+                <DsIcon
+                  icon={CircleAlert}
+                  className="cursor-pointer text-ds-ink-default-default"
+                />
               </TooltipSimple>
             </div>
           )}
           {credentials.map(([key, prop]) => renderField(key, prop))}
 
           {hasAllCredentialsSaved() && (
-            <div className="bg-ds-bg-status-completed-subtle-default/20 gap-2 rounded-lg p-2 flex items-center">
-              <Check className="h-4 w-4 text-ds-icon-status-completed-default-default" />
+            <div className="flex items-center gap-2 rounded-lg bg-ds-bg-status-completed-subtle-default/20 p-2">
+              <DsIcon
+                icon={Check}
+                className="text-ds-icon-status-completed-default-default"
+              />
               <span className="text-sm text-ds-text-status-completed-strong-default">
                 {t('triggers.dynamic.credentials-saved')}
               </span>
@@ -1172,9 +1180,9 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
       {/* Configuration Section */}
       {config.length > 0 && (
-        <div className="space-y-4 border-ds-border-neutral-default-default pt-4 border-t">
+        <div className="space-y-4 border-x-0 border-t border-b-0 border-ds-hairline-default-default pt-4">
           {showSectionTitles && (
-            <Label className="text-sm font-bold text-ds-text-neutral-default-default">
+            <Label className="font-bold text-ds-ink-default-default">
               {t('triggers.dynamic.configuration')}
             </Label>
           )}
@@ -1184,9 +1192,9 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
       {/* Behavior Settings Section */}
       {behavior.length > 0 && (
-        <div className="space-y-4 border-ds-border-neutral-default-default pt-4 border-t">
+        <div className="space-y-4 border-x-0 border-t border-b-0 border-ds-hairline-default-default pt-4">
           {showSectionTitles && (
-            <Label className="text-sm font-bold text-ds-text-neutral-default-default">
+            <Label className="font-bold text-ds-ink-default-default">
               {t('triggers.dynamic.behavior-settings')}
             </Label>
           )}

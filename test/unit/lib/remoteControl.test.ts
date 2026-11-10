@@ -12,12 +12,31 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const apiMocks = vi.hoisted(() => ({
+  proxyFetchPost: vi.fn(),
+}));
+
+vi.mock('@/api/http', () => ({
+  getProxyBaseURL: vi.fn(async () => 'https://example.test'),
+  proxyFetchDelete: vi.fn(),
+  proxyFetchGet: vi.fn(),
+  proxyFetchPatch: vi.fn(),
+  proxyFetchPost: apiMocks.proxyFetchPost,
+}));
 
 import {
+  __remoteControlTestHooks,
   isRemoteControlAlreadyGoneError,
   parseRemoteControlLinkToken,
+  sendRemoteControlCommand,
 } from '@/lib/remoteControl';
+
+beforeEach(() => {
+  apiMocks.proxyFetchPost.mockReset();
+  __remoteControlTestHooks.resetPendingCommandRequests();
+});
 
 describe('parseRemoteControlLinkToken', () => {
   it('reads the canonical fragment token', () => {
@@ -60,5 +79,65 @@ describe('isRemoteControlAlreadyGoneError', () => {
     );
     expect(isRemoteControlAlreadyGoneError(null)).toBe(false);
     expect(isRemoteControlAlreadyGoneError(undefined)).toBe(false);
+  });
+});
+
+describe('sendRemoteControlCommand', () => {
+  it('reuses the client request id after a lost response', async () => {
+    apiMocks.proxyFetchPost
+      .mockRejectedValueOnce(new TypeError('response lost'))
+      .mockResolvedValueOnce({
+        command_id: 'rc_cmd_1',
+        status: 'pending',
+      });
+
+    await expect(
+      sendRemoteControlCommand(
+        'session-1',
+        'user_message',
+        { content: 'hello' },
+        undefined,
+        'link-token'
+      )
+    ).rejects.toThrow('response lost');
+    await expect(
+      sendRemoteControlCommand(
+        'session-1',
+        'user_message',
+        { content: 'hello' },
+        undefined,
+        'link-token'
+      )
+    ).resolves.toMatchObject({ command_id: 'rc_cmd_1' });
+
+    const firstBody = apiMocks.proxyFetchPost.mock.calls[0][1];
+    const retryBody = apiMocks.proxyFetchPost.mock.calls[1][1];
+    expect(retryBody.client_request_id).toBe(firstBody.client_request_id);
+  });
+
+  it('allocates a fresh request id after the prior command succeeds', async () => {
+    apiMocks.proxyFetchPost.mockResolvedValue({
+      command_id: 'rc_cmd_1',
+      status: 'pending',
+    });
+
+    await sendRemoteControlCommand(
+      'session-1',
+      'stop',
+      {},
+      undefined,
+      'link-token'
+    );
+    await sendRemoteControlCommand(
+      'session-1',
+      'stop',
+      {},
+      undefined,
+      'link-token'
+    );
+
+    expect(apiMocks.proxyFetchPost.mock.calls[1][1].client_request_id).not.toBe(
+      apiMocks.proxyFetchPost.mock.calls[0][1].client_request_id
+    );
   });
 });

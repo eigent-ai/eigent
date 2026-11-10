@@ -9,7 +9,7 @@
   "download-completed": "ダウンロードが完了しました",
   "click-to-install-update": "クリックしてアップデートをインストールしてください",
   "install": "インストール",
-  "downloading": "Downloading update",
-  "launch-new-version": "Launch new version",
-  "update-failed-retry": "Update failed — click to retry"
+  "downloading": "アップデートをダウンロード中",
+  "launch-new-version": "新しいバージョンを起動",
+  "update-failed-retry": "アップデートに失敗しました — クリックして再試行"
 }

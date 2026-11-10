@@ -17,17 +17,17 @@ import type { SessionFileTab } from '@/store/pageTabStore';
 
 export interface FileTabProps {
   tab: SessionFileTab;
-  onJumpToContext?: (file: FileInfo | null) => void;
+  onJumpToFiles?: (file: FileInfo | null) => void;
 }
 
 /** File preview surface for one file tab. */
-export function FileTab({ tab, onJumpToContext }: FileTabProps) {
+export function FileTab({ tab, onJumpToFiles }: FileTabProps) {
   return (
     <FilePreview
       file={tab.file}
       embedded
-      surfaceClassName="bg-ds-bg-neutral-default-default"
-      onJumpToContext={onJumpToContext}
+      surfaceClassName="bg-ds-neutral-default-default"
+      onJumpToFiles={onJumpToFiles}
     />
   );
 }

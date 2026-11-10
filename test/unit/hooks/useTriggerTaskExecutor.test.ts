@@ -26,6 +26,24 @@
  * 3. IF triggered new task while on a different page → show toast, add to project queue / run in background
  */
 
+// These cases exercise the existing legacy lane. C6 ownership/transport is
+// covered separately by sessionExecution and real ASGI IPC integration tests.
+const sessionEntryGuard = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined)
+);
+vi.mock('@/store/sessionExecutionStore', () => ({
+  requireLegacyExecution: sessionEntryGuard,
+  readSessionExecutionRoute: async (scope: { projectId: string }) => ({
+    project_id: scope.projectId,
+    route: 'legacy',
+  }),
+  getSessionExecutionState: (scope: { projectId: string }) => ({
+    route: { project_id: scope.projectId, route: 'legacy' },
+    managed: false,
+  }),
+}));
+
+import { fetchPost } from '@/api/http';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,7 +57,19 @@ vi.mock('@/api/http', () => ({
     })
   ),
   proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-id' })),
-  fetchPost: vi.fn(),
+  fetchPost: vi.fn((url: string, body: Record<string, unknown> = {}) =>
+    Promise.resolve({
+      request_id: body.request_id,
+      project_id: url.split('/')[2],
+      content: body.content,
+      attachment_paths: body.attachment_paths ?? [],
+      delivery_mode: body.delivery_mode ?? 'wait',
+      status: 'pending',
+      source: body.source ?? 'scheduled',
+      created_at: 0,
+      updated_at: 0,
+    })
+  ),
 }));
 
 vi.mock('@/service/triggerApi', () => ({
@@ -219,7 +249,7 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
   beforeEach(() => {
     // Reset stores
     useTriggerTaskStore.setState({ executionMappings: new Map() });
-    useTriggerStore.setState({ webSocketEvent: null });
+    useTriggerStore.setState({ webSocketEvents: [] });
 
     // Create test projects
     const projectStore = useProjectStore.getState();
@@ -246,6 +276,23 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
   // ║  PLAN 1: If current project is running → add to queue       ║
   // ╚═══════════════════════════════════════════════════════════════╝
 
+  it('rejects a managed Session before legacy queue admission', async () => {
+    sessionEntryGuard.mockRejectedValueOnce(
+      new Error('managed_execution_required')
+    );
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+    await act(async () => {
+      await result.current.executeTask(
+        makeTask({ projectId: 'proj-A', executionId: 'blocked' })
+      );
+    });
+    expect(sessionEntryGuard).toHaveBeenCalled();
+    expect(fetchPost).not.toHaveBeenCalled();
+    expect(
+      useProjectStore.getState().getProjectById('proj-A')!.queuedMessages
+    ).toHaveLength(0);
+  });
+
   it('should add task to project queuedMessages when executeTask is called', async () => {
     const { result } = renderHook(() => useTriggerTaskExecutor());
 
@@ -265,6 +312,14 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     expect(project!.queuedMessages).toHaveLength(1);
     expect(project!.queuedMessages[0].executionId).toBe('exec-001');
     expect(project!.queuedMessages[0].content).toContain('Process webhook');
+    expect(fetchPost).toHaveBeenCalledWith('/projects/proj-A/follow-ups', {
+      request_id: 'scheduled:exec-001',
+      content: 'Process webhook',
+      attachment_paths: [],
+      delivery_mode: 'wait',
+      source: 'scheduled',
+      source_command_id: undefined,
+    });
   });
 
   it('should queue multiple tasks for the same project (serialization)', async () => {
@@ -339,13 +394,13 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     // Toast info should have been called on start
     expect(toast.info).toHaveBeenCalledWith(
       'Execution started: Remote Trigger',
-      expect.objectContaining({ description: 'Processing trigger task...' })
+      expect.objectContaining({ description: 'Running the automation...' })
     );
     // Toast success should have been called after queueing
     expect(toast.success).toHaveBeenCalledWith(
       'Queued: Remote Trigger',
       expect.objectContaining({
-        description: 'Task has been added to the project queue',
+        description: 'Task has been added to the session queue',
       })
     );
   });
@@ -426,7 +481,7 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
       });
     });
 
-    expect(useTriggerStore.getState().webSocketEvent).toBeNull();
+    expect(useTriggerStore.getState().webSocketEvents).toEqual([]);
   });
 
   it('should create a new project when projectId is null', async () => {
@@ -486,6 +541,77 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     if (project) {
       useProjectStore.getState().removeProject(project.id);
     }
+  });
+
+  it('gives a Session restored without a chat one for the run, without opening it', async () => {
+    const store = useProjectStore.getState();
+    store.createProject(
+      'Automation: Daily',
+      '',
+      'proj-shell',
+      undefined,
+      undefined,
+      false
+    );
+    useProjectStore.setState((state) => ({
+      projects: {
+        ...state.projects,
+        'proj-shell': {
+          ...state.projects['proj-shell'],
+          chatStores: {},
+          chatStoreTimestamps: {},
+          activeChatId: null,
+        },
+      },
+    }));
+    const activeBefore = useProjectStore.getState().activeProjectId;
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+
+    await act(async () => {
+      await result.current.executeTask(
+        makeTask({ projectId: 'proj-shell', executionId: 'exec-shell' })
+      );
+    });
+
+    const state = useProjectStore.getState();
+    expect(state.getChatStore('proj-shell')).not.toBeNull();
+    expect(
+      state.getProjectById('proj-shell')!.metadata
+        ?.remoteHistoryHydrationPending
+    ).toBe(true);
+    expect(state.getProjectById('proj-shell')!.queuedMessages).toHaveLength(1);
+    expect(state.activeProjectId).toBe(activeBefore);
+  });
+
+  it('names a Session whose only history is the server placeholder after the Automation', async () => {
+    const http = await import('@/api/http');
+    vi.mocked(http.proxyFetchGet).mockResolvedValueOnce({
+      tasks: [
+        {
+          id: 7,
+          task_id: 'proj-placeholder',
+          question: 'Project created via trigger: Daily',
+        },
+      ],
+      last_prompt: 'Project created via trigger: Daily',
+    });
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+
+    await act(async () => {
+      await result.current.executeTask(
+        makeTask({
+          projectId: 'proj-placeholder',
+          triggerName: 'Daily',
+          executionId: 'exec-placeholder',
+        })
+      );
+    });
+
+    const project = useProjectStore
+      .getState()
+      .getProjectById('proj-placeholder');
+    expect(project?.name).toBe('Automation: Daily');
+    expect(project?.queuedMessages).toHaveLength(1);
   });
 
   // ╔═══════════════════════════════════════════════════════════════╗

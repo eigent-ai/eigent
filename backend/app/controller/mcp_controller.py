@@ -14,8 +14,9 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.auth import require_local_control_if_configured
 from app.service.mcp_config import (
     add_mcp,
     read_mcp_config,
@@ -23,7 +24,7 @@ from app.service.mcp_config import (
     update_mcp,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_local_control_if_configured)])
 mcp_logger = logging.getLogger("mcp_controller")
 
 

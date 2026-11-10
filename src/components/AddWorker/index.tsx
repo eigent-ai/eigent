@@ -13,8 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { mcpList as fetchMcpConfig } from '@/api/brain';
-import { fetchPost, proxyFetchGet } from '@/api/http';
+import { fetchPost } from '@/api/http';
 import githubIcon from '@/assets/icon/github.svg';
+import {
+  getLocalPlatformName,
+  LOCAL_MODEL_OPTIONS,
+} from '@/components/Settings/Models/localModels';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -24,6 +28,7 @@ import {
   DialogHeader,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -35,18 +40,17 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useConfiguredModels } from '@/hooks/useConfiguredModels';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
+import { selectableConfiguredModels } from '@/lib/configuredModels';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { buildAgentModelConfig } from '@/lib/modelConfig';
 import {
-  type AgentModelConfigSource,
-  buildAgentModelConfig,
-  buildAgentModelConfigFromProvider,
-} from '@/lib/modelConfig';
-import {
-  getLocalPlatformName,
-  LOCAL_MODEL_OPTIONS,
-} from '@/pages/Agents/localModels';
+  workerModelOption,
+  type WorkerModelOption,
+} from '@/lib/workerModelOptions';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
-import { useCloudModelStore } from '@/store/cloudModelStore';
+import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { Bot, Edit, Eye, EyeOff } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -76,12 +80,6 @@ interface McpItem {
 
 type WorkerModelMode = 'eigent' | 'custom' | 'local';
 
-interface WorkerModelOption extends AgentModelConfigSource {
-  value: string;
-  label: string;
-  provider_id?: number;
-}
-
 export function AddWorker({
   edit = false,
   workerInfo = null,
@@ -103,7 +101,8 @@ export function AddWorker({
     typeof isOpen !== 'undefined' && typeof onOpenChange !== 'undefined';
   const dialogOpen = isControlled ? isOpen : internalOpen;
   const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { chatStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const [showEnvConfig, setShowEnvConfig] = useState(false);
   const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
   const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
@@ -130,28 +129,62 @@ export function AddWorker({
     useState<WorkerModelMode>('eigent');
   const [workerModelName, setWorkerModelName] = useState('');
   const [modelSelectionTouched, setModelSelectionTouched] = useState(false);
-  const [customModelOptions, setCustomModelOptions] = useState<
-    WorkerModelOption[]
-  >([]);
-  const [localModelOptions, setLocalModelOptions] = useState<
-    WorkerModelOption[]
-  >([]);
-  const cloudModels = useCloudModelStore((state) => state.models);
-  const fetchCloudModels = useCloudModelStore(
-    (state) => state.fetchCloudModels
-  );
+  const inventory = useConfiguredModels();
+  const { records, cloudModels, hidden, cloudAvailable } = inventory;
+  const planKey = useUsageNoticeStore((state) => state.subscription?.plan_key);
   const eigentModelOptions = useMemo<WorkerModelOption[]>(
     () =>
-      cloudModels.map((model) => ({
-        value: model.id,
-        label: model.display_name,
-        model_platform: model.model_platform,
-        model_type: model.model_type,
-      })),
-    [cloudModels]
+      selectableConfiguredModels({
+        records,
+        cloudModels,
+        hidden,
+        cloudAvailable,
+        codexConnected: false,
+        codexModelType: '',
+        planKey,
+      }).flatMap((choice) =>
+        'cloudModel' in choice
+          ? [
+              {
+                value: choice.cloudModel.id,
+                label: choice.name,
+                model_platform: choice.cloudModel.model_platform,
+                model_type: choice.cloudModel.model_type,
+              },
+            ]
+          : []
+      ),
+    [records, cloudModels, hidden, cloudAvailable, planKey]
   );
 
-  const activeProjectId = projectStore?.activeProjectId;
+  const { customModelOptions, localModelOptions } = useMemo(() => {
+    const customProviderIds = new Set(
+      INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => p.id)
+    );
+    const localProviderIds = new Set(LOCAL_MODEL_OPTIONS.map((m) => m.id));
+
+    const nextCustomOptions = records
+      .filter((provider) => customProviderIds.has(provider.provider_name))
+      .map((provider) =>
+        workerModelOption(provider, provider.provider_name, records)
+      );
+    const nextLocalOptions = records
+      .filter((provider) => localProviderIds.has(provider.provider_name))
+      .map((provider) =>
+        workerModelOption(
+          provider,
+          getLocalPlatformName(provider.provider_name),
+          records
+        )
+      );
+
+    return {
+      customModelOptions: nextCustomOptions,
+      localModelOptions: nextLocalOptions,
+    };
+  }, [records]);
+
+  const activeProjectId = sessionProjectId;
   const activeTaskId = chatStore?.activeTaskId ?? null;
   const tasks = chatStore?.tasks ?? {};
 
@@ -306,8 +339,6 @@ export function AddWorker({
     setWorkerModelMode('eigent');
     setWorkerModelName('');
     setModelSelectionTouched(false);
-    setCustomModelOptions([]);
-    setLocalModelOptions([]);
   };
 
   const workerModelOptions = useMemo<
@@ -403,85 +434,25 @@ export function AddWorker({
     workerModelName,
   ]);
 
-  useEffect(() => {
-    if (!showModelConfig) return;
-    if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
-      void fetchCloudModels();
-    }
-    (async () => {
-      try {
-        const res = await proxyFetchGet('/api/v1/providers');
-        const providerList = Array.isArray(res) ? res : res?.items || [];
-
-        const customProviderIds = new Set(
-          INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => p.id)
-        );
-        const localProviderIds = new Set(LOCAL_MODEL_OPTIONS.map((m) => m.id));
-
-        const nextCustomOptions: WorkerModelOption[] = providerList
-          .filter((provider: any) =>
-            customProviderIds.has(provider.provider_name)
-          )
-          .map((provider: any) => {
-            const modelType = String(provider.model_type || '');
-            const providerName = String(provider.provider_name || '');
-            const agentModelConfig =
-              buildAgentModelConfigFromProvider(provider);
-            return {
-              value: `${providerName}::${modelType}`,
-              label: modelType
-                ? `${providerName} (${modelType})`
-                : providerName,
-              model_platform: providerName,
-              model_type: modelType,
-              provider_id: Number(provider.id),
-              api_key: agentModelConfig.api_key,
-              api_url: agentModelConfig.api_url,
-              model_config_dict: agentModelConfig.model_config_dict,
-              extra_params: agentModelConfig.extra_params,
-            };
-          });
-
-        const nextLocalOptions: WorkerModelOption[] = providerList
-          .filter((provider: any) =>
-            localProviderIds.has(provider.provider_name)
-          )
-          .map((provider: any) => {
-            const agentModelConfig =
-              buildAgentModelConfigFromProvider(provider);
-            const modelPlatform = agentModelConfig.model_platform;
-            const modelType = agentModelConfig.model_type || '';
-            const platformName = getLocalPlatformName(modelPlatform);
-            return {
-              value: `${modelPlatform}::${modelType}`,
-              label: modelType
-                ? `${platformName} (${modelType})`
-                : platformName,
-              model_platform: modelPlatform,
-              model_type: modelType,
-              provider_id: Number(provider.id),
-              api_key: agentModelConfig.api_key,
-              api_url: agentModelConfig.api_url,
-              model_config_dict: agentModelConfig.model_config_dict,
-              extra_params: agentModelConfig.extra_params,
-            };
-          });
-
-        setCustomModelOptions(nextCustomOptions);
-        setLocalModelOptions(nextLocalOptions);
-      } catch (error) {
-        console.error('Error fetching model providers for Add Worker:', error);
-        setCustomModelOptions([]);
-        setLocalModelOptions([]);
-      }
-    })();
-  }, [fetchCloudModels, showModelConfig]);
-
   // tool function
   const getCategoryIcon = (categoryName?: string) => {
     if (!categoryName)
-      return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
-    return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
+      return (
+        <DsIcon
+          icon={Bot}
+          recipe="illustration"
+          illustrationSize={40}
+          className="text-ds-ink-default-default"
+        />
+      );
+    return (
+      <DsIcon
+        icon={Bot}
+        recipe="illustration"
+        illustrationSize={40}
+        className="text-ds-ink-default-default"
+      />
+    );
   };
 
   const getGithubRepoName = (homePage?: string) => {
@@ -655,7 +626,7 @@ export function AddWorker({
                 setSelectedTools(workerInfo?.workerInfo?.selectedTools || []);
               }}
             >
-              <Edit size={16} />
+              <DsIcon icon={Edit} />
               {t('workforce.edit')}
             </Button>
           )}
@@ -692,10 +663,10 @@ export function AddWorker({
                 <div className="flex items-center gap-md">
                   {getCategoryIcon(activeMcp?.category?.name)}
                   <div>
-                    <div className="text-base font-bold leading-9 text-ds-text-neutral-default-default">
+                    <div className="text-base leading-9 font-bold text-ds-ink-default-default">
                       {activeMcp?.name}
                     </div>
-                    <div className="text-sm font-bold leading-normal text-ds-text-neutral-default-default">
+                    <div className="text-sm leading-normal font-bold text-ds-ink-default-default">
                       {getGithubRepoName(activeMcp?.home_page) && (
                         <div className="flex items-center">
                           <img
@@ -709,7 +680,7 @@ export function AddWorker({
                               verticalAlign: 'middle',
                             }}
                           />
-                          <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-ellipsis break-words text-xs font-medium leading-normal">
+                          <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-xs leading-normal font-medium break-words text-ellipsis">
                             {getGithubRepoName(activeMcp?.home_page)}
                           </span>
                         </div>
@@ -738,14 +709,14 @@ export function AddWorker({
                           backIcon={
                             isSensitiveKey(key) ? (
                               secretVisible[key] ? (
-                                <EyeOff
-                                  size={16}
-                                  className="text-ds-text-neutral-muted-disabled"
+                                <DsIcon
+                                  icon={EyeOff}
+                                  className="text-ds-ink-muted-disabled"
                                 />
                               ) : (
-                                <Eye
-                                  size={16}
-                                  className="text-ds-text-neutral-muted-disabled"
+                                <DsIcon
+                                  icon={Eye}
+                                  className="text-ds-ink-muted-disabled"
                                 />
                               )
                             ) : undefined
@@ -791,9 +762,11 @@ export function AddWorker({
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-sm">
                     <div className="flex h-16 w-16 items-center justify-center">
-                      <Bot
-                        size={32}
-                        className="text-ds-icon-neutral-default-default"
+                      <DsIcon
+                        icon={Bot}
+                        recipe="illustration"
+                        illustrationSize={32}
+                        className="text-ds-ink-default-default"
                       />
                     </div>
                     <Input
@@ -832,7 +805,7 @@ export function AddWorker({
                 {/* Model Configuration Section */}
                 <div className="mt-2 flex flex-col gap-2">
                   <div className="flex items-center justify-start gap-3">
-                    <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                    <span className="text-ds-text-base font-bold text-ds-ink-default-default">
                       {t('workforce.use-custom-model')}
                     </span>
                     <Switch
@@ -845,14 +818,14 @@ export function AddWorker({
                         }
                       }}
                       aria-label={t('workforce.use-custom-model')}
-                      className="border-[0.5px] border-solid border-ds-border-neutral-default-default"
+                      className="border-[0.5px] border-x-[0.5px] border-y-[0.5px] border-solid border-ds-hairline-default-default"
                     />
                   </div>
 
                   {showModelConfig && (
-                    <div className="flex flex-row gap-3 rounded-lg bg-ds-bg-neutral-muted-default px-3 py-2">
+                    <div className="flex flex-row gap-3 rounded-lg bg-ds-neutral-muted-default px-3 py-2">
                       <div className="flex w-full flex-1 flex-col gap-1">
-                        <label className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                        <label className="text-ds-text-meta font-bold text-ds-ink-default-default">
                           {t('workforce.model-platform')}
                         </label>
                         <Select
@@ -885,7 +858,7 @@ export function AddWorker({
                       </div>
 
                       <div className="flex w-full flex-1 flex-col gap-1">
-                        <label className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                        <label className="text-ds-text-meta font-bold text-ds-ink-default-default">
                           {t('workforce.model-type')}
                         </label>
                         <Select
@@ -915,7 +888,9 @@ export function AddWorker({
                               ))
                             ) : (
                               <SelectItem value="__empty__" disabled>
-                                {t('layout.no-results')}
+                                {t('layout.no-results', {
+                                  defaultValue: 'No results found.',
+                                })}
                               </SelectItem>
                             )}
                           </SelectContent>
@@ -926,7 +901,7 @@ export function AddWorker({
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-ds-bg-neutral-subtle-default p-md"
+                className="!rounded-b-xl bg-ds-neutral-subtle-default p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}

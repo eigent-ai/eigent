@@ -36,6 +36,8 @@ _default_frame_ancestors = [
     "http://127.0.0.1:*",
     "https://localhost:*",
     "https://127.0.0.1:*",
+    # The packaged Desktop renderer is a file:// page.
+    "file:",
 ]
 _frame_ancestors = " ".join(
     dict.fromkeys(
@@ -45,6 +47,15 @@ _frame_ancestors = " ".join(
         ]
     )
 )
+# File responses the app shows inside a frame: HTML previews, and the file
+# stream that the built-in PDF viewer loads. Every other route stays DENY.
+_framed_file_path_prefixes = (
+    "/files/preview/",
+    "/api/v1/files/preview/",
+    "/files/stream/",
+    "/api/v1/files/stream/",
+)
+_framed_file_paths = ("/files/stream", "/api/v1/files/stream")
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -53,9 +64,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         path = request.url.path
-        is_file_preview = path.startswith(
-            "/files/preview/"
-        ) or path.startswith("/api/v1/files/preview/")
+        is_file_preview = (
+            path.startswith(_framed_file_path_prefixes)
+            or path in _framed_file_paths
+        )
         if is_file_preview:
             if "X-Frame-Options" in response.headers:
                 del response.headers["X-Frame-Options"]
@@ -67,13 +79,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# Desktop leaves EIGENT_CORS_ORIGINS unset: its packaged renderer is a file://
+# page that Electron exempts from CORS, so there is no web origin to allowlist
+# ("null" must never be allowlisted; sandboxed and data: pages share it). Brain
+# routes rely on the Desktop capability (app/auth/local_control.py) instead.
 api.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins or ["*"],
     allow_credentials=bool(_allowed_origins),
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Session-ID"],
+    expose_headers=[
+        "X-Session-ID",
+        "Accept-Ranges",
+        "Content-Disposition",
+        "Content-Length",
+        "Content-Range",
+        "Last-Modified",
+    ],
 )
 api.add_middleware(SecurityHeadersMiddleware)
 

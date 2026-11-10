@@ -34,14 +34,20 @@
  */
 export type UiVariant = 'primary' | 'secondary' | 'outline' | 'ghost';
 
-export type UiEmphasis = 'subtle' | 'muted' | 'default' | 'strong' | 'inverse';
+export type UiEmphasis = 'subtle' | 'muted' | 'default' | 'strong';
+
+/**
+ * @deprecated Inverse is not a public emphasis. Use the generated
+ * `--ds-{group}-on-{emphasis}` pair on the rendered fill instead.
+ */
+export type UiEmphasisLegacy = UiEmphasis | 'inverse';
+
+/** Keyboard focus ring: 2px semantic ring + 2px offset. */
+export const DS_FOCUS_RING =
+  'outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2';
 
 export type UiTone =
-  | 'neutral'
-  | 'success'
-  | 'error'
-  | 'information'
-  | 'warning';
+  'neutral' | 'success' | 'error' | 'information' | 'warning';
 
 /**
  * Compatibility alias for older API surfaces that used `tone="default"`.
@@ -58,4 +64,12 @@ export const DEFAULT_EMPHASIS_BY_VARIANT: Record<UiVariant, UiEmphasis> = {
 
 export function normalizeUiTone(tone?: UiToneInput): UiTone {
   return !tone || tone === 'default' ? 'neutral' : tone;
+}
+
+/** Maps the retired `inverse` emphasis onto `strong` (foreground pair lives on the fill). */
+export function normalizeUiEmphasis(
+  emphasis?: UiEmphasisLegacy
+): UiEmphasis | undefined {
+  if (!emphasis) return undefined;
+  return emphasis === 'inverse' ? 'strong' : emphasis;
 }

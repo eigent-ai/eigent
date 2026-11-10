@@ -13,14 +13,30 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ChatBox from '@/components/ChatBox';
+import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
+import { SessionLoadingScan } from '@/components/ChatBox/SessionLoadingScan';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
+import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
+import { useSessionExecution } from '@/hooks/useSessionExecution';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
+import { isProjectAchieved } from '@/lib/projectAchievement';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { getSessionMetaDisplayName } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import {
+  getSessionPreviewSlice,
+  NEW_SESSION_DRAFT_SCOPE,
+  usePageTabStore,
+  WorkspaceTab,
+} from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -28,52 +44,124 @@ import {
   SessionMode,
   type SessionModeType,
 } from '@/types/constants';
-import { AnimatePresence, motion } from 'framer-motion';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SessionSidePanel } from './SessionSidePanel';
+import { useReducedMotion } from 'framer-motion';
 import {
-  SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS,
-  SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS,
-} from './sessionSidePanelLayout';
-
-/** Maximum width the resizable chat column can reclaim while display is open. */
-const CHAT_PRIORITY_WIDTH = 680;
-/** Smallest the chat column may be dragged to. */
-const CHAT_MIN_WIDTH = 360;
-/** Keep at least this much room for the preview when the chat is widened. */
-const PREVIEW_MIN_WIDTH = 320;
-const DISPLAY_PANEL_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
-/** Display panel open/close animation duration (framer transition below). */
-const DISPLAY_PANEL_ANIMATION_MS = 300;
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { useTranslation } from 'react-i18next';
+import { PreviewColumn } from './layout/PreviewColumn';
+import { getSessionColumnLayout, SUMMARY_WIDTH } from './layout/sessionColumns';
+import { usePreviewEntrance } from './layout/usePreviewEntrance';
+import {
+  CHAT_SIDE_WIDTH_VAR,
+  usePreviewResize,
+} from './layout/usePreviewResize';
+import { SessionSidePanel } from './SidePanel';
 
 /**
- * Active Project: header + chat (left) and a mode-dependent side panel (right).
- * The side panel is selected from Project.mode. Task/session mode fields are
- * retained only to render legacy runs that do not have a Project mode yet.
+ * Session layout: header and chat with optional Summary (left group) beside an
+ * optional Preview column. The New session page uses the same layout with a
+ * centered composer; its Preview and Summary state live in a draft scope that
+ * moves to the Session created by the first task.
  */
-interface SessionProps {
-  /** New Project shell: empty Project that promotes to a live Project on send. */
-  isNewProject?: boolean;
+export interface NewSessionComposerSlots {
+  /** First control in the composer toolbar, for example a Space chip. */
+  footerLeading?: ReactNode;
 }
 
-export default function Session({ isNewProject = false }: SessionProps) {
+interface SessionProps {
+  /** New session page: no Project until the first task creates one. */
+  isNewProject?: boolean;
+  /** Pane-owned Session; omitted for the existing active-Session route. */
+  projectId?: string | null;
+  /** Extra controls at the right end of the Session header (split panes). */
+  headerActions?: ReactNode;
+  /** New session only: extra controls in the composer's toolbar. */
+  newSessionComposer?: NewSessionComposerSlots;
+}
+
+export default function Session({
+  projectId,
+  isNewProject = false,
+  headerActions,
+  newSessionComposer,
+}: SessionProps) {
+  const inheritedProjectId = useSessionProjectId();
+  const id = projectId === undefined ? inheritedProjectId : projectId;
+  const focus = () => {
+    if (id !== useProjectRuntimeStore.getState().activeProjectId)
+      useProjectRuntimeStore.getState().setActiveProject(id);
+    usePageTabStore
+      .getState()
+      .setSessionPreviewProject(isNewProject ? NEW_SESSION_DRAFT_SCOPE : id);
+  };
+  return (
+    <SessionPaneProvider
+      projectId={id}
+      previewScopeId={isNewProject ? NEW_SESSION_DRAFT_SCOPE : id}
+      retain={projectId !== undefined}
+    >
+      <div
+        data-session-pane={id ?? ''}
+        className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
+        onPointerDownCapture={focus}
+        onFocusCapture={focus}
+      >
+        <SessionContent
+          isNewProject={isNewProject}
+          headerActions={headerActions}
+          newSessionComposer={newSessionComposer}
+        />
+      </div>
+    </SessionPaneProvider>
+  );
+}
+
+function SessionContent({
+  isNewProject = false,
+  headerActions,
+  newSessionComposer,
+}: SessionProps) {
+  const { t } = useTranslation();
+  const shouldReduceMotion = Boolean(useReducedMotion());
   const { chatStore, projectStore } = useChatStoreAdapter();
-  const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const closeSessionPreview = usePageTabStore((s) => s.closeSessionPreview);
-  const setSessionPreviewProject = usePageTabStore(
+  const sessionProjectId = useSessionProjectId();
+  const isFocused = useIsFocusedSessionPane();
+  const activeWorkspaceTab = useSessionPageTabStore(
+    (s) => s.activeWorkspaceTab
+  );
+  const setActiveWorkspaceTab = useSessionPageTabStore(
+    (s) => s.setActiveWorkspaceTab
+  );
+  const closeSessionPreview = useSessionPageTabStore(
+    (s) => s.closeSessionPreview
+  );
+  const setSessionPreviewProject = useSessionPageTabStore(
     (s) => s.setSessionPreviewProject
   );
-  const sessionPreviewProjectId = usePageTabStore(
+  const sessionPreviewProjectId = useSessionPageTabStore(
     (s) => s.sessionPreviewProjectId
   );
-  // Only trust the preview slice once the scope points at this project — on
+  const activeProjectId = sessionProjectId;
+  // The New session page keeps the last active Project selected until its
+  // first task creates a replacement, so its columns use a draft scope.
+  const scopeId = isNewProject
+    ? NEW_SESSION_DRAFT_SCOPE
+    : (activeProjectId ?? null);
+  // Only trust the preview slice once the scope points at this Session — on
   // switch the scope effect below lags the first render by one frame, and
-  // rendering the stale slice would flash the previous project's browser.
+  // rendering the stale slice would flash the previous Session's browser.
   const previewOpen =
-    usePageTabStore((s) => getSessionPreviewSlice(s).open) &&
-    sessionPreviewProjectId === (projectStore.activeProjectId ?? null);
-  const activeProjectId = projectStore.activeProjectId;
+    useSessionPageTabStore((s) => getSessionPreviewSlice(s).open) &&
+    sessionPreviewProjectId === scopeId;
+  const previewOpening = useSessionPageTabStore((s) => s.sessionPreviewOpening);
+  const sessionExecution = useSessionExecution(activeProjectId);
   const isHistoryLoadingActiveProject = useProjectRuntimeStore((s) =>
     activeProjectId
       ? Boolean(s.historyLoadingProjectIds[activeProjectId])
@@ -92,37 +180,43 @@ export default function Session({ isNewProject = false }: SessionProps) {
   // `null` = mode not yet determined (session still loading its events).
   const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
 
-  const [isSidePanelVisible, setIsSidePanelVisible] = useState(!isNewProject);
+  // `undefined` = no saved choice yet; the first task start may open it.
+  const summaryPreference = useSessionPageTabStore((s) =>
+    scopeId ? s.sessionSummaryOpenByProject[scopeId] : undefined
+  );
+  const summaryOpen = summaryPreference ?? false;
+  const setSessionSummaryOpen = useSessionPageTabStore(
+    (s) => s.setSessionSummaryOpen
+  );
+  const taskStarted = useSessionPageTabStore((s) =>
+    scopeId ? Boolean(s.sessionTaskStartedProjectIds[scopeId]) : false
+  );
+  const clearSessionTaskStarted = useSessionPageTabStore(
+    (s) => s.clearSessionTaskStarted
+  );
+  const [summaryPopoverOpen, setSummaryPopoverOpen] = useState(false);
+  const [chatSideElement, setChatSideElement] = useState<HTMLDivElement | null>(
+    null
+  );
   const [isExpandedOverlayOpen, setIsExpandedOverlayOpen] = useState(false);
+  const sessionSidePanelToggleRequestId = useSessionPageTabStore(
+    (s) => s.sessionSidePanelToggleRequestId
+  );
+  const sessionSidePanelToggleProjectId = useSessionPageTabStore(
+    (s) => s.sessionSidePanelToggleProjectId
+  );
+  const handledSidePanelToggleRequestId = useRef(
+    sessionSidePanelToggleRequestId
+  );
 
-  // Default fold state is tab-specific. React reuses this component when switching
-  // between `project` and `new-project`, so reset when the shell or project changes.
   useEffect(() => {
-    setIsSidePanelVisible(!isNewProject);
-    if (isNewProject) {
-      setIsExpandedOverlayOpen(false);
-    }
+    if (isNewProject) setIsExpandedOverlayOpen(false);
   }, [isNewProject, activeProjectId]);
 
   const getAllChatStoresMemoized = useMemo(() => {
-    if (!projectStore.activeProjectId) return [];
-    return projectStore.getAllChatStores(projectStore.activeProjectId);
-  }, [projectStore]);
-
-  const hasAnyMessages = useMemo(() => {
-    const hasMessages = (store: typeof chatStore) =>
-      !!store &&
-      Object.values(store.tasks).some(
-        (task) => (task.messages?.length || 0) > 0 || task.hasMessages
-      );
-    if (hasMessages(chatStore)) return true;
-    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
-      const state = store.getState();
-      return Object.values(state.tasks).some(
-        (task) => (task.messages?.length || 0) > 0 || task.hasMessages
-      );
-    });
-  }, [chatStore, getAllChatStoresMemoized]);
+    if (!sessionProjectId) return [];
+    return projectStore.getAllChatStores(sessionProjectId);
+  }, [projectStore, sessionProjectId]);
 
   const workforcePanelKey = chatStore?.activeTaskId ?? '';
 
@@ -137,7 +231,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
     // assume the project never started, and bounce the user back to the
     // workforce shell — even though the project chatStore already has
     // task content. Cross-check live state via `getAllChatStores` (same
-    // pattern as `hasAnyMessages` above) to avoid that race.
+    // pattern as the project-wide store lookup above) to avoid that race.
     const checkTasks = (tasksRecord: Record<string, unknown> | undefined) => {
       if (!tasksRecord) return false;
       return Object.values(tasksRecord).some((task) => {
@@ -172,13 +266,13 @@ export default function Session({ isNewProject = false }: SessionProps) {
   useEffect(() => {
     // The New Project shell stays selected on its own tab — never redirect
     // away from it (it is empty until the user sends the first message).
-    if (isNewProject) return;
-    // Only redirect while the live project tab is active; ignore inbox/triggers/etc.
+    if (isNewProject || !isFocused) return;
+    // Only redirect while the live project tab is active; ignore files/triggers/etc.
     if (activeWorkspaceTab !== 'project') return;
-    // Wait until the project chat store is ready (selectProject still loading).
+    // Wait until the project chat store is ready (selectSession still loading).
     if (!chatStore) return;
     // While history is still replaying, the chat store exists but messages
-    // haven't been written yet. Don't bounce away — selectProject will pick
+    // haven't been written yet. Don't bounce away — selectSession will pick
     // the correct shell ('project' vs 'new-project') once loading settles.
     if (isHistoryLoadingActiveProject) return;
     // A history-loaded project is known to have content. The hasSessionStarted
@@ -187,14 +281,22 @@ export default function Session({ isNewProject = false }: SessionProps) {
     // does remove+create), there is a render where the live state is also
     // empty. Trust the project type tag here to avoid the bounce.
     if (activeIsReplayProject) return;
+    if (
+      sessionExecution.state.managed ||
+      !sessionExecution.state.route ||
+      sessionExecution.state.error
+    )
+      return;
     if (!hasSessionStarted) {
       setActiveWorkspaceTab('workforce');
     }
   }, [
+    isFocused,
     activeIsReplayProject,
     activeWorkspaceTab,
     chatStore,
     hasSessionStarted,
+    sessionExecution.state,
     isHistoryLoadingActiveProject,
     isNewProject,
     setActiveWorkspaceTab,
@@ -227,116 +329,179 @@ export default function Session({ isNewProject = false }: SessionProps) {
 
   useEffect(() => {
     setIsExpandedOverlayOpen(false);
-  }, [projectStore.activeProjectId]);
+  }, [sessionProjectId]);
 
+  const isSessionTab =
+    activeWorkspaceTab === WorkspaceTab.Project ||
+    activeWorkspaceTab === WorkspaceTab.NewProject;
   useEffect(() => {
-    if (activeWorkspaceTab !== 'project') {
-      setIsExpandedOverlayOpen(false);
-    }
-  }, [activeWorkspaceTab]);
+    if (!isSessionTab) setIsExpandedOverlayOpen(false);
+  }, [isSessionTab]);
+
+  // Measured column geometry uses the registered split-pane-geometry exception.
+  const chatRowRef = useRef<HTMLDivElement>(null);
+  const hasChatStore = Boolean(chatStore);
+  const [chatSideWidth, setChatSideWidth] = useState<number | null>(null);
+  const [paneWidth, setPaneWidth] = useState<number | null>(null);
+  const {
+    showPreview,
+    maxChatSideWidth,
+    visibleChatSideWidth,
+    canDockSummary,
+  } = getSessionColumnLayout({
+    paneWidth,
+    fallbackPaneWidth: window.innerWidth,
+    previewOpen,
+    summaryOpen,
+    chatSideWidth,
+  });
+  const showSummary = summaryOpen && canDockSummary;
 
   const toggleSidePanel = useCallback(() => {
-    setIsSidePanelVisible((prev) => !prev);
-  }, []);
-
-  // Chat/display sizing. When display opens the chat collapses to its minimum;
-  // display takes the remaining room before the independently folded side panel.
-  const chatRowRef = useRef<HTMLDivElement>(null);
-  const [chatWidth, setChatWidth] = useState(CHAT_PRIORITY_WIDTH);
-  const [isResizingPreview, setIsResizingPreview] = useState(false);
-
-  // Point the preview store at this project. Its saved tabs (and, within this
-  // app run, the live webviews behind them) are restored on switch-back —
-  // webviews are intentionally NOT destroyed here so history survives.
-  useEffect(() => {
-    setSessionPreviewProject(activeProjectId ?? null);
-  }, [activeProjectId, setSessionPreviewProject]);
-
-  // Last chat width the user dragged to; reopening display restores it instead
-  // of resetting to the minimum.
-  const userChatWidthRef = useRef<number | null>(null);
-
-  // Opening display auto-folds the session side panel and collapses chat
-  // (to the user's remembered width, if they resized before).
-  useEffect(() => {
-    if (previewOpen) {
-      setIsSidePanelVisible(false);
-      setChatWidth(userChatWidthRef.current ?? CHAT_MIN_WIDTH);
+    if (!canDockSummary) setSummaryPopoverOpen((open) => !open);
+    else if (scopeId) {
+      if (showPreview) setChatSideWidth(visibleChatSideWidth);
+      setSessionSummaryOpen(scopeId, !summaryOpen);
     }
-  }, [previewOpen]);
+  }, [
+    canDockSummary,
+    scopeId,
+    summaryOpen,
+    setSessionSummaryOpen,
+    showPreview,
+    visibleChatSideWidth,
+  ]);
 
-  // Embedded browser guests are `position: fixed` in a separate layer, so the
-  // panel's clip-path entrance can't clip them. Hold the guest parked until
-  // the entrance finishes (then it fades in over the settled rect) instead of
-  // letting the page pop in full-size over the chat mid-animation.
-  const [displaySettled, setDisplaySettled] = useState(false);
   useEffect(() => {
-    if (!previewOpen) {
-      setDisplaySettled(false);
+    if (
+      handledSidePanelToggleRequestId.current ===
+      sessionSidePanelToggleRequestId
+    )
       return;
-    }
-    const timer = window.setTimeout(
-      () => setDisplaySettled(true),
-      DISPLAY_PANEL_ANIMATION_MS + 20
-    );
-    return () => window.clearTimeout(timer);
-  }, [previewOpen]);
+    handledSidePanelToggleRequestId.current = sessionSidePanelToggleRequestId;
+    if (
+      isSessionTab &&
+      (sessionSidePanelToggleProjectId
+        ? sessionSidePanelToggleProjectId === scopeId
+        : isFocused)
+    )
+      toggleSidePanel();
+  }, [
+    isSessionTab,
+    isFocused,
+    sessionSidePanelToggleRequestId,
+    sessionSidePanelToggleProjectId,
+    scopeId,
+    toggleSidePanel,
+  ]);
 
-  const handlePreviewResizeStart = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      const rowWidth =
-        chatRowRef.current?.getBoundingClientRect().width ?? window.innerWidth;
-      const sidePanelWidth =
-        document.getElementById('session-side-panel')?.getBoundingClientRect()
-          .width ?? 0;
-      // Chat never exceeds its priority max width, and always leaves room for
-      // display's minimum width plus the independent session panel.
-      const maxChat = Math.max(
-        CHAT_MIN_WIDTH,
-        Math.min(
-          CHAT_PRIORITY_WIDTH,
-          rowWidth - sidePanelWidth - PREVIEW_MIN_WIDTH
-        )
-      );
-      const startX = e.clientX;
-      const startWidth = chatWidth;
-      setIsResizingPreview(true);
-      const onMove = (ev: PointerEvent) => {
-        // Dragging right (larger clientX) widens the chat, shrinking the preview.
-        const next = Math.min(
-          maxChat,
-          Math.max(CHAT_MIN_WIDTH, startWidth + (ev.clientX - startX))
-        );
-        userChatWidthRef.current = next;
-        setChatWidth(next);
-      };
-      const onUp = () => {
-        setIsResizingPreview(false);
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-      };
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-    },
-    [chatWidth]
-  );
+  useEffect(() => {
+    setSummaryPopoverOpen(false);
+  }, [scopeId, canDockSummary, showPreview, activeWorkspaceTab]);
 
-  // "Context" breadcrumb / empty-state action: open the Inbox tab for this file.
-  const selectedTurn = useSelectedProjectTurn(activeProjectId);
-  const handleJumpToContext = useCallback(
+  useLayoutEffect(() => {
+    const row = chatRowRef.current;
+    if (!row) return;
+    const updateWidth = () => {
+      const width = row.getBoundingClientRect().width;
+      // Hidden routes have zero bounds; don't erase saved column preferences.
+      if (width > 0) setPaneWidth(width);
+    };
+    updateWidth();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(updateWidth);
+    observer?.observe(row);
+    return () => observer?.disconnect();
+  }, [scopeId, hasChatStore]);
+
+  // Narrow widths hide Summary but keep its saved choice, so widening the pane
+  // docks it again. Preview has no hidden state and closes instead.
+  useLayoutEffect(() => {
+    if (paneWidth === null) return;
+    if (summaryOpen && !showSummary) setIsExpandedOverlayOpen(false);
+    if (previewOpen && !showPreview) closeSessionPreview();
+  }, [
+    paneWidth,
+    summaryOpen,
+    showSummary,
+    previewOpen,
+    showPreview,
+    closeSessionPreview,
+  ]);
+
+  // A started task opens Summary by default when the Session has room for it
+  // and the user has not chosen a state for this Session yet.
+  useLayoutEffect(() => {
+    if (isNewProject || !taskStarted || !activeProjectId || paneWidth === null)
+      return;
+    clearSessionTaskStarted(activeProjectId);
+    if (summaryPreference !== undefined) return;
+    const { canDockSummary: fitsWhenOpen } = getSessionColumnLayout({
+      paneWidth,
+      fallbackPaneWidth: window.innerWidth,
+      previewOpen,
+      summaryOpen: true,
+      chatSideWidth,
+    });
+    if (fitsWhenOpen) setSessionSummaryOpen(activeProjectId, true);
+  }, [
+    isNewProject,
+    taskStarted,
+    activeProjectId,
+    paneWidth,
+    clearSessionTaskStarted,
+    summaryPreference,
+    previewOpen,
+    chatSideWidth,
+    setSessionSummaryOpen,
+  ]);
+
+  // Scope the preview store before the first interactive paint. Review/file
+  // buttons already exist in the chat at that point; doing this in a passive
+  // effect leaves a window where their mutations are silently dropped because
+  // setSessionPreviewSlice has no project to own them yet.
+  useLayoutEffect(() => {
+    if (isFocused) setSessionPreviewProject(scopeId);
+  }, [scopeId, isFocused, setSessionPreviewProject]);
+
+  const previewResize = usePreviewResize({
+    rowRef: chatRowRef,
+    visibleChatSideWidth,
+    maxChatSideWidth,
+    setChatSideWidth,
+    resetKey: `${showPreview}:${paneWidth}:${scopeId}:${activeWorkspaceTab}`,
+  });
+
+  const previewEntrance = usePreviewEntrance({
+    showPreview,
+    scopeId,
+    activeWorkspaceTab,
+    previewOpening,
+    shouldReduceMotion,
+  });
+
+  // "Files" breadcrumb / empty-state action: open the Files tab for this file.
+  const handleJumpToFiles = useCallback(
     (file: FileInfo | null) => {
-      if (file && selectedTurn.taskId && selectedTurn.chatStore) {
-        selectedTurn.chatStore
-          .getState()
-          .setSelectedFile(selectedTurn.taskId, file);
+      // The New session page has no Session files; never select into the
+      // previously active Session's chat store.
+      if (!isNewProject && file && chatStore?.activeTaskId) {
+        chatStore.setSelectedFile(chatStore.activeTaskId, file);
       }
-      setActiveWorkspaceTab('inbox', {
-        clearInboxForProjectId: activeProjectId ?? null,
+      setActiveWorkspaceTab('files', {
+        clearFilesForProjectId: isNewProject ? null : (activeProjectId ?? null),
       });
       closeSessionPreview();
     },
-    [selectedTurn, setActiveWorkspaceTab, activeProjectId, closeSessionPreview]
+    [
+      isNewProject,
+      chatStore,
+      setActiveWorkspaceTab,
+      activeProjectId,
+      closeSessionPreview,
+    ]
   );
 
   const toggleExpandedOverlay = useCallback(() => {
@@ -347,139 +512,161 @@ export default function Session({ isNewProject = false }: SessionProps) {
     setIsExpandedOverlayOpen(false);
   }, []);
 
-  if (!isNewProject && !chatStore) {
-    return null;
-  }
-
-  const sessionSidePanel = displaySessionMode ? (
-    <SessionSidePanel
-      key={displaySessionMode}
-      mode={displaySessionMode}
-      workforcePanelKey={workforcePanelKey}
-      hasAnyMessages={hasAnyMessages}
-      isSidePanelVisible={isSidePanelVisible}
-      onToggleSidePanel={toggleSidePanel}
-      isExpandedOverlayOpen={isExpandedOverlayOpen}
-      onToggleExpandedOverlay={toggleExpandedOverlay}
-      onCloseExpandedOverlay={closeExpandedOverlay}
-    />
-  ) : null;
-
-  if (isNewProject) {
+  if (
+    !isNewProject &&
+    !chatStore &&
+    sessionExecution.state.route?.route === 'legacy'
+  ) {
     return (
-      <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <HeaderBox empty />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <Workspace
-              variant="new-project"
-              embedded
-              sessionMode={displaySessionMode ?? SessionMode.SINGLE_AGENT}
-              onSessionModeChange={handleNewProjectSessionModeChange}
-            />
-          </div>
-        </div>
-
-        <div
-          id="session-side-panel"
-          className={cn(
-            'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
-            isSidePanelVisible
-              ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
-              : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
-          )}
-        >
-          {sessionSidePanel}
-        </div>
+      <div className="relative h-full w-full">
+        <SessionLoadingScan active label={t('chat.timeline-history-loading')} />
       </div>
     );
   }
 
-  return (
+  const sessionSidePanel =
+    displaySessionMode &&
+    (isNewProject ||
+      (sessionExecution.state.route && !sessionExecution.state.error)) ? (
+      <SessionSidePanel
+        key={displaySessionMode}
+        mode={displaySessionMode}
+        workforcePanelKey={workforcePanelKey}
+        isSidePanelVisible={summaryOpen || summaryPopoverOpen}
+        onToggleSidePanel={toggleSidePanel}
+        isExpandedOverlayOpen={isExpandedOverlayOpen}
+        onToggleExpandedOverlay={toggleExpandedOverlay}
+        onCloseExpandedOverlay={closeExpandedOverlay}
+      />
+    ) : null;
+
+  const layout = (
     <div
       ref={chatRowRef}
       className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden"
     >
-      {/* Chat content: owns the project header and folds when display opens. */}
+      {previewResize.isResizing ? (
+        <div
+          data-preview-resize-shield
+          aria-hidden="true"
+          className="fixed inset-0 z-40 cursor-col-resize"
+        />
+      ) : null}
       <div
-        style={previewOpen ? { width: chatWidth } : undefined}
+        ref={setChatSideElement}
+        style={
+          showPreview
+            ? {
+                width: `var(${CHAT_SIDE_WIDTH_VAR}, ${visibleChatSideWidth}px)`,
+              }
+            : undefined
+        }
         className={cn(
           'flex min-h-0 min-w-0 flex-col overflow-hidden',
-          previewOpen ? 'shrink-0' : 'flex-1',
-          !isResizingPreview && 'transition-[width] duration-200 ease-out'
+          showPreview ? 'shrink-0' : 'flex-1'
         )}
       >
-        {chatStore.activeTaskId && hasAnyMessages && (
-          <HeaderBox
-            totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
-          />
-        )}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <ChatBox />
+        <HeaderBox
+          projectName={
+            isNewProject
+              ? t('layout.new-project', { defaultValue: 'New session' })
+              : activeProjectMeta
+                ? getSessionMetaDisplayName(activeProjectMeta, t)
+                : undefined
+          }
+          projectId={isNewProject ? null : activeProjectId}
+          projectAchieved={
+            !isNewProject && isProjectAchieved(activeProjectMeta?.metadata)
+          }
+          totalTokens={isNewProject ? 0 : (activeTask?.tokens ?? 0)}
+          showTimelineStyle={!isNewProject}
+          summary={{
+            open: showSummary,
+            onToggle: toggleSidePanel,
+            popover: canDockSummary ? undefined : sessionSidePanel,
+            popoverOpen: summaryPopoverOpen,
+            onPopoverOpenChange: setSummaryPopoverOpen,
+            popoverBoundary: chatSideElement,
+          }}
+          className={showPreview ? 'pr-ds-4' : undefined}
+          trailingActions={headerActions}
+        />
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {isNewProject ? (
+              <Workspace
+                variant="new-project"
+                embedded
+                sessionMode={displaySessionMode ?? SessionMode.SINGLE_AGENT}
+                onSessionModeChange={handleNewProjectSessionModeChange}
+                composerFooterLeading={newSessionComposer?.footerLeading}
+              />
+            ) : (
+              <ChatBox />
+            )}
+          </div>
+          {showSummary ? (
+            <div
+              data-session-side-panel
+              style={{ width: SUMMARY_WIDTH }}
+              className="flex min-h-0 shrink-0 flex-col overflow-hidden"
+            >
+              {sessionSidePanel}
+            </div>
+          ) : null}
         </div>
       </div>
-
-      <AnimatePresence initial={false}>
-        {previewOpen && (
-          <motion.div
-            key="session-display-content"
-            initial={{
-              clipPath: 'inset(0 0 0 100%)',
-              opacity: 0,
-            }}
-            animate={{
-              clipPath: 'inset(0 0 0 0%)',
-              opacity: 1,
-              flexGrow: 1,
-            }}
-            exit={{
-              clipPath: 'inset(0 0 0 100%)',
-              opacity: 0,
-              flexGrow: 0,
-            }}
-            transition={{ duration: 0.3, ease: DISPLAY_PANEL_EASE }}
-            style={{ transformOrigin: 'right center' }}
-            className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
-          >
-            <div
-              onPointerDown={handlePreviewResizeStart}
-              role="separator"
-              aria-orientation="vertical"
-              data-resize-handle-state={isResizingPreview ? 'drag' : 'inactive'}
-              className={cn(
-                // Transparent 2px rail with a centered line and wider hit area.
-                'relative z-10 flex w-[2px] shrink-0 cursor-col-resize items-center justify-center bg-transparent transition-colors hover:bg-ds-bg-brand-subtle-default',
-                "before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']",
-                'after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 after:bg-ds-bg-neutral-default-default after:transition-colors',
-                isResizingPreview &&
-                  'bg-ds-bg-brand-subtle-default after:bg-ds-bg-brand-default-focus'
-              )}
+      {showPreview ? (
+        <PreviewColumn
+          key={`${scopeId}:${previewOpening?.requestId ?? 0}`}
+          immediateOpening={previewEntrance.immediateOpening}
+          immediateGeometry={previewEntrance.immediateGeometry}
+          onEntranceComplete={previewEntrance.finishEntrance}
+          resizeHandle={{
+            isResizing: previewResize.isResizing,
+            value: visibleChatSideWidth,
+            max: maxChatSideWidth,
+            onPointerDown: previewResize.onPointerDown,
+            onKeyDown: previewResize.onKeyDown,
+          }}
+        >
+          {scopeId ? (
+            <PreviewPanel
+              displaySettled={previewEntrance.displaySettled}
+              onJumpToFiles={handleJumpToFiles}
             />
-
-            {/* Display content: middle column between chat and session. */}
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              {activeProjectId ? (
-                <PreviewPanel
-                  displaySettled={displaySettled}
-                  onJumpToContext={handleJumpToContext}
-                />
-              ) : null}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div
-        id="session-side-panel"
-        className={cn(
-          'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
-          isSidePanelVisible
-            ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
-            : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
-        )}
-      >
-        {sessionSidePanel}
-      </div>
+          ) : null}
+        </PreviewColumn>
+      ) : null}
     </div>
+  );
+
+  if (isNewProject) {
+    return (
+      // The New session page deliberately preserves the last active Project in
+      // ProjectStore until the first message creates its replacement. Do not
+      // let that navigation convenience scope the SidePanel to the old Run.
+      <ProjectEventRuntimeProvider projectId={null}>
+        {layout}
+      </ProjectEventRuntimeProvider>
+    );
+  }
+
+  return (
+    <ProjectEventRuntimeProvider
+      key={`${sessionExecution.scope.accountKey}:${activeProjectId}`}
+      projectId={activeProjectId}
+      expectedAccountKey={sessionExecution.scope.accountKey}
+      enabled={
+        Boolean(sessionExecution.state.route) && !sessionExecution.state.error
+      }
+    >
+      <SessionArtifactPreview
+        scope={sessionExecution.scope}
+        enabled={sessionExecution.state.managed}
+      >
+        {layout}
+      </SessionArtifactPreview>
+    </ProjectEventRuntimeProvider>
   );
 }

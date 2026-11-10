@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { usePageTabStore } from '@/store/pageTabStore';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { collectTerminalSources, type TerminalSource } from './terminalSources';
@@ -52,7 +52,9 @@ export function useSessionTerminalSources(
   options: SessionTerminalSourceOptions = {}
 ): TerminalSource[] {
   const { trackOutput = true } = options;
-  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const projectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
   const projectChatStores = useProjectRuntimeStore((state) =>
     projectId ? state.projects[projectId]?.chatStores : undefined
   );
@@ -83,7 +85,9 @@ export function useSessionTerminalSources(
   );
 
   const [sources, setSources] = useState<TerminalSource[]>(computeSources);
+  const [sourceProject, setSourceProject] = useState(projectId);
   useEffect(() => {
+    setSourceProject(projectId);
     setSources(computeSources());
     const unsubscribes = chatEntries.map(({ chatStore }) =>
       chatStore.subscribe(() => {
@@ -94,7 +98,7 @@ export function useSessionTerminalSources(
       })
     );
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
-  }, [chatEntries, computeSources, trackOutput]);
+  }, [chatEntries, computeSources, trackOutput, projectId]);
 
-  return sources;
+  return sourceProject === projectId ? sources : computeSources();
 }

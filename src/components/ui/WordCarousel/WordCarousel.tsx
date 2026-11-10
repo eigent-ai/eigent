@@ -36,11 +36,16 @@ export function WordCarousel({
 }: WordCarouselProps) {
   const [index, setIndex] = useState(0);
   const [fading, setFading] = useState(false);
+  const [sweepComplete, setSweepComplete] = useState(false);
 
   const safeWords = useMemo(
     () => (words && words.length > 0 ? words : ['']),
     [words]
   );
+
+  useEffect(() => {
+    setSweepComplete(false);
+  }, [gradient, sweepDurationMs, sweepOnce]);
 
   useEffect(() => {
     if (safeWords.length <= 1) return;
@@ -78,6 +83,7 @@ export function WordCarousel({
       className={[
         'word-carousel',
         sweepOnce ? 'sweep-once' : '',
+        !sweepOnce || !sweepComplete ? 'is-sweeping' : '',
         fading ? 'is-fading' : '',
         className ?? '',
       ]
@@ -85,6 +91,9 @@ export function WordCarousel({
         .trim()}
       aria-label={ariaLabel}
       style={style}
+      onAnimationEnd={() => {
+        if (sweepOnce) setSweepComplete(true);
+      }}
     >
       {safeWords[index]}
     </span>

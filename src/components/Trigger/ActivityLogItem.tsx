@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { AlarmClockIcon } from '@/components/ui/animate-ui/icons/alarm-clock';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { formatRelativeTime } from '@/lib/utils';
 import { ActivityLog, ActivityType } from '@/store/activityLogStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -25,7 +27,6 @@ import {
   Globe,
   PlayCircle,
   Trash2,
-  Zap,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -35,7 +36,7 @@ const getStatusIcon = (activityType: ActivityType) => {
     case ActivityType.TriggerCreated:
     case ActivityType.TriggerUpdated:
     case ActivityType.TriggerActivated:
-      return Zap; // trigger created
+      return AUTOMATION_ICON;
     case ActivityType.TriggerDeleted:
     case ActivityType.TriggerDeactivated:
       return Trash2; // trigger deleted
@@ -75,7 +76,9 @@ const getStatusStateText = (activityType: ActivityType, t: any): string => {
     case ActivityType.TaskCompleted:
       return t('triggers.status-execution-completed');
     case ActivityType.ExecutionCancelled:
-      return t('triggers.status-cancelled', 'Cancelled');
+      return t('triggers.status-cancelled', {
+        defaultValue: 'Cancelled',
+      });
     case ActivityType.ExecutionFailed:
       return t('triggers.status-error');
     case ActivityType.WebhookTriggered:
@@ -156,7 +159,7 @@ export function ActivityLogItem({
       ? 'bg-ds-bg-status-error-subtle-default'
       : statusType === 'success'
         ? 'bg-ds-bg-status-completed-subtle-default'
-        : 'bg-ds-bg-neutral-strong-default';
+        : 'bg-ds-neutral-strong-default';
   const statusIconColorClass =
     statusType === 'error'
       ? 'text-ds-icon-status-error-default-default'
@@ -192,9 +195,9 @@ export function ActivityLogItem({
       {/* Left side: Status Lead Icon */}
       <div className="flex flex-col items-center self-stretch">
         <div
-          className={`relative flex h-6 w-6 items-center justify-center rounded-full ${statusIconBgClass} flex-shrink-0`}
+          className={`relative flex h-6 w-6 items-center justify-center rounded-full ${statusIconBgClass} shrink-0`}
         >
-          <StatusIcon className={`h-4 w-4 ${statusIconColorClass}`} />
+          <DsIcon icon={StatusIcon} className={statusIconColorClass} />
         </div>
         <div className="w-[1px] flex-1 bg-ds-border-neutral-default-default" />
       </div>
@@ -203,32 +206,32 @@ export function ActivityLogItem({
       <div className="mb-4 flex min-w-0 flex-1 flex-col">
         {/* Top row: Trigger type icon + timestamp */}
         <div className="mb-2 flex items-center justify-between px-1">
-          <div
-            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center`}
-          >
+          <div className={`flex h-6 w-6 shrink-0 items-center justify-center`}>
+            {/* ds-icon:allow can be an animated icon, which sizes itself */}
             <TriggerTypeIcon className={`h-4 w-4 ${typeIconColorClass}`} />
           </div>
-          <span className="text-label-xs text-ds-text-neutral-muted-default">
+          <span className="text-ds-text-meta text-ds-ink-muted-default">
             {timeAgo}
           </span>
         </div>
 
         {/* Bottom row: Accordion */}
-        <div className="flex cursor-pointer flex-col items-center justify-center rounded-md bg-ds-bg-neutral-default-default px-2 py-1 transition-colors duration-150 hover:bg-ds-bg-neutral-strong-default">
+        <div className="flex cursor-pointer flex-col items-center justify-center rounded-md bg-ds-neutral-default-default px-2 py-1 transition-colors duration-150 hover:bg-ds-neutral-strong-default">
           <button
             onClick={onToggleExpanded}
             className="flex w-full cursor-pointer items-center justify-between border-none bg-transparent p-0 text-left"
           >
             <div className="flex flex-row gap-2">
-              <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
+              <span className="text-ds-text-base font-medium text-ds-ink-default-default">
                 {t('triggers.trigger-label')} {triggerNumber}
               </span>
-              <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
+              <span className="text-ds-text-base font-normal text-ds-ink-muted-default">
                 {stateText}
               </span>
             </div>
-            <ChevronDown
-              className={`h-4 w-4 text-ds-text-neutral-muted-default opacity-30 transition-transform duration-200 motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
+            <DsIcon
+              icon={ChevronDown}
+              className={`text-ds-ink-muted-default opacity-30 transition-transform duration-200 motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
             />
           </button>
 
@@ -262,7 +265,7 @@ export function ActivityLogItem({
               >
                 <div className="min-h-[32px] px-2 py-2">
                   {log.metadata && Object.keys(log.metadata).length > 0 ? (
-                    <div className="space-y-0.5 text-label-sm text-ds-text-neutral-muted-default">
+                    <div className="space-y-0.5 text-ds-text-base text-ds-ink-muted-default">
                       {Object.entries(log.metadata)
                         .filter(
                           ([, value]) =>
@@ -292,7 +295,7 @@ export function ActivityLogItem({
                           }
                           return (
                             <div key={key} className="flex gap-2">
-                              <span className="font-medium text-ds-text-neutral-muted-default">
+                              <span className="font-medium text-ds-ink-muted-default">
                                 {displayKey}:
                               </span>
                               <span>{displayValue}</span>
@@ -301,7 +304,7 @@ export function ActivityLogItem({
                         })}
                     </div>
                   ) : (
-                    <div className="text-label-xs text-ds-text-neutral-muted-disabled">
+                    <div className="text-ds-text-meta text-ds-ink-muted-disabled">
                       {/* Empty content box */}
                     </div>
                   )}

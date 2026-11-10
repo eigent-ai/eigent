@@ -79,7 +79,21 @@ let connectionConfig: ConnectionConfig = {
   sessionId: readStoredSessionId(),
 };
 
+// A resolved desktop port fills an empty endpoint without changing its owner.
+// Reconfiguration/restart retires control operations issued to the old Brain.
+let brainConnectionGeneration = 0;
+export function getBrainConnectionGeneration(): number {
+  return brainConnectionGeneration;
+}
+
 export function setConnectionConfig(config: Partial<ConnectionConfig>): void {
+  if (
+    config.brainEndpoint !== undefined &&
+    connectionConfig.brainEndpoint &&
+    config.brainEndpoint !== connectionConfig.brainEndpoint
+  ) {
+    brainConnectionGeneration += 1;
+  }
   connectionConfig = { ...connectionConfig, ...config };
 
   if (connectionConfig.channel === 'web' && 'sessionId' in config) {
@@ -92,6 +106,7 @@ export function getConnectionConfig(): ConnectionConfig {
 }
 
 export function resetConnectionConfig(): void {
+  brainConnectionGeneration += 1;
   connectionConfig = {
     brainEndpoint: '',
     channel: 'desktop',

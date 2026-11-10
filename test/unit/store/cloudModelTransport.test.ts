@@ -1,0 +1,84 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
+import {
+  cloudModelRequestExtraParams,
+  type CloudModel,
+} from '@/store/cloudModelStore';
+import { describe, expect, it } from 'vitest';
+
+function modelWithCapabilities(
+  capabilities: Record<string, unknown> | null
+): Pick<CloudModel, 'capabilities'> {
+  return { capabilities };
+}
+
+describe('cloudModelRequestExtraParams', () => {
+  it('forwards a server-declared Responses transport without model-name checks', () => {
+    expect(
+      cloudModelRequestExtraParams(
+        modelWithCapabilities({
+          request_compatibility: {
+            preferred_transport: 'responses',
+          },
+        })
+      )
+    ).toEqual({ api_mode: 'responses' });
+  });
+
+  it('preserves legacy Chat transport when declared by the server', () => {
+    expect(
+      cloudModelRequestExtraParams(
+        modelWithCapabilities({
+          request_compatibility: {
+            preferred_transport: 'chat_completions',
+          },
+        })
+      )
+    ).toEqual({ api_mode: 'chat_completions' });
+  });
+
+  it('ignores malformed or absent compatibility metadata', () => {
+    expect(cloudModelRequestExtraParams(modelWithCapabilities(null))).toEqual(
+      {}
+    );
+    expect(
+      cloudModelRequestExtraParams(
+        modelWithCapabilities({
+          request_compatibility: {
+            preferred_transport: 'invented_transport',
+          },
+        })
+      )
+    ).toEqual({});
+  });
+});
+
+describe('isCloudModelAvailable', () => {
+  it('allows unrestricted models but waits for the plan before paid choices', () => {
+    expect(isCloudModelAvailable({ min_plan_key: null }, 'free')).toBe(true);
+    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, null)).toBe(false);
+    expect(isCloudModelAvailable({ min_plan_key: 'pro' }, 'future-plan')).toBe(
+      false
+    );
+  });
+
+  it('applies the catalog minimum plan to free and paid accounts', () => {
+    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, 'free')).toBe(false);
+    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, 'plus')).toBe(true);
+    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, 'pro')).toBe(true);
+    expect(isCloudModelAvailable({ min_plan_key: 'pro' }, 'plus')).toBe(false);
+  });
+});

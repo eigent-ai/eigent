@@ -12,19 +12,30 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { BrowserWindow, app } from 'electron';
+import csvParser from 'csv-parser';
+import { app, BrowserWindow } from 'electron';
 import mammoth from 'mammoth';
+import mime from 'mime';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import { URL } from 'node:url';
-import Papa from 'papaparse';
 import * as unzipper from 'unzipper';
 import { parseStringPromise } from 'xml2js';
+import { normalizeWorkspaceRelativePath } from '../../src/lib/workspaceRelativePath';
+import {
+  decideFilePreview,
+  decodePreviewText,
+  FILE_PREVIEW_LIMITS,
+  normalizePreviewFileType,
+  type CsvFilePreview,
+  type FilePreviewMetadata,
+} from '../../src/shared/filePreviewContract';
 import { normalizeLegacySandboxPath } from './utils/filePath';
 import { findDirectoriesByName } from './utils/log';
 import { resolveProjectStoragePath } from './utils/projectStoragePath';
+import { deleteOwnedTaskFiles } from './utils/taskFileCleanup';
 
 interface FileInfo {
   path: string;
@@ -35,6 +46,9 @@ interface FileInfo {
   task_id?: string;
   project_id?: string;
   source?: 'project_output' | 'camel_log';
+  size?: number;
+  modifiedAt?: number;
+  mimeType?: string;
 }
 
 export class FileReader {
@@ -46,9 +60,11 @@ export class FileReader {
   // Remove automatic IPC handler registration from constructor
   // IPC handlers should be registered once in the main process
 
-  private async parseDocx(filePath: string): Promise<string> {
+  private async parseDocx(source: string | Buffer): Promise<string> {
     try {
-      const result = await mammoth.convertToHtml({ path: filePath });
+      const result = await mammoth.convertToHtml(
+        typeof source === 'string' ? { path: source } : { buffer: source }
+      );
       return result.value; // The generated HTML
     } catch (error) {
       console.error('DOCX parsing error:', error);
@@ -66,9 +82,12 @@ export class FileReader {
     }
   }
 
-  private async parseXlsx(filePath: string): Promise<string> {
+  private async parseXlsx(source: string | Buffer): Promise<string> {
     try {
-      const directory = await unzipper.Open.file(filePath);
+      const directory =
+        typeof source === 'string'
+          ? await unzipper.Open.file(source)
+          : await unzipper.Open.buffer(source);
 
       // Find the shared strings file and worksheets
       const sharedStringsFile = directory.files.find(
@@ -321,9 +340,12 @@ export class FileReader {
     }
   }
 
-  private async parsePptx(filePath: string): Promise<string> {
+  private async parsePptx(source: string | Buffer): Promise<string> {
     try {
-      const directory = await unzipper.Open.file(filePath);
+      const directory =
+        typeof source === 'string'
+          ? await unzipper.Open.file(source)
+          : await unzipper.Open.buffer(source);
       const slideFiles = directory.files.filter((f: any) =>
         f.path.match(/^ppt\/slides\/slide\d+\.xml$/)
       );
@@ -364,50 +386,12 @@ export class FileReader {
     }
   }
 
-  private async parseCsv(filePath: string): Promise<string> {
-    try {
-      const fileContent = fs.readFileSync(filePath, 'utf-8');
-      const result = Papa.parse(fileContent, {
-        header: true,
-        skipEmptyLines: true,
-        delimiter: ',',
-      });
-
-      // Convert to HTML table
-      if (result.data && result.data.length > 0) {
-        const headers = Object.keys(result.data[0] as string[]);
-        let html =
-          '<table style="border-collapse: collapse; width: 100%; font-family: monospace;">';
-
-        // Header row
-        html += '<thead><tr style="background-color: #f5f5f5;">';
-        headers.forEach((header) => {
-          html += `<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">${header}</th>`;
-        });
-        html += '</tr></thead>';
-
-        // Data rows
-        html += '<tbody>';
-        result.data.forEach((row: any) => {
-          html += '<tr>';
-          headers.forEach((header) => {
-            html += `<td style="border: 1px solid #ddd; padding: 8px;">${row[header] || ''}</td>`;
-          });
-          html += '</tr>';
-        });
-        html += '</tbody></table>';
-
-        return html;
-      }
-      return '<p>Empty CSV file</p>';
-    } catch (error) {
-      console.error('CSV parsing error:', error);
-      throw error;
-    }
-  }
-
   // add download file method
-  private async downloadFile(url: string, localPath: string): Promise<void> {
+  private async downloadFile(
+    url: string,
+    localPath: string,
+    maxBytes: number
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
       const protocol = urlObj.protocol === 'https:' ? https : http;
@@ -420,7 +404,26 @@ export class FileReader {
           return;
         }
 
+        const contentLength = Number(response.headers['content-length']);
+        if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+          response.resume();
+          reject(
+            new Error(`FILE_PREVIEW_TOO_LARGE:${contentLength}:${maxBytes}`)
+          );
+          return;
+        }
+
         const fileStream = fs.createWriteStream(localPath);
+        let receivedBytes = 0;
+        response.on('data', (chunk: Buffer) => {
+          receivedBytes += chunk.length;
+          if (receivedBytes > maxBytes) {
+            request.destroy(
+              new Error(`FILE_PREVIEW_TOO_LARGE:${receivedBytes}:${maxBytes}`)
+            );
+            fileStream.destroy();
+          }
+        });
         response.pipe(fileStream);
 
         fileStream.on('finish', () => {
@@ -474,6 +477,153 @@ export class FileReader {
     return path.join(tempDir, fileName);
   }
 
+  private previewDownloadLimit(type: string): number {
+    const normalized = normalizePreviewFileType(type);
+    if (normalized === 'pdf') return FILE_PREVIEW_LIMITS.pdfBytes;
+    if (normalized === 'csv' || normalized === 'tsv') {
+      return FILE_PREVIEW_LIMITS.csvScanBytes;
+    }
+    if (normalized === 'html') return FILE_PREVIEW_LIMITS.richHtmlBytes;
+    if (['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(normalized)) {
+      return FILE_PREVIEW_LIMITS.officeBytes;
+    }
+    return FILE_PREVIEW_LIMITS.defaultBytes;
+  }
+
+  private normalizeLocalPreviewPath(filePath: string): string {
+    const normalized = normalizeLegacySandboxPath(filePath);
+    if (!this.isLocalFile(normalized)) {
+      throw new Error('Preview metadata requires a local file');
+    }
+    return normalized.replace(/^localfile:\/\//, '').replace(/^file:\/\//, '');
+  }
+
+  public async getPreviewMetadata(
+    filePath: string
+  ): Promise<FilePreviewMetadata> {
+    const localPath = this.normalizeLocalPreviewPath(filePath);
+    const stats = await fs.promises.stat(localPath);
+    if (!stats.isFile()) throw new Error('Preview target is not a file');
+    return {
+      size: stats.size,
+      modifiedAt: stats.mtimeMs,
+      mimeType: mime.getType(localPath) || 'application/octet-stream',
+      supportsRanges: true,
+    };
+  }
+
+  public async previewTextFile(filePath: string, requestedLimit?: number) {
+    const localPath = this.normalizeLocalPreviewPath(filePath);
+    const stats = await fs.promises.stat(localPath);
+    if (!stats.isFile()) throw new Error('Preview target is not a file');
+    const limit = Math.max(
+      1,
+      Math.min(
+        Number(requestedLimit) || FILE_PREVIEW_LIMITS.textBytes,
+        FILE_PREVIEW_LIMITS.textBytes
+      )
+    );
+    const handle = await fs.promises.open(localPath, 'r');
+    try {
+      // The path stat only guards the file type. A writer may change or
+      // replace the file before open, so size must belong to this handle.
+      const openedStats = await handle.stat();
+      if (!openedStats.isFile())
+        throw new Error('Preview target is not a file');
+      const bytesRead = Math.min(openedStats.size, limit);
+      const buffer = Buffer.alloc(bytesRead);
+      const result = await handle.read(buffer, 0, bytesRead, 0);
+      const currentStats = await handle.stat();
+      // Counts from a changing file cannot prove completeness, even if a
+      // writer happened to leave it at the same size after our read. The
+      // check is best effort: coarse filesystem timestamps can hide a
+      // same-size rewrite.
+      const unchanged =
+        openedStats.size === currentStats.size &&
+        openedStats.mtimeMs === currentStats.mtimeMs &&
+        openedStats.ctimeMs === currentStats.ctimeMs;
+      // Bytes beyond the read existed both before and after it, so the
+      // preview is provably an excerpt even while a writer keeps appending.
+      const provablyTruncated =
+        Math.min(openedStats.size, currentStats.size) > result.bytesRead;
+      const totalBytes =
+        unchanged || provablyTruncated ? currentStats.size : null;
+      const content = decodePreviewText(
+        buffer.subarray(0, result.bytesRead),
+        totalBytes === null || result.bytesRead < totalBytes
+      );
+      return {
+        content: content ?? '',
+        binary: content === null,
+        bytesRead: result.bytesRead,
+        totalBytes,
+      };
+    } finally {
+      await handle.close();
+    }
+  }
+
+  public async previewCsvFile(filePath: string): Promise<CsvFilePreview> {
+    const localPath = this.normalizeLocalPreviewPath(filePath);
+    const stats = await fs.promises.stat(localPath);
+    if (!stats.isFile()) throw new Error('Preview target is not a file');
+    if (stats.size === 0) {
+      return {
+        kind: 'csv',
+        columns: [],
+        rows: [],
+        truncated: false,
+        rowLimit: FILE_PREVIEW_LIMITS.csvRows,
+        columnLimit: FILE_PREVIEW_LIMITS.csvColumns,
+        bytesRead: 0,
+        totalBytes: 0,
+      };
+    }
+
+    const source = fs.createReadStream(localPath, {
+      start: 0,
+      end: Math.min(stats.size, FILE_PREVIEW_LIMITS.csvScanBytes) - 1,
+    });
+    const parser = source.pipe(
+      csvParser({ maxRowBytes: FILE_PREVIEW_LIMITS.csvScanBytes })
+    );
+    let allColumns: string[] = [];
+    parser.once('headers', (headers: string[]) => {
+      allColumns = headers;
+    });
+    const rawRows: Record<string, unknown>[] = [];
+    for await (const row of parser) {
+      rawRows.push(row as Record<string, unknown>);
+      if (rawRows.length > FILE_PREVIEW_LIMITS.csvRows) break;
+    }
+    const columns = allColumns.slice(0, FILE_PREVIEW_LIMITS.csvColumns);
+    const rows = rawRows.slice(0, FILE_PREVIEW_LIMITS.csvRows).map((row) =>
+      columns.map((column) => {
+        const value = row[column] == null ? '' : String(row[column]);
+        return value.length > FILE_PREVIEW_LIMITS.csvCellCharacters
+          ? `${value.slice(0, FILE_PREVIEW_LIMITS.csvCellCharacters)}…`
+          : value;
+      })
+    );
+
+    return {
+      kind: 'csv',
+      columns,
+      rows,
+      truncated:
+        stats.size > FILE_PREVIEW_LIMITS.csvScanBytes ||
+        rawRows.length > FILE_PREVIEW_LIMITS.csvRows ||
+        allColumns.length > FILE_PREVIEW_LIMITS.csvColumns,
+      rowLimit: FILE_PREVIEW_LIMITS.csvRows,
+      columnLimit: FILE_PREVIEW_LIMITS.csvColumns,
+      bytesRead: Math.min(
+        stats.size,
+        source.bytesRead || FILE_PREVIEW_LIMITS.csvScanBytes
+      ),
+      totalBytes: stats.size,
+    };
+  }
+
   public openFile(type: string, filePath: string, _isShowSourceCode: boolean) {
     return new Promise(async (resolve, reject) => {
       try {
@@ -486,7 +636,11 @@ export class FileReader {
           // download file to temporary directory
           const tempPath = this.getTempFilePath(filePath, type);
           try {
-            await this.downloadFile(filePath, tempPath);
+            await this.downloadFile(
+              filePath,
+              tempPath,
+              this.previewDownloadLimit(type)
+            );
             console.log('file download completed:', tempPath);
 
             // use temporary file path to continue processing
@@ -496,6 +650,22 @@ export class FileReader {
             reject(downloadError);
             return;
           }
+        }
+
+        const stats = await fs.promises.stat(filePath);
+        const decision = decideFilePreview(type, { size: stats.size });
+        if (decision.mode === 'blocked') {
+          throw new Error(
+            `FILE_PREVIEW_BLOCKED:${decision.reason}:${stats.size}:${decision.limit}`
+          );
+        }
+        if (
+          decision.mode === 'bounded-csv' ||
+          decision.mode === 'bounded-text'
+        ) {
+          throw new Error(
+            `FILE_PREVIEW_REQUIRES_BOUNDED_READER:${decision.mode}`
+          );
         }
 
         // original file processing logic
@@ -508,14 +678,7 @@ export class FileReader {
         } else if (['pdf'].includes(type)) {
           resolve(filePath);
         } else if (type === 'csv') {
-          try {
-            const htmlContent = await this.parseCsv(filePath);
-            resolve(htmlContent);
-          } catch (error) {
-            console.warn('CSV parsing failed, reading as text:', error);
-            const content = fs.readFileSync(filePath, 'utf-8');
-            resolve(content);
-          }
+          throw new Error('FILE_PREVIEW_REQUIRES_BOUNDED_READER:bounded-csv');
         } else if (type === 'docx') {
           try {
             const htmlContent = await this.parseDocx(filePath);
@@ -563,6 +726,26 @@ export class FileReader {
         reject(error);
       }
     });
+  }
+
+  public async previewOfficeBuffer(
+    type: string,
+    bytes: Uint8Array
+  ): Promise<string> {
+    const normalized = normalizePreviewFileType(type);
+    if (!['docx', 'pptx', 'xlsx'].includes(normalized)) {
+      throw new Error('Unsupported remote Office preview type');
+    }
+    if (bytes.byteLength > FILE_PREVIEW_LIMITS.officeBytes) {
+      throw new Error(
+        `FILE_PREVIEW_TOO_LARGE:${bytes.byteLength}:${FILE_PREVIEW_LIMITS.officeBytes}`
+      );
+    }
+
+    const buffer = Buffer.from(bytes);
+    if (normalized === 'docx') return this.parseDocx(buffer);
+    if (normalized === 'pptx') return this.parsePptx(buffer);
+    return this.parseXlsx(buffer);
   }
 
   // Folders to hide in the Agent Folder view
@@ -613,6 +796,11 @@ export class FileReader {
               : file.split('.').pop()?.toLowerCase() || '',
             isFolder: isFolder,
             relativePath: relativePath === '' ? '' : relativePath,
+            size: isFolder ? undefined : stats.size,
+            modifiedAt: stats.mtimeMs,
+            mimeType: isFolder
+              ? undefined
+              : mime.getType(filePath) || 'application/octet-stream',
           };
 
           result.push(fileInfo);
@@ -870,6 +1058,31 @@ export class FileReader {
   }
 
   /**
+   * Return diagnostic logs only. This intentionally does not traverse the
+   * selected project folder: collecting logs must never discover or imply
+   * upload consent for files that already existed in a user's workspace.
+   */
+  public getCamelLogFileList(
+    email: string,
+    taskId: string,
+    projectId?: string,
+    userId?: string | number | null
+  ): FileInfo[] {
+    const { logPath } = this.resolveTaskPaths(email, taskId, projectId, userId);
+    const camelLogPath = path.join(logPath, 'camel_logs');
+    if (!fs.existsSync(camelLogPath)) return [];
+    try {
+      return this.getFilesRecursive(camelLogPath, camelLogPath).map((file) => ({
+        ...file,
+        source: 'camel_log' as const,
+      }));
+    } catch (err) {
+      console.error('Load camel logs failed:', err);
+      return [];
+    }
+  }
+
+  /**
    * Resolves the `camel_logs` directories to export as `{ src, destName }`
    * entries (destName is the path inside `~/.eigent`, so the zip stays readable).
    *
@@ -922,32 +1135,18 @@ export class FileReader {
   public deleteTaskFiles(
     email: string,
     taskId: string,
-    projectId?: string
-  ): {
-    success: boolean;
-    path: { dirPath: string; logPath: string };
-  } {
-    const { dirPath, logPath } = this.resolveTaskPaths(
+    projectId?: string,
+    userId?: string | number | null,
+    spaceId?: string
+  ) {
+    return deleteOwnedTaskFiles({
+      homeDir: app.getPath('home'),
       email,
       taskId,
-      projectId
-    );
-
-    try {
-      let success = false;
-      if (fs.existsSync(dirPath)) {
-        fs.rmSync(dirPath, { recursive: true, force: true });
-        success = true;
-      }
-      if (fs.existsSync(logPath)) {
-        fs.rmSync(logPath, { recursive: true, force: true });
-        success = true;
-      }
-      return { success, path: { dirPath, logPath } };
-    } catch (err) {
-      console.error('Delete task files failed:', dirPath, err);
-      return { success: false, path: { dirPath, logPath } };
-    }
+      projectId,
+      userId,
+      spaceId,
+    });
   }
 
   public getLogFolder(email: string): string {
@@ -1185,21 +1384,96 @@ export class FileReader {
   ): FileInfo[] {
     const projectPath = this.resolveProjectPath(email, projectId, userId);
 
+    return this.getWorkspaceFileList(projectPath).map((file) => {
+      const taskMatch = file.relativePath.match(/^task_([^/\\]+)/);
+
+      return {
+        ...file,
+        task_id: taskMatch?.[1],
+        project_id: projectId,
+      };
+    });
+  }
+
+  /**
+   * Enumerate files from an already-authorized Space workspace root.
+   *
+   * The IPC boundary is responsible for authorizing the root against the
+   * renderer's active Space before this method is called.
+   */
+  public getWorkspaceFileList(
+    workspacePath: string,
+    requestedRelativePaths?: readonly string[]
+  ): FileInfo[] {
+    const rootPath = path.resolve(workspacePath);
+
     try {
-      if (!fs.existsSync(projectPath)) {
+      if (!fs.existsSync(rootPath) || !fs.statSync(rootPath).isDirectory()) {
         return [];
       }
 
-      const allFiles = this.getFilesRecursive(projectPath, projectPath)
+      if (requestedRelativePaths) {
+        const rootRealPath = fs.realpathSync(rootPath);
+        const files: FileInfo[] = [];
+        for (const relativePath of new Set(requestedRelativePaths)) {
+          if (!relativePath || path.isAbsolute(relativePath)) continue;
+          const requestedIdentity =
+            normalizeWorkspaceRelativePath(relativePath);
+          if (!requestedIdentity) continue;
+          const candidatePath = path.resolve(rootRealPath, relativePath);
+          const relativeToRoot = path.relative(rootRealPath, candidatePath);
+          if (
+            relativeToRoot.startsWith('..') ||
+            path.isAbsolute(relativeToRoot)
+          ) {
+            continue;
+          }
+
+          try {
+            const stats = fs.lstatSync(candidatePath);
+            if (!stats.isFile() || stats.isSymbolicLink()) continue;
+            const realPath = fs.realpathSync(candidatePath);
+            const realRelativePath = path.relative(rootRealPath, realPath);
+            if (
+              realRelativePath.startsWith('..') ||
+              path.isAbsolute(realRelativePath)
+            ) {
+              continue;
+            }
+            // A directory symlink can point at a different in-root identity.
+            // Omit that alias instead of returning an unrequested real path
+            // that would invalidate the renderer's entire batch.
+            if (
+              normalizeWorkspaceRelativePath(realRelativePath) !==
+              requestedIdentity
+            ) {
+              continue;
+            }
+            const name = path.basename(realPath);
+            files.push({
+              path: realPath,
+              name,
+              type: name.split('.').pop()?.toLowerCase() || '',
+              isFolder: false,
+              relativePath: realRelativePath,
+              size: stats.size,
+              modifiedAt: stats.mtimeMs,
+              mimeType: mime.getType(realPath) || 'application/octet-stream',
+            });
+          } catch {
+            // A deleted, inaccessible or escaped candidate is not resolvable.
+          }
+        }
+        return files.sort((a, b) => a.path.localeCompare(b.path));
+      }
+
+      const allFiles = this.getFilesRecursive(rootPath, rootPath)
         .filter((file) => !file.isFolder)
         .map((file) => {
-          const relativePath = path.relative(projectPath, file.path);
-          const taskMatch = relativePath.match(/^task_([^/\\]+)/);
+          const relativePath = path.relative(rootPath, file.path);
 
           return {
             ...file,
-            task_id: taskMatch?.[1],
-            project_id: projectId,
             relativePath: relativePath === '.' ? '' : relativePath,
           };
         });
@@ -1208,7 +1482,7 @@ export class FileReader {
         return a.path.localeCompare(b.path);
       });
     } catch (err) {
-      console.error('Get project file list failed:', err);
+      console.error('Get workspace file list failed:', err);
       return [];
     }
   }

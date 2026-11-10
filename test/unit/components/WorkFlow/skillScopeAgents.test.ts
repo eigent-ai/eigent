@@ -18,7 +18,12 @@ import {
   normalizeSkillScopeAgentId,
   SINGLE_AGENT_ID,
 } from '@/components/WorkFlow/agents';
-import { describe, expect, it } from 'vitest';
+import i18n from '@/i18n';
+import { afterEach, describe, expect, it } from 'vitest';
+
+afterEach(async () => {
+  await i18n.changeLanguage('en-US');
+});
 
 describe('normalizeSkillScopeAgentId', () => {
   it('canonicalizes Single Agent aliases to single_agent', () => {
@@ -69,6 +74,16 @@ describe('buildSkillScopeAgentOptions', () => {
     expect(options.some((option) => option.value === 'foo.single_agent')).toBe(
       true
     );
+  });
+
+  it('resolves the Single Agent label in the current language', async () => {
+    await i18n.changeLanguage('de');
+
+    expect(buildSkillScopeAgentOptions()[0]).toEqual({
+      value: SINGLE_AGENT_ID,
+      label: 'Einzelagent',
+    });
+    expect(getWorkflowAgentDisplay(SINGLE_AGENT_ID)?.name).toBe('Einzelagent');
   });
 });
 

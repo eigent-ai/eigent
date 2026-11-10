@@ -22,9 +22,9 @@ import { useTranslation } from 'react-i18next';
 export function TerminalTab() {
   const { t } = useTranslation();
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-bg-neutral-strong-default">
-      <div className="min-h-0 flex-1 overflow-auto p-3 font-mono text-body-sm text-ds-text-neutral-muted-default">
-        <div className="text-ds-text-neutral-default-default">Eigent:~$</div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-neutral-strong-default">
+      <div className="min-h-0 flex-1 overflow-auto p-3 font-mono text-ds-text-base text-ds-ink-muted-default">
+        <div className="text-ds-ink-default-default">Eigent:~$</div>
         <div className="mt-1 opacity-70">
           {t('layout.preview-terminal-placeholder', {
             defaultValue: 'Terminal output will appear here.',

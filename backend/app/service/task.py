@@ -14,15 +14,18 @@
 
 import asyncio
 import logging
+import time
 import weakref
+from collections.abc import Awaitable, Callable
+from concurrent.futures import Future
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from camel.tasks import Task
-from pydantic import BaseModel
+from pydantic import BaseModel, PrivateAttr
 from typing_extensions import TypedDict
 
 from app.exception.exception import ProgramException
@@ -34,6 +37,9 @@ from app.model.chat import (
 )
 from app.model.enums import Status
 from app.run_context import RunContext
+
+if TYPE_CHECKING:
+    from app.run_runtime.admission import WarmRunAdmission
 
 logger = logging.getLogger("task_service")
 
@@ -88,6 +94,12 @@ class ActionImproveData(BaseModel):
     action: Literal[Action.improve] = Action.improve
     data: ImprovePayload
     new_task_id: str | None = None
+    request_id: str | None = None
+    run_id: str | None = None
+    attempt_id: str | None = None
+    # Staging an envelope is not permission to execute it. This gate is local
+    # to the warm consumer and deliberately excluded from serialized actions.
+    _publication: Future[bool] | None = PrivateAttr(default=None)
 
 
 class ActionStartData(BaseModel):
@@ -127,7 +139,7 @@ class ActionNewTaskStateData(BaseModel):
 
 class ActionAskData(BaseModel):
     action: Literal[Action.ask] = Action.ask
-    data: dict[Literal["question", "agent"], str]
+    data: dict[str, Any]
 
 
 class AgentDataDict(TypedDict):
@@ -144,15 +156,24 @@ class ActionCreateAgentData(BaseModel):
 class ActionActivateAgentData(BaseModel):
     action: Literal[Action.activate_agent] = Action.activate_agent
     data: dict[
-        Literal["agent_name", "process_task_id", "agent_id", "message"], str
+        Literal[
+            "agent_name",
+            "process_task_id",
+            "agent_id",
+            "agent_turn_id",
+            "message",
+        ],
+        str,
     ]
 
 
 class DataDict(TypedDict):
     agent_name: str
     agent_id: str
+    agent_turn_id: str
     process_task_id: str
     message: str
+    status: str
     tokens: int
 
 
@@ -193,6 +214,7 @@ class ActionActivateToolkitData(BaseModel):
             "process_task_id",
             "method_name",
             "message",
+            "tool_call_id",
         ],
         str,
     ]
@@ -207,6 +229,7 @@ class ActionDeactivateToolkitData(BaseModel):
             "process_task_id",
             "method_name",
             "message",
+            "tool_call_id",
         ],
         str,
     ]
@@ -216,12 +239,49 @@ class ActionWriteFileData(BaseModel):
     action: Literal[Action.write_file] = Action.write_file
     process_task_id: str
     data: str
+    relative_path: str | None = None
+
+
+def write_file_event_payload(item: ActionWriteFileData) -> dict[str, str]:
+    payload = {
+        "file_path": item.data,
+        "process_task_id": item.process_task_id,
+    }
+    if item.relative_path:
+        payload["relative_path"] = item.relative_path
+    return payload
 
 
 class ActionNoticeData(BaseModel):
     action: Literal[Action.notice] = Action.notice
     process_task_id: str
     data: str
+    title: str | None = None
+    notice_id: str | None = None
+    purpose: Literal["progress", "result", "decision", "status"] = "progress"
+    severity: Literal["info", "success", "warning", "error"] = "info"
+    tool_call_id: str | None = None
+
+
+def notice_event_payload(item: ActionNoticeData) -> dict[str, str]:
+    """Return typed notice data while retaining legacy field names."""
+
+    payload = {
+        "notice": item.data,
+        "content": item.data,
+        "message_description": item.data,
+        "process_task_id": item.process_task_id,
+        "purpose": item.purpose,
+        "severity": item.severity,
+    }
+    if item.title:
+        payload["title"] = item.title
+        payload["message_title"] = item.title
+    if item.notice_id:
+        payload["notice_id"] = item.notice_id
+    if item.tool_call_id:
+        payload["tool_call_id"] = item.tool_call_id
+    return payload
 
 
 class ActionSearchMcpData(BaseModel):
@@ -257,9 +317,13 @@ class ActionTimeoutData(BaseModel):
     action: Literal[Action.timeout] = Action.timeout
     data: dict[
         Literal[
-            "message", "in_flight_tasks", "pending_tasks", "timeout_seconds"
+            "message",
+            "in_flight_tasks",
+            "pending_tasks",
+            "timeout_seconds",
+            "timeout_scope",
         ],
-        str | int,
+        str | int | float,
     ]
 
 
@@ -303,6 +367,8 @@ class ActionRemoveTaskData(BaseModel):
 class ActionSkipTaskData(BaseModel):
     action: Literal[Action.skip_task] = Action.skip_task
     project_id: str
+    expected_task_id: str | None = None
+    _warm_admission: object | None = PrivateAttr(default=None)
 
 
 ActionData = (
@@ -367,6 +433,11 @@ class TaskLock:
     so stale or duplicate HTTP requests cannot leak into a future question."""
     created_at: datetime
     last_accessed: datetime
+    execution_progress_revision: int
+    """Monotonic producer-side progress marker for long-running execution."""
+    _active_execution_pause_depth: int
+    _active_execution_pause_started_at: float | None
+    _active_execution_paused_seconds: float
     background_tasks: set[asyncio.Task]
     """Track all background tasks for cleanup"""
     registered_toolkits: list[Any]
@@ -379,8 +450,6 @@ class TaskLock:
     """Serialized ChatAgent memory snapshots for session continuity"""
     memory_summary: str
     """Compressed summary of older serialized agent memory"""
-    last_task_result: str
-    """Store the last task execution result"""
     last_task_summary: str
     """Store the last generated task summary"""
     question_agent: Any | None
@@ -391,6 +460,7 @@ class TaskLock:
     """Current task ID to be used in SSE responses"""
     run_context: RunContext | None
     """Current task-scoped runtime context for this Project."""
+    _warm_admission: "WarmRunAdmission | None"
     user_id: str | int | None
     """Canonical user id when provided by the control plane."""
     working_directory: str | None
@@ -413,8 +483,28 @@ class TaskLock:
     """Legacy cleanup marker for default output directories."""
     memory_service: Any | None
     """MemoryService bound for this Run; used by single_agent_service for on_run_end."""
+    local_history_degraded: bool
+    """True after a Phase 1 RunJournal write failure; never auto-cleared."""
+    local_history_last_error: str | None
+    """Latest local history persistence error for diagnostics."""
     _memory_finalized_runs: set[str]
     """Run ids whose durable memory lifecycle has already been finalized."""
+    processed_improve_request_ids: set[str]
+    """In-process dedupe for durable admission retries that enqueue twice."""
+    environment_admission_template: Any | None
+    resolved_runtime_environment: Any | None
+    """Secret-free pinned Bundle runtime declaration for the live Attempt."""
+    runtime_session_mode: str | None
+    """Secret-free execution mode currently bound to this Project runtime."""
+    """Secret-free template used to bind follow-up Runs in this process."""
+    environment_spec_id: str | None
+    """Immutable EnvironmentSpec currently driving model/tool assembly."""
+    thinking_effort_requested: str | None
+    thinking_effort_effective: str | None
+    provider_effort_parameter_name: str | None
+    provider_effort_parameter_value: str | None
+    provider_capability_revision: str | None
+    provider_model_transport: str | None
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -425,6 +515,10 @@ class TaskLock:
         self.human_input_waiters = {}
         self.created_at = datetime.now()
         self.last_accessed = datetime.now()
+        self.execution_progress_revision = 0
+        self._active_execution_pause_depth = 0
+        self._active_execution_pause_started_at = None
+        self._active_execution_paused_seconds = 0.0
         self.background_tasks = set()
         self.registered_toolkits = []
 
@@ -432,12 +526,12 @@ class TaskLock:
         self.conversation_history = []
         self.agent_memory_history = []
         self.memory_summary = ""
-        self.last_task_result = ""
         self.last_task_summary = ""
         self.question_agent = None
         self.summary_generated = False
         self.current_task_id = None
         self.run_context = None
+        self._warm_admission = None
         self.user_id = None
         self.working_directory = None
         self.task_output_root = None
@@ -449,6 +543,19 @@ class TaskLock:
         self.base_snapshot_id = None
         self.new_folder_path = None
         self.memory_service = None
+        self.processed_improve_request_ids = set()
+        self.environment_admission_template = None
+        self.resolved_runtime_environment = None
+        self.runtime_session_mode = None
+        self.environment_spec_id = None
+        self.thinking_effort_requested = None
+        self.thinking_effort_effective = None
+        self.provider_effort_parameter_name = None
+        self.provider_effort_parameter_value = None
+        self.provider_capability_revision = None
+        self.provider_model_transport = None
+        self.local_history_degraded = False
+        self.local_history_last_error = None
         self._memory_finalized_runs = set()
 
         logger.info(
@@ -458,11 +565,64 @@ class TaskLock:
 
     async def put_queue(self, data: ActionData):
         self.last_accessed = datetime.now()
+        self.execution_progress_revision += 1
         logger.debug(
             "Adding item to task queue",
             extra={"task_id": self.id, "action": data.action},
         )
         await self.queue.put(data)
+
+    def pause_active_execution_budget(self) -> None:
+        """Start excluding a nested user-owned wait from runtime budgets."""
+
+        self._active_execution_pause_depth += 1
+        if self._active_execution_pause_depth == 1:
+            self._active_execution_pause_started_at = time.monotonic()
+
+    def resume_active_execution_budget(self) -> None:
+        """Finish one nested exclusion without losing earlier pause time."""
+
+        if self._active_execution_pause_depth <= 0:
+            raise RuntimeError("active execution budget is not paused")
+        self._active_execution_pause_depth -= 1
+        if self._active_execution_pause_depth != 0:
+            return
+        if self._active_execution_pause_started_at is not None:
+            self._active_execution_paused_seconds += max(
+                0.0,
+                time.monotonic() - self._active_execution_pause_started_at,
+            )
+        self._active_execution_pause_started_at = None
+
+    @property
+    def active_execution_budget_paused(self) -> bool:
+        return self._active_execution_pause_depth > 0
+
+    def active_execution_paused_seconds(self) -> float:
+        """Return cumulative pause time, including an in-progress wait."""
+
+        total = self._active_execution_paused_seconds
+        if self._active_execution_pause_started_at is not None:
+            total += max(
+                0.0,
+                time.monotonic() - self._active_execution_pause_started_at,
+            )
+        return total
+
+    def mark_local_history_degraded(self, error: str) -> None:
+        """Record a non-fatal Phase 1 RunJournal persistence failure."""
+
+        first_failure = not self.local_history_degraded
+        self.local_history_degraded = True
+        self.local_history_last_error = error
+        logger.warning(
+            "Task local history is degraded",
+            extra={
+                "task_id": self.id,
+                "first_failure": first_failure,
+                "journal_error": error,
+            },
+        )
 
     async def get_queue(self):
         self.last_accessed = datetime.now()
@@ -531,8 +691,12 @@ class TaskLock:
         self.background_tasks.add(task)
         task.add_done_callback(lambda t: self.background_tasks.discard(t))
 
-    async def cleanup(self):
-        r"""Cancel all background tasks and clean up resources"""
+    async def cleanup(self, *, keep_run_environments: bool = False):
+        r"""Cancel all background tasks and clean up resources
+
+        Brain shutdown keeps Run-owned terminal environments: the Runs it
+        stops become interrupted, and Resume reuses their installed packages.
+        """
         logger.info(
             "Starting task lock cleanup",
             extra={
@@ -559,10 +723,18 @@ class TaskLock:
             waiters.clear()
 
         # Clean up registered toolkits (e.g., remove TerminalToolkit venvs)
+        remaining_toolkits = []
         for toolkit in self.registered_toolkits:
             try:
                 if hasattr(toolkit, "cleanup"):
-                    toolkit.cleanup()
+                    # Only terminal toolkits own Run environment copies.
+                    keep = keep_run_environments and hasattr(
+                        toolkit, "release_run_environment"
+                    )
+                    await asyncio.to_thread(
+                        toolkit.cleanup,
+                        **({"keep_run_environment": True} if keep else {}),
+                    )
                     logger.info(
                         "Toolkit cleanup completed",
                         extra={
@@ -571,6 +743,7 @@ class TaskLock:
                         },
                     )
             except Exception as e:
+                remaining_toolkits.append(toolkit)
                 logger.warning(
                     f"Failed to cleanup toolkit: {e}",
                     extra={
@@ -578,7 +751,11 @@ class TaskLock:
                         "toolkit": type(toolkit).__name__,
                     },
                 )
-        self.registered_toolkits.clear()
+        self.registered_toolkits = remaining_toolkits
+        if remaining_toolkits:
+            # Keep ownership so delete_task_lock cannot orphan resources after
+            # a failed process-group kill. Repeated cleanup retries those only.
+            raise RuntimeError("Task resources did not finish cleanup")
 
         logger.info("Task lock cleanup completed", extra={"task_id": self.id})
 
@@ -738,6 +915,49 @@ async def delete_task_lock(id: str):
         "Task lock deleted successfully",
         extra={"task_id": id, "remaining_task_locks": len(task_locks)},
     )
+
+
+_Committed = TypeVar("_Committed")
+_Delivered = TypeVar("_Delivered")
+
+
+async def commit_and_deliver(
+    deliver: Callable[[], Awaitable[_Delivered]],
+    commit: Callable[..., tuple[_Committed, bool]],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> tuple[_Committed, bool, _Delivered | None]:
+    """Commit a human decision and answer its live waiter as one task.
+
+    ``commit`` returns its ``include_transition`` pair, and only the call that
+    applied the transition delivers. A cancelled request waits for both steps
+    instead of stranding a committed decision. A crash between them needs no
+    redelivery: the waiter dies with this process, and startup reconciliation
+    interrupts the Run so Resume asks again.
+    """
+
+    async def commit_then_deliver():
+        committed, decision_applied = await asyncio.to_thread(
+            commit, *args, **kwargs
+        )
+        delivered = await deliver() if decision_applied else None
+        return committed, decision_applied, delivered
+
+    task = asyncio.create_task(commit_then_deliver())
+    cancelled = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            cancelled = error
+        except BaseException:
+            break  # Retrieve the task's own failure below.
+    try:
+        return task.result()
+    finally:
+        if cancelled is not None:
+            raise cancelled
 
 
 def get_camel_task(id: str, tasks: list[Task]) -> None | Task:

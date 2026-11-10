@@ -21,13 +21,13 @@ export function PreparingToExecuteTasks() {
 
   return (
     <div
-      className="py-2 min-w-0 flex w-full items-center"
+      className="flex w-full min-w-0 items-center"
       role="status"
       aria-live="polite"
     >
       <ShinyText
         text={t('chat.preparing-to-execute-tasks')}
-        className="text-body-sm"
+        className="!text-ds-text-base !font-normal"
         speed={2.5}
       />
     </div>

@@ -9,7 +9,7 @@
   "download-completed": "Descarga completada",
   "click-to-install-update": "Click para instalar actualización",
   "install": "Instalar",
-  "downloading": "Downloading update",
-  "launch-new-version": "Launch new version",
-  "update-failed-retry": "Update failed — click to retry"
+  "downloading": "Descargando la actualización",
+  "launch-new-version": "Iniciar la nueva versión",
+  "update-failed-retry": "La actualización falló; haz clic para reintentar"
 }

@@ -1,0 +1,950 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import asyncio
+import json
+import logging
+from typing import Any
+
+import httpx
+import pytest
+
+from app.remote_sub_agent.policy import RemoteSubAgentPolicy
+from app.remote_sub_agent.providers.modelark_agents import (
+    ModelArkAgentsProvider,
+)
+from app.remote_sub_agent.runtime import RemoteSubAgentRuntime
+from app.remote_sub_agent.session_store import RemoteSubAgentSessionStore
+from app.remote_sub_agent.types import (
+    RemoteSubAgentEventType,
+    RemoteSubAgentRequest,
+    RemoteSubAgentSession,
+)
+
+pytestmark = pytest.mark.unit
+
+BASE_URL = "https://ark.example.test/api/v3"
+API_KEY = "test-ark-key"
+DROP = object()
+HANG = object()
+STALL = object()
+MODULE = "app.remote_sub_agent.providers.modelark_agents"
+
+
+class Gap:
+    """An event produced while the current stream was not delivering.
+
+    It is written to the session history but not sent on the stream, so only
+    a history backfill can find it.
+    """
+
+    def __init__(self, event: dict[str, Any]) -> None:
+        self.event = event
+
+
+def _idle(reason: str | None, event_id: str = "evt-idle") -> dict[str, Any]:
+    event: dict[str, Any] = {"id": event_id, "type": "session.status_idle"}
+    if reason is not None:
+        event["stop_reason"] = {"type": reason}
+    return event
+
+
+def _message(text: str, event_id: str) -> dict[str, Any]:
+    return {
+        "id": event_id,
+        "type": "agent.message",
+        "content": [{"type": "text", "text": text}],
+    }
+
+
+class FakeModelArk:
+    """Scripted ModelArk API.
+
+    Each opened event stream plays the next script. Events after ``: ready``
+    on the first stream are held until the client sends its message, which
+    is how the real stream behaves.
+
+    ``history`` is the session's persisted event history: ``history`` passed
+    in (earlier turns), then every event the client sends and every event a
+    stream plays. The event list endpoint serves it with the documented
+    query parameters only (``order``, ``limit``, ``page``) and ignores any
+    other parameter, as the real API does.
+    """
+
+    def __init__(
+        self,
+        streams: list[list[Any]],
+        *,
+        session_status: str | None = "idle",
+        history: list[dict[str, Any]] | None = None,
+        receipt_ids: bool = True,
+        resource_status: dict[str, int] | None = None,
+        stream_status: int = 200,
+    ) -> None:
+        self.streams = list(streams)
+        self.session_status = session_status
+        self.history = list(history or [])
+        self.receipt_ids = receipt_ids
+        self.resource_status = resource_status or {}
+        self.stream_status = stream_status
+        self.requests: list[httpx.Request] = []
+        self.log: list[str] = []
+        self.sent_events: list[dict[str, Any]] = []
+        self.history_params: list[dict[str, str]] = []
+        self.stream_read_timeouts: list[float | None] = []
+        self.message_sent = asyncio.Event()
+
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self.handle)
+
+    async def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        path = request.url.path.removeprefix("/api/v3")
+        method = request.method
+
+        if method == "POST" and path == "/sessions":
+            self.log.append("create_session")
+            return httpx.Response(
+                200, json={"id": "sesn-new", "status": "idle"}
+            )
+        if method == "GET" and path.endswith("/events/stream"):
+            self.log.append("open_stream")
+            self.stream_read_timeouts.append(
+                request.extensions.get("timeout", {}).get("read")
+            )
+            if self.stream_status != 200:
+                return httpx.Response(self.stream_status, text="unauthorized")
+            script = self.streams.pop(0) if self.streams else []
+            return httpx.Response(200, content=self._stream(script))
+        if method == "POST" and path.endswith("/events"):
+            events = json.loads(request.content)["events"]
+            self.sent_events.extend(events)
+            kinds = [event["type"] for event in events]
+            self.log.append(f"send:{','.join(kinds)}")
+            accepted = [
+                {"id": f"evt-user-{len(self.sent_events)}", **event}
+                for event in events
+            ]
+            self.history.extend(accepted)
+            if "user.message" in kinds:
+                self.message_sent.set()
+            if not self.receipt_ids:
+                accepted = [dict(event) for event in events]
+            return httpx.Response(200, json={"data": accepted})
+        if method == "GET" and path.endswith("/events"):
+            self.log.append("list_events")
+            params = dict(request.url.params)
+            self.history_params.append(params)
+            events = list(self.history)
+            if params.get("order", "asc") == "desc":
+                events.reverse()
+            limit = min(int(params.get("limit", "50")), 200)
+            start = int(params.get("page", "0"))
+            page: dict[str, Any] = {"data": events[start : start + limit]}
+            if start + limit < len(events):
+                page["next_page"] = str(start + limit)
+            return httpx.Response(200, json=page)
+        if method == "GET" and path.startswith("/sessions/"):
+            self.log.append("get_session")
+            if self.session_status is None:
+                return httpx.Response(404, json={"error": "not found"})
+            return httpx.Response(
+                200,
+                json={
+                    "id": path.split("/")[-1],
+                    "status": self.session_status,
+                },
+            )
+        if method == "GET" and path.startswith(("/agents/", "/environments/")):
+            kind = path.split("/")[1]
+            self.log.append(f"get_{kind}")
+            status = self.resource_status.get(kind, 200)
+            if status != 200:
+                return httpx.Response(status, json={"error": "not found"})
+            return httpx.Response(
+                200, json={"id": path.split("/")[-1], "status": "ready"}
+            )
+        raise AssertionError(f"Unexpected request: {method} {path}")
+
+    async def _stream(self, script: list[Any]):
+        yield b": ready\n\n"
+        if not self.message_sent.is_set() and "send:user.interrupt" not in (
+            self.log
+        ):
+            await self.message_sent.wait()
+        for item in script:
+            if item is DROP:
+                raise httpx.ReadError("stream dropped")
+            if item is STALL:
+                # What httpx raises when no heartbeat arrives in time.
+                raise httpx.ReadTimeout("no data within the read timeout")
+            if item is HANG:
+                await asyncio.sleep(3600)
+            if isinstance(item, Gap):
+                self.history.append(item.event)
+                continue
+            if isinstance(item, str):
+                yield item.encode()
+                continue
+            self.history.append(item)
+            yield f"data: {json.dumps(item)}\n\n".encode()
+
+
+def _provider(fake: FakeModelArk, **overrides: Any) -> ModelArkAgentsProvider:
+    return ModelArkAgentsProvider(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+        agent_id=overrides.get("agent_id", "agent-1"),
+        environment_id=overrides.get("environment_id", "env-1"),
+        transport=fake.transport(),
+    )
+
+
+def _session(**kwargs: Any) -> RemoteSubAgentSession:
+    return RemoteSubAgentSession(
+        session_id="local-session",
+        provider="modelark_agents",
+        api_task_id="task-1",
+        **kwargs,
+    )
+
+
+def _request(**kwargs: Any) -> RemoteSubAgentRequest:
+    return RemoteSubAgentRequest(
+        api_task_id="task-1",
+        prompt=kwargs.pop("prompt", "analyse this"),
+        provider="modelark_agents",
+        **kwargs,
+    )
+
+
+async def _collect(provider, request=None, session=None):
+    return [
+        event
+        async for event in provider.run(
+            request or _request(), session or _session()
+        )
+    ]
+
+
+def _output(events) -> str:
+    return "".join(
+        event.content or ""
+        for event in events
+        if event.event_type is RemoteSubAgentEventType.OUTPUT_DELTA
+    )
+
+
+@pytest.mark.asyncio
+async def test_turn_opens_stream_before_sending_and_maps_events():
+    fake = FakeModelArk(
+        [
+            [
+                {"id": "e1", "type": "session.status_running"},
+                {
+                    "id": "e2",
+                    "type": "agent.thinking",
+                    "content": [{"type": "text", "text": "planning"}],
+                },
+                {
+                    "id": "e3",
+                    "type": "agent.tool_use",
+                    "name": "bash",
+                    "input": {"command": "ls"},
+                },
+                {
+                    "id": "e4",
+                    "type": "agent.tool_result",
+                    "tool_use_id": "e3",
+                    "is_error": False,
+                },
+                {
+                    "id": "e5",
+                    "type": "agent.mcp_tool_use",
+                    "mcp_server_name": "github",
+                    "name": "search",
+                },
+                _message("Checked the files.", "e6"),
+                {
+                    "id": "e7",
+                    "type": "span.model_request_end",
+                    "model_usage": {"input_tokens": 100, "output_tokens": 20},
+                },
+                {
+                    "id": "e8",
+                    "type": "span.model_request_end",
+                    "model_usage": {"input_tokens": 50, "output_tokens": 5},
+                },
+                _message("All done.", "e9"),
+                _idle("end_turn"),
+            ]
+        ]
+    )
+
+    events = await _collect(_provider(fake))
+
+    assert fake.log == ["create_session", "open_stream", "send:user.message"]
+    create = json.loads(fake.requests[0].content)
+    assert create == {
+        "agent": "agent-1",
+        "environment_id": "env-1",
+        "title": "Eigent sub-agent task",
+    }
+    assert all(
+        request.headers["Authorization"] == f"Bearer {API_KEY}"
+        for request in fake.requests
+    )
+    assert fake.sent_events == [
+        {
+            "type": "user.message",
+            "content": [{"type": "text", "text": "analyse this"}],
+        }
+    ]
+
+    assert events[0].event_type is RemoteSubAgentEventType.SESSION_UPDATED
+    assert events[0].interaction_id == "sesn-new"
+    assert events[0].environment_id == "env-1"
+    types = [event.event_type for event in events]
+    assert RemoteSubAgentEventType.THOUGHT_DELTA in types
+    tools = [
+        event
+        for event in events
+        if event.event_type is RemoteSubAgentEventType.TOOL_EVENT
+    ]
+    assert [(tool.content, tool.status) for tool in tools] == [
+        ("bash", "tool_use"),
+        (None, "tool_result"),
+        ("github.search", "tool_use"),
+    ]
+    assert _output(events) == "Checked the files.\n\nAll done."
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+    assert events[-1].usage == {
+        "input_tokens": 150,
+        "output_tokens": 25,
+        "total_tokens": 175,
+    }
+
+
+@pytest.mark.asyncio
+async def test_system_instruction_travels_with_the_message():
+    fake = FakeModelArk([[_message("ok", "m1"), _idle("end_turn")]])
+
+    await _collect(
+        _provider(fake),
+        request=_request(system_instruction="Answer in French."),
+    )
+
+    text = fake.sent_events[0]["content"][0]["text"]
+    assert text.startswith("<system_instruction>\nAnswer in French.\n")
+    assert text.endswith("analyse this")
+    assert all(event["type"] != "system.message" for event in fake.sent_events)
+
+
+@pytest.mark.asyncio
+async def test_follow_up_reuses_the_session_through_the_runtime():
+    fake = FakeModelArk(
+        [
+            [_message("first", "m1"), _idle("end_turn", "i1")],
+            [_message("second", "m2"), _idle("end_turn", "i2")],
+        ]
+    )
+    store = RemoteSubAgentSessionStore()
+    policy = RemoteSubAgentPolicy(
+        enabled=True, allowed_providers=("modelark_agents",)
+    )
+    runtime = RemoteSubAgentRuntime(
+        provider=_provider(fake), policy=policy, session_store=store
+    )
+
+    first = await runtime.run(_request(prompt="one"))
+    fake.message_sent.clear()
+    second = await runtime.run(_request(prompt="two"))
+
+    assert first.final_text == "first"
+    assert second.final_text == "second"
+    assert first.session.remote_interaction_id == "sesn-new"
+    assert second.session.remote_interaction_id == "sesn-new"
+    assert fake.log.count("create_session") == 1
+    assert fake.log[3:] == [
+        "get_session",
+        "open_stream",
+        "send:user.message",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "agent_id", "environment_id"),
+    [
+        ("terminated", "agent-1", "env-1"),
+        ("failed", "agent-1", "env-1"),
+        (None, "agent-1", "env-1"),
+        ("idle", "agent-2", "env-1"),
+        ("idle", "agent-1", "env-2"),
+    ],
+)
+async def test_unusable_saved_session_starts_a_new_one(
+    status, agent_id, environment_id
+):
+    fake = FakeModelArk(
+        [[_message("ok", "m1"), _idle("end_turn")]], session_status=status
+    )
+    session = _session(
+        remote_interaction_id="sesn-old",
+        remote_environment_id="env-1",
+        metadata={"modelark_agent_id": "agent-1"},
+    )
+
+    events = await _collect(
+        _provider(fake, agent_id=agent_id, environment_id=environment_id),
+        session=session,
+    )
+
+    assert "create_session" in fake.log
+    assert events[0].interaction_id == "sesn-new"
+    assert session.metadata["modelark_agent_id"] == agent_id
+
+
+@pytest.mark.asyncio
+async def test_busy_saved_session_is_interrupted_before_the_message():
+    fake = FakeModelArk(
+        [
+            [
+                _message("old turn", "old-1"),
+                _idle("end_turn", "old-idle"),
+                _message("new turn", "m1"),
+                _idle("end_turn"),
+            ]
+        ],
+        session_status="running",
+    )
+    session = _session(
+        remote_interaction_id="sesn-old",
+        remote_environment_id="env-1",
+        metadata={"modelark_agent_id": "agent-1"},
+    )
+
+    events = await _collect(_provider(fake), session=session)
+
+    assert fake.log == [
+        "get_session",
+        "open_stream",
+        "send:user.interrupt",
+        "get_session",
+        "send:user.message",
+    ]
+    assert _output(events) == "new turn"
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("script", "expected"),
+    [
+        ([_idle("requires_action")], "tool permission policy"),
+        (
+            [
+                {
+                    "id": "err",
+                    "type": "session.error",
+                    "error": {
+                        "message": "model overloaded",
+                        "retry_status": {"type": "exhausted"},
+                    },
+                },
+                _idle("retries_exhausted"),
+            ],
+            "retries ran out: model overloaded",
+        ),
+        (
+            [{"id": "t1", "type": "session.status_terminated"}],
+            "session was ended",
+        ),
+        ([{"id": "d1", "type": "session.deleted"}], "session was deleted"),
+        (
+            [
+                {
+                    "id": "err",
+                    "type": "session.error",
+                    "error": {
+                        "message": "sandbox lost",
+                        "retry_status": {"type": "terminal"},
+                    },
+                }
+            ],
+            "stopped with an error: sandbox lost",
+        ),
+        ([_idle(None)], "stop reason: missing"),
+    ],
+)
+async def test_turn_end_states_fail_the_hand_off(script, expected):
+    fake = FakeModelArk([script])
+
+    events = await _collect(_provider(fake))
+
+    assert events[-1].event_type is RemoteSubAgentEventType.FAILED
+    assert expected in events[-1].content
+
+
+@pytest.mark.asyncio
+async def test_failed_turn_raises_through_the_runtime():
+    fake = FakeModelArk([[_idle("requires_action")]])
+    runtime = RemoteSubAgentRuntime(
+        provider=_provider(fake),
+        policy=RemoteSubAgentPolicy(
+            enabled=True, allowed_providers=("modelark_agents",)
+        ),
+        session_store=RemoteSubAgentSessionStore(),
+    )
+
+    with pytest.raises(RuntimeError, match="tool permission policy"):
+        await runtime.run(_request())
+
+
+@pytest.mark.asyncio
+async def test_retrying_error_keeps_reading_until_the_turn_ends():
+    fake = FakeModelArk(
+        [
+            [
+                {
+                    "id": "err",
+                    "type": "session.error",
+                    "error": {
+                        "message": "rate limited",
+                        "retry_status": {"type": "retrying"},
+                    },
+                },
+                {"id": "r1", "type": "session.status_rescheduled"},
+                _message("recovered", "m1"),
+                _idle("end_turn"),
+            ]
+        ]
+    )
+
+    events = await _collect(_provider(fake))
+
+    assert _output(events) == "recovered"
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_dropped_stream_reconnects_and_backfills_without_duplicates(
+    monkeypatch,
+):
+    monkeypatch.setattr(f"{MODULE}._HISTORY_PAGE_SIZE", 2)
+    fake = FakeModelArk(
+        [
+            [
+                _message("part one", "m1"),
+                Gap({"id": "t1", "type": "agent.tool_use", "name": "bash"}),
+                Gap(_message("part two", "m2")),
+                DROP,
+            ],
+            [_idle("end_turn")],
+        ]
+    )
+
+    events = await _collect(_provider(fake))
+
+    assert fake.log == [
+        "create_session",
+        "open_stream",
+        "send:user.message",
+        "open_stream",
+        "list_events",
+        "list_events",
+    ]
+    assert fake.history_params[0] == {"order": "desc", "limit": "2"}
+    assert fake.history_params[1] == {
+        "order": "desc",
+        "limit": "2",
+        "page": "2",
+    }
+    assert _output(events) == "part one\n\npart two"
+    assert any(event.status == "tool_use" for event in events)
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_backfill_can_finish_the_turn():
+    fake = FakeModelArk(
+        [[_message("answer", "m1"), Gap(_idle("end_turn"))], [HANG]]
+    )
+
+    events = await _collect(_provider(fake))
+
+    assert _output(events) == "answer"
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("receipt_ids", [True, False])
+async def test_follow_up_backfill_ignores_earlier_turns(receipt_ids):
+    """A reused session's history starts with earlier turns.
+
+    Their answer and end_turn must not end this hand-off after a drop.
+    """
+    fake = FakeModelArk(
+        [
+            [
+                _message("new part one", "m1"),
+                Gap(_message("new part two", "m2")),
+                DROP,
+            ],
+            [_idle("end_turn", "new-idle")],
+        ],
+        history=[
+            {
+                "id": "old-user",
+                "type": "user.message",
+                "content": [{"type": "text", "text": "earlier task"}],
+            },
+            _message("old answer", "old-1"),
+            _idle("end_turn", "old-idle"),
+        ],
+        receipt_ids=receipt_ids,
+    )
+    session = _session(
+        remote_interaction_id="sesn-old",
+        remote_environment_id="env-1",
+        metadata={"modelark_agent_id": "agent-1"},
+    )
+
+    events = await _collect(_provider(fake), session=session)
+
+    assert "create_session" not in fake.log
+    assert _output(events) == "new part one\n\nnew part two"
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+    assert events[-1].provider_event_id == "new-idle"
+
+
+@pytest.mark.asyncio
+async def test_backfill_skips_history_without_this_turns_message():
+    """If an earlier message is the newest one, nothing is this turn's."""
+    fake = FakeModelArk(
+        [[_message("new answer", "m1"), DROP], [_idle("end_turn", "i2")]],
+        history=[
+            {"id": "old-user", "type": "user.message", "content": []},
+            _message("old answer", "old-1"),
+            _idle("end_turn", "old-idle"),
+        ],
+    )
+    original = fake.handle
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        response = await original(request)
+        if request.method == "POST" and request.url.path.endswith("/events"):
+            # The message was accepted but is not in the history yet.
+            fake.history = [
+                event
+                for event in fake.history
+                if event.get("type") != "user.message"
+                or event["id"] == "old-user"
+            ]
+        return response
+
+    provider = ModelArkAgentsProvider(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+        agent_id="agent-1",
+        environment_id="env-1",
+        transport=httpx.MockTransport(handle),
+    )
+    session = _session(
+        remote_interaction_id="sesn-old",
+        remote_environment_id="env-1",
+        metadata={"modelark_agent_id": "agent-1"},
+    )
+
+    events = await _collect(provider, session=session)
+
+    assert _output(events) == "new answer"
+    assert events[-1].provider_event_id == "i2"
+
+
+@pytest.mark.asyncio
+async def test_event_stream_has_a_read_timeout():
+    fake = FakeModelArk([[_message("ok", "m1"), _idle("end_turn")]])
+
+    await _collect(_provider(fake))
+
+    assert fake.stream_read_timeouts == [45.0]
+
+
+@pytest.mark.asyncio
+async def test_stalled_stream_reconnects_instead_of_waiting():
+    fake = FakeModelArk(
+        [
+            [
+                _message("part one", "m1"),
+                Gap(_message("part two", "m2")),
+                STALL,
+            ],
+            [_idle("end_turn")],
+        ]
+    )
+
+    events = await _collect(_provider(fake))
+
+    assert fake.log.count("open_stream") == 2
+    assert _output(events) == "part one\n\npart two"
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_stream_that_keeps_dropping_fails_the_hand_off():
+    fake = FakeModelArk([[DROP], [DROP], [DROP], [DROP]])
+
+    events = await _collect(_provider(fake))
+
+    assert fake.log.count("open_stream") == 4
+    assert events[-1].event_type is RemoteSubAgentEventType.FAILED
+    assert "Lost the connection" in events[-1].content
+
+
+@pytest.mark.asyncio
+async def test_stream_error_before_sending_reports_the_api_error():
+    fake = FakeModelArk([], stream_status=401)
+
+    with pytest.raises(RuntimeError, match="401 unauthorized"):
+        await _collect(_provider(fake))
+
+    assert "send:user.message" not in fake.log
+
+
+@pytest.mark.asyncio
+async def test_cancelled_hand_off_interrupts_the_remote_turn():
+    fake = FakeModelArk([[HANG]])
+
+    async def consume():
+        return await _collect(_provider(fake))
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(consume(), timeout=0.2)
+
+    assert fake.log[-1] == "send:user.interrupt"
+
+
+@pytest.mark.asyncio
+async def test_api_key_is_not_logged(caplog):
+    caplog.set_level(logging.DEBUG)
+    fake = FakeModelArk([[_message("ok", "m1"), _idle("end_turn")]])
+
+    await _collect(_provider(fake))
+
+    assert API_KEY not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_validate_connection_reads_agent_and_environment_only():
+    fake = FakeModelArk([])
+
+    data = await _provider(fake).validate_connection()
+
+    assert fake.log == ["get_agents", "get_environments"]
+    assert all(request.method == "GET" for request in fake.requests)
+    assert data["id"] == "agent-1"
+    assert data["environment_id"] == "env-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("missing", "message"),
+    [
+        ("agents", "ModelArk agent 'agent-1' was not found"),
+        ("environments", "ModelArk environment 'env-1' was not found"),
+    ],
+)
+async def test_validate_connection_names_the_missing_resource(
+    missing, message
+):
+    fake = FakeModelArk([], resource_status={missing: 404})
+
+    with pytest.raises(RuntimeError, match=message):
+        await _provider(fake).validate_connection()
+
+
+@pytest.mark.asyncio
+async def test_validate_connection_reports_bad_key():
+    fake = FakeModelArk([], resource_status={"agents": 401})
+
+    with pytest.raises(RuntimeError, match="request failed: 401"):
+        await _provider(fake).validate_connection()
+
+
+@pytest.mark.asyncio
+async def test_missing_settings_fail_before_any_request():
+    fake = FakeModelArk([])
+    provider = ModelArkAgentsProvider(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+        agent_id="agent-1",
+        environment_id="",
+        transport=fake.transport(),
+    )
+
+    with pytest.raises(RuntimeError, match="environment ID"):
+        await _collect(provider)
+
+    assert fake.requests == []
+
+
+@pytest.mark.asyncio
+async def test_network_error_while_sending_fails_instead_of_waiting():
+    fake = FakeModelArk([[HANG]])
+    original = fake.handle
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path.endswith("/events"):
+            raise httpx.ConnectError("connection refused")
+        return await original(request)
+
+    provider = ModelArkAgentsProvider(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+        agent_id="agent-1",
+        environment_id="env-1",
+        transport=httpx.MockTransport(handle),
+    )
+
+    with pytest.raises(RuntimeError, match="Could not send the task"):
+        await asyncio.wait_for(_collect(provider), timeout=5)
+
+    assert fake.log.count("open_stream") == 1
+
+
+@pytest.fixture(autouse=True)
+def no_reconnect_delay(monkeypatch):
+    monkeypatch.setattr(
+        "app.remote_sub_agent.providers.modelark_agents."
+        "_RECONNECT_DELAY_SECONDS",
+        0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_parallel_hand_off_gets_its_own_session():
+    fake = FakeModelArk(
+        [[_message("ok", "m1"), _idle("end_turn")]], session_status="running"
+    )
+    session = _session(
+        remote_interaction_id="sesn-old",
+        remote_environment_id="env-1",
+        metadata={
+            "modelark_agent_id": "agent-1",
+            "modelark_active_turn": "other-hand-off",
+        },
+    )
+
+    events = await _collect(_provider(fake), session=session)
+
+    assert fake.log == ["create_session", "open_stream", "send:user.message"]
+    assert "send:user.interrupt" not in fake.log
+    assert events[0].interaction_id == "sesn-new"
+    assert session.metadata["modelark_active_turn"] == "other-hand-off"
+
+
+@pytest.mark.asyncio
+async def test_turn_marker_is_cleared_after_the_hand_off():
+    fake = FakeModelArk([[_idle("requires_action")]])
+    session = _session()
+
+    await _collect(_provider(fake), session=session)
+
+    assert "modelark_active_turn" not in session.metadata
+
+
+@pytest.mark.asyncio
+async def test_drops_with_progress_do_not_fail_a_long_run():
+    fake = FakeModelArk(
+        [
+            [_message("step 1", "m1"), DROP],
+            [_message("step 2", "m2"), DROP],
+            [_message("step 3", "m3"), DROP],
+            [_message("step 4", "m4"), DROP],
+            [_message("step 5", "m5"), DROP],
+            [_message("done", "m6"), _idle("end_turn")],
+        ]
+    )
+
+    events = await _collect(_provider(fake))
+
+    assert fake.log.count("open_stream") == 6
+    assert events[-1].event_type is RemoteSubAgentEventType.COMPLETED
+    assert _output(events).endswith("step 5\n\ndone")
+
+
+@pytest.mark.asyncio
+async def test_toolkit_hand_off_from_task_start_settings(monkeypatch):
+    """Same settings shape the app sends at task start, through the tool."""
+    from app.agent.toolkit.remote_sub_agent_toolkit import (
+        RemoteSubAgentToolkit,
+    )
+    from app.remote_sub_agent.config import RemoteSubAgentConfig
+
+    fake = FakeModelArk(
+        [
+            [
+                {"id": "e1", "type": "session.status_running"},
+                {"id": "e2", "type": "agent.tool_use", "name": "bash"},
+                _message("Fibonacci saved to fib.txt", "m1"),
+                {
+                    "id": "e3",
+                    "type": "span.model_request_end",
+                    "model_usage": {"input_tokens": 40, "output_tokens": 2},
+                },
+                _idle("end_turn"),
+            ]
+        ]
+    )
+    real_provider = ModelArkAgentsProvider
+
+    def with_fake_transport(**kwargs):
+        return real_provider(**kwargs, transport=fake.transport())
+
+    monkeypatch.setattr(
+        "app.remote_sub_agent.provider_registry.ModelArkAgentsProvider",
+        with_fake_transport,
+    )
+    config = RemoteSubAgentConfig.model_validate(
+        {
+            "enabled": True,
+            "provider": "modelark_agents",
+            "modelark_agents": {
+                "api_key": API_KEY,
+                "base_url": BASE_URL,
+                "agent_name": "agent-1",
+                "environment_id": "env-1",
+                "max_wall_time_seconds": 900,
+            },
+        }
+    )
+    toolkit = RemoteSubAgentToolkit(
+        api_task_id="toolkit-task",
+        working_directory="/tmp/work",
+        remote_sub_agent_config=config,
+    )
+
+    result = await toolkit.run_remote_sub_agent(
+        "Write the first 20 Fibonacci numbers to fib.txt",
+        system_instruction="Keep it short.",
+    )
+
+    assert result.startswith("Fibonacci saved to fib.txt")
+    assert "provider: modelark_agents" in result
+    assert "interaction_id: sesn-new" in result
+    assert "total_tokens: 42" in result
+    sent = fake.sent_events[0]["content"][0]["text"]
+    assert "Keep it short." in sent
+    assert sent.endswith("Write the first 20 Fibonacci numbers to fib.txt")

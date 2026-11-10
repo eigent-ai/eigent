@@ -21,7 +21,6 @@
       "terminal",
       "document",
       "success",
-      "caution",
       "error",
       "warning",
       "information"
@@ -47,9 +46,9 @@
     },
     "state": {
       "default": { "dL": 0, "dC": 0 },
-      "hover": { "dL": -0.03, "dC": 0.01 },
+      "hover": { "dL": -0.07, "dC": 0.01 },
       "active": { "dL": -0.06, "dC": 0.015 },
-      "selected": { "dL": -0.08, "dC": 0.015 },
+      "selected": { "dL": -0.1, "dC": 0.015 },
       "focus": { "dL": -0.05, "dC": 0.03 },
       "disabled": { "dL": 0.08, "dC": -0.03, "alpha": 0.5 }
     },
@@ -89,7 +88,6 @@
     "terminal": { "source": "fixed" },
     "document": { "source": "fixed" },
     "success": { "source": "fixed" },
-    "caution": { "source": "fixed" },
     "error": { "source": "fixed" },
     "warning": { "source": "fixed" },
     "information": { "source": "fixed" }
@@ -192,11 +190,6 @@
       "minContrast": 4.5
     },
     {
-      "fg": "text.caution.strong.default",
-      "bg": "bg.caution.subtle.default",
-      "minContrast": 4.5
-    },
-    {
       "fg": "text.error.strong.default",
       "bg": "bg.error.subtle.default",
       "minContrast": 4.5
@@ -211,5 +204,20 @@
       "bg": "bg.information.subtle.default",
       "minContrast": 4.5
     }
-  ]
+  ],
+  "publicGroups": {
+    "accent": { "tone": "brand", "element": "bg" },
+    "neutral": { "tone": "neutral", "element": "bg" },
+    "ink": { "tone": "neutral", "element": "text" },
+    "hairline": { "tone": "neutral", "element": "border" }
+  },
+  "publicEmphasis": ["subtle", "muted", "default", "strong"],
+  "publicStates": ["default", "hover", "disabled", "selected"],
+  "foregroundPairGroups": ["accent", "neutral"],
+  "perceptualGates": {
+    "hoverDeltaEOK": 0.06,
+    "selectedDeltaEOK": 0.08,
+    "minFillLightness": 0.05,
+    "minForegroundContrast": 4.5
+  }
 }

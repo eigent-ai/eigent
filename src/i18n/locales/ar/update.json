@@ -1,6 +1,6 @@
 {
   "update-check-failed": "فشل التحقق من التحديث",
-  "new-version-available": "في اصدار جديد",
+  "new-version-available": "يتوفر إصدار جديد",
   "update": "تحديث",
   "download": "تنزيل",
   "update-error": "خطأ في التحديث",
@@ -9,7 +9,7 @@
   "download-completed": "اكتمل التنزيل",
   "click-to-install-update": "انقر لتثبيت التحديث",
   "install": "تثبيت",
-  "downloading": "Downloading update",
-  "launch-new-version": "Launch new version",
-  "update-failed-retry": "Update failed — click to retry"
+  "downloading": "جارٍ تنزيل التحديث",
+  "launch-new-version": "تشغيل الإصدار الجديد",
+  "update-failed-retry": "فشل التحديث — انقر لإعادة المحاولة"
 }

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
@@ -80,19 +81,19 @@ export function FoldedView({
       exit={planBlurFadeMotion.exit}
       transition={planBlurFadeMotion.transition}
       className={cn(
-        'relative mx-sm flex flex-col overflow-hidden rounded-2xl bg-ds-bg-splitting-subtle-default'
+        'relative flex flex-col overflow-hidden rounded-2xl bg-ds-bg-splitting-subtle-default'
       )}
     >
-      <div className="flex items-center gap-2 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 py-2">
+      <div className="flex items-center gap-2 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 py-2">
         <div className="flex min-w-0 flex-1 items-center justify-start truncate text-left">
           {isSplitting ? (
             <ShinyText
               text={headerText}
-              className="block w-full truncate text-left !text-body-sm !font-bold"
+              className="block w-full truncate text-left !text-ds-text-base !font-bold"
               speed={3}
             />
           ) : (
-            <div className="w-full truncate text-left text-body-sm font-bold text-ds-text-neutral-default-default">
+            <div className="w-full truncate text-left text-ds-text-base font-bold text-ds-ink-default-default">
               {headerText}
             </div>
           )}
@@ -106,7 +107,7 @@ export function FoldedView({
             onClick={onExpand}
             aria-label={t('chat.expand-plan')}
           >
-            <Maximize2 size={14} />
+            <DsIcon icon={Maximize2} />
           </Button>
         ) : null}
       </div>
@@ -131,20 +132,22 @@ export function FoldedView({
                 key={row.key}
                 className="flex items-start gap-2 py-1.5 duration-300 animate-in fade-in-0 slide-in-from-left-2"
               >
-                <div className="flex h-4 flex-shrink-0 items-center justify-center pt-0.5">
+                <div className="flex h-4 shrink-0 items-center justify-center pt-0.5">
                   {row.streaming ? (
-                    <Circle
-                      size={13}
+                    <DsIcon
+                      icon={Circle}
+                      recipe="main-compact"
                       className="text-ds-icon-status-splitting-default-default"
                     />
                   ) : (
-                    <CircleDashed
-                      size={13}
-                      className="text-ds-icon-neutral-muted-default"
+                    <DsIcon
+                      icon={CircleDashed}
+                      recipe="main-compact"
+                      className="text-ds-ink-muted-default"
                     />
                   )}
                 </div>
-                <span className="min-w-0 flex-1 text-label-xs text-ds-text-neutral-default-default">
+                <span className="min-w-0 flex-1 text-ds-text-meta text-ds-ink-default-default">
                   {row.content}
                 </span>
               </div>

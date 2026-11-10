@@ -40,6 +40,29 @@ env_base_dir = os.path.join(os.path.expanduser("~"), ".eigent")
 default_env_path = os.path.join(env_base_dir, ".env")
 
 
+def _restrict_env_file_permissions(path: str | os.PathLike[str]) -> None:
+    """Restrict a user env file to owner read/write (0600) on POSIX.
+
+    Best-effort: permission errors must not prevent loading credentials.
+    Only files under env_base_dir are changed.
+    """
+    if os.name != "posix":
+        return
+    try:
+        resolved = Path(path).expanduser().resolve()
+        resolved.relative_to(Path(env_base_dir).resolve())
+    except (ValueError, OSError):
+        return
+    try:
+        os.chmod(resolved, 0o600)
+    except OSError as exc:
+        logger.warning(
+            "Failed to restrict permissions on env file %s: %s",
+            resolved,
+            exc,
+        )
+
+
 def _resolve_initial_env_paths() -> tuple[Path, ...]:
     backend_dir = Path(__file__).resolve().parents[2]
     repo_root = backend_dir.parent
@@ -75,6 +98,7 @@ def _load_initial_env_files(paths: Iterable[Path]) -> list[Path]:
         seen.add(resolved_key)
         if not resolved.exists():
             continue
+        _restrict_env_file_permissions(resolved)
         load_dotenv(dotenv_path=resolved, override=True)
         loaded_paths.append(resolved)
 
@@ -190,6 +214,7 @@ def set_user_env_path(env_path: str | None = None):
     )
 
     if safe_env_path and os.path.exists(safe_env_path):
+        _restrict_env_file_permissions(safe_env_path)
         _thread_local.env_path = safe_env_path
         # Load user-specific environment variables
         load_dotenv(dotenv_path=safe_env_path, override=True)
@@ -199,6 +224,9 @@ def set_user_env_path(env_path: str | None = None):
         if hasattr(_thread_local, "env_path"):
             delattr(_thread_local, "env_path")
         logger.info("Reset to default global environment")
+
+        if os.path.exists(default_env_path):
+            _restrict_env_file_permissions(default_env_path)
 
         if env_path and not safe_env_path:
             logger.warning(

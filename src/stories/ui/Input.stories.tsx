@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Eye, EyeOff, Search } from 'lucide-react';
@@ -128,7 +129,7 @@ export const SmallSize: Story = {
 export const WithLeadingIcon: Story = {
   args: {
     placeholder: 'Search...',
-    leadingIcon: <Search size={16} />,
+    leadingIcon: <DsIcon icon={Search} />,
   },
 };
 
@@ -140,7 +141,9 @@ export const WithBackIcon: Story = {
         title="Password"
         type={showPassword ? 'text' : 'password'}
         placeholder="Enter password"
-        backIcon={showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+        backIcon={
+          showPassword ? <DsIcon icon={EyeOff} /> : <DsIcon icon={Eye} />
+        }
         onBackIconClick={() => setShowPassword(!showPassword)}
       />
     );
@@ -149,7 +152,7 @@ export const WithBackIcon: Story = {
 
 export const AllStates: Story = {
   render: () => (
-    <div className="gap-4 flex flex-col">
+    <div className="flex flex-col gap-4">
       <Input title="Default" state="default" placeholder="Default state" />
       <Input title="Hover" state="hover" placeholder="Hover state" />
       <Input title="Input" state="input" placeholder="Input state" />
@@ -173,7 +176,7 @@ export const AllStates: Story = {
 export const FormExample: Story = {
   render: () => (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-ds-text-neutral-default-default">
+      <h3 className="text-lg font-semibold text-ds-ink-default-default">
         Contact Form
       </h3>
       <Input title="Full Name" placeholder="John Doe" required />
@@ -283,7 +286,9 @@ export const PasswordToggleInteraction: Story = {
         type={showPassword ? 'text' : 'password'}
         placeholder="Enter password"
         defaultValue="secret123"
-        backIcon={showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+        backIcon={
+          showPassword ? <DsIcon icon={EyeOff} /> : <DsIcon icon={Eye} />
+        }
         onBackIconClick={() => setShowPassword(!showPassword)}
       />
     );

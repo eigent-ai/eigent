@@ -118,7 +118,7 @@ export function update(win: Electron.BrowserWindow) {
  * Registers update-related IPC handlers
  * Should be called once when the app starts
  */
-export function registerUpdateIpcHandlers() {
+export function registerUpdateIpcHandlers(beforeQuitAndInstall?: () => void) {
   // Checking for updates - errors are silent since users can't act on them
   ipcMain.handle('check-update', async () => {
     try {
@@ -162,6 +162,7 @@ export function registerUpdateIpcHandlers() {
 
   // Install now
   ipcMain.handle('quit-and-install', () => {
+    beforeQuitAndInstall?.();
     autoUpdater.quitAndInstall(false, true);
   });
 

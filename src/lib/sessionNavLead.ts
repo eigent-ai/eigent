@@ -22,6 +22,8 @@
  *   (e.g. splitting is a decomposition phase, not a raw `ChatTaskStatus` value).
  */
 
+import { getAnsweredAskInteractionIds } from '@/lib/humanInteractionMessages';
+import type { ProjectedRun, ProjectViewState } from '@/lib/projector';
 import {
   getBottomBoxStateForTask,
   getTaskListShelfTone,
@@ -29,8 +31,8 @@ import {
 } from '@/lib/taskLifecycleUi';
 import type { ChatStore } from '@/store/chatStore';
 import {
+  AgentStep,
   ChatTaskStatus,
-  SessionMode,
   TaskStatus,
   type TaskStatusType,
 } from '@/types/constants';
@@ -41,10 +43,8 @@ import {
   CircleCheckBig,
   CircleSlash,
   ClipboardList,
-  Hand,
   LoaderCircle,
   MessageCircle,
-  TriangleAlert,
 } from 'lucide-react';
 
 export type SessionNavLeadKind =
@@ -94,18 +94,18 @@ const SESSION_NAV_LEAD_BY_KIND: Record<
 > = {
   error: {
     Icon: CircleSlash,
-    iconClassName: '!text-ds-icon-caution-default-default',
+    iconClassName: '!text-ds-icon-error-default-default',
   },
   warning: {
     Icon: AlertTriangle,
     iconClassName: '!text-ds-icon-warning-default-default',
   },
   hitl: {
-    Icon: Hand,
-    iconClassName: '!text-ds-icon-status-splitting-default-default',
+    Icon: AlertTriangle,
+    iconClassName: '!text-ds-icon-warning-default-default',
   },
   blocked: {
-    Icon: TriangleAlert,
+    Icon: AlertTriangle,
     iconClassName: '!text-ds-icon-warning-default-default',
   },
   splitting: {
@@ -123,11 +123,20 @@ const SESSION_NAV_LEAD_BY_KIND: Record<
   },
   idle: {
     Icon: MessageCircle,
-    iconClassName: '!text-ds-icon-neutral-default-default',
+    iconClassName: '!text-ds-ink-default-default',
   },
 };
 
-function presentationForKind(
+/**
+ * Whether a lead is a settled result, which a person reads once. Live work and
+ * open questions stay on show until they change.
+ */
+export function isSessionOutcomeKind(kind: SessionNavLeadKind): boolean {
+  return kind === 'finished' || kind === 'error' || kind === 'warning';
+}
+
+/** Presentation of a lead kind, for example one reported by another window. */
+export function presentationForKind(
   kind: SessionNavLeadKind,
   spin = false
 ): SessionNavLeadPresentation {
@@ -143,7 +152,7 @@ function presentationForKind(
 export const SESSION_NAV_IDLE_LEAD: SessionNavLeadPresentation =
   presentationForKind('idle');
 
-/** Map authoritative server history status to the final sidebar icon (no replay). */
+/** Legacy `done` means closed, not successful. Wait for a canonical outcome. */
 export function getSessionNavLeadFromHistoryTask(
   task: Pick<HistoryTask, 'status' | 'summary'>
 ): SessionNavLeadPresentation {
@@ -151,12 +160,9 @@ export function getSessionNavLeadFromHistoryTask(
   if (summary.startsWith(STOPPED_BY_USER_SUMMARY_PREFIX)) {
     return SESSION_NAV_IDLE_LEAD;
   }
-  if (task.status === HISTORY_TASK_STATUS_DONE) {
-    return presentationForKind('finished');
-  }
   // ONGOING (1) means the backend never finalized the status (e.g. app closed
-  // mid-run). We cannot confirm the task is actually running without a full
-  // replay, so we resolve to idle rather than a perpetual animated spinner.
+  // mid-run). We cannot confirm the task is actually running without canonical
+  // evidence, so we resolve to idle rather than a perpetual animated spinner.
   // Genuinely-live tasks get their spinner from the chat-store subscription.
   return SESSION_NAV_IDLE_LEAD;
 }
@@ -175,16 +181,69 @@ export function getSessionNavLeadFromHistoryProject(
   if (project.total_ongoing_tasks > 0) {
     return SESSION_NAV_IDLE_LEAD;
   }
-  if (project.total_completed_tasks > 0) {
-    return presentationForKind('finished');
-  }
   return SESSION_NAV_IDLE_LEAD;
 }
 
+/** Canonical Run outcomes take precedence over compatibility completion flags. */
+export function getSessionNavLeadFromRunStatus(
+  status: string
+): SessionNavLeadPresentation | undefined {
+  switch (status) {
+    case 'completed':
+      return presentationForKind('finished');
+    case 'failed':
+    case 'timed_out':
+      return presentationForKind('error');
+    case 'interrupted':
+      return presentationForKind('warning');
+    case 'cancelled':
+    case 'stopped':
+    case 'pending':
+      return SESSION_NAV_IDLE_LEAD;
+    case 'waiting_for_user':
+      return presentationForKind('hitl');
+    case 'running':
+    case 'cancelling':
+      return presentationForKind('running', true);
+    default:
+      return undefined;
+  }
+}
+
+/** Same-Run versions reconcile the two existing read models; never borrow a sibling Run. */
+export function selectSessionNavRun(
+  projectId: string,
+  views: (ProjectViewState | null | undefined)[],
+  taskId?: string | null
+): ProjectedRun | undefined {
+  const runs = new Map<string, ProjectedRun>();
+  for (const view of views) {
+    if (view?.projectId !== projectId) continue;
+    for (const run of Object.values(view.runs)) {
+      // Legacy END frames also project `completed`, but have no canonical
+      // lifecycle version. They cannot override an interrupted ChatTask.
+      if (run.runVersion === 0) continue;
+      if (taskId && run.runId !== taskId) continue;
+      const existing = runs.get(run.runId);
+      if (
+        !existing ||
+        run.runVersion > existing.runVersion ||
+        (run.runVersion === existing.runVersion &&
+          run.lastSequence > existing.lastSequence)
+      ) {
+        runs.set(run.runId, run);
+      }
+    }
+  }
+  return [...runs.values()].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt)
+  )[0];
+}
+
 /**
- * Sidebar project rows: prefer cached/history lead while hydrating; otherwise live task state.
+ * Sidebar session rows: prefer cached/history lead while hydrating; otherwise live task state.
  */
-export function resolveProjectNavLeadPresentation(options: {
+export function resolveSessionNavLeadPresentation(options: {
   activeTask?: TaskRow;
   cachedLead?: SessionNavLeadPresentation;
   isHistoryLoading?: boolean;
@@ -206,27 +265,74 @@ export function resolveProjectNavLeadPresentation(options: {
   return SESSION_NAV_IDLE_LEAD;
 }
 
+function isShareOrFinishedWithoutLiveWait(task: TaskRow): boolean {
+  if (task.type === 'share') return true;
+  if (task.durableRunStatus === 'waiting_for_user') return false;
+  return task.type === 'replay' || task.status === ChatTaskStatus.FINISHED;
+}
+
+function hasUnresolvedAskMessage(task: TaskRow): boolean {
+  const messages = Array.isArray(task.messages) ? task.messages : [];
+  const resolved = new Set(task.resolvedInteractionIds ?? []);
+  const answered = getAnsweredAskInteractionIds(messages);
+  return messages.some((message) => {
+    if (message.step !== AgentStep.ASK) return false;
+    const interactionId = message.interaction?.interaction_id;
+    if (!interactionId) return false;
+    return !resolved.has(interactionId) && !answered.has(interactionId);
+  });
+}
+
 /**
- * Priority: error → warning → hitl → blocked → splitting → running → finished → idle.
+ * Any composer/timeline pause that needs a person: Human Toolkit, approval,
+ * question, form, plan confirm, or a durable `waiting_for_user` Run.
+ */
+function isAwaitingHumanInput(task: TaskRow): boolean {
+  if (isShareOrFinishedWithoutLiveWait(task)) return false;
+  // The answer was submitted and the Run has already resumed locally. Legacy
+  // ASK fields are cleared only after durable reconciliation, so they must not
+  // hold the sidebar Alert icon during that network interval.
+  if (task.isPending && task.durableRunStatus === 'running') return false;
+  if (task.activeAsk) return true;
+  if (task.durableRunStatus === 'waiting_for_user') return true;
+  if (task.hasWaitComfirm) return true;
+  if (getBottomBoxStateForTask(task) === 'confirm') return true;
+  if ((task.askList?.length ?? 0) > 0) return true;
+  return hasUnresolvedAskMessage(task);
+}
+
+/**
+ * Canonical outcome first; legacy fallback: error → warning → hitl → blocked
+ * → splitting → running → finished → idle.
  */
 export function getSessionNavLeadPresentation(
   task: TaskRow
 ): SessionNavLeadPresentation {
+  const durableStatus = task.durableRunStatus;
+  if (
+    durableStatus &&
+    ([
+      'completed',
+      'failed',
+      'cancelled',
+      'timed_out',
+      'interrupted',
+      'stopped',
+    ].includes(durableStatus) ||
+      task.type === 'replay' ||
+      task.status === ChatTaskStatus.FINISHED)
+  ) {
+    const canonical = getSessionNavLeadFromRunStatus(durableStatus);
+    if (canonical) return canonical;
+  }
   const wf = workforceStatuses(task);
   const errorSignal =
     isTaskListRowHardFailure(task) || wf.some((s) => s === TaskStatus.FAILED);
   const warningSignal = Boolean(task.isContextExceeded) && !errorSignal;
-  // Single agent runs directly — no splitting/confirm step. Its sidebar icon
-  // tracks the task status only: chat bubble while preparing, running spinner
-  // while executing, check when finished — matching the chat container.
-  const isSingleAgent = task.sessionMode === SessionMode.SINGLE_AGENT;
-  const bottom = getBottomBoxStateForTask(task);
-  // Human-in-the-loop = an unconfirmed plan or an explicit `ask` / `wait_confirm`.
+  // Human-in-the-loop covers every input-required pause in the chat timeline.
   // A workforce subtask in WAITING means "assigned, not yet started" — a normal
-  // running-phase state — so it must NOT surface the Hand icon while running.
-  // Single agent has no plan/confirm step, so it never shows the HITL icon.
-  const hitlSignal =
-    !isSingleAgent && (bottom === 'confirm' || Boolean(task.hasWaitComfirm));
+  // running-phase state — so it must NOT replace the spinner with an Alert.
+  const hitlSignal = isAwaitingHumanInput(task);
   const blockedSignal = wf.some((s) => s === TaskStatus.BLOCKED);
   const shelf = getTaskListShelfTone(task);
 
@@ -248,7 +354,11 @@ export function getSessionNavLeadPresentation(
     task.status === ChatTaskStatus.PAUSE
   ) {
     kind = 'running';
-  } else if (task.status === ChatTaskStatus.FINISHED && task.type !== '') {
+  } else if (
+    task.status === ChatTaskStatus.FINISHED &&
+    task.type !== '' &&
+    task.type !== 'replay'
+  ) {
     kind = 'finished';
   } else {
     kind = 'idle';

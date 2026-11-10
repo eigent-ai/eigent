@@ -30,6 +30,7 @@ from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.markitdown_toolkit import MarkItDownToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -38,7 +39,7 @@ from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-from app.agent.utils import NOW_STR
+from app.agent.utils import agent_current_time
 from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
@@ -151,11 +152,17 @@ async def document_agent(
         tool_names.append(SearchToolkit.toolkit_name())
     else:
         search_tools = []
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.document_agent,
+    )
     system_message = DOCUMENT_SYS_PROMPT.format(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
-        now_str=NOW_STR,
+        now_str=agent_current_time(options),
     )
     system_message = append_connected_app_mcp_notice(system_message)
     system_message = attach_remote_sub_agent_if_enabled(

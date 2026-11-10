@@ -3,6 +3,19 @@
   "productName": "Eigent",
   "appId": "com.eigent.app",
   "asar": true,
+  "electronLanguages": [
+    "ar",
+    "de",
+    "en-US",
+    "es",
+    "fr",
+    "it",
+    "ja",
+    "ko",
+    "ru",
+    "zh-CN",
+    "zh-TW"
+  ],
   "asarUnpack": ["node_modules/node-pty/**"],
   "directories": {
     "output": "release"
@@ -97,6 +110,19 @@
       ".*\\.map$"
     ],
     "extendInfo": {
+      "CFBundleLocalizations": [
+        "ar",
+        "de",
+        "en",
+        "es",
+        "fr",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "zh-Hans",
+        "zh-Hant"
+      ],
       "CFBundleURLTypes": [
         {
           "CFBundleURLName": "com.eigent.app",

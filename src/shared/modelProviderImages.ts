@@ -22,6 +22,7 @@ import ernieImage from '@/assets/model/ernie.png';
 import geminiImage from '@/assets/model/gemini.svg';
 import llamaCppImage from '@/assets/model/llamacpp.svg';
 import lmstudioImage from '@/assets/model/lmstudio.svg';
+import metaImage from '@/assets/model/meta.svg';
 import minimaxImage from '@/assets/model/minimax.svg';
 import modelarkImage from '@/assets/model/modelark.svg';
 import moonshotImage from '@/assets/model/moonshot.svg';
@@ -37,7 +38,7 @@ import {
   DARK_FILL_MODELS,
   LLAMA_CPP_PROVIDER_ID,
   PROVIDER_AVATAR_URLS,
-} from '@/pages/Agents/localModels';
+} from '@/components/Settings/Models/localModels';
 
 const MODEL_PROVIDER_IMAGE_MAP: Record<string, string> = {
   cloud: eigentImage,
@@ -46,6 +47,7 @@ const MODEL_PROVIDER_IMAGE_MAP: Record<string, string> = {
   'ant-ling': antLingImage,
   anthropic: anthropicImage,
   gemini: geminiImage,
+  meta: metaImage,
   nebius: PROVIDER_AVATAR_URLS.nebius,
   openrouter: openrouterImage,
   orcarouter: orcarouterImage,

@@ -24,6 +24,7 @@ import logging
 from pathlib import Path
 from typing import TypedDict
 
+import yaml
 from camel.toolkits.skill_toolkit import SkillToolkit as BaseSkillToolkit
 
 from app.service.skill_config_service import canonical_skill_config_user_id
@@ -269,6 +270,7 @@ class SkillToolkit(BaseSkillToolkit):
         working_directory: str | None = None,
         user_id: str | None = None,
         timeout: float | None = None,
+        pinned_skill_sources: dict[str, str] | None = None,
     ) -> None:
         """Initialize SkillToolkit with Eigent-specific context.
 
@@ -282,13 +284,26 @@ class SkillToolkit(BaseSkillToolkit):
         self.api_task_id = api_task_id
         self.agent_name = agent_name
         self.user_id = user_id
+        self._pinned_skill_sources = (
+            dict(pinned_skill_sources)
+            if pinned_skill_sources is not None
+            else None
+        )
         resolved_wd = (
             Path(working_directory).resolve()
             if working_directory
             else Path.cwd().resolve()
         )
-        config = _get_merged_skill_config(resolved_wd, self.user_id)
-        allowed_skills = _build_allowed_skills(config, self.agent_name)
+        config = (
+            _get_merged_skill_config(resolved_wd, self.user_id)
+            if self._pinned_skill_sources is None
+            else {}
+        )
+        allowed_skills = (
+            _build_allowed_skills(config, self.agent_name)
+            if self._pinned_skill_sources is None
+            else None
+        )
         logger.info(
             f"Initialized SkillToolkit for agent '{agent_name}' "
             f"in task '{api_task_id}' (user_id={user_id or 'legacy'})"
@@ -298,6 +313,65 @@ class SkillToolkit(BaseSkillToolkit):
             allowed_skills=allowed_skills,
             timeout=timeout,
         )
+
+    def _scan_skills(self) -> dict[str, dict[str, str]]:
+        if self._pinned_skill_sources is None:
+            return super()._scan_skills()
+        skills: dict[str, dict[str, str]] = {}
+        for path_text, contents in self._pinned_skill_sources.items():
+            frontmatter, _ = self._split_frontmatter(contents)
+            if frontmatter is None:
+                continue
+            try:
+                metadata = yaml.safe_load(frontmatter) or {}
+            except yaml.YAMLError:
+                continue
+            if not isinstance(metadata, dict):
+                continue
+            name = metadata.get("name")
+            description = metadata.get("description")
+            if not isinstance(name, str) or not isinstance(description, str):
+                continue
+            normalized_name = name.strip()
+            if not normalized_name or normalized_name in skills:
+                continue
+            skills[normalized_name] = {
+                "name": normalized_name,
+                "description": description.strip(),
+                "path": path_text,
+                "scope": "bundle",
+            }
+        return skills
+
+    def _list_skill_entries(
+        self, skill_dir: Path, include_skill_md: bool = False
+    ) -> list[str]:
+        if self._pinned_skill_sources is not None:
+            return ["SKILL.md"] if include_skill_md else []
+        return super()._list_skill_entries(skill_dir, include_skill_md)
+
+    def _load_single_skill(self, name: str) -> str:
+        if self._pinned_skill_sources is None:
+            return super()._load_single_skill(name)
+        skill = self._get_skills().get(name)
+        if skill is None:
+            available = ", ".join(sorted(self._get_skills())) or "none"
+            return f'Error: Skill "{name}" not found. Available: {available}'
+        contents = self._pinned_skill_sources.get(skill["path"])
+        if contents is None:
+            return f'Error: Skill "{name}" is unavailable in this Attempt'
+        frontmatter, body = self._split_frontmatter(contents)
+        if frontmatter is None:
+            return f'Error: Skill "{name}" is invalid'
+        return "\n".join(
+            [
+                f"## Skill: {name}",
+                "",
+                f"**Pinned Bundle source**: {skill['path']}",
+                "",
+                body.strip(),
+            ]
+        ).strip()
 
     def _skill_roots(self) -> list[tuple[str, Path]]:
         """Return skill roots with Eigent + CAMEL paths.

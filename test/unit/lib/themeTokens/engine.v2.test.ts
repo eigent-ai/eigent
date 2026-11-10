@@ -18,13 +18,15 @@ import {
   DEFAULT_THEME_CATALOG,
   createDefaultThemeContractV2,
 } from '@/lib/themeTokens/catalog';
-import { contrastRatio } from '@/lib/themeTokens/colorMath';
+import { contrastRatio, oklchToHex } from '@/lib/themeTokens/colorMath';
 import {
   applyThemeContractV2,
   buildThemeV2,
   createApcaDiagnosticsReport,
 } from '@/lib/themeTokens/engine';
 import {
+  CATEGORY_COLOR_NAMES,
+  CATEGORY_TOKEN_ROLES,
   TOKEN_ELEMENTS,
   TOKEN_EMPHASIS,
   TOKEN_TONES,
@@ -158,10 +160,47 @@ describe('themeTokens v2 engine', () => {
     );
     const expected =
       TOKEN_ELEMENTS.length *
-      TOKEN_TONES.length *
-      TOKEN_EMPHASIS.length *
-      TOKEN_UI_STATES.length;
+        TOKEN_TONES.length *
+        TOKEN_EMPHASIS.length *
+        TOKEN_UI_STATES.length +
+      CATEGORY_COLOR_NAMES.length * CATEGORY_TOKEN_ROLES.length;
     expect(Object.keys(theme.tokens)).toHaveLength(expected);
+  });
+
+  it('maps all 16 categorical palettes into role-based light and dark tokens', () => {
+    const light = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const dark = buildThemeV2(
+      createDefaultThemeContractV2('dark', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+
+    expect(light.tokens['category.purple.background.default']).toBe(
+      oklchToHex({ l: 0.963, c: 0.036, h: 295 })
+    );
+    expect(light.tokens['category.purple.text.strong']).toBe(
+      oklchToHex({ l: 0.358, c: 0.102, h: 295 })
+    );
+    expect(dark.tokens['category.purple.background.default']).toBe(
+      oklchToHex({ l: 0.358, c: 0.102, h: 295 })
+    );
+    expect(dark.tokens['category.purple.text.strong']).toBe(
+      oklchToHex({ l: 0.991, c: 0.009, h: 295 })
+    );
+    expect(light.cssVariables['--ds-category-purple-background-default']).toBe(
+      light.tokens['category.purple.background.default']
+    );
+    expect(light.cssVariables['--ds-category-purple-text-strong']).toBe(
+      light.tokens['category.purple.text.strong']
+    );
   });
 
   it('ensures all generated tokens are valid CSS colors', () => {
@@ -311,11 +350,80 @@ describe('themeTokens v2 engine', () => {
       }),
       DEFAULT_THEME_CATALOG
     );
-    expect(theme.tokens['bg.brand.default.default']).toBe('#000000');
+    expect(theme.tokens['bg.brand.default.default']).toBe('#1d1d1d');
     expect(theme.tokens['text.brand.inverse.default']).toBe('#ffffff');
+    expect(theme.cssVariables['--ds-ink-inverse']).toBe('#ffffff');
+    expect(theme.cssVariables['--ds-icon-inverse']).toBe('#ffffff');
+    expect(
+      contrastRatio(
+        theme.cssVariables['--ds-ink-inverse'] as string,
+        theme.tokens['bg.brand.strong.default'] as string
+      )
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('keeps success inverse text as light as brand inverse on filled success (light)', () => {
+  it('preserves light inverse ink on light-mode Accent strong fills', () => {
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'claw',
+        contrast: 43,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const fill = theme.tokens['bg.brand.strong.default'] as string;
+    const inverse = theme.cssVariables['--ds-ink-inverse'] as string;
+
+    expect(inverse).toBe('#ffffff');
+    expect(theme.cssVariables['--ds-accent-on-strong']).toBe('#ffffff');
+    expect(contrastRatio(inverse, fill)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('preserves light inverse ink for a bright custom green Accent', () => {
+    const catalog: ThemeCatalogV2 = {
+      ...DEFAULT_THEME_CATALOG,
+      light: {
+        ...DEFAULT_THEME_CATALOG.light,
+        'bright-green': {
+          id: 'bright-green',
+          mode: 'light',
+          seed: {
+            accent: '#00c950',
+            background: '#ffffff',
+            ink: '#0d0d0d',
+          },
+        },
+      },
+    };
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'bright-green',
+        contrast: 43,
+      }),
+      catalog
+    );
+    const fill = theme.tokens['bg.brand.strong.default'] as string;
+    const inverse = theme.cssVariables['--ds-ink-inverse'] as string;
+
+    expect(inverse).toBe('#ffffff');
+    expect(contrastRatio(inverse, fill)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('uses dark inverse text on light Accent fills in dark mode', () => {
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('dark', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const inverse = theme.cssVariables['--ds-ink-inverse'] as string;
+    const fill = theme.tokens['bg.brand.strong.default'] as string;
+    expect(inverse).toBe(theme.cssVariables['--ds-accent-on-strong']);
+    expect(contrastRatio(inverse, fill)).toBeGreaterThanOrEqual(4.5);
+    expect(relativeLuminance(inverse)).toBeLessThan(relativeLuminance(fill));
+  });
+
+  it('pairs success inverse text to AA 4.5:1 on filled success (light)', () => {
     const theme = buildThemeV2(
       createDefaultThemeContractV2('light', {
         themeId: 'eigent',
@@ -327,8 +435,64 @@ describe('themeTokens v2 engine', () => {
     const successInverse = theme.tokens[
       'text.success.inverse.default'
     ] as string;
-    expect(contrastRatio(successInverse, successBg)).toBeGreaterThanOrEqual(3);
-    expect(successInverse).toBe('#ffffff');
+    const successOnStrong = theme.cssVariables[
+      '--ds-success-on-strong'
+    ] as string;
+    const successStrongFill = theme.tokens[
+      'bg.success.strong.default'
+    ] as string;
+    expect(contrastRatio(successInverse, successBg)).toBeGreaterThanOrEqual(
+      4.5
+    );
+    expect(
+      contrastRatio(successOnStrong, successStrongFill)
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps every public feedback foreground at text contrast', () => {
+    const feedbackTones = [
+      'success',
+      'warning',
+      'error',
+      'information',
+    ] as const;
+    const emphases = ['subtle', 'muted', 'default', 'strong'] as const;
+
+    for (const mode of ['light', 'dark'] as const) {
+      const theme = buildThemeV2(
+        createDefaultThemeContractV2(mode, {
+          themeId: 'eigent',
+          contrast: 50,
+        }),
+        DEFAULT_THEME_CATALOG
+      );
+      for (const tone of feedbackTones) {
+        for (const emphasis of emphases) {
+          const foreground = theme.cssVariables[
+            `--ds-${tone}-on-${emphasis}`
+          ] as string;
+          const fill = theme.tokens[`bg.${tone}.${emphasis}.default`] as string;
+          expect(contrastRatio(foreground, fill)).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
+  it('uses a light success indicator on the light-mode green control fill', () => {
+    const light = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const indicator = light.cssVariables[
+      '--ds-success-indicator-on-default'
+    ] as string;
+    const fill = light.tokens['bg.success.default.default'] as string;
+
+    expect(indicator).toBe('#ffffff');
+    expect(contrastRatio(indicator, fill)).toBeGreaterThanOrEqual(3);
   });
 
   it('maps system status background emphases to fixed shade steps (light vs dark)', () => {
@@ -433,5 +597,113 @@ describe('themeTokens v2 engine', () => {
         expect(isHex(value) || isRgba(value)).toBe(true);
       }
     }
+  });
+
+  it('keeps the registered Eigent Accent seed as the default fill', () => {
+    const light = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const dark = buildThemeV2(
+      createDefaultThemeContractV2('dark', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    expect(light.tokens['bg.brand.default.default']).toBe('#1d1d1d');
+    expect(dark.tokens['bg.brand.default.default']).toBe('#ede1db');
+    expect(light.cssVariables['--ds-accent-default-default']).toBe('#1d1d1d');
+    expect(light.cssVariables['--ds-accent-on-strong']).toMatch(/^#/);
+    expect(light.cssVariables['--ds-success-on-strong']).toMatch(/^#/);
+    expect(light.cssVariables['--ds-error-on-strong']).toMatch(/^#/);
+    expect(light.diagnostics.seedAdmission).toEqual([]);
+    expect(dark.diagnostics.seedAdmission).toEqual([]);
+  });
+
+  it('separates Whale dark mode from its light seeds', () => {
+    const light = buildThemeV2(
+      createDefaultThemeContractV2('light', { themeId: 'whale', contrast: 50 })
+    );
+    const dark = buildThemeV2(
+      createDefaultThemeContractV2('dark', { themeId: 'whale', contrast: 50 })
+    );
+    expect(
+      relativeLuminance(light.tokens['bg.neutral.subtle.default'] as string)
+    ).toBeGreaterThan(
+      relativeLuminance(dark.tokens['bg.neutral.subtle.default'] as string)
+    );
+    expect(dark.diagnostics.seedAdmission).toEqual([]);
+  });
+
+  it('rejects a collapsed Accent seed at the admission gate', () => {
+    const catalog: ThemeCatalogV2 = {
+      ...DEFAULT_THEME_CATALOG,
+      light: {
+        ...DEFAULT_THEME_CATALOG.light,
+        collapsed: {
+          id: 'collapsed',
+          mode: 'light',
+          seed: {
+            accent: '#000000',
+            background: '#faf7f6',
+            ink: '#1d1d1d',
+          },
+        },
+      },
+    };
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'collapsed',
+        contrast: 50,
+      }),
+      catalog
+    );
+    expect(
+      theme.diagnostics.seedAdmission.some(
+        (item) => item.code === 'hover-collapse'
+      )
+    ).toBe(true);
+  });
+
+  it('uses available lightness headroom for a very dark chromatic Accent seed', () => {
+    const catalog: ThemeCatalogV2 = {
+      ...DEFAULT_THEME_CATALOG,
+      light: {
+        ...DEFAULT_THEME_CATALOG.light,
+        'dark-chromatic': {
+          id: 'dark-chromatic',
+          mode: 'light',
+          seed: {
+            accent: '#101817',
+            background: '#faf7f6',
+            ink: '#1d1d1d',
+          },
+        },
+      },
+    };
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'dark-chromatic',
+        contrast: 50,
+      }),
+      catalog
+    );
+
+    expect(
+      theme.diagnostics.seedAdmission.some(
+        (item) =>
+          item.code === 'hover-collapse' || item.code === 'selected-collapse'
+      )
+    ).toBe(false);
+    expect(theme.tokens['bg.brand.default.hover']).not.toBe(
+      theme.tokens['bg.brand.default.default']
+    );
+    expect(theme.tokens['bg.brand.default.selected']).not.toBe(
+      theme.tokens['bg.brand.default.default']
+    );
   });
 });

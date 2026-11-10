@@ -17,6 +17,16 @@ import { describe, expect, it } from 'vitest';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 
 describe('filterVisibleAgentFiles', () => {
+  it.each([
+    'terminal_logs/blocking_commands.log',
+    'task_1/terminal_logs/blocking_commands.log',
+    'C:\\workspace\\terminal_logs\\blocking_commands.log',
+  ])('hides legacy runtime path %s', (path) => {
+    expect(
+      filterVisibleAgentFiles([{ name: 'blocking_commands.log', path }])
+    ).toEqual([]);
+  });
+
   it('keeps only user-visible output files', () => {
     const files = [
       {
@@ -53,5 +63,14 @@ describe('filterVisibleAgentFiles', () => {
     ];
 
     expect(filterVisibleAgentFiles(files)).toEqual([files[0]]);
+  });
+
+  it('keeps user output in a nested directory named terminal_logs', () => {
+    const file = {
+      name: 'example.txt',
+      path: '/workspace/docs/examples/terminal_logs/example.txt',
+      relativePath: 'docs/examples/terminal_logs/example.txt',
+    };
+    expect(filterVisibleAgentFiles([file])).toEqual([file]);
   });
 });

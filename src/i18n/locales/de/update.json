@@ -1,15 +1,15 @@
 {
-  "update-check-failed": "Update-Prüfung fehlgeschlagen",
+  "update-check-failed": "Prüfung auf Aktualisierungen fehlgeschlagen",
   "new-version-available": "Neue Version verfügbar",
   "update": "Aktualisieren",
   "download": "Herunterladen",
-  "update-error": "Update-Fehler",
-  "downloading-update": "Update wird heruntergeladen",
+  "update-error": "Fehler bei der Aktualisierung",
+  "downloading-update": "Aktualisierung wird heruntergeladen",
   "complete": "Abgeschlossen",
   "download-completed": "Download abgeschlossen",
-  "click-to-install-update": "Klicken Sie, um das Update zu installieren",
+  "click-to-install-update": "Klicken Sie, um die Aktualisierung zu installieren",
   "install": "Installieren",
-  "downloading": "Downloading update",
-  "launch-new-version": "Launch new version",
-  "update-failed-retry": "Update failed — click to retry"
+  "downloading": "Aktualisierung wird heruntergeladen",
+  "launch-new-version": "Neue Version starten",
+  "update-failed-retry": "Aktualisierung fehlgeschlagen — zum Wiederholen klicken"
 }

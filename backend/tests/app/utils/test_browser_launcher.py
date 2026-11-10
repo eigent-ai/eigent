@@ -18,6 +18,7 @@ import pytest
 
 from app.utils.browser_launcher import (
     _is_supported_cdp_version,
+    has_eigent_embedded_browser_target,
     normalize_cdp_url,
 )
 
@@ -57,6 +58,54 @@ def test_normalize_cdp_url_accepts_bare_port():
         "127.0.0.1",
         9333,
     )
+
+
+@pytest.mark.unit
+def test_embedded_browser_target_requires_eigent_owned_webview(monkeypatch):
+    class _Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return [
+                {"type": "page", "url": "http://localhost:5173/"},
+                {
+                    "type": "page",
+                    "url": "about:blank#eigent-browser-toolkit=1",
+                },
+            ]
+
+    monkeypatch.setattr("httpx.get", lambda *args, **kwargs: _Response())
+
+    assert has_eigent_embedded_browser_target("http://127.0.0.1:9222")
+    assert has_eigent_embedded_browser_target(
+        "http://127.0.0.1:9222",
+        "about:blank#eigent-browser-toolkit=1",
+    )
+    assert not has_eigent_embedded_browser_target(
+        "http://127.0.0.1:9222",
+        "about:blank#eigent-browser-toolkit=2",
+    )
+
+
+@pytest.mark.unit
+def test_embedded_browser_target_rejects_main_renderer_only(monkeypatch):
+    class _Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return [
+                {"type": "page", "url": "http://localhost:5173/"},
+                {
+                    "type": "other",
+                    "url": "about:blank#eigent-browser-toolkit=1",
+                },
+            ]
+
+    monkeypatch.setattr("httpx.get", lambda *args, **kwargs: _Response())
+
+    assert not has_eigent_embedded_browser_target("http://127.0.0.1:9222")
 
 
 @pytest.mark.unit

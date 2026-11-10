@@ -14,4 +14,4 @@
 
 export { HostProvider, useHost } from './context';
 export { createHost } from './createHost';
-export type { AppHost } from './types';
+export type { AppHost, AppShellElectronAPI } from './types';

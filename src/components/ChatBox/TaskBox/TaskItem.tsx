@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Textarea } from '@/components/ui/textarea';
 import { Check, CircleDashed, PenLine, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -67,17 +68,18 @@ export function TaskItem({
     <div key={`task-item-${taskIndex}`} className="w-full">
       <div
         onDoubleClick={(e) => handleFocus(e, true)}
-        className={`group relative mb-2 flex min-h-2 w-full items-start gap-0 rounded-lg border border-solid p-sm hover:bg-ds-bg-neutral-default-hover ${
+        className={`group relative mb-2 flex min-h-2 w-full items-start gap-0 rounded-lg border border-solid p-2 hover:bg-ds-neutral-default-hover ${
           isFocus
-            ? 'border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default'
-            : 'border-ds-border-neutral-subtle-default group-hover:border-transparent'
+            ? 'border-ds-hairline-subtle-disabled bg-ds-neutral-subtle-default'
+            : 'border-ds-hairline-subtle-default group-hover:border-transparent'
         }`}
       >
-        <div className="flex h-4 w-7 flex-shrink-0 cursor-pointer items-center justify-center pr-sm pt-0.5">
+        <div className="flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center pt-0.5 pr-2">
           {taskInfo.id === '' ? (
-            <CircleDashed
-              size={13}
-              className="text-ds-icon-neutral-muted-default"
+            <DsIcon
+              icon={CircleDashed}
+              recipe="main-compact"
+              className="text-ds-ink-muted-default"
             />
           ) : (
             <div className="h-2 w-2 rounded-full bg-ds-icon-information-default-default"></div>
@@ -89,7 +91,7 @@ export function TaskItem({
             placeholder={t('layout.add-new-task')}
             className={`${
               isFocus && 'w-[calc(100%-52px)]'
-            } min-h-2 min-w-0 resize-none overflow-hidden break-words rounded-none border-none bg-transparent p-0 text-xs leading-[20px] shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0`}
+            } min-h-2 min-w-0 resize-none overflow-hidden rounded-none border-none bg-transparent p-0 text-xs leading-[20px] break-words shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0`}
             value={taskInfo.content}
             onChange={(e) => onUpdate(e.target.value)}
             onBlur={() => {
@@ -105,7 +107,7 @@ export function TaskItem({
           )}
         </div>
         <div
-          className={`absolute right-2 top-2 flex items-center gap-xs group-hover:opacity-100 ${
+          className={`absolute top-2 right-2 flex items-center gap-1 group-hover:opacity-100 ${
             isFocus ? 'opacity-100' : 'opacity-0'
           } transition-opacity duration-300`}
         >
@@ -117,7 +119,7 @@ export function TaskItem({
               size="xs"
               buttonContent="icon-only"
             >
-              <PenLine size={16} className="" />
+              <DsIcon recipe="main-compact" icon={PenLine} />
             </Button>
           ) : (
             <Button
@@ -130,17 +132,26 @@ export function TaskItem({
               size="xs"
               buttonContent="icon-only"
             >
-              <Check size={16} className="text-current" />
+              <DsIcon
+                recipe="main-compact"
+                icon={Check}
+                className="text-current"
+              />
             </Button>
           )}
           <Button
             onClick={() => onDelete()}
             className="rounded-full"
-            variant="caution"
+            variant="primary"
+            tone="error"
             size="xs"
             buttonContent="icon-only"
           >
-            <Trash2 size={16} className="text-ds-icon-neutral-muted-default" />
+            <DsIcon
+              recipe="main-compact"
+              icon={Trash2}
+              className="text-current"
+            />
           </Button>
         </div>
       </div>

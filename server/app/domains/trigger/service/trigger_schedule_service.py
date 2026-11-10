@@ -15,7 +15,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple, Optional
 from loguru import logger
-from croniter import croniter
+from app.core.schedule_time import next_schedule_time
 from uuid import uuid4
 import asyncio
 from sqlmodel import select
@@ -116,9 +116,7 @@ class TriggerScheduleService:
             base_time = datetime.now(timezone.utc)
         
         try:
-            cron = croniter(trigger.custom_cron_expression, base_time)
-            next_run = cron.get_next(datetime)
-            return next_run
+            return next_schedule_time(trigger.custom_cron_expression, base_time, trigger.config)
         except Exception as e:
             logger.error(
                 "Failed to calculate next run time",

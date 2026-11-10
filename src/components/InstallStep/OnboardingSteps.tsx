@@ -20,9 +20,19 @@ import {
   RuledLinesBackground,
 } from '@/components/Background';
 import { Button } from '@/components/ui/button';
-import { LocaleEnum, switchLanguage } from '@/i18n';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
+import { LocaleEnum, resolveLocale, switchLanguage } from '@/i18n';
 import { recordOnboardingStepCompleted } from '@/lib/events/appEvents';
+import { getOnboardingThemePresets } from '@/lib/themeTokens/catalog';
 import { cn } from '@/lib/utils';
+import {
+  DEFAULT_WORK_PROFILE,
+  WORK_PROFILE_IDS,
+  WORK_PROFILE_LABEL_KEYS,
+  type WorkProfileId,
+} from '@/lib/workProfiles';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -36,7 +46,10 @@ import {
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
+
+const STEPS: Step[] = [1, 2, 3, 4];
+const LAST_STEP: Step = 4;
 
 // ── Language ──────────────────────────────────────────────────────────────────
 
@@ -55,29 +68,9 @@ const LANGUAGE_OPTIONS = [
   { key: LocaleEnum.Italian, nativeLabel: 'Italiano' },
 ];
 
-// ── Theme presets ─────────────────────────────────────────────────────────────
+// ── Theme presets (seeds come from base.color.json only) ──────────────────────
 
-const THEME_PRESETS = [
-  {
-    id: 'eigent',
-    label: 'Eigent',
-    lightAccent: '#1d1d1d',
-    darkAccent: '#ede1db',
-  },
-  {
-    id: 'camel',
-    label: 'CAMEL',
-    lightAccent: '#4c19e8',
-    darkAccent: '#b5afff',
-  },
-  { id: 'claw', label: 'Claw', lightAccent: '#cc7d5e', darkAccent: '#cc7d5e' },
-  {
-    id: 'starfish',
-    label: 'Starfish',
-    lightAccent: '#0169cc',
-    darkAccent: '#0169cc',
-  },
-] as const;
+const THEME_PRESETS = getOnboardingThemePresets();
 
 // ── Background pattern metadata (labels resolved via t() in component) ────────
 
@@ -127,10 +120,10 @@ function StepLanguage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col items-center gap-2">
-        <span className="text-heading-base font-bold text-ds-text-neutral-default-default">
+        <span className="text-ds-text-page font-bold text-ds-ink-default-default">
           {t('layout.onboarding-setup-language-title')}
         </span>
-        <span className="text-body-base mt-2 text-ds-text-neutral-muted-default">
+        <span className="mt-2 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.onboarding-setup-language-subtitle')}
         </span>
       </div>
@@ -144,14 +137,14 @@ function StepLanguage({
               key={key}
               onClick={() => onSelect(key)}
               className={cn(
-                'transition-color flex items-center justify-between rounded-xl border border-solid px-6 py-3 text-body-sm font-medium duration-100',
+                'transition-color flex items-center justify-between rounded-xl border border-x border-y border-solid px-6 py-3 text-ds-text-base font-medium duration-100',
                 active
-                  ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                  : 'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default hover:border-ds-border-neutral-default-hover hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-muted-hover'
+                  ? 'border-ds-hairline-default-default bg-ds-neutral-default-default text-ds-ink-default-default'
+                  : 'border-transparent bg-ds-neutral-default-default text-ds-ink-muted-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover hover:text-ds-ink-muted-hover'
               )}
             >
               <span>{displayLabel}</span>
-              {active && <Check size={14} strokeWidth={2.5} />}
+              {active && <DsIcon icon={Check} />}
             </button>
           );
         })}
@@ -160,7 +153,64 @@ function StepLanguage({
   );
 }
 
-// ── Step 2 — Theme ────────────────────────────────────────────────────────────
+// ── Step 2 — Profile ──────────────────────────────────────────────────────────
+
+function StepProfile({
+  selected,
+  onSelect,
+}: {
+  selected: WorkProfileId | null;
+  onSelect: (id: WorkProfileId) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <DsText
+          as="h2"
+          role="page"
+          weight="bold"
+          className="text-ds-ink-default-default"
+        >
+          {t('layout.onboarding-setup-profile-title')}
+        </DsText>
+        <DsText as="p" role="base" className="mt-2 text-ds-ink-muted-default">
+          {t('layout.onboarding-setup-profile-subtitle')}
+        </DsText>
+      </div>
+      {/* Columns follow the onboarding panel width, not the window. */}
+      <div className="@container min-w-0">
+        <div className="grid grid-cols-1 gap-2 @sm:grid-cols-2 @lg:grid-cols-3">
+          {WORK_PROFILE_IDS.map((id) => {
+            const active = selected === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onSelect(id)}
+                className={cn(
+                  'flex min-w-0 items-center justify-between gap-2 rounded-xl border border-x border-y border-solid px-6 py-3 text-left text-ds-text-base font-medium transition-colors duration-100',
+                  DS_FOCUS_RING,
+                  active
+                    ? 'border-ds-hairline-default-default bg-ds-neutral-default-default text-ds-ink-default-default'
+                    : 'border-transparent bg-ds-neutral-default-default text-ds-ink-muted-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover hover:text-ds-ink-muted-hover'
+                )}
+              >
+                <span className="min-w-0 break-words">
+                  {t(WORK_PROFILE_LABEL_KEYS[id])}
+                </span>
+                {active && <DsIcon icon={Check} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Step 3 — Theme ────────────────────────────────────────────────────────────
 
 function StepTheme({
   appearanceMode,
@@ -199,10 +249,10 @@ function StepTheme({
     <div className="flex flex-col gap-8">
       {/* Mode selection */}
       <div className="flex w-full flex-col items-center gap-4">
-        <span className="text-heading-base font-bold text-ds-text-neutral-default-default">
+        <span className="text-ds-text-page font-bold text-ds-ink-default-default">
           {t('layout.onboarding-setup-appearance-title')}
         </span>
-        <span className="text-body-base mt-2 text-ds-text-neutral-muted-default">
+        <span className="mt-2 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.onboarding-setup-language-subtitle')}
         </span>
         <div className="flex w-full gap-3">
@@ -213,14 +263,14 @@ function StepTheme({
                 key={id}
                 onClick={() => onModeChange(id)}
                 className={cn(
-                  'flex flex-1 flex-col items-center gap-2 rounded-xl border border-solid py-4 transition-colors duration-100',
+                  'flex flex-1 flex-col items-center gap-2 rounded-xl border border-x border-y border-solid py-4 transition-colors duration-100',
                   active
-                    ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                    : 'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default hover:border-ds-border-neutral-default-hover hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-muted-hover'
+                    ? 'border-ds-hairline-default-default bg-ds-neutral-default-default text-ds-ink-default-default'
+                    : 'border-transparent bg-ds-neutral-default-default text-ds-ink-muted-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover hover:text-ds-ink-muted-hover'
                 )}
               >
-                <Icon size={20} strokeWidth={1.5} />
-                <span className="text-body-sm font-medium">{label}</span>
+                <DsIcon icon={Icon} />
+                <span className="text-ds-text-base font-medium">{label}</span>
               </button>
             );
           })}
@@ -230,7 +280,7 @@ function StepTheme({
       {/* Color theme selection */}
       <div className="flex w-full flex-col items-center gap-4">
         <div>
-          <span className="text-body-lg font-semibold text-ds-text-neutral-default-default">
+          <span className="text-ds-text-section font-semibold text-ds-ink-default-default">
             {t('layout.onboarding-setup-color-theme')}
           </span>
         </div>
@@ -243,10 +293,10 @@ function StepTheme({
                 key={id}
                 onClick={() => onThemeChange(id)}
                 className={cn(
-                  'flex flex-col items-center gap-3 rounded-xl border border-solid p-4 transition-colors duration-100',
+                  'flex flex-col items-center gap-3 rounded-xl border border-x border-y border-solid p-4 transition-colors duration-100',
                   active
-                    ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default'
-                    : 'border-transparent bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-default-hover hover:bg-ds-bg-neutral-default-hover'
+                    ? 'border-ds-hairline-default-default bg-ds-neutral-default-default'
+                    : 'border-transparent bg-ds-neutral-default-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover'
                 )}
               >
                 <div
@@ -256,16 +306,17 @@ function StepTheme({
                       backgroundColor: accent,
                       ringColor: active ? accent : 'transparent',
                       '--tw-ring-color': active ? accent : 'transparent',
-                      '--tw-ring-offset-color': 'var(--ds-bg-neutral-default)',
+                      '--tw-ring-offset-color':
+                        'var(--ds-neutral-subtle-default)',
                     } as React.CSSProperties
                   }
                 />
                 <span
                   className={cn(
-                    'text-body-sm font-medium',
+                    'text-ds-text-base font-medium',
                     active
-                      ? 'text-ds-text-neutral-default-default'
-                      : 'text-ds-text-neutral-muted-default'
+                      ? 'text-ds-ink-default-default'
+                      : 'text-ds-ink-muted-default'
                   )}
                 >
                   {label}
@@ -279,7 +330,7 @@ function StepTheme({
   );
 }
 
-// ── Step 3 — Background pattern ───────────────────────────────────────────────
+// ── Step 4 — Background pattern ───────────────────────────────────────────────
 
 function PatternPreviewCard({
   label,
@@ -297,21 +348,22 @@ function PatternPreviewCard({
     <button
       onClick={onSelect}
       className={cn(
-        'ition-colors flex flex-col items-center gap-2 rounded-xl border border-solid p-2',
+        'ition-colors flex flex-col items-center gap-2 rounded-xl border border-x border-y border-solid p-2',
         selected
-          ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default'
-          : 'border-transparent bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-default-default'
+          ? 'border-ds-hairline-default-default bg-ds-neutral-default-default'
+          : 'border-transparent bg-ds-neutral-default-default hover:border-ds-hairline-default-default'
       )}
     >
-      <div className="relative isolate h-24 w-full overflow-hidden rounded-xl bg-ds-bg-neutral-subtle-default">
+      <div className="relative isolate h-24 w-full overflow-hidden rounded-xl bg-ds-neutral-subtle-default">
         {Component && <Component />}
         {selected && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-6 w-6 rounded-full bg-ds-bg-neutral-strong-default p-1 shadow-sm">
+            <div className="h-6 w-6 rounded-full bg-ds-neutral-strong-default p-1 shadow-sm">
+              {/* ds-icon:allow heavier check mark inside a filled selection badge */}
               <Check
                 size={12}
                 strokeWidth={2.5}
-                className="text-ds-text-neutral-default-default"
+                className="text-ds-ink-default-default"
               />
             </div>
           </div>
@@ -319,10 +371,8 @@ function PatternPreviewCard({
       </div>
       <span
         className={cn(
-          'pb-1 text-body-sm font-medium',
-          selected
-            ? 'text-ds-text-neutral-default-default'
-            : 'text-ds-text-neutral-muted-default'
+          'pb-1 text-ds-text-base font-medium',
+          selected ? 'text-ds-ink-default-default' : 'text-ds-ink-muted-default'
         )}
       >
         {label}
@@ -342,10 +392,10 @@ function StepBackground({
   return (
     <div className="flex w-full flex-col gap-8">
       <div className="flex flex-col items-center gap-2">
-        <span className="text-heading-base font-bold text-ds-text-neutral-default-default">
+        <span className="text-ds-text-page font-bold text-ds-ink-default-default">
           {t('layout.onboarding-setup-workspace-title')}
         </span>
-        <span className="text-body-base mt-2 text-ds-text-neutral-muted-default">
+        <span className="mt-2 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.onboarding-setup-workspace-subtitle')}
         </span>
       </div>
@@ -370,6 +420,7 @@ function StepBackground({
 export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<Step>(1);
+  const [profileSelected, setProfileSelected] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const shouldReduceMotion = useReducedMotion();
 
@@ -380,9 +431,11 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
     lightColorThemeId,
     darkColorThemeId,
     workspaceMainBackground,
+    workProfile,
     setAppearanceMode,
     setColorThemeForMode,
     setWorkspaceMainBackground,
+    setWorkProfile,
     setOnboardingCompleted,
     setIsFirstLaunch,
   } = useAuthStore();
@@ -391,18 +444,14 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
     appearance === 'dark' ? darkColorThemeId : lightColorThemeId;
 
   const livePattern =
-    step === 3
+    step === LAST_STEP
       ? BG_PATTERN_DEFS.find((p) => p.id === workspaceMainBackground)
       : null;
   const LivePatternComponent = livePattern?.Component ?? null;
 
   const handleLanguage = (key: string) => {
     if (key === 'system') {
-      const systemLang = navigator.language.toLowerCase();
-      const available = Object.values(LocaleEnum);
-      const matched = available.find((l) => systemLang.startsWith(l));
-      const langToApply = matched ?? LocaleEnum.English;
-      switchLanguage(langToApply);
+      switchLanguage(resolveLocale(navigator.language));
       useAuthStore.getState().setLanguage('system');
     } else {
       switchLanguage(key as LocaleEnum);
@@ -415,12 +464,45 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
   };
 
   const stepName = (s: Step) =>
-    s === 1 ? 'language' : s === 2 ? 'theme' : 'background';
+    s === 1
+      ? 'language'
+      : s === 2
+        ? 'profile'
+        : s === 3
+          ? 'theme'
+          : 'background';
+
+  const goNext = () => {
+    setDirection(1);
+    setStep((s) => (s + 1) as Step);
+  };
+
+  const handleContinue = () => {
+    recordOnboardingStepCompleted({
+      step_id: step,
+      step_name: stepName(step),
+    });
+    goNext();
+  };
+
+  const handleSkipProfile = () => {
+    setWorkProfile(DEFAULT_WORK_PROFILE);
+    setProfileSelected(false);
+    recordOnboardingStepCompleted({
+      step_id: step,
+      step_name: stepName(step),
+      phase: 'skipped',
+    });
+    goNext();
+  };
+
+  // Others is a valid explicit choice; Continue requires a card click.
+  const canContinue = step !== 2 || profileSelected;
 
   const handleComplete = () => {
     recordOnboardingStepCompleted({
-      step_id: 3,
-      step_name: 'background',
+      step_id: LAST_STEP,
+      step_name: stepName(LAST_STEP),
     });
     setOnboardingCompleted(true);
     setIsFirstLaunch(false);
@@ -455,17 +537,17 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default">
+    <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-ds-neutral-subtle-default">
       {LivePatternComponent && <LivePatternComponent />}
 
       <div className="relative z-[1] flex h-full flex-col px-8 py-6">
         {/* Step indicator dots */}
         <div className="mb-8 flex items-center justify-center gap-2">
-          {([1, 2, 3] as Step[]).map((s) => (
+          {STEPS.map((s) => (
             <div
               key={s}
               className={cn(
-                'ease-[cubic-bezier(0.23,1,0.32,1)] h-1.5 rounded-full transition-[background-color,opacity] duration-200',
+                'h-1.5 rounded-full transition-[background-color,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]',
                 s === step
                   ? 'w-8 bg-ds-text-neutral-default-default'
                   : s < step
@@ -476,7 +558,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
           ))}
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="scrollbar-always-visible min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           <AnimatePresence mode="wait" initial={false} custom={direction}>
             <motion.div
               key={step}
@@ -490,6 +572,15 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
                 <StepLanguage selected={language} onSelect={handleLanguage} />
               )}
               {step === 2 && (
+                <StepProfile
+                  selected={profileSelected ? workProfile : null}
+                  onSelect={(id) => {
+                    setWorkProfile(id);
+                    setProfileSelected(true);
+                  }}
+                />
+              )}
+              {step === 3 && (
                 <StepTheme
                   appearanceMode={appearanceMode}
                   appearance={appearance}
@@ -498,7 +589,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
                   onThemeChange={handleThemePreset}
                 />
               )}
-              {step === 3 && (
+              {step === 4 && (
                 <StepBackground
                   selected={workspaceMainBackground}
                   onSelect={setWorkspaceMainBackground}
@@ -523,29 +614,36 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
               setStep((s) => (s - 1) as Step);
             }}
           >
-            <ArrowLeftIcon />
+            <DsIcon icon={ArrowLeftIcon} />
             {t('layout.back')}
           </Button>
 
-          {step < 3 ? (
-            <Button
-              variant="primary"
-              size="md"
-              textWeight="semibold"
-              buttonContent="text"
-              buttonRadius="lg"
-              onClick={() => {
-                recordOnboardingStepCompleted({
-                  step_id: step,
-                  step_name: stepName(step),
-                });
-                setDirection(1);
-                setStep((s) => (s + 1) as Step);
-              }}
-            >
-              {t('layout.continue')}
-              <ArrowRightIcon />
-            </Button>
+          {step < LAST_STEP ? (
+            <div className="flex items-center gap-ds-control-gap">
+              {step === 2 && (
+                <Button
+                  variant="ghost"
+                  size="md"
+                  buttonContent="text"
+                  buttonRadius="lg"
+                  onClick={handleSkipProfile}
+                >
+                  {t('layout.onboarding-setup-profile-skip')}
+                </Button>
+              )}
+              <Button
+                variant="primary"
+                size="md"
+                textWeight="semibold"
+                buttonContent="text"
+                buttonRadius="lg"
+                disabled={!canContinue}
+                onClick={handleContinue}
+              >
+                {t('layout.continue')}
+                <DsIcon icon={ArrowRightIcon} />
+              </Button>
+            </div>
           ) : (
             <Button
               variant="primary"

@@ -14,8 +14,15 @@
 
 import { ProjectModeToggle } from '@/components/Workspace/ProjectModeToggle';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
-import type { SessionModeType } from '@/types/constants';
-import { ModelSelect } from './ModelSelect';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
+import {
+  normalizeThinkingEffort,
+  type SessionModeType,
+} from '@/types/constants';
+import type { ReactNode } from 'react';
+import { ApprovalModeSelect } from './ApprovalModeSelect';
+import { ModelAndThinkingEffortSelect } from './ModelAndThinkingEffortSelect';
 
 /**
  * Below this footer width the session mode control collapses to icon-only so
@@ -24,34 +31,70 @@ import { ModelSelect } from './ModelSelect';
 const COMPACT_WIDTH_THRESHOLD = 460;
 
 export interface BoxFooterProps {
+  /** Before the session mode control, for example New session's Space chip. */
+  leading?: ReactNode;
   /** Left side: single-agent / multi-agent mode control. */
   sessionMode: SessionModeType;
   onSessionModeChange?: (mode: SessionModeType) => void;
-  /** Project whose pinned model the model selector reads and writes. */
+  /** Project whose pinned model and thinking effort the selectors read and write. */
   projectId?: string | null;
   /**
-   * Project-setup controls: interactive on the workspace composer only.
-   * Once the project has started both controls render read-only.
+   * When true, the session-mode control is interactive (Workspace / New session).
+   * On a running Session the mode is locked; approval, thinking effort, and
+   * model stay selectable for later tasks.
    */
   interactive?: boolean;
   disabled?: boolean;
+  /** Keep model recovery available when only the composer is blocked by usage. */
+  modelSelectDisabled?: boolean;
 }
 
 /**
  * BoxFooter — project-setup row under BoxMain in the BottomBox shell.
- * Left: session mode control. Right: default/project-pinned model control.
- * Stays on a single row; the left control collapses to icon-only when the
+ * Left: session mode + approval. Right: one thinking-effort and model menu.
+ * Stays on a single row; the left controls collapse to icon-only when the
  * footer gets narrow.
  */
 export function BoxFooter({
+  leading,
   sessionMode,
   onSessionModeChange,
   projectId,
   interactive = false,
   disabled = false,
+  modelSelectDisabled = disabled,
 }: BoxFooterProps) {
   const [footerRef, compact] = useIsCompactWidth<HTMLDivElement>(
     COMPACT_WIDTH_THRESHOLD
+  );
+  const projectEffort = useProjectRuntimeStore((state) =>
+    projectId ? state.projects[projectId]?.metadata?.thinkingEffort : undefined
+  );
+  const composerThinkingEffort = useProjectRuntimeStore(
+    (state) => state.composerThinkingEffort
+  );
+  const setProjectThinkingEffort = useProjectRuntimeStore(
+    (state) => state.setProjectThinkingEffort
+  );
+  const setComposerThinkingEffort = useProjectRuntimeStore(
+    (state) => state.setComposerThinkingEffort
+  );
+  const spaceEffort = useSpaceStore((state) =>
+    projectId
+      ? state.getProjectMeta(projectId)?.metadata?.thinkingEffort
+      : undefined
+  );
+  const storedProjectEffort =
+    projectEffort !== undefined ? projectEffort : spaceEffort;
+  const thinkingEffort = projectId
+    ? storedProjectEffort == null
+      ? undefined
+      : normalizeThinkingEffort(storedProjectEffort)
+    : composerThinkingEffort;
+  const spaceId = useSpaceStore((state) =>
+    projectId
+      ? (state.projectIdIndex[projectId] ?? state.activeSpaceId)
+      : state.activeSpaceId
   );
 
   return (
@@ -60,6 +103,7 @@ export function BoxFooter({
       className="flex w-full items-center justify-between gap-2 px-3 py-1"
     >
       <div className="flex min-w-0 shrink items-center gap-1">
+        {leading}
         <ProjectModeToggle
           value={sessionMode}
           onValueChange={onSessionModeChange ?? (() => {})}
@@ -67,12 +111,27 @@ export function BoxFooter({
           compact={compact}
           className="shrink-0"
         />
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <ModelSelect
+        <ApprovalModeSelect
+          spaceId={spaceId}
           disabled={disabled}
+          compact={compact}
+          className="shrink-0"
+        />
+      </div>
+      <div className="flex min-w-0 shrink-0 items-center gap-1">
+        <ModelAndThinkingEffortSelect
+          thinkingEffort={thinkingEffort}
+          onThinkingEffortChange={(effort) => {
+            if (projectId) {
+              setProjectThinkingEffort(projectId, effort);
+              return;
+            }
+            setComposerThinkingEffort(effort);
+          }}
+          disabled={modelSelectDisabled}
           projectId={projectId}
           readOnly={!interactive && !projectId}
+          className={compact ? 'max-w-56' : undefined}
         />
       </div>
     </div>

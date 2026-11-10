@@ -12,6 +12,9 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from contextvars import ContextVar
+from types import SimpleNamespace
+
 from camel.toolkits import FunctionTool
 
 from app.agent.toolkit.depth_limited_agent_toolkit import (
@@ -46,3 +49,39 @@ def test_depth_limited_agent_toolkit_filters_child_delegation_tools():
     assert "agent_run_subagent" not in tool_names
     assert "_normal_tool" in tool_names
     assert toolkits_to_register == []
+
+
+def test_depth_limited_agent_toolkit_propagates_run_context_to_child_thread():
+    marker: ContextVar[str] = ContextVar("child-run-marker", default="missing")
+    observed: list[str] = []
+
+    class DummyAgent:
+        agent_id = "child-1"
+        stop_event = None
+
+        def step(self, _prompt):
+            observed.append(marker.get())
+            return SimpleNamespace(msgs=[])
+
+    toolkit = DepthLimitedAgentToolkit(current_depth=0, max_depth=1)
+    agent = DummyAgent()
+    toolkit._sessions[agent.agent_id] = SimpleNamespace(
+        agent=agent,
+        subagent_type="research",
+        description="Research references",
+        turns=0,
+        active_task_id=None,
+    )
+    token = marker.set("run-1")
+    try:
+        task = toolkit._submit_agent_task(
+            agent_id=agent.agent_id,
+            agent=agent,
+            prompt="inspect",
+        )
+        task.future.result(timeout=2)
+    finally:
+        marker.reset(token)
+        toolkit._executor.shutdown(wait=True)
+
+    assert observed == ["run-1"]

@@ -12,23 +12,53 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { showCreditsToast } from '@/components/Toast/creditsToast';
+import { resolveEventStreamFetch } from '@/api/brainStreamRelay';
 import { showStorageToast } from '@/components/Toast/storageToast';
-import { showTrafficToast } from '@/components/Toast/trafficToast';
 import { createHost } from '@/host/createHost';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { reportError } from '@/lib/notifyError';
+import { sanitizeResponseError } from '@/lib/responseError';
 import { getAuthStore } from '@/store/authStore';
 import {
   getConnectionConfig,
   setConnectionConfig,
 } from '@/store/connectionStore';
+import { setUsageAccount } from '@/store/usageNoticeStore';
 import {
   EventSourceMessage,
   fetchEventSource,
 } from '@microsoft/fetch-event-source';
+import i18next from 'i18next';
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
 };
+const LOCAL_CONTROL_CAPABILITY_HEADER = 'X-Eigent-Local-Capability';
+let localControlCapabilityPromise: Promise<string> | null = null;
+
+export async function getLocalControlCapability(): Promise<string> {
+  const api = createHost().electronAPI;
+  if (!api?.getLocalControlCapability) {
+    return '';
+  }
+  if (!localControlCapabilityPromise) {
+    localControlCapabilityPromise = Promise.resolve(
+      api.getLocalControlCapability()
+    ).then(
+      (token) => {
+        if (!token) {
+          localControlCapabilityPromise = null;
+        }
+        return token || '';
+      },
+      () => {
+        localControlCapabilityPromise = null;
+        return '';
+      }
+    );
+  }
+  return localControlCapabilityPromise;
+}
 
 export function getDefaultBrainEndpoint(): string {
   const envEndpoint = import.meta.env.VITE_BRAIN_ENDPOINT;
@@ -59,11 +89,11 @@ function shouldAttachAuthHeader(url: string): boolean {
   return !url.includes('http://') && !url.includes('https://');
 }
 
-function buildBrainHeaders(
+async function buildBrainHeaders(
   url: string,
   customHeaders: Record<string, string> = {},
   includeContentType = true
-): Record<string, string> {
+): Promise<Record<string, string>> {
   const { token, user_id } = getAuthStore();
   const conn = getConnectionConfig();
   const headers: Record<string, string> = {
@@ -77,6 +107,12 @@ function buildBrainHeaders(
   if (token && shouldAttachAuthHeader(url)) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  if (shouldAttachAuthHeader(url)) {
+    const localControlCapability = await getLocalControlCapability();
+    if (localControlCapability) {
+      headers[LOCAL_CONTROL_CAPABILITY_HEADER] = localControlCapability;
+    }
+  }
   if (user_id != null) {
     headers['X-User-ID'] = String(user_id);
   }
@@ -88,13 +124,14 @@ export function resetBaseURL(): void {
   setConnectionConfig({ brainEndpoint: '' });
 }
 
-export async function getBaseURL() {
+export async function getBaseURL(beforeResolve?: () => void) {
   const cfg = getConnectionConfig();
   if (cfg.brainEndpoint) {
     return cfg.brainEndpoint.replace(/\/$/, '');
   }
   // Electron: get port from IPC
   const port = await createHost().ipcRenderer?.invoke('get-backend-port');
+  beforeResolve?.();
   if (port && port > 0) {
     const resolved = `http://localhost:${port}`;
     setConnectionConfig({ brainEndpoint: resolved });
@@ -110,9 +147,53 @@ export async function getBaseURL() {
   return '';
 }
 
-type FetchRequestOptions = {
+export type FetchRequestOptions = {
+  /** Optional lifetime fence for bounded control receipts. */
+  assertCurrent?: () => void;
   signal?: AbortSignal;
+  expectedAccountKey?: string;
+  /**
+   * Revalidate mutable admission context after asynchronous header lookup.
+   * Runs synchronously, at most once, immediately before `fetch`, so callers
+   * may also use it to mark that the request is being sent.
+   */
+  beforeRequest?: () => void;
 };
+
+function assertRequestAccount(options: FetchRequestOptions): void {
+  if (options.signal?.aborted)
+    throw new DOMException('Request owner left', 'AbortError');
+  if (
+    options.expectedAccountKey !== undefined &&
+    options.expectedAccountKey !== getAccountEnvironmentKey(getAuthStore())
+  )
+    throw new Error('Request account changed before delivery');
+}
+
+async function accountResponse<T>(
+  request: Promise<T>,
+  options: FetchRequestOptions
+): Promise<T> {
+  const result = await request;
+  assertRequestAccount(options);
+  if (options.signal?.aborted)
+    throw new DOMException('Request owner left', 'AbortError');
+  return result;
+}
+
+/** Tag only fetch transport rejection, never HTTP or response parsing errors. */
+async function fetchBrainResponse(url: string, options: RequestInit) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw Object.assign(new Error('Brain is unreachable', { cause: error }), {
+        code: 'BRAIN_UNREACHABLE',
+      });
+    }
+    throw error;
+  }
+}
 
 async function fetchRequest(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
@@ -121,9 +202,12 @@ async function fetchRequest(
   customHeaders: Record<string, string> = {},
   requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
-  const baseURL = await getBaseURL();
+  const baseURL = await getBaseURL(requestOptions.assertCurrent);
   const fullUrl = `${baseURL}${url}`;
-  const headers = buildBrainHeaders(url, customHeaders);
+  assertRequestAccount(requestOptions);
+  const headers = await buildBrainHeaders(url, customHeaders);
+  assertRequestAccount(requestOptions);
+  requestOptions.beforeRequest?.();
 
   const options: RequestInit = {
     method,
@@ -132,31 +216,49 @@ async function fetchRequest(
   };
 
   if (method === 'GET') {
-    const query = data
-      ? '?' +
-        Object.entries(data)
-          .map(
-            ([key, val]) =>
-              `${encodeURIComponent(key)}=${encodeURIComponent(val)}`
-          )
-          .join('&')
-      : '';
-    return handleResponse(fetch(fullUrl + query, options), data);
+    const queryParams = new URLSearchParams();
+    Object.entries(data ?? {}).forEach(([key, value]) => {
+      const values = Array.isArray(value) ? value : [value];
+      values.forEach((item) => {
+        if (item !== undefined && item !== null) {
+          queryParams.append(key, String(item));
+        }
+      });
+    });
+    const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
+    return accountResponse(
+      handleResponse(
+        fetchBrainResponse(fullUrl + query, options),
+        data,
+        requestOptions
+      ),
+      requestOptions
+    );
   }
 
   if (data) {
     options.body = JSON.stringify(data);
   }
 
-  return handleResponse(fetch(fullUrl, options), data);
+  return accountResponse(
+    handleResponse(fetchBrainResponse(fullUrl, options), data, requestOptions),
+    requestOptions
+  );
 }
 
 async function handleResponse(
   responsePromise: Promise<Response>,
-  requestData?: Record<string, any>
+  requestData?: Record<string, any>,
+  requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
+  const auth = getAuthStore();
+  const requestAccount =
+    auth.token && auth.user_id != null ? String(auth.user_id) : null;
+  setUsageAccount(requestAccount);
   try {
     const res = await responsePromise;
+    assertRequestAccount(requestOptions);
+    requestOptions.assertCurrent?.();
     persistSessionIdFromResponse(res);
     if (res.status === 204) {
       return { code: 0, text: '' };
@@ -185,6 +287,8 @@ async function handleResponse(
       return null;
     }
     const resData = await res.json();
+    assertRequestAccount(requestOptions);
+    requestOptions.assertCurrent?.();
     if (!resData) {
       return null;
     }
@@ -194,8 +298,8 @@ async function handleResponse(
       return resData;
     }
 
-    if (code === 20) {
-      showCreditsToast();
+    if (String(code) === '20' || String(code) === '22') {
+      reportError(resData, { modelType: 'cloud' }, requestAccount);
       return resData;
     }
 
@@ -231,21 +335,28 @@ async function handleResponse(
         typeof msg === 'string' ? msg : JSON.stringify(msg)
       );
       err.status = res.status;
-      err.response = { data: resData, status: res.status };
+      err.response = {
+        data: resData,
+        status: res.status,
+        headers: res.headers,
+      };
       throw err;
     }
 
     return resData;
   } catch (err: any) {
+    assertRequestAccount(requestOptions);
+    requestOptions.assertCurrent?.();
     if (err?.name === 'AbortError') {
       throw err;
     }
 
-    // Only show traffic toast for cloud model requests
-    const isCloudRequest = requestData?.api_url === 'cloud';
-    if (isCloudRequest) {
-      showTrafficToast();
-    }
+    const reason = reportError(
+      err,
+      { modelType: requestData?.api_url === 'cloud' ? 'cloud' : undefined },
+      requestAccount
+    );
+    err = sanitizeResponseError(err, reason);
 
     console.error('[fetch error]:', err);
 
@@ -267,17 +378,79 @@ export const fetchGet = (
   options?: FetchRequestOptions
 ) => fetchRequest('GET', url, params, headers, options);
 
-export const fetchPost = (url: string, data?: any, headers?: any) =>
-  fetchRequest('POST', url, data, headers);
+/** GET a bounded binary payload from Brain without converting it to a stream. */
+export async function fetchGetBlob(
+  url: string,
+  params?: Record<string, unknown>,
+  options: FetchRequestOptions = {}
+): Promise<Blob> {
+  const baseURL = await getBaseURL();
+  const queryParams = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    const values = Array.isArray(value) ? value : [value];
+    values.forEach((item) => {
+      if (item !== undefined && item !== null) {
+        queryParams.append(key, String(item));
+      }
+    });
+  });
+  const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
+  assertRequestAccount(options);
+  const headers = await buildBrainHeaders(url, { Accept: '*/*' }, false);
+  assertRequestAccount(options);
+  const response = await fetch(`${baseURL}${url}${query}`, {
+    method: 'GET',
+    headers,
+    signal: options.signal,
+  });
+  assertRequestAccount(options);
+  persistSessionIdFromResponse(response);
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    let message = `HTTP ${response.status}`;
+    if (contentType.includes('application/json')) {
+      const body = await response.json().catch(() => null);
+      const detail = body?.detail;
+      message =
+        (typeof detail === 'string' && detail) || body?.message || message;
+    } else {
+      const detail = await response.text().catch(() => '');
+      if (detail.trim()) message = detail.trim();
+    }
+    const error = new Error(message) as Error & {
+      status?: number;
+      response?: Response;
+    };
+    error.status = response.status;
+    error.response = response;
+    throw error;
+  }
+  return accountResponse(response.blob(), options);
+}
 
-export const fetchPut = (url: string, data?: any, headers?: any) =>
-  fetchRequest('PUT', url, data, headers);
+export const fetchPost = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => fetchRequest('POST', url, data, headers, options);
+
+export const fetchPut = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => fetchRequest('PUT', url, data, headers, options);
 
 export const fetchPatch = (url: string, data?: any, headers?: any) =>
   fetchRequest('PATCH', url, data, headers);
 
-export const fetchDelete = (url: string, data?: any, headers?: any) =>
-  fetchRequest('DELETE', url, data, headers);
+export const fetchDelete = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => fetchRequest('DELETE', url, data, headers, options);
 
 /** POST FormData to Brain base URL (for file uploads). */
 export async function fetchPostForm(
@@ -287,7 +460,7 @@ export async function fetchPostForm(
 ): Promise<any> {
   const baseURL = await getBaseURL();
   const fullUrl = `${baseURL}${url}`;
-  const headers = buildBrainHeaders(url, customHeaders, false);
+  const headers = await buildBrainHeaders(url, customHeaders, false);
   return handleResponse(
     fetch(fullUrl, { method: 'POST', headers, body: formData })
   );
@@ -308,8 +481,11 @@ export interface SSETransportOptions {
   method?: 'GET' | 'POST';
   body?: Record<string, any> | string;
   signal?: AbortSignal;
+  expectedAccountKey?: string;
   extraHeaders?: Record<string, string>;
   openWhenHidden?: boolean;
+  /** Runs before every delivery, including the SSE library's own retries. */
+  beforeRequest?: () => void;
   onmessage: (event: EventSourceMessage) => void | Promise<void>;
   onopen?: (response: Response) => void | Promise<void>;
   onerror?: (err: any) => number | null | undefined | void;
@@ -325,30 +501,73 @@ export async function sseTransport(
       ? options.url
       : `${baseURL}${options.url}`;
 
-  const headers = buildBrainHeaders(options.url, options.extraHeaders);
+  assertRequestAccount(options);
+  const headers = await buildBrainHeaders(options.url, options.extraHeaders);
+  assertRequestAccount(options);
   const body =
     typeof options.body === 'string'
       ? options.body
       : options.body
         ? JSON.stringify(options.body)
         : undefined;
+  const method = options.method || 'POST';
 
+  // Long-lived streams must not hold the renderer's per-host connections:
+  // in Electron, Brain event streams are relayed by the main process.
+  const requestFetch = await resolveEventStreamFetch(
+    fullUrl,
+    method,
+    window.fetch
+  );
+  assertRequestAccount(options);
+  let guardRejected = false;
+  let guardError: unknown;
   await fetchEventSource(fullUrl, {
-    method: options.method || 'POST',
+    method,
     openWhenHidden: options.openWhenHidden ?? true,
     signal: options.signal,
     headers,
     body,
-    onmessage: options.onmessage,
+    fetch:
+      options.beforeRequest || options.expectedAccountKey
+        ? (input, init) => {
+            if (guardRejected) throw guardError;
+            try {
+              assertRequestAccount(options);
+              options.beforeRequest?.();
+            } catch (error) {
+              guardRejected = true;
+              guardError = error;
+              throw error;
+            }
+            return requestFetch(input, init);
+          }
+        : requestFetch,
+    onmessage(event) {
+      assertRequestAccount(options);
+      if (!options.signal?.aborted) return options.onmessage(event);
+    },
     async onopen(response) {
+      assertRequestAccount(options);
       persistSessionIdFromResponse(response);
       if (options.onopen) {
         await options.onopen(response);
       }
     },
-    onerror: options.onerror,
-    onclose: options.onclose,
+    onerror(error) {
+      // Admission failures must never enter the network retry policy.
+      if (guardRejected) throw guardError;
+      assertRequestAccount(options);
+      return options.onerror?.(error);
+    },
+    onclose() {
+      assertRequestAccount(options);
+      options.onclose?.();
+    },
   });
+  // Caller cleanup inside the guard can abort the input signal. The library
+  // resolves on abort; preserve the admission error instead of reporting success.
+  if (guardRejected) throw guardError;
 }
 
 // =============== porxy ===============
@@ -379,10 +598,12 @@ async function proxyFetchRequest(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   data?: Record<string, any>,
-  customHeaders: Record<string, string> = {}
+  customHeaders: Record<string, string> = {},
+  requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
   const baseURL = await getProxyBaseURL();
   const fullUrl = `${baseURL}${url}`;
+  assertRequestAccount(requestOptions);
   const { token } = getAuthStore();
 
   const headers: Record<string, string> = {
@@ -401,9 +622,11 @@ async function proxyFetchRequest(
     }
   }
 
+  requestOptions.beforeRequest?.();
   const options: RequestInit = {
     method,
     headers,
+    signal: requestOptions.signal,
   };
 
   if (method === 'GET') {
@@ -416,27 +639,53 @@ async function proxyFetchRequest(
           )
           .join('&')
       : '';
-    return handleResponse(fetch(fullUrl + query, options));
+    return accountResponse(
+      handleResponse(
+        fetch(fullUrl + query, options),
+        undefined,
+        requestOptions
+      ),
+      requestOptions
+    );
   }
 
   if (data) {
     options.body = JSON.stringify(data);
   }
 
-  return handleResponse(fetch(fullUrl, options));
+  return accountResponse(
+    handleResponse(fetch(fullUrl, options), undefined, requestOptions),
+    requestOptions
+  );
 }
 
-export const proxyFetchGet = (url: string, params?: any, headers?: any) =>
-  proxyFetchRequest('GET', url, params, headers);
+export const proxyFetchGet = (
+  url: string,
+  params?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('GET', url, params, headers, options);
 
-export const proxyFetchPost = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('POST', url, data, headers);
+export const proxyFetchPost = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('POST', url, data, headers, options);
 
-export const proxyFetchPut = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('PUT', url, data, headers);
+export const proxyFetchPut = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('PUT', url, data, headers, options);
 
-export const proxyFetchPatch = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('PATCH', url, data, headers);
+export const proxyFetchPatch = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('PATCH', url, data, headers, options);
 
 export const proxyFetchDelete = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('DELETE', url, data, headers);
@@ -566,12 +815,19 @@ export async function checkLocalServerStale(): Promise<void> {
 
     if (staleReason) {
       const { toast } = await import('sonner');
-      toast.warning('Server code has been updated', {
-        description:
-          'Server is outdated. Please restart it or rebuild: docker-compose up --build -d',
-        duration: Infinity,
-        closeButton: true,
-      });
+      toast.warning(
+        i18next.t('layout.server-code-updated', {
+          defaultValue: 'Server code has been updated',
+        }),
+        {
+          description: i18next.t('layout.server-outdated-description', {
+            defaultValue:
+              'The server is outdated. Restart it or rebuild it: docker-compose up --build -d',
+          }),
+          duration: Infinity,
+          closeButton: true,
+        }
+      );
       console.warn(`[Server Check] ${staleReason}. Please restart the server.`);
     }
   } catch {

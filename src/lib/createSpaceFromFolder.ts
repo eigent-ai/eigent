@@ -21,7 +21,7 @@ import {
 } from '@/service/workspaceApi';
 import type { ProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { isDisposableBlankSpace, useSpaceStore } from '@/store/spaceStore';
-import type { TFunction } from 'i18next';
+import i18next, { type TFunction } from 'i18next';
 
 export function getFolderSpaceErrorMessage(error: unknown, t: TFunction) {
   const err = error as {
@@ -63,7 +63,7 @@ export interface CreateSpaceFromFolderInput {
   onUnavailable?: () => void;
 }
 
-/** Opens the folder picker and creates a new folder-backed Space in one flow. */
+/** Opens the folder picker and creates or converts a folder-backed Space. */
 export async function createSpaceFromFolderPicker({
   host,
   email,
@@ -85,7 +85,11 @@ export async function createSpaceFromFolderPicker({
 
   const capabilities = await fetchWorkspaceCapabilities();
   if (!capabilities.binding_enabled) {
-    throw new Error('Workspace folder binding is not available');
+    throw new Error(
+      i18next.t('layout.workspace-folder-binding-unavailable', {
+        defaultValue: 'Space folder binding is not available',
+      })
+    );
   }
 
   const result = await selectFile({
@@ -97,18 +101,28 @@ export async function createSpaceFromFolderPicker({
   }
 
   const folderName =
-    folderPath.split(/[\\/]/).filter(Boolean).at(-1) || 'Folder Space';
+    folderPath.split(/[\\/]/).filter(Boolean).at(-1) ||
+    i18next.t('layout.folder-space', { defaultValue: 'Folder Space' });
+  const previousSpace = previousSpaceId
+    ? spaceStore.spaces[previousSpaceId]
+    : null;
+  const reusePreviousSpace = isDisposableBlankSpace(
+    previousSpace,
+    spaceStore.projectsBySpaceId
+  );
   let createdSpaceId: string | null = null;
-  const spaceId = await spaceStore.createSpaceOnServer({
-    name: folderName,
-    sourceType: 'folder',
-    rootPath: folderPath,
-    setActive: false,
-    metadata: {
-      bindingSource: 'space_local_brain',
-    },
-  });
-  createdSpaceId = spaceId;
+  const spaceId = reusePreviousSpace
+    ? previousSpace!.id
+    : await spaceStore.createSpaceOnServer({
+        name: folderName,
+        sourceType: 'folder',
+        rootPath: folderPath,
+        setActive: false,
+        metadata: {
+          bindingSource: 'space_local_brain',
+        },
+      });
+  if (!reusePreviousSpace) createdSpaceId = spaceId;
 
   try {
     await bindWorkspaceToSpace({
@@ -118,15 +132,43 @@ export async function createSpaceFromFolderPicker({
       path: folderPath,
     });
   } catch (bindError) {
-    await spaceStore
-      .deleteSpaceOnServer(createdSpaceId)
-      .catch((rollbackError) => {
-        console.warn(
-          '[createSpaceFromFolderPicker] Failed to roll back folder Space:',
-          rollbackError
-        );
-      });
+    if (createdSpaceId) {
+      await spaceStore
+        .deleteSpaceOnServer(createdSpaceId)
+        .catch((rollbackError) => {
+          console.warn(
+            '[createSpaceFromFolderPicker] Failed to roll back folder Space:',
+            rollbackError
+          );
+        });
+    }
     throw bindError;
+  }
+
+  if (reusePreviousSpace) {
+    try {
+      await spaceStore.updateSpaceOnServer(spaceId, {
+        name: folderName,
+        sourceType: 'folder',
+        rootPath: folderPath,
+        metadata: {
+          ...previousSpace!.metadata,
+          createdFrom,
+          autoCreatedPlaceholder: false,
+          bindingSource: 'space_local_brain',
+        },
+      });
+    } catch (updateError) {
+      await unbindWorkspaceFromBrain(spaceId, email, userId).catch(
+        (unbindError) => {
+          console.warn(
+            '[createSpaceFromFolderPicker] Failed to unbind Brain workspace after Space update failure:',
+            unbindError
+          );
+        }
+      );
+      throw updateError;
+    }
   }
 
   let syncedProject: Awaited<ReturnType<typeof createSyncedProjectInSpace>>;
@@ -152,14 +194,33 @@ export async function createSpaceFromFolderPicker({
         );
       }
     );
-    await spaceStore
-      .deleteSpaceOnServer(createdSpaceId)
-      .catch((rollbackError) => {
-        console.warn(
-          '[createSpaceFromFolderPicker] Failed to roll back folder Space after project-create failure:',
-          rollbackError
-        );
-      });
+    if (createdSpaceId) {
+      await spaceStore
+        .deleteSpaceOnServer(createdSpaceId)
+        .catch((rollbackError) => {
+          console.warn(
+            '[createSpaceFromFolderPicker] Failed to roll back folder Space after project-create failure:',
+            rollbackError
+          );
+        });
+    } else if (previousSpace) {
+      await spaceStore
+        .updateSpaceOnServer(spaceId, {
+          name: previousSpace.name,
+          description: previousSpace.description,
+          sourceType: previousSpace.sourceType,
+          rootPath: previousSpace.rootPath,
+          rootFingerprint: previousSpace.rootFingerprint,
+          status: previousSpace.status,
+          metadata: previousSpace.metadata,
+        })
+        .catch((rollbackError) => {
+          console.warn(
+            '[createSpaceFromFolderPicker] Failed to restore blank Space after project-create failure:',
+            rollbackError
+          );
+        });
+    }
     throw projectError;
   }
 

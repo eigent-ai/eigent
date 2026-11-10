@@ -13,14 +13,38 @@ BRAIN_PORT="${BRAIN_PORT:-5001}"
 WEB_HOST="${WEB_HOST:-127.0.0.1}"
 WEB_PORT="${WEB_PORT:-5173}"
 
+terminate_process_tree() {
+  local process_id="$1"
+  local child_id
+
+  while IFS= read -r child_id; do
+    if [[ -n "${child_id}" ]]; then
+      terminate_process_tree "${child_id}"
+    fi
+  done < <(pgrep -P "${process_id}" 2>/dev/null || true)
+
+  if ! kill -0 "${process_id}" >/dev/null 2>&1; then
+    return
+  fi
+
+  kill "${process_id}" >/dev/null 2>&1 || true
+  for _ in {1..10}; do
+    if ! kill -0 "${process_id}" >/dev/null 2>&1; then
+      return
+    fi
+    sleep 0.1
+  done
+  kill -KILL "${process_id}" >/dev/null 2>&1 || true
+}
+
 cleanup() {
   local exit_code=$?
-  if [[ -n "${FRONTEND_PID}" ]] && kill -0 "${FRONTEND_PID}" >/dev/null 2>&1; then
-    kill "${FRONTEND_PID}" >/dev/null 2>&1 || true
+  if [[ -n "${FRONTEND_PID}" ]]; then
+    terminate_process_tree "${FRONTEND_PID}"
     wait "${FRONTEND_PID}" 2>/dev/null || true
   fi
-  if [[ -n "${BACKEND_PID}" ]] && kill -0 "${BACKEND_PID}" >/dev/null 2>&1; then
-    kill "${BACKEND_PID}" >/dev/null 2>&1 || true
+  if [[ -n "${BACKEND_PID}" ]]; then
+    terminate_process_tree "${BACKEND_PID}"
     wait "${BACKEND_PID}" 2>/dev/null || true
   fi
   if [[ ${exit_code} -ne 0 ]]; then

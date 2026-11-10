@@ -13,11 +13,16 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore, type SessionTerminalTab } from '@/store/pageTabStore';
+import {
+  isNewSessionDraftScope,
+  type SessionTerminalTab,
+} from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { Check, Copy, SquareTerminal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -25,10 +30,12 @@ import { useTranslation } from 'react-i18next';
 import { ShellTerminal } from './ShellTerminal';
 import type { TerminalSource } from './terminalSources';
 import { useSessionTerminalSources } from './useSessionTerminalSources';
+import { useTerminalProcesses } from './useTerminalProcesses';
 import { XtermViewer } from './XtermViewer';
 
 export interface TerminalTabProps {
   tab: SessionTerminalTab;
+  viewportSettled?: boolean;
 }
 
 /**
@@ -36,11 +43,11 @@ export interface TerminalTabProps {
  * shell (a main-process PTY running the user's login shell). A tab opened
  * from the chooser's project section shows that agent stream read-only.
  */
-export function TerminalTab({ tab }: TerminalTabProps) {
+export function TerminalTab({ tab, viewportSettled = true }: TerminalTabProps) {
   if (tab.agentSourceId) {
     return <AgentStreamTerminal sourceId={tab.agentSourceId} />;
   }
-  return <LocalShellTerminal tab={tab} />;
+  return <LocalShellTerminal tab={tab} viewportSettled={viewportSettled} />;
 }
 
 /** One-line label for a stream: agent name, then the subtask it ran for. */
@@ -51,13 +58,15 @@ export function terminalSourceLabel(source: TerminalSource): string {
 }
 
 /** Interactive local shell, started in the project's working folder. */
-function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
+function LocalShellTerminal({ tab, viewportSettled }: TerminalTabProps) {
   const { t } = useTranslation();
   const host = useHost();
-  const openBrowserPreview = usePageTabStore(
+  const openBrowserPreview = useSessionPageTabStore(
     (state) => state.openBrowserPreview
   );
-  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const projectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
   const isDesktop = Boolean(host?.electronAPI?.terminalCreate);
@@ -84,7 +93,13 @@ function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
       return;
     }
     const api = host?.electronAPI;
-    if (!api?.getProjectFolderPath || !email || !projectId) {
+    // The New session draft has no Project folder yet; use the home folder.
+    if (
+      !api?.getProjectFolderPath ||
+      !email ||
+      !projectId ||
+      isNewSessionDraftScope(projectId)
+    ) {
       setCwdResolved(true);
       return;
     }
@@ -106,11 +121,14 @@ function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
   if (!isDesktop) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <SquareTerminal
-          className="h-8 w-8 text-ds-icon-neutral-muted-default"
+        <DsIcon
+          icon={SquareTerminal}
+          recipe="illustration"
+          illustrationSize={32}
+          className="text-ds-ink-muted-default"
           aria-hidden
         />
-        <p className="max-w-[360px] text-sm text-ds-text-neutral-muted-default">
+        <p className="max-w-[360px] text-sm text-ds-ink-muted-default">
           {t('layout.terminal-desktop-only', {
             defaultValue: 'The terminal is available in the desktop app.',
           })}
@@ -126,6 +144,7 @@ function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
     <ShellTerminal
       shellId={tab.shellId ?? `session-shell:fallback:${tab.id}`}
       cwd={cwd}
+      viewportSettled={viewportSettled}
       onOpenLink={openBrowserPreview}
     />
   );
@@ -135,10 +154,28 @@ function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
 function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
   const { t } = useTranslation();
   const sources = useSessionTerminalSources();
-  const openBrowserPreview = usePageTabStore(
+  const openBrowserPreview = useSessionPageTabStore(
     (state) => state.openBrowserPreview
   );
-  const source = sources.find((candidate) => candidate.id === sourceId);
+  const projectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
+  const processes = useTerminalProcesses(projectId);
+  const process = processes.find(
+    (candidate) => `process:${candidate.id}` === sourceId
+  );
+  const source = process
+    ? {
+        id: sourceId,
+        agentName: process.agent_name,
+        taskLabel: process.label,
+        lines: [process.output],
+        status:
+          process.status === 'running'
+            ? ('running' as const)
+            : ('idle' as const),
+      }
+    : sources.find((candidate) => candidate.id === sourceId);
 
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
@@ -154,11 +191,14 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
   if (!source) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <SquareTerminal
-          className="h-8 w-8 text-ds-icon-neutral-muted-default"
+        <DsIcon
+          icon={SquareTerminal}
+          recipe="illustration"
+          illustrationSize={32}
+          className="text-ds-ink-muted-default"
           aria-hidden
         />
-        <p className="max-w-[360px] text-sm text-ds-text-neutral-muted-default">
+        <p className="max-w-[360px] text-sm text-ds-ink-muted-default">
           {t('layout.terminal-stream-gone', {
             defaultValue: 'This terminal stream is no longer available.',
           })}
@@ -168,7 +208,7 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
   }
 
   const handleCopyAll = () => {
-    void navigator.clipboard?.writeText(source.lines.join('\n'));
+    void navigator.clipboard?.writeText(source.lines.join(''));
     setCopied(true);
     if (copiedTimerRef.current !== null) {
       window.clearTimeout(copiedTimerRef.current);
@@ -178,18 +218,21 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="flex h-[44px] shrink-0 items-center gap-2 px-3">
+      <div className="flex h-ds-layout-row-header shrink-0 items-center gap-2 overflow-visible px-3">
         <span
           aria-hidden
           className={cn(
             'h-2 w-2 shrink-0 rounded-full',
             source.status === 'running'
               ? 'animate-pulse bg-ds-bg-status-running-default-default'
-              : 'bg-ds-bg-neutral-muted-default'
+              : 'bg-ds-neutral-muted-default'
           )}
         />
-        <span className="truncate text-sm text-ds-text-neutral-muted-default">
+        <span className="truncate text-sm text-ds-ink-muted-default">
           {terminalSourceLabel(source)}
+          {process
+            ? ` · ${t(`layout.terminal-process-${process.status}`)}`
+            : null}
         </span>
         <div className="min-w-0 flex-1" />
         <TooltipSimple
@@ -208,9 +251,9 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
             })}
           >
             {copied ? (
-              <Check className="h-4 w-4" aria-hidden />
+              <DsIcon icon={Check} aria-hidden />
             ) : (
-              <Copy className="h-4 w-4" aria-hidden />
+              <DsIcon icon={Copy} aria-hidden />
             )}
           </Button>
         </TooltipSimple>
@@ -219,6 +262,8 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
         <XtermViewer
           sourceId={source.id}
           lines={source.lines}
+          text={process?.output}
+          offset={process?.offset}
           onOpenLink={openBrowserPreview}
         />
       </div>

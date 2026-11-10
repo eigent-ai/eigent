@@ -14,9 +14,12 @@
 
 import agents from './agents.json';
 import chat from './chat.json';
+import common from './common.json';
 import connectors from './connectors.json';
 import dashboard from './dashboard.json';
+import folder from './folder.json';
 import layout from './layout.json';
+import markdown from './markdown.json';
 import setting from './setting.json';
 import triggers from './triggers.json';
 import update from './update.json';
@@ -27,7 +30,10 @@ export default {
   dashboard,
   workforce,
   chat,
+  common,
   connectors,
+  folder,
+  markdown,
   setting,
   update,
   triggers,

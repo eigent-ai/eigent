@@ -1,0 +1,89 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { DsIcon } from '@/components/ui/ds-icon';
+import { cn } from '@/lib/utils';
+import { motion } from 'framer-motion';
+import { ChevronDown } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
+
+export interface SidebarAccordionSectionProps {
+  label: string;
+  children: ReactNode;
+  defaultExpanded?: boolean;
+  className?: string;
+  /**
+   * Controls at the header's right end. Like the chevron they show on hover
+   * or keyboard focus, and stay while one of their menus is open.
+   */
+  actions?: ReactNode;
+}
+
+/**
+ * Collapsible sidebar section with a label header.
+ * Chevron is always visible when collapsed; only visible on hover when expanded.
+ */
+export function SidebarAccordionSection({
+  label,
+  children,
+  defaultExpanded = true,
+  className,
+  actions,
+}: SidebarAccordionSectionProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+
+  return (
+    <div className={cn('mt-3 flex flex-col', className)}>
+      <div className="group/section-header flex w-full min-w-0 items-center">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-1 rounded-lg px-3 py-0.5 text-left"
+          aria-expanded={expanded}
+        >
+          <span className="text-ds-text-base font-normal text-ds-ink-subtle-default">
+            {label}
+          </span>
+          <DsIcon
+            icon={ChevronDown}
+            className={cn(
+              'shrink-0 !text-ds-ink-muted-default transition-[opacity,transform] duration-200',
+              !expanded && '-rotate-90',
+              expanded &&
+                'opacity-0 group-focus-within/section-header:opacity-100 group-hover/section-header:opacity-100'
+            )}
+            aria-hidden
+          />
+        </button>
+        {actions ? (
+          <div
+            data-section-header-actions
+            className="flex shrink-0 items-center gap-ds-2 pr-ds-6 opacity-0 transition-opacity duration-150 group-focus-within/section-header:opacity-100 group-hover/section-header:opacity-100 has-[[data-state=open]]:opacity-100"
+          >
+            {actions}
+          </div>
+        ) : null}
+      </div>
+
+      <motion.div
+        initial={false}
+        animate={{ height: expanded ? 'auto' : 0 }}
+        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+        style={{ overflow: 'hidden' }}
+      >
+        <div className="flex flex-col gap-0.5 pt-0.5">{children}</div>
+      </motion.div>
+    </div>
+  );
+}

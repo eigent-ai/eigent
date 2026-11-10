@@ -195,7 +195,7 @@
       0 108px 72px -16px rgba(65, 74, 92, 0.08),
       0 32px 64px -8px rgba(113, 153, 189, 0.12),
       0 8px 10px 0 rgba(113, 153, 189, 0.12);
-    --shadow-perfect: var(--shadow-soft);
+    --shadow-perfect: var(--ds-elevation-popover);
     --shadow-button:
       inset 0 1px 0 0 #ffffff54, 0 3px 4px -1px #00000040, 0 0 0 1px #d4d4d440;
   }

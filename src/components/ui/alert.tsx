@@ -23,13 +23,13 @@ import {
 } from './semanticProps';
 
 const alertBase =
-  'relative w-full rounded-lg border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg~*]:pl-7';
+  'relative w-full rounded-ds-card border px-4 py-3 text-ds-text-base [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg~*]:pl-7';
 
 const alertVariants = cva(alertBase, {
   variants: {
     tone: {
       neutral:
-        'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default [&>svg]:text-ds-text-neutral-default-default',
+        'border-ds-hairline-default-default bg-ds-neutral-default-default text-ds-ink-default-default [&>svg]:text-ds-ink-default-default',
       error:
         'border-ds-border-status-error-default-default/50 text-ds-text-status-error-strong-default [&>svg]:text-ds-text-status-error-strong-default',
       success:
@@ -102,7 +102,10 @@ const AlertTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h5
     ref={ref}
-    className={cn('mb-1 font-medium tracking-tight leading-none', className)}
+    className={cn(
+      'mb-1 text-ds-text-title font-medium tracking-tight',
+      className
+    )}
     {...props}
   />
 ));
@@ -114,7 +117,7 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('text-sm [&_p]:leading-relaxed', className)}
+    className={cn('text-ds-text-base [&_p]:leading-relaxed', className)}
     {...props}
   />
 ));

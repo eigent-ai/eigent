@@ -1,9 +1,9 @@
 {
   "task-hub": "Центр задач",
-  "new-project": "Новый проект",
+  "new-project": "Сессия без названия",
   "search": "Поиск",
-  "project-archives": "Архивы проектов",
-  "ongoing-projects": "Текущие проекты",
+  "project-archives": "Архив сессий",
+  "ongoing-projects": "Текущие сессии",
   "ongoing-tasks": "Текущие задачи",
   "completed-tasks": "Завершенные задачи",
   "share": "Поделиться",
@@ -24,6 +24,9 @@
   "document-agent": "Агент документов",
   "multi-modal-agent": "Мультимодальный агент",
   "social-media-agent": "Агент социальных сетей",
-  "no-projects-found": "Проекты не найдены",
-  "no-tasks-found": "Задачи не найдены."
+  "no-projects-found": "Сессии не найдены.",
+  "no-tasks-found": "Задачи не найдены.",
+  "command-search-placeholder": "Поиск сеансов, задач и автоматизаций…",
+  "more-integrations": "Другие интеграции",
+  "today": "Сегодня"
 }

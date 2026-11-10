@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import baseColorTokens from '../../style/tokens/base.color.json';
+import categoryColorTokens from '../../style/tokens/category.color.json';
 import componentTokens from '../../style/tokens/component.color.json';
 import semanticTokens from '../../style/tokens/semantic.color.json';
 import { DEFAULT_THEME_CATALOG, getColorThemeDefinitionV2 } from './catalog';
@@ -36,9 +37,13 @@ import {
   resolveExtends,
 } from './dtcg';
 import { tokenKeyToCssVarName } from './naming';
+import { admitThemeSeed } from './seedAdmission';
 import type {
   Adjustment,
+  CategoryColor,
+  CategoryTokenKey,
   ContrastDiagnostic,
+  DesignTokenKey,
   Element,
   Emphasis,
   Mode,
@@ -50,6 +55,7 @@ import type {
   TokenKey,
   Tone,
 } from './types';
+import { CATEGORY_COLOR_NAMES, CATEGORY_TOKEN_ROLES } from './types';
 
 type SemanticShape = {
   axes: {
@@ -110,7 +116,12 @@ type BaseShape = {
   >;
 };
 
+type CategoryShape = {
+  colors: Record<CategoryColor, string[]>;
+};
+
 const BASE = baseColorTokens as BaseShape;
+const CATEGORY = categoryColorTokens as CategoryShape;
 const SEMANTIC = semanticTokens as SemanticShape;
 const LEGACY_NEUTRAL_EMPHASIS = [
   'subtle',
@@ -351,6 +362,45 @@ const SYSTEM_STATUS_TRANSPARENT_OPACITY_BY_STATE: Record<State, number> = {
   disabled: 0.1,
 };
 
+const CATEGORY_DARK_STEP_BY_ROLE = [
+  11, 11, 11, 10, 9, 8, 7, 6, 5, 4, 2, 0,
+] as const;
+
+function parseCategoryOklch(value: string): Oklch {
+  const match = value
+    .trim()
+    .match(/^oklch\(\s*(0|1|0?\.\d+)\s+(0|0?\.\d+)\s+(-?\d+(?:\.\d+)?)\s*\)$/i);
+  if (!match) {
+    throw new Error(`Invalid categorical OKLCH color: ${value}`);
+  }
+  return {
+    l: clamp(Number(match[1]), 0, 1),
+    c: Math.max(0, Number(match[2])),
+    h: normalizeHue(Number(match[3])),
+  };
+}
+
+function buildCategoryTokens(mode: Mode): ThemeTokens {
+  const tokens: ThemeTokens = {};
+  for (const color of CATEGORY_COLOR_NAMES) {
+    const scale = CATEGORY.colors[color];
+    if (!Array.isArray(scale) || scale.length !== CATEGORY_TOKEN_ROLES.length) {
+      throw new Error(
+        `Categorical palette "${color}" must contain ${CATEGORY_TOKEN_ROLES.length} colors.`
+      );
+    }
+
+    CATEGORY_TOKEN_ROLES.forEach(({ style, state }, roleIndex) => {
+      const stepIndex =
+        mode === 'dark' ? CATEGORY_DARK_STEP_BY_ROLE[roleIndex] : roleIndex;
+      const source = scale[stepIndex];
+      const key = `category.${color}.${style}.${state}` as CategoryTokenKey;
+      tokens[key] = oklchToHex(parseCategoryOklch(source));
+    });
+  }
+  return tokens;
+}
+
 function mergeAdjustment(...values: Array<Adjustment | undefined>): Adjustment {
   const out: Adjustment = {};
   for (const value of values) {
@@ -363,12 +413,35 @@ function mergeAdjustment(...values: Array<Adjustment | undefined>): Adjustment {
   return out;
 }
 
+const MIN_FILL_LIGHTNESS = 0.05;
+
 function applyAdjustment(base: Oklch, adjustment: Adjustment): Oklch {
+  const nextL = base.l + (adjustment.dL ?? 0);
+  const floor = nextL < base.l ? MIN_FILL_LIGHTNESS : 0;
   return {
-    l: clamp(base.l + (adjustment.dL ?? 0), 0, 1),
+    l: clamp(nextL, floor, 1),
     c: Math.max(0, base.c + (adjustment.dC ?? 0)),
     h: normalizeHue(base.h + (adjustment.dH ?? 0)),
   };
+}
+
+function applyBrandSeedAdjustment(base: Oklch, adjustment: Adjustment): Oklch {
+  const authoredDelta = adjustment.dL ?? 0;
+  const darkenedLightness = base.l + authoredDelta;
+  const darkeningWouldCollapse =
+    authoredDelta < 0 &&
+    base.l > MIN_FILL_LIGHTNESS &&
+    darkenedLightness < MIN_FILL_LIGHTNESS;
+
+  if (!darkeningWouldCollapse) return applyAdjustment(base, adjustment);
+
+  // Preserve the authored state distance for very dark but still usable
+  // Accent seeds by moving toward the side with available headroom. Exact or
+  // already-collapsed black seeds still fail admission instead of being hidden.
+  return applyAdjustment(base, {
+    ...adjustment,
+    dL: Math.abs(authoredDelta),
+  });
 }
 
 function setTokenIfMissing(
@@ -767,11 +840,12 @@ function toneBaseColor(
       ? (BASE.fixedAnchors[mode][tone] ?? seed.accent)
       : seed[source as 'accent' | 'background' | 'ink'];
   const base = hexToOklch(sourceHex);
+  const chromaDelta = base.c < 0.01 ? 0 : (spec.dC ?? 0);
   return applyAdjustment(base, {
     dL:
       (spec.dL ?? 0) +
       (mode === 'light' ? (spec.dLLight ?? 0) : (spec.dLDark ?? 0)),
-    dC: spec.dC ?? 0,
+    dC: chromaDelta,
     dH: spec.dH ?? 0,
   });
 }
@@ -812,6 +886,22 @@ function solveForegroundContrast(
   }
 
   return chooseReadableText(bgHex, fgHex, minContrast);
+}
+
+function solveFillContrastForLightForeground(
+  bgHex: `#${string}`,
+  minContrast: number
+): `#${string}` {
+  if (contrastRatio('#ffffff', bgHex) >= minContrast) return bgHex;
+
+  const base = hexToOklch(bgHex);
+  for (let i = 1; i <= 100; i += 1) {
+    const targetL = base.l * (1 - i / 100);
+    const probeHex = oklchToHex({ l: targetL, c: base.c, h: base.h });
+    if (contrastRatio('#ffffff', probeHex) >= minContrast) return probeHex;
+  }
+
+  return '#000000';
 }
 
 function enforceContrastPairs(tokens: ThemeTokens): {
@@ -877,6 +967,40 @@ function buildSemanticTokens(
 
         for (const element of elements) {
           const tokenKey = `${element}.${tokenSuffix}` as TokenKey;
+          if (tone === 'brand' && element === 'bg') {
+            const seedColor = hexToOklch(seed.accent);
+            const emphasisAdj = { ...SEMANTIC.transforms.emphasis[emph] };
+            const stateAdj = { ...SEMANTIC.transforms.state[state] };
+            if (seedColor.c < 0.01) {
+              emphasisAdj.dC = 0;
+              stateAdj.dC = 0;
+            }
+            const brandAdjustment = mergeAdjustment(
+              emphasisAdj,
+              stateAdj,
+              axisOverride
+            );
+            const unchanged =
+              emph === 'default' &&
+              state === 'default' &&
+              !brandAdjustment.dL &&
+              !brandAdjustment.dC &&
+              !brandAdjustment.dH &&
+              brandAdjustment.alpha === undefined;
+            if (unchanged) {
+              tokens[tokenKey] = seed.accent;
+              continue;
+            }
+            const colorHex = oklchToHex(
+              applyBrandSeedAdjustment(seedColor, brandAdjustment)
+            );
+            tokens[tokenKey] =
+              typeof brandAdjustment.alpha === 'number' &&
+              brandAdjustment.alpha < 1
+                ? alpha(colorHex, brandAdjustment.alpha)
+                : colorHex;
+            continue;
+          }
           const alphaOnlyAdjustment = mergeAdjustment(
             baseAdjustment,
             SEMANTIC.transforms.element[element],
@@ -971,7 +1095,7 @@ function buildSemanticTokens(
 
 /**
  * Tones used for filled primary-style controls (`button` `TONE_PRIMARY`): same rule as
- * brand — prefer near-white on saturated fills (WCAG large-text ~3:1), else best black/white.
+ * brand — prefer near-white on dark fills (WCAG AA 4.5:1), else best black/white.
  */
 const FILLED_ACCENT_INVERSE_TONES: Tone[] = [
   'brand',
@@ -980,6 +1104,25 @@ const FILLED_ACCENT_INVERSE_TONES: Tone[] = [
   'warning',
   'information',
 ];
+
+function preserveLightInverseOnLightAccentStrongFills(
+  tokens: ThemeTokens,
+  mode: ThemeContractV2['mode']
+): ThemeTokens {
+  if (mode !== 'light') return tokens;
+
+  // Primary controls keep light inverse content in light mode. When an
+  // authored Accent is too bright, adjust the derived strong surface instead
+  // of flipping its foreground to dark ink.
+  const out: ThemeTokens = { ...tokens };
+  for (const state of SEMANTIC.axes.states) {
+    const bgKey = `bg.brand.strong.${state}` as TokenKey;
+    const bgHex = parseHexOnly(out[bgKey]);
+    if (!bgHex) continue;
+    out[bgKey] = solveFillContrastForLightForeground(bgHex, 4.5);
+  }
+  return out;
+}
 
 function applyFilledAccentInverseTextHeuristic(
   tokens: ThemeTokens
@@ -991,7 +1134,7 @@ function applyFilledAccentInverseTextHeuristic(
       const textKey = `text.${tone}.inverse.${state}` as TokenKey;
       const bgHex = parseHexOnly(out[bgKey]);
       if (!bgHex) continue;
-      out[textKey] = chooseReadableText(bgHex, '#ffffff', 3);
+      out[textKey] = chooseReadableText(bgHex, '#ffffff', 4.5);
     }
   }
   return out;
@@ -1038,9 +1181,103 @@ function toCssVariables(tokens: ThemeTokens): Record<string, string> {
   const variables: Record<string, string> = {};
   for (const [tokenKey, value] of Object.entries(tokens)) {
     if (!value) continue;
-    variables[tokenKeyToCssVarName(tokenKey as TokenKey)] = value;
+    variables[tokenKeyToCssVarName(tokenKey as DesignTokenKey)] = value;
   }
   return variables;
+}
+
+const PUBLIC_GROUPS = [
+  { group: 'accent', tone: 'brand', element: 'bg' },
+  { group: 'neutral', tone: 'neutral', element: 'bg' },
+  { group: 'ink', tone: 'neutral', element: 'text' },
+  { group: 'hairline', tone: 'neutral', element: 'border' },
+] as const;
+const PUBLIC_EMPHASIS = ['subtle', 'muted', 'default', 'strong'] as const;
+const PUBLIC_STATES = ['default', 'hover', 'disabled', 'selected'] as const;
+
+function parsePublicHex(color: string | undefined): `#${string}` | null {
+  if (!color) return null;
+  const trimmed = color.trim().toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(trimmed)) return null;
+  return trimmed as `#${string}`;
+}
+
+function buildPublicGroupVariables(
+  tokens: ThemeTokens
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const { group, tone, element } of PUBLIC_GROUPS) {
+    for (const emphasis of PUBLIC_EMPHASIS) {
+      for (const state of PUBLIC_STATES) {
+        const key = `${element}.${tone}.${emphasis}.${state}` as TokenKey;
+        const value = tokens[key];
+        if (!value) continue;
+        out[`--ds-${group}-${emphasis}-${state}`] = value;
+      }
+    }
+  }
+
+  for (const { group, tone, element } of PUBLIC_GROUPS) {
+    for (const emphasis of PUBLIC_EMPHASIS) {
+      const fill = parsePublicHex(
+        tokens[`${element}.${tone}.${emphasis}.default` as TokenKey]
+      );
+      if (!fill) continue;
+      out[`--ds-${group}-on-${emphasis}`] = solveForegroundContrast(
+        '#ffffff',
+        fill,
+        4.5
+      );
+    }
+  }
+
+  const FEEDBACK_TONES = [
+    'success',
+    'warning',
+    'error',
+    'information',
+  ] as const;
+  for (const tone of FEEDBACK_TONES) {
+    for (const emphasis of PUBLIC_EMPHASIS) {
+      const fill = parsePublicHex(
+        tokens[`bg.${tone}.${emphasis}.default` as TokenKey]
+      );
+      if (!fill) continue;
+      out[`--ds-${tone}-on-${emphasis}`] = solveForegroundContrast(
+        '#ffffff',
+        fill,
+        4.5
+      );
+    }
+  }
+
+  const successDefaultFill = parsePublicHex(
+    tokens['bg.success.default.default']
+  );
+  if (successDefaultFill) {
+    // Switch thumbs and checkbox marks are non-text indicators. Their token is
+    // paired with the fixed Success surface instead of the theme Accent seed.
+    out['--ds-success-indicator-on-default'] = solveForegroundContrast(
+      '#ffffff',
+      successDefaultFill,
+      3
+    );
+  }
+
+  const ring =
+    tokens['ring.brand.default.default'] ??
+    tokens['ring.brand.default.focus'] ??
+    tokens['ring.brand.default.hover'];
+  if (ring) out['--ds-ring-focus'] = ring;
+
+  // Named inverse-text role for content on Accent strong fills (primary buttons).
+  // Flips by mode: near-white on light-mode dark brand, near-black on dark-mode light brand.
+  if (out['--ds-accent-on-strong']) {
+    out['--ds-ink-inverse'] = out['--ds-accent-on-strong'];
+    out['--ds-icon-inverse'] = out['--ds-accent-on-strong'];
+  }
+
+  return out;
 }
 
 function normalizeContract(contract: ThemeContractV2): ThemeContractV2 {
@@ -1070,18 +1307,37 @@ function computeThemeV2(
   const { seed, themeId } = getThemeSeed(normalized, catalog);
 
   const semantic = buildSemanticTokens(normalized, seed);
-  const accentInverseAdjusted = applyFilledAccentInverseTextHeuristic(semantic);
+  const category = buildCategoryTokens(normalized.mode);
+  const inverseFillAdjusted = preserveLightInverseOnLightAccentStrongFills(
+    {
+      ...semantic,
+      ...category,
+    },
+    normalized.mode
+  );
+  const accentInverseAdjusted = applyFilledAccentInverseTextHeuristic({
+    ...inverseFillAdjusted,
+  });
   const enforced = enforceContrastPairs(accentInverseAdjusted);
   const semanticCssVars = toCssVariables(enforced.tokens);
+  const publicGroupVars = buildPublicGroupVariables(enforced.tokens);
   const componentVars = buildComponentAliasVariables(
     enforced.tokens,
     normalized.mode
   );
   const cssVariables = {
     ...semanticCssVars,
+    ...publicGroupVars,
     ...componentVars,
     '--ds-theme-contrast': String(normalized.contrast),
   };
+  const seedAdmission = admitThemeSeed(
+    themeId,
+    normalized.mode,
+    seed,
+    enforced.tokens,
+    publicGroupVars
+  );
 
   return {
     contract: {
@@ -1093,6 +1349,7 @@ function computeThemeV2(
     cssVariables,
     diagnostics: {
       contrast: enforced.diagnostics,
+      seedAdmission,
     },
   };
 }

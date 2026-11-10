@@ -12,6 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { fetchPost } from '@/api/http';
+import i18next from 'i18next';
+
 /**
  * Fetch + parse helper for cloud providers that expose an OpenAI-compatible
  * `/v1/models` listing endpoint (e.g. OrcaRouter). Returns chat-capable
@@ -41,6 +44,16 @@ export type ProviderModelGroup = {
   models: ProviderModelInfo[];
 };
 
+export class ProviderModelsError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number
+  ) {
+    super(message);
+    this.name = 'ProviderModelsError';
+  }
+}
+
 /**
  * Decide whether a model is chat-capable enough to surface in the dropdown.
  * Keeps models that explicitly emit text, plus models that omit the
@@ -65,42 +78,75 @@ function splitProviderPrefix(id: string): [string, string] {
 }
 
 /**
- * Hit `${apiHost}${modelsEndpoint}` with a Bearer token and return chat-capable
- * models grouped by provider prefix, sorted alphabetically by provider, with
- * models within each group sorted alphabetically by id.
+ * Ask the local backend to fetch the provider's model list, then return
+ * chat-capable models grouped by provider prefix, sorted alphabetically by
+ * provider, with models within each group sorted alphabetically by id. Keeping
+ * the third-party request out of the renderer avoids provider CORS policies.
  *
  * Throws on network failure or non-2xx response with a user-readable message.
  */
 export async function fetchProviderModels(
   apiHost: string,
   modelsEndpoint: string,
-  apiKey: string
+  apiKey: string,
+  modelIdPrefix?: string
 ): Promise<ProviderModelGroup[]> {
   if (!apiKey) {
-    throw new Error('API key is required to fetch model list.');
-  }
-  const trimmedHost = apiHost.replace(/\/+$/, '');
-  const url = `${trimmedHost}${modelsEndpoint}`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: 'application/json',
-    },
-  });
-
-  if (!response.ok) {
     throw new Error(
-      `Failed to fetch models: ${response.status} ${response.statusText}`
+      i18next.t('setting.models-api-key-required', {
+        defaultValue: 'API key is required to fetch the model list.',
+      })
     );
   }
-  const payload = await response.json();
+  let payload: { data?: RawModel[] };
+  try {
+    payload = await fetchPost('/model/list', {
+      api_host: apiHost,
+      models_endpoint: modelsEndpoint,
+      api_key: apiKey,
+    });
+  } catch (error: unknown) {
+    const status =
+      typeof error === 'object' && error !== null && 'status' in error
+        ? Number(error.status)
+        : undefined;
+    if (status === 401) {
+      throw new ProviderModelsError(
+        i18next.t('setting.models-api-key-invalid', {
+          defaultValue:
+            'Invalid API key. Check your API key and click Refresh again.',
+        }),
+        status
+      );
+    }
+    if (status === 403) {
+      throw new ProviderModelsError(
+        i18next.t('setting.models-access-denied', {
+          defaultValue:
+            'Access denied. Check your API key permissions and account access, then click Refresh again.',
+        }),
+        status
+      );
+    }
+    throw new ProviderModelsError(
+      i18next.t('setting.models-connection-failed', {
+        defaultValue:
+          'Could not load models. Check your connection and API host, then click Refresh again.',
+      }),
+      status
+    );
+  }
   const data: RawModel[] = Array.isArray(payload?.data) ? payload.data : [];
 
   const grouped = new Map<string, ProviderModelInfo[]>();
   for (const model of data) {
-    if (!model?.id || !isChatCapable(model)) continue;
+    if (
+      !model?.id ||
+      !isChatCapable(model) ||
+      (modelIdPrefix && !model.id.startsWith(modelIdPrefix))
+    ) {
+      continue;
+    }
     const [provider] = splitProviderPrefix(model.id);
     const bucket = provider || 'other';
     const info: ProviderModelInfo = {
@@ -127,14 +173,24 @@ export async function fetchProviderModels(
 const CACHE_KEY_PREFIX = 'eigent-provider-models-v1:';
 
 export function loadCachedModels(
-  providerId: string
+  providerId: string,
+  modelIdPrefix?: string
 ): ProviderModelGroup[] | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY_PREFIX + providerId);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
-    return parsed as ProviderModelGroup[];
+    const groups = parsed as ProviderModelGroup[];
+    if (!modelIdPrefix) return groups;
+    return groups
+      .map((group) => ({
+        ...group,
+        models: group.models.filter((model) =>
+          model.id.startsWith(modelIdPrefix)
+        ),
+      }))
+      .filter((group) => group.models.length > 0);
   } catch {
     return null;
   }
@@ -148,5 +204,13 @@ export function saveCachedModels(
     localStorage.setItem(CACHE_KEY_PREFIX + providerId, JSON.stringify(groups));
   } catch {
     // localStorage may be unavailable (quota / private mode); silently ignore.
+  }
+}
+
+export function clearCachedModels(providerId: string): void {
+  try {
+    localStorage.removeItem(CACHE_KEY_PREFIX + providerId);
+  } catch {
+    // Storage may be unavailable; the in-memory model list is still reset.
   }
 }

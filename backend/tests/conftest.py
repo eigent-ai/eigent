@@ -26,8 +26,21 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.auth import local_control
+
 # Load environment variables
 load_dotenv()
+
+
+@pytest.fixture(autouse=True)
+def reset_local_control_process_boundary(monkeypatch):
+    """Each test that supplies a capability models a fresh Brain process."""
+
+    monkeypatch.setattr(
+        local_control,
+        "_process_local_control_capability",
+        local_control._CAPABILITY_UNSET,
+    )
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -204,12 +217,16 @@ def app() -> FastAPI:
     """Create FastAPI test application."""
     from fastapi import FastAPI
 
+    from app.auth import require_local_control_principal
     from app.controller.chat_controller import router as chat_router
     from app.controller.model_controller import router as model_router
     from app.controller.task_controller import router as task_router
     from app.controller.tool_controller import router as tool_router
 
     app = FastAPI()
+    app.dependency_overrides[require_local_control_principal] = lambda: {
+        "kind": "test"
+    }
     app.include_router(chat_router)
     app.include_router(model_router)
     app.include_router(task_router)

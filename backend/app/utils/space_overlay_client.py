@@ -145,6 +145,38 @@ def relative_to_workdir(
     return normalize_relative_path(rel.as_posix()), target
 
 
+def relative_to_artifact_root(
+    context: RunContext, path: str | Path
+) -> str | None:
+    """Return portable identity only for paths owned by the active Run.
+
+    Artifact finalization scans the task output root first and the workspace
+    root second. Mirror that boundary here so realtime write events can carry
+    the same relative identity without exposing an absolute local path as
+    portable identity.
+    """
+
+    target = Path(path).expanduser()
+    if not target.is_absolute():
+        target = context.working_directory.expanduser().resolve() / target
+    target = target.resolve()
+    roots = (
+        context.task_output_root.expanduser().resolve(),
+        context.working_directory.expanduser().resolve(),
+    )
+    seen_roots: set[Path] = set()
+    for root in roots:
+        if root in seen_roots:
+            continue
+        seen_roots.add(root)
+        try:
+            relative_path = target.relative_to(root).as_posix()
+            return normalize_relative_path(relative_path)
+        except ValueError:
+            continue
+    return None
+
+
 def should_record_overlay(context: RunContext, target: Path) -> bool:
     if not context.server_url or not context.auth_header:
         return False

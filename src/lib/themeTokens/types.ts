@@ -50,10 +50,43 @@ export const TOKEN_TONES = [
   'terminal',
   'document',
   'success',
-  'caution',
   'error',
   'warning',
   'information',
+] as const;
+
+export const CATEGORY_COLOR_NAMES = [
+  'gray',
+  'slate',
+  'red',
+  'blue',
+  'green',
+  'yellow',
+  'orange',
+  'purple',
+  'pink',
+  'cyan',
+  'teal',
+  'indigo',
+  'amber',
+  'lime',
+  'mint',
+  'tomato',
+] as const;
+
+export const CATEGORY_TOKEN_ROLES = [
+  { style: 'background', state: 'app' },
+  { style: 'background', state: 'subtle' },
+  { style: 'background', state: 'default' },
+  { style: 'background', state: 'hover' },
+  { style: 'background', state: 'active' },
+  { style: 'border', state: 'subtle' },
+  { style: 'border', state: 'default' },
+  { style: 'border', state: 'hover' },
+  { style: 'solid', state: 'default' },
+  { style: 'solid', state: 'hover' },
+  { style: 'text', state: 'default' },
+  { style: 'text', state: 'strong' },
 ] as const;
 
 export type Mode = 'light' | 'dark';
@@ -63,6 +96,12 @@ export type Emphasis = (typeof TOKEN_EMPHASIS)[number];
 export type State = (typeof TOKEN_UI_STATES)[number];
 export type Tone = (typeof TOKEN_TONES)[number];
 export type TokenKey = `${Element}.${Tone}.${Emphasis}.${State}`;
+export type CategoryColor = (typeof CATEGORY_COLOR_NAMES)[number];
+export type CategoryStyle = (typeof CATEGORY_TOKEN_ROLES)[number]['style'];
+export type CategoryState = (typeof CATEGORY_TOKEN_ROLES)[number]['state'];
+export type CategoryTokenKey =
+  `category.${CategoryColor}.${CategoryStyle}.${CategoryState}`;
+export type DesignTokenKey = TokenKey | CategoryTokenKey;
 
 export type Adjustment = {
   dL?: number;
@@ -113,7 +152,7 @@ export type ThemeCatalogV2 = Record<
   Record<string, ColorThemeDefinitionV2>
 >;
 
-export type ThemeTokens = Partial<Record<TokenKey, string>>;
+export type ThemeTokens = Partial<Record<DesignTokenKey, string>>;
 
 export type ContrastDiagnostic = {
   fg: TokenKey;
@@ -124,8 +163,16 @@ export type ContrastDiagnostic = {
   apcaLc: number;
 };
 
+export type SeedAdmissionFinding = {
+  themeId: string;
+  mode: Mode;
+  code: string;
+  message: string;
+};
+
 export type ThemeDiagnostics = {
   contrast: ContrastDiagnostic[];
+  seedAdmission: SeedAdmissionFinding[];
 };
 
 export type ResolvedThemeV2 = {

@@ -14,12 +14,17 @@
 
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { TaskItem } from './TaskItem';
 
 import { TaskState, TaskStateType } from '@/components/TaskState';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { usePageTabStore } from '@/store/pageTabStore';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
 import { ChatTaskStatus, TaskStatus } from '@/types/constants';
 import {
   ChevronDown,
@@ -101,6 +106,8 @@ export function TaskCard({
 
   //Get Chatstore and ProjectStore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
 
   // Extract values for dependency arrays (must be before any conditional returns)
   const activeTaskId = taskId ?? (chatStore?.activeTaskId as string);
@@ -125,18 +132,35 @@ export function TaskCard({
   // Side-panel Progress section can ask the chat to surface this card. Each
   // bump of the counter forces the card open; ProjectChatContainer handles
   // the scroll. Skip the initial value so we don't pop on mount.
-  const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
-  const taskBoxFocusTaskId = usePageTabStore((s) => s.taskBoxFocusTaskId);
+  const taskBoxFocusRequestId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusRequestId
+  );
+  const taskBoxFocusProjectId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusProjectId
+  );
+  const taskBoxFocusTaskId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusTaskId
+  );
   const lastSeenFocusRef = useRef(taskBoxFocusRequestId);
   useEffect(() => {
+    if (taskBoxFocusRequestId === lastSeenFocusRef.current) return;
+    lastSeenFocusRef.current = taskBoxFocusRequestId;
     if (
-      taskBoxFocusRequestId !== lastSeenFocusRef.current &&
+      (taskBoxFocusProjectId
+        ? taskBoxFocusProjectId === sessionProjectId
+        : isFocusedPane) &&
       (!taskBoxFocusTaskId || taskBoxFocusTaskId === activeTaskId)
     ) {
-      lastSeenFocusRef.current = taskBoxFocusRequestId;
       setIsExpanded(true);
     }
-  }, [activeTaskId, taskBoxFocusRequestId, taskBoxFocusTaskId]);
+  }, [
+    activeTaskId,
+    taskBoxFocusRequestId,
+    taskBoxFocusTaskId,
+    taskBoxFocusProjectId,
+    sessionProjectId,
+    isFocusedPane,
+  ]);
 
   useEffect(() => {
     const tasks = taskRunning || [];
@@ -238,19 +262,19 @@ export function TaskCard({
 
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 px-sm py-2">
-        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-ds-bg-neutral-default-default py-sm">
-          <div className="absolute left-0 top-0 w-full bg-transparent">
+      <div className="flex h-auto w-full flex-col gap-2 px-2 py-2">
+        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-ds-neutral-default-default py-2">
+          <div className="absolute top-0 left-0 w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
           </div>
           {summaryTask && (
-            <div className="mb-2.5 px-sm text-sm font-bold leading-13">
+            <div className="mb-2.5 px-2 text-sm leading-13 font-bold">
               {summaryTask.split('|')[0].replace(/"/g, '')}
             </div>
           )}
 
           {summaryTask && (
-            <div className={`flex items-center justify-between gap-2 px-sm`}>
+            <div className="flex items-center justify-between gap-2 px-2">
               <div className="flex items-center gap-2">
                 {taskType === 1 && (
                   <TaskState
@@ -346,13 +370,13 @@ export function TaskCard({
               <div>
                 {taskType === 1 && (
                   <Button variant="ghost" size="icon" onClick={onAddTask}>
-                    <Plus size={16} />
+                    <DsIcon icon={Plus} />
                   </Button>
                 )}
                 {taskType === 2 && (
-                  <div className="ease-[cubic-bezier(0.23,1,0.32,1)] flex items-center gap-2 duration-200 animate-in fade-in-0 slide-in-from-right-2">
+                  <div className="flex items-center gap-2 duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-right-2">
                     {isExpanded && (
-                      <div className="text-xs font-medium leading-17 text-ds-text-neutral-subtle-default">
+                      <div className="text-xs leading-17 font-medium text-ds-ink-subtle-default">
                         {taskRunning?.filter(
                           (task) =>
                             task.status === TaskStatus.COMPLETED ||
@@ -366,11 +390,9 @@ export function TaskCard({
                       size="icon"
                       onClick={() => setIsExpanded((prev) => !prev)}
                     >
-                      <ChevronDown
-                        size={16}
-                        className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] transition-transform motion-reduce:transition-none ${
-                          isExpanded ? 'rotate-180' : ''
-                        }`}
+                      <DsIcon
+                        icon={ChevronDown}
+                        className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
                       />
                     </Button>
                   </div>
@@ -381,11 +403,11 @@ export function TaskCard({
 
           <div className="relative">
             {taskType === 1 && (
-              <div className="ease-[cubic-bezier(0.23,1,0.32,1)] mt-sm flex flex-col px-sm duration-200 animate-in fade-in-0 slide-in-from-bottom-4">
+              <div className="mt-2 flex flex-col px-2 duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-bottom-4">
                 {taskInfo.map((task, taskIndex) => (
                   <div
                     key={`task-${taskIndex}`}
-                    className="ease-[cubic-bezier(0.23,1,0.32,1)] duration-200 animate-in fade-in-0 slide-in-from-left-2"
+                    className="duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-left-2"
                   >
                     <TaskItem
                       taskInfo={task}
@@ -401,24 +423,25 @@ export function TaskCard({
             {taskType === 2 && (
               <div
                 ref={contentRef}
-                className="duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity"
+                className="overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)]"
                 style={{
                   height: isExpanded ? contentHeight : 0,
                   opacity: isExpanded ? 1 : 0,
                 }}
               >
-                <div className="mt-sm flex flex-col gap-2 px-2">
+                <div className="mt-2 flex flex-col gap-2 px-2">
                   {filterTasks.map((task: TaskInfo) => {
                     return (
                       <div
                         onClick={() => {
                           if (task.agent) {
                             // Switch to the chatStore that owns this task card (for multi-turn conversations)
-                            if (chatId && projectStore.activeProjectId) {
-                              const activeProjectId =
-                                projectStore.activeProjectId;
+                            if (chatId && sessionProjectId) {
+                              const activeProjectId = sessionProjectId;
                               const activeChatStore =
-                                projectStore.getActiveChatStore();
+                                projectStore.getActiveChatStore(
+                                  sessionProjectId ?? undefined
+                                );
                               const currentChatId = activeChatStore
                                 ? Object.keys(
                                     projectStore.projects[activeProjectId]
@@ -452,7 +475,7 @@ export function TaskCard({
                           }
                         }}
                         key={`taskList-${task.id}`}
-                        className={`ease-[cubic-bezier(0.23,1,0.32,1)] flex gap-2 rounded-lg px-sm py-sm transition-[background-color,border-color] duration-200 animate-in fade-in-0 slide-in-from-left-2 ${
+                        className={`flex gap-2 rounded-lg px-2 py-2 transition-[background-color,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-left-2 ${
                           task.status === TaskStatus.COMPLETED
                             ? 'bg-ds-bg-completed-subtle-default'
                             : task.status === TaskStatus.FAILED
@@ -468,13 +491,13 @@ export function TaskCard({
                                     : 'bg-ds-bg-running-subtle-default'
                         } cursor-pointer border border-solid border-transparent ${
                           task.status === TaskStatus.COMPLETED
-                            ? 'hover:border-ds-border-status-completed-default-focus'
+                            ? 'hover:border-ds-border-status-completed-default-hover'
                             : task.status === TaskStatus.FAILED
-                              ? 'hover:border-ds-border-status-error-default-focus'
+                              ? 'hover:border-ds-border-status-error-default-hover'
                               : task.status === TaskStatus.RUNNING
-                                ? 'hover:border-ds-border-status-running-default-focus'
+                                ? 'hover:border-ds-border-status-running-default-hover'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'hover:border-ds-border-status-blocked-default-focus'
+                                  ? 'hover:border-ds-border-status-blocked-default-hover'
                                   : task.status === TaskStatus.SKIPPED ||
                                       task.status === TaskStatus.WAITING ||
                                       task.status === TaskStatus.EMPTY
@@ -484,59 +507,56 @@ export function TaskCard({
                       >
                         <div className="pt-0.5">
                           {task.status === TaskStatus.RUNNING && (
-                            <LoaderCircle
-                              size={16}
-                              className={`text-ds-icon-information-default-default ${
-                                activeTaskStatus === ChatTaskStatus.RUNNING &&
-                                'animate-spin'
-                              } `}
+                            <DsIcon
+                              icon={LoaderCircle}
+                              className={`text-ds-icon-information-default-default ${activeTaskStatus === ChatTaskStatus.RUNNING && 'animate-spin'}`}
                             />
                           )}
                           {task.status === TaskStatus.SKIPPED && (
-                            <LoaderCircle
-                              size={16}
+                            <DsIcon
+                              icon={LoaderCircle}
                               className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
-                            <CircleCheckBig
-                              size={16}
+                            <DsIcon
+                              icon={CircleCheckBig}
                               className="text-ds-icon-success-default-default"
                             />
                           )}
                           {task.status === TaskStatus.FAILED && (
-                            <CircleSlash
-                              size={16}
-                              className="text-ds-icon-caution-default-default"
+                            <DsIcon
+                              icon={CircleSlash}
+                              className="text-ds-icon-error-default-default"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
-                            <TriangleAlert
-                              size={16}
+                            <DsIcon
+                              icon={TriangleAlert}
                               className="text-ds-icon-warning-default-default"
                             />
                           )}
                           {(task.status === TaskStatus.EMPTY ||
                             task.status === TaskStatus.WAITING) && (
-                            <Circle
-                              size={16}
+                            <DsIcon
+                              icon={Circle}
                               className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col items-start justify-center">
                           <div
-                            className={`w-full min-w-0 whitespace-pre-line [overflow-wrap:anywhere] ${
+                            className={`w-full min-w-0 [overflow-wrap:anywhere] whitespace-pre-line ${
                               task.status === TaskStatus.FAILED
-                                ? 'text-ds-text-caution-default-default'
+                                ? 'text-ds-text-error-default-default'
                                 : task.status === TaskStatus.BLOCKED
                                   ? 'text-ds-text-warning-default-default'
                                   : task.status === TaskStatus.SKIPPED ||
                                       task.status === TaskStatus.WAITING ||
                                       task.status === TaskStatus.EMPTY
                                     ? 'text-ds-text-status-pending-default-default'
-                                    : 'text-ds-text-neutral-default-default'
-                            } text-sm font-medium leading-13`}
+                                    : 'text-ds-ink-default-default'
+                            } text-sm leading-13 font-medium`}
                           >
                             {task.content}
                           </div>

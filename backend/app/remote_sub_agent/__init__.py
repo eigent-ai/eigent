@@ -14,6 +14,7 @@
 
 from app.remote_sub_agent.config import (
     GeminiRemoteSubAgentConfig,
+    ModelArkRemoteSubAgentConfig,
     RemoteSubAgentConfig,
 )
 from app.remote_sub_agent.policy import (
@@ -36,6 +37,7 @@ from app.remote_sub_agent.types import (
 __all__ = [
     "GLOBAL_REMOTE_SUB_AGENT_SESSIONS",
     "GeminiRemoteSubAgentConfig",
+    "ModelArkRemoteSubAgentConfig",
     "RemoteSubAgentEvent",
     "RemoteSubAgentEventType",
     "RemoteSubAgentConfig",

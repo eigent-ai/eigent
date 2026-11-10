@@ -13,13 +13,12 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from datetime import datetime
-from typing import Any
-
-from pydantic import BaseModel
-from sqlalchemy import CheckConstraint
-from sqlmodel import JSON, Column, Field, String, UniqueConstraint
+from typing import Any, Self
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
+from pydantic import BaseModel, model_validator
+from sqlalchemy import CheckConstraint
+from sqlmodel import JSON, Column, Field, String, UniqueConstraint
 
 
 class ProjectMode:
@@ -72,6 +71,10 @@ class Project(AbstractModel, DefaultTimes, table=True):
     metadata_json: dict[str, Any] | None = Field(default=None, sa_column=Column("metadata", JSON))
 
 
+# Server-owned receipt in the existing JSON column; no database migration.
+PROJECT_CREATION_INTENT_KEY = "_eigent_creation_intent_v1"
+
+
 class ProjectIn(BaseModel):
     id: str | None = None
     space_id: str | None = None
@@ -86,9 +89,39 @@ class ProjectIn(BaseModel):
 class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    mode: str | None = None
     status: str | None = None
     workdir_mode: str | None = None
     metadata: dict[str, Any] | None = None
+    expected_model_admission_run_id: str | None = Field(default=None, min_length=1)
+    expected_model_admission_revision: str | None = Field(default=None, min_length=1)
+    model_admission_revision: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_model_admission(self) -> Self:
+        if self.model_admission_revision is not None:
+            fields = {
+                "metadata",
+                "expected_model_admission_run_id",
+                "expected_model_admission_revision",
+                "model_admission_revision",
+            }
+            run_id = (self.metadata or {}).get("spaceModelAdmissionRunId")
+            if (
+                self.model_fields_set != fields
+                or set(self.metadata or {}) != {"spaceModelAdmissionRunId"}
+                or (run_id is not None and (not isinstance(run_id, str) or not run_id))
+                or self.model_admission_revision == self.expected_model_admission_revision
+            ):
+                raise ValueError("A receipt transition requires a new revision and its complete expected state")
+        elif "expected_model_admission_revision" in self.model_fields_set:
+            raise ValueError("A receipt transition requires a new revision")
+        elif self.expected_model_admission_run_id is not None and (
+            self.metadata != {"spaceModelAdmissionRunId": None}
+            or self.model_fields_set - {"metadata", "expected_model_admission_run_id"}
+        ):
+            raise ValueError("Conditional receipt cleanup cannot change other project fields")
+        return self
 
 
 class ProjectOut(BaseModel):
@@ -107,6 +140,8 @@ class ProjectOut(BaseModel):
     @classmethod
     def from_model(cls, project: Project) -> "ProjectOut":
         metadata = project.metadata_json if isinstance(project.metadata_json, dict) else None
+        if metadata is not None and PROJECT_CREATION_INTENT_KEY in metadata:
+            metadata = {key: value for key, value in metadata.items() if key != PROJECT_CREATION_INTENT_KEY} or None
         return cls(
             id=project.id,
             user_id=project.user_id,

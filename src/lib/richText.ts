@@ -20,7 +20,18 @@ export type RichSegment = {
 
 /** Chip styling shared by the input HTML and the message-body renderer. */
 export const RICH_CONNECTOR_STYLE_CLASSES =
-  'text-ds-text-information-default-default bg-ds-bg-neutral-default-default';
+  'text-ds-text-information-default-default bg-ds-neutral-default-default';
+
+/**
+ * Inline tag geometry shared by editable and rendered chat text.
+ *
+ * Tags deliberately keep the surrounding 13px / 20px body rhythm. Important
+ * typography utilities prevent contenteditable and button defaults from
+ * shifting the label, while zero vertical padding keeps the baseline aligned
+ * with adjacent text.
+ */
+export const RICH_TAG_BASE_STYLE_CLASSES =
+  'inline rounded px-0.5 align-baseline !text-ds-text-base !font-normal';
 
 /** `@token` inserted into the input for a connector; spaces collapse to `_`. */
 export function connectorNameToToken(name: string): string {
@@ -33,10 +44,10 @@ export function connectorNameToToken(name: string): string {
 
 /** Hash-stable palette: semantic “other” tones (not default body text). Shared by input + message body. */
 export const RICH_SKILL_STYLE_CLASSES = [
-  'text-ds-text-success-default-default bg-ds-bg-neutral-default-default',
-  'text-ds-text-warning-default-default bg-ds-bg-neutral-default-default',
-  'text-ds-text-terminal-default-default bg-ds-bg-neutral-default-default',
-  'text-ds-text-document-default-default bg-ds-bg-neutral-default-default',
+  'text-ds-text-success-default-default bg-ds-neutral-default-default',
+  'text-ds-text-warning-default-default bg-ds-neutral-default-default',
+  'text-ds-text-terminal-default-default bg-ds-neutral-default-default',
+  'text-ds-text-document-default-default bg-ds-neutral-default-default',
 ] as const;
 
 export function hashSkillLabel(label: string): number {
@@ -164,7 +175,7 @@ export function segmentsToHtml(segments: RichSegment[]): string {
       }
     } else if (seg.type === 'connector') {
       parts.push(
-        `<span data-rich-connector="1" contenteditable="false" class="rounded px-0.5 py-px font-medium ${RICH_CONNECTOR_STYLE_CLASSES}">${escapeHtml(
+        `<span data-rich-connector="1" contenteditable="false" class="${RICH_TAG_BASE_STYLE_CLASSES} ${RICH_CONNECTOR_STYLE_CLASSES}">${escapeHtml(
           seg.text
         )}</span>`
       );
@@ -172,7 +183,7 @@ export function segmentsToHtml(segments: RichSegment[]): string {
       const idx = hashSkillLabel(seg.text) % RICH_SKILL_STYLE_CLASSES.length;
       const cls = RICH_SKILL_STYLE_CLASSES[idx];
       parts.push(
-        `<span data-rich-skill="1" contenteditable="false" class="rounded px-0.5 py-px font-medium ${cls}">${escapeHtml(seg.text)}</span>`
+        `<span data-rich-skill="1" contenteditable="false" class="${RICH_TAG_BASE_STYLE_CLASSES} ${cls}">${escapeHtml(seg.text)}</span>`
       );
     }
   }

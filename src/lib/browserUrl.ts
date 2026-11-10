@@ -12,9 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18next from 'i18next';
+
 export type BrowserUrlValidationResult =
-  | { ok: true; url: string }
-  | { ok: false; error: string };
+  { ok: true; url: string } | { ok: false; error: string };
 
 /**
  * Hosts that default to plain HTTP when no scheme is typed: loopback and
@@ -24,8 +25,24 @@ export type BrowserUrlValidationResult =
 const LOOPBACK_OR_PRIVATE_HOST_PATTERN =
   /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})(?::\d+)?(?:\/|$)/i;
 
+const LOOPBACK_HOST_PATTERN =
+  /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)$/i;
+
 /** Where non-URL input is sent as a search query. */
 const WEB_SEARCH_URL = 'https://www.google.com/search?q=';
+
+/** Whether a complete HTTP(S) URL targets this machine's loopback interface. */
+export function isLoopbackBrowserUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      ['http:', 'https:'].includes(url.protocol) &&
+      LOOPBACK_HOST_PATTERN.test(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Scheme-less input we can navigate to directly: a dotted hostname or IP,
@@ -52,7 +69,12 @@ function looksNavigable(input: string): boolean {
 export function normalizeBrowserUrl(input: string): BrowserUrlValidationResult {
   const trimmed = input.trim();
   if (!trimmed) {
-    return { ok: false, error: 'URL is required' };
+    return {
+      ok: false,
+      error: i18next.t('layout.browser-url-required', {
+        defaultValue: 'URL is required',
+      }),
+    };
   }
 
   const colonIndex = trimmed.indexOf(':');
@@ -60,10 +82,20 @@ export function normalizeBrowserUrl(input: string): BrowserUrlValidationResult {
     const afterColon = trimmed.slice(colonIndex + 1);
     if (afterColon.startsWith('//')) {
       if (!/^https?:\/\//i.test(trimmed)) {
-        return { ok: false, error: 'Only HTTP and HTTPS URLs are supported' };
+        return {
+          ok: false,
+          error: i18next.t('layout.browser-url-scheme-unsupported', {
+            defaultValue: 'Only HTTP and HTTPS URLs are supported',
+          }),
+        };
       }
     } else if (/^[a-z]/i.test(afterColon) && !/\s/.test(trimmed)) {
-      return { ok: false, error: 'Only HTTP and HTTPS URLs are supported' };
+      return {
+        ok: false,
+        error: i18next.t('layout.browser-url-scheme-unsupported', {
+          defaultValue: 'Only HTTP and HTTPS URLs are supported',
+        }),
+      };
     }
   }
 
@@ -82,11 +114,21 @@ export function normalizeBrowserUrl(input: string): BrowserUrlValidationResult {
   try {
     parsed = new URL(candidate);
   } catch {
-    return { ok: false, error: 'Invalid URL' };
+    return {
+      ok: false,
+      error: i18next.t('layout.browser-url-invalid', {
+        defaultValue: 'Invalid URL',
+      }),
+    };
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return { ok: false, error: 'Only HTTP and HTTPS URLs are supported' };
+    return {
+      ok: false,
+      error: i18next.t('layout.browser-url-scheme-unsupported', {
+        defaultValue: 'Only HTTP and HTTPS URLs are supported',
+      }),
+    };
   }
 
   return { ok: true, url: parsed.href };

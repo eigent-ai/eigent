@@ -17,13 +17,12 @@ import { SITE_URL } from '@/lib';
 import { toast } from 'sonner';
 
 export function showStorageToast() {
-  toast.dismiss();
   toast(
     <div>
       {i18n.t(
         'chat.your-cloud-storage-has-reached-the-limit-of-your-current-plan'
       )}{' '}
-      Please{' '}
+      {i18n.t('chat.please', { defaultValue: 'Please' })}{' '}
       <a
         className="cursor-pointer underline"
         onClick={() => (window.location.href = `${SITE_URL}/pricing`)}
@@ -35,6 +34,7 @@ export function showStorageToast() {
       )}{' '}
     </div>,
     {
+      id: 'eigent-storage',
       duration: Infinity,
       closeButton: true,
     }

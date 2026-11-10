@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18n from '@/i18n';
+import { notifyExecutionError } from '@/lib/notifyError';
 import { queryClient, queryKeys } from '@/lib/queryClient';
 import { proxyFetchTriggerConfig } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
@@ -23,8 +25,12 @@ import { toast } from 'sonner';
 
 // Ping interval: send ping every 2 minutes
 const PING_INTERVAL = 60 * 2 * 1000;
-// Pong timeout: if no pong received within 10 seconds after ping, mark as unhealthy
+// Pong timeout: if no pong received within 10 seconds after ping, reconnect.
+// The server routes pong through the same session registry as execution
+// events, while heartbeats bypass it, so only a pong proves delivery works.
 const PONG_TIMEOUT = 10 * 1000;
+// Application close code for a socket the server no longer routes to.
+const NO_PONG_CLOSE_CODE = 4000;
 
 interface ExecutionCreatedMessage {
   type: 'execution_created';
@@ -115,7 +121,6 @@ export function useExecutionSubscription(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const sessionIdRef = useRef<string>(crypto.randomUUID());
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pongTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -133,6 +138,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
     setWsConnectionStatus,
     setLastPongTimestamp,
     setWsReconnectCallback,
+    markWsSubscribed,
   } = useTriggerStore();
 
   // Store latest values in refs to avoid recreating connect function
@@ -141,6 +147,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
   const emitWebSocketEventRef = useRef(emitWebSocketEvent);
   const setWsConnectionStatusRef = useRef(setWsConnectionStatus);
   const setLastPongTimestampRef = useRef(setLastPongTimestamp);
+  const markWsSubscribedRef = useRef(markWsSubscribed);
 
   // Update refs on every render
   useEffect(() => {
@@ -149,6 +156,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
     emitWebSocketEventRef.current = emitWebSocketEvent;
     setWsConnectionStatusRef.current = setWsConnectionStatus;
     setLastPongTimestampRef.current = setLastPongTimestamp;
+    markWsSubscribedRef.current = markWsSubscribed;
   });
 
   // Helper to start ping interval
@@ -168,9 +176,12 @@ export function useExecutionSubscription(enabled: boolean = true) {
         // Set timeout to wait for pong
         pongTimeoutRef.current = setTimeout(() => {
           console.warn(
-            '[ExecutionSubscription] No pong received, marking connection as unhealthy'
+            '[ExecutionSubscription] No pong received, reconnecting'
           );
           setWsConnectionStatusRef.current('unhealthy');
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.close(NO_PONG_CLOSE_CODE, 'No pong');
+          }
         }, PONG_TIMEOUT);
       }
     }, PING_INTERVAL);
@@ -228,6 +239,10 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
       console.log('[ExecutionSubscription] Connecting to:', fullURL);
 
+      // A new id for every connection. The server cleans up a closed
+      // connection by its id up to 30 s later; reusing the id would erase the
+      // registration of the connection that replaced it.
+      const sessionId = crypto.randomUUID();
       const ws = new WebSocket(fullURL);
       wsRef.current = ws;
 
@@ -245,7 +260,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
         // Send subscription message - server expects token WITHOUT "Bearer" prefix
         const subscribeMessage = {
           type: 'subscribe',
-          session_id: sessionIdRef.current,
+          session_id: sessionId,
           auth_token: token, // ⚠️ Remove "Bearer " prefix
         };
 
@@ -266,7 +281,9 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 `[ExecutionSubscription] Connected with session: ${message.session_id}`
               );
               setWsConnectionStatusRef.current('connected');
-              // toast.success('Connected to execution listener');
+              // Executions created while no socket was registered are only
+              // found by asking the server again.
+              markWsSubscribedRef.current();
               break;
 
             case 'execution_created': {
@@ -275,7 +292,10 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 (t) => t.id === message.trigger_id
               );
               const triggerName =
-                trigger?.name || `Trigger #${message.trigger_id}`;
+                trigger?.name ||
+                i18n.t('triggers.automation-fallback-name', {
+                  id: message.trigger_id,
+                });
               // Use task_prompt from server message (primary), fallback to local trigger data
               const taskPrompt =
                 message.task_prompt || trigger?.task_prompt || '';
@@ -296,7 +316,10 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
               addLogRef.current({
                 type: ActivityType.TriggerExecuted,
-                message: `"${triggerName}" execution started`,
+                message: i18n.t('triggers.execution-log-started', {
+                  defaultValue: '"{{name}}" execution started',
+                  name: triggerName,
+                }),
                 triggerId: message.trigger_id,
                 triggerName: triggerName,
                 executionId: message.execution_id,
@@ -330,7 +353,10 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 (t) => t.id === message.trigger_id
               );
               const triggerName =
-                trigger?.name || `Trigger #${message.trigger_id}`;
+                trigger?.name ||
+                i18n.t('triggers.automation-fallback-name', {
+                  id: message.trigger_id,
+                });
 
               console.log(
                 `[ExecutionSubscription] Execution updated: ${message.execution_id} - ${message.status}`
@@ -339,21 +365,39 @@ export function useExecutionSubscription(enabled: boolean = true) {
               if (message.status === 'completed') {
                 addLogRef.current({
                   type: ActivityType.ExecutionSuccess,
-                  message: `"${triggerName}" execution completed`,
+                  message: i18n.t('triggers.execution-log-completed', {
+                    defaultValue: '"{{name}}" execution completed',
+                    name: triggerName,
+                  }),
                   triggerId: message.trigger_id,
                   triggerName: triggerName,
                   executionId: message.execution_id,
                 });
-                toast.success(`Execution completed: ${triggerName}`);
+                toast.success(
+                  i18n.t('triggers.execution-completed-toast', {
+                    defaultValue: 'Execution completed: {{name}}',
+                    name: triggerName,
+                  })
+                );
               } else if (message.status === 'failed') {
                 addLogRef.current({
                   type: ActivityType.ExecutionFailed,
-                  message: `"${triggerName}" execution failed`,
+                  message: i18n.t('triggers.execution-log-failed', {
+                    defaultValue: '"{{name}}" execution failed',
+                    name: triggerName,
+                  }),
                   triggerId: message.trigger_id,
                   triggerName: triggerName,
                   executionId: message.execution_id,
                 });
-                toast.error(`Execution failed: ${triggerName}`);
+                notifyExecutionError(
+                  i18n.t('triggers.execution-failed-toast', {
+                    defaultValue: 'Execution failed: {{name}}',
+                    name: triggerName,
+                  }),
+                  undefined,
+                  message.execution_id
+                );
               }
               break;
             }
@@ -388,17 +432,17 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 staleTime: 1000 * 60 * 10, // 10 minutes
               });
 
-              toast.success(`Trigger verified: #${message.trigger_id}`);
+              toast.success(
+                i18n.t('triggers.automation-verified', {
+                  id: message.trigger_id,
+                })
+              );
               break;
             }
 
             case 'heartbeat':
-              // Server is alive - also treat as healthy connection
-              if (pongTimeoutRef.current) {
-                clearTimeout(pongTimeoutRef.current);
-                pongTimeoutRef.current = null;
-              }
-              setWsConnectionStatusRef.current('connected');
+              // The server sends heartbeats straight down this socket, so they
+              // say nothing about routing; leave the pong check running.
               break;
 
             case 'pong':
@@ -416,7 +460,12 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 '[ExecutionSubscription] Server error:',
                 message.message
               );
-              toast.error(`Listener error: ${message.message}`);
+              notifyExecutionError(
+                i18n.t('triggers.listener-error', {
+                  defaultValue: 'Listener error: {{message}}',
+                  message: message.message,
+                })
+              );
               // Mark auth failure and close connection
               if (message.message?.toLowerCase().includes('authentication')) {
                 authFailedRef.current = true;
@@ -456,7 +505,12 @@ export function useExecutionSubscription(enabled: boolean = true) {
           console.error(
             '[ExecutionSubscription] Authentication failed - not reconnecting'
           );
-          toast.error('Authentication failed for execution listener');
+          notifyExecutionError(
+            i18n.t('triggers.listener-sign-in-failed', {
+              defaultValue:
+                "Couldn't sign in to the task listener. Try reconnecting.",
+            })
+          );
           authFailedRef.current = false; // Reset flag
           return;
         }
@@ -499,7 +553,12 @@ export function useExecutionSubscription(enabled: boolean = true) {
               console.error(
                 '[ExecutionSubscription] Max reconnection attempts reached'
               );
-              toast.error('Lost connection to execution listener');
+              notifyExecutionError(
+                i18n.t('triggers.listener-connection-lost', {
+                  defaultValue:
+                    'Lost connection to the task listener. Reconnecting…',
+                })
+              );
             }
           }
         }, debounceDelay);

@@ -22,6 +22,7 @@ from app.agent.listen_chat_agent import logger
 from app.agent.prompt import MCP_SYS_PROMPT, append_connected_app_mcp_notice
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
 from app.service.task import Agents
@@ -66,6 +67,13 @@ async def mcp_agent(options: Chat):
             tools = [*tools, *mcp_tools]
         except Exception as e:
             logger.debug(repr(e))
+
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.mcp_agent,
+    )
 
     system_message = attach_remote_sub_agent_if_enabled(
         options=options,

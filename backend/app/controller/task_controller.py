@@ -16,9 +16,10 @@ import logging
 from typing import Literal
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
+from app.auth import require_local_control_if_configured
 from app.component.environment import sanitize_env_path, set_user_env_path
 from app.model.chat import NewAgent, UpdateData
 from app.service.task import (
@@ -36,7 +37,7 @@ from app.utils.event_loop_utils import schedule_async_task_from_worker
 
 logger = logging.getLogger("task_controller")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_local_control_if_configured)])
 
 
 def _queue_action_from_worker(task_lock, action, description: str) -> None:

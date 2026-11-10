@@ -14,7 +14,7 @@
 import platform
 
 from camel.messages import BaseMessage
-from camel.models import OpenAIAudioModels
+from camel.models import ModelFactory, OpenAIAudioModels
 from camel.toolkits import ToolkitMessageIntegration
 from camel.types import ModelPlatformType
 
@@ -29,6 +29,7 @@ from app.agent.prompt import (
 )
 from app.agent.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -38,7 +39,7 @@ from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.video_download_toolkit import VideoDownloaderToolkit
-from app.agent.utils import NOW_STR
+from app.agent.utils import agent_current_time
 from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.model.subscription_runtime import is_subscription_auth
@@ -172,6 +173,15 @@ def multi_modal_agent(
                 api_key=options.api_key,
                 url=options.api_url,
             ),
+            # The audio toolkit also creates a text reasoning agent. Supply
+            # its model explicitly so saved provider credentials are used
+            # instead of requiring a process-level OPENAI_API_KEY.
+            audio_reasoning_model=ModelFactory.create(
+                model_platform=ModelPlatformType.OPENAI,
+                model_type=options.model_type,
+                api_key=options.api_key,
+                url=options.api_url,
+            ),
         )
         audio_analysis_toolkit = message_integration.register_toolkits(
             audio_analysis_toolkit
@@ -199,11 +209,17 @@ def multi_modal_agent(
     tool_names = [
         name for name in ordered_tool_names if name in available_tool_names
     ]
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.multi_modal_agent,
+    )
     system_message = MULTI_MODAL_SYS_PROMPT.format(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
-        now_str=NOW_STR,
+        now_str=agent_current_time(options),
     )
     system_message = append_connected_app_mcp_notice(system_message)
     system_message = attach_remote_sub_agent_if_enabled(

@@ -11,6 +11,10 @@ src/components/Terminal/index.tsx
 # Preview panel terminal — xterm ITheme hex palette (shared via terminalTheme.ts).
 src/components/Session/PreviewPanel/tabs/terminal/terminalTheme.ts
 #
+# Code presentation — Monaco IStandaloneThemeData requires literal colors for
+# the scoped GitHub/Primer syntax and diff palettes.
+src/lib/codePresentation.ts
+#
 # ColorPicker — HSV UI requires fixed gradients / hex placeholder.
 src/components/ui/colorPicker.tsx
 #

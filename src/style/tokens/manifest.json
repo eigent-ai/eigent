@@ -21,9 +21,42 @@
     "terminal",
     "document",
     "success",
-    "caution",
     "error",
     "warning",
     "information"
-  ]
+  ],
+  "category": {
+    "colors": [
+      "gray",
+      "slate",
+      "red",
+      "blue",
+      "green",
+      "yellow",
+      "orange",
+      "purple",
+      "pink",
+      "cyan",
+      "teal",
+      "indigo",
+      "amber",
+      "lime",
+      "mint",
+      "tomato"
+    ],
+    "roles": [
+      ["background", "app"],
+      ["background", "subtle"],
+      ["background", "default"],
+      ["background", "hover"],
+      ["background", "active"],
+      ["border", "subtle"],
+      ["border", "default"],
+      ["border", "hover"],
+      ["solid", "default"],
+      ["solid", "hover"],
+      ["text", "default"],
+      ["text", "strong"]
+    ]
+  }
 }

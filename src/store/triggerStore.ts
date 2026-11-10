@@ -32,13 +32,16 @@ export interface WebSocketEvent {
   spaceId?: string | null;
   /** Input data from webhook request or scheduled context */
   inputData: Record<string, any>;
+  /**
+   * Set when this app found the execution itself (Run now, or a pending
+   * execution the websocket never delivered). It has not been acknowledged
+   * yet, so the server marks it missed unless the app reports it started.
+   */
+  needsClaim?: boolean;
 }
 
 export type WebSocketConnectionStatus =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'unhealthy';
+  'disconnected' | 'connecting' | 'connected' | 'unhealthy';
 
 export interface RemoteControlSession {
   sessionId: string;
@@ -60,7 +63,12 @@ export interface RemoteControlLogEntry {
 interface TriggerStore {
   // State
   triggers: Trigger[];
-  webSocketEvent: WebSocketEvent | null;
+  /** Executions waiting for useTriggerTaskExecutor, oldest first. */
+  webSocketEvents: WebSocketEvent[];
+  /** Increments each time the execution websocket subscribes. */
+  wsConnectionEpoch: number;
+  /** True while this window runs useTriggerTaskExecutor. */
+  executionAdmissionAvailable: boolean;
   wsConnectionStatus: WebSocketConnectionStatus;
   lastPongTimestamp: number | null;
   wsReconnectCallback: (() => void) | null;
@@ -70,16 +78,17 @@ interface TriggerStore {
   // Actions
   setTriggers: (triggers: Trigger[]) => void;
   setWsConnectionStatus: (status: WebSocketConnectionStatus) => void;
+  markWsSubscribed: () => void;
+  setExecutionAdmissionAvailable: (available: boolean) => void;
   setLastPongTimestamp: (timestamp: number | null) => void;
   setWsReconnectCallback: (callback: (() => void) | null) => void;
   triggerReconnect: () => void;
   addTrigger: (triggerData: Partial<Trigger>) => Trigger;
   updateTrigger: (triggerId: number, triggerData: Partial<Trigger>) => void;
   deleteTrigger: (triggerId: number) => void;
-  duplicateTrigger: (triggerId: number) => Trigger | null;
   getTriggerById: (triggerId: number) => Trigger | undefined;
   emitWebSocketEvent: (event: WebSocketEvent) => void;
-  clearWebSocketEvent: () => void;
+  takeWebSocketEvents: () => WebSocketEvent[];
   addRemoteControlSession: (session: RemoteControlSession) => void;
   removeRemoteControlSession: (sessionId: string) => void;
   addRemoteControlLog: (
@@ -90,7 +99,9 @@ interface TriggerStore {
 export const useTriggerStore = create<TriggerStore>((set, get) => ({
   // Initialize with mock data
   triggers: [],
-  webSocketEvent: null,
+  webSocketEvents: [],
+  wsConnectionEpoch: 0,
+  executionAdmissionAvailable: false,
   wsConnectionStatus: 'disconnected' as WebSocketConnectionStatus,
   lastPongTimestamp: null,
   wsReconnectCallback: null,
@@ -103,6 +114,14 @@ export const useTriggerStore = create<TriggerStore>((set, get) => ({
 
   setWsConnectionStatus: (status: WebSocketConnectionStatus) => {
     set({ wsConnectionStatus: status });
+  },
+
+  markWsSubscribed: () => {
+    set((state) => ({ wsConnectionEpoch: state.wsConnectionEpoch + 1 }));
+  },
+
+  setExecutionAdmissionAvailable: (available: boolean) => {
+    set({ executionAdmissionAvailable: available });
   },
 
   setLastPongTimestamp: (timestamp: number | null) => {
@@ -149,27 +168,19 @@ export const useTriggerStore = create<TriggerStore>((set, get) => ({
     }));
   },
 
-  duplicateTrigger: (triggerId: number) => {
-    const originalTrigger = get().triggers.find((t) => t.id === triggerId);
-    if (!originalTrigger) return null;
-
-    set((state) => ({
-      triggers: [...state.triggers, originalTrigger],
-    }));
-
-    return originalTrigger;
-  },
-
   getTriggerById: (triggerId: number) => {
     return get().triggers.find((t) => t.id === triggerId);
   },
 
+  // A queue, not a slot: events that arrive in the same tick must all run.
   emitWebSocketEvent: (event: WebSocketEvent) => {
-    set({ webSocketEvent: event });
+    set((state) => ({ webSocketEvents: [...state.webSocketEvents, event] }));
   },
 
-  clearWebSocketEvent: () => {
-    set({ webSocketEvent: null });
+  takeWebSocketEvents: () => {
+    const events = get().webSocketEvents;
+    if (events.length) set({ webSocketEvents: [] });
+    return events;
   },
 
   addRemoteControlSession: (session: RemoteControlSession) => {

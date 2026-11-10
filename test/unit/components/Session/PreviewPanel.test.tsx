@@ -21,6 +21,7 @@ import { HostProvider } from '@/host';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { AnimatePresence, motion } from 'framer-motion';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/components/Folder/FilePreview', () => ({
@@ -37,24 +38,15 @@ vi.mock('@/components/Session/PreviewPanel/tabs/CanvasTab', () => ({
 
 // xterm needs real layout/canvas APIs; the terminal tab has its own suite.
 vi.mock('@/components/Session/PreviewPanel/tabs/terminal/TerminalTab', () => ({
-  TerminalTab: () => <div data-testid="terminal-tab" />,
+  TerminalTab: ({ viewportSettled }: { viewportSettled: boolean }) => (
+    <div data-testid="terminal-tab" data-settled={viewportSettled} />
+  ),
 }));
 
-// The chooser lists the project's agent terminal streams via this hook; keep
-// the suite off the chat-store dependency chain and drive it with fixtures.
-let mockTerminalSources: Array<{
-  id: string;
-  agentName: string;
-  taskLabel: string;
-  lines: string[];
-  status: 'running' | 'idle';
-}> = [];
-vi.mock(
-  '@/components/Session/PreviewPanel/tabs/terminal/useSessionTerminalSources',
-  () => ({
-    useSessionTerminalSources: () => mockTerminalSources,
-  })
-);
+// Monaco and the live project stores are covered by the ReviewTab suite.
+vi.mock('@/components/Session/PreviewPanel/tabs/ReviewTab', () => ({
+  ReviewTab: () => <div data-testid="review-tab" />,
+}));
 
 // The desktop host is detected by electronAPI presence; embedded browsing
 // itself is <webview>-tag based and driven through the webview registry.
@@ -80,7 +72,6 @@ function activeType() {
 
 describe('PreviewPanel', () => {
   beforeEach(() => {
-    mockTerminalSources = [];
     openExternal.mockReset();
     openExternal.mockResolvedValue({ success: true });
     usePageTabStore.setState({
@@ -92,68 +83,91 @@ describe('PreviewPanel', () => {
     usePageTabStore.getState().toggleSessionPreview();
   });
 
+  it('holds terminal fitting until the display panel has settled', () => {
+    usePageTabStore.getState().openPreviewTab('terminal');
+    const view = render(<PreviewPanel displaySettled={false} />);
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'false'
+    );
+    view.rerender(<PreviewPanel displaySettled />);
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'true'
+    );
+  });
+
+  it('stops terminal fitting while the display panel exits', () => {
+    usePageTabStore.getState().openPreviewTab('terminal');
+    const display = (open: boolean) => (
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div key="display" exit={{ opacity: 0 }}>
+            <PreviewPanel displaySettled />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    );
+    const view = render(display(true));
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'true'
+    );
+    view.rerender(display(false));
+    expect(screen.getByTestId('terminal-tab')).toHaveAttribute(
+      'data-settled',
+      'false'
+    );
+  });
+
   it('opens on the chooser tab listing the available content kinds', () => {
     renderPanel();
     expect(screen.getByRole('tab', { name: 'New tab' })).toBeInTheDocument();
-    // Vertical options (test i18n echoes the key, not the label).
-    for (const kind of ['browser', 'file', 'terminal']) {
+    const header = screen.getByRole('tablist').closest('header')!;
+    expect(header).toHaveClass(
+      'border-b',
+      'border-ds-hairline-subtle-disabled'
+    );
+    expect(header.nextElementSibling).not.toHaveClass(
+      'rounded-xl',
+      'border-solid'
+    );
+    // Vertical options use the same product copy users see in the chooser.
+    for (const label of ['Browser', 'File', 'Review', 'Terminal']) {
       expect(
         screen.getByRole('button', {
-          name: new RegExp(`preview-kind-${kind}\\b`),
+          name: new RegExp(`^${label}\\b`),
         })
       ).toBeInTheDocument();
     }
     // Reserved kinds stay hidden from the chooser until a later version.
-    for (const kind of ['review', 'canvas']) {
+    for (const label of ['Canvas']) {
       expect(
         screen.queryByRole('button', {
-          name: new RegExp(`preview-kind-${kind}\\b`),
+          name: new RegExp(`^${label}\\b`),
         })
       ).not.toBeInTheDocument();
     }
   });
 
-  it('lists the project’s agent streams in the chooser and opens one in place', async () => {
-    const user = userEvent.setup();
-    mockTerminalSources = [
-      {
-        id: 'chat-1:turn-1:sub-1',
-        agentName: 'Developer Agent',
-        taskLabel: 'Start dev server',
-        lines: ['npm run dev'],
-        status: 'running',
-      },
-    ];
+  it('shows shortcuts inline without a chooser heading or session sources', () => {
     renderPanel();
 
-    expect(
-      screen.getByText('layout.preview-chooser-project-title')
-    ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Start dev server/ }));
-
-    const slice = previewSlice();
-    const active = slice.tabs.find((tab) => tab.id === slice.activeTabId);
-    expect(active).toMatchObject({
-      type: 'terminal',
-      title: 'Developer Agent',
-      agentSourceId: 'chat-1:turn-1:sub-1',
-    });
-    // The chooser was converted in place, not left behind.
-    expect(slice.tabs).toHaveLength(1);
-    expect(screen.getByTestId('terminal-tab')).toBeInTheDocument();
+    expect(screen.queryByText('Open a new view')).not.toBeInTheDocument();
+    expect(screen.queryByText('From this session')).not.toBeInTheDocument();
+    expect(document.querySelectorAll('kbd')).toHaveLength(2);
+    expect(document.querySelector('.lucide-chevron-right')).toBeNull();
   });
 
   it('picking a chooser option turns the tab into that content kind', async () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(
-      screen.getByRole('button', { name: /preview-kind-browser\b/ })
-    );
+    await user.click(screen.getByRole('button', { name: /^Browser\b/ }));
     expect(activeType()).toBe('browser');
     // Address bar of the browser tab is now shown.
     expect(
-      screen.getByRole('textbox', { name: 'layout.browser-url-placeholder' })
+      screen.getByRole('textbox', { name: 'Enter a URL' })
     ).toBeInTheDocument();
   });
 
@@ -170,9 +184,9 @@ describe('PreviewPanel', () => {
   it('routes review, terminal, and canvas tabs to their surfaces', () => {
     const store = usePageTabStore.getState();
     const chooserId = previewSlice().tabs[0].id;
-    act(() => store.choosePreviewTabType(chooserId, 'canvas'));
+    act(() => store.choosePreviewTabType(chooserId, 'review'));
     const { rerender } = renderPanel();
-    expect(screen.getByTestId('canvas-tab')).toBeInTheDocument();
+    expect(screen.getByTestId('review-tab')).toBeInTheDocument();
 
     act(() =>
       store.choosePreviewTabType(previewSlice().activeTabId!, 'terminal')
@@ -183,15 +197,23 @@ describe('PreviewPanel', () => {
       </HostProvider>
     );
     expect(screen.getByTestId('terminal-tab')).toBeInTheDocument();
+
+    act(() =>
+      store.choosePreviewTabType(previewSlice().activeTabId!, 'canvas')
+    );
+    rerender(
+      <HostProvider host={host}>
+        <PreviewPanel />
+      </HostProvider>
+    );
+    expect(screen.getByTestId('canvas-tab')).toBeInTheDocument();
   });
 
   it('the + button adds a new chooser tab', async () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(
-      screen.getByRole('button', { name: 'layout.add-preview-tab' })
-    );
+    await user.click(screen.getByRole('button', { name: 'New tab' }));
     expect(screen.getAllByRole('tab', { name: 'New tab' })).toHaveLength(2);
     expect(activeType()).toBe('chooser');
   });
@@ -227,15 +249,9 @@ describe('PreviewPanel', () => {
 
     try {
       renderPanel();
-      await user.click(
-        screen.getByRole('button', { name: 'layout.browser-back' })
-      );
-      await user.click(
-        screen.getByRole('button', { name: 'layout.browser-forward' })
-      );
-      await user.click(
-        screen.getByRole('button', { name: 'layout.browser-reload' })
-      );
+      await user.click(screen.getByRole('button', { name: 'Back' }));
+      await user.click(screen.getByRole('button', { name: 'Forward' }));
+      await user.click(screen.getByRole('button', { name: 'Reload' }));
 
       expect(goBack).toHaveBeenCalled();
       expect(goForward).toHaveBeenCalled();
@@ -260,9 +276,7 @@ describe('PreviewPanel', () => {
     );
 
     renderPanel();
-    await user.click(
-      screen.getByRole('button', { name: 'layout.browser-open-external' })
-    );
+    await user.click(screen.getByRole('button', { name: 'Open externally' }));
 
     expect(openExternal).toHaveBeenCalledWith('http://localhost:3000/');
   });
@@ -271,9 +285,7 @@ describe('PreviewPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(
-      screen.getByRole('button', { name: 'layout.close-preview-tab' })
-    );
+    await user.click(screen.getByRole('button', { name: 'Close tab' }));
 
     expect(previewSlice()).toMatchObject({
       open: false,

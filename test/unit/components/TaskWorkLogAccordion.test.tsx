@@ -13,16 +13,47 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  TaskWorkLogAccordion,
   buildAgentBlocks,
   getBlockHeaderParts,
   getSingleAgentActiveForm,
+  getTaskRunDisplayStatus,
   groupBlocksByAgent,
+  groupConsecutiveToolItems,
+  injectHumanInputReceipts,
+  terminalWorkLogI18nKey,
   type AgentBlock,
   type AgentGroup,
+  type RepeatedToolItem,
   type TimelineItem,
+  type ToolItem,
 } from '@/components/ChatBox/MessageItem/TaskWorkLogAccordion';
-import { AgentStep, TaskStatus, type AgentStepType } from '@/types/constants';
-import { describe, expect, it } from 'vitest';
+import { isTaskListRowHardFailure } from '@/lib/taskLifecycleUi';
+import type { VanillaChatStore } from '@/store/chatStore';
+import {
+  AgentStep,
+  ChatTaskStatus,
+  SessionMode,
+  TaskStatus,
+  type AgentStepType,
+} from '@/types/constants';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('react-i18next', () => ({
+  initReactI18next: {
+    type: '3rdParty',
+    init: vi.fn(),
+  },
+  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
+  useTranslation: () => ({
+    t: (key: string, options: Record<string, unknown> = {}) =>
+      key === 'chat.repeated-tool-events'
+        ? `${options.tool} · ${options.count} events`
+        : String(options.defaultValue ?? key),
+    i18n: { language: 'en', changeLanguage: vi.fn() },
+  }),
+}));
 
 type TaggedLog = Parameters<typeof buildAgentBlocks>[0][number];
 
@@ -51,6 +82,808 @@ function findMessage(items: TimelineItem[], idx: number) {
   const messages = items.filter((i) => i.kind === 'message');
   return messages[idx];
 }
+
+function makeToolItem(
+  id: string,
+  overrides: Partial<Omit<ToolItem, 'kind' | 'id'>> = {}
+): ToolItem {
+  return {
+    kind: 'tool',
+    id,
+    rowTitle: 'Browser Toolkit · Browser visit page',
+    toolkitName: 'Browser Toolkit',
+    method: 'Browser visit page',
+    detail: '',
+    input: '',
+    output: '',
+    status: 'done',
+    ...overrides,
+  };
+}
+
+describe('groupConsecutiveToolItems', () => {
+  it('keeps a single tool call on the existing row path', () => {
+    const call = makeToolItem('call-1');
+    const result = groupConsecutiveToolItems([call]);
+
+    expect(result).toEqual([call]);
+    expect(result[0]).toBe(call);
+  });
+
+  it('groups adjacent matching toolkit and method calls', () => {
+    const first = makeToolItem('call-1');
+    const second = makeToolItem('call-2', { status: 'running' });
+    const result = groupConsecutiveToolItems([first, second]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      kind: 'repeated-tool',
+      id: 'repeated-tool:call-1',
+      rowTitle: 'Browser Toolkit · Browser visit page',
+      status: 'running',
+    });
+    expect((result[0] as RepeatedToolItem).calls).toEqual([first, second]);
+  });
+
+  it('normalizes cosmetic toolkit and method separators', () => {
+    const first = makeToolItem('call-1');
+    const second = makeToolItem('call-2', {
+      toolkitName: 'browser_toolkit',
+      method: 'browser-visit-page',
+      rowTitle: 'browser_toolkit · Browser-visit-page',
+    });
+
+    expect(groupConsecutiveToolItems([first, second])).toHaveLength(1);
+    expect(groupConsecutiveToolItems([first, second])[0]!.kind).toBe(
+      'repeated-tool'
+    );
+  });
+
+  it('groups Querit and Google calls under the unified Search row', () => {
+    const querit = makeToolItem('call-1', {
+      toolkitName: 'Search Toolkit',
+      method: 'search querit',
+      rowTitle: 'Search Toolkit · Search',
+    });
+    const google = makeToolItem('call-2', {
+      toolkitName: 'Search Toolkit',
+      method: 'search google',
+      rowTitle: 'Search Toolkit · Search',
+    });
+
+    const [result] = groupConsecutiveToolItems([querit, google]);
+
+    expect(result?.kind).toBe('repeated-tool');
+    expect((result as RepeatedToolItem).calls).toEqual([querit, google]);
+  });
+
+  it('treats messages and Human Toolkit receipts as chronology boundaries', () => {
+    const message: TimelineItem = {
+      kind: 'message',
+      id: 'message-1',
+      text: 'Opening the next result',
+      source: 'reasoning',
+      running: false,
+      pairKey: null,
+    };
+    const first = makeToolItem('call-1');
+    const second = makeToolItem('call-2');
+
+    expect(groupConsecutiveToolItems([first, message, second])).toEqual([
+      first,
+      message,
+      second,
+    ]);
+
+    const humanTool = makeToolItem('human-call', {
+      humanInput: {
+        kind: 'human-input',
+        id: 'human-input-1',
+        question: 'Which output tone?',
+        response: null,
+      },
+    });
+    expect(groupConsecutiveToolItems([humanTool, second])).toEqual([
+      humanTool,
+      second,
+    ]);
+  });
+
+  it('does not group a different toolkit or method', () => {
+    const first = makeToolItem('call-1');
+    const differentMethod = makeToolItem('call-2', {
+      method: 'Browser open',
+      rowTitle: 'Browser Toolkit · Browser open',
+    });
+    const differentToolkit = makeToolItem('call-3', {
+      toolkitName: 'Search Toolkit',
+      rowTitle: 'Search Toolkit · Browser visit page',
+    });
+
+    expect(
+      groupConsecutiveToolItems([first, differentMethod, differentToolkit])
+    ).toEqual([first, differentMethod, differentToolkit]);
+  });
+
+  it('keeps the first-call group identity when another live call arrives', () => {
+    const calls = [
+      makeToolItem('call-1'),
+      makeToolItem('call-2'),
+      makeToolItem('call-3'),
+    ];
+
+    const firstGroup = groupConsecutiveToolItems(calls.slice(0, 2))[0];
+    const updatedGroup = groupConsecutiveToolItems(calls)[0];
+
+    expect(firstGroup?.id).toBe('repeated-tool:call-1');
+    expect(updatedGroup?.id).toBe(firstGroup?.id);
+  });
+
+  it('does not mutate the source timeline', () => {
+    const source = [makeToolItem('call-1'), makeToolItem('call-2')];
+    const snapshot = structuredClone(source);
+
+    groupConsecutiveToolItems(source);
+
+    expect(source).toEqual(snapshot);
+  });
+});
+
+describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
+  function completedCall(
+    toolkitName: string,
+    method: string,
+    request: string,
+    response: string
+  ): AgentMessage[] {
+    return [
+      mk(AgentStep.ACTIVATE_TOOLKIT, {
+        toolkit_name: toolkitName,
+        method_name: method,
+        message: request,
+      }),
+      mk(AgentStep.DEACTIVATE_TOOLKIT, {
+        toolkit_name: toolkitName,
+        method_name: method,
+        message: response,
+      }),
+    ];
+  }
+
+  function createWorkLogStore(log: AgentMessage[]): VanillaChatStore {
+    const state = {
+      tasks: {
+        'task-1': {
+          status: ChatTaskStatus.RUNNING,
+          sessionMode: SessionMode.WORKFORCE,
+          taskTime: 0,
+          elapsed: 0,
+          messages: [],
+          askList: [],
+          taskAssigning: [
+            {
+              agent_id: 'agent-1',
+              type: 'browser',
+              name: 'Researcher',
+              tasks: [],
+              log,
+            },
+          ],
+        },
+      },
+    };
+
+    return {
+      getState: () => state,
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+  }
+
+  it('renders duplicate Browser and Todo calls as expandable count rows', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall(
+        'Browser Toolkit',
+        'Browser visit page',
+        '{"url":"https://example.com/one"}',
+        'First page'
+      ),
+      ...completedCall(
+        'Browser Toolkit',
+        'Browser visit page',
+        '{"url":"https://example.com/two"}',
+        'Second page'
+      ),
+      ...completedCall(
+        'TodoToolkit',
+        'Todo_write',
+        '{"todo":"one"}',
+        'Saved first todo'
+      ),
+      ...completedCall(
+        'TodoToolkit',
+        'Todo_write',
+        '{"todo":"two"}',
+        'Saved second todo'
+      ),
+    ];
+
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+
+    // Same wording as the Narrative work log: the latest call speaks for
+    // the group in the tense of its outcome.
+    const browserGroup = screen.getByRole('button', {
+      name: 'Browsed https://example.com/two · 2 events',
+    });
+    const todoGroup = screen.getByRole('button', {
+      name: 'Updated the plan · 2 events',
+    });
+
+    expect(browserGroup).toHaveAttribute('aria-expanded', 'false');
+    expect(todoGroup).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      browserGroup.querySelector('[data-work-log-tool-icon]')
+    ).toBeInTheDocument();
+    expect(browserGroup.querySelector('[data-work-log-chevron]')).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100'
+    );
+    expect(
+      screen.getAllByRole('button', {
+        name: 'Browsed https://example.com/two · 2 events',
+      })
+    ).toHaveLength(1);
+
+    fireEvent.click(browserGroup);
+
+    expect(browserGroup).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      browserGroup.querySelector('[data-work-log-chevron]')
+    ).not.toHaveClass('opacity-0');
+    const calls = screen.getAllByRole('button', {
+      name: /^Browsed https:\/\/example\.com\/(?:one|two)$/,
+    });
+    expect(calls.map((call) => call.textContent)).toEqual([
+      'Browsed https://example.com/one',
+      'Browsed https://example.com/two',
+    ]);
+    expect(
+      calls[0]?.querySelector('[data-work-log-tool-icon]')
+    ).toBeInTheDocument();
+    expect(calls[0]?.querySelector('[data-work-log-chevron]')).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100'
+    );
+  });
+
+  it('groups real SearchToolkit formatted inputs without inline argument narration', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...['octopus', 'squid', 'cuttlefish'].flatMap((query) =>
+        completedCall(
+          'Search Toolkit',
+          'search google',
+          `With query '${query}', web type, 1 result pages starting from page 1`,
+          '[]'
+        )
+      ),
+    ];
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+    const group = screen.getByRole('button', {
+      name: 'Searched for cuttlefish · 3 events',
+    });
+    expect(screen.queryByText(/^With query/)).not.toBeInTheDocument();
+    fireEvent.click(group);
+    const call = screen.getByRole('button', { name: 'Searched for octopus' });
+    fireEvent.click(call);
+    expect(
+      screen.getByText(
+        "With query 'octopus', web type, 1 result pages starting from page 1"
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('keeps Search unified and shows providers only in expanded details', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall(
+        'Search Toolkit',
+        'search querit',
+        "query='OpenAI updates'",
+        '{"results":[]}'
+      ),
+      ...completedCall(
+        'Search Toolkit',
+        'search google',
+        "query='OpenAI updates'",
+        '[]'
+      ),
+    ];
+
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+
+    const searchGroup = screen.getByRole('button', {
+      name: 'Searched for OpenAI updates · 2 events',
+    });
+    expect(screen.queryByText('Querit')).not.toBeInTheDocument();
+    expect(screen.queryByText('Google')).not.toBeInTheDocument();
+
+    fireEvent.click(searchGroup);
+    const calls = screen.getAllByRole('button', {
+      name: 'Searched for OpenAI updates',
+    });
+    fireEvent.click(calls[0]!);
+    fireEvent.click(calls[1]!);
+
+    expect(screen.getByText('Querit')).toHaveAttribute(
+      'data-search-provider',
+      'querit'
+    );
+    expect(screen.getByText('Google')).toHaveAttribute(
+      'data-search-provider',
+      'google'
+    );
+  });
+
+  it('titles legacy calls by outcome like the Narrative work log', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall(
+        'Terminal Toolkit',
+        'shell exec',
+        "command='npm test', timeout=30",
+        'ok'
+      ),
+      mk(AgentStep.ACTIVATE_TOOLKIT, {
+        toolkit_name: 'Terminal Toolkit',
+        method_name: 'shell exec',
+        message: "command='npm run build'",
+      }),
+    ];
+
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+
+    // The latest call speaks for the group while it runs.
+    const group = screen.getByRole('button', {
+      name: 'Running npm run build · 2 events',
+    });
+    fireEvent.click(group);
+    expect(
+      screen.getByRole('button', { name: 'Ran npm test' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Running npm run build' })
+    ).toBeInTheDocument();
+    // The raw argument text stays in the expanded request, not the title.
+    expect(screen.queryByText(/timeout=30/)).not.toBeInTheDocument();
+  });
+
+  it('folds a finished Task log and lets a user reopen it', () => {
+    const store = createWorkLogStore([
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall('File Toolkit', 'read_file', 'index.html', 'Read file'),
+    ]);
+    const { container, rerender } = render(
+      <TaskWorkLogAccordion chatStore={store} taskId="task-1" />
+    );
+    const trigger = container.querySelector(
+      'button[aria-expanded]'
+    ) as HTMLButtonElement;
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    store.getState().tasks['task-1']!.status = ChatTaskStatus.FINISHED;
+    rerender(<TaskWorkLogAccordion chatStore={store} taskId="task-1" />);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    rerender(<TaskWorkLogAccordion chatStore={store} taskId="task-1" />);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('respects a manual open state when a Task finishes', () => {
+    const store = createWorkLogStore([
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall('File Toolkit', 'read_file', 'index.html', 'Read file'),
+    ]);
+    const { container, rerender } = render(
+      <TaskWorkLogAccordion chatStore={store} taskId="task-1" />
+    );
+    const trigger = container.querySelector(
+      'button[aria-expanded]'
+    ) as HTMLButtonElement;
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    store.getState().tasks['task-1']!.status = ChatTaskStatus.FINISHED;
+    rerender(<TaskWorkLogAccordion chatStore={store} taskId="task-1" />);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
+describe('TaskWorkLogAccordion human-tool detail', () => {
+  function createHumanQuestionStore(answer?: string): VanillaChatStore {
+    const interactionId = 'interaction-human-1';
+    const messages: Message[] = [
+      {
+        id: 'ask-1',
+        role: 'agent',
+        content: 'Which output tone should I use: concise or detailed?',
+        step: AgentStep.ASK,
+        agent_name: 'Researcher',
+        interaction: {
+          interaction_id: interactionId,
+          interaction_type: 'question',
+          run_id: 'task-1',
+          question: 'Which output tone should I use: concise or detailed?',
+        },
+      },
+    ];
+    if (answer) {
+      messages.push({
+        id: 'answer-1',
+        role: 'user',
+        content: answer,
+        interactionResponseTo: interactionId,
+      });
+    }
+
+    const state = {
+      tasks: {
+        'task-1': {
+          status: ChatTaskStatus.RUNNING,
+          sessionMode: SessionMode.WORKFORCE,
+          taskTime: 0,
+          elapsed: 0,
+          messages,
+          askList: [],
+          taskAssigning: [
+            {
+              agent_id: 'agent-1',
+              type: 'browser',
+              name: 'Researcher',
+              tasks: [],
+              log: [
+                mk(AgentStep.ACTIVATE_AGENT),
+                mk(AgentStep.ACTIVATE_TOOLKIT, {
+                  toolkit_name: 'Human Toolkit',
+                  method_name: 'Ask human via gui',
+                  message: '{"question":"Which output tone?"}',
+                }),
+                mk(AgentStep.DEACTIVATE_TOOLKIT, {
+                  toolkit_name: 'Human Toolkit',
+                  method_name: 'Ask human via gui',
+                  message: 'null',
+                }),
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    return {
+      getState: () => state,
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+  }
+
+  it('owns the question inside the Human Toolkit accordion and folds after answer', async () => {
+    const scrollTo = vi
+      .spyOn(window, 'scrollTo')
+      .mockImplementation(() => undefined);
+    const { rerender } = render(
+      <TaskWorkLogAccordion
+        chatStore={createHumanQuestionStore()}
+        taskId="task-1"
+      />
+    );
+
+    const pendingTool = screen.getByRole('button', {
+      name: 'Human Toolkit · Ask human via gui',
+    });
+    expect(pendingTool).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.getByText('Which output tone should I use: concise or detailed?')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Input required')).toHaveClass(
+      '!text-ds-text-meta'
+    );
+    expect(screen.getByText('Question')).toHaveClass('!text-ds-text-meta');
+
+    rerender(
+      <TaskWorkLogAccordion
+        chatStore={createHumanQuestionStore('detailed')}
+        taskId="task-1"
+      />
+    );
+
+    const completedTool = screen.getByRole('button', {
+      name: 'Human Toolkit · Ask human via gui',
+    });
+    expect(completedTool).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() =>
+      expect(screen.queryByText('detailed')).not.toBeInTheDocument()
+    );
+
+    fireEvent.click(completedTool);
+    expect(screen.getByText('Answer')).toHaveClass('!text-ds-text-meta');
+    expect(screen.getByText('detailed')).toHaveClass('!text-ds-text-meta');
+    scrollTo.mockRestore();
+  });
+});
+
+describe('injectHumanInputReceipts permission approvals', () => {
+  it('does not stack canonical permission approvals onto an unrelated legacy agent group', () => {
+    const tools = [
+      makeToolItem('todo-write', {
+        rowTitle: 'TodoToolkit · Todo_write',
+        toolkitName: 'TodoToolkit',
+        method: 'Todo_write',
+      }),
+      makeToolItem('skill-list', {
+        rowTitle: 'SkillToolkit · List_skills',
+        toolkitName: 'SkillToolkit',
+        method: 'List_skills',
+      }),
+      makeToolItem('memory-search', {
+        rowTitle: 'Memory Toolkit · Search',
+        toolkitName: 'Memory Toolkit',
+        method: 'Search',
+      }),
+    ];
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: tools,
+      status: 'running',
+      doneToolCount: tools.length,
+      totalToolCount: tools.length,
+    };
+    const approval = (id: string, title: string): Message => ({
+      id: `ask-${id}`,
+      role: 'agent',
+      content: '',
+      step: AgentStep.ASK,
+      agent_name: 'single_agent',
+      interaction: {
+        interaction_id: `approval:${id}`,
+        interaction_type: 'approval',
+        run_id: 'task-1',
+        title,
+        question: `The agent wants to run ${title}.`,
+      },
+    });
+
+    const result = injectHumanInputReceipts(
+      [group],
+      [
+        approval('mcp-call-1', 'execute_action'),
+        approval('mcp-call-2', 'execute_action'),
+      ]
+    );
+
+    expect(result[0]?.items).toEqual(tools);
+    expect(
+      result
+        .flatMap((entry) => entry.items)
+        .filter((item) => {
+          if (item.kind === 'human-input') return true;
+          return item.kind === 'tool' && Boolean(item.humanInput);
+        })
+    ).toHaveLength(0);
+  });
+});
+
+describe('injectHumanInputReceipts question history', () => {
+  const humanTool = (id: string) =>
+    makeToolItem(id, {
+      rowTitle: 'Human Toolkit · Ask human via gui',
+      toolkitName: 'Human Toolkit',
+      method: 'Ask human via gui',
+    });
+  const question = (id: string, text: string): Message => ({
+    id: `ask-${id}`,
+    role: 'agent',
+    content: text,
+    step: AgentStep.ASK,
+    agent_name: 'single_agent',
+    interaction: {
+      interaction_id: id,
+      interaction_type: 'question',
+      run_id: 'task-1',
+      question: text,
+    },
+  });
+
+  it('keeps an answered question after Resume and drops the cancelled one', () => {
+    const tools = [humanTool('cancelled-call'), humanTool('answered-call')];
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: tools,
+      status: 'done',
+      doneToolCount: tools.length,
+      totalToolCount: tools.length,
+    };
+    const messages: Message[] = [
+      { id: 'prompt', role: 'user', content: 'Save my colour' },
+      question('cancelled', 'Which colour?'),
+      question('answered', 'Which colour?'),
+      {
+        id: 'tool-step',
+        role: 'agent',
+        content: '',
+        step: AgentStep.ACTIVATE_TOOLKIT,
+      },
+      {
+        id: 'reply',
+        role: 'user',
+        content: 'teal',
+        interactionResponseTo: 'answered',
+      },
+    ];
+
+    const [result] = injectHumanInputReceipts([group], messages, [
+      'cancelled',
+      'answered',
+    ]);
+    const items = result!.items as Array<{
+      humanInput?: { response?: string };
+    }>;
+
+    expect(items[0]?.humanInput).toBeUndefined();
+    expect(items[1]?.humanInput).toMatchObject({
+      question: 'Which colour?',
+      response: 'teal',
+    });
+  });
+
+  it('leaves a pending Memory change review to its own control', () => {
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: [],
+      status: 'running',
+      doneToolCount: 0,
+      totalToolCount: 0,
+    };
+    const review: Message = {
+      id: 'ask-review',
+      role: 'agent',
+      content: 'Allow the Agent to update Memory?',
+      step: AgentStep.ASK,
+      agent_name: 'single_agent',
+      interaction: {
+        interaction_id: 'review-1',
+        interaction_type: 'memory_change_review',
+        run_id: 'task-1',
+        question: 'Allow the Agent to update Memory?',
+      },
+    };
+
+    const [result] = injectHumanInputReceipts([group], [review], []);
+
+    expect(result!.items).toEqual([]);
+  });
+
+  it('keeps a pending question without an answer', () => {
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: [humanTool('pending-call')],
+      status: 'running',
+      doneToolCount: 0,
+      totalToolCount: 1,
+    };
+
+    const [result] = injectHumanInputReceipts(
+      [group],
+      [question('pending', 'Which colour?')],
+      []
+    );
+
+    expect(
+      (result!.items[0] as { humanInput?: { question?: string } }).humanInput
+    ).toMatchObject({ question: 'Which colour?', response: null });
+  });
+});
+
+describe('terminal Run presentation', () => {
+  it('lets a recorded error override a compatibility interrupted status', () => {
+    expect(
+      getTaskRunDisplayStatus({
+        durableRunStatus: 'interrupted',
+        messages: [
+          {
+            step: AgentStep.ERROR,
+            content: '❌ **Error**: Client Closed Request',
+          },
+        ],
+      })
+    ).toBe('failed');
+    expect(terminalWorkLogI18nKey('failed')).toBe('chat.failed-after');
+  });
+
+  it('lets a completed Resume supersede the error of an earlier Attempt', () => {
+    const withError = (resumable: boolean) =>
+      [
+        {
+          id: 'error',
+          role: 'agent',
+          step: AgentStep.ERROR,
+          content: '❌ **Error**: Bad Gateway',
+          resumable,
+        },
+        { id: 'end', role: 'agent', step: AgentStep.END, content: 'ok' },
+      ] as any[];
+    const messages = withError(true);
+    expect(
+      getTaskRunDisplayStatus({ durableRunStatus: 'completed', messages })
+    ).toBe('completed');
+    expect(
+      isTaskListRowHardFailure({ durableRunStatus: 'completed', messages })
+    ).toBe(false);
+    // Until the Run completes, the recorded error still counts.
+    expect(
+      isTaskListRowHardFailure({ durableRunStatus: 'interrupted', messages })
+    ).toBe(true);
+    // A Workforce can report an error and still end; that error still counts.
+    expect(
+      getTaskRunDisplayStatus({
+        durableRunStatus: 'completed',
+        messages: withError(false),
+      })
+    ).toBe('failed');
+    expect(
+      isTaskListRowHardFailure({
+        durableRunStatus: 'completed',
+        messages: withError(false),
+      })
+    ).toBe(true);
+  });
+
+  it('uses explicit labels for interrupted and stopped Runs', () => {
+    expect(terminalWorkLogI18nKey('interrupted')).toBe(
+      'chat.interrupted-after'
+    );
+    expect(terminalWorkLogI18nKey('stopped')).toBe('chat.stopped-after');
+  });
+});
 
 describe('getSingleAgentActiveForm', () => {
   function taskWithAgents(
@@ -872,27 +1705,31 @@ describe('groupBlocksByAgent', () => {
     expect(group.doneToolCount).toBe(2);
   });
 
-  it('merges alternating blocks from the same agent (A, B, A) into two groups', () => {
+  it('preserves alternating blocks from the same agent as A, B, A', () => {
     const blocks: AgentBlock[] = [
       makeBlock('a1', 'dev', 'Dev', [makeTool('t1')], 'done'),
       makeBlock('a2', 'browser', 'Browser', [makeTool('t2')], 'done'),
       makeBlock('a1', 'dev', 'Dev', [makeTool('t3')], 'running'),
     ];
     const result = groupBlocksByAgent(blocks);
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(3);
 
     const g1 = result[0] as AgentGroup;
     expect(g1.kind).toBe('agent-group');
     expect(g1.agentId).toBe('a1');
-    expect(g1.items).toHaveLength(2);
-    expect(g1.items.map((i) => i.id)).toEqual(['t1', 't3']);
-    expect(g1.status).toBe('running');
+    expect(g1.items.map((i) => i.id)).toEqual(['t1']);
+    expect(g1.status).toBe('done');
 
     const g2 = result[1] as AgentGroup;
     expect(g2.kind).toBe('agent-group');
     expect(g2.agentId).toBe('a2');
     expect(g2.items).toHaveLength(1);
     expect(g2.status).toBe('done');
+
+    const g3 = result[2] as AgentGroup;
+    expect(g3.agentId).toBe('a1');
+    expect(g3.items.map((i) => i.id)).toEqual(['t3']);
+    expect(g3.status).toBe('running');
   });
 
   it('preserves the preparation block at its original position', () => {
@@ -952,7 +1789,7 @@ describe('groupBlocksByAgent', () => {
     expect(group.doneToolCount).toBe(0);
   });
 
-  it('orders groups by first appearance of the agent', () => {
+  it('preserves chronological group order', () => {
     const blocks: AgentBlock[] = [
       makeBlock('a2', 'browser', 'Browser', [makeTool('t1')], 'done'),
       makeBlock('a1', 'dev', 'Dev', [makeTool('t2')], 'done'),
@@ -960,10 +1797,11 @@ describe('groupBlocksByAgent', () => {
       makeBlock('a2', 'browser', 'Browser', [makeTool('t4')], 'running'),
     ];
     const result = groupBlocksByAgent(blocks);
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(4);
     expect((result[0] as AgentGroup).agentId).toBe('a2');
     expect((result[1] as AgentGroup).agentId).toBe('a1');
     expect((result[2] as AgentGroup).agentId).toBe('a3');
+    expect((result[3] as AgentGroup).agentId).toBe('a2');
   });
 
   it('integrates with buildAgentBlocks for interleaved multi-agent logs', () => {
@@ -1024,11 +1862,15 @@ describe('groupBlocksByAgent', () => {
     const agentGroups = grouped.filter(
       (e): e is AgentGroup => e.kind === 'agent-group'
     );
-    expect(agentGroups).toHaveLength(2);
+    expect(agentGroups).toHaveLength(3);
     expect(agentGroups[0]!.agentId).toBe('a1');
     expect(agentGroups[1]!.agentId).toBe('a2');
+    expect(agentGroups[2]!.agentId).toBe('a1');
 
-    const devTools = agentGroups[0]!.items.filter((i) => i.kind === 'tool');
+    const devTools = agentGroups
+      .filter((group) => group.agentId === 'a1')
+      .flatMap((group) => group.items)
+      .filter((i) => i.kind === 'tool');
     expect(devTools).toHaveLength(2);
   });
 });

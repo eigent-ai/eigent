@@ -47,6 +47,7 @@ interface InstallationStoreState {
   backendError?: string; // Separate error for backend startup failures
   isVisible: boolean;
   isBackendReady: boolean; // Non-persisted, defaults to false on each app launch
+  backendReadyRevision: number; // Advances for every readiness confirmation, including true → true
   needsBackendRestart: boolean; // Flag to indicate backend is restarting after logout
 
   // Actions
@@ -78,6 +79,7 @@ const initialState = {
   backendError: undefined,
   isVisible: false,
   isBackendReady: false,
+  backendReadyRevision: 0,
   needsBackendRestart: false,
 };
 
@@ -110,11 +112,12 @@ export const useInstallationStore = create<InstallationStoreState>()(
       }),
 
     setSuccess: () =>
-      set({
+      set((state) => ({
         state: 'completed',
         progress: 100,
         isBackendReady: true,
-      }),
+        backendReadyRevision: state.backendReadyRevision + 1,
+      })),
 
     setError: (error: string) =>
       set((state) => ({
@@ -244,6 +247,43 @@ export const useInstallationStore = create<InstallationStoreState>()(
     },
   }))
 );
+
+/**
+ * Resolve when the single renderer-side backend readiness authority reports
+ * that the local Brain can accept durable work.
+ *
+ * This intentionally has no wall-clock timeout. A slow local startup must not
+ * turn into a permanently skipped reconciliation, and callers must not create
+ * competing /health polling loops. The post-subscribe state check closes the
+ * race where readiness changes between the initial read and subscription.
+ */
+export const waitForBackendReadiness = (): Promise<void> => {
+  if (useInstallationStore.getState().isBackendReady) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsubscribe: () => void = () => undefined;
+    const resolveOnce = () => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      resolve();
+    };
+
+    unsubscribe = useInstallationStore.subscribe(
+      (state) => state.isBackendReady,
+      (isBackendReady) => {
+        if (isBackendReady) resolveOnce();
+      }
+    );
+
+    if (useInstallationStore.getState().isBackendReady) {
+      resolveOnce();
+    }
+  });
+};
 
 // Analytics: one subscription tracks the install/setup lifecycle so we don't
 // have to instrument every individual setter. Progress phases feed the

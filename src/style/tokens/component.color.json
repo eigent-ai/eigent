@@ -62,11 +62,6 @@
         "$value": "{text.status-pending.strong.default}",
         "$extensions": { "cssVar": "--text-warning" }
       },
-      "caution": {
-        "$type": "color",
-        "$value": "{text.status-error.strong.default}",
-        "$extensions": { "cssVar": "--text-caution" }
-      },
       "on-action": {
         "$type": "color",
         "$value": "{text.brand.inverse.default}",
@@ -119,11 +114,6 @@
         "$value": "{border.status-pending.default.default}",
         "$extensions": { "cssVar": "--border-warning" }
       },
-      "caution": {
-        "$type": "color",
-        "$value": "{border.status-error.default.default}",
-        "$extensions": { "cssVar": "--border-caution" }
-      },
       "disabled": {
         "$type": "color",
         "$value": "{border.neutral.subtle.disabled}",
@@ -170,11 +160,6 @@
         "$type": "color",
         "$value": "{icon.status-pending.default.default}",
         "$extensions": { "cssVar": "--icon-warning" }
-      },
-      "caution": {
-        "$type": "color",
-        "$value": "{icon.status-error.default.default}",
-        "$extensions": { "cssVar": "--icon-caution" }
       }
     },
     "app": {
@@ -346,11 +331,6 @@
         "$type": "color",
         "$value": "{bg.status-pending.default.default}",
         "$extensions": { "cssVar": "--fill-fill-warning" }
-      },
-      "fill-fill-caution": {
-        "$type": "color",
-        "$value": "{bg.status-error.default.default}",
-        "$extensions": { "cssVar": "--fill-fill-caution" }
       },
       "fill-fill-information": {
         "$type": "color",

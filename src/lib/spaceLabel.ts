@@ -37,13 +37,74 @@ export function isPlaceholderProjectName(
 }
 
 /**
+ * Visible Session name for a Project. System default names matched by
+ * `isPlaceholderProjectName` (empty, `new project`, `Project <id>`) show the
+ * localized "New session" label; names the user chose are shown as stored.
+ * A `nameSource` (the Session meta's `metadata.nameSource`) marks a name that
+ * was chosen rather than defaulted, even one that reads like a default.
+ * The stored name is not changed.
+ */
+export function getSessionDisplayName(
+  name: string | null | undefined,
+  projectId: string,
+  t: TFunction,
+  nameSource?: unknown
+): string {
+  const storedName = (name ?? '').trim();
+  if (nameSource && storedName) return storedName;
+  return isPlaceholderProjectName(name, projectId)
+    ? t('layout.new-project')
+    : storedName;
+}
+
+type SessionNameMeta = {
+  id: string;
+  name?: string | null;
+  metadata?: { historyDisplayName?: unknown; nameSource?: unknown } | null;
+};
+
+/**
+ * The restored history title that stands in for a Session's system default
+ * name, as the Session list shows it. Null when the user named the Session or
+ * there is no history title.
+ */
+export function sessionHistoryDisplayName(
+  meta: SessionNameMeta
+): string | null {
+  const historyDisplayName =
+    typeof meta.metadata?.historyDisplayName === 'string'
+      ? meta.metadata.historyDisplayName.trim()
+      : '';
+  return historyDisplayName &&
+    !meta.metadata?.nameSource &&
+    isPlaceholderProjectName(meta.name, meta.id)
+    ? historyDisplayName
+    : null;
+}
+
+/** Visible Session name for a Session meta, matching the Session list. */
+export function getSessionMetaDisplayName(
+  meta: SessionNameMeta,
+  t: TFunction
+): string {
+  return (
+    sessionHistoryDisplayName(meta) ??
+    getSessionDisplayName(meta.name, meta.id, t, meta.metadata?.nameSource)
+  );
+}
+
+/**
  * Static check (no i18n) for default/placeholder Space names. Mirror of
  * `isPlaceholderProjectName` for spaces — used in store-level pruning logic.
  */
 export function isPlaceholderSpaceNameStatic(name?: string | null) {
   const normalized = normalizedText(name);
   return (
-    !normalized || normalized === 'new space' || normalized === 'new project'
+    !normalized ||
+    normalized === 'untitled space' ||
+    normalized === '未命名 space' ||
+    normalized === 'new space' ||
+    normalized === 'new project'
   );
 }
 
@@ -121,7 +182,7 @@ export function getDefaultNewSpaceName(t: TFunction) {
   return t('layout.spaces-untitled');
 }
 
-/** Blank placeholder space with no folder bound — Context tab stays disabled until bound. */
+/** Blank placeholder space with no folder bound — Files stays disabled until bound. */
 export function isUnboundUntitledSpace(
   space: Space | null | undefined,
   t: TFunction
@@ -132,27 +193,27 @@ export function isUnboundUntitledSpace(
   return isPlaceholderSpaceName(space.name, t);
 }
 
-export interface ContextTabBindingLabel {
+export interface FilesTabBindingLabel {
   label: string;
   tooltip?: string;
 }
 
-/** Context tab trailing chip: Unbound, Local, or Remote for the active space folder binding. */
-export function getContextTabBindingLabel(
+/** Files tab trailing chip: Unbound, Local, or Remote for the active space folder binding. */
+export function getFilesTabBindingLabel(
   space: Space | null | undefined,
   t: TFunction
-): ContextTabBindingLabel | null {
+): FilesTabBindingLabel | null {
   if (!space) return null;
   if (isUnboundUntitledSpace(space, t)) {
     return {
-      label: t('layout.context-tab-unbound'),
-      tooltip: t('layout.context-tab-unbound-tooltip'),
+      label: t('layout.files-tab-unbound'),
+      tooltip: t('layout.files-tab-unbound-tooltip'),
     };
   }
   if (isLocalWorkspaceSpace(space)) {
-    return { label: t('layout.context-tab-local') };
+    return { label: t('layout.files-tab-local') };
   }
-  return { label: t('layout.context-tab-remote') };
+  return { label: t('layout.files-tab-remote') };
 }
 
 /** Space list tag: Legacy, Local folder, or remote artifact storage. */

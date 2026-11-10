@@ -1,4 +1,26 @@
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@import 'shadow-plugin';
 @import './token.css';
+@import './generated/tokens.css';
+
+@config '../../tailwind.config.js';
+@source '../../index.html';
+@source '../../src';
+@source '../../.storybook';
+@source not inline('container');
+
+/* Public Accent / Neutral / Ink / Hairline / Ring groups. Engine still emits
+   compatibility axes; product call sites must use these public names. */
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}bg-ds-neutral-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,placeholder:,}text-ds-ink-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}border-ds-hairline-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}bg-ds-accent-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}divide-ds-hairline-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus-visible:,focus:,focus-within:,}ring-ds-ring-focus');
+@source inline('text-ds-ink-inverse text-ds-icon-inverse !text-ds-ink-inverse !text-ds-icon-inverse');
 
 /* Palatino LT — welcome headline on History; files in /public/fonts/palatino-lt/ */
 @font-face {
@@ -79,10 +101,6 @@
     'Palatino LT', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
 }
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 :root {
   font-family: 'Inter';
   line-height: 1.5;
@@ -157,7 +175,7 @@ body {
   button .lucide,
   a .lucide,
   .lucide[data-state='active'] {
-    color: var(--ds-icon-neutral-default-default);
+    color: inherit;
   }
 
   :is(
@@ -255,7 +273,7 @@ body {
 }
 
 .custom-resizable-handle:hover {
-  background: var(--ds-border-brand-default-focus);
+  background: var(--ds-accent-default-hover);
   width: 2px;
   height: 40px;
   transform: none;
@@ -278,38 +296,28 @@ body {
   height: 100vh;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
+/*
+ * Vite template leftovers. Keep them in `@layer base` so Tailwind utilities
+ * (and component `!` recipes) win in Electron. Unlayered `button { padding }`
+ * and `h1 { font-size }` otherwise crush every control and heading.
+ */
+@layer base {
+  h1 {
+    font-size: inherit;
+    line-height: inherit;
+  }
 
-button {
-  border: none;
-  padding: 0em 0.1em;
-  font-size: 1em;
-  cursor: pointer;
-}
+  button {
+    border-style: none;
+    border-width: 0;
+    padding: 0;
+    font-size: inherit;
+    cursor: pointer;
+  }
 
-input {
-  border-color: transparent;
-}
-
-code {
-  background-color: #1a1a1a;
-  padding: 2px 4px;
-  margin: 0 4px;
-  border-radius: 4px;
-}
-
-/* .card {
-  padding: 2em;
-} */
-
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  input {
+    border-color: transparent;
+  }
 }
 
 .no-drag {
@@ -322,18 +330,20 @@ code {
 
 @layer base {
   :root {
-    --spacing-xs: 4px;
-    --spacing-sm: 8px;
-    --spacing-md: 16px;
-    --spacing-lg: 32px;
-    --spacing-xl: 64px;
+    --spacing-xs: var(--ds-ref-space-4);
+    --spacing-sm: var(--ds-ref-space-8);
+    --spacing-md: var(--ds-ref-space-16);
+    --spacing-lg: var(--ds-ref-space-32);
+    --spacing-xl: var(--ds-ref-space-64);
     --spacing-multi-value: 8 64;
-    --borderRadius-sm: 4px;
-    --borderRadius-lg: 8px;
-    --borderRadius-xl: 16px;
+    /* Tailwind spacing-2 / `px-2` — scrollbar track of every product recipe. */
+    --scrollbar-size: 0.5rem;
+    --borderRadius-sm: var(--ds-ref-radius-4);
+    --borderRadius-lg: var(--ds-ref-radius-8);
+    --borderRadius-xl: var(--ds-ref-radius-16);
     --borderRadius-multi-value: 4 8;
     --fontSize-xs: 10px;
-    --fontSize-sm: 13px;
+    --fontSize-sm: var(--ds-text-base-size);
     --fontSize-base: 15px;
     --fontSize-md: 16px;
     --fontSize-lg: 18px;
@@ -396,26 +406,39 @@ code {
 
 /* scroll Style */
 
+/*
+ * Product scrollbars share one geometry: an 8px track (--scrollbar-size) with
+ * a 6px thumb centered in it by a 1px transparent border. The thumb is muted
+ * at rest and shows its full color while the pointer is on it.
+ *
+ * Chromium ignores every ::-webkit-scrollbar rule on an element that sets the
+ * standard scrollbar-width or scrollbar-color, and draws its own wider thin
+ * bar instead. Those properties therefore apply only where ::-webkit-scrollbar
+ * is unsupported (Firefox), in the block after these recipes.
+ */
+
 .scrollbar {
   scrollbar-gutter: stable;
 }
 
 .scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: var(--scrollbar-size);
 }
 
 .scrollbar::-webkit-scrollbar-thumb {
   background-color: transparent;
-  border-radius: 3px;
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
   transition: background-color 0.3s ease;
 }
 
 .scrollbar.scrolling::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.2);
+  background-color: rgba(156, 163, 175, 0.5);
 }
 
 .scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.2);
+  background-color: rgb(156, 163, 175);
 }
 
 .scrollbar::-webkit-scrollbar-track {
@@ -427,18 +450,20 @@ code {
 }
 
 .scrollbar-always-visible::-webkit-scrollbar {
-  width: 8px;
-  max-height: 25%;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.3);
+  background-color: rgba(156, 163, 175, 0.5);
+  background-clip: padding-box;
+  border: 1px solid transparent;
   border-radius: 4px;
-  max-height: 25%;
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.6);
+  background-color: rgb(156, 163, 175);
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-track {
@@ -448,16 +473,10 @@ code {
 /* Overlay scrollbar - sits on top of content without taking space */
 .scrollbar-overlay {
   overflow-y: scroll;
-  scrollbar-width: thin; /* Firefox */
-  scrollbar-color: transparent transparent; /* Firefox - invisible by default */
-}
-
-.scrollbar-overlay:hover {
-  scrollbar-color: rgba(0, 0, 0, 0.3) transparent; /* Firefox - show on hover */
 }
 
 .scrollbar-overlay::-webkit-scrollbar {
-  width: 8px;
+  width: var(--scrollbar-size);
   background: transparent;
 }
 
@@ -466,17 +485,19 @@ code {
 }
 
 .scrollbar-overlay::-webkit-scrollbar-thumb {
-  background: transparent;
+  background-color: transparent;
+  background-clip: padding-box;
+  border: 1px solid transparent;
   border-radius: 4px;
-  transition: background 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 .scrollbar-overlay:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.3);
+  background-color: rgba(156, 163, 175, 0.5);
 }
 
 .scrollbar-overlay::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.5);
+  background-color: rgb(156, 163, 175);
 }
 
 .terminal-scrollbar::-webkit-scrollbar {
@@ -567,20 +588,6 @@ code {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.alert-dialog {
-  z-index: 9998;
-  pointer-events: auto;
-}
-
-.alert-dialog-wrapper {
-  width: 450px;
-  height: auto;
-  z-index: 9999;
-  top: calc(50vh - 110px);
-  left: calc(50vw - 225px);
-  background: rgba(255, 255, 255, 0.8);
-}
-
 .stack-login-btn,
 .stack-login-btn button {
   width: 100%;
@@ -591,18 +598,10 @@ code {
   font-size: 12px; /* text-sm */
 }
 
-/* Hover-style scrollbar - appears only on hover with 20% opacity */
-.hover-style-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.hover-style-scrollbar:hover {
-  scrollbar-color: rgba(0, 0, 0, 0.4) transparent;
-}
+/* Hover-style scrollbar - appears only while the container is hovered */
 
 .hover-style-scrollbar::-webkit-scrollbar {
-  width: 8px;
+  width: var(--scrollbar-size);
 }
 
 .hover-style-scrollbar::-webkit-scrollbar-track {
@@ -610,14 +609,38 @@ code {
 }
 
 .hover-style-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--ds-text-neutral-muted-default, rgba(0, 0, 0, 0.4));
-  opacity: 0;
-  border-radius: 9999px;
-  transition: opacity 0.2s ease;
+  background-color: transparent;
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
 }
 
 .hover-style-scrollbar:hover::-webkit-scrollbar-thumb {
-  opacity: 0.2;
+  background-color: rgba(156, 163, 175, 0.5);
+}
+
+.hover-style-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(156, 163, 175);
+}
+
+/* Firefox: the standard properties stand in for the ::-webkit-scrollbar rules. */
+@supports not selector(::-webkit-scrollbar) {
+  .scrollbar-always-visible {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
+
+  .scrollbar-overlay,
+  .hover-style-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .scrollbar-overlay:hover,
+  .hover-style-scrollbar:hover {
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
 }
 
 /* Scoped file viewer: prevent file content CSS from affecting sidebar and app layout */
@@ -710,6 +733,36 @@ code {
   );
   animation: progress-install-shimmer 3s linear infinite;
   will-change: transform;
+}
+
+/* Session loading: the user's accent, 2% at the leading edge, fading to 0%. */
+.session-loading-scan {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in srgb, var(--ds-accent-default-default) 2%, transparent)
+  );
+  animation-name: session-loading-scan;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-loading-scan {
+    animation: none;
+  }
+}
+
+@keyframes session-loading-scan {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
 }
 
 @keyframes progress-install-shimmer {

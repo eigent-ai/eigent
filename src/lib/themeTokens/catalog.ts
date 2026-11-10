@@ -56,6 +56,39 @@ function toCatalog(themes: BaseColorTokenShape['themes']): ThemeCatalogV2 {
 
 export const DEFAULT_THEME_CATALOG: ThemeCatalogV2 = toCatalog(BASE.themes);
 
+export const ONBOARDING_THEME_PRESET_IDS = [
+  'eigent',
+  'camel',
+  'claw',
+  'starfish',
+] as const;
+
+const ONBOARDING_THEME_LABELS: Record<
+  (typeof ONBOARDING_THEME_PRESET_IDS)[number],
+  string
+> = {
+  eigent: 'Eigent',
+  camel: 'CAMEL',
+  claw: 'Claw',
+  starfish: 'Starfish',
+};
+
+export function getOnboardingThemePresets() {
+  return ONBOARDING_THEME_PRESET_IDS.map((id) => {
+    const light = BASE.themes.light[id];
+    const dark = BASE.themes.dark[id];
+    if (!light || !dark) {
+      throw new Error(`Theme "${id}" is missing from base.color.json`);
+    }
+    return {
+      id,
+      label: ONBOARDING_THEME_LABELS[id],
+      lightAccent: light.accent,
+      darkAccent: dark.accent,
+    };
+  });
+}
+
 const warnedThemeFallbacks = new Set<string>();
 
 function warnThemeFallback(

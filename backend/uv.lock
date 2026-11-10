@@ -219,6 +219,7 @@ dependencies = [
     { name = "fastapi-babel" },
     { name = "httpx", extra = ["socks"] },
     { name = "inflection" },
+    { name = "jsonschema" },
     { name = "nodejs-wheel" },
     { name = "numpy" },
     { name = "openai" },
@@ -229,6 +230,7 @@ dependencies = [
     { name = "pydantic-i18n" },
     { name = "pydash" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "qdrant-client" },
     { name = "truststore" },
     { name = "uvicorn", extra = ["standard"] },
@@ -245,12 +247,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.91a5" },
+    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.91a7" },
     { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
     { name = "inflection", specifier = ">=0.5.1" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "nodejs-wheel", specifier = ">=22.18.0" },
     { name = "numpy", specifier = ">=1.23.0,<2.0.0" },
     { name = "openai", specifier = ">=1.99.3,<2" },
@@ -261,6 +264,7 @@ requires-dist = [
     { name = "pydantic-i18n", specifier = ">=0.4.5" },
     { name = "pydash", specifier = ">=8.0.5" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "qdrant-client", specifier = ">=1.16.2" },
     { name = "truststore", specifier = ">=0.10.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.2" },
@@ -317,7 +321,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.91a5"
+version = "0.2.91a7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astor" },
@@ -335,9 +339,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0b/c9/7015c4f4733b535e2f56eef9a4c1da7b9e49db8d209dc850e996f2b6b5da/camel_ai-0.2.91a5.tar.gz", hash = "sha256:9606d50d7ec4062cc44e0f4c085e043c7d5b7b2779ea66c4ac9142c98a3380a7", size = 1239665, upload-time = "2026-07-13T11:24:06.191Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/dc/910a303232690add03b1f1e01b071083afadec71ae3ad55f77987cf56d03/camel_ai-0.2.91a7.tar.gz", hash = "sha256:8e165728efdad85b9f477ef38d4801b6e2c85fdccb8976f960e8a989da1da591", size = 1246904, upload-time = "2026-09-03T05:28:34.025Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/c7/80317df8f49ff9d16e8e29eb838b4f9e3f537a02c697c55b18bc6a24d9f4/camel_ai-0.2.91a5-py3-none-any.whl", hash = "sha256:dd1f3ce9ce324bbd29952d4f2020c5279d31ebc70c428661c258bdb67c9943d1", size = 1729980, upload-time = "2026-07-13T11:24:03.785Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/1f/1ef095b6926f44190e9f75967c91421064f679ac59702c1fec5182309323/camel_ai-0.2.91a7-py3-none-any.whl", hash = "sha256:5ed5cd6155f1f88f81e46de6b87f417dd818450b54b48c0c0f45e045c874183c", size = 1738143, upload-time = "2026-09-03T05:28:31.749Z" },
 ]
 
 [package.optional-dependencies]
@@ -2686,9 +2690,9 @@ wheels = [
 name = "truststore"
 version = "0.10.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/53/a3/1585216310e344e8102c22482f6060c7a6ea0322b63e026372e6dcefcfd6/truststore-0.10.4.tar.gz", hash = "sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301", size = 26169, upload-time = "2025-08-12T18:49:02.730Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/a3/1585216310e344e8102c22482f6060c7a6ea0322b63e026372e6dcefcfd6/truststore-0.10.4.tar.gz", hash = "sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301", size = 26169, upload-time = "2025-08-12T18:49:02.73Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl", hash = "sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981", size = 18660, upload-time = "2025-08-12T18:49:01.460Z" },
+    { url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl", hash = "sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981", size = 18660, upload-time = "2025-08-12T18:49:01.46Z" },
 ]
 
 [[package]]

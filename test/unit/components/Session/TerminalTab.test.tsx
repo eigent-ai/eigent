@@ -35,11 +35,20 @@ vi.mock('@/components/Session/PreviewPanel/tabs/terminal/XtermViewer', () => ({
 vi.mock(
   '@/components/Session/PreviewPanel/tabs/terminal/ShellTerminal',
   () => ({
-    ShellTerminal: ({ shellId, cwd }: { shellId: string; cwd?: string }) => (
+    ShellTerminal: ({
+      shellId,
+      cwd,
+      viewportSettled,
+    }: {
+      shellId: string;
+      cwd?: string;
+      viewportSettled: boolean;
+    }) => (
       <div
         data-testid="shell-terminal"
         data-shell-id={shellId}
         data-cwd={cwd}
+        data-settled={viewportSettled}
       />
     ),
   })
@@ -126,6 +135,27 @@ function renderTab(tab: SessionTerminalTab, host: unknown = desktopHost) {
 }
 
 describe('TerminalTab', () => {
+  it('passes display readiness to the interactive shell', async () => {
+    const tab = shellTab();
+    const view = render(
+      <HostProvider host={desktopHost}>
+        <TerminalTab tab={tab} viewportSettled={false} />
+      </HostProvider>
+    );
+    expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
+      'data-settled',
+      'false'
+    );
+    view.rerender(
+      <HostProvider host={desktopHost}>
+        <TerminalTab tab={tab} viewportSettled />
+      </HostProvider>
+    );
+    expect(screen.getByTestId('shell-terminal')).toHaveAttribute(
+      'data-settled',
+      'true'
+    );
+  });
   it('renders an interactive local shell for a plain terminal tab', async () => {
     renderTab(shellTab());
     expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
@@ -161,13 +191,15 @@ describe('TerminalTab', () => {
   it('tells web users the shell needs the desktop app', () => {
     renderTab(shellTab(), { ipcRenderer: null, electronAPI: null });
     expect(
-      screen.getByText('layout.terminal-desktop-only')
+      screen.getByText('The terminal is available in the desktop app.')
     ).toBeInTheDocument();
     expect(screen.queryByTestId('shell-terminal')).not.toBeInTheDocument();
   });
 
   it('renders the read-only viewer for an agent stream tab', () => {
-    mockSources = [source('a', 'Developer Agent', ['echo one', 'echo two'])];
+    mockSources = [
+      source('a', 'Developer Agent', ['echo one\n', 'echo ', 'two']),
+    ];
     renderTab(agentTab('a'));
     expect(screen.getByTestId('xterm-viewer')).toHaveAttribute(
       'data-source-id',
@@ -180,7 +212,9 @@ describe('TerminalTab', () => {
   it('shows a notice when the agent stream is gone', () => {
     mockSources = [];
     renderTab(agentTab('missing'));
-    expect(screen.getByText('layout.terminal-stream-gone')).toBeInTheDocument();
+    expect(
+      screen.getByText('This terminal stream is no longer available.')
+    ).toBeInTheDocument();
   });
 
   it('copies the agent stream to the clipboard', () => {
@@ -189,12 +223,12 @@ describe('TerminalTab', () => {
       value: { writeText },
       configurable: true,
     });
-    mockSources = [source('a', 'Developer Agent', ['echo one', 'echo two'])];
+    mockSources = [
+      source('a', 'Developer Agent', ['echo one\n', 'echo ', 'two']),
+    ];
     renderTab(agentTab('a'));
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'layout.preview-terminal-copy' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Copy output' }));
     expect(writeText).toHaveBeenCalledWith('echo one\necho two');
   });
 });
@@ -273,3 +307,8 @@ describe('collectTerminalSources', () => {
     expect(collectTerminalSources([])).toEqual([]);
   });
 });
+
+vi.mock(
+  '@/components/Session/PreviewPanel/tabs/terminal/useTerminalProcesses',
+  () => ({ useTerminalProcesses: () => [] })
+);

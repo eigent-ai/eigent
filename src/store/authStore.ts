@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
+import {
+  changedAuthEnvironmentParts,
+  getAuthEnvironmentKey,
+  warnAuthClearedForEnvironment,
+} from '@/lib/authEnvironment';
 import {
   recordModelConfigured,
   recordModelTypeChanged,
@@ -25,6 +29,11 @@ import {
   getRecommendedContrast,
 } from '@/lib/themeTokens/catalog';
 import type { Mode, ThemeCatalog, ThemeSeed } from '@/lib/themeTokens/types';
+import {
+  DEFAULT_WORK_PROFILE,
+  normalizeWorkProfile,
+  type WorkProfileId,
+} from '@/lib/workProfiles';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useSpaceStore } from './spaceStore';
@@ -38,12 +47,7 @@ const LEGACY_DEFAULT_CLOUD_MODEL_ID = 'gpt-5.5';
 
 /** Main workspace panel background (Workforce + Session tabs only). */
 export type WorkspaceMainBackground =
-  | 'empty'
-  | 'dots'
-  | 'blocks'
-  | 'ruled'
-  | 'dotted'
-  | 'dashed';
+  'empty' | 'dots' | 'blocks' | 'ruled' | 'dotted' | 'dashed';
 export type CloudModelType = string;
 export type CodexSubscriptionModelType = string;
 
@@ -90,6 +94,9 @@ interface AuthState {
   /** Pattern behind the main workspace area (Workforce / Session). */
   workspaceMainBackground: WorkspaceMainBackground;
 
+  /** Role saved to the user's profile; `others` when skipped. */
+  workProfile: WorkProfileId;
+
   // shared token
   share_token?: string | null;
 
@@ -129,6 +136,7 @@ interface AuthState {
   setOnboardingCompleted: (completed: boolean) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
   setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
+  setWorkProfile: (workProfile: WorkProfileId) => void;
 
   // worker related methods
   setWorkerList: (workerList: Agent[]) => void;
@@ -194,8 +202,11 @@ const clearAuthForCurrentEnvironment = (
   });
   useSpaceStore.getState().resetForUser(null);
   if (hadAuth) {
-    console.warn(
-      '[authStore] Cleared persisted auth after API environment changed.'
+    warnAuthClearedForEnvironment(
+      changedAuthEnvironmentParts(
+        state.authEnvironmentKey,
+        currentEnvironmentKey
+      )
     );
   }
   return true;
@@ -228,6 +239,7 @@ const authStore = create<AuthState>()(
       hasModelConfigured: false,
       preferredIDE: 'system',
       workspaceMainBackground: 'empty',
+      workProfile: DEFAULT_WORK_PROFILE,
       initState: 'carousel',
       share_token: null,
       localProxyValue: null,
@@ -384,6 +396,8 @@ const authStore = create<AuthState>()(
       setWorkspaceMainBackground: (workspaceMainBackground) =>
         set({ workspaceMainBackground }),
 
+      setWorkProfile: (workProfile) => set({ workProfile }),
+
       setLocalProxyValue: (value) => set({ localProxyValue: value }),
 
       // worker related methods
@@ -429,9 +443,8 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      // Bump so migrate re-runs for existing sessions that still need the
-      // user-id repair; a matching version skips migrate and stays unrepaired.
-      version: 11,
+      // Re-run migration for saved roles from the previous catalogue.
+      version: 12,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
@@ -446,6 +459,7 @@ const authStore = create<AuthState>()(
               appearanceMode?: AppearanceMode;
               customThemeCatalog?: Partial<ThemeCatalog>;
               workspaceMainBackground?: string;
+              workProfile?: unknown;
               cloud_model_type?: unknown;
               codex_model_type?: unknown;
             }
@@ -454,6 +468,14 @@ const authStore = create<AuthState>()(
         const currentEnvironmentKey = getAuthEnvironmentKey();
         const environmentMatches =
           s.authEnvironmentKey === currentEnvironmentKey;
+        if (!environmentMatches && (s.token || s.email || s.user_id != null)) {
+          warnAuthClearedForEnvironment(
+            changedAuthEnvironmentParts(
+              s.authEnvironmentKey,
+              currentEnvironmentKey
+            )
+          );
+        }
         const authState = environmentMatches
           ? typeof s.token === 'string' && s.user_id == null
             ? // Existing session persisted without a user id (the local
@@ -516,6 +538,7 @@ const authStore = create<AuthState>()(
             appearanceMode: 'light',
             customThemeCatalog: normalizedCustomCatalog,
             workspaceMainBackground,
+            workProfile: normalizeWorkProfile(s.workProfile),
             cloud_model_type: sanitizedCloudModelType,
             codex_model_type: sanitizedCodexModelType,
             authEnvironmentKey: currentEnvironmentKey,
@@ -528,6 +551,7 @@ const authStore = create<AuthState>()(
           appearanceMode: normalizedAppearanceMode,
           customThemeCatalog: normalizedCustomCatalog,
           workspaceMainBackground,
+          workProfile: normalizeWorkProfile(s.workProfile),
           cloud_model_type: sanitizedCloudModelType,
           codex_model_type: sanitizedCodexModelType,
           authEnvironmentKey: currentEnvironmentKey,
@@ -553,6 +577,7 @@ const authStore = create<AuthState>()(
         onboardingCompleted: state.onboardingCompleted,
         preferredIDE: state.preferredIDE,
         workspaceMainBackground: state.workspaceMainBackground,
+        workProfile: state.workProfile,
         localProxyValue: state.localProxyValue,
         authEnvironmentKey: state.authEnvironmentKey,
         workerListData: state.workerListData,

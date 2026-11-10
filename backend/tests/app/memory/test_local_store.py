@@ -78,6 +78,65 @@ class TestCanonicalUserId:
             canonical_user_id("   ")
 
 
+def test_canonical_status_projection_repairs_only_matching_run(store, ids):
+    store.write_run_status(
+        ids["user_key"],
+        ids["space_id"],
+        ids["project_id"],
+        ids["run_id"],
+        RunStatus(
+            run_id=ids["run_id"],
+            state="cancelled",
+            started_at="2026-01-01T00:00:00Z",
+            ended_at="2026-01-01T00:01:00Z",
+            last_error=None,
+        ),
+    )
+
+    updated = store.project_canonical_run_statuses(
+        {
+            ids["run_id"]: (
+                "interrupted",
+                "2026-01-01T00:02:00Z",
+                "brain_restart",
+            )
+        }
+    )
+
+    assert updated == 1
+    status = store.read_run_status(
+        ids["user_key"],
+        ids["space_id"],
+        ids["project_id"],
+        ids["run_id"],
+    )
+    assert status is not None
+    assert status.state == "interrupted"
+    assert status.started_at == "2026-01-01T00:00:00Z"
+    assert status.last_error == "brain_restart"
+    assert (
+        store.project_canonical_run_statuses(
+            {
+                ids["run_id"]: (
+                    "interrupted",
+                    "2026-01-01T00:03:00Z",
+                    "brain_restart",
+                )
+            }
+        )
+        == 0
+    )
+    assert (
+        store.read_run_status(
+            ids["user_key"],
+            ids["space_id"],
+            ids["project_id"],
+            ids["run_id"],
+        ).ended_at
+        == "2026-01-01T00:02:00Z"
+    )
+
+
 # ----- Construction / lazy init -----
 
 

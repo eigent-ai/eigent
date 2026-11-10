@@ -12,6 +12,13 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from app.model.remote_control.command_control import (
+    DesktopDevice,
+    ProjectExecutionRoute,
+    RemoteCommandLifecycleEvent,
+    RemoteCommandNotificationOutbox,
+    RemoteCommandState,
+)
 from app.model.remote_control.remote_control import (
     RemoteControlCommand,
     RemoteControlEvent,
@@ -20,6 +27,11 @@ from app.model.remote_control.remote_control import (
 )
 
 __all__ = [
+    "DesktopDevice",
+    "ProjectExecutionRoute",
+    "RemoteCommandLifecycleEvent",
+    "RemoteCommandNotificationOutbox",
+    "RemoteCommandState",
     "RemoteControlCommand",
     "RemoteControlEvent",
     "RemoteControlLink",

@@ -3,7 +3,7 @@
   "themes": {
     "light": {
       "eigent": {
-        "accent": "#000000",
+        "accent": "#1d1d1d",
         "background": "#faf7f6",
         "ink": "#1d1d1d"
       },
@@ -37,7 +37,7 @@
       "eigent": {
         "accent": "#ede1db",
         "background": "#1f1f1f",
-        "ink": "#ffffff"
+        "ink": "#f2ece8"
       },
       "claw": {
         "accent": "#cc7d5e",
@@ -56,8 +56,8 @@
       },
       "whale": {
         "accent": "#4460f6",
-        "background": "#ffffff",
-        "ink": "#000000"
+        "background": "#111111",
+        "ink": "#fcfcfc"
       },
       "custom": {
         "accent": "#429f2d",
@@ -74,7 +74,6 @@
       "terminal": "#009966",
       "document": "#e17100",
       "success": "#16a34a",
-      "caution": "#e7000b",
       "error": "#dc2626",
       "warning": "#d97706",
       "information": "#2563eb",
@@ -96,7 +95,6 @@
       "terminal": "#6ee7b7",
       "document": "#ffd479",
       "success": "#16a34a",
-      "caution": "#f87171",
       "error": "#dc2626",
       "warning": "#d97706",
       "information": "#2563eb",

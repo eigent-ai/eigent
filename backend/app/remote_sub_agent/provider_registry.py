@@ -18,6 +18,9 @@ from typing import Any
 
 from app.remote_sub_agent.constants import DEFAULT_REMOTE_SUB_AGENT_PROVIDER
 from app.remote_sub_agent.providers.gemini_agents import GeminiAgentsProvider
+from app.remote_sub_agent.providers.modelark_agents import (
+    ModelArkAgentsProvider,
+)
 from app.remote_sub_agent.types import RemoteSubAgentProvider
 
 
@@ -139,6 +142,28 @@ def _is_gemini_configured(config: Any) -> bool:
     )
 
 
+def _build_modelark_provider(
+    config: Any,
+    options: ProviderBuildOptions,
+) -> ModelArkAgentsProvider:
+    return ModelArkAgentsProvider(
+        api_key=_config_str(config, "api_key"),
+        base_url=_config_str(config, "base_url") or None,
+        agent_id=_config_str(config, "agent_name"),
+        environment_id=_config_str(config, "environment_id"),
+        timeout=options.timeout_seconds,
+    )
+
+
+def _is_modelark_configured(config: Any) -> bool:
+    return bool(
+        _config_str(config, "api_key")
+        and _config_str(config, "base_url")
+        and _config_str(config, "agent_name")
+        and _config_str(config, "environment_id")
+    )
+
+
 def _config_value(config: Any, key: str, default: Any = None) -> Any:
     if config is None:
         return default
@@ -183,5 +208,10 @@ _PROVIDER_ADAPTERS: dict[str, RemoteSubAgentProviderAdapter] = {
         name=GeminiAgentsProvider.name,
         build=_build_gemini_provider,
         is_configured=_is_gemini_configured,
+    ),
+    ModelArkAgentsProvider.name: RemoteSubAgentProviderAdapter(
+        name=ModelArkAgentsProvider.name,
+        build=_build_modelark_provider,
+        is_configured=_is_modelark_configured,
     ),
 }

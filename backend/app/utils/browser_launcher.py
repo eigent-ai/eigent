@@ -26,8 +26,10 @@ import os
 import platform
 import socket
 import subprocess
+import threading
+import time
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 logger = logging.getLogger("browser_launcher")
 
@@ -36,6 +38,8 @@ DEFAULT_CDP_PORT = 9222
 FALLBACK_CDP_PORT_START = 9223
 FALLBACK_CDP_PORT_END = 9299
 LOCAL_CDP_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX = "about:blank#eigent-browser-toolkit="
+_embedded_target_claim_lock = threading.Lock()
 
 
 def is_local_cdp_host(host: str | None) -> bool:
@@ -79,6 +83,158 @@ def is_cdp_url_available(cdp_url: str) -> bool:
         return _is_supported_cdp_version(r.json(), normalized)
     except Exception:
         return False
+
+
+def _embedded_browser_targets(cdp_url: str) -> list[dict]:
+    normalized, host, _ = normalize_cdp_url(cdp_url)
+    if not is_local_cdp_host(host):
+        return []
+    try:
+        import httpx
+
+        response = httpx.get(f"{normalized}/json/list", timeout=2.0)
+        if response.status_code != 200:
+            return []
+        targets = response.json()
+    except Exception:
+        return []
+    if not isinstance(targets, list):
+        return []
+    return [target for target in targets if isinstance(target, dict)]
+
+
+def has_eigent_embedded_browser_target(
+    cdp_url: str,
+    target_url: str | None = None,
+) -> bool:
+    """Return whether Electron exposes an Eigent-owned browser WebView.
+
+    Electron's debugging endpoint also exposes the main Eigent renderer.  A
+    reachable CDP socket alone is therefore not sufficient authorization for
+    Browser Toolkit: the host must have pre-created a browser WebContentsView
+    in the isolated ``persist:user_login`` partition.  Those views use the
+    marker URL below until assigned and navigated by a browser session.
+    """
+
+    if target_url is not None and not target_url.startswith(
+        EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX
+    ):
+        return False
+    return any(
+        target.get("type") in {"page", "webview"}
+        and (
+            str(target.get("url") or "") == target_url
+            if target_url is not None
+            else str(target.get("url") or "").startswith(
+                EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX
+            )
+        )
+        for target in _embedded_browser_targets(cdp_url)
+    )
+
+
+def _is_camel_blank_target_url(url: str) -> bool:
+    """Mirror the upstream Browser Toolkit's generic blank-page matcher."""
+    return (
+        url == ""
+        or url == "about:blank"
+        or url.startswith("about:blank?")
+        or url.startswith("data:")
+    )
+
+
+def claim_eigent_embedded_browser_target(
+    cdp_url: str,
+    target_url: str,
+    session_id: str,
+) -> str:
+    """Atomically convert one exact Electron WebView into a session target.
+
+    Electron's global CDP endpoint also exposes the Eigent renderer.  The
+    Browser Toolkit must therefore never select the first page.  Unclaimed
+    WebViews use a hash marker which upstream CAMEL does not regard as a blank
+    page.  Under a process-wide bring-up lock we navigate the exact page-level
+    CDP target to one unique query marker; it becomes the only blank candidate
+    that CAMEL may adopt for this session.
+    """
+
+    normalized, host, _ = normalize_cdp_url(cdp_url)
+    if not is_local_cdp_host(host):
+        raise RuntimeError("Electron embedded browser CDP must be local")
+    if not target_url.startswith(EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX):
+        raise RuntimeError("Invalid Electron embedded browser target marker")
+
+    claimed_url = (
+        f"about:blank?eigent_browser_session={quote(str(session_id), safe='')}"
+    )
+    with _embedded_target_claim_lock:
+        targets = _embedded_browser_targets(normalized)
+        target = next(
+            (
+                item
+                for item in targets
+                if item.get("type") in {"page", "webview"}
+                and str(item.get("url") or "") == target_url
+            ),
+            None,
+        )
+        if target is None:
+            raise RuntimeError(
+                "Reserved Electron browser target is no longer available"
+            )
+
+        ambiguous = [
+            str(item.get("url") or "")
+            for item in targets
+            if item is not target
+            and item.get("type") in {"page", "webview"}
+            and _is_camel_blank_target_url(str(item.get("url") or ""))
+        ]
+        if ambiguous:
+            raise RuntimeError(
+                "Electron CDP exposes an ambiguous blank target; refusing "
+                "to risk attaching Browser Toolkit to the wrong page"
+            )
+
+        websocket_url = str(target.get("webSocketDebuggerUrl") or "")
+        if not websocket_url:
+            raise RuntimeError(
+                "Reserved Electron browser target has no page CDP socket"
+            )
+
+        from websockets.sync.client import connect
+
+        command = {
+            "id": 1,
+            "method": "Page.navigate",
+            "params": {"url": claimed_url},
+        }
+        with connect(
+            websocket_url,
+            open_timeout=2,
+            close_timeout=1,
+        ) as websocket:
+            websocket.send(json.dumps(command))
+            while True:
+                response = json.loads(websocket.recv(timeout=2))
+                if response.get("id") == 1:
+                    break
+        if response.get("error"):
+            raise RuntimeError(
+                "Could not claim reserved Electron browser target"
+            )
+
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if any(
+                item.get("type") in {"page", "webview"}
+                and str(item.get("url") or "") == claimed_url
+                for item in _embedded_browser_targets(normalized)
+            ):
+                return claimed_url
+            time.sleep(0.02)
+
+    raise RuntimeError("Electron browser target claim did not become visible")
 
 
 def _is_port_in_use(port: int) -> bool:

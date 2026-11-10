@@ -12,12 +12,21 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
+import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
+import { useProjectedRunStatus, useRunWriterWait } from '@/lib/runEvents';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
-import { VanillaChatStore } from '@/store/chatStore';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { isSupersededRunError } from '@/lib/taskLifecycleUi';
+import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
+import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
+import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
+import { RUN_RECEIPT_STATUSES, type VanillaChatStore } from '@/store/chatStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
-import { ChevronDown, FileText } from 'lucide-react';
+import { ChevronDown, InfoIcon } from 'lucide-react';
 import React, {
   useCallback,
   useEffect,
@@ -25,14 +34,26 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
+import {
+  HumanInteractionCard,
+  isHumanInteractionReadOnly,
+} from './MessageItem/HumanInteractionCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
-import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
+import { SpaceWaitNotice } from './MessageItem/SpaceWaitNotice';
+import { TaskFailureSummary } from './MessageItem/TaskFailureSummary';
+import {
+  getTaskRunDisplayStatus,
+  TaskWorkLogAccordion,
+} from './MessageItem/TaskWorkLogAccordion';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { isPlanSplittingPhase } from './TaskBox/PlanTaskBox/utils';
 import { TaskCard } from './TaskBox/TaskCard';
+import { RunArtifactChangeList } from './TimelineModes/RunFiles';
 
 /** Collapsible card that shows a single agent's result (workforce / non–single-agent turns). */
 const AgentResultCard: React.FC<{
@@ -40,8 +61,20 @@ const AgentResultCard: React.FC<{
   agentName?: string;
   content: string;
   attaches?: any[];
+  feedbackMessageId?: string;
+  feedbackRunId?: string;
+  messageStep?: string;
   defaultOpen?: boolean;
-}> = ({ id, agentName, content, attaches, defaultOpen = false }) => {
+}> = ({
+  id,
+  agentName,
+  content,
+  attaches,
+  feedbackMessageId,
+  feedbackRunId,
+  messageStep,
+  defaultOpen = false,
+}) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const label = agentName || 'Agent';
 
@@ -50,28 +83,32 @@ const AgentResultCard: React.FC<{
       {/* Header (always visible) */}
       <button
         type="button"
-        className="focus-visible:ring-ds-border-brand-default-focus/40 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:outline-none focus-visible:ring-2 active:bg-ds-bg-neutral-default-active"
+        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-ds-ink-default-default transition-colors hover:bg-ds-neutral-default-hover focus-visible:ring-2 focus-visible:ring-ds-ring-focus/40 focus-visible:outline-none active:shadow-ds-elevation-control-pressed"
         onClick={() => setIsOpen((v) => !v)}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        <ChevronDown
-          size={14}
+        <DsIcon
+          icon={ChevronDown}
+          recipe="main-compact"
           aria-hidden
-          className={`shrink-0 text-ds-icon-neutral-default-default transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+          className={`shrink-0 text-ds-ink-default-default transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
 
       {/* Collapsible body */}
       <div
-        className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+        className={`overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
       >
-        <div className="border-t border-ds-border-neutral-default-default px-1 py-1">
+        <div className="border-x-0 border-t border-b-0 border-ds-hairline-default-default px-1 py-1">
           <AgentMessageCard
             id={id}
             content={content}
             typewriter={false}
             onTyping={() => {}}
             attaches={attaches}
+            feedbackMessageId={feedbackMessageId}
+            feedbackRunId={feedbackRunId}
+            messageStep={messageStep}
           />
         </div>
       </div>
@@ -100,14 +137,19 @@ function shouldUseLiveAgentTypewriter(
   return last.role === 'agent' && last.id === messageId;
 }
 
-interface QueryGroup {
+export interface QueryGroup {
   queryId: string;
   userMessage: any;
   taskMessage?: any;
   otherMessages: any[];
+  /** Structured ASK replies stay inside their Run instead of starting a turn. */
+  interactionResponses?: Record<string, any>;
+  /** Exactly one query group owns the Run-scoped task work log. */
+  ownsRunWorkLog?: boolean;
 }
 
 interface UserQueryGroupProps {
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   chatId: string;
   chatStore: VanillaChatStore;
   queryGroup: QueryGroup;
@@ -123,6 +165,8 @@ interface UserQueryGroupProps {
   taskId?: string;
 }
 
+export { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
+
 export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   chatId,
   chatStore,
@@ -131,19 +175,46 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   onQueryActive,
   index,
   taskId: scopedTaskId,
+  onEditUserMessage,
 }) => {
+  const { t } = useTranslation();
   const groupRef = useRef<HTMLDivElement>(null);
   const chatState = chatStore.getState();
 
   const activeTaskId = scopedTaskId ?? chatState.activeTaskId;
-  const openFilePreviewInPanel = usePageTabStore(
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const workspaceRoot = useSpaceStore((s) =>
+    activeSpaceId ? s.spaces[activeSpaceId]?.rootPath : undefined
+  );
+  const openFilePreviewInPanel = useSessionPageTabStore(
     (state) => state.openFilePreview
+  );
+  const openReviewPreview = useSessionPageTabStore(
+    (state) => state.openReviewPreview
   );
   const openFilePreview = useCallback(
     (file: FileInfo) => {
-      openFilePreviewInPanel(file);
+      const resolvedPath =
+        file.path?.trim() ||
+        resolveWorkspaceFilePath(workspaceRoot, file.relativePath);
+      openFilePreviewInPanel(
+        resolvedPath && resolvedPath !== file.path
+          ? { ...file, path: resolvedPath, localPathAvailable: true }
+          : file
+      );
     },
-    [openFilePreviewInPanel]
+    [openFilePreviewInPanel, workspaceRoot]
+  );
+  const viewChanges = activeTaskId
+    ? () => openReviewPreview({ runId: activeTaskId })
+    : undefined;
+  // The canonical Run says when a start is queued behind another task's
+  // writes; the legacy stream has no event for it.
+  const activeProjectId = useSessionProjectId();
+  const writerWait = useRunWriterWait(activeProjectId, activeTaskId);
+  const projectedRunStatus = useProjectedRunStatus(
+    activeProjectId,
+    activeTaskId
   );
 
   // Subscribe to streaming decompose text separately for efficient updates
@@ -157,31 +228,54 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     }
   );
 
-  // Show task if this query group has a task message OR if it's the most recent user query during splitting
-  // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
-  // Exclude human-reply scenarios (when user is replying to an activeAsk)
+  // A human reply is scoped to the user message directly following its ASK.
+  // Do not use task.activeAsk here: that is Run-global state and used to make
+  // every historical user query look like a reply while input was pending.
   const isHumanReply =
     queryGroup.userMessage &&
     activeTaskId &&
     chatState.tasks[activeTaskId] &&
-    (chatState.tasks[activeTaskId].activeAsk ||
-      // Check if this user message follows an 'ask' message in the message sequence
-      (() => {
-        const messages = chatState.tasks[activeTaskId].messages;
-        const userMessageIndex = messages.findIndex(
-          (m: any) => m.id === queryGroup.userMessage.id
-        );
-        if (userMessageIndex > 0) {
-          // Check the previous message - if it's an agent message with step 'ask', this is a human-reply
-          const prevMessage = messages[userMessageIndex - 1];
-          return (
-            prevMessage?.role === 'agent' && prevMessage?.step === AgentStep.ASK
-          );
-        }
-        return false;
-      })());
+    isUserMessageReplyToAsk(
+      chatState.tasks[activeTaskId].messages,
+      queryGroup.userMessage.id
+    );
 
   const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  // A restored Run keeps the status read when its Session was loaded. A
+  // request raised after that reaches the same replay stream but only moves
+  // the Run projection, so it may lift a status that has not ended.
+  const replayRunStatus =
+    projectedRunStatus === 'waiting_for_user' &&
+    (activeTask?.durableRunStatus === undefined ||
+      activeTask.durableRunStatus === 'pending' ||
+      activeTask.durableRunStatus === 'running')
+      ? projectedRunStatus
+      : activeTask?.durableRunStatus;
+  const ownsFailureSummary =
+    queryGroup.ownsRunWorkLog === true &&
+    RUN_RECEIPT_STATUSES.has(activeTask?.durableRunStatus!) &&
+    activeTask?.status === ChatTaskStatus.FINISHED;
+  const [failureEvidence, setFailureEvidence] = useState<{
+    taskId: string;
+    owner: VanillaChatStore;
+    facts: TaskFailureFacts | undefined;
+  } | null>(null);
+  useEffect(() => {
+    setFailureEvidence(null);
+    if (!ownsFailureSummary || !activeTaskId) return;
+    return chatStore.getState().observeTaskFailureFacts(
+      activeTaskId,
+      (facts) => {
+        setFailureEvidence({ taskId: activeTaskId, owner: chatStore, facts });
+      },
+      activeProjectId
+    );
+  }, [ownsFailureSummary, activeTaskId, chatStore, activeProjectId]);
+  const failureFacts =
+    failureEvidence?.taskId === activeTaskId &&
+    failureEvidence?.owner === chatStore
+      ? failureEvidence.facts
+      : undefined;
   const lastUserMessageId = activeTask?.messages
     .filter((m: any) => m.role === 'user')
     .pop()?.id;
@@ -232,21 +326,41 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   // query and past planning, show its task-card area immediately — even while
   // PENDING — so the "Preparing to execute" item can render before the work
   // log. `TaskWorkLogAccordion` self-hides until the task reaches RUNNING.
-  const shouldShowSingleAgentWorkLog =
-    isCurrentUserQuery &&
+  const shouldShowRunWorkLog =
+    queryGroup.ownsRunWorkLog === true &&
     activeTaskId &&
     activeTask &&
-    isSingleAgentTask &&
-    !isPlanningPhase &&
-    !isHumanReply;
+    !isPlanningPhase;
 
   const task =
     (queryGroup.taskMessage ||
       shouldShowFallbackTask ||
-      shouldShowSingleAgentWorkLog) &&
+      shouldShowRunWorkLog) &&
     activeTaskId
       ? chatState.tasks[activeTaskId]
       : null;
+  const runDisplayStatus = task ? getTaskRunDisplayStatus(task) : undefined;
+  const hasVisibleAgentOutput = activeTask?.messages.some(
+    (message) =>
+      message?.role === 'agent' &&
+      message?.step !== AgentStep.ASK &&
+      typeof message?.content === 'string' &&
+      message.content.trim().length > 0
+  );
+  // The Task receipt already states that no final reply was recorded.
+  const showsFailureReceipt = Boolean(
+    ownsFailureSummary &&
+    failureFacts &&
+    failureFacts.finalResponse !== 'present'
+  );
+  const showMissingFinalResponse = Boolean(
+    queryGroup.ownsRunWorkLog &&
+    task?.status === ChatTaskStatus.FINISHED &&
+    activeTask?.durableRunStatus !== 'failed' &&
+    runDisplayStatus &&
+    !hasVisibleAgentOutput &&
+    !showsFailureReceipt
+  );
 
   // Set up intersection observer for this query group
   useEffect(() => {
@@ -291,7 +405,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const taskCardVisible = Boolean(task) && !isSkeletonPhase && !isHumanReply;
   const showTaskPlanCard =
     taskCardVisible &&
-    !shouldShowSingleAgentWorkLog &&
+    !(shouldShowRunWorkLog && isSingleAgentTask) &&
     !isInitialTaskPreparation;
 
   const hasConfirmedSubTasks = Boolean(
@@ -306,7 +420,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       // Workforce: after the user confirms the plan, before the work log.
       (showTaskPlanCard && hasConfirmedSubTasks) ||
       // Single agent: from submit until the first `todo_state` arrives.
-      shouldShowSingleAgentWorkLog);
+      (shouldShowRunWorkLog && isSingleAgentTask));
   const shouldShowPlanTaskBox = Boolean(
     !hasConfirmedSubTasks && (isLastUserQuery || queryGroup.taskMessage)
   );
@@ -322,7 +436,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         duration: 0.3,
         delay: index * 0.1, // Stagger animation for multiple groups
       }}
-      className="relative"
+      className="relative flex flex-col gap-3"
     >
       {/* User query: always rendered as a regular component in the chat flow. */}
       {queryGroup.userMessage && (
@@ -330,12 +444,23 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="px-sm py-sm"
+          className="px-2 py-2"
         >
           <UserMessageCard
             id={queryGroup.userMessage.id}
             content={queryGroup.userMessage.content}
             attaches={queryGroup.userMessage.attaches}
+            createdAt={queryGroup.userMessage.timestamp}
+            onEditAndResend={
+              onEditUserMessage
+                ? () =>
+                    onEditUserMessage({
+                      id: queryGroup.userMessage.id,
+                      content: queryGroup.userMessage.content,
+                      attaches: queryGroup.userMessage.attaches,
+                    })
+                : undefined
+            }
           />
         </motion.div>
       )}
@@ -377,7 +502,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                     chatState.updateTaskInfo(taskIndex, content);
                   }}
                   onSaveTask={() => {
-                    chatState.saveTaskInfo();
+                    chatState.saveTaskInfo(activeProjectId);
                   }}
                   onDeleteTask={(taskIndex) => {
                     chatState.deleteTaskInfo(taskIndex);
@@ -398,20 +523,84 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         </motion.div>
       )}
 
-      {taskCardVisible && activeTaskId && (
+      {taskCardVisible && activeTaskId && queryGroup.ownsRunWorkLog && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25, delay: 0.05 }}
-          className="px-6"
+          className="px-2"
         >
-          {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
+          {showPreparingExecute ? (
+            writerWait ? (
+              <SpaceWaitNotice wait={writerWait} />
+            ) : (
+              <PreparingToExecuteTasks />
+            )
+          ) : null}
           <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
         </motion.div>
       )}
 
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
+        if (message.step === AgentStep.ASK && message.interaction) {
+          if (
+            activeTask?.resolvedInteractionIds?.includes(
+              message.interaction.interaction_id
+            )
+          ) {
+            return null;
+          }
+        }
+
+        // A waiting question is answered above the composer, as when live.
+        const isDurablyWaitingReplay =
+          message.step === AgentStep.ASK &&
+          message.interaction &&
+          message.interaction.interaction_type !== 'question' &&
+          activeTask?.type === 'replay' &&
+          !isHumanInteractionReadOnly({
+            interaction: message.interaction,
+            activeTaskId,
+            taskType: activeTask.type,
+            taskStatus: activeTask.status,
+            durableRunStatus: replayRunStatus,
+          });
+
+        // A replay reattached to a live durable waiter remains actionable even
+        // though its legacy task is terminal. This is the only ASK that stays
+        // in the chat flow; normal live requests belong to BottomBox/work log.
+        if (isDurablyWaitingReplay) {
+          return (
+            <HumanInteractionCard
+              key={`interaction-${message.id}`}
+              interaction={message.interaction}
+              readOnly={false}
+              onResolved={() => {
+                if (!activeTaskId) return;
+                const state = chatStore.getState();
+                completeHumanInteraction(
+                  state,
+                  activeTaskId,
+                  message.interaction.interaction_id
+                );
+              }}
+            />
+          );
+        }
+
+        // ASK is a work-log interruption. The prompt is actionable only in
+        // BottomBox while pending; TaskWorkLogAccordion keeps one receipt at
+        // the matching Human Toolkit position and adds question + answer only
+        // after the interaction is resolved.
+        if (message.step === AgentStep.ASK) {
+          return null;
+        }
+        // A Resume that completed this Run supersedes the error notice of its
+        // earlier, interrupted Attempt.
+        if (activeTask && isSupersededRunError(activeTask, message)) {
+          return null;
+        }
         if (message.content.length > 0) {
           if (message.step === AgentStep.END) {
             return (
@@ -420,43 +609,31 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4"
+                className="flex flex-col"
               >
                 <AgentMessageCard
                   typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
+                  errorReason={message.errorReason}
                   onTyping={() => {}}
+                  feedbackRunId={activeTaskId ?? undefined}
+                  feedbackMessageId={message.feedbackMessageId}
+                  messageStep={message.step}
                   deferredFooter={
-                    message.fileList?.length ? (
-                      <div className="my-2 flex flex-wrap gap-2">
-                        {message.fileList.map(
-                          (file: any, fileIndex: number) => (
-                            <motion.div
-                              key={`file-${message.id}-${file.name}-${fileIndex}`}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ delay: 0.05 }}
-                              onClick={() => {
-                                openFilePreview(file);
-                              }}
-                              className="flex w-[140px] cursor-pointer items-center gap-2 rounded-lg bg-ds-bg-neutral-default-default px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-hover"
-                            >
-                              <FileText
-                                size={16}
-                                className="flex-shrink-0 text-ds-icon-neutral-default-default"
-                              />
-                              <div className="flex flex-col">
-                                <div className="max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-bold text-ds-text-neutral-default-default">
-                                  {file.name.split('.')[0]}
-                                </div>
-                                <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
-                                  {file.type}
-                                </div>
-                              </div>
-                            </motion.div>
-                          )
-                        )}
+                    message.fileList?.length ||
+                    task?.artifactManifestTruncated ||
+                    (task?.artifactManifestScanStatus &&
+                      task.artifactManifestScanStatus !== 'complete') ? (
+                      <div className="flex flex-col gap-2">
+                        <RunArtifactChangeList
+                          runId={activeTaskId || ''}
+                          files={message.fileList || []}
+                          onOpen={openFilePreview}
+                          onViewChanges={viewChanges}
+                          scanStatus={task?.artifactManifestScanStatus}
+                          truncated={task?.artifactManifestTruncated}
+                        />
                       </div>
                     ) : undefined
                   }
@@ -470,13 +647,18 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4"
+                className="flex flex-col"
               >
                 <AgentMessageCard
                   key={message.id}
                   id={message.id}
-                  content="No reply received, task continues..."
+                  content={t('chat.no-reply-task-continues', {
+                    defaultValue: 'No reply received; the task continues…',
+                  })}
                   onTyping={() => {}}
+                  feedbackRunId={activeTaskId ?? undefined}
+                  feedbackMessageId={message.feedbackMessageId}
+                  messageStep={message.step}
                 />
               </motion.div>
             );
@@ -487,13 +669,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="px-6"
+                className="px-2"
               >
                 <AgentResultCard
                   id={message.id}
                   agentName={message.agent_name}
                   content={message.content}
                   attaches={message.attaches}
+                  feedbackRunId={activeTaskId ?? undefined}
+                  feedbackMessageId={message.feedbackMessageId}
+                  messageStep={message.step}
                   defaultOpen
                 />
               </motion.div>
@@ -505,15 +690,19 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4"
+                className="flex flex-col"
               >
                 <AgentMessageCard
                   key={message.id}
                   typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
+                  errorReason={message.errorReason}
                   onTyping={() => {}}
                   attaches={message.attaches}
+                  feedbackRunId={activeTaskId ?? undefined}
+                  feedbackMessageId={message.feedbackMessageId}
+                  messageStep={message.step}
                 />
               </motion.div>
             );
@@ -525,37 +714,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="flex flex-col gap-4"
+              className="flex flex-col"
             >
-              {message.fileList && (
-                <div className="flex flex-wrap gap-2">
-                  {message.fileList.map((file: any, fileIndex: number) => (
-                    <motion.div
-                      key={`file-${message.id}-${file.name}-${fileIndex}`}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.3 }}
-                      onClick={() => {
-                        openFilePreview(file);
-                      }}
-                      className="flex w-[120px] cursor-pointer items-center gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-2 py-1 transition-colors hover:bg-ds-bg-neutral-default-hover"
-                    >
-                      <FileText
-                        size={16}
-                        className="flex-shrink-0 text-ds-icon-neutral-default-default"
-                      />
-                      <div className="flex flex-col">
-                        <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-ds-text-neutral-default-default">
-                          {file.name.split('.')[0]}
-                        </div>
-                        <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
-                          {file.type}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
+              <RunArtifactChangeList
+                runId={activeTaskId || ''}
+                files={message.fileList}
+                onOpen={openFilePreview}
+                onViewChanges={viewChanges}
+                scanStatus={task?.artifactManifestScanStatus}
+                truncated={task?.artifactManifestTruncated}
+              />
             </motion.div>
           );
         }
@@ -573,13 +741,32 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         return null;
       })}
 
+      {ownsFailureSummary ? (
+        <TaskFailureSummary
+          key={activeTaskId}
+          facts={failureFacts}
+          status={activeTask?.durableRunStatus}
+        />
+      ) : null}
+
+      {showMissingFinalResponse ? (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-2 flex flex-row items-center gap-2 rounded-xl bg-ds-neutral-default-default px-4 py-3 text-ds-text-base text-ds-ink-muted-default"
+        >
+          <DsIcon icon={InfoIcon} className="text-ds-ink-default-default" />
+          {t('chat.run-no-final-response')}
+        </motion.div>
+      ) : null}
+
       {/* PlanTaskBox now owns streaming + skeleton splitting UI for the active task. */}
       {isSkeletonPhase && activeTaskId && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="px-6"
+          className="px-2"
         >
           <PlanTaskBox
             chatStore={chatStore}

@@ -23,6 +23,11 @@ from PIL import Image
 from app.agent.listen_chat_agent import default_step_timeout
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
+from app.run_policy import ToolSafetyClass
+from app.run_runtime.tool_checkpoint import (
+    ToolInvocationNotDispatchedError,
+    declare_tool_safety,
+)
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 
 
@@ -61,7 +66,7 @@ class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
         the same model backend instead.
         """
         if self.agent is None:
-            return (
+            raise RuntimeError(
                 "Error: No agent registered. Please pass this toolkit to "
                 "ChatAgent via toolkits_to_register_agent parameter."
             )
@@ -69,9 +74,11 @@ class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
         try:
             image_path = str(Path(image_path).absolute())
             if not os.path.exists(image_path):
-                return f"Error: Screenshot file not found: {image_path}"
+                raise FileNotFoundError(f"Image file not found: {image_path}")
 
-            img = Image.open(image_path)
+            with Image.open(image_path) as source:
+                img = source.copy()
+                img.format = source.format
             message = BaseMessage.make_user_message(
                 role_name="User",
                 content=instruction,
@@ -87,18 +94,32 @@ class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
                 tools=[],
                 toolkits_to_register_agent=None,
                 external_tools=None,
-                step_timeout=getattr(
-                    self.agent, "step_timeout", default_step_timeout()
+                # Preserve an explicitly unbounded parent step. Avoid using
+                # ``getattr(..., default_step_timeout())`` here because its
+                # default expression is evaluated eagerly and can silently
+                # reintroduce a cumulative cap for nested image review.
+                step_timeout=(
+                    self.agent.step_timeout
+                    if hasattr(self.agent, "step_timeout")
+                    else default_step_timeout()
                 ),
             )
             response = vision_agent.step(message)
-            if getattr(response, "msg", None) is not None:
-                return response.msg.content
-            if getattr(response, "msgs", None):
-                return response.msgs[0].content
-            return "Error reading screenshot: empty response"
+            # CAMEL can return streaming model exceptions as a terminated
+            # response with info.error instead of raising them.
+            info = getattr(response, "info", None)
+            if isinstance(info, dict) and info.get("error"):
+                raise RuntimeError(str(info["error"]))
+            messages = getattr(response, "msgs", None)
+            message = (
+                messages[0] if messages else getattr(response, "msg", None)
+            )
+            content = getattr(message, "content", None)
+            if isinstance(content, str) and content.strip():
+                return content
+            raise RuntimeError("empty image response")
         except Exception as e:
-            return f"Error reading screenshot: {e}"
+            raise RuntimeError(f"Error reading image: {e}") from e
 
     def take_screenshot_and_read_image(
         self,
@@ -108,20 +129,33 @@ class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
         instruction: str | None = None,
     ) -> str:
         if not self.enable_desktop_capture:
-            return (
+            raise ToolInvocationNotDispatchedError(
                 "Error: Desktop screenshot capture is disabled for this agent. "
                 "Use read_image with an existing image file path instead."
             )
 
-        return super().take_screenshot_and_read_image(
+        result = super().take_screenshot_and_read_image(
             filename=filename,
             save_to_file=save_to_file,
             read_image=read_image,
             instruction=instruction,
         )
+        # CAMEL catches capture/analysis exceptions and adds this prefix.
+        # Its successful result always starts with "Screenshot captured";
+        # inspect only this trusted adapter envelope, never model text.
+        if result.startswith("Error taking screenshot:"):
+            # A file may already have been saved. Do not mark this as a
+            # known pre-dispatch failure or weaken the write checkpoint.
+            raise RuntimeError(result)
+        return result
 
     def get_tools(self):
         tools = super().get_tools()
+        for tool in tools:
+            if tool.get_function_name() == "read_image":
+                # This specific implementation only reads an existing image.
+                # Capture/write tools and unknown tools stay conservative.
+                declare_tool_safety(tool, ToolSafetyClass.SAFE_READ)
         if self.enable_desktop_capture:
             return tools
 

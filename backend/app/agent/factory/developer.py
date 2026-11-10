@@ -27,6 +27,7 @@ from app.agent.prompt import (
     append_connected_app_mcp_notice,
 )
 from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -34,8 +35,7 @@ from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
-from app.agent.utils import NOW_STR
+from app.agent.utils import agent_current_time
 from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
@@ -62,10 +62,6 @@ async def developer_agent(
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    web_deploy_toolkit = WebDeployToolkit(api_task_id=options.project_id)
-    web_deploy_toolkit = message_integration.register_toolkits(
-        web_deploy_toolkit
-    )
     screenshot_toolkit = ScreenshotToolkit(
         options.project_id,
         working_directory=working_directory,
@@ -97,7 +93,6 @@ async def developer_agent(
             options.project_id, Agents.developer_agent
         ),
         *note_toolkit.get_tools(),
-        *web_deploy_toolkit.get_tools(),
         *screenshot_toolkit.get_tools(),
         *skill_toolkit.get_tools(),
         *search_tools,
@@ -105,12 +100,17 @@ async def developer_agent(
     tool_names = [
         HumanToolkit.toolkit_name(),
         NoteTakingToolkit.toolkit_name(),
-        WebDeployToolkit.toolkit_name(),
         ScreenshotToolkit.toolkit_name(),
         SkillToolkit.toolkit_name(),
     ]
     if search_tools:
         tool_names.append(SearchToolkit.toolkit_name())
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.developer_agent,
+    )
     if hands is None or hands.can_execute_terminal():
         terminal_toolkit = TerminalToolkit(
             options.project_id,
@@ -129,7 +129,7 @@ async def developer_agent(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
-        now_str=NOW_STR,
+        now_str=agent_current_time(options),
     )
     system_message = append_connected_app_mcp_notice(system_message)
     system_message = attach_remote_sub_agent_if_enabled(

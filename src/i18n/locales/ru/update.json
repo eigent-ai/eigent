@@ -9,7 +9,7 @@
   "download-completed": "Загрузка завершена",
   "click-to-install-update": "Нажмите, чтобы установить обновление",
   "install": "Установить",
-  "downloading": "Downloading update",
-  "launch-new-version": "Launch new version",
-  "update-failed-retry": "Update failed — click to retry"
+  "downloading": "Загрузка обновления",
+  "launch-new-version": "Запустить новую версию",
+  "update-failed-retry": "Не удалось установить обновление; нажмите, чтобы повторить"
 }

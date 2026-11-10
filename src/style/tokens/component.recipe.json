@@ -1,0 +1,205 @@
+{
+  "$description": "Component geometry recipes. Recipes may reference reference or semantic tokens only; they do not mint color names.",
+  "button": {
+    "sizes": {
+      "xs": {
+        "height": "{ref.controlHeight.xs}",
+        "typeRole": "text.meta",
+        "lineHeight": "1rem",
+        "icon": "{ref.iconSize.xs}",
+        "gap": "{ref.space.4}",
+        "paddingInline": "{ref.space.6}",
+        "radius": "{ref.radius.full}",
+        "weight": "{ref.weight.semibold}"
+      },
+      "sm": {
+        "height": "{ref.controlHeight.sm}",
+        "typeRole": "text.base",
+        "lineHeight": "1rem",
+        "icon": "{ref.iconSize.md}",
+        "gap": "{ref.space.6}",
+        "paddingInline": "{ref.space.10}",
+        "radius": "{ref.radius.full}",
+        "weight": "{ref.weight.medium}"
+      },
+      "md": {
+        "height": "{ref.controlHeight.md}",
+        "typeRole": "text.base",
+        "lineHeight": "{role.text.base.line}",
+        "icon": "{ref.iconSize.md}",
+        "gap": "{ref.space.8}",
+        "paddingInline": "{ref.space.10}",
+        "radius": "{ref.radius.full}",
+        "weight": "{ref.weight.medium}"
+      },
+      "lg": {
+        "height": "{ref.controlHeight.lg}",
+        "typeRole": "text.base",
+        "lineHeight": "{role.text.base.line}",
+        "icon": "{ref.iconSize.md}",
+        "gap": "{ref.space.8}",
+        "paddingInline": "{ref.space.14}",
+        "radius": "{ref.radius.full}",
+        "weight": "{ref.weight.semibold}"
+      },
+      "xl": {
+        "height": "{ref.controlHeight.xl}",
+        "typeRole": "text.body-large",
+        "lineHeight": "{role.text.body-large.line}",
+        "icon": "{ref.iconSize.md}",
+        "gap": "{ref.space.8}",
+        "paddingInline": "{ref.space.16}",
+        "radius": "{ref.radius.full}",
+        "weight": "{ref.weight.semibold}"
+      }
+    },
+    "variants": ["text", "ghost", "outline", "secondary", "primary"],
+    "iconOnlyRadius": "{ref.radius.full}",
+    "compat": {
+      "xxs": "xs"
+    }
+  },
+  "field": {
+    "sm": {
+      "height": "{ref.controlHeight.md}",
+      "typeRole": "text.base",
+      "icon": "{ref.iconSize.md}",
+      "paddingInline": "{ref.space.12}",
+      "radius": "{radius.field}"
+    },
+    "md": {
+      "height": "{ref.controlHeight.xl}",
+      "typeRole": "text.base",
+      "icon": "{ref.iconSize.md}",
+      "paddingInline": "{ref.space.12}",
+      "radius": "{radius.field}"
+    }
+  },
+  "textarea": {
+    "sm": {
+      "minHeight": "4rem",
+      "typeRole": "text.base",
+      "icon": "{ref.iconSize.md}",
+      "paddingInline": "{ref.space.12}",
+      "radius": "{radius.field}"
+    },
+    "md": {
+      "minHeight": "5rem",
+      "typeRole": "text.base",
+      "icon": "{ref.iconSize.md}",
+      "paddingInline": "{ref.space.12}",
+      "radius": "{radius.field}"
+    }
+  },
+  "row": {
+    "compact": {
+      "minHeight": "{ref.controlHeight.sm}",
+      "typeRole": "text.base",
+      "icon": "{ref.iconSize.sm}",
+      "paddingInline": "{ref.space.8}"
+    },
+    "default": {
+      "minHeight": "{ref.controlHeight.lg}",
+      "typeRole": "text.base",
+      "icon": "{ref.iconSize.md}",
+      "paddingInline": "{ref.space.12}"
+    },
+    "comfortable": {
+      "minHeight": "{ref.controlHeight.xl}",
+      "typeRole": "text.body-large",
+      "icon": "{ref.iconSize.md}",
+      "paddingInline": "{ref.space.12}"
+    }
+  },
+  "header": {
+    "canonical": {
+      "height": "{ref.layoutRow.header}",
+      "actionSize": "sm",
+      "icon": "{ref.iconSize.sm}",
+      "gap": "{ref.space.6}",
+      "paddingInline": "{ref.space.8}",
+      "titleRole": "text.body-large",
+      "titleWeight": "{ref.weight.semibold}"
+    },
+    "prominent": {
+      "height": "{ref.layoutRow.header-prominent}",
+      "actionSize": "md",
+      "icon": "{ref.iconSize.md}",
+      "gap": "{ref.space.8}",
+      "paddingInline": "{ref.space.8}",
+      "titleRole": "text.body-large",
+      "titleWeight": "{ref.weight.semibold}"
+    }
+  },
+  "dialog": {
+    "radius": "{radius.dialog}",
+    "elevation": "{elevation.dialog}",
+    "padding": "{ref.space.16}",
+    "titleRole": "text.title"
+  },
+  "popover": {
+    "radius": "{radius.popover}",
+    "elevation": "{elevation.popover}",
+    "padding": "{ref.space.4}"
+  },
+  "tooltip": {
+    "radius": "{radius.compact-control}",
+    "elevation": "{elevation.floating}",
+    "paddingInline": "{ref.space.8}",
+    "paddingBlock": "{ref.space.6}",
+    "typeRole": "text.meta"
+  },
+  "card": {
+    "radius": "{radius.card}",
+    "elevation": "{elevation.card}",
+    "padding": "{space.card-inset}",
+    "titleRole": "text.title"
+  },
+  "tag": {
+    "radius": "{ref.radius.full}",
+    "xs": {
+      "typeRole": "text.meta",
+      "icon": "{ref.iconSize.xs}",
+      "paddingInline": "{ref.space.8}",
+      "gap": "{ref.space.4}"
+    },
+    "sm": {
+      "typeRole": "text.meta",
+      "icon": "{ref.iconSize.md}",
+      "paddingInline": "{ref.space.8}",
+      "gap": "{ref.space.4}"
+    }
+  },
+  "badge": {
+    "radius": "{ref.radius.full}",
+    "typeRole": "text.meta",
+    "paddingInline": "{ref.space.8}"
+  },
+  "label": {
+    "typeRole": "text.meta"
+  },
+  "menu": {
+    "radius": "{radius.popover}",
+    "rowRadius": "{radius.menu-row}",
+    "elevation": "{elevation.popover}",
+    "rowMinHeight": "{ref.controlHeight.lg}",
+    "typeRole": "text.base"
+  },
+  "checkbox": {
+    "size": "{ref.iconSize.md}",
+    "radius": "{ref.radius.4}",
+    "icon": "{ref.iconSize.sm}"
+  },
+  "switch": {
+    "trackRadius": "{ref.radius.full}",
+    "thumbRadius": "{ref.radius.full}",
+    "sm": {
+      "height": "{ref.controlHeight.2xs}",
+      "width": "{ref.space.32}"
+    },
+    "md": {
+      "height": "{ref.controlHeight.sm}",
+      "width": "2.75rem"
+    }
+  }
+}

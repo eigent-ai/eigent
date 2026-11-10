@@ -13,11 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
+import { isLocalPreviewUrl } from '@/lib/browserPreviewHandoff';
 import { normalizeBrowserUrl } from '@/lib/browserUrl';
 import { cn } from '@/lib/utils';
-import { type SessionBrowserTab, usePageTabStore } from '@/store/pageTabStore';
+import { type SessionBrowserTab } from '@/store/pageTabStore';
 import { ArrowLeft, ArrowRight, ExternalLink, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -33,6 +37,7 @@ export interface BrowserTabProps {
    * clip-path can't clip) doesn't appear over the chat mid-animation.
    */
   viewportSettled?: boolean;
+  onJumpToFiles?: (file: FileInfo | null) => void;
 }
 
 /**
@@ -46,13 +51,14 @@ export function BrowserTab({
   tab,
   isDesktop,
   viewportSettled = true,
+  onJumpToFiles,
 }: BrowserTabProps) {
   const { t } = useTranslation();
   const host = useHost();
-  const updateBrowserPreviewTab = usePageTabStore(
+  const updateBrowserPreviewTab = useSessionPageTabStore(
     (state) => state.updateBrowserPreviewTab
   );
-  const setPreviewBrowserViewport = usePageTabStore(
+  const setPreviewBrowserViewport = useSessionPageTabStore(
     (state) => state.setPreviewBrowserViewport
   );
 
@@ -70,6 +76,10 @@ export function BrowserTab({
     setAddressInput(tab.url);
     setAddressError(null);
   }, [tab.url, addressFocused]);
+
+  useEffect(() => {
+    if (!nav.loadError && !nav.isLoading) setAddressError(null);
+  }, [nav.isLoading, nav.loadError]);
 
   const navigateTo = useCallback(
     async (rawUrl: string) => {
@@ -93,9 +103,11 @@ export function BrowserTab({
         // Guest already mounted: navigate it in place (keeps history).
         try {
           await element.loadURL(normalized.url);
-        } catch (error) {
+        } catch {
           setAddressError(
-            error instanceof Error ? error.message : 'Unable to open this URL'
+            t('layout.browser-unable-to-open-url', {
+              defaultValue: 'Unable to open this URL',
+            })
           );
         }
         return;
@@ -103,7 +115,7 @@ export function BrowserTab({
       // No guest yet (blank tab): setting the URL mounts one in the layer.
       updateBrowserPreviewTab(tab.id, { url: normalized.url });
     },
-    [isDesktop, tab.id, tab.webviewId, updateBrowserPreviewTab]
+    [isDesktop, t, tab.id, tab.webviewId, updateBrowserPreviewTab]
   );
 
   const electronAPI = host?.electronAPI;
@@ -119,14 +131,19 @@ export function BrowserTab({
       if (isDesktop && electronAPI?.openExternal) {
         const result = await electronAPI.openExternal(normalized.url);
         if (result && result.success === false) {
-          setAddressError(result.error || 'Unable to open this URL');
+          setAddressError(
+            result.error ||
+              t('layout.browser-unable-to-open-url', {
+                defaultValue: 'Unable to open this URL',
+              })
+          );
         }
         return;
       }
 
       window.open(normalized.url, '_blank', 'noopener,noreferrer');
     },
-    [electronAPI, isDesktop]
+    [electronAPI, isDesktop, t]
   );
 
   // Publish this container's rect so the layer can position the guest over it.
@@ -161,7 +178,7 @@ export function BrowserTab({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex h-[44px] shrink-0 items-center gap-1.5 px-2">
+      <div className="flex h-10 shrink-0 items-center gap-1.5 px-2">
         <TooltipSimple
           content={t('layout.browser-back', { defaultValue: 'Back' })}
         >
@@ -174,7 +191,7 @@ export function BrowserTab({
             onClick={() => getPreviewWebview(tab.webviewId)?.goBack?.()}
             aria-label={t('layout.browser-back', { defaultValue: 'Back' })}
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
+            <DsIcon icon={ArrowLeft} aria-hidden />
           </Button>
         </TooltipSimple>
         <TooltipSimple
@@ -191,7 +208,7 @@ export function BrowserTab({
               defaultValue: 'Forward',
             })}
           >
-            <ArrowRight className="h-4 w-4" aria-hidden />
+            <DsIcon icon={ArrowRight} aria-hidden />
           </Button>
         </TooltipSimple>
         <TooltipSimple
@@ -203,11 +220,15 @@ export function BrowserTab({
             size="sm"
             buttonContent="icon-only"
             disabled={!isDesktop || !tab.url}
-            onClick={() => getPreviewWebview(tab.webviewId)?.reload?.()}
+            onClick={() => {
+              setAddressError(null);
+              getPreviewWebview(tab.webviewId)?.reload?.();
+            }}
             aria-label={t('layout.browser-reload', { defaultValue: 'Reload' })}
           >
-            <RefreshCw
-              className={cn('h-4 w-4', nav?.isLoading && 'animate-spin')}
+            <DsIcon
+              icon={RefreshCw}
+              className={cn('', nav?.isLoading && 'animate-spin')}
               aria-hidden
             />
           </Button>
@@ -236,12 +257,12 @@ export function BrowserTab({
             })}
             aria-invalid={Boolean(addressError)}
             className={cn(
-              'placeholder:text-input-label-default/10 h-[28px] w-full min-w-0 rounded-xl border-none bg-ds-bg-neutral-subtle-default px-3 text-body-sm text-ds-text-neutral-default-default outline-none transition-colors',
-              'hover:bg-ds-bg-neutral-subtle-default hover:ring-1 hover:ring-ds-ring-neutral-strong-default hover:ring-offset-0',
-              'focus:bg-ds-bg-neutral-subtle-default focus:ring-1 focus:ring-ds-ring-brand-default-focus focus:ring-offset-0',
+              'h-[28px] w-full min-w-0 rounded-xl border-x-0 border-y-0 border-none bg-ds-neutral-subtle-default px-3 text-ds-text-base text-ds-ink-default-default transition-colors outline-none placeholder:text-ds-ink-muted-default',
+              'hover:bg-ds-neutral-subtle-default hover:ring-1 hover:ring-ds-hairline-strong-default hover:ring-offset-0',
+              'focus-visible:ring-1 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-0',
               addressError
                 ? 'border-ds-border-status-error-default-default'
-                : 'border-ds-border-neutral-default-default'
+                : 'border-ds-hairline-default-default'
             )}
           />
         </form>
@@ -261,12 +282,12 @@ export function BrowserTab({
               defaultValue: 'Open externally',
             })}
           >
-            <ExternalLink className="h-4 w-4" aria-hidden />
+            <DsIcon icon={ExternalLink} aria-hidden />
           </Button>
         </TooltipSimple>
       </div>
       {addressError ? (
-        <p className="text-ds-text-danger-default-default shrink-0 px-3 py-1 text-xs">
+        <p className="shrink-0 px-3 py-1 text-xs text-ds-text-error-default-default">
           {addressError}
         </p>
       ) : null}
@@ -274,16 +295,52 @@ export function BrowserTab({
           PreviewBrowserLayer via the published viewport rect. */}
       <div
         ref={containerRef}
-        className="relative min-h-0 flex-1 overflow-hidden bg-ds-bg-neutral-strong-default"
+        className="relative min-h-0 flex-1 overflow-hidden bg-ds-neutral-strong-default"
       >
-        {!tab.url ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-text-neutral-muted-default">
+        {isDesktop && nav.loadError ? (
+          <div
+            role="alert"
+            className="scrollbar-always-visible flex h-full flex-col overflow-y-auto bg-ds-neutral-default-default p-ds-panel-inset text-center text-ds-ink-default-default"
+          >
+            <div className="my-auto flex w-full shrink-0 flex-col items-center gap-ds-stack-related">
+              <DsText role="body-large" weight="semibold">
+                {t('layout.browser-preview-failed')}
+              </DsText>
+              <DsText className="text-ds-ink-muted-default">
+                {t(
+                  isLocalPreviewUrl(nav.loadError.url)
+                    ? 'layout.browser-preview-local-unavailable'
+                    : 'layout.browser-preview-unavailable'
+                )}
+              </DsText>
+              <div className="flex flex-wrap justify-center gap-ds-control-gap">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void navigateTo(nav.loadError?.url || tab.url)}
+                >
+                  {t('layout.retry')}
+                </Button>
+                {onJumpToFiles && isLocalPreviewUrl(nav.loadError.url) ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onJumpToFiles(null)}
+                  >
+                    {t('layout.files-tab')}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : !tab.url ? (
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-ink-muted-default">
             {t('layout.browser-blank', {
               defaultValue: 'Enter a URL to start browsing.',
             })}
           </div>
         ) : !isDesktop ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-text-neutral-muted-default">
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-ink-muted-default">
             {t('layout.browser-desktop-only', {
               defaultValue:
                 'Embedded browsing is available in the desktop app. This URL opened in your system browser.',

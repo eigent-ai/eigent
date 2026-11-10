@@ -36,13 +36,19 @@ function basename(value: string | undefined): string {
 export function isRuntimeOnlyAgentFile(file: AgentFileLike): boolean {
   if (file.source === 'camel_log') return true;
 
-  const segments = [
-    ...pathSegments(file.relativePath),
-    ...pathSegments(file.path),
-    file.name || '',
-  ];
+  const paths = file.relativePath ? [file.relativePath] : [file.path];
+  const segments = [...paths.flatMap(pathSegments), file.name || ''];
 
-  return segments.some((segment) => RUNTIME_ONLY_DIRS.has(segment));
+  if (segments.some((segment) => RUNTIME_ONLY_DIRS.has(segment))) return true;
+
+  return paths.some((value) => {
+    const path = pathSegments(value);
+    const index = path.indexOf('terminal_logs');
+    return (
+      index === 0 ||
+      (index > 0 && (/^task_/i.test(path[index - 1]) || !file.relativePath))
+    );
+  });
 }
 
 export function isAgentTaskRootEntry(file: AgentFileLike): boolean {
@@ -67,4 +73,13 @@ export function filterVisibleAgentFiles<T extends AgentFileLike>(
   files: T[]
 ): T[] {
   return files.filter(isVisibleAgentFile);
+}
+
+/** Reject empty legacy file receipts while retaining named, unavailable outputs. */
+export function isDisplayableOutputFile(file: AgentFileLike): boolean {
+  return (
+    Boolean(
+      file.path?.trim() || file.relativePath?.trim() || file.name?.trim()
+    ) && isVisibleAgentFile(file)
+  );
 }

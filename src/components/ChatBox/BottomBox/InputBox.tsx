@@ -13,21 +13,27 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
 import { processDroppedFiles, processPastedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
+import { getEnterKeyLabel } from '@/shared/keyboardShortcuts';
 import type { TriggerInput } from '@/types';
 import {
   ArrowRight,
+  Cable,
   FileText,
-  Hammer,
   Image,
   Paperclip,
+  Play,
+  Square,
   UploadCloud,
   WandSparkles,
   X,
@@ -35,7 +41,16 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { BoxHeaderDisplay } from './BoxHeader';
 import { RichChatInput } from './RichChatInput';
+import type { BottomBoxHeaderContent } from './types';
+
+const PRIMARY_ACTION_ICON_MOTION_CLASS =
+  'absolute inset-0 size-ds-icon-md text-current transition-[transform,opacity] motion-reduce:transition-none';
+const PRIMARY_ACTION_ICON_MOTION_STYLE: React.CSSProperties = {
+  transitionDuration: '160ms',
+  transitionTimingFunction: 'cubic-bezier(0.77, 0, 0.175, 1)',
+};
 
 /**
  * File attachment object
@@ -55,10 +70,20 @@ export interface InputboxProps {
   value?: string;
   /** Callback when text changes */
   onChange?: (value: string) => void;
-  /** Callback when send button is clicked (only fires when value is not empty) */
+  /** Callback when the send action is clicked. Text or attachments make it available. */
   onSend?: () => void;
+  queuesFollowUp?: boolean;
+  /** Task state shown by the primary action when the composer has no draft. */
+  taskControlState?: 'idle' | 'running' | 'paused';
+  onPauseTask?: () => void;
+  onResumeTask?: () => void;
+  taskControlLoading?: boolean;
   /** Array of file attachments */
   files?: FileAttachment[];
+  /** Render attachment chips inside the input surface (layer 2). */
+  showFileAttachments?: boolean;
+  /** Input-required question, details, and non-file context (layer 1). */
+  header?: BottomBoxHeaderContent;
   /** Callback when files are modified */
   onFilesChange?: (files: FileAttachment[]) => void;
   /** Callback when add file button is clicked */
@@ -75,6 +100,9 @@ export interface InputboxProps {
   textareaRef?: React.RefObject<HTMLDivElement | null>;
   /** Allow drag and drop */
   allowDragDrop?: boolean;
+  /** Restricted execution surfaces disable every file ingestion path. */
+  attachmentsEnabled?: boolean;
+  onUnsupportedAttachment?: () => void;
   /** Privacy mode enabled */
   privacy?: boolean;
   /** Use cloud model in dev */
@@ -94,14 +122,11 @@ export interface InputboxProps {
 /**
  * Inputbox Component
  *
- * A multi-state input component with two visual states:
- * - **Default**: Empty state with placeholder text and disabled send button
- * - **Focus/Input**: Active state with content, file attachments, and active send button
- *
- * Features:
- * - Auto-expanding rich text input (links + #skills, up to 200px height)
- * - File attachment display (shows up to 5 files + count indicator)
- * - Action buttons (add file on left, send on right)
+ * A multi-state input component with four stacked layers:
+ * - **Layer 1**: Input-required question / details (when provided)
+ * - **Layer 2**: File attachment chips (original design, up to 5 + overflow)
+ * - **Layer 3**: Auto-expanding rich text input
+ * - **Layer 4**: Action buttons (attach, connectors, skills, send)
  * - Send button changes color based on content (gray when empty, green when has content)
  * - Arrow icon rotates when there's content
  * - Supports Enter to send, Shift+Enter for new line
@@ -134,7 +159,14 @@ export const Inputbox = ({
   value = '',
   onChange,
   onSend,
+  queuesFollowUp = false,
+  taskControlState = 'idle',
+  onPauseTask,
+  onResumeTask,
+  taskControlLoading = false,
   files = [],
+  showFileAttachments = true,
+  header,
   onFilesChange,
   onAddFile,
   placeholder,
@@ -143,6 +175,8 @@ export const Inputbox = ({
   className,
   textareaRef: externalTextareaRef,
   allowDragDrop = false,
+  attachmentsEnabled = true,
+  onUnsupportedAttachment,
   privacy = true,
   useCloudModelInDev = false,
   connectorPanelOpen = false,
@@ -153,6 +187,7 @@ export const Inputbox = ({
   onTriggerCreated: _onTriggerCreated,
 }: InputboxProps) => {
   const { t } = useTranslation();
+  const enterLabel = getEnterKeyLabel(useDesktopShortcutPlatform());
   const internalTextareaRef = useRef<HTMLDivElement>(null);
   const textareaRef = externalTextareaRef || internalTextareaRef;
   const [isFocused, setIsFocused] = useState(false);
@@ -200,9 +235,9 @@ export const Inputbox = ({
   );
 
   const handleSend = () => {
-    if (value.trim().length > 0 && !disabled) {
+    if (hasContent && !disabled) {
       onSend?.();
-    } else if (value.trim().length === 0) {
+    } else if (!hasContent) {
       toast.error(t('chat.message-cannot-be-empty'), {
         closeButton: true,
       });
@@ -216,6 +251,34 @@ export const Inputbox = ({
     }
   };
 
+  const primaryAction = hasContent
+    ? 'send'
+    : taskControlState === 'running'
+      ? 'pause'
+      : taskControlState === 'paused'
+        ? 'resume'
+        : 'idle';
+  const showArrow = primaryAction === 'idle' || primaryAction === 'send';
+  const primaryActionLabel =
+    primaryAction === 'pause'
+      ? t('chat.pause')
+      : primaryAction === 'resume'
+        ? t('layout.continue', { defaultValue: 'Continue' })
+        : t(queuesFollowUp ? 'chat.queue-add' : 'chat.send-message');
+  const primaryActionDisabled =
+    primaryAction === 'idle' ||
+    taskControlLoading ||
+    (primaryAction === 'send' && disabled) ||
+    (primaryAction === 'pause' && !onPauseTask) ||
+    (primaryAction === 'resume' && !onResumeTask);
+
+  const handlePrimaryAction = () => {
+    if (primaryActionDisabled) return;
+    if (primaryAction === 'send') handleSend();
+    if (primaryAction === 'pause') onPauseTask?.();
+    if (primaryAction === 'resume') onResumeTask?.();
+  };
+
   const handleRemoveFile = (filePath: string) => {
     const newFiles = files.filter((f) => f.filePath !== filePath);
     onFilesChange?.(newFiles);
@@ -224,13 +287,9 @@ export const Inputbox = ({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return (
-        <Image className="size-3.5 text-ds-icon-neutral-default-default" />
-      );
+      return <DsIcon icon={Image} recipe="main-compact" />;
     }
-    return (
-      <FileText className="size-3.5 text-ds-icon-neutral-default-default" />
-    );
+    return <DsIcon icon={FileText} recipe="main-compact" />;
   };
 
   // Drag & drop handlers
@@ -243,7 +302,8 @@ export const Inputbox = ({
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+    if (!attachmentsEnabled || !allowDragDrop || !privacy || useCloudModelInDev)
+      return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -252,7 +312,8 @@ export const Inputbox = ({
   };
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+    if (!attachmentsEnabled || !allowDragDrop || !privacy || useCloudModelInDev)
+      return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -272,7 +333,12 @@ export const Inputbox = ({
     e.stopPropagation();
     setIsDragging(false);
     dragCounter.current = 0;
-    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+    if (!attachmentsEnabled) {
+      onUnsupportedAttachment?.();
+      return;
+    }
+    if (!attachmentsEnabled || !allowDragDrop || !privacy || useCloudModelInDev)
+      return;
 
     try {
       const dropped = Array.from(e.dataTransfer?.files || []);
@@ -285,31 +351,55 @@ export const Inputbox = ({
       if (result.success) {
         console.log('[Drag-Drop] Setting files:', result.files);
         onFilesChange?.(result.files);
-        toast.success(`Added ${result.added} file(s)`);
+        toast.success(
+          t('chat.files-added', {
+            count: result.added,
+            defaultValue_one: 'Added {{count}} file',
+            defaultValue_other: 'Added {{count}} files',
+          })
+        );
       } else {
         toast.error(result.error);
       }
     } catch (error) {
       console.error('[Drag-Drop] Error:', error);
-      toast.error('Failed to process dropped files');
+      toast.error(
+        t('chat.dropped-files-failed', {
+          defaultValue: 'Failed to process dropped files',
+        })
+      );
     }
   };
 
   const handlePasteFiles = async (pasted: File[]) => {
+    if (!attachmentsEnabled) {
+      onUnsupportedAttachment?.();
+      return;
+    }
     // Mirror the drag-and-drop gating: attachments are unavailable in
     // privacy-off / cloud-model-in-dev states.
-    if (!privacy || useCloudModelInDev) return;
+    if (!attachmentsEnabled || !privacy || useCloudModelInDev) return;
     try {
       const result = await processPastedFiles(pasted, files);
       if (result.success) {
         onFilesChange?.(result.files);
-        toast.success(`Added ${result.added} file(s)`);
+        toast.success(
+          t('chat.files-added', {
+            count: result.added,
+            defaultValue_one: 'Added {{count}} file',
+            defaultValue_other: 'Added {{count}} files',
+          })
+        );
       } else {
         toast.error(result.error);
       }
     } catch (error) {
       console.error('[Paste] Error:', error);
-      toast.error('Failed to process pasted files');
+      toast.error(
+        t('chat.pasted-files-failed', {
+          defaultValue: 'Failed to process pasted files',
+        })
+      );
     }
   };
 
@@ -321,12 +411,14 @@ export const Inputbox = ({
 
   return (
     <div
+      data-bottom-box-input-surface
       className={cn(
-        'relative flex w-full flex-col items-start rounded-3xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-3 transition-colors',
-        (isFocused || hasContent) &&
+        'relative flex w-full flex-col items-start rounded-ds-24 border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default px-ds-panel-inset py-ds-12 shadow-ds-elevation-card transition-colors',
+        !disabled &&
+          (isFocused || hasContent) &&
           'border-ds-border-information-default-default',
         isDragging &&
-          'border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default',
+          'border-ds-hairline-strong-default bg-ds-bg-information-subtle-default',
         className
       )}
       onDragEnter={handleDragEnter}
@@ -335,15 +427,17 @@ export const Inputbox = ({
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default text-ds-text-neutral-default-default backdrop-blur-sm">
-          <UploadCloud className="h-8 w-8" />
-          <div className="text-sm font-semibold">
+        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-ds-24 border-2 border-x-2 border-y-2 border-dashed border-ds-hairline-strong-default bg-ds-bg-information-subtle-default text-ds-ink-default-default backdrop-blur-sm">
+          <DsIcon icon={UploadCloud} recipe="illustration" />
+          <span className="block text-ds-text-base font-semibold">
             {t('chat.drop-files-to-attach')}
-          </div>
+          </span>
         </div>
       )}
+      {/* Layer 1: Input-required question / details */}
+      {header && <BoxHeaderDisplay {...header} className="px-0 pt-0 pb-2" />}
       {/* Layer 2: File attachments (only show if has files) */}
-      {files.length > 0 && (
+      {showFileAttachments && files.length > 0 && (
         <div className="relative box-border flex w-full flex-wrap items-start gap-1 pb-2">
           {visibleFiles.map((file) => {
             const isHovered = hoveredFilePath === file.filePath;
@@ -351,7 +445,7 @@ export const Inputbox = ({
               <div
                 key={file.filePath}
                 className={cn(
-                  'relative box-border flex h-auto max-w-24 items-center gap-0.5 rounded-md bg-ds-bg-neutral-default-default pr-1'
+                  'relative box-border flex h-auto max-w-24 items-center gap-0.5 rounded-md bg-ds-neutral-default-default pr-1'
                 )}
                 onMouseEnter={() => setHoveredFilePath(file.filePath)}
                 onMouseLeave={() =>
@@ -374,21 +468,25 @@ export const Inputbox = ({
                   title={isHovered ? t('chat.remove-file') : file.fileName}
                 >
                   {isHovered ? (
-                    <X className="size-3.5 text-ds-icon-neutral-muted-default" />
+                    <DsIcon
+                      icon={X}
+                      recipe="main-compact"
+                      className="text-ds-ink-muted-default"
+                    />
                   ) : (
                     getFileIcon(file.fileName)
                   )}
                 </a>
 
                 {/* File Name */}
-                <p
+                <span
                   className={cn(
-                    "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
+                    "relative block min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] text-xs leading-tight font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default"
                   )}
                   title={file.fileName}
                 >
                   {file.fileName}
-                </p>
+                </span>
               </div>
             );
           })}
@@ -402,23 +500,23 @@ export const Inputbox = ({
                   buttonContent="text"
                   textWeight="bold"
                   buttonRadius="full"
-                  className="relative box-border flex h-auto items-center rounded-lg bg-ds-bg-neutral-strong-default"
+                  className="relative box-border flex h-auto items-center rounded-lg bg-ds-neutral-strong-default"
                   onMouseEnter={openRemainingPopover}
                   onMouseLeave={scheduleCloseRemainingPopover}
                   onClick={(e) => {
                     e.stopPropagation();
                   }}
                 >
-                  <p className="my-0 whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                  <span className="block font-['Inter'] text-xs leading-tight font-bold whitespace-nowrap text-ds-ink-default-default">
                     {remainingCount}+
-                  </p>
+                  </span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent
                 align="end"
                 side="right"
                 sideOffset={4}
-                className="!w-auto max-w-40 rounded-lg border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-1 shadow-perfect"
+                className="!w-auto max-w-40 rounded-lg border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default p-1 shadow-ds-elevation-popover"
                 onMouseEnter={openRemainingPopover}
                 onMouseLeave={scheduleCloseRemainingPopover}
               >
@@ -428,7 +526,7 @@ export const Inputbox = ({
                     return (
                       <div
                         key={file.filePath}
-                        className="flex cursor-pointer items-center gap-1 rounded-lg bg-ds-bg-neutral-strong-default px-1 py-0.5 transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover"
+                        className="flex cursor-pointer items-center gap-1 rounded-lg bg-ds-neutral-strong-default px-1 py-0.5 transition-colors duration-300 hover:bg-ds-neutral-default-hover"
                         onMouseEnter={() => setHoveredFilePath(file.filePath)}
                         onMouseLeave={() =>
                           setHoveredFilePath((prev) =>
@@ -452,14 +550,17 @@ export const Inputbox = ({
                           }
                         >
                           {isHovered ? (
-                            <X className="size-4 text-ds-icon-neutral-muted-default" />
+                            <DsIcon
+                              icon={X}
+                              className="text-ds-ink-muted-default"
+                            />
                           ) : (
                             getFileIcon(file.fileName)
                           )}
                         </a>
-                        <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                        <span className="block flex-1 overflow-hidden font-['Inter'] text-xs leading-tight font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default">
                           {file.fileName}
-                        </p>
+                        </span>
                       </div>
                     );
                   })}
@@ -471,7 +572,10 @@ export const Inputbox = ({
       )}
 
       {/* Layer 3: Text input area */}
-      <div className="relative flex w-full flex-1 items-start justify-center gap-2.5 pb-3">
+      <div
+        data-text-input
+        className="relative flex w-full flex-1 items-start justify-center gap-2.5 pb-3"
+      >
         <RichChatInput
           ref={textareaRef as React.RefObject<HTMLDivElement>}
           value={value}
@@ -491,7 +595,7 @@ export const Inputbox = ({
             'border-none shadow-none focus-visible:ring-0',
             'max-h-[200px] min-h-[40px]'
           )}
-          textClassName="text-ds-text-neutral-default-default"
+          textClassName="text-ds-ink-default-default"
           style={{
             fontFamily: 'Inter',
             fontSize: '13px',
@@ -502,19 +606,23 @@ export const Inputbox = ({
       </div>
 
       {/* Layer 4: Action buttons */}
-      <div className="flex w-full flex-wrap items-center justify-between gap-y-2">
+      <div
+        data-input-actions
+        className="flex w-full flex-wrap items-center justify-between gap-y-2"
+      >
         {/* Left: add files/photos + connector picker + skill picker */}
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1">
           <TooltipSimple content="Attach" side="top">
             <Button
               type="button"
               variant="ghost"
-              size="xs"
+              size="sm"
               buttonContent="icon-only"
               textWeight="bold"
               buttonRadius="lg"
               disabled={
                 disabled ||
+                !attachmentsEnabled ||
                 !privacy ||
                 useCloudModelInDev ||
                 typeof onAddFile !== 'function'
@@ -522,7 +630,7 @@ export const Inputbox = ({
               aria-label={t('chat.input-attach-add-files-or-photos')}
               onClick={() => onAddFile?.()}
             >
-              <Paperclip />
+              <DsIcon icon={Paperclip} />
             </Button>
           </TooltipSimple>
           {onToggleConnectorPanel && (
@@ -531,7 +639,7 @@ export const Inputbox = ({
                 type="button"
                 data-picker-trigger
                 variant="ghost"
-                size="xs"
+                size="sm"
                 buttonContent="icon-only"
                 textWeight="bold"
                 buttonRadius="lg"
@@ -542,11 +650,11 @@ export const Inputbox = ({
                 aria-haspopup="true"
                 aria-expanded={connectorPanelOpen}
                 className={cn(
-                  connectorPanelOpen && 'bg-ds-bg-neutral-strong-default'
+                  connectorPanelOpen && 'bg-ds-neutral-strong-default'
                 )}
                 onClick={onToggleConnectorPanel}
               >
-                <Hammer />
+                <DsIcon icon={Cable} />
               </Button>
             </TooltipSimple>
           )}
@@ -556,7 +664,7 @@ export const Inputbox = ({
                 type="button"
                 data-picker-trigger
                 variant="ghost"
-                size="xs"
+                size="sm"
                 buttonContent="icon-only"
                 textWeight="bold"
                 buttonRadius="lg"
@@ -566,36 +674,90 @@ export const Inputbox = ({
                 })}
                 aria-haspopup="true"
                 aria-expanded={skillPanelOpen}
-                className={cn(
-                  skillPanelOpen && 'bg-ds-bg-neutral-strong-default'
-                )}
+                className={cn(skillPanelOpen && 'bg-ds-neutral-strong-default')}
                 onClick={onToggleSkillPanel}
               >
-                <WandSparkles />
+                <DsIcon icon={WandSparkles} />
               </Button>
             </TooltipSimple>
           )}
         </div>
 
-        {/* Right: send */}
+        {/* Right: send or control the current task when the draft is empty. */}
         <div className="flex shrink-0 items-center gap-2">
-          <Button
-            size="xs"
-            buttonContent="icon-only"
-            textWeight="bold"
-            buttonRadius="full"
-            variant={value.trim().length > 0 ? 'primary' : 'primary'}
-            tone={value.trim().length > 0 ? 'success' : 'default'}
-            onClick={handleSend}
-            disabled={disabled || value.trim().length === 0}
+          <TooltipSimple
+            content={
+              <ShortcutTooltipContent
+                label={primaryActionLabel}
+                shortcutLabel={
+                  primaryAction === 'send' ? enterLabel : undefined
+                }
+              />
+            }
+            compact
+            side="top"
+            variant="instant"
           >
-            <ArrowRight
-              className={cn(
-                'text-current transition-transform duration-200',
-                value.trim().length > 0 && 'rotate-[-90deg]'
-              )}
-            />
-          </Button>
+            <Button
+              type="button"
+              size="sm"
+              buttonContent="icon-only"
+              textWeight="bold"
+              buttonRadius="full"
+              variant="primary"
+              tone={
+                primaryAction === 'send' || primaryAction === 'resume'
+                  ? 'success'
+                  : 'default'
+              }
+              aria-label={primaryActionLabel}
+              aria-busy={taskControlLoading || undefined}
+              data-composer-primary-action={primaryAction}
+              onClick={handlePrimaryAction}
+              disabled={primaryActionDisabled}
+            >
+              <span
+                className="relative grid size-ds-icon-md place-items-center leading-none"
+                aria-hidden
+              >
+                <DsIcon
+                  icon={ArrowRight}
+                  data-composer-primary-icon="arrow"
+                  style={PRIMARY_ACTION_ICON_MOTION_STYLE}
+                  className={cn(
+                    PRIMARY_ACTION_ICON_MOTION_CLASS,
+                    showArrow
+                      ? primaryAction === 'send'
+                        ? '-rotate-90 opacity-100'
+                        : 'rotate-0 opacity-100'
+                      : 'rotate-0 opacity-0'
+                  )}
+                />
+                <DsIcon
+                  icon={Square}
+                  data-composer-primary-icon="pause"
+                  style={PRIMARY_ACTION_ICON_MOTION_STYLE}
+                  className={cn(
+                    PRIMARY_ACTION_ICON_MOTION_CLASS,
+                    primaryAction === 'pause'
+                      ? 'rotate-0 opacity-100'
+                      : 'rotate-90 opacity-0'
+                  )}
+                />
+                <DsIcon
+                  icon={Play}
+                  data-composer-primary-icon="play"
+                  style={PRIMARY_ACTION_ICON_MOTION_STYLE}
+                  className={cn(
+                    PRIMARY_ACTION_ICON_MOTION_CLASS,
+                    primaryAction === 'resume'
+                      ? 'rotate-0 opacity-100'
+                      : '-rotate-90 opacity-0'
+                  )}
+                />
+              </span>
+            </Button>
+          </TooltipSimple>
         </div>
       </div>
     </div>

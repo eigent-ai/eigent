@@ -14,6 +14,7 @@
 
 import { proxyFetchPost } from '@/api/http';
 import { SITE_URL } from '@/lib';
+import i18next from 'i18next';
 import { toast } from 'sonner';
 
 export const share = async (taskId: string) => {
@@ -25,7 +26,11 @@ export const share = async (taskId: string) => {
     navigator.clipboard
       .writeText(shareLink)
       .then(() => {
-        toast.success('The share link has been copied.');
+        toast.success(
+          i18next.t('chat.share-link-copied', {
+            defaultValue: 'The share link has been copied.',
+          })
+        );
       })
       .catch((err) => {
         console.error('Failed to copy:', err);

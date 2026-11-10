@@ -55,18 +55,18 @@ export default function NotificationPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="notification-panel-heading"
-        className="fixed bottom-3 right-3 top-12 z-[100] flex min-h-0 w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border-[0.5px] border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default duration-200 ease-out animate-in fade-in-0 slide-in-from-right-2"
+        className="fixed top-12 right-3 bottom-3 z-[100] flex min-h-0 w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border-[0.5px] border-x-[0.5px] border-y-[0.5px] border-solid border-ds-hairline-subtle-disabled bg-ds-neutral-default-default duration-200 ease-out animate-in fade-in-0 slide-in-from-right-2"
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-3 pl-3 pr-1.5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-3 pr-1.5 pl-3">
           <span
             id="notification-panel-heading"
-            className="shrink-0 text-body-md font-bold text-ds-text-neutral-default-default"
+            className="shrink-0 text-ds-text-body-large font-bold text-ds-ink-default-default"
           >
             {t('layout.notifications')}
           </span>
-          <p className="mt-3 text-body-sm text-ds-text-neutral-muted-default">
+          <span className="mt-3 block text-ds-text-base font-normal text-ds-ink-muted-default">
             {t('layout.notifications-empty')}
-          </p>
+          </span>
         </div>
       </div>
     </>,

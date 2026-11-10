@@ -20,6 +20,7 @@ import {
   FileTree,
   findMatchingFile,
   isSameFileIdentity,
+  joinWorkspacePath,
 } from '../../../../src/components/Folder/index';
 
 describe('FileTree', () => {
@@ -63,50 +64,41 @@ describe('FileTree', () => {
         expandedFolders={new Set()}
         onToggleFolder={onToggleFolder}
         onSelectFile={onSelectFile}
-        isShowSourceCode={false}
       />
     );
-    expect(screen.getByRole('button', { name: /src/i })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'src' })).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /readme\.md/i })
+      screen.getByRole('treeitem', { name: 'readme.md' })
     ).toBeInTheDocument();
   });
-  it('uses consistent first-column box (h-4 w-4) for folder and file rows for alignment', () => {
-    const { container } = render(
+
+  it('exposes a separate folder disclosure and selection target', async () => {
+    render(
       <FileTree
         node={nodeWithFolderAndFile}
         selectedFile={null}
         expandedFolders={new Set()}
         onToggleFolder={onToggleFolder}
         onSelectFile={onSelectFile}
-        isShowSourceCode={false}
       />
     );
-    const buttons = container.querySelectorAll('button');
-    expect(buttons.length).toBe(2);
-    buttons.forEach((btn) => {
-      // Folder rows wrap the chevron in a `w-4` spacer; file rows render a
-      // `size-4` icon. Both reserve a consistent 16px first column.
-      const firstCol = btn.querySelector('[class*="w-4"], [class*="size-4"]');
-      expect(firstCol).toBeInTheDocument();
-    });
-  });
-  it('uses gap-2 on row for consistent spacing between chevron, icon, and label', () => {
-    const { container } = render(
-      <FileTree
-        node={nodeWithFolderAndFile}
-        selectedFile={null}
-        expandedFolders={new Set()}
-        onToggleFolder={onToggleFolder}
-        onSelectFile={onSelectFile}
-        isShowSourceCode={false}
-      />
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand src' }));
+    expect(onToggleFolder).toHaveBeenCalledWith('/proj/src');
+    expect(onSelectFile).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    await userEvent.click(screen.getByRole('button', { name: 'src' }));
+    expect(onToggleFolder).not.toHaveBeenCalled();
+    expect(onSelectFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'src',
+        path: '/proj/src',
+        isFolder: true,
+      })
     );
-    const buttons = container.querySelectorAll('button');
-    buttons.forEach((btn) => {
-      expect(btn.className).toMatch(/gap-2/);
-    });
   });
+
   it('file row first column has aria-hidden for accessibility', () => {
     render(
       <FileTree
@@ -115,27 +107,10 @@ describe('FileTree', () => {
         expandedFolders={new Set()}
         onToggleFolder={onToggleFolder}
         onSelectFile={onSelectFile}
-        isShowSourceCode={false}
       />
     );
-    const fileButton = screen.getByRole('button', { name: /readme\.md/i });
-    const spacer = fileButton.querySelector('[aria-hidden="true"]');
-    expect(spacer).toBeInTheDocument();
-  });
-
-  it('calls onToggleFolder when folder row is clicked', async () => {
-    render(
-      <FileTree
-        node={nodeWithFolderAndFile}
-        selectedFile={null}
-        expandedFolders={new Set()}
-        onToggleFolder={onToggleFolder}
-        onSelectFile={onSelectFile}
-        isShowSourceCode={false}
-      />
-    );
-    await userEvent.click(screen.getByRole('button', { name: /src/i }));
-    expect(onToggleFolder).toHaveBeenCalledWith('/proj/src');
+    const fileRow = screen.getByRole('treeitem', { name: 'readme.md' });
+    expect(fileRow.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
   });
 
   it('calls onSelectFile when file row is clicked', async () => {
@@ -146,10 +121,9 @@ describe('FileTree', () => {
         expandedFolders={new Set()}
         onToggleFolder={onToggleFolder}
         onSelectFile={onSelectFile}
-        isShowSourceCode={false}
       />
     );
-    await userEvent.click(screen.getByRole('button', { name: /readme\.md/i }));
+    await userEvent.click(screen.getByRole('treeitem', { name: 'readme.md' }));
     expect(onSelectFile).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'readme.md',
@@ -167,10 +141,49 @@ describe('FileTree', () => {
         expandedFolders={new Set()}
         onToggleFolder={onToggleFolder}
         onSelectFile={onSelectFile}
-        isShowSourceCode={false}
       />
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  it('shows colored change markers only in the review variant', () => {
+    const reviewTree = buildFileTree([
+      {
+        name: 'added.ts',
+        path: 'review:added',
+        type: 'ts',
+        relativePath: 'src/added.ts',
+        status: 'added',
+      },
+      {
+        name: 'modified.ts',
+        path: 'review:modified',
+        type: 'ts',
+        relativePath: 'src/modified.ts',
+        status: 'modified',
+      },
+    ]);
+
+    render(
+      <FileTree
+        node={reviewTree}
+        selectedFile={null}
+        expandedFolders={new Set(['src'])}
+        onToggleFolder={onToggleFolder}
+        onSelectFile={onSelectFile}
+        isShowSourceCode={false}
+        variant="review"
+      />
+    );
+
+    expect(screen.getByLabelText('added')).toHaveTextContent('A');
+    expect(screen.getByLabelText('added')).toHaveClass(
+      'text-ds-text-success-default-default'
+    );
+    expect(screen.getByLabelText('modified')).toHaveTextContent('M');
+    expect(screen.getByLabelText('modified')).toHaveClass(
+      'text-ds-text-warning-default-default'
+    );
   });
 
   it('builds task folders when files share the same filename across tasks', () => {
@@ -274,5 +287,17 @@ describe('FileTree', () => {
 
     expect(tree.children?.[0]?.name).toBe('Task_Alpha');
     expect(tree.children?.[0]?.children?.[0]?.name).toBe('Report.MD');
+  });
+
+  it('joins selected folder paths without losing platform path prefixes', () => {
+    expect(joinWorkspacePath('/workspace/project', 'src/nested')).toBe(
+      '/workspace/project/src/nested'
+    );
+    expect(joinWorkspacePath('C:\\workspace\\project', 'src/nested')).toBe(
+      'C:\\workspace\\project\\src\\nested'
+    );
+    expect(joinWorkspacePath('\\\\server\\share', 'src/nested')).toBe(
+      '\\\\server\\share\\src\\nested'
+    );
   });
 });

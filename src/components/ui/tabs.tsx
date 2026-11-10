@@ -34,20 +34,20 @@ const TabsContext = React.createContext<{ appearance?: TabsAppearance }>({
 
 /** Shared trigger styles — default and outline use the same dimensions. */
 const tabsTriggerClassName =
-  'ring-offset-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-brand-default-focus gap-1 rounded-xl bg-ds-bg-neutral-strong-default px-2 py-1 text-body-sm font-semibold text-ds-text-neutral-default-default data-[state=active]:bg-ds-bg-neutral-subtle-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-sm inline-flex items-center justify-center whitespace-nowrap transition-[background-color,color,box-shadow,opacity] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
+  'ring-offset-ds-neutral-subtle-default inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-xl border-x-0 border-y-0 border-solid bg-ds-neutral-strong-default !px-2 !py-1 !text-ds-text-base font-semibold text-ds-ink-default-default transition-[background-color,color,box-shadow,opacity] focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none data-[state=active]:bg-ds-neutral-subtle-default data-[state=active]:text-ds-ink-default-default data-[state=active]:shadow-ds-elevation-control disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-ink-default-default';
 
 /**
- * Transparent triggers + hover chip (HistoryTabsNav); active selection is shown
+ * Transparent triggers with a hover chip; active selection is shown
  * by the animated bar under the tab row (TabsList), not a border on the trigger.
  */
 const tabsTriggerBorderClassName =
-  'ring-offset-ds-bg-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-solid border-transparent bg-transparent px-2 text-label-sm font-bold text-ds-text-neutral-muted-default transition-colors hover:bg-ds-bg-neutral-subtle-default hover:text-ds-text-neutral-default-default hover:shadow-[inset_0_1px_0_var(--colors-white-10)] hover:ring-1 hover:ring-ds-border-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none data-[state=active]:bg-transparent data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-none data-[state=active]:ring-0 data-[state=active]:hover:bg-ds-bg-neutral-subtle-default disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
+  'ring-offset-ds-neutral-default-default inline-flex h-ds-control-md min-h-ds-control-md shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-ds-compact-control border border-solid border-x border-y border-transparent bg-transparent !px-2 !py-0 !text-ds-text-base font-semibold text-ds-ink-muted-default transition-colors hover:bg-ds-neutral-subtle-default hover:text-ds-ink-default-default hover:ring-1 hover:ring-ds-hairline-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none data-[state=active]:bg-transparent data-[state=active]:text-ds-ink-default-default data-[state=active]:shadow-none data-[state=active]:ring-0 data-[state=active]:hover:bg-ds-neutral-subtle-default disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-ink-default-default';
 
 /** Borderless tab strip for sidebar navigation (Agents, Channels, Browser, Settings). */
 const tabsTriggerGhostClassName =
-  'ring-offset-ds-bg-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus inline-flex w-full items-center justify-start gap-2 rounded-xl border-0 bg-transparent px-3 py-1.5 text-body-sm font-semibold text-ds-text-neutral-muted-default shadow-none ring-0 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none data-[state=inactive]:bg-transparent data-[state=inactive]:opacity-70 data-[state=inactive]:hover:bg-ds-bg-neutral-default-hover data-[state=inactive]:hover:opacity-100 data-[state=active]:bg-ds-bg-neutral-default-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
+  'ring-offset-ds-neutral-default-default inline-flex w-full items-center justify-start gap-2 rounded-xl border-x-0 border-y-0 border-solid bg-transparent !px-3 !py-1.5 !text-ds-text-base font-semibold text-ds-ink-muted-default shadow-none ring-0 transition-colors focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none data-[state=inactive]:bg-transparent data-[state=inactive]:opacity-70 data-[state=inactive]:hover:bg-ds-neutral-default-hover data-[state=inactive]:hover:opacity-100 data-[state=active]:bg-ds-neutral-default-default data-[state=active]:text-ds-ink-default-default data-[state=active]:shadow-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-ink-default-default';
 
-/** Gap (px) between tab row and underline — matches HistoryTabsNav. */
+/** Gap (px) between the tab row and its underline. */
 const BORDER_TAB_UNDERLINE_GAP_PX = 8;
 
 const Tabs = TabsPrimitive.Root;
@@ -82,7 +82,7 @@ const TabsList = React.forwardRef<
       width: 0,
     });
 
-    // Update underline position when active tab changes (outline: inside list; border: below row, HistoryTabsNav-style)
+    // Update underline position when the active tab changes.
     React.useLayoutEffect(() => {
       if (
         !tabsListRef.current ||
@@ -166,20 +166,25 @@ const TabsList = React.forwardRef<
       <TabsContext.Provider value={{ appearance }}>
         <div
           ref={wrapperRef}
-          className={cn('relative', appearance === 'border' && 'pb-2')}
+          className={cn(
+            'relative flex',
+            appearance === 'border' ? 'pb-2' : 'overflow-hidden',
+            appearance === 'default' &&
+              'rounded-xl ring-1 ring-ds-hairline-default-default'
+          )}
         >
           <TabsPrimitive.List
             ref={combinedRef}
             className={cn(
               'inline-flex items-center justify-center',
               appearance === 'border' &&
-                'gap-2 rounded-none border-0 border-solid bg-transparent p-0 shadow-none',
+                'gap-2 rounded-none border-x-0 border-y-0 border-solid bg-transparent p-0 shadow-none',
               appearance === 'outline' &&
-                'relative rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-0.5',
+                'relative rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-strong-default p-0.5',
               appearance === 'default' &&
-                'rounded-xl bg-ds-bg-neutral-strong-default ring-1 ring-ds-ring-neutral-subtle-default',
+                'rounded-xl bg-ds-neutral-strong-default',
               appearance === 'ghost' &&
-                'gap-1.5 rounded-none border-0 bg-transparent p-0 shadow-none ring-0',
+                'gap-1.5 rounded-none border-x-0 border-y-0 border-solid bg-transparent p-0 shadow-none ring-0',
               'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
               className
             )}
@@ -188,7 +193,7 @@ const TabsList = React.forwardRef<
           />
           {appearance === 'outline' && sliderStyle.width > 0 && (
             <motion.div
-              className="absolute bottom-0 z-10 h-[1.5px] bg-text-heading"
+              className="absolute bottom-0 z-10 h-[1.5px] bg-ds-ink-default-default"
               initial={false}
               animate={{
                 left: sliderStyle.left,
@@ -204,7 +209,7 @@ const TabsList = React.forwardRef<
           {appearance === 'border' && borderBarStyle.width > 0 && (
             <motion.div
               aria-hidden
-              className="pointer-events-none absolute z-10 h-0.5 rounded-full bg-ds-bg-brand-default-default"
+              className="pointer-events-none absolute z-10 h-0.5 rounded-full bg-ds-accent-default-default"
               initial={false}
               animate={{
                 left: borderBarStyle.left,
@@ -273,7 +278,7 @@ const TabsContent = React.forwardRef<
     <TabsPrimitive.Content
       ref={ref}
       className={cn(
-        'mt-2 ring-offset-ds-bg-neutral-subtle-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-2',
+        'mt-2 ring-offset-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none',
         className
       )}
       {...props}

@@ -22,8 +22,14 @@ import { mergeAliasStyles, tooltipTokenAliases } from './tokenAliases';
 /** Default hover delay before a tooltip opens (Radix default is 700ms). */
 const TOOLTIP_DELAY_MS = 300;
 
+/** Longer hover delay for labeled controls whose tooltip is a shortcut hint. */
+const TOOLTIP_DELAYED_MS = 1000;
+
 /** Delay skipped when moving between tooltip triggers (Radix default is 300ms). */
 const TOOLTIP_SKIP_DELAY_MS = 300;
+
+const TOOLTIP_ANIMATED_CONTENT_CLASS =
+  'animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=instant-open]:animate-none';
 
 const TooltipProviderPresenceContext = React.createContext(false);
 
@@ -59,14 +65,16 @@ const TooltipTrigger = TooltipPrimitive.Trigger;
  *   warm-cursor window (`data-state="instant-open"`).
  * - `instant`: no animation at all; use for navigation and layout controls
  *   where the tooltip is just a label.
+ * - `delayed`: same animation as `default`, but waits 1s. Use for labeled
+ *   sidebar tabs where the tooltip is a shortcut hint, not the only label.
  */
 const tooltipContentVariants = cva(
-  'rounded-lg border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-2 py-1.5 text-xs text-ds-text-neutral-default-default shadow-lg backdrop-blur-sm z-[100] origin-[--radix-tooltip-content-transform-origin] overflow-hidden border-solid',
+  'rounded-ds-compact-control border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-ds-8 py-ds-6 text-ds-text-meta text-ds-ink-default-default shadow-ds-elevation-floating backdrop-blur-sm z-[100] origin-(--radix-tooltip-content-transform-origin) overflow-hidden border-solid',
   {
     variants: {
       variant: {
-        default:
-          'animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=instant-open]:animate-none',
+        default: TOOLTIP_ANIMATED_CONTENT_CLASS,
+        delayed: TOOLTIP_ANIMATED_CONTENT_CLASS,
         instant: '',
       },
     },
@@ -77,6 +85,31 @@ const tooltipContentVariants = cva(
 );
 
 type TooltipVariant = VariantProps<typeof tooltipContentVariants>['variant'];
+
+function delayForTooltipVariant(variant: TooltipVariant): number | undefined {
+  if (variant === 'instant') return 0;
+  if (variant === 'delayed') return TOOLTIP_DELAYED_MS;
+  return undefined;
+}
+
+/** Open delay in ms for a variant, including the shared default. */
+function tooltipOpenDelayMs(variant: TooltipVariant): number {
+  return delayForTooltipVariant(variant) ?? TOOLTIP_DELAY_MS;
+}
+
+/**
+ * The tooltip surface for a tooltip drawn outside Radix (one shared shell
+ * that moves between triggers): the same classes and token aliases.
+ */
+function tooltipSurfaceProps(className?: string): {
+  className: string;
+  style: React.CSSProperties;
+} {
+  return {
+    className: cn(tooltipContentVariants({ variant: 'instant' }), className),
+    style: mergeAliasStyles(tooltipTokenAliases, undefined),
+  };
+}
 
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
@@ -103,6 +136,8 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName;
  *   navigation/layout buttons where the tooltip is just a label.
  * - `variant="default"` — opens after the shared hover delay with the
  *   standard animation. For informational content (truncated text, hints).
+ * - `variant="delayed"` — opens after 1s with the standard animation. For
+ *   labeled sidebar tabs whose tooltip is a shortcut hint.
  *
  * Usage:
  * ```jsx
@@ -111,6 +146,40 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName;
  * </TooltipSimple>
  * ```
  */
+const DIALOG_LAYER_SELECTOR = '[role="dialog"], [role="alertdialog"]';
+
+const isDialogLayer = (node: Node) =>
+  node instanceof Element &&
+  (node.matches(DIALOG_LAYER_SELECTOR) ||
+    node.querySelector(DIALOG_LAYER_SELECTOR) !== null);
+
+/**
+ * Radix closes a tooltip on pointer leave or blur. A dialog that opens over
+ * the pointer, from a menu or a shortcut such as quitting, fires neither, so
+ * the tooltip would stay open above the dialog's scrim. Only dialogs added
+ * after the tooltip opened count; a tooltip inside an open dialog stays.
+ */
+function useCloseWhenDialogOpens(
+  open: boolean,
+  setOpen: (open: boolean) => void
+) {
+  React.useEffect(() => {
+    if (!open || typeof MutationObserver === 'undefined') return;
+    const observer = new MutationObserver((records) => {
+      if (
+        records.some((record) =>
+          Array.from(record.addedNodes).some(isDialogLayer)
+        )
+      ) {
+        setOpen(false);
+      }
+    });
+    // Dialogs portal straight into body, so its direct children are enough.
+    observer.observe(document.body, { childList: true });
+    return () => observer.disconnect();
+  }, [open, setOpen]);
+}
+
 interface TooltipSimpleProps extends Omit<
   React.ComponentPropsWithoutRef<typeof TooltipContent>,
   'children' | 'content'
@@ -119,6 +188,8 @@ interface TooltipSimpleProps extends Omit<
   content: React.ReactNode;
   /** Overrides the variant's delay; prefer picking the right variant. */
   delayDuration?: number;
+  /** Removes vertical content padding for single-line label/keycap tooltips. */
+  compact?: boolean;
   enabled?: boolean;
   variant?: TooltipVariant;
 }
@@ -132,6 +203,7 @@ const TooltipSimple = React.forwardRef<
       children,
       content,
       className,
+      compact = false,
       sideOffset = 4,
       delayDuration,
       enabled = true,
@@ -141,9 +213,25 @@ const TooltipSimple = React.forwardRef<
     ref
   ) => {
     const hasTooltipProvider = React.useContext(TooltipProviderPresenceContext);
+    const [open, setOpen] = React.useState(false);
+
+    React.useLayoutEffect(() => {
+      if (!enabled) {
+        setOpen(false);
+      }
+    }, [enabled]);
+
+    useCloseWhenDialogOpens(open, setOpen);
+
     const tooltip = (
       <Tooltip
-        delayDuration={delayDuration ?? (variant === 'instant' ? 0 : undefined)}
+        open={enabled && open}
+        onOpenChange={(nextOpen) => {
+          if (enabled) {
+            setOpen(nextOpen);
+          }
+        }}
+        delayDuration={delayDuration ?? delayForTooltipVariant(variant)}
       >
         <TooltipTrigger asChild>{children}</TooltipTrigger>
 
@@ -152,7 +240,7 @@ const TooltipSimple = React.forwardRef<
             ref={ref}
             sideOffset={sideOffset}
             variant={variant}
-            className={cn(className)}
+            className={cn(compact && 'py-0', className)}
             {...props}
           >
             {content}
@@ -173,7 +261,10 @@ TooltipSimple.displayName = 'TooltipSimple';
 export {
   Tooltip,
   TooltipContent,
+  tooltipOpenDelayMs,
   TooltipProvider,
   TooltipSimple,
+  tooltipSurfaceProps,
   TooltipTrigger,
 };
+export type { TooltipVariant };

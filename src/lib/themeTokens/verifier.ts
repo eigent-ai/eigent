@@ -35,10 +35,12 @@ import {
 import { contrastRatio } from './colorMath';
 import { buildThemeV2 } from './engine';
 import {
+  CATEGORY_COLOR_NAMES,
   TOKEN_ELEMENTS,
   TOKEN_EMPHASIS,
   TOKEN_TONES,
   TOKEN_UI_STATES,
+  type DesignTokenKey,
   type Mode,
   type ResolvedThemeV2,
   type ThemeCatalogV2,
@@ -97,8 +99,8 @@ const REQUIRED_CORE_TOKENS: TokenKey[] = [
 ];
 
 type Pairing = {
-  bg: TokenKey;
-  text: TokenKey;
+  bg: DesignTokenKey;
+  text: DesignTokenKey;
   threshold: number;
   label: string;
 };
@@ -130,7 +132,6 @@ const AUXILIARY_BADGE_TONES: Array<{
   { tone: 'terminal', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'document', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'success', threshold: MIN_CONTRAST_NORMAL_AA },
-  { tone: 'caution', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'error', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'warning', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'information', threshold: MIN_CONTRAST_NORMAL_AA },
@@ -144,6 +145,14 @@ function buildAuxiliaryPairings(): Pairing[] {
       text: `text.${tone}.strong.default` as TokenKey,
       threshold,
       label: label ?? `${tone} badge text on subtle surface`,
+    });
+  }
+  for (const color of CATEGORY_COLOR_NAMES) {
+    pairs.push({
+      bg: `category.${color}.background.default`,
+      text: `category.${color}.text.strong`,
+      threshold: MIN_CONTRAST_NORMAL_AA,
+      label: `${color} categorical text on default surface`,
     });
   }
   // Body text on muted surface — not declared but ubiquitous.
@@ -333,6 +342,18 @@ export function verifyThemeEngine(options: VerifyOptions = {}): VerifyReport {
                 ratio: diag.ratio,
                 threshold: diag.minRequired,
               }
+            );
+          }
+        }
+
+        if (contrast === 43) {
+          for (const admission of resolved.diagnostics.seedAdmission) {
+            pushFinding(
+              findings,
+              base,
+              'error',
+              `seed-admission-${admission.code}`,
+              admission.message
             );
           }
         }

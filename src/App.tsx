@@ -20,22 +20,30 @@ import { StackProvider, StackTheme } from '@stackframe/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AppCommandProvider } from './components/Layout/AppCommandProvider';
+import { WindowCloseProvider } from './components/Layout/WindowCloseProvider';
 import { Toaster } from './components/ui/sonner';
 import { useBackgroundTaskProcessor } from './hooks/useBackgroundTaskProcessor';
+import { useIsBackgroundWorkOwner } from './hooks/useBackgroundWorkOwner';
 import { useExecutionSubscription } from './hooks/useExecutionSubscription';
 import { useRemoteControlBridge } from './hooks/useRemoteControlBridge';
 import { useTriggerTaskExecutor } from './hooks/useTriggerTaskExecutor';
 import { hasStackKeys } from './lib';
 import { useAuthStore } from './store/authStore';
+import { useInstallationStore } from './store/installationStore';
+
+import { useUsageNotices } from '@/hooks/useUsageNotices';
 
 const HAS_STACK_KEYS = hasStackKeys();
 
-function App() {
-  const host = useHost();
-  const navigate = useNavigate();
-  const { setInitState } = useAuthStore();
-  const { token } = useAuthStore();
-
+/** Work the app starts on its own; only one window runs it. */
+function BackgroundWork({
+  token,
+  isBackendReady,
+}: {
+  token: string | null;
+  isBackendReady: boolean;
+}) {
   // Subscribe to execution events when user is authenticated
   // Note: Removed triggers.length check to prevent reconnection on every trigger update
   const shouldSubscribe = !!token;
@@ -44,7 +52,20 @@ function App() {
 
   // Execute triggered tasks automatically when WebSocket events are received
   useTriggerTaskExecutor();
-  useRemoteControlBridge(token);
+  // The bridge can receive commands immediately after registration. Do not
+  // advertise it until the local Brain can durably persist the command inbox.
+  useRemoteControlBridge(token, isBackendReady);
+  return null;
+}
+
+function App() {
+  useUsageNotices();
+  const host = useHost();
+  const navigate = useNavigate();
+  const { setInitState } = useAuthStore();
+  const { token } = useAuthStore();
+  const isBackendReady = useInstallationStore((state) => state.isBackendReady);
+  const isBackgroundWorkOwner = useIsBackgroundWorkOwner();
 
   useEffect(() => {
     const handleShareCode = (event: any, share_token: string) => {
@@ -104,7 +125,16 @@ function App() {
     );
   };
 
-  return renderWrapper(<AppRoutes />);
+  return renderWrapper(
+    <AppCommandProvider>
+      <WindowCloseProvider>
+        {isBackgroundWorkOwner ? (
+          <BackgroundWork token={token} isBackendReady={isBackendReady} />
+        ) : null}
+        <AppRoutes />
+      </WindowCloseProvider>
+    </AppCommandProvider>
+  );
 }
 
 export default App;

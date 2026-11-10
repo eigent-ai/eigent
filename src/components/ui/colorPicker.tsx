@@ -120,25 +120,25 @@ export function ColorPicker({
   const hueHex = hsvToHex(hue, 1, 1);
 
   return (
-    <div className="gap-3 flex flex-col select-none">
+    <div className="flex flex-col gap-3 select-none">
       <div
-        className="h-40 rounded-lg relative w-full cursor-crosshair overflow-hidden"
+        className="relative h-40 w-full cursor-crosshair overflow-hidden rounded-lg"
         style={{ backgroundColor: hueHex }}
         onPointerDown={handleSvPointer}
         onPointerMove={handleSvPointer}
       >
         <div
-          className="inset-0 pointer-events-none absolute"
+          className="pointer-events-none absolute inset-0"
           style={{ background: 'linear-gradient(to right, #fff, transparent)' }}
         />
         <div
-          className="inset-0 pointer-events-none absolute"
+          className="pointer-events-none absolute inset-0"
           style={{
             background: 'linear-gradient(to bottom, transparent, #000)',
           }}
         />
         <div
-          className="h-4 w-4 border-ds-border-neutral-default-default bg-white shadow-lg pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
+          className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-x-2 border-y-2 border-ds-hairline-default-default bg-white shadow-lg"
           style={{
             left: `${sat * 100}%`,
             top: `${(1 - val) * 100}%`,
@@ -147,7 +147,7 @@ export function ColorPicker({
       </div>
 
       <div
-        className="h-4 relative w-full cursor-pointer overflow-hidden rounded-full"
+        className="relative h-4 w-full cursor-pointer overflow-hidden rounded-full"
         style={{
           background:
             'linear-gradient(to right,#ff0000,#ffff00,#00ff00,#00ffff,#0000ff,#ff00ff,#ff0000)',
@@ -156,16 +156,16 @@ export function ColorPicker({
         onPointerMove={handleHuePointer}
       >
         <div
-          className="h-5 w-5 border-ds-border-neutral-default-default bg-white shadow-lg pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
+          className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-x-2 border-y-2 border-ds-hairline-default-default bg-white shadow-lg"
           style={{
             left: `${(hue / 360) * 100}%`,
           }}
         />
       </div>
 
-      <div className="gap-2 flex items-center">
+      <div className="flex items-center gap-2">
         <div
-          className="h-8 w-8 rounded-md border-ds-border-neutral-default-default flex-shrink-0 border border-solid"
+          className="h-8 w-8 shrink-0 rounded-md border border-x border-y border-solid border-ds-hairline-default-default"
           style={{ backgroundColor: currentHex }}
         />
         <Input
@@ -173,7 +173,7 @@ export function ColorPicker({
           value={hexDraft}
           onChange={(e) => handleHexInput(e.target.value)}
           placeholder="#000000"
-          className="font-mono flex-1"
+          className="flex-1 font-mono"
         />
       </div>
     </div>

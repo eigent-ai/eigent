@@ -42,6 +42,7 @@ from app.agent.toolkit.twitter_toolkit import TwitterToolkit
 from app.agent.toolkit.video_analysis_toolkit import VideoAnalysisToolkit
 from app.agent.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from app.agent.toolkit.whatsapp_toolkit import WhatsAppToolkit
+from app.agent.toolkit.workspace_git_toolkit import WorkspaceGitToolkit
 from app.component.environment import env
 from app.hands.interface import IHands
 from app.model.chat import McpServers
@@ -91,6 +92,7 @@ async def get_toolkits(
         "video_analysis_toolkit": VideoAnalysisToolkit,
         "video_download_toolkit": VideoDownloaderToolkit,
         "whatsapp_toolkit": WhatsAppToolkit,
+        "workspace_git_toolkit": WorkspaceGitToolkit,
     }
     res = []
     for item in tools:

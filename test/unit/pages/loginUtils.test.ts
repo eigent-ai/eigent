@@ -34,8 +34,11 @@ describe('loginUtils', () => {
   });
 
   it('encodes the external login callback URL correctly', () => {
+    // The site host is environment configuration, so assert the /signin path
+    // and the encoded callback rather than pinning one deployment's hostname.
+    const siteUrl = import.meta.env.VITE_SITE_URL || 'https://www.eigent.ai';
     expect(getExternalLoginUrl('http://localhost:5173/login?from=web')).toBe(
-      'https://www.eigent.ai/signin?callbackUrl=http%3A%2F%2Flocalhost%3A5173%2Flogin%3Ffrom%3Dweb'
+      `${new URL('/signin', siteUrl).origin}/signin?callbackUrl=http%3A%2F%2Flocalhost%3A5173%2Flogin%3Ffrom%3Dweb`
     );
   });
 });

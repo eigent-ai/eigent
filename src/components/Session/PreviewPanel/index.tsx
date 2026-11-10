@@ -12,15 +12,20 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ContentHeader from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import {
   getSessionPreviewSlice,
-  usePageTabStore,
+  isNewSessionDraftScope,
+  type PreviewTabKind,
   type SessionPreviewTab,
 } from '@/store/pageTabStore';
+import { useIsPresent } from 'framer-motion';
 import { Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +37,9 @@ import { FileTab } from './tabs/FileTab';
 import { ReviewTab } from './tabs/ReviewTab';
 import { TerminalTab } from './tabs/terminal/TerminalTab';
 
+/** Before a Session exists there are no files or runs to show. */
+const DRAFT_PREVIEW_KINDS: PreviewTabKind[] = ['browser', 'terminal'];
+
 // Tabs render at a comfortable default width and shrink evenly as more are
 // added, down to a minimum that keeps the title/close affordance legible.
 // Once every tab is at its minimum the tab list scrolls horizontally.
@@ -39,11 +47,12 @@ const TAB_DEFAULT_WIDTH = 176;
 const TAB_MIN_WIDTH = 92;
 
 export interface PreviewPanelProps {
-  onJumpToContext?: (file: FileInfo | null) => void;
+  onJumpToFiles?: (file: FileInfo | null) => void;
   /**
    * False while the display panel's open animation is still running. Browser
    * tabs hold their fixed-position webview guest parked until it settles so
-   * the page doesn't pop in over the chat mid-animation.
+   * the page doesn't pop in over the chat mid-animation. Shells also wait to
+   * fit until these bounds are stable, preserving their parsed scrollback.
    */
   displaySettled?: boolean;
 }
@@ -55,29 +64,34 @@ export interface PreviewPanelProps {
  * this panel only renders their chrome via BrowserTab.
  */
 export function PreviewPanel({
-  onJumpToContext,
+  onJumpToFiles,
   displaySettled = true,
 }: PreviewPanelProps) {
   const { t } = useTranslation();
   const host = useHost();
-  const tabs = usePageTabStore((state) => getSessionPreviewSlice(state).tabs);
-  const activeTabId = usePageTabStore(
+  // Exiting children keep their last props, so presence is what tells the
+  // shell to stop fitting while the display panel collapses.
+  const isPresent = useIsPresent();
+  const tabs = useSessionPageTabStore(
+    (state) => getSessionPreviewSlice(state).tabs
+  );
+  const isDraft = useSessionPageTabStore((state) =>
+    isNewSessionDraftScope(state.sessionPreviewProjectId)
+  );
+  const activeTabId = useSessionPageTabStore(
     (state) => getSessionPreviewSlice(state).activeTabId
   );
-  const addChooserPreviewTab = usePageTabStore(
+  const addChooserPreviewTab = useSessionPageTabStore(
     (state) => state.addChooserPreviewTab
   );
-  const choosePreviewTabType = usePageTabStore(
+  const choosePreviewTabType = useSessionPageTabStore(
     (state) => state.choosePreviewTabType
   );
-  const selectSessionPreviewTab = usePageTabStore(
+  const selectSessionPreviewTab = useSessionPageTabStore(
     (state) => state.selectSessionPreviewTab
   );
-  const closeSessionPreviewTab = usePageTabStore(
+  const closeSessionPreviewTab = useSessionPageTabStore(
     (state) => state.closeSessionPreviewTab
-  );
-  const openAgentTerminalPreview = usePageTabStore(
-    (state) => state.openAgentTerminalPreview
   );
 
   const activeTab = useMemo(
@@ -156,14 +170,8 @@ export function PreviewPanel({
       case 'chooser':
         return (
           <ChooserTab
+            kinds={isDraft ? DRAFT_PREVIEW_KINDS : undefined}
             onChoose={(kind) => choosePreviewTabType(activeTab.id, kind)}
-            onChooseAgentStream={(source) =>
-              openAgentTerminalPreview(
-                source.id,
-                source.agentName,
-                activeTab.id
-              )
-            }
           />
         );
       case 'browser':
@@ -174,15 +182,22 @@ export function PreviewPanel({
             tab={activeTab}
             isDesktop={isDesktop}
             viewportSettled={displaySettled}
+            onJumpToFiles={onJumpToFiles}
           />
         );
       case 'file':
-        return <FileTab tab={activeTab} onJumpToContext={onJumpToContext} />;
+        return <FileTab tab={activeTab} onJumpToFiles={onJumpToFiles} />;
       case 'review':
-        return <ReviewTab />;
+        return <ReviewTab key={activeTab.id} tab={activeTab} />;
       case 'terminal':
         // Keyed so each terminal tab keeps its own shell / stream state.
-        return <TerminalTab key={activeTab.id} tab={activeTab} />;
+        return (
+          <TerminalTab
+            key={activeTab.id}
+            tab={activeTab}
+            viewportSettled={displaySettled && isPresent}
+          />
+        );
       case 'canvas':
         return <CanvasTab key={activeTab.id} />;
       default:
@@ -191,8 +206,11 @@ export function PreviewPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden px-1 pb-1">
-      <div className="flex h-[44px] shrink-0 items-center justify-start gap-1 px-1.5">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+      <ContentHeader
+        inset="none"
+        className="justify-start gap-ds-4 border-ds-hairline-subtle-disabled px-ds-4"
+      >
         <div className="relative flex min-w-0 items-center">
           <div
             ref={tabListRef}
@@ -201,7 +219,7 @@ export function PreviewPanel({
               defaultValue: 'Preview tabs',
             })}
             onKeyDown={handleTabListKeyDown}
-            className="scrollbar-hide flex h-7 w-full min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden"
+            className="scrollbar-hide flex h-7 w-full min-w-0 items-center gap-ds-4 overflow-x-auto overflow-y-hidden"
           >
             {tabs.map((tab) => {
               const selected = tab.id === activeTab.id;
@@ -218,7 +236,7 @@ export function PreviewPanel({
                     // Every tab uses the selected colors; unselected tabs are
                     // just dimmed (40% at rest, 80% on hover) so selection
                     // reads as full opacity rather than a color change.
-                    'group relative h-7 rounded-lg bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default transition-opacity',
+                    'group relative h-7 rounded-full bg-ds-neutral-strong-default text-ds-ink-default-default transition-opacity',
                     selected ? 'opacity-100' : 'opacity-40 hover:opacity-80'
                   )}
                 >
@@ -228,9 +246,9 @@ export function PreviewPanel({
                     aria-selected={selected}
                     tabIndex={selected ? 0 : -1}
                     onClick={() => selectSessionPreviewTab(tab.id)}
-                    className="flex h-full w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent px-2 text-left text-inherit"
+                    className="flex h-full w-full min-w-0 cursor-pointer items-center gap-2 border-0 border-x-0 border-y-0 bg-transparent px-2 text-left text-inherit"
                   >
-                    <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                    <DsIcon icon={Icon} recipe="main" />
                     <span className="truncate text-sm font-medium">
                       {tab.title}
                     </span>
@@ -245,13 +263,13 @@ export function PreviewPanel({
                       handleCloseTab(tab);
                     }}
                     className={cn(
-                      'absolute inset-y-0 right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border-0 px-1 text-inherit opacity-0 transition-opacity group-hover:opacity-100',
+                      'absolute inset-y-0 top-1/2 right-1 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border-0 border-x-0 border-y-0 px-1 text-inherit opacity-0 transition-opacity group-hover:opacity-100',
                       // Keyboard users can't hover — reveal on focus too.
-                      'focus-visible:opacity-100 group-focus-within:opacity-100',
-                      'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-muted-default'
+                      'group-focus-within:opacity-100 focus-visible:opacity-100',
+                      'bg-ds-neutral-subtle-default hover:bg-ds-neutral-muted-default'
                     )}
                   >
-                    <X className="h-3.5 w-3.5" aria-hidden />
+                    <DsIcon icon={X} recipe="main-compact" aria-hidden />
                   </button>
                 </div>
               );
@@ -288,18 +306,18 @@ export function PreviewPanel({
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            onClick={addChooserPreviewTab}
+            onClick={() => addChooserPreviewTab()}
             aria-label={t('layout.add-preview-tab', {
               defaultValue: 'New tab',
             })}
             className="shrink-0"
           >
-            <Plus className="h-4 w-4" aria-hidden />
+            <DsIcon icon={Plus} aria-hidden />
           </Button>
         </TooltipSimple>
-      </div>
+      </ContentHeader>
 
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-ds-neutral-subtle-default">
         {renderActiveContent()}
       </div>
     </div>

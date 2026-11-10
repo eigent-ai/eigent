@@ -13,17 +13,24 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 interface IpcRenderer {
-  getPlatform: () => string;
-  minimizeWindow: () => void;
-  toggleMaximizeWindow: () => void;
-  closeWindow: () => void;
-  triggerMenuAction: (action: string) => void;
-  onExecuteAction: (callback: (action: string) => void) => void;
+  on: (
+    channel: string,
+    listener: (event: unknown, ...args: any[]) => void
+  ) => void;
+  off: (
+    channel: string,
+    listener: (event: unknown, ...args: any[]) => void
+  ) => void;
+  send: (channel: string, ...args: any[]) => void;
   invoke: (channel: string, ...args: any[]) => Promise<any>;
+  removeAllListeners: (channel: string) => void;
 }
 
+type LocalPathActionResult =
+  { success: true } | { success: false; error: string };
+
 interface ElectronAPI {
-  closeWindow: () => void;
+  closeWindow: (isForceQuit?: boolean) => void;
   minimizeWindow: () => void;
   toggleMaximizeWindow: () => void;
   isFullScreen: () => Promise<boolean>;
@@ -35,6 +42,17 @@ interface ElectronAPI {
     }>;
     fileCount?: number;
     canceled?: boolean;
+  }>;
+  /**
+   * Trusted user gesture for selecting an Agent Plugins standard directory
+   * or archive. The path is accepted only by local Brain import endpoints and
+   * must never be persisted in a Bundle or Cloud projection.
+   */
+  selectAgentPluginSource?: () => Promise<{
+    canceled: boolean;
+    source_path?: string;
+    display_name?: string;
+    source_kind?: 'directory' | 'archive';
   }>;
   processDroppedFiles: (
     fileData: Array<{ name: string; path?: string }>
@@ -56,8 +74,22 @@ interface ElectronAPI {
     fileName?: string;
     error?: string;
   }>;
-  triggerMenuAction: (action: string) => void;
-  onExecuteAction: (callback: (action: string) => void) => void;
+  onAppCommand: (
+    callback: (command: import('@/shared/appCommands').AppCommandId) => void
+  ) => () => void;
+  onCloseRequest: (
+    callback: (
+      request: import('@/shared/windowClose').WindowCloseRequest
+    ) => void
+  ) => () => void;
+  respondToCloseRequest: (
+    response: import('@/shared/windowClose').WindowCloseResponse
+  ) => void;
+  onSubframeLoadFailed: (
+    callback: (
+      failure: import('@/shared/subframeLoadFailure').SubframeLoadFailure
+    ) => void
+  ) => () => void;
   getPlatform: () => string;
   getHomeDir: () => Promise<string>;
   createWebView: (id: string, url: string) => Promise<any>;
@@ -116,6 +148,52 @@ interface ElectronAPI {
   envWrite: (email: string, kv: { key: string; value: string }) => Promise<any>;
   envRemove: (email: string, key: string) => Promise<any>;
   getEnvPath: (email: string) => Promise<string>;
+  workspaceSecretPut: (request: {
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    value: string;
+  }) => Promise<{
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    state: 'available';
+    created_at?: string;
+    updated_at?: string;
+  }>;
+  workspaceSecretStatus: (request: {
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+  }) => Promise<{
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    state: 'available' | 'missing' | 'needs_rebind';
+    created_at?: string;
+    updated_at?: string;
+  }>;
+  workspaceSecretDelete: (request: {
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+  }) => Promise<{
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    state: 'missing';
+  }>;
   executeCommand: (
     command: string,
     email: string
@@ -127,6 +205,14 @@ interface ElectronAPI {
   }>;
   readFile: (filePath: string) => Promise<any>;
   readFileAsDataUrl: (path: string) => Promise<string>;
+  reviewListBackups: (filePaths: string[]) => Promise<
+    Array<{
+      path: string;
+      exists: boolean;
+      size: number | null;
+      backups: Array<{ path: string; size: number }>;
+    }>
+  >;
   deleteFolder: (email: string) => Promise<any>;
   getMcpConfigPath: (email: string) => Promise<string>;
   uploadLog: (
@@ -150,6 +236,19 @@ interface ElectronAPI {
     error?: string;
   }>;
   getBackendPort: () => Promise<number | null>;
+  getLocalControlCapability: () => Promise<string>;
+  /** Origins the main process relays event streams for, or null. */
+  brainStreamRelayTarget?: () => Promise<
+    import('@/shared/brainStreamRelay').BrainStreamRelayTarget | null
+  >;
+  brainStreamRelayOpen?: (
+    request: import('@/shared/brainStreamRelay').BrainStreamRelayRequest
+  ) => Promise<import('@/shared/brainStreamRelay').BrainStreamRelayOpenResult>;
+  brainStreamRelayRead?: (
+    streamId: string
+  ) => Promise<import('@/shared/brainStreamRelay').BrainStreamRelayReadResult>;
+  brainStreamRelayCancel?: (streamId: string) => Promise<boolean>;
+  getDesktopInstanceId: (legacyRendererId?: string) => Promise<string>;
   restartBackend: () => Promise<{ success: boolean; error?: string }>;
   onInstallDependenciesStart: (callback: () => void) => void;
   onInstallDependenciesLog: (
@@ -211,10 +310,14 @@ interface ElectronAPI {
     projectId: string,
     userId?: string | number | null
   ) => Promise<string>;
+  /** Open a selected folder itself, or reveal and highlight a selected file. */
+  revealLocalPath: (targetPath: string) => Promise<LocalPathActionResult>;
+  /** Open a selected non-executable local file with its default OS app. */
+  openLocalFile: (targetPath: string) => Promise<LocalPathActionResult>;
   openInIDE: (
-    folderPath: string,
-    ide: string
-  ) => Promise<{ success: boolean; error?: string }>;
+    targetPath: string,
+    ide: 'vscode' | 'cursor' | 'system'
+  ) => Promise<LocalPathActionResult>;
   // Skills: all operations via Brain REST API
   setBrowserPort: (port: number, isExternal?: boolean) => Promise<any>;
   getBrowserPort: () => Promise<number>;
@@ -244,6 +347,7 @@ interface ElectronAPI {
   terminalInput: (id: string, data: string) => void;
   terminalResize: (id: string, cols: number, rows: number) => void;
   terminalDispose: (id: string) => Promise<{ success: boolean }>;
+  terminalStop: (id: string) => Promise<{ success: boolean; error?: string }>;
   onTerminalData: (
     callback: (payload: { id: string; data: string }) => void
   ) => () => void;

@@ -110,10 +110,34 @@ function hasScriptSrc(attrs: string): boolean {
   return /(?:^|\s)src\s*=/.test(attrs.toLowerCase());
 }
 
+function hasBooleanScriptAttribute(attrs: string, name: string): boolean {
+  return new RegExp(`(?:^|\\s)${name}(?:\\s|=|$)`, 'i').test(attrs);
+}
+
+function isModuleScript(attrs: string): boolean {
+  const typeMatch = attrs.match(
+    /(?:^|\s)type\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i
+  );
+  const type = (typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? '')
+    .trim()
+    .toLowerCase();
+  return type === 'module';
+}
+
+function isNonBlockingExternalScript(attrs: string): boolean {
+  return (
+    hasBooleanScriptAttribute(attrs, 'async') ||
+    hasBooleanScriptAttribute(attrs, 'defer') ||
+    isModuleScript(attrs)
+  );
+}
+
 /**
- * Defers inline classic-JS that appears after external scripts until window load.
- * This keeps pre-library config scripts in place and preserves global scope by
- * executing deferred code through dynamically-inserted script elements.
+ * Defers inline classic-JS that appears after non-blocking external scripts
+ * until window load. Ordinary external scripts are parser-blocking already, so
+ * their following inline code must remain in place. This matters for libraries
+ * such as p5.js, which discover global setup()/draw() during their own load
+ * callback and would miss code installed by a later window-load callback.
  */
 export function deferInlineScriptsUntilLoad(html: string): string {
   const lower = html.toLowerCase();
@@ -123,7 +147,7 @@ export function deferInlineScriptsUntilLoad(html: string): string {
     const end = html.indexOf('>', idx);
     if (end !== -1) {
       const attrs = html.slice(idx + '<script'.length, end);
-      if (hasScriptSrc(attrs)) {
+      if (hasScriptSrc(attrs) && isNonBlockingExternalScript(attrs)) {
         hasExternal = true;
         break;
       }
@@ -134,7 +158,7 @@ export function deferInlineScriptsUntilLoad(html: string): string {
 
   let result = '';
   let i = 0;
-  let seenExternalScript = false;
+  let seenNonBlockingExternalScript = false;
   while (i < html.length) {
     const scriptStart = lower.indexOf('<script', i);
     if (scriptStart === -1) {
@@ -162,10 +186,12 @@ export function deferInlineScriptsUntilLoad(html: string): string {
     const openTag = html.slice(scriptStart, attrEnd + 1);
 
     if (hasSrc) {
-      seenExternalScript = true;
+      if (isNonBlockingExternalScript(attrs)) {
+        seenNonBlockingExternalScript = true;
+      }
       result += fullTag;
     } else if (
-      seenExternalScript &&
+      seenNonBlockingExternalScript &&
       content.trim().length > 0 &&
       isClassicInlineJs(attrs)
     ) {

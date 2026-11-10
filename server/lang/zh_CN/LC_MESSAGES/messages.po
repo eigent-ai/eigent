@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-06-01 20:31+0800\n"
+"POT-Creation-Date: 2026-08-27 16:40+0800\n"
 "PO-Revision-Date: 2025-08-06 09:56+0800\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans_CN\n"
@@ -26,7 +26,7 @@ msgstr ""
 msgid "hello"
 msgstr ""
 
-#: app/domains/chat/api/snapshot_controller.py:42
+#: app/domains/chat/api/snapshot_controller.py:43
 msgid "Invalid api_task_id: only letters, numbers, - and _ allowed"
 msgstr ""
 
@@ -74,26 +74,25 @@ msgstr ""
 msgid "Failed to create default user"
 msgstr ""
 
-#: app/domains/user/api/login_controller.py:90
-msgid "Account or password error"
-msgstr ""
-
 #: app/domains/user/api/login_controller.py:92
-#: app/domains/user/api/login_controller.py:116
-msgid "Your account has been blocked."
+msgid "Account or password error"
 msgstr ""
 
 #: app/domains/user/api/login_controller.py:94
 #: app/domains/user/api/login_controller.py:118
+msgid "Your account has been blocked."
+msgstr ""
+
+#: app/domains/user/api/login_controller.py:96
+#: app/domains/user/api/login_controller.py:120
 msgid "Please activate your account via the email link."
 msgstr ""
 
-#: app/domains/user/api/login_controller.py:110
+#: app/domains/user/api/login_controller.py:112
 msgid "Refresh token required"
 msgstr ""
 
-#: app/domains/user/api/login_controller.py:114
-#: app/shared/auth/user_auth.py:144
+#: app/domains/user/api/login_controller.py:116
 msgid "User not found"
 msgstr ""
 
@@ -121,34 +120,24 @@ msgstr ""
 msgid "Invalid token type - admin required"
 msgstr ""
 
-#: app/shared/auth/admin_auth.py:80 app/shared/auth/user_auth.py:73
+#: app/shared/auth/admin_auth.py:80
 msgid "Validate credentials expired"
 msgstr ""
 
-#: app/shared/auth/admin_auth.py:83 app/shared/auth/user_auth.py:76
-#: app/shared/auth/user_auth.py:128
+#: app/shared/auth/admin_auth.py:83
 msgid "Could not validate credentials"
 msgstr ""
 
-#: app/shared/auth/admin_auth.py:114 app/shared/auth/user_auth.py:137
+#: app/shared/auth/admin_auth.py:114
 msgid "Token required"
 msgstr ""
 
-#: app/shared/auth/admin_auth.py:118 app/shared/auth/user_auth.py:125
-#: app/shared/auth/user_auth.py:141
+#: app/shared/auth/admin_auth.py:118
 msgid "Token has been revoked"
 msgstr ""
 
 #: app/shared/auth/admin_auth.py:121
 msgid "Admin not found"
-msgstr ""
-
-#: app/shared/auth/user_auth.py:70
-msgid "Invalid token type"
-msgstr ""
-
-#: app/shared/auth/user_auth.py:120
-msgid "Invalid token type - refresh required"
 msgstr ""
 
 #~ msgid "User"
@@ -245,5 +234,11 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "Email already registered"
+#~ msgstr ""
+
+#~ msgid "Invalid token type"
+#~ msgstr ""
+
+#~ msgid "Invalid token type - refresh required"
 #~ msgstr ""
 

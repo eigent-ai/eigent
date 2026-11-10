@@ -33,6 +33,8 @@ from app.core.database import session, session_make
 from app.core.environment import env
 from app.core.redis_utils import get_redis_manager
 from app.domains.remote_control.schema import (
+    CommandStateOut,
+    DeviceRegistrationIn,
     RemoteControlCommandIn,
     RemoteControlCommandOut,
     RemoteControlCreateProjectIn,
@@ -50,8 +52,13 @@ from app.domains.remote_control.schema import (
     RemoteControlSessionOut,
     RemoteControlStepsOut,
 )
-from app.model.project.project import ProjectOut
-from app.model.space.apply import SpaceOverlayListResponse
+from app.domains.remote_control.service.command_control_service import (
+    CommandControlService,
+)
+from app.domains.remote_control.service.command_notifier import (
+    cleanup_published_command_outbox,
+    drain_command_notification_outbox,
+)
 from app.domains.remote_control.service.remote_control_service import (
     COMMAND_ACKNOWLEDGED,
     COMMAND_FAILED,
@@ -59,18 +66,24 @@ from app.domains.remote_control.service.remote_control_service import (
     RemoteControlRedis,
     RemoteControlService,
 )
-from app.model.remote_control import RemoteControlCommand, RemoteControlSession
+from app.model.project.project import ProjectOut
+from app.model.remote_control import (
+    RemoteCommandState,
+    RemoteControlCommand,
+    RemoteControlSession,
+)
+from app.model.space.apply import SpaceOverlayListResponse
 from app.model.user.user import User
 from app.shared.auth import auth_must
 from app.shared.auth.token_blacklist import BLACKLIST_PUBSUB_PREFIX, is_blacklisted
 from app.shared.auth.user_auth import V1UserAuth, _get_jti
-from app.shared.middleware.rate_limit import rate_limiter_factory
 from app.shared.middleware.origins import (
     configured_remote_origins,
     csv_values,
     is_local_dev_origin,
     truthy,
 )
+from app.shared.middleware.rate_limit import rate_limiter_factory
 
 router = APIRouter(prefix="/remote-control", tags=["Remote Control"])
 
@@ -377,13 +390,54 @@ async def _auth_token(token: str | None, db: Session) -> V1UserAuth:
     return auth
 
 
+async def _send_bridge_http_error(websocket: WebSocket, exc: HTTPException) -> None:
+    detail = exc.detail
+    if isinstance(detail, dict):
+        error_code = str(detail.get("code") or "bridge_rejected")
+        message = str(detail.get("message") or error_code)
+    else:
+        error_code = "bridge_rejected"
+        message = detail if isinstance(detail, str) else str(detail)
+    if exc.status_code == 401:
+        await websocket.send_json({"type": "auth_expired", "message": message})
+        await websocket.close(code=4401)
+        return
+    if exc.status_code == 429:
+        await websocket.send_json(
+            {
+                "type": "error",
+                "code": error_code,
+                "message": message,
+                "retryable": True,
+            }
+        )
+        await websocket.close(code=1013)
+        return
+    retryable = exc.status_code >= 500
+    await websocket.send_json(
+        {
+            "type": "error",
+            "code": error_code,
+            "message": message,
+            "retryable": retryable,
+        }
+    )
+    await websocket.close(code=1011 if retryable else 1008)
+
+
 def _pending_bridge_commands(
     desktop_instance_id: str,
     user_id: int,
     db: Session,
     *,
     limit: int = 50,
-) -> list[tuple[RemoteControlSession, RemoteControlCommand]]:
+) -> list[
+    tuple[
+        RemoteControlSession,
+        RemoteControlCommand,
+        RemoteCommandState | None,
+    ]
+]:
     sessions = db.exec(
         select(RemoteControlSession).where(
             RemoteControlSession.user_id == user_id,
@@ -395,36 +449,72 @@ def _pending_bridge_commands(
         return []
 
     sessions_by_id = {rc_session.id: rc_session for rc_session in sessions}
-    commands = db.exec(
-        select(RemoteControlCommand)
-        .where(
-            RemoteControlCommand.session_id.in_(sessions_by_id.keys()),
-            RemoteControlCommand.status == COMMAND_PENDING,
-        )
-        .order_by(RemoteControlCommand.created_at)
-        .limit(limit)
-    ).all()
-    return [
-        (sessions_by_id[command.session_id], command)
-        for command in commands
-        if command.session_id in sessions_by_id
-    ]
+    claimed = CommandControlService.claim_pending_commands(
+        desktop_instance_id,
+        user_id,
+        limit,
+        db,
+    )
+    rows: list[
+        tuple[
+            RemoteControlSession,
+            RemoteControlCommand,
+            RemoteCommandState | None,
+        ]
+    ] = []
+    claimed_ids: set[str] = set()
+    for item in claimed.items:
+        command = db.get(RemoteControlCommand, item.command_id)
+        state = db.get(RemoteCommandState, item.command_id)
+        rc_session = sessions_by_id.get(item.session_id)
+        if command is not None and state is not None and rc_session is not None:
+            rows.append((rc_session, command, state))
+            claimed_ids.add(command.id)
+
+    # Preserve the pre-migration delivery lane for old pending rows and for
+    # existing commands that intentionally remain outside the new durable
+    # control plane. They keep their legacy at-most-once semantics; new remote
+    # commands always have a RemoteCommandState.
+    remaining = max(0, limit - len(rows))
+    if remaining:
+        legacy_commands = db.exec(
+            select(RemoteControlCommand)
+            .where(
+                RemoteControlCommand.session_id.in_(tuple(sessions_by_id)),
+                RemoteControlCommand.status == COMMAND_PENDING,
+            )
+            .order_by(RemoteControlCommand.created_at)
+            .limit(limit)
+        ).all()
+        for command in legacy_commands:
+            if command.id in claimed_ids:
+                continue
+            if db.get(RemoteCommandState, command.id) is not None:
+                continue
+            rc_session = sessions_by_id.get(command.session_id)
+            if rc_session is not None:
+                rows.append((rc_session, command, None))
+                remaining -= 1
+                if remaining == 0:
+                    break
+    return rows
 
 
 async def _send_bridge_command(
     websocket: WebSocket,
-    rc_session: RemoteControlSession,
-    command: RemoteControlCommand,
+    payload: dict[str, Any],
+    desktop_instance_id: str,
+    command_id: str,
 ) -> bool:
     try:
-        await websocket.send_json(RemoteControlService.command_payload(rc_session, command))
+        await websocket.send_json(payload)
         return True
     except Exception as exc:
         logger.warning(
             "Failed to send remote-control command to desktop bridge",
             extra={
-                "desktop_instance_id": rc_session.desktop_instance_id,
-                "command_id": command.id,
+                "desktop_instance_id": desktop_instance_id,
+                "command_id": command_id,
                 "error": str(exc),
             },
         )
@@ -444,9 +534,21 @@ async def _flush_pending_bridge_commands(
     if websocket is None and bridge_users.get(desktop_instance_id) != user_id:
         return 0
 
+    pending = _pending_bridge_commands(desktop_instance_id, user_id, db)
+    pending_payloads = [
+        (
+            RemoteControlService.command_payload(rc_session, command, state),
+            rc_session.desktop_instance_id,
+            command.id,
+        )
+        for rc_session, command, state in pending
+    ]
+    # Leases must be durable before Desktop is notified.
+    db.commit()
+
     delivered_count = 0
-    for rc_session, command in _pending_bridge_commands(desktop_instance_id, user_id, db):
-        if await _send_bridge_command(target_ws, rc_session, command):
+    for payload, target_desktop_id, command_id in pending_payloads:
+        if await _send_bridge_command(target_ws, payload, target_desktop_id, command_id):
             delivered_count += 1
     return delivered_count
 
@@ -646,6 +748,29 @@ async def send_command(
     )
     await _flush_pending_for_session(rc_session, db_session)
     return result
+
+
+@router.get(
+    "/sessions/{session_id}/commands/{command_id}",
+    response_model=CommandStateOut,
+)
+def get_command_state(
+    session_id: str,
+    command_id: str,
+    t: str | None = Query(None),
+    x_remote_control_token: str | None = Header(None, alias="X-Remote-Control-Token"),
+    db_session: Session = Depends(session),
+):
+    rc_session = RemoteControlService.verify_link(
+        session_id,
+        _remote_link_token(t, x_remote_control_token),
+        None,
+        db_session,
+    )
+    command = db_session.get(RemoteControlCommand, command_id)
+    if command is None or command.session_id != session_id:
+        raise HTTPException(status_code=404, detail="Command not found")
+    return CommandControlService.get_command_state(command_id, rc_session.user_id, db_session)
 
 
 @router.get(
@@ -849,7 +974,7 @@ async def bridge_subscribe(websocket: WebSocket):
                 websocket.receive_json(),
                 timeout=WS_SUBSCRIBE_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await websocket.close(code=1008)
             return
 
@@ -877,7 +1002,9 @@ async def bridge_subscribe(websocket: WebSocket):
             await websocket.send_json(
                 {
                     "type": "error",
+                    "code": "device_owner_mismatch",
                     "message": "Desktop instance is already registered to another user",
+                    "retryable": False,
                 }
             )
             await websocket.close(code=1008)
@@ -891,9 +1018,27 @@ async def bridge_subscribe(websocket: WebSocket):
                 capabilities=data.get("capabilities"),
             )
         except ValueError as exc:
-            await websocket.send_json({"type": "error", "message": str(exc)})
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "code": "bridge_registration_conflict",
+                    "message": str(exc),
+                    "retryable": False,
+                }
+            )
             await websocket.close(code=1008)
             return
+
+        CommandControlService.register_device(
+            desktop_instance_id,
+            user_id,
+            DeviceRegistrationIn(
+                app_version=data.get("app_version"),
+                capabilities=data.get("capabilities") or {},
+            ),
+            db,
+        )
+        db.commit()
 
         bridge_websockets[desktop_instance_id] = websocket
         bridge_users[desktop_instance_id] = user_id
@@ -908,6 +1053,25 @@ async def bridge_subscribe(websocket: WebSocket):
             )
         ).all()
         for rc_session in sessions:
+            active_project_id = rc_session.current_project_id or rc_session.project_id
+            if active_project_id:
+                try:
+                    CommandControlService.claim_project_route(
+                        active_project_id,
+                        desktop_instance_id,
+                        user_id,
+                        None,
+                        db,
+                    )
+                except HTTPException as exc:
+                    logger.warning(
+                        "Skipping stale remote-control execution route",
+                        extra={
+                            "session_id": rc_session.id,
+                            "project_id": active_project_id,
+                            "detail": exc.detail,
+                        },
+                    )
             rc_session.bridge_status = "online"
             rc_session.last_bridge_seen_at = now
             db.add(rc_session)
@@ -958,10 +1122,7 @@ async def bridge_subscribe(websocket: WebSocket):
                 # validate that first before checking the cached expiry.
                 now = datetime.utcnow()
                 next_token_raw = _strip_bearer(msg.get("auth_token"))
-                if (
-                    next_token_raw
-                    and (not token_raw or not secrets.compare_digest(next_token_raw, token_raw))
-                ):
+                if next_token_raw and (not token_raw or not secrets.compare_digest(next_token_raw, token_raw)):
                     try:
                         new_auth, new_exp, new_jti = await _validate_bridge_token(
                             next_token_raw, db, user_id, token_is_stripped=True
@@ -972,9 +1133,7 @@ async def bridge_subscribe(websocket: WebSocket):
                         _remember_bridge_token_jti(desktop_instance_id, token_jti)
                         next_blacklist_check_at = now + timedelta(seconds=blacklist_check_interval)
                     except HTTPException as exc:
-                        await websocket.send_json(
-                            {"type": "auth_expired", "message": exc.detail}
-                        )
+                        await websocket.send_json({"type": "auth_expired", "message": exc.detail})
                         await websocket.close(code=4401)
                         return
                 if token_expires_at <= now:
@@ -1008,9 +1167,7 @@ async def bridge_subscribe(websocket: WebSocket):
                     next_blacklist_check_at = datetime.utcnow() + timedelta(seconds=blacklist_check_interval)
                     await websocket.send_json({"type": "reauth_ok"})
                 except HTTPException as exc:
-                    await websocket.send_json(
-                        {"type": "auth_expired", "message": exc.detail}
-                    )
+                    await websocket.send_json({"type": "auth_expired", "message": exc.detail})
                     await websocket.close(code=4401)
                     return
             elif msg_type == "command_delivered" and msg.get("command_id"):
@@ -1045,8 +1202,7 @@ async def bridge_subscribe(websocket: WebSocket):
     except WebSocketDisconnect:
         logger.info("Remote-control bridge disconnected", extra={"desktop_instance_id": desktop_instance_id})
     except HTTPException as exc:
-        await websocket.send_json({"type": "error", "message": exc.detail})
-        await websocket.close()
+        await _send_bridge_http_error(websocket, exc)
     except Exception as exc:
         logger.error("Remote-control bridge websocket failed", extra={"error": str(exc)}, exc_info=True)
     finally:
@@ -1113,7 +1269,7 @@ async def events_subscribe(websocket: WebSocket, session_id: str):
                 websocket.receive_json(),
                 timeout=WS_SUBSCRIBE_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await websocket.close(code=1008)
             return
 
@@ -1388,16 +1544,34 @@ async def _run_scanners() -> None:
     logger.info("Remote-control retry/TTL scanner started")
     while True:
         await asyncio.sleep(10)
-        db = session_make()
+        now = datetime.utcnow()
+        scan_stale_bridges = _last_bridge_ttl_scan_at is None or now - _last_bridge_ttl_scan_at >= timedelta(seconds=30)
+        if scan_stale_bridges:
+            _last_bridge_ttl_scan_at = now
+        try:
+            await asyncio.to_thread(_run_scanner_iteration, scan_stale_bridges)
+        except Exception as exc:
+            logger.warning(
+                "Remote-control scanner iteration failed",
+                extra={"error": str(exc)},
+                exc_info=True,
+            )
+
+
+def _run_scanner_iteration(scan_stale_bridges: bool) -> None:
+    """Keep synchronous DB/Redis maintenance off the asyncio event loop."""
+
+    with session_make() as db:
         try:
             RemoteControlService.retry_pending_commands(db)
             RemoteControlService.expire_timed_out_commands(db)
-            now = datetime.utcnow()
-            if _last_bridge_ttl_scan_at is None or now - _last_bridge_ttl_scan_at >= timedelta(seconds=30):
-                _last_bridge_ttl_scan_at = now
+            CommandControlService.expire_pending_commands(db)
+            if scan_stale_bridges:
                 RemoteControlService.expire_stale_bridges(db)
-        except Exception as exc:
+            db.commit()
+        except Exception:
             db.rollback()
-            logger.warning("Remote-control scanner iteration failed", extra={"error": str(exc)}, exc_info=True)
-        finally:
-            db.close()
+            raise
+    drain_command_notification_outbox()
+    if scan_stale_bridges:
+        cleanup_published_command_outbox()

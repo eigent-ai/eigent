@@ -18,6 +18,7 @@ from pathlib import Path
 
 from app.model.chat import AgentModelConfig, Chat, NewAgent
 from app.service import skill_config_service
+from app.workspace_config import ThinkingEffort
 
 
 class TestAgentModelConfig:
@@ -87,6 +88,22 @@ class TestAgentModelConfig:
 
 
 class TestChatModelConfig:
+    def test_chat_normalizes_legacy_thinking_effort_values(
+        self, sample_chat_data
+    ):
+        assert (
+            Chat(
+                **{**sample_chat_data, "thinking_effort": "light"}
+            ).thinking_effort
+            is ThinkingEffort.LOW
+        )
+        assert (
+            Chat(
+                **{**sample_chat_data, "thinking_effort": "ultra"}
+            ).thinking_effort
+            is ThinkingEffort.MAX
+        )
+
     def test_chat_accepts_and_serializes_model_config_dict(
         self, sample_chat_data
     ):
@@ -190,6 +207,11 @@ class TestModelPlatformMapping:
         chat = self._create_chat("ant-ling")
         assert chat.model_platform == "openai-compatible-model"
 
+    def test_chat_maps_meta_to_openai_compatible_model(self):
+        """Test Chat maps Meta Model API platform alias correctly."""
+        chat = self._create_chat("meta")
+        assert chat.model_platform == "openai-compatible-model"
+
     def test_chat_keeps_supported_platforms_unchanged(self):
         """Test Chat keeps native camel-ai platforms unchanged."""
         chat = self._create_chat("mistral")
@@ -200,6 +222,11 @@ class TestModelPlatformMapping:
     def test_agent_model_config_maps_grok_alias(self):
         """Test AgentModelConfig also maps grok alias for per-agent overrides."""
         config = AgentModelConfig(model_platform="grok")
+        assert config.model_platform == "openai-compatible-model"
+
+    def test_agent_model_config_maps_meta_alias(self):
+        """Test AgentModelConfig also maps Meta Model API alias."""
+        config = AgentModelConfig(model_platform="meta")
         assert config.model_platform == "openai-compatible-model"
 
 

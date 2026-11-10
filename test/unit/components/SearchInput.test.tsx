@@ -19,21 +19,6 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SearchInput from '../../../src/components/Dashboard/SearchInput/index';
 
-// Mock the Input component from ui (matching relative import in component)
-vi.mock('../../../src/components/ui/input', () => ({
-  Input: vi.fn().mockImplementation((props) => {
-    const { leadingIcon, ...restProps } = props;
-    return (
-      <div className="relative w-full">
-        {leadingIcon && (
-          <div className="leading-icon-wrapper">{leadingIcon}</div>
-        )}
-        <input {...restProps} />
-      </div>
-    );
-  }),
-}));
-
 // Mock lucide-react
 vi.mock('lucide-react', () => ({
   Search: vi
