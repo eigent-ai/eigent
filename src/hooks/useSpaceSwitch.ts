@@ -24,7 +24,12 @@ import {
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import { useCallback, useState } from 'react';
+import {
+  beginSpaceSwitch,
+  cancelPendingSpaceSwitch,
+  useSpaceSwitchStore,
+} from '@/store/spaceSwitchStore';
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -49,12 +54,15 @@ export interface SwitchToSpaceOptions {
 
 /**
  * Make a Space active and open one of its Sessions. Shared by the rail, the
- * pinned-Space shortcuts, Home and the composer's Space chip.
+ * pinned-Space shortcuts, Home and the composer's Space chip. Resolves `false`
+ * when the switch failed or a newer move replaced it.
  */
 export function useSpaceSwitch() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
+  const switchingSpaceId = useSpaceSwitchStore(
+    (state) => state.switchingSpaceId
+  );
   const closeSettings = useSettingsStore((state) => state.closeSettings);
 
   const switchToSpace = useCallback(
@@ -68,12 +76,15 @@ export function useSpaceSwitch() {
     ) => {
       const projectStore = useProjectRuntimeStore.getState();
       const pageTabs = usePageTabStore.getState();
-      setSwitchingSpaceId(spaceId);
+      const sequence = beginSpaceSwitch(spaceId);
+      const replaced = () =>
+        useSpaceSwitchStore.getState().sequence !== sequence;
       try {
         const resolvedSpaceId = await resolveServerBackedSpaceId(
           projectStore,
           spaceId
         );
+        if (replaced()) return false;
         const spaceStore = useSpaceStore.getState();
         // Only choosing among the Space's Sessions needs the latest list.
         // Otherwise `setActiveSpace` refreshes it in the background.
@@ -88,6 +99,7 @@ export function useSpaceSwitch() {
           (needsSessionList && spaceStore.shouldSyncProjects(resolvedSpaceId))
         ) {
           await spaceStore.syncProjectsFromServer(resolvedSpaceId);
+          if (replaced()) return false;
         }
         const projectsInSpace = useSpaceStore
           .getState()
@@ -109,6 +121,7 @@ export function useSpaceSwitch() {
             await ensureProjectRuntimeLoaded(projectStore, targetProject.id, {
               requireActiveSelection: true,
             });
+            if (replaced()) return false;
           }
         } else {
           projectStore.setActiveProject(null);
@@ -117,13 +130,16 @@ export function useSpaceSwitch() {
         pageTabs.requestWorkspaceChatFocus();
         return true;
       } catch (error) {
+        if (replaced()) return false;
         console.error('Failed to switch Space:', error);
-        toast.error(t('layout.spaces-create-failed'), {
+        toast.error(t('layout.spaces-switch-failed'), {
           closeButton: true,
         });
         return false;
       } finally {
-        setSwitchingSpaceId(null);
+        if (!replaced()) {
+          useSpaceSwitchStore.setState({ switchingSpaceId: null });
+        }
       }
     },
     [t]
@@ -142,6 +158,8 @@ export function useSpaceSwitch() {
             tab: WorkspaceTab.NewProject,
           });
           if (!switched) return;
+        } else {
+          cancelPendingSpaceSwitch();
         }
         closeSettings();
         usePageTabStore.getState().setShellPlace('space');

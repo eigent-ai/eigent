@@ -16,6 +16,7 @@ import { useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { WorkspaceTab } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore, type SpaceProjectMeta } from '@/store/spaceStore';
+import { cancelPendingSpaceSwitch } from '@/store/spaceSwitchStore';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -109,5 +110,86 @@ describe('useSpaceSwitch', () => {
     });
 
     expect(mocks.sync).toHaveBeenCalledWith('space-a');
+  });
+
+  describe('when moves overlap', () => {
+    let finishSlowSync: () => void;
+
+    beforeEach(() => {
+      mocks.sync.mockReturnValue(
+        new Promise<void>((resolve) => {
+          finishSlowSync = resolve;
+        })
+      );
+      useSpaceStore.setState({
+        activeSpaceId: 'space-b',
+        projectsBySpaceId: {
+          'space-a': { 's-1': session('s-1') },
+          'space-c': {},
+        },
+      } as never);
+    });
+
+    it('lets the latest switch win over an older, slower one', async () => {
+      const result = renderSwitch();
+
+      let slow: Promise<boolean> | undefined;
+      let fast: boolean | undefined;
+      await act(async () => {
+        slow = result.current.switchToSpace('space-a', { project: 'last' });
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fast = await result.current.switchToSpace('space-c', { project: null });
+      });
+      expect(fast).toBe(true);
+      expect(useSpaceStore.getState().activeSpaceId).toBe('space-c');
+
+      await act(async () => {
+        finishSlowSync();
+        await slow;
+      });
+
+      expect(await slow).toBe(false);
+      expect(useSpaceStore.getState().activeSpaceId).toBe('space-c');
+      expect(
+        useProjectRuntimeStore.getState().setActiveProject
+      ).not.toHaveBeenCalledWith('s-1');
+    });
+
+    it('stops a slow switch when the person moves without one', async () => {
+      const result = renderSwitch();
+
+      let slow: Promise<boolean> | undefined;
+      await act(async () => {
+        slow = result.current.switchToSpace('space-a', { project: 'last' });
+        await Promise.resolve();
+      });
+      expect(result.current.switchingSpaceId).toBe('space-a');
+
+      act(() => cancelPendingSpaceSwitch());
+      expect(result.current.switchingSpaceId).toBeNull();
+
+      await act(async () => {
+        finishSlowSync();
+        await slow;
+      });
+
+      expect(await slow).toBe(false);
+      expect(useSpaceStore.getState().activeSpaceId).toBe('space-b');
+    });
+
+    it('shares the switch in progress across every surface', async () => {
+      const first = renderSwitch();
+      const second = renderSwitch();
+
+      await act(async () => {
+        void first.current.switchToSpace('space-a', { project: 'last' });
+        await Promise.resolve();
+      });
+
+      expect(second.current.switchingSpaceId).toBe('space-a');
+      act(() => cancelPendingSpaceSwitch());
+    });
   });
 });

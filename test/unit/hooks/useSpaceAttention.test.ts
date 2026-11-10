@@ -15,19 +15,28 @@
 import {
   mergeSpaceAttention,
   SPACE_ATTENTION_POLL_MS,
+  useSessionAttention,
   useSpaceAttention,
 } from '@/hooks/useSpaceAttention';
+import { runProjectionStore } from '@/lib/runEvents';
+import { presentationForKind } from '@/lib/sessionNavLead';
 import { parseRunAttention } from '@/service/projectRunsApi';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import { act, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fixtures from '../../fixtures/session-status/journal-outcomes.json';
 
-const api = vi.hoisted(() => ({ fetchRunAttention: vi.fn() }));
+const api = vi.hoisted(() => ({
+  fetchRunAttention: vi.fn(),
+  fetchProjectRuns: vi.fn(),
+}));
 
 vi.mock('@/service/projectRunsApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/service/projectRunsApi')>()),
   fetchRunAttention: api.fetchRunAttention,
+  fetchProjectRuns: api.fetchProjectRuns,
 }));
 
 vi.mock('@/host', () => ({ useHost: () => null }));
@@ -169,5 +178,128 @@ describe('useSpaceAttention polling', () => {
     });
 
     expect(result.current).toEqual({ 'space-a': { running: 0, waiting: 1 } });
+  });
+});
+
+describe('a Session not loaded in this window', () => {
+  // The journal's own summary of a finished Run.
+  const finishedRuns = (projectId: string) => ({
+    project_id: projectId,
+    runs: [
+      {
+        ...fixtures.find((row) => row.summary.status === 'completed')!.summary,
+        run_id: `${projectId}-run`,
+        project_id: projectId,
+      },
+    ],
+  });
+  const originalPeek = useProjectRuntimeStore.getState().peekActiveChatStore;
+
+  beforeEach(() => {
+    cleanup();
+    vi.useFakeTimers();
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    api.fetchRunAttention.mockReset();
+    api.fetchProjectRuns.mockReset();
+    api.fetchProjectRuns.mockImplementation(async (projectId: string) =>
+      finishedRuns(projectId)
+    );
+    runProjectionStore.clear();
+    useSessionWindowsStore.setState({ openProjectIds: [] });
+    useProjectRuntimeStore.setState({
+      navLeadByProjectId: {},
+      peekActiveChatStore: originalPeek,
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    useProjectRuntimeStore.setState({ peekActiveChatStore: originalPeek });
+  });
+
+  it('stops showing as running once the Brain no longer lists it', async () => {
+    const projectId = 'cold-dropped';
+    useSpaceStore.setState({ projectIdIndex: { [projectId]: 'space-b' } });
+    useProjectRuntimeStore.setState({
+      navLeadByProjectId: { [projectId]: presentationForKind('running', true) },
+    });
+    api.fetchRunAttention.mockResolvedValueOnce([
+      { projectId, state: 'running' },
+    ]);
+    api.fetchRunAttention.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useSessionAttention());
+    await act(async () => {});
+    expect(result.current).toEqual({ [projectId]: 'running' });
+    expect(api.fetchProjectRuns).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SPACE_ATTENTION_POLL_MS);
+    });
+
+    expect(result.current).toEqual({});
+    expect(
+      useProjectRuntimeStore.getState().navLeadByProjectId[projectId].kind
+    ).toBe('finished');
+  });
+
+  it('stops waiting for a reply the Brain never listed', async () => {
+    const projectId = 'cold-unconfirmed';
+    useSpaceStore.setState({ projectIdIndex: { [projectId]: 'space-b' } });
+    useProjectRuntimeStore.setState({
+      navLeadByProjectId: { [projectId]: presentationForKind('hitl') },
+    });
+    api.fetchRunAttention.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useSessionAttention());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(result.current).toEqual({});
+  });
+
+  it('reads nothing for Sessions with their own live source', async () => {
+    useSpaceStore.setState({
+      projectIdIndex: { loaded: 'space-b', windowed: 'space-b' },
+    });
+    useProjectRuntimeStore.setState({
+      navLeadByProjectId: {
+        loaded: presentationForKind('running', true),
+        windowed: presentationForKind('running', true),
+      },
+      peekActiveChatStore: ((id?: string) =>
+        id === 'loaded' ? {} : null) as never,
+    });
+    useSessionWindowsStore.setState({ openProjectIds: ['windowed'] });
+    api.fetchRunAttention.mockResolvedValue([]);
+
+    renderHook(() => useSessionAttention());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(api.fetchRunAttention).toHaveBeenCalled();
+    expect(api.fetchProjectRuns).not.toHaveBeenCalled();
+  });
+
+  it('reads nothing while the Brain cannot answer', async () => {
+    const projectId = 'cold-offline';
+    useSpaceStore.setState({ projectIdIndex: { [projectId]: 'space-b' } });
+    useProjectRuntimeStore.setState({
+      navLeadByProjectId: { [projectId]: presentationForKind('running', true) },
+    });
+    api.fetchRunAttention.mockRejectedValue(new Error('restarting'));
+
+    const { result } = renderHook(() => useSessionAttention());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(api.fetchProjectRuns).not.toHaveBeenCalled();
+    expect(result.current).toEqual({ [projectId]: 'running' });
   });
 });

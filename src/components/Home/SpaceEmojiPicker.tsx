@@ -23,18 +23,23 @@ import { spaceEmoji } from '@/lib/spaceEmoji';
 import { cn } from '@/lib/utils';
 import { useSpaceStore, type Space } from '@/store/spaceStore';
 import {
+  defaultEmojiDataResolver,
   EmojiPicker,
+  type EmojiDataResolver,
   type EmojiPickerListCategoryHeaderProps,
   type EmojiPickerListEmojiProps,
   type EmojiPickerListRowProps,
   type Locale,
 } from 'frimousse';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 /** Pinned so the emoji list only changes when we choose to update it. */
 const EMOJIBASE_URL = 'https://cdn.jsdelivr.net/npm/emojibase-data@18.0.0';
+
+/** The picker shows nothing of its own when the list can't be fetched. */
+export const EMOJI_LOAD_TIMEOUT_MS = 8_000;
 
 /** The picker's search language for each app language; others use English. */
 const EMOJI_LOCALES: Readonly<Record<string, Locale>> = {
@@ -108,7 +113,33 @@ export function SpaceEmojiPicker({
   const { t, i18n } = useTranslation();
   const setSpaceEmoji = useSpaceStore((state) => state.setSpaceEmoji);
   const [open, setOpen] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const current = spaceEmoji(space);
+
+  // The list comes from a CDN the first time, so it can fail or hang offline.
+  const resolveEmojiData = useCallback<EmojiDataResolver>(
+    async (locale, options) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          defaultEmojiDataResolver(locale, options),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('Timed out loading emoji data')),
+              EMOJI_LOAD_TIMEOUT_MS
+            );
+          }),
+        ]);
+      } catch (error) {
+        if (!options.signal?.aborted) setLoadFailed(true);
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    []
+  );
 
   const choose = (emoji: string | null) => {
     setOpen(false);
@@ -131,11 +162,13 @@ export function SpaceEmojiPicker({
           <SpaceGlyph name={name} emoji={current} size="lg" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={6} className="w-[304px] p-ds-8">
+      <PopoverContent align="start" sideOffset={6} className="w-76 p-ds-8">
         <EmojiPicker.Root
+          key={loadAttempt}
           className="flex h-80 w-full flex-col gap-ds-4"
           columns={9}
           emojibaseUrl={EMOJIBASE_URL}
+          resolveEmojiData={resolveEmojiData}
           locale={EMOJI_LOCALES[i18n.language] ?? 'en'}
           onEmojiSelect={({ emoji }) => choose(emoji)}
         >
@@ -145,8 +178,27 @@ export function SpaceEmojiPicker({
             className="h-ds-control-sm w-full shrink-0 rounded-ds-field border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-ds-8 text-ds-text-base text-ds-ink-default-default outline-none placeholder:text-ds-ink-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
           />
           <EmojiPicker.Viewport className="scrollbar-always-visible relative min-h-0 flex-1 outline-none">
-            <EmojiPicker.Loading className="absolute inset-0 flex items-center justify-center text-ds-text-base text-ds-ink-muted-default">
-              {t('layout.space-emoji-loading')}
+            <EmojiPicker.Loading className="absolute inset-0 flex flex-col items-center justify-center gap-ds-8 px-ds-16 text-center text-ds-text-base text-ds-ink-muted-default">
+              {loadFailed ? (
+                <>
+                  <span role="alert">
+                    {t('layout.space-emoji-load-failed')}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setLoadFailed(false);
+                      setLoadAttempt((attempt) => attempt + 1);
+                    }}
+                  >
+                    {t('layout.retry')}
+                  </Button>
+                </>
+              ) : (
+                t('layout.space-emoji-loading')
+              )}
             </EmojiPicker.Loading>
             <EmojiPicker.Empty className="absolute inset-0 flex items-center justify-center text-ds-text-base text-ds-ink-muted-default">
               {t('layout.space-emoji-empty')}

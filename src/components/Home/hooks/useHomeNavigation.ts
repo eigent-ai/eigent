@@ -19,9 +19,10 @@ import { openSessionInShell } from '@/lib/sessionOpen';
 import { isHomePagePath, shellBackState } from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { APP_COMMAND } from '@/shared/appCommands';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { usePageTabStore, WorkspaceTab } from '@/store/pageTabStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import { cancelPendingSpaceSwitch } from '@/store/spaceSwitchStore';
 import { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -96,10 +97,19 @@ export function useHomeNavigation() {
             hydrate: false,
           });
           if (!switched) return;
+        } else {
+          cancelPendingSpaceSwitch();
         }
         closeSettings();
         usePageTabStore.getState().setShellPlace('home');
         if (location.pathname !== '/') navigate('/');
+        // The sync during a switch may show this Session is gone.
+        if (!useSpaceStore.getState().getProjectMeta(projectId)) {
+          usePageTabStore
+            .getState()
+            .setActiveWorkspaceTab(WorkspaceTab.NewProject);
+          return;
+        }
         await openSessionInShell(projectId);
       });
     },

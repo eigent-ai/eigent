@@ -109,6 +109,7 @@ export function SpaceRailTile({
       aria-label={accessibleName}
       aria-current={selected ? 'page' : undefined}
       aria-haspopup={menu ? 'menu' : undefined}
+      aria-expanded={menu ? menuOpen : undefined}
       data-space-rail-tile={pinned ? 'pinned' : 'unpinned'}
       className={cn(
         'group/space-tile',

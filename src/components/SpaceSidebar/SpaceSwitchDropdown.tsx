@@ -17,55 +17,29 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
   Brain,
-  CheckCircle2,
   GitBranch,
   Loader2,
   Pencil,
   Pin,
   PinOff,
-  RefreshCw,
+  Plus,
   Save,
   Settings,
   Trash2,
   TriangleAlert,
 } from 'lucide-react';
-import type {
-  ComponentPropsWithoutRef,
-  MouseEvent,
-  PointerEvent,
-  ReactElement,
-  ReactNode,
-} from 'react';
-import { cloneElement, isValidElement, useCallback, useState } from 'react';
+import type { ComponentPropsWithoutRef, ReactElement } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from '@/components/Layout/AppSidebar';
 import { DESTRUCTIVE_MENU_ITEM_CLASS } from './constants';
-
-export interface SpaceSwitchDropdownPendingChangesMenu {
-  loading: boolean;
-  loadFailed: boolean;
-  overlayCount: number;
-  action: 'apply' | 'discard' | 'refresh' | null;
-  applyProgress: { current: number; total: number } | null;
-  applyDisabled: boolean;
-  discardDisabled: boolean;
-  refreshDisabled: boolean;
-  onApply: () => void | Promise<void>;
-  onDiscard: () => void;
-  onRefresh: () => void | Promise<void>;
-}
 
 export interface SpaceSwitchDropdownSavePointMenu {
   loading: boolean;
@@ -98,21 +72,16 @@ export interface SpaceSwitchDropdownProps {
   contentAlign?: ComponentPropsWithoutRef<typeof DropdownMenuContent>['align'];
   contentClassName?: string;
   contentSideOffset?: number;
-  openOnHover?: boolean;
-  open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  triggerWrapperClassName?: string;
-  pendingChangesMenu?: SpaceSwitchDropdownPendingChangesMenu;
   savePointMenu?: SpaceSwitchDropdownSavePointMenu;
-  /** Tooltip for the trigger (e.g. active space name when the sidebar is folded). */
-  triggerTooltip?: ReactNode;
-  triggerTooltipEnabled?: boolean;
+  /** Starts a new Space. The Space sidebar has no other way to. */
+  onCreateSpace?: () => void;
 }
 
 /**
  * The Space menu behind the Space's name, in the Workspace page's title and
- * at the top of the Space sidebar: actions for that Space. Switching Spaces happens on the rail and in Home, so it lists no
- * Spaces.
+ * at the top of the Space sidebar: actions for that Space. Switching Spaces
+ * happens on the rail and in Home, so it lists no Spaces.
  */
 export function SpaceSwitchDropdown({
   trigger,
@@ -122,112 +91,29 @@ export function SpaceSwitchDropdown({
   onOpenSpaceSettings,
   onOpenMemorySettings,
   pinMenu,
+  onCreateSpace,
   onDeleteSpace,
   contentAlign = 'start',
   contentClassName,
   contentSideOffset,
-  openOnHover = false,
-  open: controlledOpen,
   onOpenChange,
-  triggerWrapperClassName = 'min-w-0 flex-1 overflow-hidden rounded-full',
-  pendingChangesMenu,
   savePointMenu,
-  triggerTooltip,
-  triggerTooltipEnabled = true,
 }: SpaceSwitchDropdownProps) {
   const { t } = useTranslation();
-  const [internalOpen, setInternalOpen] = useState(false);
-  const open = controlledOpen ?? internalOpen;
+  const [open, setOpenState] = useState(false);
 
-  const setOpen = useCallback(
-    (nextOpen: boolean) => {
-      if (controlledOpen === undefined) {
-        setInternalOpen(nextOpen);
-      }
-      onOpenChange?.(nextOpen);
-    },
-    [controlledOpen, onOpenChange]
-  );
-
-  const openFromHover = useCallback(() => {
-    if (!openOnHover) return;
-    setOpen(true);
-  }, [openOnHover, setOpen]);
-
-  const openFromTriggerInteraction = useCallback(() => {
-    if (!openOnHover) return;
-    setOpen(true);
-  }, [openOnHover, setOpen]);
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    setOpen(nextOpen);
+  const setOpen = (nextOpen: boolean) => {
+    setOpenState(nextOpen);
+    onOpenChange?.(nextOpen);
   };
 
-  const hoverOpenTrigger = (() => {
-    if (!openOnHover || !isValidElement(trigger)) {
-      return trigger;
-    }
-
-    const triggerElement = trigger as ReactElement<{
-      onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
-      onClick?: (event: MouseEvent<HTMLElement>) => void;
-    }>;
-
-    return cloneElement(triggerElement, {
-      onPointerDown: (event: PointerEvent<HTMLElement>) => {
-        triggerElement.props.onPointerDown?.(event);
-        event.preventDefault();
-        openFromTriggerInteraction();
-      },
-      onClick: (event: MouseEvent<HTMLElement>) => {
-        triggerElement.props.onClick?.(event);
-        openFromTriggerInteraction();
-      },
-    });
-  })();
-
-  const dropdownTrigger = (
-    <DropdownMenuTrigger asChild>
-      {openOnHover ? hoverOpenTrigger : trigger}
-    </DropdownMenuTrigger>
-  );
-
-  const triggerWithTooltip =
-    triggerTooltip != null && triggerTooltip !== '' ? (
-      <TooltipSimple
-        content={triggerTooltip}
-        side="right"
-        align="center"
-        enabled={triggerTooltipEnabled}
-        variant="instant"
-        className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
-      >
-        {dropdownTrigger}
-      </TooltipSimple>
-    ) : (
-      dropdownTrigger
-    );
-
-  const triggerNode = openOnHover ? (
-    <div className={triggerWrapperClassName} onMouseEnter={openFromHover}>
-      {triggerWithTooltip}
-    </div>
-  ) : (
-    triggerWithTooltip
-  );
-
   return (
-    <DropdownMenu
-      modal={!openOnHover}
-      open={open}
-      onOpenChange={handleOpenChange}
-    >
-      {triggerNode}
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
         align={contentAlign}
         sideOffset={contentSideOffset}
-        className={cn('min-w-[240px] overflow-hidden', contentClassName)}
-        onMouseEnter={openOnHover ? openFromHover : undefined}
+        className={cn('min-w-60 overflow-hidden', contentClassName)}
       >
         <DropdownMenuItem
           disabled={!canRenameActiveSpace}
@@ -252,6 +138,19 @@ export function SpaceSwitchDropdown({
             <span>
               {pinMenu.pinned ? t('layout.unpin-space') : t('layout.pin-space')}
             </span>
+          </DropdownMenuItem>
+        ) : null}
+
+        {onCreateSpace ? (
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => {
+              setOpen(false);
+              onCreateSpace();
+            }}
+          >
+            <DsIcon icon={Plus} aria-hidden />
+            <span>{t('layout.spaces-create-new-space')}</span>
           </DropdownMenuItem>
         ) : null}
 
@@ -302,87 +201,11 @@ export function SpaceSwitchDropdown({
           </DropdownMenuItem>
         ) : null}
 
-        {pendingChangesMenu || savePointMenu ? (
+        {savePointMenu ? (
           <DropdownMenuSeparator
             className="mx-2"
             data-space-settings-separator
           />
-        ) : null}
-
-        {pendingChangesMenu ? (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-2">
-              {pendingChangesMenu.loading ? (
-                <DsIcon
-                  icon={Loader2}
-                  className="shrink-0 animate-spin"
-                  aria-hidden
-                />
-              ) : pendingChangesMenu.loadFailed ? (
-                <DsIcon icon={TriangleAlert} className="shrink-0" aria-hidden />
-              ) : (
-                <DsIcon icon={CheckCircle2} className="shrink-0" aria-hidden />
-              )}
-              {t('layout.workspace-pending-changes')}
-              {pendingChangesMenu.overlayCount > 0
-                ? ` (${pendingChangesMenu.overlayCount})`
-                : ''}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent
-              className="w-52 p-1"
-              sideOffset={6}
-              alignOffset={-4}
-            >
-              {pendingChangesMenu.loadFailed ? (
-                <div className="flex items-start gap-2 px-2 py-2 text-ds-text-base text-ds-ink-muted-default">
-                  <DsIcon
-                    icon={TriangleAlert}
-                    className="mt-0.5 shrink-0 text-ds-icon-warning-default-default"
-                    aria-hidden
-                  />
-                  <span>{t('layout.workspace-pending-load-stale')}</span>
-                </div>
-              ) : null}
-              <DropdownMenuItem
-                className="cursor-pointer gap-2"
-                disabled={pendingChangesMenu.applyDisabled}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void pendingChangesMenu.onApply();
-                }}
-              >
-                <DsIcon icon={CheckCircle2} className="shrink-0" aria-hidden />
-                {pendingChangesMenu.applyProgress
-                  ? t('layout.workspace-apply-progress', {
-                      current: pendingChangesMenu.applyProgress.current,
-                      total: pendingChangesMenu.applyProgress.total,
-                    })
-                  : t('layout.workspace-apply-pending-changes')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer gap-2"
-                disabled={pendingChangesMenu.discardDisabled}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  pendingChangesMenu.onDiscard();
-                }}
-              >
-                <DsIcon icon={Trash2} className="shrink-0" aria-hidden />
-                {t('layout.workspace-discard-pending-changes')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer gap-2"
-                disabled={pendingChangesMenu.refreshDisabled}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void pendingChangesMenu.onRefresh();
-                }}
-              >
-                <DsIcon icon={RefreshCw} className="shrink-0" aria-hidden />
-                {t('layout.workspace-refresh-workdir')}
-              </DropdownMenuItem>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
         ) : null}
 
         {savePointMenu ? (

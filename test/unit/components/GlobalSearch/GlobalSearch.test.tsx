@@ -34,7 +34,18 @@ const mocks = vi.hoisted(() => ({
   openSpaceView: vi.fn(),
   switchToSpace: vi.fn(),
   openSessionInShell: vi.fn(),
+  invoke: vi.fn(),
 }));
+
+vi.mock('@/host', async (importOriginal) => {
+  const host = {
+    ipcRenderer: { invoke: mocks.invoke, on: vi.fn(), off: vi.fn() },
+  };
+  return {
+    ...(await importOriginal<typeof import('@/host')>()),
+    useHost: () => host,
+  };
+});
 
 vi.mock('@/components/Home', () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -114,6 +125,7 @@ describe('global search', () => {
     vi.clearAllMocks();
     mocks.switchToSpace.mockResolvedValue(true);
     mocks.openSessionInShell.mockResolvedValue(undefined);
+    mocks.invoke.mockResolvedValue([]);
     useGlobalSearchStore.setState({ open: false });
     useProjectRuntimeStore.setState({ activeProjectId: null });
     useSpaceStore.setState({
@@ -158,15 +170,35 @@ describe('global search', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
+  it("does not show the last Session's files while the next ones load", async () => {
+    const user = userEvent.setup();
+    mocks.invoke.mockResolvedValueOnce([{ name: 'plan.md', path: '/s1/plan' }]);
+    act(() => {
+      useProjectRuntimeStore.setState({ activeProjectId: 'session-1' });
+      useGlobalSearchStore.setState({ open: true });
+    });
+    renderSearch();
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Files' }));
+    expect(await within(dialog).findByText('plan.md')).toBeInTheDocument();
+
+    mocks.invoke.mockReturnValueOnce(new Promise(() => undefined));
+    act(() =>
+      useProjectRuntimeStore.setState({ activeProjectId: 'session-2' })
+    );
+
+    expect(within(dialog).queryByText('plan.md')).toBeNull();
+  });
+
   it('has every type, Recents and New session', async () => {
     act(() => useGlobalSearchStore.setState({ open: true }));
     renderSearch();
     const dialog = await screen.findByRole('dialog');
 
     expect(
-      within(dialog)
-        .getAllByRole('tab')
-        .map((tab) => tab.textContent)
+      within(within(dialog).getByRole('group', { name: 'Search' }))
+        .getAllByRole('button')
+        .map((button) => button.textContent)
     ).toEqual([
       'All',
       'Spaces',
@@ -187,17 +219,16 @@ describe('global search', () => {
     renderSearch();
     const dialog = await screen.findByRole('dialog');
 
-    await user.click(within(dialog).getByRole('tab', { name: 'Tasks' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Tasks' }));
     expect(within(dialog).getByText('Draft the launch plan')).toBeVisible();
     expect(within(dialog).queryByText('Launch notes')).toBeNull();
 
     const input = within(dialog).getByRole('combobox');
     await user.click(input);
     await user.keyboard('{ArrowRight}');
-    expect(within(dialog).getByRole('tab', { name: 'Files' })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
+    expect(
+      within(dialog).getByRole('button', { name: 'Files' })
+    ).toHaveAttribute('aria-pressed', 'true');
 
     await user.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}');
     await user.type(input, 'digest');
@@ -218,7 +249,7 @@ describe('global search', () => {
 
     act(() => useGlobalSearchStore.setState({ open: true }));
     const reopened = await screen.findByRole('dialog');
-    await user.click(within(reopened).getByRole('tab', { name: 'Spaces' }));
+    await user.click(within(reopened).getByRole('button', { name: 'Spaces' }));
     await user.click(within(reopened).getByText('Ops'));
     expect(mocks.openSpaceView).toHaveBeenCalledWith('space-ops');
   });

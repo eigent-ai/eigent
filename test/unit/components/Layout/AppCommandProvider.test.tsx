@@ -187,7 +187,7 @@ function CommandButtons() {
 function LocationProbe() {
   const location = useLocation();
   return (
-    <span data-testid="location">
+    <span data-testid="location" data-location-key={location.key}>
       {location.pathname}
       {location.search}
     </span>
@@ -413,6 +413,27 @@ describe('AppCommandProvider', () => {
     expect(mocks.setActiveProject).not.toHaveBeenCalled();
     expect(mocks.setActiveWorkspaceTab).not.toHaveBeenCalled();
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+  });
+
+  it('adds no history entry when Home is opened from the workspace route', () => {
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider(
+      {
+        onAppCommand: (callback) => {
+          nativeCommand = callback;
+          return vi.fn();
+        },
+      },
+      '/'
+    );
+    const before = screen.getByTestId('location').dataset.locationKey;
+
+    act(() => {
+      nativeCommand?.(APP_COMMAND.navigateHome);
+    });
+
+    expect(mocks.setShellPlace).toHaveBeenCalledWith('home');
+    expect(screen.getByTestId('location').dataset.locationKey).toBe(before);
   });
 
   it('opens New session in Home when the Space view was on a Space tab', () => {
