@@ -351,6 +351,26 @@ class SpaceService:
                 len(live_projects),
                 [{"id": project.id, "name": project.name} for project in live_projects[:10]],
             )
+        # A Project promoted into another Space keeps rows stamped with this
+        # Space. Move them to the Project's Space first, so a live Session
+        # keeps its history, automations and memory.
+        history_user_id = int(canonical_user_id) if canonical_user_id.isdigit() else canonical_user_id
+        moved_project_ids = select(Project.id).where(Project.user_id == canonical_user_id, Project.space_id != space_id)
+        for model, owner_id in (
+            (Trigger, canonical_user_id),
+            (ChatHistory, history_user_id),
+            (ProjectMemory, canonical_user_id),
+        ):
+            s.execute(
+                update(model)
+                .where(
+                    model.user_id == owner_id,
+                    model.space_id == space_id,
+                    model.project_id.in_(moved_project_ids),
+                )
+                .values(space_id=select(Project.space_id).where(Project.id == model.project_id).scalar_subquery())
+                .execution_options(synchronize_session=False)
+            )
         project_ids = [project.id for project in projects]
         in_space = or_(Trigger.space_id == space_id, Trigger.project_id.in_(project_ids))
         trigger_ids = s.exec(select(Trigger.id).where(Trigger.user_id == canonical_user_id, in_space)).all()
@@ -358,7 +378,6 @@ class SpaceService:
             # Automations of a deleted Space must not keep starting Tasks.
             s.execute(delete(TriggerExecution).where(TriggerExecution.trigger_id.in_(trigger_ids)))
             s.execute(delete(Trigger).where(Trigger.id.in_(trigger_ids)))
-        history_user_id = int(canonical_user_id) if canonical_user_id.isdigit() else canonical_user_id
         s.execute(
             delete(ChatHistory).where(
                 ChatHistory.user_id == history_user_id,
@@ -370,7 +389,8 @@ class SpaceService:
         if project_ids:
             s.execute(delete(ProjectExecutionRoute).where(ProjectExecutionRoute.project_id.in_(project_ids)))
         # A promoted Project keeps rows under the Space it came from, so match
-        # on both columns.
+        # on both columns. Overlays describe changes to this Space's files, so
+        # they go with it even when their Project has moved.
         s.execute(
             delete(SpaceFileIndexOverlay).where(
                 or_(SpaceFileIndexOverlay.space_id == space_id, SpaceFileIndexOverlay.project_id.in_(project_ids))

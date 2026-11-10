@@ -245,6 +245,27 @@ def test_space_with_a_deleted_promoted_session_can_be_deleted(fixture):
     assert _ids(engine, SpaceFileIndexOverlay) == []
 
 
+def test_live_session_promoted_out_of_the_space_keeps_its_rows(fixture):
+    client, engine = fixture
+    # The Session was promoted from space-a into space-b and is still live.
+    _add_session(engine, "project-moved", status="active", space_id="space-b")
+    _add_dependents(engine, "project-moved", space_id="space-a")
+
+    response = client.delete("/spaces/space-a")
+
+    assert response.status_code == 204, response.text
+    assert _ids(engine, Space) == ["space-b"]
+    assert _ids(engine, Project) == ["project-b", "project-moved"]
+    with Session(engine) as db:
+        for model in (ChatHistory, Trigger, ProjectMemory):
+            rows = db.exec(select(model).where(model.project_id == "project-moved")).all()
+            assert [row.space_id for row in rows] == ["space-b"], model.__tablename__
+    assert len(_ids(engine, TriggerExecution)) == 1
+    assert _ids(engine, ProjectExecutionRoute) == ["project-moved"]
+    for model in (SpaceMemory, SpaceFileIndex, SpaceFileIndexOverlay):
+        assert _ids(engine, model) == [], model.__tablename__
+
+
 def test_unknown_space_is_not_found(fixture):
     client, _engine = fixture
     assert client.delete("/spaces/space-missing").status_code == 404
