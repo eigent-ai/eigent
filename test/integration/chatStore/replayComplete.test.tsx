@@ -412,7 +412,10 @@ describe('Integration Test: Replay Functionality', () => {
         undefined,
         undefined,
         undefined,
-        'New task after replay completion'
+        'New task after replay completion',
+        undefined,
+        undefined,
+        projectId
       );
       rerender();
     });
@@ -548,7 +551,10 @@ describe('Integration Test: Replay Functionality', () => {
         undefined,
         undefined,
         undefined,
-        'Parallel task during replay'
+        'Parallel task during replay',
+        undefined,
+        undefined,
+        projectId
       );
       rerender();
     });
@@ -719,7 +725,10 @@ describe('Issue #619 - Duplicate Task Boxes after replay', () => {
         undefined,
         undefined,
         undefined,
-        userMessage
+        userMessage,
+        undefined,
+        undefined,
+        projectId
       );
       rerender();
     });
@@ -893,7 +902,10 @@ describe('Issue #619 - Duplicate Task Boxes after replay', () => {
         undefined,
         undefined,
         undefined,
-        originalUserMessage
+        originalUserMessage,
+        undefined,
+        undefined,
+        projectId
       );
       rerender();
     });
