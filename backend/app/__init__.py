@@ -110,3 +110,10 @@ api.add_middleware(ChannelSessionMiddleware)
 from app.exception.handler import register_exception_handlers  # noqa: E402
 
 register_exception_handlers(api)
+
+# File URLs carry short-lived read grants; keep them out of request logs.
+from app.auth.file_access import (  # noqa: E402
+    install_file_access_log_redaction,
+)
+
+install_file_access_log_redaction()

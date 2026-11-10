@@ -27,6 +27,8 @@ import binascii
 import hashlib
 import hmac
 import json
+import logging
+import re
 import secrets
 import time
 from dataclasses import dataclass
@@ -36,6 +38,7 @@ from fastapi import HTTPException, Path, Query, Request
 from app.auth.local_control import desktop_control_configured
 
 FILE_ACCESS_TTL_SECONDS = 60 * 60
+FILE_ACCESS_REDACTED = "[REDACTED]"
 _GRANT_VERSION = 1
 _signing_key = secrets.token_bytes(32)
 
@@ -190,3 +193,44 @@ async def require_file_preview_access(
     if scope is None:
         raise _file_access_denied()
     return scope
+
+
+_ACCESS_QUERY_VALUE = re.compile(r"(?<=[?&])(access=)[^&#\s\"']*")
+_PREVIEW_GRANT_SEGMENT = re.compile(r"(/files/preview/)[^/?#\s\"']+")
+
+
+def redact_file_access(text: str) -> str:
+    """Hide file access grants in a request path, query or log line."""
+
+    if "access=" not in text and "/files/preview/" not in text:
+        return text
+    text = _ACCESS_QUERY_VALUE.sub(rf"\1{FILE_ACCESS_REDACTED}", text)
+    return _PREVIEW_GRANT_SEGMENT.sub(rf"\1{FILE_ACCESS_REDACTED}", text)
+
+
+class FileAccessLogFilter(logging.Filter):
+    """Keep file access grants out of request logs.
+
+    Uvicorn logs each request line with its full path and query. A grant there
+    would let anyone who reads an exported log open the file until it expires.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                redact_file_access(arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        if isinstance(record.msg, str):
+            record.msg = redact_file_access(record.msg)
+        return True
+
+
+def install_file_access_log_redaction(
+    logger_name: str = "uvicorn.access",
+) -> None:
+    """Add the grant redaction filter to a request logger once."""
+
+    logger = logging.getLogger(logger_name)
+    if not any(isinstance(f, FileAccessLogFilter) for f in logger.filters):
+        logger.addFilter(FileAccessLogFilter())
