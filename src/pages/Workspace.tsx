@@ -50,7 +50,11 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
-import { usePageTabStore, WorkspaceTab } from '@/store/pageTabStore';
+import {
+  displayedWorkspaceTab,
+  usePageTabStore,
+  WorkspaceTab,
+} from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 
 import Session from '@/components/Session';
@@ -89,10 +93,9 @@ export default function WorkspacePage() {
   // The composer landing is New session everywhere, and Home shows only a
   // Session or New session.
   const activeWorkspaceTab =
-    storedWorkspaceTab === WorkspaceTab.Workforce ||
-    (inHome && storedWorkspaceTab !== WorkspaceTab.Project)
+    inHome && storedWorkspaceTab !== WorkspaceTab.Project
       ? WorkspaceTab.NewProject
-      : storedWorkspaceTab;
+      : displayedWorkspaceTab(storedWorkspaceTab);
   const workspaceSidebarHidden = usePageTabStore(
     (s) => s.workspaceSidebarHidden
   );

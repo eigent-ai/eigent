@@ -105,7 +105,10 @@ vi.mock('@/store/projectRuntimeStore', () => ({
     { getState: () => mocks.runtime }
   ),
 }));
-vi.mock('@/store/pageTabStore', () => ({
+vi.mock('@/store/pageTabStore', async (importOriginal) => ({
+  displayedWorkspaceTab: (
+    await importOriginal<typeof import('@/store/pageTabStore')>()
+  ).displayedWorkspaceTab,
   usePageTabStore: (selector: any) => selector(mocks.page),
 }));
 vi.mock('@/store/triggerStore', () => ({
@@ -169,11 +172,19 @@ vi.mock('@/components/Layout/AppSidebar', () => {
     SidebarSection: Container,
     SidebarNavGroup: Container,
     SidebarSeparator: () => null,
-    NavTab: ({ label, ariaLabel, onClick, endAction, disabled }: any) => (
+    NavTab: ({
+      label,
+      ariaLabel,
+      ariaCurrentPage,
+      onClick,
+      endAction,
+      disabled,
+    }: any) => (
       <div>
         <button
           type="button"
           aria-label={ariaLabel ?? label}
+          aria-current={ariaCurrentPage ? 'page' : undefined}
           onClick={onClick}
           disabled={disabled}
         >
@@ -274,6 +285,18 @@ describe('Space sidebar first rows', () => {
     expect(mocks.executeAppCommand).toHaveBeenCalledWith(
       'navigate-configuration'
     );
+  });
+
+  it('marks New session as the current page while the composer landing shows', () => {
+    mocks.page.activeWorkspaceTab = 'workforce';
+    try {
+      renderSidebar();
+      expect(
+        screen.getByRole('button', { name: 'New session' })
+      ).toHaveAttribute('aria-current', 'page');
+    } finally {
+      mocks.page.activeWorkspaceTab = 'project';
+    }
   });
 
   it('starts a New session from its row', () => {

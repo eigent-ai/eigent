@@ -251,6 +251,22 @@ describe('Space emojis', () => {
     expect(currentEmoji()).toBe('⭐');
   });
 
+  it('goes back to the first letter when saving a first emoji fails', async () => {
+    updateSpaceOnServer.mockRejectedValue(new Error('offline'));
+    useSpaceStore.setState({
+      spaces: { 'space-research': space({ keep: 'me' }) },
+    });
+
+    await expect(
+      useSpaceStore.getState().setSpaceEmoji('space-research', '🚀')
+    ).rejects.toThrow('offline');
+
+    expect(currentEmoji()).toBeNull();
+    expect(
+      useSpaceStore.getState().spaces['space-research'].metadata?.keep
+    ).toBe('me');
+  });
+
   it('keeps a signed-out local Space on this device', async () => {
     useSpaceStore.setState({
       spaces: { 'space-research': space({ legacy: true }) },

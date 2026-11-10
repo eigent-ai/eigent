@@ -171,6 +171,34 @@ describe('Workspace automations list', () => {
     expect(mocks.fetchSpaceTriggers).toHaveBeenCalledTimes(2);
   });
 
+  it('remembers local deletes, and offers Retry when a remembered list fails to refresh', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    useSpaceStore.setState({ activeSpaceId: 'space-edited' });
+    const other = { ...automation, id: automation.id + 1, name: 'Weekly sync' };
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({
+      items: [automation, other],
+    });
+    const first = render(<Overview {...props} />);
+    await screen.findByText('Morning digest');
+    act(() => {
+      useTriggerStore.getState().deleteTrigger(automation.id);
+    });
+    expect(screen.queryByText('Morning digest')).not.toBeInTheDocument();
+    first.unmount();
+    useTriggerStore.setState({ triggers: [] });
+
+    mocks.fetchSpaceTriggers.mockRejectedValueOnce(new Error('offline'));
+    render(<Overview {...props} />);
+
+    expect(await screen.findByText('Weekly sync')).toBeInTheDocument();
+    expect(screen.queryByText('Morning digest')).not.toBeInTheDocument();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Failed to load automations');
+    expect(
+      within(alert).getByRole('button', { name: 'Retry' })
+    ).toBeInTheDocument();
+  });
+
   it('lists an automation created after the list failed to load', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     // A Space with no remembered list.

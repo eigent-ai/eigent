@@ -542,11 +542,20 @@ function GlobalSearchDialog() {
 }
 
 /** Mount once: ⌘K opens search, and the dialog loads its data while open. */
-export function GlobalSearchHost(): ReactNode {
+export function GlobalSearchHost({
+  enabled = true,
+}: {
+  /** False while the install or onboarding screen covers the app. */
+  enabled?: boolean;
+} = {}): ReactNode {
   const open = useGlobalSearchStore((state) => state.open);
   const setOpen = useGlobalSearchStore((state) => state.setOpen);
 
   useEffect(() => {
+    if (!enabled) {
+      setOpen(false);
+      return;
+    }
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
@@ -555,9 +564,9 @@ export function GlobalSearchHost(): ReactNode {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setOpen]);
+  }, [enabled, setOpen]);
 
-  return open ? <GlobalSearchDialog /> : null;
+  return enabled && open ? <GlobalSearchDialog /> : null;
 }
 
 /** The top bar's search control, as wide as its content; opens the dialog. */

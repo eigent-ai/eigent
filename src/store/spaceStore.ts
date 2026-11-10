@@ -1808,7 +1808,11 @@ export const useSpaceStore = create<SpaceStore>()(
         try {
           await get().updateSpaceOnServer(spaceId, { metadata });
         } catch (error) {
-          get().updateSpace(spaceId, { metadata: previous });
+          // `updateSpace` merges metadata, so name the emoji key explicitly:
+          // a Space that had none would otherwise keep the new one.
+          get().updateSpace(spaceId, {
+            metadata: { emoji: previous?.emoji ?? null },
+          });
           throw error;
         }
       },

@@ -19,6 +19,7 @@ import { SessionWindowNotice } from '@/components/SessionWindow/SessionWindowNot
 import { SessionWindowTopBar } from '@/components/SessionWindow/SessionWindowTopBar';
 import { Button } from '@/components/ui/button';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
+import { useMarkSessionOutcomeSeen } from '@/hooks/useMarkSessionOutcomeSeen';
 import { useSessionWindowLink } from '@/hooks/useSessionWindows';
 import { useHost } from '@/host';
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
@@ -71,6 +72,9 @@ function SessionWindowContent({ target }: { target: SessionWindowTarget }) {
 
   // Reports readiness only; installation stays with the main window.
   useInstallationSetup();
+  // A result read here is read everywhere; the main window picks it up from
+  // storage.
+  useMarkSessionOutcomeSeen(selected ? projectId : null);
 
   useEffect(() => {
     if (!isBackendReady || !meta) return;

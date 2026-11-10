@@ -68,6 +68,7 @@ export function NewSessionSpaceChip() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
   const { createBlankSpace, createSpaceFromFolder } =
     useNewSpaceCreation('home_hub');
@@ -153,10 +154,27 @@ export function NewSessionSpaceChip() {
               }
               className="w-full"
               onChange={(event) => setQuery(event.target.value)}
-              // Keep typing in the field instead of the menu's typeahead.
-              onKeyDown={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                // ArrowDown moves into the list; Escape and Tab keep the
+                // menu's own handling.
+                if (event.key === 'ArrowDown') {
+                  const first = listRef.current?.querySelector<HTMLElement>(
+                    '[role="menuitem"]:not([data-disabled])'
+                  );
+                  if (first) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    first.focus();
+                  }
+                  return;
+                }
+                if (event.key === 'Escape' || event.key === 'Tab') return;
+                // Keep typing in the field instead of the menu's typeahead.
+                event.stopPropagation();
+              }}
             />
             <div
+              ref={listRef}
               data-new-session-space-list
               className="scrollbar-always-visible max-h-60 overflow-y-auto"
             >

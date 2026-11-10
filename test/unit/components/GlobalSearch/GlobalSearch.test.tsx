@@ -170,6 +170,34 @@ describe('global search', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
+  it('ignores ⌘K and closes while the install screen covers the app', async () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <GlobalSearchHost enabled={false} />
+      </MemoryRouter>
+    );
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    expect(useGlobalSearchStore.getState().open).toBe(false);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <GlobalSearchHost />
+      </MemoryRouter>
+    );
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <GlobalSearchHost enabled={false} />
+      </MemoryRouter>
+    );
+    expect(useGlobalSearchStore.getState().open).toBe(false);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it("does not show the last Session's files while the next ones load", async () => {
     const user = userEvent.setup();
     mocks.invoke.mockResolvedValueOnce([{ name: 'plan.md', path: '/s1/plan' }]);

@@ -114,6 +114,24 @@ describe('NewSessionSpaceChip', () => {
     });
   });
 
+  it('moves from the search field into the list with ArrowDown and switches with Enter', async () => {
+    render(<NewSessionSpaceChip />);
+    const { user, menu } = await openChip();
+    const search = within(menu).getByRole('textbox', {
+      name: 'Search spaces...',
+    });
+
+    await user.type(search, 'op');
+    expect(search).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(within(menu).getByRole('menuitem', { name: 'Ops' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(mocks.switchToSpace).toHaveBeenCalledWith('space-ops', {
+      project: null,
+      tab: 'new-project',
+    });
+  });
+
   it('filters the list by name', async () => {
     render(<NewSessionSpaceChip />);
     const { user, menu } = await openChip();

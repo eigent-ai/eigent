@@ -18,6 +18,7 @@ import { presentationForKind } from '@/lib/sessionNavLead';
 import {
   isSessionOutcomeSeen,
   markSessionOutcomeSeen,
+  useSessionOutcomeRuns,
 } from '@/lib/sessionOutcome';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
@@ -84,6 +85,35 @@ describe('Session outcome read state', () => {
     setRun('run-2', 'completed', 2_000);
 
     expect(seen()).toBe(false);
+  });
+
+  it('keeps a read result read after a restart until its Run loads', () => {
+    useSessionControlsStore.setState({
+      seenOutcomes: { [projectId]: 'run-1:completed' },
+    });
+    setLead('finished');
+
+    // The lead comes from history before the Run summary arrives.
+    expect(seen()).toBe(true);
+
+    setRun('run-1', 'completed', 1_000);
+    expect(seen()).toBe(true);
+
+    setRun('run-2', 'completed', 2_000);
+    expect(seen()).toBe(false);
+  });
+
+  it('checks again when a listed Session’s Run summary arrives', () => {
+    let renders = 0;
+    renderHook(() => {
+      renders += 1;
+      useSessionOutcomeRuns([projectId]);
+    });
+    const before = renders;
+
+    act(() => setRun('run-1', 'completed', 1_000));
+
+    expect(renders).toBeGreaterThan(before);
   });
 
   it('does not record live work or an open question as read', () => {
