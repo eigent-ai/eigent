@@ -15,10 +15,10 @@
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { isCreditRecoveryReason, openPricing } from '@/lib/creditRecovery';
-import { trialAwareUsageReason } from '@/lib/trialQuotaCopy';
 import { errorCopy, type ErrorReason } from '@/lib/usageErrors';
 import {
   contactSupport,
+  presentedUsageReason,
   refreshUsage,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
@@ -35,8 +35,9 @@ export function TaskErrorNotice({
   reason: ErrorReason;
 }) {
   const { t } = useTranslation();
-  const subscription = useUsageNoticeStore((state) => state.subscription);
-  const reason = trialAwareUsageReason(recordedReason, subscription);
+  const reason = useUsageNoticeStore((state) =>
+    presentedUsageReason(recordedReason, state)
+  );
   const refreshing = useUsageNoticeStore((state) => state.refreshing);
   const creditRecovery = isCreditRecoveryReason(reason);
   const sharedRefreshError = useUsageNoticeStore((state) => state.refreshError);

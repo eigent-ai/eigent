@@ -19,7 +19,7 @@ import {
   isCreditRecoveryReason,
 } from '@/lib/creditRecovery';
 import { trialAwareUsageReason, usageNoticeCopy } from '@/lib/trialQuotaCopy';
-import type { UsageReason } from '@/lib/usageErrors';
+import type { ErrorReason, UsageReason } from '@/lib/usageErrors';
 import i18n from 'i18next';
 import { createElement } from 'react';
 import { toast } from 'sonner';
@@ -74,6 +74,8 @@ export const useUsageNoticeStore = create<UsageNoticeState>(() => ({
 }));
 const isCreditIncident = (incident: UsageIncident) =>
   !['service', 'model-access'].includes(incident.reason);
+const isTrialIncident = (incident: UsageIncident) =>
+  incident.reason === 'trial-daily' || incident.reason === 'trial-total';
 // Shared presentation/dismissal identity; service recovery is tracked per model.
 const key = (incident: UsageIncident) =>
   isCreditIncident(incident)
@@ -93,6 +95,23 @@ export const activeUsageIncident = (state: UsageNoticeState) =>
 /** The toast announces an incident; inline notices wait until it is dismissed. */
 export const isUsageToastOpen = (state: UsageNoticeState) =>
   state.presented !== null;
+
+/**
+ * A recorded spend-limit failure has no account snapshot. Read it against the
+ * current trial details, or the open trial blocker while they are unknown.
+ */
+export function presentedUsageReason<Reason extends ErrorReason>(
+  reason: Reason,
+  state: Pick<UsageNoticeState, 'subscription' | 'incidents'>
+): Reason | 'trial-daily' | 'trial-total' {
+  if (reason !== 'credits') return reason;
+  if (state.subscription)
+    return trialAwareUsageReason(reason, state.subscription);
+  const blocker = state.incidents.find(isTrialIncident)?.reason;
+  return blocker === 'trial-daily' || blocker === 'trial-total'
+    ? blocker
+    : reason;
+}
 
 /** Current account copy, shared by the toast and the composer notice. */
 export function liveUsageNoticeCopy(
@@ -221,9 +240,13 @@ export function reportUsageIncident(
   );
   if (previous) {
     const refinedCredits =
-      previous.reason === 'credits' &&
-      isCreditIncident(incident) &&
-      incident.reason !== 'credits';
+      (previous.reason === 'credits' &&
+        isCreditIncident(incident) &&
+        incident.reason !== 'credits') ||
+      // An allowance inferred from older account details yields to a fresh one.
+      (isTrialIncident(previous) &&
+        isTrialIncident(incident) &&
+        previous.reason !== incident.reason);
     const executionIds = [
       ...new Set([
         ...(previous.executionIds ?? []),

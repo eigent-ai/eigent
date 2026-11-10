@@ -17,6 +17,7 @@ import {
   activeUsageIncident,
   confirmCloudRecovery,
   contactSupport,
+  presentedUsageReason,
   refreshUsage,
   reportUsageIncident,
   setUsageAccount,
@@ -340,6 +341,47 @@ describe('spend limits during a trial', () => {
       'chat.usage-limit-plan-trial-daily-exhausted',
       expect.anything()
     );
+  });
+
+  it('corrects a daily-allowance notice once Refresh shows the whole trial is used', async () => {
+    // The account details were loaded before the task used the last credits.
+    respond(proTrial);
+    await refreshUsage();
+    reportUsageIncident({ reason: 'credits' });
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+
+    respond({
+      ...proTrial,
+      trial_daily_credits_remaining: 300,
+      trial_total_credits_remaining: 0,
+    });
+    await refreshUsage();
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-total'
+    );
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.usage-limit-plan-trial-total-exhausted',
+      expect.anything()
+    );
+  });
+
+  it('keeps the trial wording when a later Refresh fails', async () => {
+    respond(proTrial);
+    await refreshUsage();
+    reportUsageIncident({ reason: 'credits' });
+    mocks.get.mockRejectedValue(new Error('offline'));
+
+    await refreshUsage();
+
+    const state = useUsageNoticeStore.getState();
+    expect(state.refreshError).toBe('chat.notice-refresh-failed');
+    expect(state.subscription).toBeNull();
+    expect(activeUsageIncident(state)?.reason).toBe('trial-daily');
+    // In-task notices recorded as out-of-credits follow the open trial blocker.
+    expect(presentedUsageReason('credits', state)).toBe('trial-daily');
   });
 });
 

@@ -254,6 +254,30 @@ describe('out of credits recovery', () => {
     expect(notice.getByRole('button', { name: 'Refresh' })).toBeVisible();
   });
 
+  it('keeps the trial allowance wording after a failed Refresh', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 859,
+      },
+      500
+    );
+    await refreshUsage();
+    render(<TaskErrorNotice reason="credits" />);
+    mocks.get.mockRejectedValue(new Error('offline'));
+
+    await act(() => refreshUsage());
+
+    expect(
+      screen.getByText('You’ve used today’s trial credits.')
+    ).toBeVisible();
+    expect(
+      screen.queryByText('You’re out of Eigent credits.')
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps Upgrade plan and own key for a used-up trial total', async () => {
     respond(
       {
