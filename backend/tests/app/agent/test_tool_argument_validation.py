@@ -580,3 +580,104 @@ def test_tool_objects_that_are_not_function_tools_are_left_untouched():
 
     assert checked.rejection is None
     assert checked.arguments == {"count": "x"}
+
+
+# --- MCP tools: the server validates keys its schema does not list ---
+
+
+def _mcp_tool(name: str, input_schema: dict) -> FunctionTool:
+    # Built exactly as CAMEL's MCPClient.get_tools() builds a server's tool.
+    from camel.utils.mcp_client import MCPClient
+    from mcp import types
+
+    client = MCPClient({"command": "true"})
+    remote = types.Tool(
+        name=name, description="Remote tool.", inputSchema=input_schema
+    )
+    return FunctionTool(
+        client.generate_function_from_mcp_tool(remote),
+        openai_tool_schema=client._build_tool_schema(remote),
+    )
+
+
+_TYPED_MCP_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "Search text."},
+        "limit": {"type": "integer", "description": "Maximum results."},
+    },
+    "required": ["query"],
+}
+
+
+def test_mcp_tool_forwards_unknown_arguments_to_the_server():
+    tool = _mcp_tool("search_docs", _TYPED_MCP_SCHEMA)
+    # CAMEL forbids extra keys in what it publishes, whatever the server says.
+    parameters = tool.openai_tool_schema["function"]["parameters"]
+    assert parameters["additionalProperties"] is False
+
+    checked = check_tool_arguments(
+        tool, "search_docs", {"query": "q", "limit": "3", "trace": "on"}
+    )
+
+    assert checked.rejection is None
+    assert checked.arguments == {"query": "q", "limit": 3, "trace": "on"}
+
+
+def test_mcp_tool_still_rejects_missing_and_unparseable_arguments():
+    tool = _mcp_tool("search_docs", _TYPED_MCP_SCHEMA)
+
+    missing = check_tool_arguments(tool, "search_docs", {"limit": 3})
+    unparseable = check_tool_arguments(
+        tool, "search_docs", {"query": "q", "limit": "three"}
+    )
+
+    assert missing.rejection is not None
+    assert missing.rejection.error_code == "missing_tool_argument"
+    assert missing.rejection.field == "query"
+    assert unparseable.rejection is not None
+    assert unparseable.rejection.error_code == "invalid_tool_argument_type"
+    assert unparseable.rejection.field == "limit"
+
+
+def test_open_schema_mcp_tool_receives_its_arguments():
+    # A server schema with no declared properties still takes arguments.
+    tool = _mcp_tool("run_action", {"type": "object"})
+    arguments = {"action": "sync", "count": "2"}
+
+    checked = check_tool_arguments(tool, "run_action", arguments)
+
+    assert checked.rejection is None
+    assert checked.arguments == arguments
+
+
+@pytest.mark.asyncio
+async def test_mcp_dispatch_sends_unknown_arguments_to_the_server(tmp_path):
+    tool = _mcp_tool("search_docs", _TYPED_MCP_SCHEMA)
+    server_call = AsyncMock(return_value="found")
+    tool.func.async_call = server_call
+    agent = _agent(tool)
+    request = ToolCallRequest(
+        tool_name="search_docs",
+        args={"query": "q", "limit": "3", "trace": "on"},
+        tool_call_id="call-mcp",
+    )
+    task_lock = MagicMock()
+    task_lock.put_queue = AsyncMock()
+
+    with (
+        _running_journal(tmp_path) as journal,
+        run_context_scope(_context(tmp_path)),
+        patch(
+            "app.run_runtime.tool_checkpoint.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(f"{_LCA}.get_task_lock", return_value=task_lock),
+        patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+    ):
+        await agent._aexecute_tool(request)
+
+        tool_call = journal.list_tool_calls("run-1")[0]
+
+    server_call.assert_awaited_once_with(query="q", limit=3, trace="on")
+    assert tool_call.status == "completed"

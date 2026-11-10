@@ -150,7 +150,8 @@ def check_tool_arguments(
     """Bind model arguments to a tool before it is authorized or dispatched.
 
     Missing required parameters and parameters the tool does not accept are
-    reported by name. A quoted scalar is converted only when the published
+    reported by name; MCP tools forward parameters their schema does not
+    list to the server, which validates them. A quoted scalar is converted only when the published
     schema declares exactly an integer, number or boolean and the text is an
     exact spelling of that type; anything ambiguous is passed through as is.
     Only CAMEL FunctionTools are checked, because they invoke exactly
@@ -164,6 +165,11 @@ def check_tool_arguments(
     if not isinstance(tool, FunctionTool) or not isinstance(arguments, dict):
         return ToolArgumentCheck(arguments)
     properties, additional_allowed = _published_parameters(tool)
+    if _forwards_to_mcp_server(tool):
+        # The MCP server validates its own arguments, and CAMEL publishes
+        # ``additionalProperties: false`` whatever the server's schema says.
+        # Keys the schema does not list are forwarded unchanged, as before.
+        additional_allowed = True
     problems = _binding_problems(
         _call_signature(tool),
         arguments,
@@ -243,6 +249,12 @@ def _call_signature(tool: Any) -> inspect.Signature | None:
         return inspect.signature(func)
     except (TypeError, ValueError):
         return None
+
+
+def _forwards_to_mcp_server(tool: Any) -> bool:
+    # CAMEL's MCP client functions carry ``async_call``, which sends the
+    # keyword arguments to the server; the agent dispatches MCP tools by it.
+    return callable(getattr(getattr(tool, "func", None), "async_call", None))
 
 
 def _bound_signature(tool: Any) -> inspect.Signature | None:
