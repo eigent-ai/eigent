@@ -443,6 +443,8 @@ async def create_file_access(body: FileAccessRequest) -> dict:
     Elements such as <img> and <iframe> cannot send the Desktop capability
     header, so /files/stream and /files/preview accept this grant instead.
     """
+    # TODO(brain-auth): Phase B must derive the grant owner from
+    # request.state.brain_auth instead of trusting body.email/user_id.
     access, expires_at = issue_file_access_grant(
         FileAccessScope.of(
             body.email, body.project_id, body.space_id, body.user_id
@@ -451,17 +453,12 @@ async def create_file_access(body: FileAccessRequest) -> dict:
     return {"access": access, "expires_at": expires_at}
 
 
-@router.api_route(
-    "/files/stream/{filename}",
-    methods=["GET", "HEAD"],
-    dependencies=[Depends(require_file_stream_access)],
-)
-@router.api_route(
-    "/files/stream",
-    methods=["GET", "HEAD"],
-    dependencies=[Depends(require_file_stream_access)],
-)
+@router.api_route("/files/stream/{filename}", methods=["GET", "HEAD"])
+@router.api_route("/files/stream", methods=["GET", "HEAD"])
 async def stream_file(
+    # The grant check is part of the endpoint, so every route that serves it
+    # (with or without a display filename, GET or HEAD) enforces it.
+    _access: Annotated[None, Depends(require_file_stream_access)],
     filename: str | None = None,
     path: str = Query(..., description="Relative path from project root"),
     project_id: str = Query(..., description="Project ID"),

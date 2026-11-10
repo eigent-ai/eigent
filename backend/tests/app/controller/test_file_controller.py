@@ -685,6 +685,41 @@ def test_desktop_file_stream_requires_a_grant_for_the_same_root(
     assert remote.get("/files/stream", params=granted).status_code == 403
 
 
+def test_desktop_named_pdf_stream_requires_a_grant(monkeypatch, tmp_path):
+    """The display-name route the PDF viewer uses is guarded like the bare one."""
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "report.pdf").write_bytes(b"0123456789")
+    client, _ = _desktop_file_client(monkeypatch, project_root)
+    file_params = {**SCOPE_PARAMS, "path": "report.pdf"}
+    named = "/files/stream/report.pdf"
+
+    assert client.get(named, params=file_params).status_code == 401
+    assert client.head(named, params=file_params).status_code == 401
+    other_root, _ = issue_file_access_grant(
+        FileAccessScope.of("user@example.com", "project-2")
+    )
+    assert (
+        client.get(
+            named, params={**file_params, "access": other_root}
+        ).status_code
+        == 401
+    )
+
+    access = client.post(
+        "/files/access", json=SCOPE_PARAMS, headers=CAPABILITY
+    ).json()["access"]
+    granted = {**file_params, "access": access}
+    ranged = client.get(named, params=granted, headers={"Range": "bytes=2-5"})
+    assert ranged.status_code == 206
+    assert ranged.content == b"2345"
+    assert ranged.headers["content-range"] == "bytes 2-5/10"
+    head = client.head(named, params=granted)
+    assert head.status_code == 200
+    assert head.headers["content-length"] == "10"
+
+
 def test_desktop_file_preview_reads_the_root_named_by_its_grant(
     monkeypatch, tmp_path
 ):
@@ -765,6 +800,11 @@ def test_web_mode_keeps_streams_open_and_previews_use_grants(
         "/files/stream", params={**SCOPE_PARAMS, "path": "index.html"}
     )
     assert stream.status_code == 200
+    named = client.head(
+        "/files/stream/index.html",
+        params={**SCOPE_PARAMS, "path": "index.html"},
+    )
+    assert named.status_code == 200
     assert client.get("/files", params=SCOPE_PARAMS).status_code == 200
 
     access = client.post("/files/access", json=SCOPE_PARAMS).json()["access"]
