@@ -16,4 +16,13 @@ import click
 
 
 @click.group()
-def cli(): ...
+def cli():
+    """Eigent CLI - Run AI multi-agent tasks from the command line."""
+    ...
+
+
+from app.command.config import config  # noqa: E402, F401
+from app.command.run import run  # noqa: E402, F401
+
+cli.add_command(config)
+cli.add_command(run)
