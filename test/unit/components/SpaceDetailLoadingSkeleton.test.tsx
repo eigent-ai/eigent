@@ -67,7 +67,7 @@ describe('SpaceDetail loading skeletons', () => {
     (tab, marker) => {
       const { container } = render(<SpaceDetailTabSkeleton tab={tab} />);
       const loadingLabel = {
-        context: 'Loading Context content',
+        context: 'Loading Files content',
         memory: 'Loading Memory content',
         'workspace-profile': 'Loading Workspace settings content',
       }[tab];

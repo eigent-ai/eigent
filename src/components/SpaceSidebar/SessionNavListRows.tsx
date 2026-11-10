@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { sidebarTabButtonClass } from '@/components/Layout/AppSidebar';
+import { SidebarRowTooltip } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -50,7 +51,7 @@ export interface SessionNavItem {
   achieved?: boolean;
   pinned?: boolean;
   source?: 'user' | 'trigger';
-  /** e.g. relative time, shown when `showRowMenu` is false. */
+  /** e.g. relative time or the Session's Space; hidden while the row menu shows. */
   trailing?: string;
   /** Shown in a split pane that does not have focus. */
   openInPane?: boolean;
@@ -84,6 +85,8 @@ export interface SessionNavListRowsProps {
    * neutral hover fill; sidebar keeps the subtle fill.
    */
   panelListHover?: boolean;
+  /** Rows under a parent row (a Space in Home): indented inside the row. */
+  nested?: boolean;
   /** When false, hide the trailing action area (session list and workspace recent: time only). */
   showRowMenu?: boolean;
   openIn?: SessionOpenInActions;
@@ -265,11 +268,13 @@ function SessionNavRow({
   onPinSession,
   onEndSession,
   onDeleteSession,
+  nested,
 }: {
   session: SessionNavItem;
   active: boolean;
   panelListHover: boolean;
   showRowMenu: boolean;
+  nested: boolean;
   triggerSourceLabel: string;
   inOwnWindowLabel: string;
   openIn?: SessionOpenInActions;
@@ -290,23 +295,19 @@ function SessionNavRow({
 
   return (
     <div className="min-w-0">
-      {/* Tooltip trigger is the whole tab so it anchors to the row’s right edge,
-          not the inner title button. avoidCollisions={false} stops Floating UI
-          from treating the sidebar’s overflow clip as the boundary and shifting
-          the tip back over the row. */}
-      <TooltipSimple
+      {/* The whole tab triggers the sidebar's shared tooltip, which lines up
+          with the row's top outside the sidebar. */}
+      <SidebarRowTooltip
         content={session.title}
-        side="right"
-        align="start"
-        sideOffset={4}
-        avoidCollisions={false}
-        variant="instant"
         enabled={!menuOpen}
         className={SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS}
       >
         <div
           className={cn(
-            'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pr-3 pl-3',
+            'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pr-3',
+            // A nested row keeps its indent inside, so its fill spans the
+            // full sidebar width like its parent row.
+            nested ? 'pl-ds-24' : 'pl-3',
             'transition-colors duration-150',
             selected
               ? panelListHover
@@ -353,8 +354,17 @@ function SessionNavRow({
                 aria-label={triggerSourceLabel}
               />
             ) : null}
-            {!showRowMenu && session.trailing ? (
-              <span className="shrink-0 pl-1 text-ds-text-meta text-ds-ink-muted-default tabular-nums">
+            {session.trailing ? (
+              // With a row menu, the trailing text gives way to it on hover,
+              // focus and while the menu is open.
+              <span
+                className={cn(
+                  'max-w-24 min-w-0 shrink truncate pl-1 text-ds-text-meta text-ds-ink-muted-default tabular-nums',
+                  showRowMenu &&
+                    'group-focus-within/session-item:hidden group-hover/session-item:hidden',
+                  showRowMenu && menuOpen && 'hidden'
+                )}
+              >
                 {session.trailing}
               </span>
             ) : null}
@@ -375,7 +385,7 @@ function SessionNavRow({
             />
           ) : null}
         </div>
-      </TooltipSimple>
+      </SidebarRowTooltip>
     </div>
   );
 }
@@ -392,6 +402,7 @@ export function SessionNavListRows({
   panelListHover = false,
   showRowMenu = true,
   openIn,
+  nested = false,
 }: SessionNavListRowsProps) {
   const { t } = useTranslation();
   const triggerSourceLabel = t('layout.task-source-trigger');
@@ -455,6 +466,7 @@ export function SessionNavListRows({
             active={active}
             panelListHover={panelListHover}
             showRowMenu={showRowMenu}
+            nested={nested}
             triggerSourceLabel={triggerSourceLabel}
             inOwnWindowLabel={inOwnWindowLabel}
             openIn={openIn}

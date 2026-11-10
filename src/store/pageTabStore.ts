@@ -69,6 +69,22 @@ export function normalizeShellPlace(value: unknown): ShellPlace {
   return value === 'home' ? 'home' : 'space';
 }
 
+/** How Home's sidebar orders Spaces: by last activity, or newest first. */
+export type HomeSpaceSort = 'updated' | 'created';
+
+export function normalizeHomeSpaceSort(value: unknown): HomeSpaceSort {
+  return value === 'created' ? 'created' : 'updated';
+}
+
+/** Whether Home's sidebar groups Sessions under their Spaces or lists them all. */
+export type HomeSidebarGrouping = 'spaces' | 'list';
+
+export function normalizeHomeSidebarGrouping(
+  value: unknown
+): HomeSidebarGrouping {
+  return value === 'list' ? 'list' : 'spaces';
+}
+
 export interface SessionBrowserNavigationState {
   url: string;
   title: string;
@@ -544,6 +560,12 @@ export interface PageTabState {
   /** Spaces folded in the Home sidebar. Persisted. */
   homeFoldedSpaceIds: string[];
   setHomeSpaceFolded: (spaceId: string, folded: boolean) => void;
+  /** Spaces order in the Home sidebar. Persisted. */
+  homeSpaceSort: HomeSpaceSort;
+  setHomeSpaceSort: (sort: HomeSpaceSort) => void;
+  /** Home sidebar grouping. Persisted. */
+  homeSidebarGrouping: HomeSidebarGrouping;
+  setHomeSidebarGrouping: (grouping: HomeSidebarGrouping) => void;
   /**
    * Workspace rail visibility, toggled from the title bar. Only the workspace
    * shell honours this — Home and Settings always show their rail.
@@ -887,6 +909,12 @@ export const usePageTabStore = create<PageTabState>()(
         }),
       shellPlace: 'space',
       setShellPlace: (place) => set({ shellPlace: normalizeShellPlace(place) }),
+      homeSpaceSort: 'updated',
+      setHomeSpaceSort: (sort) =>
+        set({ homeSpaceSort: normalizeHomeSpaceSort(sort) }),
+      homeSidebarGrouping: 'spaces',
+      setHomeSidebarGrouping: (grouping) =>
+        set({ homeSidebarGrouping: normalizeHomeSidebarGrouping(grouping) }),
       homeFoldedSpaceIds: [],
       setHomeSpaceFolded: (spaceId, folded) =>
         set((state) => {
@@ -1810,6 +1838,10 @@ export const usePageTabStore = create<PageTabState>()(
                 (id): id is string => typeof id === 'string'
               )
             : currentState.homeFoldedSpaceIds,
+          homeSpaceSort: normalizeHomeSpaceSort(persisted.homeSpaceSort),
+          homeSidebarGrouping: normalizeHomeSidebarGrouping(
+            persisted.homeSidebarGrouping
+          ),
         };
       },
       partialize: (state) => ({
@@ -1817,6 +1849,8 @@ export const usePageTabStore = create<PageTabState>()(
         workspaceSidebarHidden: state.workspaceSidebarHidden,
         shellPlace: state.shellPlace,
         homeFoldedSpaceIds: state.homeFoldedSpaceIds,
+        homeSpaceSort: state.homeSpaceSort,
+        homeSidebarGrouping: state.homeSidebarGrouping,
         chatTimelineDetailLevel: state.chatTimelineDetailLevel,
         narrativeInformationDensity: state.narrativeInformationDensity,
         customAgentFolderPathByProjectId:

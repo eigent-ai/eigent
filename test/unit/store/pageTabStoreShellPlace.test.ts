@@ -102,4 +102,45 @@ describe('pageTabStore shell place', () => {
     ).toMatchObject({ shellPlace: 'space', homeFoldedSpaceIds: [] });
     expect(merge(undefined, current).shellPlace).toBe('space');
   });
+
+  it('persists the Spaces sort and restores only a known value', () => {
+    const options = usePageTabStore.persist.getOptions();
+    usePageTabStore.getState().setHomeSpaceSort('created');
+    expect(options.partialize!(usePageTabStore.getState())).toMatchObject({
+      homeSpaceSort: 'created',
+    });
+
+    const current = usePageTabStore.getInitialState();
+    const merge = options.merge!;
+    expect(merge({ homeSpaceSort: 'created' }, current).homeSpaceSort).toBe(
+      'created'
+    );
+    expect(
+      merge(
+        { homeSpaceSort: 'name' } as unknown as Partial<PageTabState>,
+        current
+      ).homeSpaceSort
+    ).toBe('updated');
+    expect(merge(undefined, current).homeSpaceSort).toBe('updated');
+  });
+
+  it('persists the sidebar grouping and restores only a known value', () => {
+    const options = usePageTabStore.persist.getOptions();
+    usePageTabStore.getState().setHomeSidebarGrouping('list');
+    expect(options.partialize!(usePageTabStore.getState())).toMatchObject({
+      homeSidebarGrouping: 'list',
+    });
+
+    const current = usePageTabStore.getInitialState();
+    const merge = options.merge!;
+    expect(
+      merge({ homeSidebarGrouping: 'list' }, current).homeSidebarGrouping
+    ).toBe('list');
+    expect(
+      merge(
+        { homeSidebarGrouping: 'folders' } as unknown as Partial<PageTabState>,
+        current
+      ).homeSidebarGrouping
+    ).toBe('spaces');
+  });
 });

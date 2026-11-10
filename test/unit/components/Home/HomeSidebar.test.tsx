@@ -203,10 +203,12 @@ describe('HomeSidebar', () => {
       shellPlace: 'home',
       activeWorkspaceTab: 'new-project',
       homeFoldedSpaceIds: [],
+      homeSpaceSort: 'updated',
+      homeSidebarGrouping: 'spaces',
     });
   });
 
-  it('starts with New session and All Spaces, and ends with New Space', async () => {
+  it('starts with New session and All Spaces, with New Space in the Spaces header', async () => {
     const user = userEvent.setup();
     renderSidebar();
 
@@ -225,15 +227,105 @@ describe('HomeSidebar', () => {
       '/home?section=spaces'
     );
 
-    await user.click(
-      within(sidebar()).getByRole('button', { name: 'New Space' })
-    );
+    const newSpace = within(sidebar()).getByRole('button', {
+      name: 'New Space',
+    });
+    expect(newSpace.closest('[data-section-header-actions]')).not.toBeNull();
+    await user.click(newSpace);
     expect(
       screen.getByRole('dialog', { name: 'Create a new Space' })
     ).toBeInTheDocument();
   });
 
-  it('lists every Space with four recent Sessions, a pin mark and Show all', async () => {
+  it('sorts Spaces by creation time from the Spaces header menu', async () => {
+    const user = userEvent.setup();
+    act(() => {
+      useSpaceStore.setState((state) => ({
+        spaces: {
+          ...state.spaces,
+          'space-research': { ...state.spaces['space-research'], createdAt: 1 },
+          'space-ops': { ...state.spaces['space-ops'], createdAt: 2 },
+        },
+      }));
+    });
+    renderSidebar();
+    expect(spaceNames()).toEqual(['space-research', 'space-ops']);
+
+    await user.click(
+      within(sidebar()).getByRole('button', { name: 'View options' })
+    );
+    (await screen.findByRole('menuitem', { name: 'Sort by' })).focus();
+    await user.keyboard('{ArrowRight}');
+    const updated = await screen.findByRole('menuitemradio', {
+      name: 'Updated time',
+    });
+    expect(updated).toHaveAttribute('aria-checked', 'true');
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    expect(usePageTabStore.getState().homeSpaceSort).toBe('created');
+    expect(spaceNames()).toEqual(['space-ops', 'space-research']);
+  });
+
+  it('lists every Session in one list, each with its Space', async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await user.click(
+      within(sidebar()).getByRole('button', { name: 'View options' })
+    );
+    (await screen.findByRole('menuitem', { name: 'Organize by' })).focus();
+    await user.keyboard('{ArrowRight}');
+    await screen.findByRole('menuitemradio', { name: 'One list' });
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    expect(usePageTabStore.getState().homeSidebarGrouping).toBe('list');
+    expect(spaceNames()).toEqual([]);
+    expect(
+      within(sidebar()).getByRole('button', { name: 'Sessions' })
+    ).toBeInTheDocument();
+    // All five Research Sessions (no four-row cap) and Ops' one, newest first.
+    const rows = within(sidebar())
+      .getAllByRole('button', {
+        name: /Weekly report|Competitor scan|Pricing notes|Hiring plan|Old notes|Vendor invoices/,
+      })
+      .map((row) => row.textContent);
+    expect(rows).toHaveLength(6);
+    expect(rows[0]).toContain('Weekly report');
+    expect(rows[0]).toContain('Research');
+    expect(rows[5]).toContain('Vendor invoices');
+    expect(rows[5]).toContain('Ops');
+  });
+
+  it('pins a Space and deletes it from its row menu', async () => {
+    const user = userEvent.setup();
+    const deleteSpaceOnServer = vi.fn().mockResolvedValue(undefined);
+    useSpaceStore.setState({ deleteSpaceOnServer });
+    renderSidebar();
+
+    await user.click(
+      within(sidebar()).getByRole('button', { name: 'More actions for Ops' })
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Pin Space' })
+    );
+    expect(
+      useSpaceStore.getState().pinnedSpaceIdsByUser[pinnedSpaceOwnerKey(null)]
+    ).toEqual(['space-research', 'space-ops']);
+
+    await user.click(
+      within(sidebar()).getByRole('button', { name: 'More actions for Ops' })
+    );
+    expect(
+      await screen.findByRole('menuitem', { name: 'Unpin Space' })
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Delete Space' }));
+    const confirm = await screen.findByRole('alertdialog');
+    await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
+
+    expect(deleteSpaceOnServer).toHaveBeenCalledWith('space-ops');
+  });
+
+  it('lists every Space with four recent Sessions and Show all, without a pin mark', async () => {
     const user = userEvent.setup();
     mocks.spaceAttention = { 'space-ops': { running: 1, waiting: 0 } };
     renderSidebar();
@@ -253,9 +345,22 @@ describe('HomeSidebar', () => {
     expect(
       within(research).queryByRole('button', { name: 'Old notes' })
     ).not.toBeInTheDocument();
+    // Pinned Spaces already show on the rail, so the row has no pin mark.
     expect(
-      within(research).getByRole('button', { name: 'Research, Pinned' })
+      within(research).getByRole('button', { name: 'Research' })
     ).toBeInTheDocument();
+    expect(research.querySelector('.lucide-pin')).toBeNull();
+    // Nested rows keep their indent inside, so hover fills span full width,
+    // and every row sits 2px apart.
+    const sessionRow = within(research)
+      .getByRole('button', { name: 'Weekly report' })
+      .closest('.group\\/session-item') as HTMLElement;
+    expect(sessionRow).toHaveClass('pl-ds-24');
+    const nestedRows = research.lastElementChild as HTMLElement;
+    expect(nestedRows).toContainElement(sessionRow);
+    expect(nestedRows).not.toHaveClass('pl-ds-12');
+    expect(nestedRows).toHaveClass('gap-0.5');
+    expect(research).toHaveClass('gap-0.5');
     expect(
       within(sidebar()).getByRole('button', { name: 'Ops, 1 running' })
     ).toBeInTheDocument();
@@ -383,7 +488,7 @@ describe('HomeSidebar', () => {
     expect(ops).toHaveAttribute('aria-current', 'page');
 
     await user.click(
-      within(sidebar()).getByRole('button', { name: 'Research, Pinned' })
+      within(sidebar()).getByRole('button', { name: 'Research' })
     );
     expect(screen.getByTestId('location')).toHaveTextContent(
       '/home?section=spaces&spaceId=space-research'
