@@ -98,3 +98,36 @@ def test_path_status_decodes_utf8_independently_of_locale(
     monkeypatch.setattr(subprocess, "_text_encoding", lambda: "cp1252")
 
     assert backend.path_status(tmp_path, (target,)) == {"报告.md": "??"}
+
+
+def test_init_repository_owns_non_ascii_root_under_legacy_locale(
+    tmp_path: Path, monkeypatch
+):
+    # A Windows profile such as C:\Users\Алексей with a cp1251 locale: Git
+    # prints the repository root as UTF-8, which must not be decoded with
+    # the locale codec or the ownership check compares two different paths.
+    monkeypatch.setattr(subprocess, "_text_encoding", lambda: "cp1251")
+    root = tmp_path / "Алексей" / "eigent" / "Space"
+    backend = GitBackend()
+
+    probe = backend.init_repository(root)
+
+    assert probe.is_repository
+    assert probe.owns_requested_root
+    assert probe.repository_root == root.resolve()
+    assert backend.probe(root).owns_requested_root
+
+
+def test_commit_paths_lists_non_ascii_filenames_unquoted(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr(subprocess, "_text_encoding", lambda: "cp1252")
+    root = tmp_path / "Алексей"
+    backend = GitBackend()
+    backend.init_repository(root)
+    target = root / "отчёт.md"
+    target.write_text("content\n", encoding="utf-8")
+
+    commit = backend.commit_paths(root, (target,), message="baseline")
+
+    assert backend.show_commit_paths(root, commit) == ("отчёт.md",)
