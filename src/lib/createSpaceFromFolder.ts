@@ -23,6 +23,15 @@ import type { ProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { isDisposableBlankSpace, useSpaceStore } from '@/store/spaceStore';
 import i18next, { type TFunction } from 'i18next';
 
+// Folders the local Brain always refuses as a Space root.
+const PROTECTED_FOLDER_REASONS = new Set([
+  'filesystem_root_forbidden',
+  'home_root_forbidden',
+  'system_path_forbidden',
+  'other_user_home_forbidden',
+  'sensitive_path_forbidden',
+]);
+
 export function getFolderSpaceErrorMessage(error: unknown, t: TFunction) {
   const err = error as {
     status?: number;
@@ -33,6 +42,10 @@ export function getFolderSpaceErrorMessage(error: unknown, t: TFunction) {
   const code =
     typeof detail === 'object' && detail !== null
       ? String((detail as { code?: unknown }).code || '')
+      : '';
+  const reason =
+    typeof detail === 'object' && detail !== null
+      ? String((detail as { reason?: unknown }).reason || '')
       : '';
   const text = typeof detail === 'string' ? detail : err.message || '';
 
@@ -45,6 +58,12 @@ export function getFolderSpaceErrorMessage(error: unknown, t: TFunction) {
     err.status === 409
   ) {
     return t('layout.workspace-folder-already-bound');
+  }
+  if (
+    code === 'invalid_workspace_path' &&
+    PROTECTED_FOLDER_REASONS.has(reason)
+  ) {
+    return t('layout.workspace-folder-protected');
   }
   if (code === 'invalid_workspace_path' || err.status === 403) {
     return t('layout.workspace-folder-unavailable');

@@ -549,6 +549,7 @@
   "workspace-folder-binding-local-only": "Папку можно связать, только когда Eigent работает на этом устройстве.",
   "workspace-folder-already-bound": "Эта папка уже используется другим Пространством.",
   "workspace-folder-unavailable": "Eigent не может получить доступ к этой папке на устройстве.",
+  "workspace-folder-protected": "Eigent не может использовать эту папку: это системная папка, папка учётной записи или папка верхнего уровня. Выберите папку проекта.",
   "workspace-folder-space-create-failed": "Не удалось создать Пространство из этой папки. Повторите попытку.",
   "task-source-trigger": "Автоматический запуск",
   "workspace-recent-sessions-heading": "Recent",

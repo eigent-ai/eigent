@@ -558,6 +558,7 @@
   "workspace-folder-binding-local-only": "Puoi collegare solo un cartello quando Eigent è eseguito su questo dispositivo.",
   "workspace-folder-already-bound": "Quel cartello è già utilizzato da altro Spazio.",
   "workspace-folder-unavailable": "Eigent non può raggiungere quel cartello su questo dispositivo.",
+  "workspace-folder-protected": "Eigent non può usare quella cartella perché è una cartella di sistema, dell'account o di primo livello. Scegli invece una cartella di progetto.",
   "workspace-folder-space-create-failed": "Impossibile creare uno spazio dal cartellino. Prova ancora.",
   "task-source-trigger": "Esecuzione automatizzata",
   "workspace-recent-sessions-heading": "Ultimi sessioni",

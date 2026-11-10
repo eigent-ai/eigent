@@ -72,7 +72,10 @@ vi.mock('@/lib/spaceProject', () => ({
   createSyncedProjectInSpace: mocks.createProject,
 }));
 
-import { createSpaceFromFolderPicker } from '@/lib/createSpaceFromFolder';
+import {
+  createSpaceFromFolderPicker,
+  getFolderSpaceErrorMessage,
+} from '@/lib/createSpaceFromFolder';
 
 describe('createSpaceFromFolderPicker', () => {
   beforeEach(() => {
@@ -119,5 +122,33 @@ describe('createSpaceFromFolderPicker', () => {
     );
     expect(mocks.deleteSpace).not.toHaveBeenCalled();
     expect(mocks.setActiveSpace).toHaveBeenCalledWith('empty-space');
+  });
+});
+
+describe('getFolderSpaceErrorMessage', () => {
+  const t = ((key: string) => key) as unknown as Parameters<
+    typeof getFolderSpaceErrorMessage
+  >[1];
+  const refusal = (reason: string) => ({
+    status: 403,
+    response: { data: { detail: { code: 'invalid_workspace_path', reason } } },
+  });
+
+  it.each([
+    'filesystem_root_forbidden',
+    'home_root_forbidden',
+    'system_path_forbidden',
+    'other_user_home_forbidden',
+    'sensitive_path_forbidden',
+  ])('explains that %s is a protected folder', (reason) => {
+    expect(getFolderSpaceErrorMessage(refusal(reason), t)).toBe(
+      'layout.workspace-folder-protected'
+    );
+  });
+
+  it('keeps the generic message for other path refusals', () => {
+    expect(
+      getFolderSpaceErrorMessage(refusal('filesystem_capability_denied'), t)
+    ).toBe('layout.workspace-folder-unavailable');
   });
 });

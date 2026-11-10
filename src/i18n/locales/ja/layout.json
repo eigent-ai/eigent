@@ -549,6 +549,7 @@
   "workspace-folder-binding-local-only": "Eigent がこのデバイスで実行されている場合にのみ、フォルダをリンクできます。",
   "workspace-folder-already-bound": "そのフォルダは別の Space ですでに使用されています。",
   "workspace-folder-unavailable": "Eigent はこのデバイス上のフォルダにアクセスできません。",
+  "workspace-folder-protected": "このフォルダはシステム、アカウント、または最上位のフォルダのため、Eigent では使用できません。プロジェクトフォルダを選択してください。",
   "workspace-folder-space-create-failed": "そのフォルダから Space を作成できませんでした。再試行してください。",
   "task-source-trigger": "自動実行",
   "workspace-recent-sessions-heading": "最近",

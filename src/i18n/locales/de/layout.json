@@ -558,6 +558,7 @@
   "workspace-folder-binding-local-only": "Sie können nur eine Ordner verknüpfen, wenn Eigent auf diesem Gerät läuft.",
   "workspace-folder-already-bound": "Der Ordner wird bereits einem anderen Raum zugeordnet.",
   "workspace-folder-unavailable": "Eigent kann diesen Ordner nicht auf diesem Gerät erreichen.",
+  "workspace-folder-protected": "Eigent kann diesen Ordner nicht verwenden, weil es sich um einen System-, Konto- oder obersten Ordner handelt. Wählen Sie stattdessen einen Projektordner.",
   "workspace-folder-space-create-failed": "Konnten Sie einen Raum aus dem Ordner erstellen. Versuchen Sie es erneut.",
   "task-source-trigger": "Automatisierter Lauf",
   "workspace-recent-sessions-heading": "Zuletzt gesicherte Sitzungen",
