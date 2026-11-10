@@ -100,7 +100,11 @@ export function useDesktopUpdater() {
       const store = useDesktopUpdateStore.getState();
       if (info.update) {
         store.setAvailable(info.newVersion);
-      } else if (store.phase !== 'downloaded' && store.phase !== 'installing') {
+      } else if (
+        store.phase !== 'downloading' &&
+        store.phase !== 'downloaded' &&
+        store.phase !== 'installing'
+      ) {
         store.setIdle();
       }
     };
