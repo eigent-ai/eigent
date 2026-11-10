@@ -32,6 +32,7 @@ from camel.toolkits import (
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.agent.toolkit import file_write_toolkit
 from app.agent.toolkit.file_write_toolkit import FileToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.run_context import RunContext, run_context_scope
 from app.run_journal import SQLiteRunJournal
 from app.tool_validation import check_tool_arguments
@@ -163,6 +164,33 @@ def test_missing_required_argument_is_rejected_by_name(tmp_path):
     assert checked.rejection.error_code == "missing_tool_argument"
     assert checked.rejection.field == "filename"
     assert "'filename'" in str(checked.rejection)
+
+
+def test_parameter_only_the_published_base_requires_is_not_missing(tmp_path):
+    # shell_exec publishes CAMEL's signature, where ``id`` is required, but
+    # Eigent's override gives ``id`` a default, so the call binds without it.
+    toolkit = TerminalToolkit(
+        "project-1",
+        working_directory=str(tmp_path),
+        clone_current_env=False,
+    )
+    toolkit = ToolkitMessageIntegration(
+        message_handler=_send_status
+    ).register_toolkits(toolkit)
+    tool = {t.get_function_name(): t for t in toolkit.get_tools()}[
+        "shell_exec"
+    ]
+    assert (
+        "id" in tool.openai_tool_schema["function"]["parameters"]["required"]
+    )
+
+    without_id = check_tool_arguments(tool, "shell_exec", {"command": "ls"})
+    without_command = check_tool_arguments(tool, "shell_exec", {"id": "s1"})
+
+    assert without_id.rejection is None
+    assert without_id.arguments == {"command": "ls"}
+    assert without_command.rejection is not None
+    assert without_command.rejection.field == "command"
 
 
 # --- grep_files: quoted scalars follow the published schema ---
@@ -310,8 +338,8 @@ def test_strings_and_ambiguous_unions_are_left_untouched():
 
 
 def test_schema_that_allows_extra_properties_is_not_tightened():
-    # MCP tools publish the server's own schema; JSON Schema allows extra
-    # properties unless the schema forbids them.
+    # JSON Schema allows extra properties unless the schema forbids them.
+    # CAMEL's own tool schemas, including MCP tools, always forbid them.
     def remote_call(*, query: str) -> str:
         return query
 

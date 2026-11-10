@@ -168,6 +168,7 @@ def check_tool_arguments(
         _call_signature(tool),
         arguments,
         additional_allowed=additional_allowed,
+        bound_signature=_bound_signature(tool),
     )
     coerced = dict(arguments)
     for name, value in arguments.items():
@@ -244,11 +245,33 @@ def _call_signature(tool: Any) -> inspect.Signature | None:
         return None
 
 
+def _bound_signature(tool: Any) -> inspect.Signature | None:
+    """Return the signature the call finally binds to, when it differs.
+
+    ``listen_toolkit`` can publish a base class signature for an override
+    that gives a parameter a default. The override is what runs, so a
+    parameter it does not require is not missing.
+    """
+
+    signature = getattr(
+        getattr(tool, "func", None), "__listen_call_signature__", None
+    )
+    return signature if isinstance(signature, inspect.Signature) else None
+
+
+def _requires(signature: inspect.Signature | None, name: str) -> bool:
+    if signature is None:
+        return True
+    parameter = signature.parameters.get(name)
+    return parameter is None or parameter.default is inspect.Parameter.empty
+
+
 def _binding_problems(
     signature: inspect.Signature | None,
     arguments: dict[str, Any],
     *,
     additional_allowed: bool | None,
+    bound_signature: inspect.Signature | None = None,
 ) -> list[_ArgumentProblem]:
     if signature is None:
         return []
@@ -282,6 +305,7 @@ def _binding_problems(
         if parameter.kind in _KEYWORD_KINDS
         and parameter.default is inspect.Parameter.empty
         and name not in arguments
+        and _requires(bound_signature, name)
     ]
     if missing:
         problems.append(
