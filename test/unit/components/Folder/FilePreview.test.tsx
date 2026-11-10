@@ -18,6 +18,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
+  authorizeBrainFileMock,
   invokeMock,
   hostMock,
   loadFilePreviewMock,
@@ -26,6 +27,7 @@ const {
 } = vi.hoisted(() => {
   const invokeMock = vi.fn();
   return {
+    authorizeBrainFileMock: vi.fn(),
     invokeMock,
     hostMock: { ipcRenderer: { invoke: invokeMock } },
     loadFilePreviewMock: vi.fn(),
@@ -33,6 +35,10 @@ const {
     toastErrorMock: vi.fn(),
   };
 });
+
+vi.mock('@/lib/brainFileAccess', () => ({
+  authorizeBrainFile: authorizeBrainFileMock,
+}));
 
 vi.mock('@/host', () => ({
   useHost: () => hostMock,
@@ -62,7 +68,7 @@ vi.mock('@/components/Folder/index', () => ({
     loadFailed,
     onRetry,
   }: {
-    loadFailed?: boolean;
+    loadFailed?: boolean | string;
     onRetry?: () => void;
     selectedFile: FileInfo | null;
     emptyState?: ReactNode;
@@ -72,7 +78,7 @@ vi.mock('@/components/Folder/index', () => ({
     <>
       <span>{selectedFile?.name}</span>
       {loadFailed && (
-        <div role="alert">
+        <div role="alert" data-failure={String(loadFailed)}>
           Failed<button onClick={onRetry}>Retry</button>
         </div>
       )}
@@ -92,6 +98,7 @@ vi.mock('@/components/Folder/index', () => ({
 describe('FilePreview', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authorizeBrainFileMock.mockImplementation(async (file) => file);
     resolveArtifactAssetFileMock.mockImplementation(async (file) => file);
     loadFilePreviewMock.mockImplementation(async (file) => ({
       ...file,
@@ -179,6 +186,7 @@ describe('file selection and loading recovery', () => {
   };
   beforeEach(() => {
     vi.clearAllMocks();
+    authorizeBrainFileMock.mockImplementation(async (target) => target);
     resolveArtifactAssetFileMock.mockImplementation(async (target) => target);
     loadFilePreviewMock.mockImplementation(async (target) => target);
   });
@@ -219,6 +227,36 @@ describe('file selection and loading recovery', () => {
     );
     expect(signal.aborted).toBe(true);
     expect(resolveArtifactAssetFileMock.mock.calls[1][1].aborted).toBe(false);
+  });
+  it('tells the viewer when a file access grant has expired', async () => {
+    const { FileAccessDeniedError } = await import('@/lib/filePreviewLoader');
+    loadFilePreviewMock.mockRejectedValueOnce(new FileAccessDeniedError());
+    render(<FilePreview file={file} />);
+    expect(await screen.findByRole('alert')).toHaveAttribute(
+      'data-failure',
+      'access-expired'
+    );
+  });
+  it('cancels the file access request of a preview that was replaced', async () => {
+    authorizeBrainFileMock.mockImplementationOnce(
+      () => new Promise<FileInfo>(() => {})
+    );
+    const next = { ...file, name: 'next.zip', path: '/workspace/next.zip' };
+    const { rerender } = render(<FilePreview file={file} />);
+    await waitFor(() =>
+      expect(authorizeBrainFileMock).toHaveBeenCalledTimes(1)
+    );
+    const [, signal] = authorizeBrainFileMock.mock.calls[0];
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal.aborted).toBe(false);
+
+    rerender(<FilePreview file={next} />);
+
+    await waitFor(() =>
+      expect(authorizeBrainFileMock).toHaveBeenCalledTimes(2)
+    );
+    expect(signal.aborted).toBe(true);
+    expect(authorizeBrainFileMock.mock.calls[1][1].aborted).toBe(false);
   });
   it('does not restore a cleared selection when an old request finishes', async () => {
     let resolve!: (value: FileInfo) => void;

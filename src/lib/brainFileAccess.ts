@@ -58,25 +58,43 @@ function encodePathSegments(path: string): string {
     .join('/');
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException('File access request cancelled', 'AbortError');
+  }
+}
+
 /**
  * Return `file` with a fresh grant on its URL when it is a file on the
  * connected Brain. Any other file, or a failed request, is returned unchanged.
+ * An aborted `signal` rejects with an AbortError and requests no grant.
  */
-export async function authorizeBrainFile(file: FileInfo): Promise<FileInfo> {
+export async function authorizeBrainFile(
+  file: FileInfo,
+  signal?: AbortSignal
+): Promise<FileInfo> {
+  throwIfAborted(signal);
   if (file.isFolder || !isRemotePreviewSource(file)) return file;
   const url = parseStreamUrl(file.path);
   if (!url) return file;
   const baseURL = await getBaseURL().catch(() => '');
+  throwIfAborted(signal);
   if (url.origin !== parseUrl(baseURL || window.location.href)?.origin) {
     return file;
   }
 
-  const response = await fetchPost('/files/access', {
-    project_id: url.searchParams.get('project_id'),
-    email: url.searchParams.get('email'),
-    space_id: url.searchParams.get('space_id') || undefined,
-    user_id: url.searchParams.get('user_id') || undefined,
-  }).catch(() => null);
+  const response = await fetchPost(
+    '/files/access',
+    {
+      project_id: url.searchParams.get('project_id'),
+      email: url.searchParams.get('email'),
+      space_id: url.searchParams.get('space_id') || undefined,
+      user_id: url.searchParams.get('user_id') || undefined,
+    },
+    undefined,
+    { signal }
+  ).catch(() => null);
+  throwIfAborted(signal);
   const access = response?.access;
   if (typeof access !== 'string' || !access) return file;
 

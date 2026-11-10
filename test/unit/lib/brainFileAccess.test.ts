@@ -45,12 +45,17 @@ describe('authorizeBrainFile', () => {
 
     const authorized = await authorizeBrainFile(file);
 
-    expect(fetchPost).toHaveBeenCalledWith('/files/access', {
-      project_id: '42',
-      email: 'dev@example.com',
-      space_id: 'space-1',
-      user_id: '7',
-    });
+    expect(fetchPost).toHaveBeenCalledWith(
+      '/files/access',
+      {
+        project_id: '42',
+        email: 'dev@example.com',
+        space_id: 'space-1',
+        user_id: '7',
+      },
+      undefined,
+      { signal: undefined }
+    );
     expect(authorized).toEqual({
       ...file,
       path: `${STREAM}&space_id=space-1&user_id=7&access=${GRANT}`,
@@ -90,6 +95,42 @@ describe('authorizeBrainFile', () => {
       await expect(authorizeBrainFile(file)).resolves.toBe(file);
     }
     expect(fetchPost).not.toHaveBeenCalled();
+  });
+
+  it('passes the preview signal to the grant request', async () => {
+    const controller = new AbortController();
+
+    await authorizeBrainFile(remoteFile(STREAM), controller.signal);
+
+    expect(fetchPost).toHaveBeenCalledWith(
+      '/files/access',
+      expect.any(Object),
+      undefined,
+      { signal: controller.signal }
+    );
+  });
+
+  it('requests no grant for a preview that was already replaced', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      authorizeBrainFile(remoteFile(STREAM), controller.signal)
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(getBaseURL).not.toHaveBeenCalled();
+    expect(fetchPost).not.toHaveBeenCalled();
+  });
+
+  it('rejects instead of returning an unauthorized file when aborted mid-request', async () => {
+    const controller = new AbortController();
+    vi.mocked(fetchPost).mockImplementationOnce(async () => {
+      controller.abort();
+      throw new DOMException('Request owner left', 'AbortError');
+    });
+
+    await expect(
+      authorizeBrainFile(remoteFile(STREAM), controller.signal)
+    ).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('returns the file unchanged when no grant is issued', async () => {
