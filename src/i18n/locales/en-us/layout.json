@@ -1642,6 +1642,10 @@
   "organize-one-list": "One list",
   "spaces-view-options": "View options",
   "delete-space": "Delete Space",
+  "session-mark-read": "Mark as read",
+  "session-mark-unread": "Mark as unread",
+  "session-open-in-new-window": "Open in new window",
+  "session-open-in-new-tab": "Open in new tab",
   "global-search": "Search",
   "global-search-all": "All",
   "global-search-recents": "Recents",
@@ -1661,5 +1665,7 @@
   "unfold-space": "Unfold {{name}}",
   "show-all-sessions": "Show all {{count}}",
   "show-all-sessions-in-space": "Show all {{count}} sessions in {{name}}",
+  "show-fewer-sessions": "Show less",
+  "show-fewer-sessions-in-space": "Show fewer sessions in {{name}}",
   "new-session-space": "Space for this session"
 }

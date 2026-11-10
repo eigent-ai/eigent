@@ -13,10 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
+import { markSessionOutcomeSeen } from '@/lib/sessionOutcome';
 import { openSessionWindow } from '@/lib/sessionWindows';
 import { executionScope } from '@/service/executionApi';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { readSessionExecutionRoute } from '@/store/sessionExecutionStore';
 import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
 import { useSpaceStore, type SpaceProjectMeta } from '@/store/spaceStore';
@@ -69,6 +71,8 @@ export function shouldListSession(project: SpaceProjectMeta): boolean {
  * make it active, load its history, and show the Session tab.
  */
 export async function openSessionInShell(projectId: string): Promise<void> {
+  useSessionControlsStore.getState().setSessionUnread(projectId, false);
+  markSessionOutcomeSeen(projectId);
   const projectStore = useProjectRuntimeStore.getState();
   const setActiveWorkspaceTab =
     usePageTabStore.getState().setActiveWorkspaceTab;

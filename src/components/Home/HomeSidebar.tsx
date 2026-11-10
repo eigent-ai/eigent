@@ -14,6 +14,7 @@
 
 import eigentIconBlack from '@/assets/logo/icon_black.svg';
 import eigentIconWhite from '@/assets/logo/icon_white.svg';
+import { isWeb } from '@/client/platform';
 import {
   getChoosableSpaces,
   pinSpaceOrChoose,
@@ -33,13 +34,13 @@ import { SessionControlDialogs } from '@/components/SpaceSidebar/SessionControlD
 import {
   SessionNavListRows,
   type SessionNavItem,
+  type SessionRowContextActions,
 } from '@/components/SpaceSidebar/SessionNavListRows';
 import { SidebarAccordionSection } from '@/components/SpaceSidebar/SidebarAccordionSection';
 import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
-import { DsText } from '@/components/ui/ds-text';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useSessionNavStatuses } from '@/hooks/useSessionNavStatuses';
@@ -52,9 +53,15 @@ import { isProjectAchieved } from '@/lib/projectAchievement';
 import {
   presentationForKind,
   resolveSessionNavLeadPresentation,
+  SESSION_NAV_IDLE_LEAD,
   type SessionNavLeadPresentation,
 } from '@/lib/sessionNavLead';
 import { shouldListSession } from '@/lib/sessionOpen';
+import {
+  isSessionOutcomeSeen,
+  markSessionOutcomeSeen,
+} from '@/lib/sessionOutcome';
+import { openSessionWindow } from '@/lib/sessionWindows';
 import { isHomePagePath } from '@/lib/shellRoutes';
 import { spaceEmoji } from '@/lib/spaceEmoji';
 import {
@@ -101,6 +108,9 @@ interface SessionRowSources {
   t: TFunction;
   navLeadByProjectId: Readonly<Record<string, SessionNavLeadPresentation>>;
   historyLoadingProjectIds: Readonly<Record<string, true>>;
+  pinnedProjectIds: readonly string[];
+  unreadProjectIds: readonly string[];
+  seenOutcomes: Readonly<Record<string, string>>;
   attention: Readonly<Record<string, RunAttentionState>>;
 }
 
@@ -114,21 +124,36 @@ function toSessionNavItem(
 ): SessionNavItem {
   const achieved = isProjectAchieved(meta.metadata);
   const attentionState = sources.attention[meta.id];
-  const cachedLead =
-    sources.navLeadByProjectId[meta.id] ??
-    (attentionState === 'waiting'
+  const attentionLead =
+    attentionState === 'waiting'
       ? presentationForKind('hitl')
       : attentionState === 'running'
         ? presentationForKind('running', true)
-        : undefined);
+        : undefined;
+  // A cached idle lead says nothing is known, so it can't hide live work.
+  const knownLead = sources.navLeadByProjectId[meta.id];
+  const cachedLead =
+    knownLead && knownLead.kind !== 'idle'
+      ? knownLead
+      : (attentionLead ?? knownLead);
+  const sessionLead = resolveSessionNavLeadPresentation({
+    cachedLead,
+    isHistoryLoading: Boolean(sources.historyLoadingProjectIds[meta.id]),
+    isAchieved: achieved,
+  });
   return {
     id: meta.id,
     title: getSessionMetaDisplayName(meta, sources.t),
-    sessionLead: resolveSessionNavLeadPresentation({
-      cachedLead,
-      isHistoryLoading: Boolean(sources.historyLoadingProjectIds[meta.id]),
-      isAchieved: achieved,
-    }),
+    pinned: sources.pinnedProjectIds.includes(meta.id),
+    unread: sources.unreadProjectIds.includes(meta.id),
+    // A result that has been read stops showing as a status.
+    sessionLead: isSessionOutcomeSeen(
+      meta.id,
+      sessionLead.kind,
+      sources.seenOutcomes
+    )
+      ? SESSION_NAV_IDLE_LEAD
+      : sessionLead,
     achieved,
   };
 }
@@ -177,10 +202,10 @@ interface HomeSpaceGroupProps {
   rowSources: SessionRowSources;
   onToggleFold: () => void;
   onOpenWorkspace: () => void;
-  onShowAll: () => void;
   onSessionClick: (projectId: string) => void;
   onEndSession: (projectId: string) => void;
   onDeleteSession: (projectId: string) => void;
+  sessionContextActions: SessionRowContextActions;
   canDeleteSpace: boolean;
   onTogglePinSpace: () => void;
   onDeleteSpace: () => void;
@@ -188,7 +213,7 @@ interface HomeSpaceGroupProps {
 
 /**
  * One Space in Home: its icon folds the group, its name opens the Workspace
- * page, and up to four recent Sessions follow.
+ * page, and up to four recent Sessions follow. Show all lists the rest in place.
  */
 function HomeSpaceGroup({
   space,
@@ -201,10 +226,10 @@ function HomeSpaceGroup({
   rowSources,
   onToggleFold,
   onOpenWorkspace,
-  onShowAll,
   onSessionClick,
   onEndSession,
   onDeleteSession,
+  sessionContextActions,
   canDeleteSpace,
   onTogglePinSpace,
   onDeleteSpace,
@@ -213,9 +238,12 @@ function HomeSpaceGroup({
   const groupId = useId();
   const name = getActiveSpaceTriggerLabel(space.name, t);
   const statusText = spaceRailStatusText(attention, t);
+  const [showAllSessions, setShowAllSessions] = useState(false);
   const visibleSessions = folded
     ? []
-    : sessions.slice(0, HOME_SPACE_RECENT_SESSIONS);
+    : showAllSessions
+      ? sessions
+      : sessions.slice(0, HOME_SPACE_RECENT_SESSIONS);
   useSessionNavStatuses(
     visibleSessions.map((session) => session.id),
     folded ? null : space.id
@@ -315,6 +343,7 @@ function HomeSpaceGroup({
             onSessionClick={onSessionClick}
             onEndSession={onEndSession}
             onDeleteSession={onDeleteSession}
+            contextActions={sessionContextActions}
             folded={false}
             nested
           />
@@ -322,24 +351,24 @@ function HomeSpaceGroup({
         {!folded && sessions.length > HOME_SPACE_RECENT_SESSIONS ? (
           <NavTab
             active={false}
-            onClick={onShowAll}
-            // Indented inside the row, under the Session titles.
-            leading={
-              <span aria-hidden className="ml-ds-12 size-ds-icon-md shrink-0" />
-            }
+            onClick={() => setShowAllSessions((showAll) => !showAll)}
+            // The spacer lines the label up with the Session names.
+            leading={<span aria-hidden className="size-ds-icon-md shrink-0" />}
             label={
-              <DsText
-                as="span"
-                role="meta"
-                className="text-ds-ink-muted-default"
-              >
-                {t('layout.show-all-sessions', { count: sessions.length })}
-              </DsText>
+              <span className="text-ds-text-base font-medium text-ds-ink-subtle-default">
+                {showAllSessions
+                  ? t('layout.show-fewer-sessions')
+                  : t('layout.show-all-sessions', { count: sessions.length })}
+              </span>
             }
-            ariaLabel={t('layout.show-all-sessions-in-space', {
-              count: sessions.length,
-              name,
-            })}
+            ariaLabel={
+              showAllSessions
+                ? t('layout.show-fewer-sessions-in-space', { name })
+                : t('layout.show-all-sessions-in-space', {
+                    count: sessions.length,
+                    name,
+                  })
+            }
           />
         ) : null}
       </div>
@@ -382,6 +411,17 @@ export default function HomeSidebar() {
     (state) => state.setHomeSpaceFolded
   );
   const requestAction = useSessionControlsStore((state) => state.requestAction);
+  const pinnedProjectIds = useSessionControlsStore(
+    (state) => state.pinnedProjectIds
+  );
+  const togglePinned = useSessionControlsStore((state) => state.togglePinned);
+  const unreadProjectIds = useSessionControlsStore(
+    (state) => state.unreadProjectIds
+  );
+  const seenOutcomes = useSessionControlsStore((state) => state.seenOutcomes);
+  const setSessionUnread = useSessionControlsStore(
+    (state) => state.setSessionUnread
+  );
   const pinnedSpaceIds = usePinnedSpaceIds();
   const spaceAttention = useSpaceAttention();
   const sessionAttention = useSessionAttention();
@@ -499,6 +539,9 @@ export default function HomeSidebar() {
     t,
     navLeadByProjectId,
     historyLoadingProjectIds,
+    pinnedProjectIds,
+    unreadProjectIds,
+    seenOutcomes,
     attention: sessionAttention,
   };
 
@@ -516,6 +559,25 @@ export default function HomeSidebar() {
     ];
   });
 
+  // Pinned Sessions leave their Space for the Pinned section, in pin order.
+  const pinnedSessions = useMemo(() => {
+    const listed = new Map(
+      orderedSpaces
+        .flatMap((space) => sessionsBySpace[space.id] ?? [])
+        .map((meta) => [meta.id, meta])
+    );
+    return pinnedProjectIds.flatMap((id) => {
+      const meta = listed.get(id);
+      return meta ? [meta] : [];
+    });
+  }, [orderedSpaces, pinnedProjectIds, sessionsBySpace]);
+  const pinnedItems = pinnedSessions.map((meta) => ({
+    ...toSessionNavItem(meta, rowSources),
+    trailing: getActiveSpaceTriggerLabel(spaces[meta.spaceId]?.name, t),
+  }));
+  const isUnpinned = (meta: SpaceProjectMeta) =>
+    !pinnedProjectIds.includes(meta.id);
+
   // One list: every listed Session, newest activity (or creation) first,
   // each naming its Space.
   const listSessions = useMemo(() => {
@@ -532,20 +594,21 @@ export default function HomeSidebar() {
       activity.sessions
     ).map((id) => byId.get(id)!);
   }, [activity.sessions, grouping, orderedSpaces, sessionsBySpace, spaceSort]);
-  const listItems = listSessions.map((meta) => ({
+  const listItems = listSessions.filter(isUnpinned).map((meta) => ({
     ...toSessionNavItem(meta, rowSources),
     trailing: getActiveSpaceTriggerLabel(spaces[meta.spaceId]?.name, t),
   }));
-  const listStatusTargets = useMemo(() => {
+  // Space groups load their own rows; these rows sit outside any group.
+  const statusTargets = useMemo(() => {
     const bySpace = new Map<string, string[]>();
-    for (const meta of listSessions) {
+    for (const meta of new Set([...listSessions, ...pinnedSessions])) {
       bySpace.set(meta.spaceId, [
         ...(bySpace.get(meta.spaceId) ?? []),
         meta.id,
       ]);
     }
     return [...bySpace].map(([spaceId, ids]) => ({ spaceId, ids }));
-  }, [listSessions]);
+  }, [listSessions, pinnedSessions]);
 
   const requestEndSession = useCallback(
     (projectId: string) => requestAction('end', projectId),
@@ -554,6 +617,32 @@ export default function HomeSidebar() {
   const requestDeleteSession = useCallback(
     (projectId: string) => requestAction('delete', projectId),
     [requestAction]
+  );
+
+  const sessionContextActions = useMemo<SessionRowContextActions>(
+    () => ({
+      onRename: (projectId) => requestAction('rename', projectId),
+      onPin: togglePinned,
+      onSetUnread: (projectId, unread) => {
+        setSessionUnread(projectId, unread);
+        if (!unread) markSessionOutcomeSeen(projectId);
+      },
+      onOpenInNewWindow: (projectId) => {
+        const spaceId = useSpaceStore.getState().projectIdIndex[projectId];
+        if (!spaceId) return;
+        void openSessionWindow({ spaceId, projectId }).catch(
+          (error: unknown) => {
+            console.error(
+              '[HomeSidebar] Failed to open Session window:',
+              error
+            );
+            toast.error(t('layout.open-in-new-window-failed'));
+          }
+        );
+      },
+      newWindowKind: isWeb() ? 'tab' : 'window',
+    }),
+    [requestAction, setSessionUnread, t, togglePinned]
   );
 
   const newSessionLabel = t('layout.new-project');
@@ -647,6 +736,13 @@ export default function HomeSidebar() {
               ariaLabel={homeLabel}
               className="pb-1"
             >
+              {statusTargets.map(({ spaceId, ids }) => (
+                <SessionStatusLoader
+                  key={spaceId}
+                  spaceId={spaceId}
+                  projectIds={ids}
+                />
+              ))}
               {needsYouItems.length > 0 ? (
                 <SidebarAccordionSection
                   label={t('layout.needs-you')}
@@ -661,8 +757,28 @@ export default function HomeSidebar() {
                   />
                 </SidebarAccordionSection>
               ) : null}
+              {pinnedItems.length > 0 ? (
+                <SidebarAccordionSection
+                  label={t('layout.pinned')}
+                  className={needsYouItems.length > 0 ? undefined : 'mt-0'}
+                >
+                  <SessionNavListRows
+                    sessions={pinnedItems}
+                    activeSessionId={activeSessionId}
+                    onSessionClick={openSession}
+                    onEndSession={requestEndSession}
+                    onDeleteSession={requestDeleteSession}
+                    contextActions={sessionContextActions}
+                    folded={false}
+                  />
+                </SidebarAccordionSection>
+              ) : null}
               <SidebarAccordionSection
-                className={needsYouItems.length > 0 ? undefined : 'mt-0'}
+                className={
+                  needsYouItems.length > 0 || pinnedItems.length > 0
+                    ? undefined
+                    : 'mt-0'
+                }
                 label={
                   grouping === 'list'
                     ? t('layout.sessions-heading')
@@ -692,23 +808,15 @@ export default function HomeSidebar() {
                 }
               >
                 {grouping === 'list' ? (
-                  <>
-                    {listStatusTargets.map(({ spaceId, ids }) => (
-                      <SessionStatusLoader
-                        key={spaceId}
-                        spaceId={spaceId}
-                        projectIds={ids}
-                      />
-                    ))}
-                    <SessionNavListRows
-                      sessions={listItems}
-                      activeSessionId={activeSessionId}
-                      onSessionClick={openSession}
-                      onEndSession={requestEndSession}
-                      onDeleteSession={requestDeleteSession}
-                      folded={false}
-                    />
-                  </>
+                  <SessionNavListRows
+                    sessions={listItems}
+                    activeSessionId={activeSessionId}
+                    onSessionClick={openSession}
+                    onEndSession={requestEndSession}
+                    onDeleteSession={requestDeleteSession}
+                    contextActions={sessionContextActions}
+                    folded={false}
+                  />
                 ) : null}
                 {grouping === 'list'
                   ? null
@@ -716,7 +824,9 @@ export default function HomeSidebar() {
                       <HomeSpaceGroup
                         key={space.id}
                         space={space}
-                        sessions={sessionsBySpace[space.id] ?? []}
+                        sessions={(sessionsBySpace[space.id] ?? []).filter(
+                          isUnpinned
+                        )}
                         folded={foldedSpaceIds.includes(space.id)}
                         selected={routeSpaceId === space.id}
                         pinned={pinnedSpaceIds.includes(space.id)}
@@ -730,12 +840,10 @@ export default function HomeSidebar() {
                           )
                         }
                         onOpenWorkspace={() => openSpaceWorkspace(space.id)}
-                        onShowAll={() =>
-                          openSpaceWorkspace(space.id, 'projects')
-                        }
                         onSessionClick={openSession}
                         onEndSession={requestEndSession}
                         onDeleteSession={requestDeleteSession}
+                        sessionContextActions={sessionContextActions}
                         canDeleteSpace={
                           space.status === 'active' && !isLegacySpace(space)
                         }

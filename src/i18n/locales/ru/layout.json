@@ -1686,6 +1686,10 @@
   "organize-one-list": "Один список",
   "spaces-view-options": "Параметры вида",
   "delete-space": "Удалить Пространство",
+  "session-mark-read": "Отметить как прочитанное",
+  "session-mark-unread": "Отметить как непрочитанное",
+  "session-open-in-new-window": "Открыть в новом окне",
+  "session-open-in-new-tab": "Открыть в новой вкладке",
   "global-search": "Поиск",
   "global-search-all": "Все",
   "global-search-recents": "Недавние",
@@ -1705,5 +1709,7 @@
   "unfold-space": "Развернуть {{name}}",
   "show-all-sessions": "Показать все ({{count}})",
   "show-all-sessions-in-space": "Показать все сессии в {{name}} ({{count}})",
+  "show-fewer-sessions": "Показать меньше",
+  "show-fewer-sessions-in-space": "Показать меньше сессий в {{name}}",
   "new-session-space": "Пространство для этой сессии"
 }

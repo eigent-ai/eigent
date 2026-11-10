@@ -1642,6 +1642,10 @@
   "organize-one-list": "Eine Liste",
   "spaces-view-options": "Ansichtsoptionen",
   "delete-space": "Space löschen",
+  "session-mark-read": "Als gelesen markieren",
+  "session-mark-unread": "Als ungelesen markieren",
+  "session-open-in-new-window": "In neuem Fenster öffnen",
+  "session-open-in-new-tab": "In neuem Tab öffnen",
   "global-search": "Suchen",
   "global-search-all": "Alle",
   "global-search-recents": "Zuletzt verwendet",
@@ -1661,5 +1665,7 @@
   "unfold-space": "{{name}} ausklappen",
   "show-all-sessions": "Alle {{count}} anzeigen",
   "show-all-sessions-in-space": "Alle {{count}} Sitzungen in {{name}} anzeigen",
+  "show-fewer-sessions": "Weniger anzeigen",
+  "show-fewer-sessions-in-space": "Weniger Sitzungen in {{name}} anzeigen",
   "new-session-space": "Space für diese Sitzung"
 }

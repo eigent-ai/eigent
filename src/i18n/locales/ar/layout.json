@@ -1730,6 +1730,10 @@
   "organize-one-list": "قائمة واحدة",
   "spaces-view-options": "خيارات العرض",
   "delete-space": "حذف المساحة",
+  "session-mark-read": "تعليم كمقروء",
+  "session-mark-unread": "تعليم كغير مقروء",
+  "session-open-in-new-window": "فتح في نافذة جديدة",
+  "session-open-in-new-tab": "فتح في علامة تبويب جديدة",
   "global-search": "بحث",
   "global-search-all": "الكل",
   "global-search-recents": "الأخيرة",
@@ -1749,5 +1753,7 @@
   "unfold-space": "توسيع {{name}}",
   "show-all-sessions": "عرض الكل ({{count}})",
   "show-all-sessions-in-space": "عرض كل الجلسات ({{count}}) في {{name}}",
+  "show-fewer-sessions": "عرض أقل",
+  "show-fewer-sessions-in-space": "عرض جلسات أقل في {{name}}",
   "new-session-space": "مساحة هذه الجلسة"
 }

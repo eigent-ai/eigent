@@ -122,6 +122,9 @@ vi.mock('@/components/SessionWindow/SessionInOwnWindow', () => ({
 vi.mock('@/hooks/useSessionSplitView', () => ({
   useSessionSplitFocusTracking: vi.fn(),
 }));
+vi.mock('@/hooks/useMarkSessionOutcomeSeen', () => ({
+  useMarkSessionOutcomeSeen: vi.fn(),
+}));
 vi.mock('@/hooks/useSessionWindows', () => ({
   useMainWindowSessionWindows: vi.fn(),
 }));

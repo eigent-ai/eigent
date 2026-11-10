@@ -1620,6 +1620,10 @@
   "organize-one-list": "单一列表",
   "spaces-view-options": "视图选项",
   "delete-space": "删除空间",
+  "session-mark-read": "标记为已读",
+  "session-mark-unread": "标记为未读",
+  "session-open-in-new-window": "在新窗口中打开",
+  "session-open-in-new-tab": "在新标签页中打开",
   "global-search": "搜索",
   "global-search-all": "全部",
   "global-search-recents": "最近",
@@ -1639,5 +1643,7 @@
   "unfold-space": "展开 {{name}}",
   "show-all-sessions": "显示全部 {{count}} 个",
   "show-all-sessions-in-space": "显示 {{name}} 的全部 {{count}} 个会话",
+  "show-fewer-sessions": "收起",
+  "show-fewer-sessions-in-space": "收起 {{name}} 的会话",
   "new-session-space": "本会话所在空间"
 }

@@ -1620,6 +1620,10 @@
   "organize-one-list": "1つのリスト",
   "spaces-view-options": "表示オプション",
   "delete-space": "スペースを削除",
+  "session-mark-read": "既読にする",
+  "session-mark-unread": "未読にする",
+  "session-open-in-new-window": "新しいウィンドウで開く",
+  "session-open-in-new-tab": "新しいタブで開く",
   "global-search": "検索",
   "global-search-all": "すべて",
   "global-search-recents": "最近",
@@ -1639,5 +1643,7 @@
   "unfold-space": "{{name}} を展開",
   "show-all-sessions": "すべて表示（{{count}}）",
   "show-all-sessions-in-space": "{{name}} のセッションをすべて表示（{{count}}）",
+  "show-fewer-sessions": "折りたたむ",
+  "show-fewer-sessions-in-space": "{{name}} のセッションを折りたたむ",
   "new-session-space": "このセッションのスペース"
 }
