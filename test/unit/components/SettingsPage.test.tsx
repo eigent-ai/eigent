@@ -1056,7 +1056,7 @@ describe('SettingsPage', () => {
     ).toHaveAttribute('aria-current', 'page');
   });
 
-  it('pins a Space from its Workspace page, or opens the chooser when 5 are pinned', async () => {
+  it('pins a Space from its Workspace page, or opens the chooser when 10 are pinned', async () => {
     const user = userEvent.setup();
     const now = Date.now();
     const makeSpace = (id: string, name: string) => ({
@@ -1069,7 +1069,8 @@ describe('SettingsPage', () => {
       createdAt: now,
       updatedAt: now,
     });
-    const pinnedIds = ['p-1', 'p-2', 'p-3', 'p-4'];
+    // One short of the ten-pin limit.
+    const pinnedIds = Array.from({ length: 9 }, (_, index) => `p-${index + 1}`);
     // The mocked account is user 7.
     const ownerKey = pinnedSpaceOwnerKey(7);
     usePinnedSpacesChooser.setState({ open: false });

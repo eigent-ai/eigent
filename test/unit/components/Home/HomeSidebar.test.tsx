@@ -356,7 +356,9 @@ describe('HomeSidebar', () => {
       tab: null,
     });
     expect(usePageTabStore.getState().shellPlace).toBe('home');
-    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/)
+    );
   });
 
   it('opens a Session of the active Space without switching Spaces', async () => {
