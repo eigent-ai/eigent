@@ -249,6 +249,18 @@ def clear_space_project_model_admission(
     if data.expected_model_admission_run_id is None:
         raise HTTPException(status_code=422, detail="Expected model admission Run is required")
     return update_space_project(space_id, project_id, data, db_session, auth)
+@router.delete("/{space_id}/projects/{project_id}", name="delete space project", status_code=204)
+def delete_space_project(
+    space_id: str,
+    project_id: str,
+    db_session: Session = Depends(session),
+    auth: V1UserAuth = Depends(auth_must),
+):
+    try:
+        SpaceService.delete_project(space_id, project_id, auth.id, db_session)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
 
 
 @router.post("/{space_id}/projects/{project_id}/promote", name="promote project to folder space", response_model=ProjectOut)
