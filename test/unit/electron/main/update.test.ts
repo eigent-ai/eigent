@@ -36,20 +36,25 @@ vi.mock('electron', () => ({
 
 vi.mock('electron-log', () => ({ default: mocks.log }));
 
+// The update feed provider module loads electron-updater internals through
+// createRequire as well. Stubbing those keeps the real provider module in
+// place, so these tests do not depend on which provider the build uses.
 vi.mock('node:module', () => {
+  const updaterInternals = {
+    GitHubProvider: class {},
+    Provider: class {},
+    parseUpdateInfo: () => ({}),
+    resolveFiles: () => [],
+    getChannelFilename: () => 'latest.yml',
+    newUrlFromBase: (path: string, base: URL) => new URL(path, base),
+  };
   const createRequire = () => (id: string) => {
-    if (id !== 'electron-updater') throw new Error(`unexpected ${id}`);
-    return { autoUpdater: mocks.autoUpdater };
+    if (id === 'electron-updater') return { autoUpdater: mocks.autoUpdater };
+    if (id.startsWith('electron-updater/out/')) return updaterInternals;
+    throw new Error(`unexpected ${id}`);
   };
   return { createRequire, default: { createRequire } };
 });
-
-vi.mock('../../../../electron/main/githubReleaseCdnProvider', () => ({
-  DEFAULT_CDN_RELEASE_BASE_URL: 'https://cdn.example.test/releases',
-  GitHubReleaseCdnProvider: class {},
-  getGitHubReleaseChannel: () => 'latest',
-  getUpdatePlatformDirectory: () => 'win-x64',
-}));
 
 function createAutoUpdater() {
   const updater = new EventEmitter() as EventEmitter & Record<string, any>;
