@@ -84,7 +84,7 @@ import {
 } from '@/store/spaceStore';
 import type { TFunction } from 'i18next';
 import { ChevronDown, ChevronRight, Folder, Plus } from 'lucide-react';
-import { useCallback, useId, useMemo, useState } from 'react';
+import { memo, useCallback, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -238,7 +238,12 @@ function HomeSpaceGroup({
   const groupId = useId();
   const name = getActiveSpaceTriggerLabel(space.name, t);
   const statusText = spaceRailStatusText(attention, t);
-  const [showAllSessions, setShowAllSessions] = useState(false);
+  const showAllSessions = usePageTabStore((state) =>
+    state.homeExpandedSpaceIds.includes(space.id)
+  );
+  const setHomeSpaceExpanded = usePageTabStore(
+    (state) => state.setHomeSpaceExpanded
+  );
   const visibleSessions = folded
     ? []
     : showAllSessions
@@ -351,7 +356,7 @@ function HomeSpaceGroup({
         {!folded && sessions.length > HOME_SPACE_RECENT_SESSIONS ? (
           <NavTab
             active={false}
-            onClick={() => setShowAllSessions((showAll) => !showAll)}
+            onClick={() => setHomeSpaceExpanded(space.id, !showAllSessions)}
             // The spacer lines the label up with the Session names.
             leading={<span aria-hidden className="size-ds-icon-md shrink-0" />}
             label={
@@ -381,7 +386,7 @@ function HomeSpaceGroup({
  * and every Space with its recent Sessions. Spaces sort by last activity once
  * per Home visit, so rows don't move while it's open.
  */
-export default function HomeSidebar() {
+function HomeSidebar() {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
   const location = useLocation();
@@ -863,3 +868,5 @@ export default function HomeSidebar() {
     </>
   );
 }
+
+export default memo(HomeSidebar);

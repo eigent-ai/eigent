@@ -23,6 +23,7 @@ import {
 import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
 import HomeSidebar from '@/components/Home/HomeSidebar';
+import { HomeSidebarSlot } from '@/components/Home/HomeSidebarHost';
 import { NewSessionSpaceChip } from '@/components/Home/NewSessionSpaceChip';
 import AppShellLayout, {
   APP_SHELL_CONTENT_CLASS,
@@ -80,11 +81,9 @@ export default function WorkspacePage() {
     activeProjectId ? state.getProjectMeta(activeProjectId) : null
   );
 
-  const {
-    activeWorkspaceTab: storedWorkspaceTab,
-    setHasAgentFiles,
-    setActiveWorkspaceTab,
-  } = usePageTabStore();
+  const storedWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
+  const setHasAgentFiles = usePageTabStore((s) => s.setHasAgentFiles);
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const shellPlace = usePageTabStore((s) => s.shellPlace);
   const inHome = shellPlace === 'home';
   // The composer landing is New session everywhere, and Home shows only a
@@ -525,7 +524,13 @@ export default function WorkspacePage() {
     <ReactFlowProvider>
       <AppShellLayout
         sidebar={
-          inHome ? <HomeSidebar /> : <SpaceSidebar chatStore={chatStore} />
+          inHome ? (
+            <HomeSidebarSlot workspace>
+              <HomeSidebar />
+            </HomeSidebarSlot>
+          ) : (
+            <SpaceSidebar />
+          )
         }
         sidebarHidden={workspaceSidebarHidden}
         /* Always mounted: hosts preview <webview> guests so their pages and

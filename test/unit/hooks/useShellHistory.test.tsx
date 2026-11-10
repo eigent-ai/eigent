@@ -159,6 +159,7 @@ describe('useShellHistory', () => {
     expect(mocks.switchToSpace).toHaveBeenCalledWith('space-a', {
       project: null,
       tab: null,
+      hydrate: true,
     });
   });
 

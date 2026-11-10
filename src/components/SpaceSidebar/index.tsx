@@ -46,7 +46,6 @@ import { AUTOMATION_ICON, AUTOMATION_OFF_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
-import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
@@ -61,7 +60,7 @@ import {
 } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { Cast, Inbox, Plus, Settings2 } from 'lucide-react';
-import { useCallback, useEffect, useId, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { SessionControlDialogs } from './SessionControlDialogs';
@@ -74,16 +73,12 @@ import {
 const NO_PANES: string[] = [];
 
 export interface SpaceSidebarProps {
-  chatStore: ChatStore | null;
   className?: string;
 }
 
 let didAttemptBootSessionResume = false;
 
-export default function SpaceSidebar({
-  chatStore: _chatStore,
-  className,
-}: SpaceSidebarProps) {
+function SpaceSidebar({ className }: SpaceSidebarProps) {
   const executeAppCommand = useAppCommand();
   const filesTabDescriptionId = useId();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
@@ -99,14 +94,15 @@ export default function SpaceSidebar({
   const wsConnectionStatus = useTriggerStore((s) => s.wsConnectionStatus);
   const triggerReconnect = useTriggerStore((s) => s.triggerReconnect);
   const triggersListenerConnected = wsConnectionStatus === 'connected';
-  const projectStore = useProjectRuntimeStore();
+  const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
+  // Rows read each Session's chat store, so they refresh as Sessions load.
+  const loadedProjects = useProjectRuntimeStore((s) => s.projects);
   const navLeadByProjectId = useProjectRuntimeStore(
     (s) => s.navLeadByProjectId
   );
   const historyLoadingProjectIds = useProjectRuntimeStore(
     (s) => s.historyLoadingProjectIds
   );
-  const activeProjectId = projectStore.activeProjectId;
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const visiblePanes = useVisibleSessionPanes(activeSpaceId);
   const windowedProjectIds = useSessionWindowsStore((s) => s.openProjectIds);
@@ -175,11 +171,11 @@ export default function SpaceSidebar({
 
   const ensureProjectLoaded = useCallback(
     (projectId: string, onHydrationStarted?: () => void) =>
-      ensureProjectRuntimeLoaded(projectStore, projectId, {
+      ensureProjectRuntimeLoaded(useProjectRuntimeStore.getState(), projectId, {
         onHydrationStarted,
         requireActiveSelection: true,
       }),
-    [projectStore]
+    []
   );
 
   const selectSession = useCallback(
@@ -310,7 +306,7 @@ export default function SpaceSidebar({
     didAttemptBootSessionResume = true;
 
     if (activeWorkspaceTab !== 'workforce') return;
-    if (projectStore.activeProjectId) return;
+    if (useProjectRuntimeStore.getState().activeProjectId) return;
     if (!activeSpaceId) return;
     const lastVisitedId =
       useSpaceStore.getState().lastVisitedProjectBySpace[activeSpaceId];
@@ -335,7 +331,9 @@ export default function SpaceSidebar({
           // `navLeadByProjectId` is kept live by `projectStore`'s chat-store
           // subscription registry — no need to peek into chat-store internals
           // here (those reads aren't tracked by React).
-          const projectChatStore = projectStore.peekActiveChatStore(project.id);
+          const projectChatStore = useProjectRuntimeStore
+            .getState()
+            .peekActiveChatStore(project.id);
           const projectChatState = projectChatStore?.getState();
           const activeTask = projectChatState?.activeTaskId
             ? projectChatState.tasks[projectChatState.activeTaskId]
@@ -365,13 +363,15 @@ export default function SpaceSidebar({
             splitViewUnavailableReason: splitViewUnavailableReason(project.id),
           };
         }),
+    // `loadedProjects` isn't read directly: rows read chat stores through it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       activeProjectId,
       historyLoadingProjectIds,
       navLeadByProjectId,
       pinnedProjectIds,
       projectMetasForActiveSpace,
-      projectStore,
+      loadedProjects,
       splitPanes,
       splitViewUnavailableReason,
       t,
@@ -402,7 +402,7 @@ export default function SpaceSidebar({
             (project) => project.id === lastVisitedProjectId
           ) ?? projectsInSpace[0];
         projectId = targetProject.id;
-        projectStore.setActiveProject(projectId);
+        useProjectRuntimeStore.getState().setActiveProject(projectId);
       }
     }
 
@@ -411,6 +411,7 @@ export default function SpaceSidebar({
       return;
     }
 
+    const projectStore = useProjectRuntimeStore.getState();
     const projectChatStore = projectStore.peekActiveChatStore(projectId);
     const taskId = projectChatStore?.getState().activeTaskId;
     if (taskId) {
@@ -435,7 +436,6 @@ export default function SpaceSidebar({
     activeProjectId,
     activeSpaceId,
     ensureProjectLoaded,
-    projectStore,
     setActiveWorkspaceTab,
     t,
   ]);
@@ -696,3 +696,5 @@ export default function SpaceSidebar({
     </>
   );
 }
+
+export default memo(SpaceSidebar);

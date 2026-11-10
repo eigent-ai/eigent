@@ -14,6 +14,7 @@
 
 import ChatBox from '@/components/ChatBox';
 import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
+import { SessionLoadingScan } from '@/components/ChatBox/SessionLoadingScan';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
@@ -516,7 +517,11 @@ function SessionContent({
     !chatStore &&
     sessionExecution.state.route?.route === 'legacy'
   ) {
-    return null;
+    return (
+      <div className="relative h-full w-full">
+        <SessionLoadingScan active label={t('chat.timeline-history-loading')} />
+      </div>
+    );
   }
 
   const sessionSidePanel =
