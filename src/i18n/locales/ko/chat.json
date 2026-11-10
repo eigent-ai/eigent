@@ -598,5 +598,18 @@
   "notice-use-own-api-key": "내 API 키 사용",
   "notice-credits-new": "작업을 실행하려면 크레딧을 추가하세요.",
   "notice-credits-new-description": "플랜을 업그레이드하거나 내 모델의 API 키를 사용하세요.",
-  "space-model-fallback": "이 스페이스의 모델을 더 이상 사용할 수 없어 이 세션은 기본 모델을 사용합니다."
+  "space-model-fallback": "이 스페이스의 모델을 더 이상 사용할 수 없어 이 세션은 기본 모델을 사용합니다.",
+  "workspace-blocked-title": "차단된 작업 공간 작업",
+  "workspace-blocked-description-file": "중지된 작업이 {{path}}의 변경을 완료하지 못해 이 스페이스의 새 편집이 일시 중지되었습니다. 디스크에 있는 내용을 체크포인트로 저장하거나 무시하세요.",
+  "workspace-blocked-description-process": "중지된 작업의 명령이 기록되지 않은 작업 공간 변경을 남겨 이 스페이스의 새 편집이 일시 중지되었습니다. 디스크에 있는 내용을 체크포인트로 저장하거나 무시하세요.",
+  "workspace-blocked-waiting": "해결하려면 실행 중인 작업을 중지하세요.",
+  "workspace-blocked-more": "{{count}}개 더 차단됨",
+  "workspace-blocked-save": "체크포인트로 저장",
+  "workspace-blocked-saving": "저장 중…",
+  "workspace-blocked-dismiss": "무시 (파일 변경 없음)",
+  "workspace-blocked-dismissing": "무시하는 중…",
+  "workspace-blocked-saved": "체크포인트로 저장했습니다. 계속 편집할 수 있습니다.",
+  "workspace-blocked-dismissed": "무시했습니다. 변경된 파일은 없습니다.",
+  "workspace-blocked-changed": "작업 공간이 변경되었습니다. 확인 후 다시 시도하세요.",
+  "workspace-blocked-failed": "차단된 작업을 해결하지 못했습니다. 다시 시도하세요."
 }

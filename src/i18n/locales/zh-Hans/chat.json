@@ -598,5 +598,18 @@
   "notice-use-own-api-key": "使用自己的 API 密钥",
   "notice-credits-new": "添加额度即可开始运行任务。",
   "notice-credits-new-description": "升级套餐，或使用自己模型的 API 密钥。",
-  "space-model-fallback": "此空间的模型已不可用，本会话将使用您的默认模型。"
+  "space-model-fallback": "此空间的模型已不可用，本会话将使用您的默认模型。",
+  "workspace-blocked-title": "工作区操作被阻塞",
+  "workspace-blocked-description-file": "一个已停止的任务对 {{path}} 的修改没有完成，因此此空间中的新编辑已暂停。你可以将磁盘上的当前内容保存为检查点，或忽略它。",
+  "workspace-blocked-description-process": "一个已停止任务的命令留下了未记录的工作区更改，因此此空间中的新编辑已暂停。你可以将磁盘上的当前内容保存为检查点，或忽略它。",
+  "workspace-blocked-waiting": "请先停止正在运行的任务，再处理此问题。",
+  "workspace-blocked-more": "还有 {{count}} 个被阻塞",
+  "workspace-blocked-save": "保存为检查点",
+  "workspace-blocked-saving": "正在保存…",
+  "workspace-blocked-dismiss": "忽略（不改动文件）",
+  "workspace-blocked-dismissing": "正在忽略…",
+  "workspace-blocked-saved": "已保存为检查点，可以继续编辑。",
+  "workspace-blocked-dismissed": "已忽略，没有改动任何文件。",
+  "workspace-blocked-changed": "工作区已发生变化，请检查后重试。",
+  "workspace-blocked-failed": "无法处理被阻塞的操作，请重试。"
 }
