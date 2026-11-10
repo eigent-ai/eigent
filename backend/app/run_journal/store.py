@@ -8084,28 +8084,26 @@ class SQLiteRunJournal:
                 (timestamp, intent_id, expected_status),
             )
             change_set_id = row["change_set_id"]
-            item_filter = (
-                "relative_path = ?"
-                if row["mutation_scope"] == "exact_path"
-                else "operation_request_id = ?"
-            )
-            connection.execute(
-                f"""
-                UPDATE git_change_set_items
-                SET item_state = 'ignored', updated_at = ?
-                WHERE change_set_id = ? AND item_state = 'pending'
-                  AND {item_filter}
-                """,
-                (
-                    timestamp,
-                    change_set_id,
-                    (
-                        row["relative_path"]
-                        if row["mutation_scope"] == "exact_path"
-                        else row["operation_request_id"]
-                    ),
-                ),
-            )
+            if row["mutation_scope"] == "exact_path":
+                connection.execute(
+                    """
+                    UPDATE git_change_set_items
+                    SET item_state = 'ignored', updated_at = ?
+                    WHERE change_set_id = ? AND item_state = 'pending'
+                      AND relative_path = ?
+                    """,
+                    (timestamp, change_set_id, row["relative_path"]),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE git_change_set_items
+                    SET item_state = 'ignored', updated_at = ?
+                    WHERE change_set_id = ? AND item_state = 'pending'
+                      AND operation_request_id = ?
+                    """,
+                    (timestamp, change_set_id, row["operation_request_id"]),
+                )
             unresolved = connection.execute(
                 """
                 SELECT 1 FROM git_mutation_intents

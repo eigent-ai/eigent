@@ -175,3 +175,61 @@ def test_abandoned_intent_is_terminal(tmp_path):
                     expected_status="abandoned",
                     status=status,
                 )
+
+
+def _insert_item(journal, relative_path, operation_request_id) -> None:
+    journal._connection.execute(
+        """INSERT INTO git_change_set_items(
+            change_set_id, relative_path, operation_request_id, actor_id,
+            trigger, change_kind, source, item_state, created_at, updated_at
+        ) VALUES ('cs-1', ?, ?, 'agent', 'test', 'modified',
+                  'agent_modified', 'pending', 1, 1)""",
+        (relative_path, operation_request_id),
+    )
+
+
+def _item_states(journal) -> dict[str, str]:
+    return {
+        item.relative_path: item.item_state
+        for item in journal.list_git_change_set_items("cs-1")
+    }
+
+
+@pytest.mark.parametrize(
+    ("scope", "relative_path", "trigger", "own_item"),
+    [
+        ("exact_path", "a.txt", "filesystem.edit", "a.txt"),
+        ("broad_process", None, "terminal.execute", "b.txt"),
+    ],
+)
+def test_abandoning_stops_tracking_only_its_own_items(
+    tmp_path, scope, relative_path, trigger, own_item
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        _seed(journal)
+        journal._connection.execute(
+            """INSERT INTO git_mutation_intents(
+                intent_id, change_set_id, operation_request_id,
+                mutation_scope, relative_path, preimage_digest, actor_id,
+                trigger, status, created_at, updated_at
+            ) VALUES ('intent-0', 'cs-1', 'request-0', ?, ?, NULL,
+                      'agent', ?, 'needs_attention', 1, 1)""",
+            (scope, relative_path, trigger),
+        )
+        # a.txt matches the exact path; b.txt was recorded by this
+        # operation; c.txt belongs to another operation.
+        _insert_item(journal, "a.txt", "request-other")
+        _insert_item(journal, "b.txt", "request-0")
+        _insert_item(journal, "c.txt", "request-other")
+        journal._connection.commit()
+
+        journal.abandon_git_mutation_intent(
+            intent_id="intent-0", expected_status="needs_attention"
+        )
+
+        expected = {"a.txt": "pending", "b.txt": "pending", "c.txt": "pending"}
+        expected[own_item] = "ignored"
+        assert _item_states(journal) == expected
+        # Other unfinished items keep the ChangeSet under review.
+        (change_set,) = journal.list_git_change_sets()
+        assert change_set.state == "needs_attention"
