@@ -17,10 +17,7 @@ import {
   pinSpaceOrChoose,
   usePinnedSpaceIds,
 } from '@/components/Layout/AppRail/pinnedSpaces';
-import {
-  spaceRailStatusText,
-  spaceRailTileInitial,
-} from '@/components/Layout/AppRail/SpaceRailTile';
+import { spaceRailStatusText } from '@/components/Layout/AppRail/SpaceRailTile';
 import {
   NavTab,
   SidebarNavGroup,
@@ -36,6 +33,7 @@ import {
   type SessionNavItem,
 } from '@/components/SpaceSidebar/SessionNavListRows';
 import { SidebarAccordionSection } from '@/components/SpaceSidebar/SidebarAccordionSection';
+import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -56,6 +54,7 @@ import {
 } from '@/lib/sessionNavLead';
 import { shouldListSession } from '@/lib/sessionOpen';
 import { isHomePagePath } from '@/lib/shellRoutes';
+import { spaceEmoji } from '@/lib/spaceEmoji';
 import {
   getActiveSpaceTriggerLabel,
   getSessionMetaDisplayName,
@@ -253,9 +252,7 @@ function HomeSpaceGroup({
             aria-hidden
             className="flex size-ds-icon-md items-center justify-center rounded-ds-4 bg-ds-neutral-muted-default text-ds-ink-default-default group-hover/space-row:hidden group-focus-visible/fold:hidden"
           >
-            <DsText as="span" role="meta" weight="semibold">
-              {spaceRailTileInitial(name)}
-            </DsText>
+            <SpaceGlyph name={name} emoji={spaceEmoji(space)} size="sm" />
           </span>
           <span
             aria-hidden
@@ -589,7 +586,8 @@ export default function HomeSidebar() {
       />
       <SidebarShell ariaLabel={homeLabel}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-clip">
-          <SidebarSection>
+          {/* The gap sits here, not on the list, so scrolling stops below it. */}
+          <SidebarSection className="mb-3">
             <SidebarNavGroup>
               <NavTab
                 active={onWorkspaceRoute && !sessionTabOpen}
@@ -628,7 +626,10 @@ export default function HomeSidebar() {
               className="pb-1"
             >
               {needsYouItems.length > 0 ? (
-                <SidebarAccordionSection label={t('layout.needs-you')}>
+                <SidebarAccordionSection
+                  label={t('layout.needs-you')}
+                  className="mt-0"
+                >
                   <SessionNavListRows
                     sessions={needsYouItems}
                     activeSessionId={activeSessionId}
@@ -639,6 +640,7 @@ export default function HomeSidebar() {
                 </SidebarAccordionSection>
               ) : null}
               <SidebarAccordionSection
+                className={needsYouItems.length > 0 ? undefined : 'mt-0'}
                 label={
                   grouping === 'list'
                     ? t('layout.sessions-heading')

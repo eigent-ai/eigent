@@ -16,6 +16,7 @@ import tokenDarkIcon from '@/assets/custom/token-dark.svg';
 import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
+import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,6 +37,8 @@ import {
   parseAutomationDraft,
   type AutomationDraftV1,
 } from '@/lib/automationDraft';
+import { spaceEmoji } from '@/lib/spaceEmoji';
+import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -43,6 +46,7 @@ import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice } from '@/store/pageTabStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { useSkillsStore } from '@/store/skillsStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
   DEFAULT_NARRATIVE_INFORMATION_DENSITY,
@@ -209,6 +213,11 @@ export function HeaderBox({
     projectStore,
     sessionMenuOpen,
   ]);
+  const sessionSpace = useSpaceStore((state) => {
+    const spaceId = projectId ? state.projectIdIndex?.[projectId] : undefined;
+    return spaceId ? state.spaces?.[spaceId] : undefined;
+  });
+  const sessionSpaceName = getActiveSpaceTriggerLabel(sessionSpace?.name, t);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const windowPreviewTooltip = sessionPreviewOpen
     ? t('layout.close-preview-tooltip', { defaultValue: 'Close preview' })
@@ -249,6 +258,27 @@ export function HeaderBox({
     >
       {/* Left: Session identity and its controls. */}
       <div className="flex min-w-0 items-center gap-ds-4">
+        {sessionSpace ? (
+          <TooltipSimple
+            content={sessionSpaceName}
+            compact
+            side="bottom"
+            align="start"
+            variant="instant"
+          >
+            <span
+              data-session-space-icon
+              tabIndex={0}
+              aria-label={sessionSpaceName}
+              className="flex size-ds-control-xs shrink-0 items-center justify-center rounded-ds-compact-control bg-ds-neutral-muted-default text-ds-ink-default-default outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
+            >
+              <SpaceGlyph
+                name={sessionSpaceName}
+                emoji={spaceEmoji(sessionSpace)}
+              />
+            </span>
+          </TooltipSimple>
+        ) : null}
         {projectName && projectId ? (
           <DropdownMenu
             open={sessionMenuOpen}

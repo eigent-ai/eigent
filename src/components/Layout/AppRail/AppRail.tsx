@@ -26,6 +26,7 @@ import { useSpaceAttention } from '@/hooks/useSpaceAttention';
 import { useOpenSpaceHomeTab, useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
 import { isHomePagePath, isSettingsPagePath } from '@/lib/shellRoutes';
+import { spaceEmoji } from '@/lib/spaceEmoji';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { APP_COMMAND, PINNED_SPACE_COMMANDS } from '@/shared/appCommands';
 import { usePageTabStore, type ShellPlace } from '@/store/pageTabStore';
@@ -126,6 +127,7 @@ export default function AppRail() {
       >
         <SpaceRailTile
           name={getActiveSpaceTriggerLabel(space.name, t)}
+          emoji={spaceEmoji(space)}
           pinned={pinned}
           selected={place === 'space' && spaceId === activeSpaceId}
           attention={attention[spaceId]}

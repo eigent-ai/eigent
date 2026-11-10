@@ -17,9 +17,9 @@ import {
   AppRail,
   getAppRailPlace,
   shouldShowAppRail,
-  spaceRailTileInitial,
   usePinnedSpacesChooser,
 } from '@/components/Layout/AppRail';
+import { spaceInitial } from '@/components/SpaceSidebar/SpaceGlyph';
 import { APP_COMMAND } from '@/shared/appCommands';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -512,6 +512,6 @@ describe('rail helpers', () => {
     ['🚀 Launch', '🚀'],
     ['', '?'],
   ])('uses %j -> %j as the tile initial', (name, initial) => {
-    expect(spaceRailTileInitial(name)).toBe(initial);
+    expect(spaceInitial(name)).toBe(initial);
   });
 });

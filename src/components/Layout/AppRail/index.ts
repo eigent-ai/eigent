@@ -26,9 +26,5 @@ export {
   usePinnedSpacesChooser,
 } from './pinnedSpaces';
 export { PinnedSpacesChooser } from './PinnedSpacesChooser';
-export {
-  SpaceRailTile,
-  spaceRailStatusText,
-  spaceRailTileInitial,
-} from './SpaceRailTile';
+export { SpaceRailTile, spaceRailStatusText } from './SpaceRailTile';
 export { SpaceRailTileMenu } from './SpaceRailTileMenu';
