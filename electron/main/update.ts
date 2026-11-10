@@ -74,10 +74,14 @@ function registerCheckListeners() {
     });
   });
   // Handle errors globally to prevent crashes. Errors from a background
-  // check stay in the log; errors during a download or install reach the UI.
-  autoUpdater.on('error', (error: Error) => {
+  // check stay in the log, even when one fails while a download is running;
+  // errors from the download or install itself reach the UI.
+  autoUpdater.on('error', (error: Error, message?: string) => {
     log.error('[AutoUpdater] Update error:', error?.message ?? error);
-    if (!updateOperation) return;
+    const fromUpdateCheck =
+      typeof message === 'string' &&
+      message.startsWith('Cannot check for updates');
+    if (!updateOperation || fromUpdateCheck) return;
     updateOperation = null;
     sendToUpdateClients('update-error', {
       message: error?.message,

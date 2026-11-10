@@ -159,4 +159,27 @@ describe('desktop auto-updater main process', () => {
     expect(sender.send).not.toHaveBeenCalled();
     expect(mocks.log.error).toHaveBeenCalled();
   });
+
+  it('keeps reporting download errors after a check fails mid-download', async () => {
+    const { update, registerUpdateIpcHandlers, autoUpdater } =
+      await loadUpdateModule();
+    const sender = createSender();
+    update(createWindow(sender) as any);
+    registerUpdateIpcHandlers();
+
+    mocks.handles.get('start-download')!({ sender });
+    const checkError = new Error('net::ERR_NETWORK_CHANGED');
+    autoUpdater.emit(
+      'error',
+      checkError,
+      `Cannot check for updates: ${checkError.stack}`
+    );
+    expect(sender.send).not.toHaveBeenCalled();
+
+    autoUpdater.emit('error', new Error('sha512 checksum mismatch'));
+    expect(sender.send).toHaveBeenCalledWith(
+      'update-error',
+      expect.objectContaining({ message: 'sha512 checksum mismatch' })
+    );
+  });
 });
