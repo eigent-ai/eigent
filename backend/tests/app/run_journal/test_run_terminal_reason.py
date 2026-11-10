@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from app.run_journal import (
+    SCHEMA_VERSION,
     InvalidRunTransitionError,
     RunEventDraft,
     SQLiteRunJournal,
@@ -481,7 +482,7 @@ def test_a_malformed_payload_leaves_the_backfilled_cause_unknown(tmp_path):
         connection.execute("PRAGMA user_version = 41")
 
     with SQLiteRunJournal(path) as upgraded:
-        assert upgraded.schema_version == 42
+        assert upgraded.schema_version == SCHEMA_VERSION
         run = upgraded.get_run("run-1")
         assert (run.status, run.terminal_reason, run.terminal_detail) == (
             "failed",
@@ -535,7 +536,7 @@ def test_v42_backfills_reasons_from_the_stopping_events(tmp_path):
         connection.execute("PRAGMA user_version = 41")
 
     with SQLiteRunJournal(path) as upgraded:
-        assert upgraded.schema_version == 42
+        assert upgraded.schema_version == SCHEMA_VERSION
         assert {
             run_id: stop(upgraded, attempt, run_id)
             for run_id, attempt in [

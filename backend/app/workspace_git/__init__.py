@@ -69,11 +69,14 @@ from app.workspace_git.lifecycle import (
     get_default_workspace_git_lifecycle,
 )
 from app.workspace_git.mutation import (
+    BlockedWorkspaceOperation,
+    BlockedWorkspaceOperationNotFoundError,
     PreparedWorkspaceExecution,
     PreparedWorkspaceWrite,
     WorkspaceMutationReconciliation,
     WorkspaceMutationService,
     get_default_workspace_mutation_service,
+    workspace_block_hint,
 )
 from app.workspace_git.observer import (
     ExternalGitChange,
@@ -112,6 +115,8 @@ from app.workspace_git.workforce import (
 
 __all__ = [
     "AdvancedGitApprovalRequired",
+    "BlockedWorkspaceOperation",
+    "BlockedWorkspaceOperationNotFoundError",
     "AdvancedGitCommandClassifier",
     "AdvancedGitCommandRejected",
     "AdvancedGitError",
@@ -181,5 +186,6 @@ __all__ = [
     "get_default_workspace_git_lifecycle",
     "get_default_workspace_mutation_service",
     "get_default_workspace_writer_scheduler",
+    "workspace_block_hint",
     "DEFAULT_GIT_RETENTION_POLICY",
 ]

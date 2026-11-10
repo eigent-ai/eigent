@@ -25,10 +25,13 @@ from app.run_journal import (
     OutboxLeaseLostError,
     RunEventDraft,
     SQLiteRunJournal,
+    WorkspaceMutationBlockedError,
 )
 from app.workspace_git import (
+    ContentRepositoryError,
     ContentRepositoryService,
     GitBackend,
+    RepositoryStateChangedError,
     WorkspaceGitCoordinator,
     WorkspaceGitLifecycle,
     WorkspaceMutationService,
@@ -72,12 +75,14 @@ def _services(tmp_path: Path, journal: SQLiteRunJournal):
     return content, coordinator, mutations, backend
 
 
-def _context(space: Path, *, run_id: str = "run-1") -> RunContext:
+def _context(
+    space: Path, *, run_id: str = "run-1", task_id: str = "task-1"
+) -> RunContext:
     return RunContext(
         space_id="space-1",
         project_id="project-1",
         run_id=run_id,
-        task_id="task-1",
+        task_id=task_id,
         email="user@example.com",
         user_id="user-1",
         working_directory=space,
@@ -95,6 +100,7 @@ def _admit(
     coordinator: WorkspaceGitCoordinator,
     *,
     run_id: str = "run-1",
+    task_id: str = "task-1",
 ):
     journal.ensure_run(
         run_id=run_id,
@@ -105,7 +111,7 @@ def _admit(
         space_id="space-1",
         project_id="project-1",
         run_id=run_id,
-        task_id="task-1",
+        task_id=task_id,
         session_mode="single-agent",
     )
     assert admission is not None
@@ -1225,3 +1231,351 @@ def test_failed_primary_checkout_run_keeps_a_recovery_ref(tmp_path, journal):
     assert finalized.archive_ref is not None
     assert finalized.archive_ref.endswith("/recovery-failed")
     assert backend.ref_oid(space, finalized.archive_ref) == terminal
+
+
+def _direct_space(tmp_path: Path, journal: SQLiteRunJournal):
+    content, coordinator, _, backend = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal,
+        state_root=tmp_path / "state",
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(space_id="space-1", space_root=space, allow_init=True)
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    return coordinator, direct, backend, space
+
+
+def _stop_run(journal, coordinator, run_id: str = "run-1") -> None:
+    journal.append_event(
+        run_id,
+        RunEventDraft(
+            event_id=f"{run_id}-failed",
+            event_type="run.failed",
+            payload={"reason": "test"},
+        ),
+    )
+    coordinator.writer_scheduler.finish_task(run_id=run_id)
+
+
+def _prepare_direct(
+    direct, space, operation, filename, *, run_id="run-1", task_id="task-1"
+):
+    prepared = direct.prepare_file_write(
+        context=_context(space, run_id=run_id, task_id=task_id),
+        filename=filename,
+        operation_request_id=operation,
+        actor_id="developer-agent",
+        trigger="filesystem.edit",
+    )
+    assert prepared is not None
+    return prepared
+
+
+def test_unsettled_direct_write_fences_the_checkout_with_diagnostics(
+    tmp_path, journal
+):
+    coordinator, direct, _, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    first = _prepare_direct(direct, space, "edit-1", "seed.txt")
+
+    with pytest.raises(WorkspaceMutationBlockedError) as blocked:
+        _prepare_direct(direct, space, "write-2", "other.txt")
+
+    assert isinstance(blocked.value, OutboxLeaseLostError)
+    assert blocked.value.intent_id == first.intent.intent_id
+    assert blocked.value.run_id == "run-1"
+    assert blocked.value.status == "prepared"
+    assert "still active or needs attention" in str(blocked.value)
+
+
+def test_failed_direct_edit_settles_as_noop_and_the_next_write_proceeds(
+    tmp_path, journal
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    head = backend.current_head(space)
+    failed = _prepare_direct(direct, space, "edit-1", "seed.txt")
+    # The edit's old_content was not found, so the file never changed.
+    assert (
+        direct.complete_file_write(
+            failed,
+            operation_request_id="edit-1",
+            actor_id="developer-agent",
+            trigger="filesystem.edit",
+        )
+        is None
+    )
+
+    second = _prepare_direct(direct, space, "write-2", "report.md")
+    second.target_path.write_text("written", encoding="utf-8")
+    commit = direct.complete_file_write(
+        second,
+        operation_request_id="write-2",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+
+    assert backend.current_head(space) == commit != head
+    assert {item.status for item in journal.list_git_mutation_intents()} == {
+        "completed"
+    }
+
+
+def test_startup_settles_an_unchanged_direct_write_so_a_new_run_can_write(
+    tmp_path, journal
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    head = backend.current_head(space)
+    crashed = _prepare_direct(direct, space, "edit-1", "seed.txt")
+
+    reconciliation = direct.reconcile_startup()
+
+    assert reconciliation.needs_attention_change_set_ids == ()
+    assert reconciliation.recovered_change_set_ids == (
+        crashed.change_set.change_set_id,
+    )
+    assert [item.status for item in journal.list_git_mutation_intents()] == [
+        "completed"
+    ]
+    assert backend.current_head(space) == head
+    _stop_run(journal, coordinator)
+    _admit(journal, coordinator, run_id="run-2", task_id="task-2")
+    later = _prepare_direct(
+        direct,
+        space,
+        "write-run-2",
+        "later.txt",
+        run_id="run-2",
+        task_id="task-2",
+    )
+    later.target_path.write_text("later", encoding="utf-8")
+    direct.complete_file_write(
+        later,
+        operation_request_id="write-run-2",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+    assert _git(space, "show", "HEAD:later.txt") == "later"
+
+
+def test_startup_resumes_a_recorded_direct_result_with_its_checkpoint(
+    tmp_path, journal
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    crashed = _prepare_direct(direct, space, "write-1", "report.md")
+    crashed.target_path.write_text("agent result", encoding="utf-8")
+    # Crash after the result was recorded but before its checkpoint.
+    journal.put_git_change_set_item(
+        change_set_id=crashed.change_set.change_set_id,
+        relative_path="report.md",
+        operation_request_id="write-1",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+        change_kind="added",
+        source="agent_created",
+        preimage_digest=None,
+        result_digest=direct._digest_file(crashed.target_path),
+        size_bytes=len("agent result"),
+    )
+
+    reconciliation = direct.reconcile_startup()
+
+    assert reconciliation.needs_attention_change_set_ids == ()
+    assert _git(space, "show", "HEAD:report.md") == "agent result"
+    assert backend.is_worktree_clean(space)
+    assert journal.list_git_mutation_intents()[0].status == "completed"
+
+
+def test_startup_quarantines_a_changed_direct_write_for_user_review(
+    tmp_path, journal
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    head = backend.current_head(space)
+    crashed = _prepare_direct(direct, space, "edit-1", "seed.txt")
+    (space / "seed.txt").write_text("changed after the crash", "utf-8")
+
+    reconciliation = direct.reconcile_startup()
+
+    assert reconciliation.needs_attention_change_set_ids == (
+        crashed.change_set.change_set_id,
+    )
+    assert journal.list_git_mutation_intents()[0].status == "needs_attention"
+    # Nothing is guessed: the file and HEAD are exactly as the user left them.
+    assert (space / "seed.txt").read_text() == "changed after the crash"
+    assert backend.current_head(space) == head
+
+
+def test_startup_keeps_a_direct_broad_process_for_user_review(
+    tmp_path, journal
+):
+    coordinator, direct, _, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    direct.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="terminal-1",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    (space / "build.log").write_text("output", encoding="utf-8")
+
+    direct.reconcile_startup()
+
+    assert journal.list_git_mutation_intents()[0].status == "needs_attention"
+    assert (space / "build.log").read_text() == "output"
+
+
+def test_blocked_operation_resolution_waits_for_the_task_to_stop(
+    tmp_path, journal
+):
+    coordinator, direct, _, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    prepared = _prepare_direct(direct, space, "edit-1", "seed.txt")
+    repository_id = prepared.change_set.repository_id
+
+    (blocked,) = direct.list_blocked_operations(repository_id)
+
+    assert blocked.intent.intent_id == prepared.intent.intent_id
+    assert blocked.actionable is False
+    with pytest.raises(ContentRepositoryError, match="Stop the Task"):
+        direct.dismiss_blocked_operation(
+            repository_id=repository_id,
+            intent_id=prepared.intent.intent_id,
+        )
+    assert journal.list_git_mutation_intents()[0].status == "prepared"
+
+
+def test_dismiss_blocked_operation_leaves_files_and_tool_outcomes_untouched(
+    tmp_path, journal
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    head = backend.current_head(space)
+    prepared = _prepare_direct(direct, space, "edit-1", "seed.txt")
+    (space / "seed.txt").write_text("half-written", "utf-8")
+    direct.reconcile_startup()
+    _stop_run(journal, coordinator)
+    repository_id = prepared.change_set.repository_id
+    tool_calls_before = journal.list_tool_calls("run-1")
+
+    (blocked,) = direct.list_blocked_operations(repository_id)
+    assert blocked.actionable and blocked.can_checkpoint
+    dismissed = direct.dismiss_blocked_operation(
+        repository_id=repository_id,
+        intent_id=prepared.intent.intent_id,
+    )
+
+    assert dismissed.status == "abandoned"
+    assert direct.list_blocked_operations(repository_id) == ()
+    assert (space / "seed.txt").read_text() == "half-written"
+    assert backend.current_head(space) == head
+    assert journal.list_tool_calls("run-1") == tool_calls_before
+    (change_set,) = journal.list_git_change_sets()
+    assert change_set.state == "discarded"
+    _admit(journal, coordinator, run_id="run-2", task_id="task-2")
+    later = _prepare_direct(
+        direct,
+        space,
+        "write-run-2",
+        "later.txt",
+        run_id="run-2",
+        task_id="task-2",
+    )
+    assert later.intent.status == "prepared"
+    with pytest.raises(ContentRepositoryError, match="already abandoned"):
+        direct.dismiss_blocked_operation(
+            repository_id=repository_id,
+            intent_id=prepared.intent.intent_id,
+        )
+
+
+def test_checkpoint_blocked_operation_saves_reviewed_content(
+    tmp_path, journal
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    prepared = _prepare_direct(direct, space, "edit-1", "seed.txt")
+    (space / "seed.txt").write_text("keep this", "utf-8")
+    direct.reconcile_startup()
+    _stop_run(journal, coordinator)
+    repository_id = prepared.change_set.repository_id
+    (blocked,) = direct.list_blocked_operations(repository_id)
+    assert blocked.repo_state_digest is not None
+
+    with pytest.raises(RepositoryStateChangedError):
+        direct.checkpoint_blocked_operation(
+            repository_id=repository_id,
+            intent_id=prepared.intent.intent_id,
+            operation_request_id="user-save-stale",
+            expected_repo_state_digest="0" * 64,
+        )
+    assert journal.list_git_mutation_intents()[0].status == "needs_attention"
+
+    commits = direct.checkpoint_blocked_operation(
+        repository_id=repository_id,
+        intent_id=prepared.intent.intent_id,
+        operation_request_id="user-save-1",
+        expected_repo_state_digest=blocked.repo_state_digest,
+    )
+
+    assert commits == (backend.current_head(space),)
+    assert _git(space, "show", "HEAD:seed.txt") == "keep this"
+    message = _git(space, "show", "-s", "--format=%B", "HEAD")
+    assert "Eigent-Initiator: Agent" in message
+    assert "Eigent-Task-ID: task-1" in message
+    assert backend.is_worktree_clean(space)
+    assert journal.list_git_mutation_intents()[0].status == "completed"
+    assert direct.list_blocked_operations(repository_id) == ()
+
+
+def test_checkpoint_blocked_broad_process_captures_the_checkout_delta(
+    tmp_path, journal
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    prepared = direct.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="terminal-1",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    (space / "build.log").write_text("output", encoding="utf-8")
+    direct.mark_broad_write_needs_attention(prepared)
+    _stop_run(journal, coordinator)
+    repository_id = prepared.change_set.repository_id
+    (blocked,) = direct.list_blocked_operations(repository_id)
+
+    direct.checkpoint_blocked_operation(
+        repository_id=repository_id,
+        intent_id=prepared.intent.intent_id,
+        operation_request_id="user-save-1",
+        expected_repo_state_digest=blocked.repo_state_digest,
+    )
+
+    assert _git(space, "show", "HEAD:build.log") == "output"
+    assert journal.list_git_mutation_intents()[0].status == "completed"
+    (change_set,) = journal.list_git_change_sets()
+    assert change_set.state == "open"
+
+
+def test_failed_completion_is_quarantined_instead_of_left_prepared(
+    tmp_path, journal
+):
+    coordinator, direct, _, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    prepared = _prepare_direct(direct, space, "edit-1", "seed.txt")
+
+    direct.mark_file_write_needs_attention(prepared)
+
+    assert journal.list_git_mutation_intents()[0].status == "needs_attention"
+    (change_set,) = journal.list_git_change_sets()
+    assert change_set.state == "needs_attention"
+    with pytest.raises(WorkspaceMutationBlockedError) as blocked:
+        _prepare_direct(direct, space, "write-2", "other.txt")
+    assert blocked.value.status == "needs_attention"

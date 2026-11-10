@@ -372,6 +372,7 @@ def test_migrates_real_v35_database_without_changing_legacy_rows(tmp_path):
         patch("app.run_journal.store.MIGRATION_V39", ""),
         patch("app.run_journal.store.MIGRATION_V40", ""),
         patch("app.run_journal.store._MIGRATION_V41", ""),
+        patch("app.run_journal.store._MIGRATION_V43", ""),
         patch(
             "app.run_journal.store._MIGRATION_V42",
             PRE_V42_TERMINAL_COLUMNS,
@@ -464,6 +465,7 @@ def test_v36_upgrade_keeps_pending_publication_and_temp_receipt(tmp_path):
         patch("app.run_journal.store.MIGRATION_V39", ""),
         patch("app.run_journal.store.MIGRATION_V40", ""),
         patch("app.run_journal.store._MIGRATION_V41", ""),
+        patch("app.run_journal.store._MIGRATION_V43", ""),
         patch(
             "app.run_journal.store._MIGRATION_V42",
             PRE_V42_TERMINAL_COLUMNS,

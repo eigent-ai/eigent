@@ -22,7 +22,8 @@ import logging
 import os
 import time
 import uuid
-from dataclasses import dataclass
+from contextlib import nullcontext
+from dataclasses import dataclass, replace
 from functools import wraps
 from pathlib import Path
 
@@ -30,19 +31,23 @@ from app.run_context import RunContext
 from app.run_journal import (
     GitChangeSetRecord,
     GitMutationIntentRecord,
-    OutboxLeaseLostError,
     ProjectWorkspaceBindingRecord,
     RunEventDraft,
     SQLiteRunJournal,
+    WorkspaceMutationBlockedError,
     WorkspaceWriterLeaseRecord,
     configured_run_journal_path,
     get_default_run_journal,
 )
+from app.run_journal.transitions import RUN_ACTIVE_STATES
 from app.workspace_config import canonical_digest
 from app.workspace_git.backend import (
     WorkspaceDeltaLimitExceeded,
 )
-from app.workspace_git.content import ContentRepositoryError
+from app.workspace_git.content import (
+    ContentRepositoryError,
+    RepositoryStateChangedError,
+)
 from app.workspace_git.coordinator import (
     GitRunWorkspace,
     WorkspaceGitCoordinator,
@@ -107,7 +112,47 @@ class WorkspaceMutationReconciliation:
     needs_attention_change_set_ids: tuple[str, ...]
 
 
+class BlockedWorkspaceOperationNotFoundError(LookupError):
+    """The named operation does not block this repository."""
+
+
+@dataclass(frozen=True)
+class BlockedWorkspaceOperation:
+    """One unresolved operation that fences writes to its checkout."""
+
+    intent: GitMutationIntentRecord
+    change_set: GitChangeSetRecord
+    run_id: str
+    project_id: str | None
+    run_status: str | None
+    direct_binding: ProjectWorkspaceBindingRecord | None
+    repo_state_digest: str | None
+
+    @property
+    def actionable(self) -> bool:
+        """Only a stopped Task's operation can be resolved by the user."""
+        return self.run_status not in RUN_ACTIVE_STATES
+
+    @property
+    def can_checkpoint(self) -> bool:
+        return self.actionable and self.direct_binding is not None
+
+
 logger = logging.getLogger(__name__)
+
+
+def workspace_block_hint(error: BaseException) -> str:
+    """Model-visible next step for a write fenced by a quarantined operation."""
+    if (
+        isinstance(error, WorkspaceMutationBlockedError)
+        and error.status == "needs_attention"
+    ):
+        return (
+            " An earlier workspace operation needs the user's review. Ask "
+            "the user to save it as a checkpoint or dismiss it from the "
+            "blocked workspace operation card, then retry."
+        )
+    return ""
 
 
 def _serialize_direct_admission(method):
@@ -124,7 +169,7 @@ def _serialize_direct_admission(method):
             self.state_root / "writer-admission-locks" / f"{lock_id}.lock"
         ):
             change_sets = {
-                item.change_set_id
+                item.change_set_id: item.run_id
                 for item in self.journal.list_git_change_sets()
                 if item.repository_id == binding.repository_id
                 and item.worktree_ref == binding.target_ref
@@ -139,14 +184,22 @@ def _serialize_direct_admission(method):
                 raise ContentRepositoryError(
                     "Workspace operation already completed; do not redispatch it"
                 )
-            if any(
-                intent.change_set_id in change_sets
-                for intent in self.journal.list_git_mutation_intents(
-                    statuses=("prepared", "needs_attention")
-                )
-            ):
-                raise OutboxLeaseLostError(
-                    "Workspace operation is still active or needs attention"
+            blocking = next(
+                (
+                    intent
+                    for intent in self.journal.list_git_mutation_intents(
+                        statuses=("prepared", "needs_attention")
+                    )
+                    if intent.change_set_id in change_sets
+                ),
+                None,
+            )
+            if blocking is not None:
+                raise WorkspaceMutationBlockedError(
+                    intent_id=blocking.intent_id,
+                    run_id=change_sets[blocking.change_set_id],
+                    status=blocking.status,
+                    mutation_scope=blocking.mutation_scope,
                 )
             return method(self, binding=binding, **kwargs)
 
@@ -646,7 +699,8 @@ class WorkspaceMutationService:
             for item in self.journal.list_git_mutation_intents()
             if item.intent_id == prepared.intent.intent_id
         )
-        if intent.status == "completed":
+        if intent.status in {"completed", "abandoned"}:
+            # Settled, or the user already chose to stop tracking it.
             return
         self.journal.update_git_mutation_intent_status(
             intent_id=intent.intent_id,
@@ -660,6 +714,71 @@ class WorkspaceMutationService:
         )
         if prepared.agent_workspace is not None:
             self.workforce.release_workspace(prepared.agent_workspace)
+
+    def mark_file_write_needs_attention(
+        self, prepared: PreparedWorkspaceWrite
+    ) -> None:
+        """Quarantine an exact-path write whose completion could not finish.
+
+        A prepared intent fences every later writer on the checkout, so a
+        write that cannot be settled must become an explicit, reviewable
+        state instead of staying prepared. Files are left as they are.
+        """
+        self._quarantine_intent(
+            prepared.change_set.change_set_id, prepared.intent.intent_id
+        )
+        if prepared.agent_workspace is not None:
+            try:
+                self.workforce.release_workspace(prepared.agent_workspace)
+            except Exception:
+                logger.exception(
+                    "Agent workspace release after a failed write needs "
+                    "attention",
+                    extra={"intent_id": prepared.intent.intent_id},
+                )
+
+    def _quarantine_intent(self, change_set_id: str, intent_id: str) -> bool:
+        """Move one prepared intent and its open ChangeSet to needs_attention."""
+        intent = self._current_intent(intent_id)
+        if intent is None or intent.status != "prepared":
+            return False
+        self.journal.update_git_mutation_intent_status(
+            intent_id=intent_id,
+            expected_status="prepared",
+            status="needs_attention",
+        )
+        change_set = self._current_change_set(change_set_id)
+        if change_set is not None and change_set.state == "open":
+            self.journal.update_git_change_set_state(
+                change_set_id=change_set_id,
+                expected_state="open",
+                state="needs_attention",
+            )
+        return True
+
+    def _current_intent(
+        self, intent_id: str
+    ) -> GitMutationIntentRecord | None:
+        return next(
+            (
+                item
+                for item in self.journal.list_git_mutation_intents()
+                if item.intent_id == intent_id
+            ),
+            None,
+        )
+
+    def _current_change_set(
+        self, change_set_id: str
+    ) -> GitChangeSetRecord | None:
+        return next(
+            (
+                item
+                for item in self.journal.list_git_change_sets()
+                if item.change_set_id == change_set_id
+            ),
+            None,
+        )
 
     def _overflow_receipt_path(
         self, prepared: PreparedWorkspaceExecution
@@ -1524,7 +1643,21 @@ class WorkspaceMutationService:
             if change_set is None or change_set.state != "open":
                 continue
             try:
-                self._reconcile_intent(change_set, intent)
+                direct_binding = self._direct_binding_for_change_set(
+                    change_set
+                )
+                if direct_binding is None:
+                    self._reconcile_intent(change_set, intent)
+                elif not self._reconcile_direct_intent(
+                    change_set, intent, direct_binding
+                ):
+                    # Not provably settled: the user decides from the
+                    # blocked-operation card. Nothing is guessed or reset.
+                    self._quarantine_intent(
+                        change_set.change_set_id, intent.intent_id
+                    )
+                    needs_attention.append(change_set.change_set_id)
+                    continue
             except Exception:
                 logger.exception(
                     "Workspace mutation intent startup reconciliation needs attention",
@@ -1717,6 +1850,367 @@ class WorkspaceMutationService:
             trigger=intent.trigger,
         )
 
+    def _direct_binding_for_change_set(
+        self, change_set: GitChangeSetRecord
+    ) -> ProjectWorkspaceBindingRecord | None:
+        """Return the checkout a direct (no Run worktree) ChangeSet wrote."""
+        run = self.journal.get_run_git_materialization(change_set.run_id)
+        if run is None or run.materialization_state != "unmaterialized":
+            return None
+        binding = self.journal.get_project_workspace_binding(run.project_id)
+        if (
+            binding is None
+            or binding.checkout_mode
+            not in {"primary_checkout", "explicit_worktree"}
+            or binding.repository_id != change_set.repository_id
+            or binding.target_ref != change_set.worktree_ref
+        ):
+            return None
+        return binding
+
+    def _reconcile_direct_intent(
+        self,
+        change_set: GitChangeSetRecord,
+        intent: GitMutationIntentRecord,
+        binding: ProjectWorkspaceBindingRecord,
+    ) -> bool:
+        """Settle a direct-checkout intent only when the outcome is provable.
+
+        Returns False when the user must decide. A broad process may have
+        written anything, and an exact path that differs from both its
+        preimage and any recorded result may hold User edits made after the
+        restart, so neither is checkpointed automatically.
+        """
+        if (
+            intent.mutation_scope != "exact_path"
+            or intent.relative_path is None
+        ):
+            return False
+        root = Path(binding.worktree_path).expanduser().resolve()
+        target = root / intent.relative_path
+        current_digest = self._digest_file(target)
+        item = next(
+            (
+                value
+                for value in self.journal.list_git_change_set_items(
+                    change_set.change_set_id
+                )
+                if value.relative_path == intent.relative_path
+                and value.operation_request_id == intent.operation_request_id
+            ),
+            None,
+        )
+        if item is not None:
+            if item.item_state == "checkpointed":
+                self._complete_intent(intent)
+                return True
+            if (
+                item.item_state != "pending"
+                or current_digest != item.result_digest
+            ):
+                return False
+            # The result was recorded before the crash and the file still
+            # holds exactly that content: resume the same checkpoint
+            # operation with the token it was first prepared against.
+            checkpoint_request_id = self._request_id(
+                intent.operation_request_id,
+                "direct-delta",
+            )
+            self.content.checkpoint(
+                change_set.repository_id,
+                operation_request_id=checkpoint_request_id,
+                expected_repo_state_digest=self._checkpoint_expected_digest(
+                    repository_id=change_set.repository_id,
+                    operation_request_id=checkpoint_request_id,
+                    worktree_root=root,
+                ),
+                paths=(target,),
+                path_sources={
+                    intent.relative_path: (
+                        "agent_created"
+                        if item.change_kind == "added"
+                        else "agent_modified"
+                    )
+                },
+                target_role="run",
+                target_id=change_set.run_id,
+                actor_id=item.actor_id,
+                trigger=item.trigger,
+                message=f"Update {intent.relative_path}",
+                worktree_root=root,
+                commit_trailers=self._direct_commit_trailers(
+                    self._direct_reconciliation_context(change_set)
+                ),
+            )
+            self.journal.update_git_change_set_item_state(
+                change_set_id=change_set.change_set_id,
+                relative_path=intent.relative_path,
+                expected_state="pending",
+                state="checkpointed",
+            )
+            self._complete_intent(intent)
+            return True
+        if current_digest == intent.preimage_digest:
+            # The tool failed or never wrote: completing records a no-op.
+            self._complete_intent(intent)
+            return True
+        return False
+
+    def list_blocked_operations(
+        self, repository_id: str
+    ) -> tuple[BlockedWorkspaceOperation, ...]:
+        """List unresolved operations that fence a repository's checkouts."""
+        change_sets = {
+            item.change_set_id: item
+            for item in self.journal.list_git_change_sets()
+            if item.repository_id == repository_id
+        }
+        values: list[BlockedWorkspaceOperation] = []
+        for intent in self.journal.list_git_mutation_intents(
+            statuses=("prepared", "needs_attention")
+        ):
+            change_set = change_sets.get(intent.change_set_id)
+            if change_set is None:
+                continue
+            values.append(self._blocked_operation(change_set, intent))
+        return tuple(values)
+
+    def _blocked_operation(
+        self,
+        change_set: GitChangeSetRecord,
+        intent: GitMutationIntentRecord,
+    ) -> BlockedWorkspaceOperation:
+        run = self.journal.get_run(change_set.run_id)
+        binding = self._direct_binding_for_change_set(change_set)
+        digest = None
+        if binding is not None:
+            try:
+                digest = self.git.repo_state_token(
+                    Path(binding.worktree_path).expanduser().resolve()
+                ).digest
+            except Exception:
+                logger.warning(
+                    "Blocked workspace operation checkout is unavailable",
+                    extra={"intent_id": intent.intent_id},
+                )
+                binding = None
+        return BlockedWorkspaceOperation(
+            intent=intent,
+            change_set=change_set,
+            run_id=change_set.run_id,
+            project_id=run.project_id if run is not None else None,
+            run_status=run.status if run is not None else None,
+            direct_binding=binding,
+            repo_state_digest=digest,
+        )
+
+    def _require_blocked_operation(
+        self, repository_id: str, intent_id: str
+    ) -> BlockedWorkspaceOperation:
+        intent = self._current_intent(intent_id)
+        change_set = (
+            self._current_change_set(intent.change_set_id)
+            if intent is not None
+            else None
+        )
+        if (
+            intent is None
+            or change_set is None
+            or change_set.repository_id != repository_id
+        ):
+            raise BlockedWorkspaceOperationNotFoundError(
+                f"unknown workspace operation {intent_id!r}"
+            )
+        if intent.status not in {"prepared", "needs_attention"}:
+            raise ContentRepositoryError(
+                f"Workspace operation is already {intent.status}"
+            )
+        operation = self._blocked_operation(change_set, intent)
+        if not operation.actionable:
+            raise ContentRepositoryError(
+                "Stop the Task that owns this workspace operation first"
+            )
+        return operation
+
+    def _admission_lock(self, operation: BlockedWorkspaceOperation):
+        binding = operation.direct_binding
+        if binding is None:
+            return nullcontext()
+        lock_id = canonical_digest({"checkout_id": binding.checkout_id})
+        return self.content.repository_lock(
+            self.state_root / "writer-admission-locks" / f"{lock_id}.lock"
+        )
+
+    def dismiss_blocked_operation(
+        self, *, repository_id: str, intent_id: str
+    ) -> GitMutationIntentRecord:
+        """Stop tracking a blocked operation and leave every file untouched.
+
+        Only the durable bookkeeping changes: the intent becomes
+        ``abandoned``. No file, Git ref or ToolCall outcome is rewritten, so
+        an unknown tool outcome still needs its own review.
+        """
+        operation = self._require_blocked_operation(repository_id, intent_id)
+        with self._admission_lock(operation):
+            operation = self._require_blocked_operation(
+                repository_id, intent_id
+            )
+            return self.journal.abandon_git_mutation_intent(
+                intent_id=intent_id,
+                expected_status=operation.intent.status,
+            )
+
+    def checkpoint_blocked_operation(
+        self,
+        *,
+        repository_id: str,
+        intent_id: str,
+        operation_request_id: str,
+        expected_repo_state_digest: str,
+    ) -> tuple[str, ...]:
+        """Save a stopped Task's blocked direct-checkout write as a checkpoint.
+
+        The user reviewed the checkout at ``expected_repo_state_digest``.
+        This never re-runs the original tool or changes its outcome; it only
+        records what is on disk now, attributed to the original actor.
+        """
+        operation = self._require_blocked_operation(repository_id, intent_id)
+        if not operation.can_checkpoint:
+            raise ContentRepositoryError(
+                "This workspace operation cannot be saved as a checkpoint; "
+                "dismiss it instead"
+            )
+        with self._admission_lock(operation):
+            operation = self._require_blocked_operation(
+                repository_id, intent_id
+            )
+            binding = operation.direct_binding
+            if binding is None:
+                raise ContentRepositoryError(
+                    "The workspace checkout is unavailable"
+                )
+            if any(
+                call.status == "dispatched"
+                for call in self.journal.list_tool_calls(operation.run_id)
+            ):
+                raise ContentRepositoryError(
+                    "Stop dispatched tools before saving a checkpoint"
+                )
+            root = Path(binding.worktree_path).expanduser().resolve()
+            probe = self.git.probe(root)
+            observed_ref = (
+                f"refs/heads/{probe.branch}" if probe.branch else None
+            )
+            if observed_ref != binding.target_ref:
+                raise ContentRepositoryError(
+                    "The checkout is on another branch; switch it back "
+                    "before saving"
+                )
+            if (
+                self.git.repo_state_token(root).digest
+                != expected_repo_state_digest
+            ):
+                raise RepositoryStateChangedError(
+                    "Workspace changed after review; refresh and try again"
+                )
+            return self._checkpoint_blocked_direct_operation(
+                operation,
+                binding=binding,
+                root=root,
+                operation_request_id=operation_request_id,
+            )
+
+    def _checkpoint_blocked_direct_operation(
+        self,
+        operation: BlockedWorkspaceOperation,
+        *,
+        binding: ProjectWorkspaceBindingRecord,
+        root: Path,
+        operation_request_id: str,
+    ) -> tuple[str, ...]:
+        intent = operation.intent
+        change_set_id = operation.change_set.change_set_id
+        # Each user attempt gets its own Git operation identity so a failed
+        # attempt never collides with a retry against a refreshed state.
+        request_id = self._request_id(
+            intent.operation_request_id,
+            f"user-checkpoint:{operation_request_id}",
+        )
+        if intent.status == "needs_attention":
+            change_set = self._current_change_set(change_set_id)
+            if (
+                change_set is not None
+                and change_set.state == "needs_attention"
+            ):
+                self.journal.update_git_change_set_state(
+                    change_set_id=change_set_id,
+                    expected_state="needs_attention",
+                    state="open",
+                )
+            intent = self.journal.update_git_mutation_intent_status(
+                intent_id=intent.intent_id,
+                expected_status="needs_attention",
+                status="prepared",
+            )
+        change_set = self._current_change_set(change_set_id)
+        assert change_set is not None
+        context = self._direct_reconciliation_context(change_set)
+        try:
+            if intent.mutation_scope == "exact_path":
+                assert intent.relative_path is not None
+                target = root / intent.relative_path
+                current_digest = self._digest_file(target)
+                for item in self.journal.list_git_change_set_items(
+                    change_set_id, states=("pending",)
+                ):
+                    if (
+                        item.relative_path == intent.relative_path
+                        and item.result_digest != current_digest
+                    ):
+                        # A stale unfinished record would refuse the content
+                        # the user just reviewed.
+                        self.journal.update_git_change_set_item_state(
+                            change_set_id=change_set_id,
+                            relative_path=item.relative_path,
+                            expected_state="pending",
+                            state="ignored",
+                        )
+                commit = self._complete_direct_file_write(
+                    PreparedWorkspaceWrite(
+                        context=context,
+                        workspace=None,
+                        agent_workspace=None,
+                        change_set=change_set,
+                        intent=intent,
+                        relative_path=intent.relative_path,
+                        target_path=target,
+                        preimage_digest=intent.preimage_digest,
+                        overlay=None,
+                        direct_binding=binding,
+                    ),
+                    operation_request_id=request_id,
+                    actor_id=intent.actor_id,
+                    trigger=intent.trigger,
+                )
+                return (commit,) if commit is not None else ()
+            return self.complete_broad_write(
+                PreparedWorkspaceExecution(
+                    context=context,
+                    workspace=None,
+                    agent_workspace=None,
+                    change_set=change_set,
+                    intent=intent,
+                    imported_overlays=(),
+                    direct_binding=binding,
+                ),
+                operation_request_id=request_id,
+                actor_id=intent.actor_id,
+                trigger=intent.trigger,
+            )
+        except Exception:
+            self._quarantine_intent(change_set_id, intent.intent_id)
+            raise
+
     def _workspace_for_change_set(self, change_set) -> GitRunWorkspace:
         run = self.journal.get_run_git_materialization(change_set.run_id)
         if run is None or not run.worktree_path or not run.run_ref:
@@ -1823,6 +2317,16 @@ class WorkspaceMutationService:
             workdir_mode="direct-write",
             browser_port=0,
         )
+
+    def _direct_reconciliation_context(self, change_set) -> RunContext:
+        """Recovery context whose commit trailers name the original Task."""
+        context = self._reconciliation_context(change_set)
+        writer = self.journal.get_workspace_writer_request(
+            f"workspace-writer:{change_set.run_id}"
+        )
+        if writer is None or not writer.task_id:
+            return context
+        return replace(context, task_id=writer.task_id)
 
     def _reconcile_change_set(self, change_set, items) -> None:
         workspace = self._workspace_for_change_set(change_set)

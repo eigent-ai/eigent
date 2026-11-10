@@ -97,6 +97,7 @@ from app.run_journal.store import (
     SQLiteRunJournal,
     UnsafeResumeError,
     UnsupportedSchemaVersionError,
+    WorkspaceMutationBlockedError,
     WorkspaceWriterLeaseLostError,
 )
 from app.run_journal.transitions import RUN_ACTIVE_STATES
@@ -174,6 +175,7 @@ __all__ = [
     "WorkspaceOverlayEntryRecord",
     "WorkspaceReadSnapshotRecord",
     "WorkspaceSnapshotRangeRecord",
+    "WorkspaceMutationBlockedError",
     "WorkspaceWriterLeaseLostError",
     "WorkspaceWriterLeaseRecord",
     "WorkspaceWriterReleaseResult",
