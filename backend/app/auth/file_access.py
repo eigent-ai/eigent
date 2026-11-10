@@ -195,7 +195,8 @@ async def require_file_preview_access(
     return scope
 
 
-_ACCESS_QUERY_VALUE = re.compile(r"(?<=[?&])(access=)[^&#\s\"']*")
+# A bare query string (as in exception logs) starts with the parameter.
+_ACCESS_QUERY_VALUE = re.compile(r"(?:^|(?<=[?&]))(access=)[^&#\s\"']*")
 _PREVIEW_GRANT_SEGMENT = re.compile(r"(/files/preview/)[^/?#\s\"']+")
 
 

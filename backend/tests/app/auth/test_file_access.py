@@ -102,6 +102,9 @@ def test_grants_are_redacted_from_request_paths():
     assert redact_file_access(f"/api/v1/files/preview/{grant}/site/a.css") == (
         "/api/v1/files/preview/[REDACTED]/site/a.css"
     )
+    assert redact_file_access(f"access={grant}&path=a.pdf") == (
+        "access=[REDACTED]&path=a.pdf"
+    )
     assert redact_file_access("/files?project_id=p&email=e") == (
         "/files?project_id=p&email=e"
     )
