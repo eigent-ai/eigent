@@ -71,6 +71,25 @@ describe('Session window wiring', () => {
       expect(create).toContain(guard);
   });
 
+  it('builds every app window frame from the shared Windows-aware chrome', () => {
+    const chrome = source.slice(
+      source.indexOf('function appWindowChromeOptions('),
+      source.indexOf('async function createWindowInternal(')
+    );
+    expect(chrome).toContain('...getMainWindowChromeOptions(');
+  });
+
+  it('syncs caption-button colors on the window that sent the theme', () => {
+    const theme = source.slice(
+      source.indexOf('ipcMain.on(WINDOW_CHROME_THEME_CHANNEL'),
+      source.indexOf("ipcMain.on('window-minimize'")
+    );
+    expect(theme).toContain('isWindowChromeTheme(theme)');
+    expect(theme).toContain(
+      'appWindowForSender(event.sender)?.setTitleBarOverlay('
+    );
+  });
+
   it('keeps the saved Session window list when the app quits', () => {
     expect(source).toMatch(
       /markAppQuitInProgress\(\);[\s\S]{0,200}sessionWindows\?\.markQuitting\(\);/u
