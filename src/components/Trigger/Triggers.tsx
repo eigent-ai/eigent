@@ -116,6 +116,7 @@ export default function Overview({
   const [listReloadRequest, setListReloadRequest] = useState(0);
   // The Space whose list is on screen; null until this Space's list shows.
   const listSpaceId = useRef<string | null>(null);
+  const loadedSpaceId = useRef<string | null>(null);
   // Whether the list on screen is the one remembered from an earlier visit.
   const [showingRememberedList, setShowingRememberedList] = useState(false);
 
@@ -125,7 +126,11 @@ export default function Overview({
     const lastList = activeSpaceId
       ? lastTriggersBySpace.get(activeSpaceId)
       : undefined;
-    listSpaceId.current = null;
+    // A Retry keeps the Space; only a new Space waits for its own list.
+    if (loadedSpaceId.current !== activeSpaceId) {
+      loadedSpaceId.current = activeSpaceId;
+      listSpaceId.current = null;
+    }
     setTriggers(lastList ?? []);
     setShowingRememberedList(Boolean(lastList));
 
@@ -169,7 +174,13 @@ export default function Overview({
       return;
     }
     if (listSpaceId.current === activeSpaceId) {
-      lastTriggersBySpace.set(activeSpaceId, triggers);
+      // A create that finishes after a Space switch belongs to its own Space.
+      lastTriggersBySpace.set(
+        activeSpaceId,
+        triggers.filter(
+          (trigger) => !trigger.space_id || trigger.space_id === activeSpaceId
+        )
+      );
     }
   }, [activeSpaceId, triggers]);
 

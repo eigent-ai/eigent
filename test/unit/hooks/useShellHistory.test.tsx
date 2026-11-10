@@ -202,6 +202,34 @@ describe('useShellHistory', () => {
     expect(result.current.history.canGoForward).toBe(false);
   });
 
+  it('counts where a failed switch still moved the screen as the place reached', async () => {
+    useSpaceStore.setState({
+      spaces: {
+        'space-a': space('space-a'),
+        'space-b': space('space-b'),
+        'space-c': space('space-c'),
+      },
+    });
+    const { result } = renderHistory();
+    await settle();
+    act(() => useSpaceStore.setState({ activeSpaceId: 'space-b' }));
+    await settle();
+
+    // The switch moves the screen to another Space, then reports failure.
+    mocks.switchToSpace.mockImplementationOnce(async () => {
+      useSpaceStore.setState({ activeSpaceId: 'space-c' });
+      return false;
+    });
+    await act(async () => result.current.history.goBack());
+    await finishRestore();
+
+    const after = useShellHistoryStore.getState();
+    expect(after.index).toBe(0);
+    expect(after.entries[0].spaceId).toBe('space-c');
+    expect(after.entries[1].spaceId).toBe('space-b');
+    expect(result.current.history.canGoForward).toBe(true);
+  });
+
   it('stays put when every earlier place was deleted', async () => {
     useSpaceStore.setState({ activeSpaceId: 'space-b' });
     const { result } = renderHistory();

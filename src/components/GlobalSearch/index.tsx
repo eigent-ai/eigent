@@ -551,11 +551,14 @@ export function GlobalSearchHost({
   const open = useGlobalSearchStore((state) => state.open);
   const setOpen = useGlobalSearchStore((state) => state.setOpen);
 
+  // The search button can still take focus behind the install screen, so
+  // close whatever opens while search is off.
   useEffect(() => {
-    if (!enabled) {
-      setOpen(false);
-      return;
-    }
+    if (!enabled && open) setOpen(false);
+  }, [enabled, open, setOpen]);
+
+  useEffect(() => {
+    if (!enabled) return;
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();

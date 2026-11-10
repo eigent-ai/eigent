@@ -199,6 +199,71 @@ describe('Workspace automations list', () => {
     ).toBeInTheDocument();
   });
 
+  it('keeps remembering local deletes after a failed Retry', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    useSpaceStore.setState({ activeSpaceId: 'space-retried' });
+    const other = { ...automation, id: automation.id + 1, name: 'Weekly sync' };
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({
+      items: [automation, other],
+    });
+    const first = render(<Overview {...props} />);
+    await screen.findByText('Morning digest');
+    first.unmount();
+    useTriggerStore.setState({ triggers: [] });
+
+    mocks.fetchSpaceTriggers
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockRejectedValueOnce(new Error('offline'));
+    const second = render(<Overview {...props} />);
+    const alert = await screen.findByRole('alert');
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    await vi.waitFor(() =>
+      expect(mocks.fetchSpaceTriggers).toHaveBeenCalledTimes(3)
+    );
+    await screen.findByRole('alert');
+    act(() => {
+      useTriggerStore.getState().deleteTrigger(automation.id);
+    });
+    second.unmount();
+    useTriggerStore.setState({ triggers: [] });
+
+    render(<Overview {...props} />);
+    expect(await screen.findByText('Weekly sync')).toBeInTheDocument();
+    expect(screen.queryByText('Morning digest')).not.toBeInTheDocument();
+  });
+
+  it('keeps a create that finishes after a Space switch out of the new Space', async () => {
+    useSpaceStore.setState({ activeSpaceId: 'space-x' });
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({ items: [] });
+    render(<Overview {...props} />);
+    await screen.findByText(EMPTY_LIST);
+
+    useSpaceStore.setState({ activeSpaceId: 'space-y' });
+    const yOne = {
+      ...automation,
+      id: automation.id + 2,
+      name: 'Y one',
+      space_id: 'space-y',
+    };
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({ items: [yOne] });
+    await screen.findByText('Y one');
+    act(() => {
+      useTriggerStore.getState().addTrigger({
+        ...automation,
+        id: automation.id + 3,
+        name: 'X late',
+        space_id: 'space-x',
+      });
+    });
+    cleanup();
+    useTriggerStore.setState({ triggers: [] });
+
+    // The next refresh stays pending, so only the remembered list shows.
+    render(<Overview {...props} />);
+    expect(await screen.findByText('Y one')).toBeInTheDocument();
+    expect(screen.queryByText('X late')).not.toBeInTheDocument();
+  });
+
   it('lists an automation created after the list failed to load', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     // A Space with no remembered list.

@@ -181,6 +181,10 @@ describe('global search', () => {
     expect(useGlobalSearchStore.getState().open).toBe(false);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
+    // The search button, reached with Tab, doesn't leave it open for later.
+    act(() => useGlobalSearchStore.setState({ open: true }));
+    expect(useGlobalSearchStore.getState().open).toBe(false);
+
     rerender(
       <MemoryRouter>
         <GlobalSearchHost />

@@ -24,6 +24,7 @@ import {
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
+  shellPlaceKey,
   useShellHistoryStore,
   type ShellPlaceEntry,
 } from '@/store/shellHistoryStore';
@@ -170,6 +171,7 @@ export function useShellHistory() {
         );
         // Where the screen is, in case nothing opens.
         const start = useShellHistoryStore.getState().index;
+        const startEntry = useShellHistoryStore.getState().entries[start];
         // Skip anything deleted since it was visited.
         let entry = history.step(delta);
         while (entry && !canRestore(entry)) entry = history.step(delta);
@@ -183,16 +185,26 @@ export function useShellHistory() {
         try {
           restored = await restore(entry);
         } finally {
-          if (!restored) history.setIndex(start);
           // Let the place settle, then keep what actually opened, so a Session
           // that lands elsewhere doesn't count as a new move and clear Forward.
           setTimeout(() => {
             restoring.current = false;
-            if (restored) {
-              history.replace(
-                readEntry(route.current.path, route.current.routerState)
-              );
+            const current = readEntry(
+              route.current.path,
+              route.current.routerState
+            );
+            // Nothing opened and the screen didn't move: step back to it.
+            // A failed switch can still have moved the screen, which then
+            // counts as the place reached.
+            if (
+              !restored &&
+              startEntry &&
+              shellPlaceKey(current) === shellPlaceKey(startEntry)
+            ) {
+              history.setIndex(start);
+              return;
             }
+            history.replace(current);
           }, SHELL_HISTORY_SETTLE_MS * 2);
         }
       });

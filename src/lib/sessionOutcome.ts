@@ -14,6 +14,7 @@
 
 import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import {
+  getSessionNavLeadFromRunStatus,
   isSessionOutcomeKind,
   selectSessionNavRun,
   type SessionNavLeadKind,
@@ -49,10 +50,15 @@ export function isSessionOutcomeSeen(
   if (seen === undefined || !isSessionOutcomeKind(kind)) return false;
   const runKey = sessionOutcomeRunKey(projectId);
   if (runKey) return seen === runKey;
+  if (seen === kind) return true;
   // After a restart the Run summary loads after the lead. Until it does, a
-  // result read before still counts as read; `useSessionOutcomeRuns` checks
-  // again once the Run is known.
-  return seen === kind || seen.includes(':');
+  // result read before still counts as read when it was the same kind of
+  // result; `useSessionOutcomeRuns` checks again once the Run is known.
+  const separator = seen.lastIndexOf(':');
+  if (separator < 0) return false;
+  return (
+    getSessionNavLeadFromRunStatus(seen.slice(separator + 1))?.kind === kind
+  );
 }
 
 /**
@@ -64,10 +70,17 @@ export function useSessionOutcomeRuns(projectIds: readonly string[]): void {
   const key = projectIds.join('\n');
   useEffect(() => {
     if (!key) return;
-    const bump = () => setVersion((version) => version + 1);
-    const unsubscribes = key
-      .split('\n')
-      .map((projectId) => runProjectionStore.subscribeProject(projectId, bump));
+    const unsubscribes = key.split('\n').map((projectId) => {
+      // Re-render only when the Run a row would compare against changes,
+      // not on every event of a running Session.
+      let runKey = sessionOutcomeRunKey(projectId);
+      return runProjectionStore.subscribeProject(projectId, () => {
+        const next = sessionOutcomeRunKey(projectId);
+        if (next === runKey) return;
+        runKey = next;
+        setVersion((version) => version + 1);
+      });
+    });
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
   }, [key]);
 }

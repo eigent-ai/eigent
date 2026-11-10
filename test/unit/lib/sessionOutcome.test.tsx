@@ -103,6 +103,15 @@ describe('Session outcome read state', () => {
     expect(seen()).toBe(false);
   });
 
+  it('shows a new kind of result after a restart before its Run loads', () => {
+    useSessionControlsStore.setState({
+      seenOutcomes: { [projectId]: 'run-1:completed' },
+    });
+    setLead('error');
+
+    expect(seen('error')).toBe(false);
+  });
+
   it('checks again when a listed Session’s Run summary arrives', () => {
     let renders = 0;
     renderHook(() => {
@@ -112,8 +121,12 @@ describe('Session outcome read state', () => {
     const before = renders;
 
     act(() => setRun('run-1', 'completed', 1_000));
+    const afterRun = renders;
+    expect(afterRun).toBeGreaterThan(before);
 
-    expect(renders).toBeGreaterThan(before);
+    // An event that leaves the same Run and status doesn't re-render.
+    act(() => setRun('run-1', 'completed', 1_500));
+    expect(renders).toBe(afterRun);
   });
 
   it('does not record live work or an open question as read', () => {
