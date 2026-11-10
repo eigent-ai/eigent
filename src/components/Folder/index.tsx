@@ -1036,7 +1036,10 @@ export async function downloadOpenedFile(file: FileInfo): Promise<void> {
     }
   }
 
-  await downloadFromUrl(file.path, filename);
+  // A preview can stay open longer than its file grant lasts, so ask for a
+  // fresh one before downloading from the Brain.
+  const target = await authorizeBrainFile(file).catch(() => file);
+  await downloadFromUrl(target.path, filename);
 }
 
 export interface FileViewerOpenAction {

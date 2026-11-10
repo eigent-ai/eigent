@@ -173,7 +173,9 @@ export function FilePreview({
         window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
         return;
       }
-      void downloadFromUrl(selectedFile.path, selectedFile.name);
+      void authorizeBrainFile(selectedFile)
+        .catch(() => selectedFile)
+        .then((file) => downloadFromUrl(file.path, file.name));
       return;
     }
     try {
