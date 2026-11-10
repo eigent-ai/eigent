@@ -43,10 +43,54 @@ USER_AUTHORED_MESSAGE_SOURCES = frozenset(
 )
 
 
+# Trigger runs are queued under ``scheduled:<execution id>`` request ids.
+SCHEDULED_REQUEST_ID_PREFIX = "scheduled:"
+# Event ids Brain assigns to a Run's canonical instruction, by admission path.
+USER_MESSAGE_EVENT_ID_PREFIXES = ("user-message:", "execution-input:")
+
+
 def is_user_authored_message_source(source: object) -> bool:
     """Fail closed: any other or missing source is not the user's words."""
 
     return isinstance(source, str) and source in USER_AUTHORED_MESSAGE_SOURCES
+
+
+def user_message_request_ids(*, run_id: str, event_id: str) -> tuple[str, ...]:
+    """Request ids that may name the persisted request behind one message."""
+
+    ids = [run_id]
+    for prefix in USER_MESSAGE_EVENT_ID_PREFIXES:
+        if event_id.startswith(prefix) and len(event_id) > len(prefix):
+            ids.append(event_id[len(prefix) :])
+            break
+    return tuple(dict.fromkeys(item for item in ids if item))
+
+
+def derive_user_message_source(
+    *,
+    claimed: object,
+    persisted: Sequence[object],
+    request_ids: Sequence[str],
+) -> str | None:
+    """Return the source Memory may trust for one ``user.message``.
+
+    ``persisted`` holds the sources Brain stored for the request rows behind
+    the message. They and the request id outrank ``claimed``, the source the
+    admitting caller reported, which can only lower trust. A message without
+    a claim falls back to its request rows. None means authorship is unknown.
+    """
+
+    for source in persisted:
+        if not is_user_authored_message_source(source):
+            return source if isinstance(source, str) else None
+    if any(
+        item.startswith(SCHEDULED_REQUEST_ID_PREFIX) for item in request_ids
+    ):
+        return "scheduled"
+    if claimed is None:
+        # Every persisted source passed the check above.
+        return str(persisted[0]) if persisted else None
+    return claimed if isinstance(claimed, str) else None
 
 
 def normalize_memory_provenance_for_cloud(

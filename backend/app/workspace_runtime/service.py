@@ -1233,19 +1233,29 @@ class ExecutionService:
                     ],
                 )
                 content = current.envelope.get("prompt")
-                source = current.source
                 if current.kind == "follow_up":
-                    content, source = connection.execute(
-                        "SELECT content, source FROM follow_up_requests WHERE request_id=?",
+                    content = connection.execute(
+                        "SELECT content FROM follow_up_requests WHERE request_id=?",
                         (current.request_id,),
-                    ).fetchone()
+                    ).fetchone()[0]
+                event_id = "execution-input:" + current.request_id
                 # Memory treats only user sends (local, remote_control) as the
-                # user's words; scheduled trigger text never is.
+                # user's words; scheduled trigger text never is. Every request
+                # row behind this input is checked, not only this one.
+                source = (
+                    self.journal._resolve_user_message_source_in_transaction(
+                        connection,
+                        project_id=current.project_id,
+                        run_id=current.request_id,
+                        event_id=event_id,
+                        claimed=current.source,
+                    )
+                )
                 self.journal._append_event_in_transaction(
                     connection,
                     current.request_id,
                     RunEventDraft(
-                        event_id="execution-input:" + current.request_id,
+                        event_id=event_id,
                         event_type="user.message",
                         payload={
                             "content": content,

@@ -36,7 +36,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from app.run_journal.cloud_projection import cloud_event_payload
-from app.run_journal.memory_policy import assert_memory_entry_policy
+from app.run_journal.memory_policy import (
+    assert_memory_entry_policy,
+    derive_user_message_source,
+    user_message_request_ids,
+)
 from app.run_journal.models import (
     ApprovalRecord,
     ApprovalRuleRecord,
@@ -9644,27 +9648,66 @@ class SQLiteRunJournal:
                 else None
             )
 
-    def get_instruction_source(
-        self, *, project_id: str, request_id: str
+    def resolve_user_message_source(
+        self,
+        *,
+        project_id: str,
+        run_id: str,
+        event_id: str,
+        claimed: object,
     ) -> str | None:
-        """Return who submitted one queued or managed instruction.
+        """Return the source Memory may trust for one ``user.message``.
 
-        Follow-up rows and managed execution requests keep ``local``,
-        ``remote_control`` or ``scheduled`` for any status. None means this
-        Project has no such request, so authorship stays unknown.
+        See ``_resolve_user_message_source_in_transaction``.
         """
 
         with self._lock:
-            row = self._connection.execute(
-                """SELECT source FROM follow_up_requests
-                WHERE request_id = ? AND project_id = ?
-                UNION ALL
-                SELECT source FROM execution_requests
-                WHERE request_id = ? AND project_id = ?
-                LIMIT 1""",
-                (request_id, project_id, request_id, project_id),
-            ).fetchone()
-        return row["source"] if row is not None else None
+            return self._resolve_user_message_source_in_transaction(
+                self._connection,
+                project_id=project_id,
+                run_id=run_id,
+                event_id=event_id,
+                claimed=claimed,
+            )
+
+    @staticmethod
+    def _resolve_user_message_source_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        project_id: str,
+        run_id: str,
+        event_id: str,
+        claimed: object,
+    ) -> str | None:
+        """Derive a message's source from the requests Brain persisted.
+
+        Follow-up rows and managed execution requests keep ``local``,
+        ``remote_control`` or ``scheduled`` for any status, and a queued
+        follow-up is admitted as the Run named by its request id. Those rows
+        and a ``scheduled:`` request id outrank the caller's ``claimed``
+        source, which can only lower trust. None means authorship is unknown.
+        """
+
+        request_ids = user_message_request_ids(
+            run_id=run_id, event_id=event_id
+        )
+        if not request_ids:
+            return None
+        # The Run id and the event's request id; the same id twice if equal.
+        first, second = request_ids[0], request_ids[-1]
+        rows = connection.execute(
+            """SELECT source FROM follow_up_requests
+            WHERE project_id = ? AND request_id IN (?, ?)
+            UNION ALL
+            SELECT source FROM execution_requests
+            WHERE project_id = ? AND request_id IN (?, ?)""",
+            (project_id, first, second, project_id, first, second),
+        ).fetchall()
+        return derive_user_message_source(
+            claimed=claimed,
+            persisted=[row[0] for row in rows],
+            request_ids=request_ids,
+        )
 
     def set_follow_up_delivery_mode(
         self,
@@ -11174,8 +11217,13 @@ class SQLiteRunJournal:
         attachment_names: list[str] | None = None,
         review_handoff_ids: list[str] | None = None,
         error_code: str | None = None,
+        source: str = "chat",
     ) -> bool:
-        """Close a refused admission without touching a consumer-owned Run."""
+        """Close a refused admission without touching a consumer-owned Run.
+
+        ``source`` is the admitting caller's claim for the recorded prompt;
+        the Run's persisted request can still mark it as trigger text.
+        """
         with self._write_transaction() as connection:
             run = connection.execute(
                 "SELECT * FROM runs WHERE run_id = ? AND project_id = ?",
@@ -11195,15 +11243,24 @@ class SQLiteRunJournal:
                     (run_id,),
                 ).fetchone()
             ):
+                event_id = f"user-message:{request_id or run_id}"
                 self._append_event_in_transaction(
                     connection,
                     run_id,
                     RunEventDraft(
-                        event_id=f"user-message:{request_id or run_id}",
+                        event_id=event_id,
                         event_type="user.message",
                         payload={
                             "content": question,
-                            "source": "chat",
+                            "source": (
+                                self._resolve_user_message_source_in_transaction(
+                                    connection,
+                                    project_id=project_id,
+                                    run_id=run_id,
+                                    event_id=event_id,
+                                    claimed=source,
+                                )
+                            ),
                             "attachment_names": list(attachment_names or []),
                             "review_handoff_ids": list(
                                 review_handoff_ids or []

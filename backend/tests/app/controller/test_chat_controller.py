@@ -960,13 +960,16 @@ class TestChatController:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        ("declared", "queued", "recorded"),
+        ("run_id", "declared", "queued", "recorded"),
         [
-            (None, None, "chat"),
-            (None, "local", "chat"),
-            (None, "remote_control", "chat"),
-            ("scheduled", None, "scheduled"),
-            (None, "scheduled", "scheduled"),
+            ("run-trigger-source", None, None, "chat"),
+            ("run-trigger-source", None, "local", "chat"),
+            ("run-trigger-source", None, "remote_control", "chat"),
+            ("run-trigger-source", "scheduled", None, "scheduled"),
+            # The caller forgot the trigger label; Brain's queue row decides.
+            ("run-trigger-source", None, "scheduled", "scheduled"),
+            ("scheduled:execution-1", None, "scheduled", "scheduled"),
+            ("scheduled:execution-1", None, None, "scheduled"),
         ],
     )
     async def test_trigger_text_is_recorded_with_its_source(
@@ -975,13 +978,13 @@ class TestChatController:
         mock_request,
         mock_task_lock,
         tmp_path,
+        run_id,
         declared,
         queued,
         recorded,
     ):
         """Memory must be able to tell trigger text from the user's words."""
 
-        run_id = "run-trigger-source"
         chat_data = Chat(
             **sample_chat_data,
             run_id=run_id,

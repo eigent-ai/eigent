@@ -1008,15 +1008,20 @@ class LightweightMemoryService:
     def _written_by_user(
         self, *, event_id: str, run_id: str, project_id: str, source: object
     ) -> bool:
-        """Whether a user.message holds the user's own words (fail closed)."""
+        """Whether a user.message holds the user's own words (fail closed).
 
-        if source is None and event_id.startswith("execution-input:"):
-            # Managed input recorded before user.message carried its source.
-            # Its Run id is the admitting request, which keeps the source.
-            source = self._journal.get_instruction_source(
-                project_id=project_id, request_id=run_id
+        ``source`` is what the message recorded. The Run's persisted request
+        decides, so a recorded user source cannot vouch for trigger text.
+        """
+
+        return is_user_authored_message_source(
+            self._journal.resolve_user_message_source(
+                project_id=project_id,
+                run_id=run_id,
+                event_id=event_id,
+                claimed=source,
             )
-        return is_user_authored_message_source(source)
+        )
 
 
 def event_source_trust(event_type: str, *, user_authored: bool = False) -> str:

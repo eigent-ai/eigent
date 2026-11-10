@@ -193,6 +193,12 @@ def _raise_follow_up_http_error(exc: Exception) -> None:
     raise exc
 
 
+def _claimed_chat_source(data: Chat) -> str:
+    """The source a ``/chat`` caller reports; it can only lower trust."""
+
+    return "scheduled" if data.source == "scheduled" else "chat"
+
+
 async def _record_canonical_user_message(
     journal: SQLiteRunJournal,
     *,
@@ -206,16 +212,17 @@ async def _record_canonical_user_message(
 ) -> None:
     """Persist admission input against the injected journal instance."""
 
-    if source != "scheduled" and isinstance(journal, SQLiteRunJournal):
-        # A queued follow-up is admitted as the Run named by its request id.
-        # Trigger text stays labelled even when sent as a Chat or Improve.
-        queued_source = await asyncio.to_thread(
-            journal.get_instruction_source,
+    if isinstance(journal, SQLiteRunJournal):
+        # The Run's persisted request decides; the caller can only lower
+        # trust. Trigger text stays labelled even when sent as Chat/Improve.
+        resolved = await asyncio.to_thread(
+            journal.resolve_user_message_source,
             project_id=run_context.project_id,
-            request_id=run_context.run_id,
+            run_id=run_context.run_id,
+            event_id=f"user-message:{request_id}",
+            claimed=source,
         )
-        if queued_source == "scheduled":
-            source = "scheduled"
+        source = resolved if resolved is not None else "scheduled"
     await EventRecorder(journal).record_user_message(
         project_id=run_context.project_id,
         run_id=run_context.run_id,
@@ -1569,11 +1576,10 @@ async def _prepare_chat_run(
             request_id=request_id,
             content=data.question,
             source=(
-                "scheduled"
-                if data.source == "scheduled"
-                else "improve"
+                "improve"
                 if warm_admission is not None
-                else "chat"
+                and _claimed_chat_source(data) == "chat"
+                else _claimed_chat_source(data)
             ),
             attaches=data.attaches or [],
             review_handoff_ids=data.review_handoff_ids,
@@ -2028,6 +2034,7 @@ async def start_chat_stream(data: Chat, request: Request):
                         if isinstance(detail, dict)
                         else None
                     ),
+                    source=_claimed_chat_source(data),
                 )
             if _is_weak_continuation(data.question):
                 await asyncio.to_thread(

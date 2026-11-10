@@ -436,6 +436,7 @@ class IncrementalMemoryMaintainer:
                     or any(
                         event_id not in sources
                         or sources[event_id].event_type != "user.message"
+                        or sources[event_id].source_trust != "user_asserted"
                         for event_id in proposal.source_event_ids
                     )
                 ):
