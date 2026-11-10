@@ -14,22 +14,31 @@
 
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import { APP_SHELL_RAIL_WIDTH_PX } from '@/components/Layout/AppShellLayout';
+import {
+  canRenameSpace,
+  SpaceRenameDialog,
+} from '@/components/SpaceSidebar/SpaceRenameDialog';
 import { UserMenu } from '@/components/TopBar/UserMenu';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
+import { useSpaceAttention } from '@/hooks/useSpaceAttention';
+import { useOpenSpaceHomeTab, useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
 import { isHomePagePath, isSettingsPagePath } from '@/lib/shellRoutes';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
-import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { APP_COMMAND } from '@/shared/appCommands';
-import { openSettings, useSettingsStore } from '@/store/settingsStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { House, Settings } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { matchPath, useLocation, useNavigate } from 'react-router-dom';
+import { matchPath, useLocation } from 'react-router-dom';
 import { AppRailButton } from './AppRailButton';
+import { pinSpaceOrChoose, usePinnedSpaceIds } from './pinnedSpaces';
+import { PinnedSpacesChooser } from './PinnedSpacesChooser';
 import { SpaceRailTile } from './SpaceRailTile';
+import { SpaceRailTileMenu } from './SpaceRailTileMenu';
 
 /** Pages drawn without the app shell: sign-in and a Session's own window. */
 const RAIL_HIDDEN_ROUTES = ['/login', '/signup', SESSION_WINDOW_ROUTE];
@@ -58,32 +67,30 @@ export function getAppRailPlace(pathname: string): AppRailPlace | null {
 }
 
 /**
- * The window's places, under the top bar and left of every page: Home, the
- * active Space, Settings, and the account menu. It sits on the same chrome
- * surface as the top bar and stays when the page sidebar folds.
+ * The window's places, under the top bar and left of every page: Home, up to
+ * five pinned Spaces, the active Space when it isn't pinned, the pin chooser,
+ * Settings, and the account menu. It sits on the same chrome surface as the
+ * top bar and stays when the page sidebar folds.
  */
 export default function AppRail() {
   const { t } = useTranslation();
   const location = useLocation();
-  const navigate = useNavigate();
   const executeAppCommand = useAppCommand();
-  const closeSettings = useSettingsStore((state) => state.closeSettings);
+  const { openSpaceView } = useSpaceSwitch();
+  const openSpaceHomeTab = useOpenSpaceHomeTab();
+  const attention = useSpaceAttention();
+  const pinnedIds = usePinnedSpaceIds();
+  const spaces = useSpaceStore((state) => state.spaces);
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
-  const activeSpaceName = useSpaceStore((state) =>
-    state.activeSpaceId ? state.spaces[state.activeSpaceId]?.name : undefined
-  );
+  const unpinSpace = useSpaceStore((state) => state.unpinSpace);
+  const moveSpacePin = useSpaceStore((state) => state.moveSpacePin);
+  const [renameSpaceId, setRenameSpaceId] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
   const place = getAppRailPlace(location.pathname);
 
   const openHome = useCallback(() => {
     executeAppCommand(APP_COMMAND.navigateHome);
   }, [executeAppCommand]);
-
-  const openSpaceView = useCallback(() => {
-    void runAfterWorkspaceConfigurationSave(() => {
-      closeSettings();
-      navigate('/');
-    });
-  }, [closeSettings, navigate]);
 
   // Reopen the section used last; ⌘, keeps opening the Settings section.
   const openSettingsPage = useCallback(() => {
@@ -92,6 +99,54 @@ export default function AppRail() {
 
   const homeLabel = t('layout.home');
   const settingsLabel = t('layout.settings');
+  const activeSpace = activeSpaceId ? spaces[activeSpaceId] : undefined;
+  const showActiveTile =
+    activeSpace !== undefined && !pinnedIds.includes(activeSpace.id);
+
+  const renderTile = (spaceId: string, pinIndex: number) => {
+    const space = spaces[spaceId];
+    if (!space) return null;
+    const pinned = pinIndex >= 0;
+    return (
+      // A new pin settles into place once; dots changing never move tiles.
+      <motion.div
+        key={spaceId}
+        className="w-full shrink-0"
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
+      >
+        <SpaceRailTile
+          name={getActiveSpaceTriggerLabel(space.name, t)}
+          pinned={pinned}
+          selected={place === 'space' && spaceId === activeSpaceId}
+          attention={attention[spaceId]}
+          shortcutId={
+            pinned ? `navigate-pinned-space-${pinIndex + 1}` : undefined
+          }
+          onClick={() => openSpaceView(spaceId)}
+          menu={
+            <SpaceRailTileMenu
+              pinned={pinned}
+              canRename={canRenameSpace(space)}
+              pinIndex={pinIndex}
+              pinCount={pinnedIds.length}
+              onOpen={() => openSpaceView(spaceId)}
+              onTogglePin={() => {
+                if (pinned) unpinSpace(spaceId);
+                else pinSpaceOrChoose(spaceId);
+              }}
+              onRename={() => setRenameSpaceId(spaceId)}
+              onOpenSpaceSettings={() =>
+                openSpaceHomeTab(spaceId, 'workspace-profile')
+              }
+              onMove={(toIndex) => moveSpacePin(spaceId, toIndex)}
+            />
+          }
+        />
+      </motion.div>
+    );
+  };
 
   return (
     <nav
@@ -100,6 +155,10 @@ export default function AppRail() {
       className="flex h-full min-h-0 shrink-0 flex-col items-center gap-ds-4 overflow-hidden pt-10 pb-ds-8"
       style={{ width: APP_SHELL_RAIL_WIDTH_PX }}
     >
+      <SpaceRenameDialog
+        spaceId={renameSpaceId}
+        onClose={() => setRenameSpaceId(null)}
+      />
       <AppRailButton
         label={homeLabel}
         tooltip={
@@ -119,13 +178,11 @@ export default function AppRail() {
         className="my-ds-2 w-ds-24 shrink-0 border-x-0 border-t-[0.5px] border-b-0 border-solid border-ds-hairline-subtle-default"
       />
 
-      {activeSpaceId ? (
-        <SpaceRailTile
-          name={getActiveSpaceTriggerLabel(activeSpaceName, t)}
-          selected={place === 'space'}
-          onClick={openSpaceView}
-        />
-      ) : null}
+      <AnimatePresence initial={false}>
+        {pinnedIds.map((spaceId, index) => renderTile(spaceId, index))}
+        {showActiveTile ? renderTile(activeSpace.id, -1) : null}
+      </AnimatePresence>
+      <PinnedSpacesChooser />
 
       <div className="min-h-0 flex-1" />
 

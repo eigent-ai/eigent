@@ -647,7 +647,12 @@
     "close-window": "关闭窗口",
     "full-screen": "切换全屏",
     "minimize": "最小化",
-    "quit": "退出 Eigent"
+    "quit": "退出 Eigent",
+    "navigate-pinned-space-1": "前往固定的空间 1",
+    "navigate-pinned-space-2": "前往固定的空间 2",
+    "navigate-pinned-space-3": "前往固定的空间 3",
+    "navigate-pinned-space-4": "前往固定的空间 4",
+    "navigate-pinned-space-5": "前往固定的空间 5"
   },
   "nativeMenu": {
     "file": "文件",
@@ -1591,5 +1596,20 @@
   "session-window-loading": "正在打开会话…",
   "session-window-missing": "此会话已不可用",
   "session-window-close": "关闭窗口",
-  "app-navigation": "应用导航"
+  "app-navigation": "应用导航",
+  "pin-space": "固定空间",
+  "unpin-space": "取消固定空间",
+  "space-open": "打开",
+  "move-up": "上移",
+  "move-down": "下移",
+  "choose-pinned-spaces": "选择固定的空间",
+  "pinned-spaces": "已固定的空间",
+  "pinned-spaces-count": "{{count}} / {{max}}",
+  "pinned-spaces-active": "当前",
+  "pinned-spaces-hint": "拖动或使用方向键调整顺序。顺序决定快捷键。",
+  "pinned-space-move": "移动 {{name}}，第 {{position}} 个，共 {{count}} 个",
+  "pinned-space-moved": "已将 {{name}} 移到第 {{position}} 个，共 {{count}} 个",
+  "other-spaces": "其他空间",
+  "space-status-waiting": "{{count}} 个等待你的回复",
+  "space-status-running": "{{count}} 个正在运行"
 }

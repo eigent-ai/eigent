@@ -16,6 +16,7 @@ import { fetchPut } from '@/api/http';
 import { isWeb } from '@/client/platform';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
+import { spaceRailTileInitial } from '@/components/Layout/AppRail/SpaceRailTile';
 import {
   NavTab,
   SidebarNavGroup,
@@ -31,6 +32,7 @@ import {
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { useSessionNavStatuses } from '@/hooks/useSessionNavStatuses';
@@ -55,6 +57,7 @@ import { SessionStopError, stopSessionForDeletion } from '@/lib/sessionStop';
 import { openSessionWindow } from '@/lib/sessionWindows';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
+  getActiveSpaceTriggerLabel,
   getFilesTabBindingLabel,
   getSessionDisplayName,
   isUnboundUntitledSpace,
@@ -82,7 +85,7 @@ import {
 } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { Cast, Inbox, LayoutGrid, Plus, ToolCase } from 'lucide-react';
+import { Cast, Inbox, Plus, ToolCase } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -563,6 +566,11 @@ export default function SpaceSidebar({
     ]
   );
 
+  const activeSpaceLabel = getActiveSpaceTriggerLabel(
+    activeSpaceId ? spacesById[activeSpaceId]?.name : undefined,
+    t
+  );
+
   const handleNewSession = useCallback(() => {
     executeAppCommand(APP_COMMAND.newProject);
   }, [executeAppCommand]);
@@ -928,13 +936,23 @@ export default function SpaceSidebar({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-clip">
           <SidebarSection>
             <SidebarNavGroup>
+              {/* The Space itself: opens its Workspace page. */}
               <NavTab
-                active={activeWorkspaceTab === 'workforce'}
-                onClick={() => setActiveWorkspaceTab('workforce')}
+                active={activeWorkspaceTab === 'space-workspace'}
+                onClick={() => setActiveWorkspaceTab('space-workspace')}
+                disabled={!activeSpaceId}
                 leading={
-                  <DsIcon icon={LayoutGrid} className="shrink-0" aria-hidden />
+                  <span
+                    aria-hidden
+                    data-space-sidebar-space-icon
+                    className="flex size-ds-icon-md shrink-0 items-center justify-center rounded-ds-4 bg-ds-neutral-muted-default text-ds-ink-default-default"
+                  >
+                    <DsText as="span" role="meta" weight="semibold">
+                      {spaceRailTileInitial(activeSpaceLabel)}
+                    </DsText>
+                  </span>
                 }
-                label={t('layout.workspace-tab')}
+                label={activeSpaceLabel}
                 tooltip={
                   <ShortcutTooltipContent
                     label={t('layout.workspace-tab')}
@@ -943,8 +961,26 @@ export default function SpaceSidebar({
                 }
                 tooltipCompact
                 tooltipVariant="delayed"
-                ariaLabel={t('layout.workspace-tab')}
-                ariaCurrentPage={activeWorkspaceTab === 'workforce'}
+                ariaLabel={`${activeSpaceLabel}, ${t('layout.workspace-tab')}`}
+                ariaCurrentPage={activeWorkspaceTab === 'space-workspace'}
+              />
+              <NavTab
+                active={activeWorkspaceTab === 'new-project'}
+                onClick={handleNewSession}
+                leading={
+                  <DsIcon icon={Plus} className="shrink-0" aria-hidden />
+                }
+                label={t('layout.new-project')}
+                tooltip={
+                  <ShortcutTooltipContent
+                    label={t('layout.new-project')}
+                    shortcutId="new-project"
+                  />
+                }
+                tooltipCompact
+                tooltipVariant="delayed"
+                ariaLabel={t('layout.new-project')}
+                ariaCurrentPage={activeWorkspaceTab === 'new-project'}
               />
               <NavTab
                 active={activeWorkspaceTab === 'files'}
@@ -1111,8 +1147,6 @@ export default function SpaceSidebar({
               onDeleteSession={requestDeleteSession}
               onEndSession={requestEndSession}
               onPinSession={handlePinSession}
-              onNewSession={handleNewSession}
-              newSessionActive={activeWorkspaceTab === 'new-project'}
               openIn={sessionOpenIn}
             />
           </SidebarSection>

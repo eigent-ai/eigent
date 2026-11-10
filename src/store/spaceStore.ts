@@ -133,6 +133,8 @@ interface SpaceStore {
   lastVisitedProjectBySpace: Record<string, string>;
   /** Active Space each account left at sign-out, reopened at sign-in. */
   lastActiveSpaceIdByUser: Record<string, string>;
+  /** Spaces each account pinned on this device, in the order they chose. */
+  pinnedSpaceIdsByUser: Record<string, string[]>;
   projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>>;
   projectIdIndex: Record<string, string>;
   projectsSyncedAt: Record<string, number>;
@@ -193,6 +195,13 @@ interface SpaceStore {
     rootPath: string,
     force?: boolean
   ) => Promise<void>;
+  /** Refuses with `full` once `MAX_PINNED_SPACES` are pinned. */
+  pinSpace: (spaceId: string) => PinSpaceResult;
+  unpinSpace: (spaceId: string) => void;
+  /** Moves a pinned Space to `toIndex` within the pinned list. */
+  moveSpacePin: (spaceId: string, toIndex: number) => void;
+  /** Replaces the pinned list; extra and unknown ids are dropped. */
+  setPinnedSpaces: (spaceIds: string[]) => void;
   getActiveSpace: () => Space | null;
   getAllSpaces: () => Space[];
   getSpaceById: (spaceId: string | null | undefined) => Space | null;
@@ -205,6 +214,7 @@ const emptyEnvironmentScopedSpaceState = (): Pick<
   | 'spaces'
   | 'lastVisitedProjectBySpace'
   | 'lastActiveSpaceIdByUser'
+  | 'pinnedSpaceIdsByUser'
   | 'projectsBySpaceId'
   | 'projectIdIndex'
   | 'projectsSyncedAt'
@@ -214,6 +224,7 @@ const emptyEnvironmentScopedSpaceState = (): Pick<
   spaces: {},
   lastVisitedProjectBySpace: {},
   lastActiveSpaceIdByUser: {},
+  pinnedSpaceIdsByUser: {},
   projectsBySpaceId: {},
   projectIdIndex: {},
   projectsSyncedAt: {},
@@ -286,6 +297,58 @@ const mergeServerSpaceWithLocalBinding = (
 
 export const legacySpaceIdForUser = (userId?: string | number | null) =>
   `legacy_${canonicalUserId(userId)}`;
+
+export const MAX_PINNED_SPACES = 5;
+
+export type PinSpaceResult = 'pinned' | 'already-pinned' | 'full' | 'missing';
+
+/** Pins are keyed like `lastActiveSpaceIdByUser`: by the signed-in account. */
+export const pinnedSpaceOwnerKey = (userId?: string | number | null) =>
+  canonicalUserId(userId);
+
+const isPinnableSpace = (space: Space | undefined): space is Space =>
+  Boolean(space && space.status !== 'archived');
+
+/**
+ * The pinned Spaces that can still be shown, in order. A Space that is gone
+ * or archived is skipped, so a hydration that briefly misses a Space does not
+ * lose the pin.
+ */
+export const getPinnedSpaceIds = (
+  state: Pick<SpaceStore, 'spaces' | 'pinnedSpaceIdsByUser'>,
+  ownerKey: string
+): string[] => {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const spaceId of state.pinnedSpaceIdsByUser[ownerKey] ?? []) {
+    if (seen.has(spaceId) || !isPinnableSpace(state.spaces[spaceId])) continue;
+    seen.add(spaceId);
+    ids.push(spaceId);
+    if (ids.length === MAX_PINNED_SPACES) break;
+  }
+  return ids;
+};
+
+const withoutPinnedSpaces = (
+  pinnedSpaceIdsByUser: Record<string, string[]>,
+  spaceIds: ReadonlySet<string>
+): Record<string, string[]> => {
+  if (spaceIds.size === 0) return pinnedSpaceIdsByUser;
+  let changed = false;
+  const next: Record<string, string[]> = {};
+  for (const [ownerKey, ids] of Object.entries(pinnedSpaceIdsByUser)) {
+    const kept = ids.filter((spaceId) => !spaceIds.has(spaceId));
+    if (kept.length !== ids.length) changed = true;
+    next[ownerKey] = kept;
+  }
+  return changed ? next : pinnedSpaceIdsByUser;
+};
+
+const currentPinOwnerKey = () => pinnedSpaceOwnerKey(getAuthStore().user_id);
+
+/** The signed-in account's pinned Spaces, for callers outside React. */
+export const getCurrentPinnedSpaceIds = () =>
+  getPinnedSpaceIds(useSpaceStore.getState(), currentPinOwnerKey());
 
 const timestampFromServer = (value?: string | null, fallback = Date.now()) => {
   const timestamp = parseServerTimestamp(value);
@@ -693,6 +756,7 @@ export const useSpaceStore = create<SpaceStore>()(
       spaces: {},
       lastVisitedProjectBySpace: {},
       lastActiveSpaceIdByUser: {},
+      pinnedSpaceIdsByUser: {},
       projectsBySpaceId: {},
       projectIdIndex: {},
       projectsSyncedAt: {},
@@ -1040,6 +1104,14 @@ export const useSpaceStore = create<SpaceStore>()(
           }
           return {
             spaces: nextSpaces,
+            pinnedSpaceIdsByUser: withoutPinnedSpaces(
+              state.pinnedSpaceIdsByUser,
+              new Set(
+                spaces
+                  .filter((space) => space.status === 'archived')
+                  .map((space) => space.id)
+              )
+            ),
             activeSpaceId:
               activeSpaceId === undefined ? state.activeSpaceId : activeSpaceId,
           };
@@ -1526,6 +1598,10 @@ export const useSpaceStore = create<SpaceStore>()(
           return {
             spaces: nextSpaces,
             activeSpaceId: nextActiveSpaceId,
+            pinnedSpaceIdsByUser: withoutPinnedSpaces(
+              state.pinnedSpaceIdsByUser,
+              new Set([spaceId])
+            ),
             projectsBySpaceId: nextProjectsBySpaceId,
             projectIdIndex: nextProjectIdIndex,
             projectsSyncedAt: nextProjectsSyncedAt,
@@ -1666,6 +1742,13 @@ export const useSpaceStore = create<SpaceStore>()(
                 updatedAt: Date.now(),
               },
             },
+            pinnedSpaceIdsByUser:
+              updates.status === 'archived'
+                ? withoutPinnedSpaces(
+                    state.pinnedSpaceIdsByUser,
+                    new Set([spaceId])
+                  )
+                : state.pinnedSpaceIdsByUser,
           };
         }),
 
@@ -1865,6 +1948,71 @@ export const useSpaceStore = create<SpaceStore>()(
         }
       },
 
+      pinSpace: (spaceId) => {
+        const state = get();
+        if (!isPinnableSpace(state.spaces[spaceId])) return 'missing';
+        const ownerKey = currentPinOwnerKey();
+        const pinned = getPinnedSpaceIds(state, ownerKey);
+        if (pinned.includes(spaceId)) return 'already-pinned';
+        if (pinned.length >= MAX_PINNED_SPACES) return 'full';
+        set({
+          pinnedSpaceIdsByUser: {
+            ...state.pinnedSpaceIdsByUser,
+            [ownerKey]: [...pinned, spaceId],
+          },
+        });
+        return 'pinned';
+      },
+
+      unpinSpace: (spaceId) =>
+        set((state) => {
+          const ownerKey = currentPinOwnerKey();
+          const ids = state.pinnedSpaceIdsByUser[ownerKey];
+          if (!ids?.includes(spaceId)) return state;
+          return {
+            pinnedSpaceIdsByUser: {
+              ...state.pinnedSpaceIdsByUser,
+              [ownerKey]: ids.filter((id) => id !== spaceId),
+            },
+          };
+        }),
+
+      moveSpacePin: (spaceId, toIndex) =>
+        set((state) => {
+          const ownerKey = currentPinOwnerKey();
+          const pinned = getPinnedSpaceIds(state, ownerKey);
+          const fromIndex = pinned.indexOf(spaceId);
+          if (fromIndex === -1) return state;
+          const target = Math.max(0, Math.min(pinned.length - 1, toIndex));
+          if (target === fromIndex) return state;
+          const next = [...pinned];
+          next.splice(fromIndex, 1);
+          next.splice(target, 0, spaceId);
+          return {
+            pinnedSpaceIdsByUser: {
+              ...state.pinnedSpaceIdsByUser,
+              [ownerKey]: next,
+            },
+          };
+        }),
+
+      setPinnedSpaces: (spaceIds) =>
+        set((state) => {
+          const ownerKey = currentPinOwnerKey();
+          return {
+            pinnedSpaceIdsByUser: {
+              ...state.pinnedSpaceIdsByUser,
+              [ownerKey]: getPinnedSpaceIds(
+                {
+                  spaces: state.spaces,
+                  pinnedSpaceIdsByUser: { [ownerKey]: spaceIds },
+                },
+                ownerKey
+              ),
+            },
+          };
+        }),
+
       getActiveSpace: () => {
         const { activeSpaceId, spaces } = get();
         return activeSpaceId ? spaces[activeSpaceId] || null : null;
@@ -1904,6 +2052,7 @@ export const useSpaceStore = create<SpaceStore>()(
           spaces: prunedSpaces.spaces,
           lastVisitedProjectBySpace: prunedSpaces.lastVisitedProjectBySpace,
           lastActiveSpaceIdByUser: state.lastActiveSpaceIdByUser ?? {},
+          pinnedSpaceIdsByUser: state.pinnedSpaceIdsByUser ?? {},
           projectsBySpaceId: pruned.projectsBySpaceId,
           projectIdIndex: pruned.projectIdIndex,
           projectsSyncedAt: {},
@@ -1915,6 +2064,7 @@ export const useSpaceStore = create<SpaceStore>()(
         spaces: state.spaces,
         lastVisitedProjectBySpace: state.lastVisitedProjectBySpace,
         lastActiveSpaceIdByUser: state.lastActiveSpaceIdByUser,
+        pinnedSpaceIdsByUser: state.pinnedSpaceIdsByUser,
         projectsBySpaceId: state.projectsBySpaceId,
         projectIdIndex: state.projectIdIndex,
       }),

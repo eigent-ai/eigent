@@ -14,6 +14,7 @@
 
 import {
   APP_COMMAND,
+  PINNED_SPACE_COMMANDS,
   type AppCommandId,
 } from '../../../src/shared/appCommands';
 import { getKeyboardShortcutsAccelerator } from '../../../src/shared/keyboardShortcuts';
@@ -207,6 +208,18 @@ function buildViewMenu(
         accelerator: platformAccelerator(platform, 'Command+5', 'Control+5'),
         command: APP_COMMAND.navigateConfiguration,
       },
+      // ⌥⌘ on macOS, where ⇧⌘3–5 take screenshots; Ctrl+Shift elsewhere,
+      // because Windows reports AltGr as Ctrl+Alt.
+      ...PINNED_SPACE_COMMANDS.map((command, index) => ({
+        id: `view.navigate-pinned-space-${index + 1}`,
+        accelerator: platformAccelerator(
+          platform,
+          `Command+Alt+${index + 1}`,
+          `Control+Shift+${index + 1}`
+        ),
+        command,
+        terminalKey: undefined as string | undefined,
+      })),
       {
         id: 'view.toggle-workspace-sidebar',
         accelerator: platformAccelerator(platform, 'Command+B', 'Control+B'),
