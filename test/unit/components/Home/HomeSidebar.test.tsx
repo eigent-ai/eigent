@@ -237,6 +237,25 @@ describe('HomeSidebar', () => {
     ).toBeInTheDocument();
   });
 
+  it('starts with the Eigent row, which is not a control', () => {
+    renderSidebar();
+
+    const brand = document.querySelector(
+      '[data-home-sidebar-brand]'
+    ) as HTMLElement;
+    expect(brand).toHaveTextContent('Eigent');
+    expect(within(brand).getByText('Eigent')).toHaveClass('font-display');
+    expect(brand).toHaveClass('h-8');
+    expect(brand.querySelector('img')).not.toBeNull();
+    expect(within(brand).queryByRole('button')).toBeNull();
+    // First in the sidebar, so New session lines up with the Space sidebar.
+    expect(
+      brand.compareDocumentPosition(
+        within(sidebar()).getByRole('button', { name: 'New session' })
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it('sorts Spaces by creation time from the Spaces header menu', async () => {
     const user = userEvent.setup();
     act(() => {
