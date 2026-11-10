@@ -51,6 +51,9 @@ _UNSAFE_INHERITED_GIT_ENV = {
     "SSH_ASKPASS",
 }
 _ADVANCED_COMMAND_SLOTS = threading.BoundedSemaphore(4)
+# Decode Git output like os.fsdecode: bytes that are not UTF-8 survive a
+# decode/encode round trip rather than turning into U+FFFD.
+_GIT_TEXT_ERRORS = "surrogateescape"
 
 # `git worktree add` writes a new worktree's metadata in several steps, and
 # any Git command that reads every worktree's metadata exits with an error
@@ -1852,11 +1855,13 @@ class GitBackend:
         command = self._command(cwd, args)
         # Git reads and writes paths as UTF-8 on every platform. Never fall
         # back to the locale codec (cp1251, cp1252, ...) on Windows, or a
-        # non-English user folder decodes into a different path.
+        # non-English user folder decodes into a different path. Undecodable
+        # bytes round-trip (surrogateescape) instead of becoming U+FFFD, so a
+        # file name read from Git is written back to Git unchanged.
         text_encoding = encoding or "utf-8"
         command_input: str | bytes | None = input_text
         if preserve_newlines and input_text is not None:
-            command_input = input_text.encode(text_encoding)
+            command_input = input_text.encode(text_encoding, _GIT_TEXT_ERRORS)
         try:
             with _worktree_metadata_guard(cwd, args):
                 completed = subprocess.run(
@@ -1865,7 +1870,7 @@ class GitBackend:
                     capture_output=True,
                     text=not preserve_newlines,
                     encoding=None if preserve_newlines else text_encoding,
-                    errors=None if preserve_newlines else "replace",
+                    errors=None if preserve_newlines else _GIT_TEXT_ERRORS,
                     input=command_input,
                     timeout=self.timeout_seconds,
                     env=environment,
@@ -1878,10 +1883,15 @@ class GitBackend:
         errors = completed.stderr
         if preserve_newlines:
             # Text mode would change CR/CRLF bytes inside NUL-delimited paths.
-            output = output.decode(text_encoding)
-            errors = errors.decode(text_encoding)
+            output = output.decode(text_encoding, _GIT_TEXT_ERRORS)
+            errors = errors.decode(text_encoding, _GIT_TEXT_ERRORS)
         stdout = output[: self.max_output_chars]
-        stderr = errors[: self.max_output_chars]
+        # stderr is only shown to people; keep it printable.
+        stderr = (
+            errors[: self.max_output_chars]
+            .encode(text_encoding, _GIT_TEXT_ERRORS)
+            .decode(text_encoding, "replace")
+        )
         if check and completed.returncode != 0:
             raise GitCommandError(
                 args=args,
