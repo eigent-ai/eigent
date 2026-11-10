@@ -46,7 +46,12 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-function HeaderWin() {
+interface HeaderWinProps {
+  /** False while the install or onboarding screen covers the app. */
+  searchEnabled?: boolean;
+}
+
+function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
   const { t } = useTranslation();
   const host = useHost();
   const titlebarRef = useRef<HTMLDivElement>(null);
@@ -111,7 +116,7 @@ function HeaderWin() {
         cancelText={t('layout.cancel')}
         confirmVariant="primary"
       />
-      <GlobalSearchHost />
+      <GlobalSearchHost enabled={searchEnabled} />
       {/* Two-sided global navigation: destinations on the left, utilities on the right. */}
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-between">
         <TopBarPrimaryNavigation

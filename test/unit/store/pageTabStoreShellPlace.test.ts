@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  displayedWorkspaceTab,
   isHomePlaceTab,
   usePageTabStore,
   type PageTabState,
@@ -52,6 +53,13 @@ describe('pageTabStore shell place', () => {
       shellPlace: 'space',
     });
     expect(isHomePlaceTab(tab)).toBe(false);
+  });
+
+  it('shows the composer landing as New session and leaves other tabs alone', () => {
+    expect(displayedWorkspaceTab('workforce')).toBe('new-project');
+    expect(displayedWorkspaceTab('new-project')).toBe('new-project');
+    expect(displayedWorkspaceTab('project')).toBe('project');
+    expect(displayedWorkspaceTab('files')).toBe('files');
   });
 
   it('moves to the Space view when the add-automation dialog opens', () => {

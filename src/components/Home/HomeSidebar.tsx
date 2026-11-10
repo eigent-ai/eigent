@@ -60,6 +60,7 @@ import { shouldListSession } from '@/lib/sessionOpen';
 import {
   isSessionOutcomeSeen,
   markSessionOutcomeSeen,
+  useSessionOutcomeRuns,
 } from '@/lib/sessionOutcome';
 import { openSessionWindow } from '@/lib/sessionWindows';
 import { isHomePagePath } from '@/lib/shellRoutes';
@@ -478,6 +479,16 @@ function HomeSidebar() {
     // same way the Space sidebar does; a Space's metas changing re-reads them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activity.sessions, projectsBySpaceId, navLeadByProjectId]);
+  // A read result is checked against its Run once the Run summary loads.
+  const listedSessionIds = useMemo(
+    () =>
+      Object.values(sessionsBySpace)
+        .flat()
+        .map((meta) => meta.id)
+        .sort(),
+    [sessionsBySpace]
+  );
+  useSessionOutcomeRuns(listedSessionIds);
 
   const orderedSpaces = useMemo(() => {
     // Like the Spaces hub, skip untouched placeholders; the active Space

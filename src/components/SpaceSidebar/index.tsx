@@ -46,7 +46,7 @@ import { AUTOMATION_ICON, AUTOMATION_OFF_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { displayedWorkspaceTab, usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import {
@@ -166,8 +166,11 @@ function SpaceSidebar({ className }: SpaceSidebarProps) {
     userId,
   ]);
 
+  // The composer landing is drawn as New session.
+  const newSessionShown =
+    displayedWorkspaceTab(activeWorkspaceTab) === 'new-project';
   const isSessionNavSelectionActive =
-    activeWorkspaceTab === 'project' || activeWorkspaceTab === 'new-project';
+    activeWorkspaceTab === 'project' || newSessionShown;
 
   const ensureProjectLoaded = useCallback(
     (projectId: string, onHydrationStarted?: () => void) =>
@@ -525,7 +528,7 @@ function SpaceSidebar({ className }: SpaceSidebarProps) {
                 </div>
               ) : null}
               <NavTab
-                active={activeWorkspaceTab === 'new-project'}
+                active={newSessionShown}
                 onClick={handleNewSession}
                 leading={
                   <DsIcon icon={Plus} className="shrink-0" aria-hidden />
@@ -540,7 +543,7 @@ function SpaceSidebar({ className }: SpaceSidebarProps) {
                 tooltipCompact
                 tooltipVariant="delayed"
                 ariaLabel={t('layout.new-project')}
-                ariaCurrentPage={activeWorkspaceTab === 'new-project'}
+                ariaCurrentPage={newSessionShown}
               />
               <NavTab
                 active={activeWorkspaceTab === 'files'}

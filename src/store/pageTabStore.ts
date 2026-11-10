@@ -65,6 +65,15 @@ export function isHomePlaceTab(tab: WorkspaceTabId): boolean {
   );
 }
 
+/**
+ * The tab on screen. The composer landing (`workforce`) is drawn as New
+ * session, so anything that highlights or reacts to the page reads this
+ * instead of the stored tab.
+ */
+export function displayedWorkspaceTab(tab: WorkspaceTabId): WorkspaceTabId {
+  return tab === WorkspaceTab.Workforce ? WorkspaceTab.NewProject : tab;
+}
+
 export function normalizeShellPlace(value: unknown): ShellPlace {
   return value === 'home' ? 'home' : 'space';
 }

@@ -55,6 +55,8 @@ interface ShellHistoryState {
   replace: (entry: ShellPlaceEntry) => void;
   /** Move the pointer `delta` places and return that entry. */
   step: (delta: -1 | 1) => ShellPlaceEntry | null;
+  /** Put the pointer back, for a step that didn't open anything. */
+  setIndex: (index: number) => void;
 }
 
 export const useShellHistoryStore = create<ShellHistoryState>((set, get) => ({
@@ -85,4 +87,8 @@ export const useShellHistoryStore = create<ShellHistoryState>((set, get) => ({
     set({ index: next });
     return entries[next];
   },
+  setIndex: (index) =>
+    set((state) =>
+      index >= -1 && index < state.entries.length ? { index } : state
+    ),
 }));

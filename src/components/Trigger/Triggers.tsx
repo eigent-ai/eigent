@@ -114,6 +114,11 @@ export default function Overview({
     () => (activeSpaceId ? 'loading' : 'idle')
   );
   const [listReloadRequest, setListReloadRequest] = useState(0);
+  // The Space whose list is on screen; null until this Space's list shows.
+  const listSpaceId = useRef<string | null>(null);
+  const loadedSpaceId = useRef<string | null>(null);
+  // Whether the list on screen is the one remembered from an earlier visit.
+  const [showingRememberedList, setShowingRememberedList] = useState(false);
 
   // A Space owns this list; changing Session must not clear its automations.
   useEffect(() => {
@@ -121,7 +126,13 @@ export default function Overview({
     const lastList = activeSpaceId
       ? lastTriggersBySpace.get(activeSpaceId)
       : undefined;
+    // A Retry keeps the Space; only a new Space waits for its own list.
+    if (loadedSpaceId.current !== activeSpaceId) {
+      loadedSpaceId.current = activeSpaceId;
+      listSpaceId.current = null;
+    }
     setTriggers(lastList ?? []);
+    setShowingRememberedList(Boolean(lastList));
 
     if (!activeSpaceId) {
       setListLoadState('idle');
@@ -136,6 +147,7 @@ export default function Overview({
         lastTriggersBySpace.set(activeSpaceId, items);
         if (cancelled) return;
         setTriggers(items);
+        setShowingRememberedList(false);
         setListLoadState('ready');
       })
       .catch((error) => {
@@ -152,6 +164,25 @@ export default function Overview({
   useEffect(() => {
     setHasTriggers(triggers.length > 0);
   }, [triggers, setHasTriggers]);
+
+  // Keep this Space's remembered list in step with local adds, edits and
+  // deletes, so coming back doesn't show what was there before.
+  useEffect(() => {
+    if (!activeSpaceId) return;
+    if (triggers === lastTriggersBySpace.get(activeSpaceId)) {
+      listSpaceId.current = activeSpaceId;
+      return;
+    }
+    if (listSpaceId.current === activeSpaceId) {
+      // A create that finishes after a Space switch belongs to its own Space.
+      lastTriggersBySpace.set(
+        activeSpaceId,
+        triggers.filter(
+          (trigger) => !trigger.space_id || trigger.space_id === activeSpaceId
+        )
+      );
+    }
+  }, [activeSpaceId, triggers]);
 
   useEffect(() => {
     const pending = timers.current;
@@ -409,23 +440,49 @@ export default function Overview({
               </div>
             ) : null
           ) : (
-            <ul className="m-0 flex list-none flex-col gap-ds-2 p-0">
-              {sortedTriggers.map((trigger) => (
-                <li key={trigger.id}>
-                  <TriggerListItem
-                    trigger={trigger}
-                    isSelected={selectedTriggerId === trigger.id}
-                    isNew={justAddedId === trigger.id}
-                    isBusy={pendingIds.includes(trigger.id)}
-                    onRunNow={handleRunNow}
-                    onSelect={onSelectedTriggerIdChange}
-                    onEdit={(item) => openDialog({ trigger: item })}
-                    onDelete={handleDelete}
-                    onToggleActive={handleToggleActive}
-                  />
-                </li>
-              ))}
-            </ul>
+            <>
+              {/* A remembered list whose refresh failed may be out of date. */}
+              {listLoadState === 'error' && showingRememberedList ? (
+                <div
+                  role="alert"
+                  className="mb-ds-8 flex items-center justify-between gap-ds-stack-related px-ds-8"
+                >
+                  <DsText
+                    as="p"
+                    role="base"
+                    className="text-ds-ink-muted-default"
+                  >
+                    {t('triggers.failed-to-load')}
+                  </DsText>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      setListReloadRequest((request) => request + 1)
+                    }
+                  >
+                    {t('layout.retry')}
+                  </Button>
+                </div>
+              ) : null}
+              <ul className="m-0 flex list-none flex-col gap-ds-2 p-0">
+                {sortedTriggers.map((trigger) => (
+                  <li key={trigger.id}>
+                    <TriggerListItem
+                      trigger={trigger}
+                      isSelected={selectedTriggerId === trigger.id}
+                      isNew={justAddedId === trigger.id}
+                      isBusy={pendingIds.includes(trigger.id)}
+                      onRunNow={handleRunNow}
+                      onSelect={onSelectedTriggerIdChange}
+                      onEdit={(item) => openDialog({ trigger: item })}
+                      onDelete={handleDelete}
+                      onToggleActive={handleToggleActive}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       </aside>

@@ -29,6 +29,7 @@ import {
 import { normalizeNativeMenuLocale } from '@/shared/nativeMenu';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import {
+  displayedWorkspaceTab,
   isHomePlaceTab,
   usePageTabStore,
   WorkspaceTab,
@@ -108,7 +109,8 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   // Preview and Summary columns also exist on the New session page.
   const isSessionLayoutTab =
     isProjectTab ||
-    (isWorkspacePage && activeWorkspaceTab === WorkspaceTab.NewProject);
+    (isWorkspacePage &&
+      displayedWorkspaceTab(activeWorkspaceTab) === WorkspaceTab.NewProject);
 
   const openFilesTab = useCallback(() => {
     const projectStore = useProjectRuntimeStore.getState();

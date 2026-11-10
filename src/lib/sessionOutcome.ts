@@ -14,6 +14,7 @@
 
 import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 import {
+  getSessionNavLeadFromRunStatus,
   isSessionOutcomeKind,
   selectSessionNavRun,
   type SessionNavLeadKind,
@@ -21,17 +22,22 @@ import {
 import { peekProjectEventStore } from '@/store/projectEventStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
+import { useEffect, useState } from 'react';
+
+function sessionOutcomeRunKey(projectId: string): string | null {
+  const run = selectSessionNavRun(projectId, [
+    runProjectionStore.getProject(projectId),
+    peekProjectEventStore(projectId)?.getSnapshot().view,
+  ]);
+  return run ? `${run.runId}:${run.status}` : null;
+}
 
 /** Names the result on show, so the next Run's result counts as new. */
 export function sessionOutcomeKey(
   projectId: string,
   kind: SessionNavLeadKind
 ): string {
-  const run = selectSessionNavRun(projectId, [
-    runProjectionStore.getProject(projectId),
-    peekProjectEventStore(projectId)?.getSnapshot().view,
-  ]);
-  return run ? `${run.runId}:${run.status}` : kind;
+  return sessionOutcomeRunKey(projectId) ?? kind;
 }
 
 /** Whether this Session's current result has already been read. */
@@ -41,11 +47,42 @@ export function isSessionOutcomeSeen(
   seenOutcomes: Readonly<Record<string, string>>
 ): boolean {
   const seen = seenOutcomes[projectId];
+  if (seen === undefined || !isSessionOutcomeKind(kind)) return false;
+  const runKey = sessionOutcomeRunKey(projectId);
+  if (runKey) return seen === runKey;
+  if (seen === kind) return true;
+  // After a restart the Run summary loads after the lead. Until it does, a
+  // result read before still counts as read when it was the same kind of
+  // result; `useSessionOutcomeRuns` checks again once the Run is known.
+  const separator = seen.lastIndexOf(':');
+  if (separator < 0) return false;
   return (
-    seen !== undefined &&
-    isSessionOutcomeKind(kind) &&
-    seen === sessionOutcomeKey(projectId, kind)
+    getSessionNavLeadFromRunStatus(seen.slice(separator + 1))?.kind === kind
   );
+}
+
+/**
+ * Re-renders when the Run summaries of `projectIds` change, so rows that
+ * call `isSessionOutcomeSeen` check again once a Run is known.
+ */
+export function useSessionOutcomeRuns(projectIds: readonly string[]): void {
+  const [, setVersion] = useState(0);
+  const key = projectIds.join('\n');
+  useEffect(() => {
+    if (!key) return;
+    const unsubscribes = key.split('\n').map((projectId) => {
+      // Re-render only when the Run a row would compare against changes,
+      // not on every event of a running Session.
+      let runKey = sessionOutcomeRunKey(projectId);
+      return runProjectionStore.subscribeProject(projectId, () => {
+        const next = sessionOutcomeRunKey(projectId);
+        if (next === runKey) return;
+        runKey = next;
+        setVersion((version) => version + 1);
+      });
+    });
+    return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
+  }, [key]);
 }
 
 /** Remember that the Session's current result has been read. */

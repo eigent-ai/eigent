@@ -182,4 +182,67 @@ describe('useShellHistory', () => {
     expect(mocks.openSessionInShell).not.toHaveBeenCalled();
     expect(usePageTabStore.getState().activeWorkspaceTab).toBe('dispatch');
   });
+
+  it('keeps its place and the earlier entry when the Space switch fails', async () => {
+    const { result } = renderHistory();
+    await settle();
+    act(() => useSpaceStore.setState({ activeSpaceId: 'space-b' }));
+    await settle();
+    const before = useShellHistoryStore.getState().entries;
+
+    mocks.switchToSpace.mockResolvedValueOnce(false);
+    await act(async () => result.current.history.goBack());
+    await finishRestore();
+
+    const after = useShellHistoryStore.getState();
+    expect(after.index).toBe(1);
+    expect(after.entries).toEqual(before);
+    expect(after.entries[0].spaceId).toBe('space-a');
+    expect(result.current.history.canGoBack).toBe(true);
+    expect(result.current.history.canGoForward).toBe(false);
+  });
+
+  it('counts where a failed switch still moved the screen as the place reached', async () => {
+    useSpaceStore.setState({
+      spaces: {
+        'space-a': space('space-a'),
+        'space-b': space('space-b'),
+        'space-c': space('space-c'),
+      },
+    });
+    const { result } = renderHistory();
+    await settle();
+    act(() => useSpaceStore.setState({ activeSpaceId: 'space-b' }));
+    await settle();
+
+    // The switch moves the screen to another Space, then reports failure.
+    mocks.switchToSpace.mockImplementationOnce(async () => {
+      useSpaceStore.setState({ activeSpaceId: 'space-c' });
+      return false;
+    });
+    await act(async () => result.current.history.goBack());
+    await finishRestore();
+
+    const after = useShellHistoryStore.getState();
+    expect(after.index).toBe(0);
+    expect(after.entries[0].spaceId).toBe('space-c');
+    expect(after.entries[1].spaceId).toBe('space-b');
+    expect(result.current.history.canGoForward).toBe(true);
+  });
+
+  it('stays put when every earlier place was deleted', async () => {
+    useSpaceStore.setState({ activeSpaceId: 'space-b' });
+    const { result } = renderHistory();
+    await settle();
+    act(() => useSpaceStore.setState({ activeSpaceId: 'space-a' }));
+    await settle();
+
+    useSpaceStore.setState({ spaces: { 'space-a': space('space-a') } });
+    await act(async () => result.current.history.goBack());
+    await finishRestore();
+
+    expect(mocks.switchToSpace).not.toHaveBeenCalled();
+    expect(useShellHistoryStore.getState().index).toBe(1);
+    expect(result.current.history.canGoForward).toBe(false);
+  });
 });

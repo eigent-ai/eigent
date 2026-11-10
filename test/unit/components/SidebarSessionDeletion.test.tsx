@@ -104,7 +104,10 @@ vi.mock('@/store/projectRuntimeStore', () => ({
     { getState: () => mocks.runtime }
   ),
 }));
-vi.mock('@/store/pageTabStore', () => ({
+vi.mock('@/store/pageTabStore', async (importOriginal) => ({
+  displayedWorkspaceTab: (
+    await importOriginal<typeof import('@/store/pageTabStore')>()
+  ).displayedWorkspaceTab,
   usePageTabStore: (selector: any) => selector(mocks.page),
 }));
 vi.mock('@/store/triggerStore', () => ({

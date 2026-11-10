@@ -16,6 +16,7 @@ import { useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { openSessionInShell } from '@/lib/sessionOpen';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import {
+  displayedWorkspaceTab,
   usePageTabStore,
   WorkspaceTab,
   type WorkspaceTabId,
@@ -23,6 +24,7 @@ import {
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
+  shellPlaceKey,
   useShellHistoryStore,
   type ShellPlaceEntry,
 } from '@/store/shellHistoryStore';
@@ -48,10 +50,7 @@ const SESSION_TABS: readonly string[] = [
 function readEntry(path: string, routerState: unknown): ShellPlaceEntry {
   const { shellPlace, activeWorkspaceTab, spaceWorkspaceTab } =
     usePageTabStore.getState();
-  const workspaceTab =
-    activeWorkspaceTab === WorkspaceTab.Workforce
-      ? WorkspaceTab.NewProject
-      : activeWorkspaceTab;
+  const workspaceTab = displayedWorkspaceTab(activeWorkspaceTab);
   return {
     path,
     routerState,
@@ -118,8 +117,9 @@ export function useShellHistory() {
     workspaceTab,
   ]);
 
+  /** Opens `entry`, and returns false when its Space couldn't be opened. */
   const restore = useCallback(
-    async (entry: ShellPlaceEntry) => {
+    async (entry: ShellPlaceEntry): Promise<boolean> => {
       const pages = usePageTabStore.getState();
       const sessionId =
         entry.path === '/' && entry.workspaceTab === WorkspaceTab.Project
@@ -135,7 +135,7 @@ export function useShellHistory() {
           tab: null,
           hydrate: !sessionId,
         });
-        if (!switched) return;
+        if (!switched) return false;
       } else {
         cancelPendingSpaceSwitch();
       }
@@ -145,7 +145,7 @@ export function useShellHistory() {
         navigate(entry.path, { state: entry.routerState });
         await openSessionInShell(sessionId);
         pages.setShellPlace(entry.shellPlace);
-        return;
+        return true;
       }
       if (entry.path === '/') {
         useProjectRuntimeStore.getState().setActiveProject(entry.projectId);
@@ -155,6 +155,7 @@ export function useShellHistory() {
         pages.setShellPlace(entry.shellPlace);
       }
       navigate(entry.path, { state: entry.routerState });
+      return true;
     },
     [closeSettings, navigate, switchToSpace]
   );
@@ -168,22 +169,42 @@ export function useShellHistory() {
         history.record(
           readEntry(route.current.path, route.current.routerState)
         );
+        // Where the screen is, in case nothing opens.
+        const start = useShellHistoryStore.getState().index;
+        const startEntry = useShellHistoryStore.getState().entries[start];
         // Skip anything deleted since it was visited.
         let entry = history.step(delta);
         while (entry && !canRestore(entry)) entry = history.step(delta);
-        if (!entry) return;
+        if (!entry) {
+          history.setIndex(start);
+          return;
+        }
 
         restoring.current = true;
+        let restored = false;
         try {
-          await restore(entry);
+          restored = await restore(entry);
         } finally {
           // Let the place settle, then keep what actually opened, so a Session
           // that lands elsewhere doesn't count as a new move and clear Forward.
           setTimeout(() => {
             restoring.current = false;
-            history.replace(
-              readEntry(route.current.path, route.current.routerState)
+            const current = readEntry(
+              route.current.path,
+              route.current.routerState
             );
+            // Nothing opened and the screen didn't move: step back to it.
+            // A failed switch can still have moved the screen, which then
+            // counts as the place reached.
+            if (
+              !restored &&
+              startEntry &&
+              shellPlaceKey(current) === shellPlaceKey(startEntry)
+            ) {
+              history.setIndex(start);
+              return;
+            }
+            history.replace(current);
           }, SHELL_HISTORY_SETTLE_MS * 2);
         }
       });

@@ -180,7 +180,7 @@ const Layout = () => {
             : undefined
         }
       >
-        {showTopBar ? <TopBar /> : null}
+        {showTopBar ? <TopBar searchEnabled={shouldShowMainContent} /> : null}
       </div>
       <SettingsRouteBridge />
       <div className="relative flex h-full min-h-0 flex-1 flex-row overflow-hidden">
