@@ -26,6 +26,10 @@ interface RecoverySubscription {
 export const isCreditRecoveryReason = (reason: ErrorReason) =>
   ['credits', 'free-credits', 'trial-total'].includes(reason);
 
+/** Blockers your own model API key gets around, including the daily trial cap. */
+export const isOwnKeyRecoveryReason = (reason: ErrorReason) =>
+  isCreditRecoveryReason(reason) || reason === 'trial-daily';
+
 /**
  * A zero balance on an account with no plan, trial, or paid history is a
  * starting point rather than a balance that ran out.

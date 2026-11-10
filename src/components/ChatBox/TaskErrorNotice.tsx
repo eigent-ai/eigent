@@ -14,7 +14,11 @@
 
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
-import { isCreditRecoveryReason, openPricing } from '@/lib/creditRecovery';
+import {
+  isCreditRecoveryReason,
+  isOwnKeyRecoveryReason,
+  openPricing,
+} from '@/lib/creditRecovery';
 import { errorCopy, type ErrorReason } from '@/lib/usageErrors';
 import {
   contactSupport,
@@ -39,7 +43,7 @@ export function TaskErrorNotice({
     presentedUsageReason(recordedReason, state)
   );
   const refreshing = useUsageNoticeStore((state) => state.refreshing);
-  const creditRecovery = isCreditRecoveryReason(reason);
+  const creditRecovery = isOwnKeyRecoveryReason(reason);
   const sharedRefreshError = useUsageNoticeStore((state) => state.refreshError);
   const refreshError =
     sharedRefreshError === 'chat.notice-availability-unverified'
@@ -86,6 +90,7 @@ export function TaskErrorNotice({
               <CreditRecoveryActions
                 refreshing={refreshing}
                 onRefresh={() => void refreshUsage()}
+                upgrade={isCreditRecoveryReason(reason)}
               />
             ) : (
               <>

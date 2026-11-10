@@ -19,6 +19,8 @@ import { useTranslation } from 'react-i18next';
 export interface CreditRecoveryActionsProps {
   refreshing?: boolean;
   onRefresh: () => void;
+  /** False for a blocker that lifts on its own, such as the daily trial cap. */
+  upgrade?: boolean;
 }
 
 /**
@@ -28,13 +30,16 @@ export interface CreditRecoveryActionsProps {
 export function CreditRecoveryActions({
   refreshing,
   onRefresh,
+  upgrade = true,
 }: CreditRecoveryActionsProps) {
   const { t } = useTranslation();
   return (
     <>
-      <Button size="sm" variant="primary" onClick={openPricing}>
-        {t('chat.notice-upgrade-plan')}
-      </Button>
+      {upgrade && (
+        <Button size="sm" variant="primary" onClick={openPricing}>
+          {t('chat.notice-upgrade-plan')}
+        </Button>
+      )}
       <Button
         size="sm"
         variant="outline"

@@ -17,6 +17,7 @@ import { createHost } from '@/host/createHost';
 import {
   isAccountWithoutCredits,
   isCreditRecoveryReason,
+  isOwnKeyRecoveryReason,
 } from '@/lib/creditRecovery';
 import { trialAwareUsageReason, usageNoticeCopy } from '@/lib/trialQuotaCopy';
 import type { ErrorReason, UsageReason } from '@/lib/usageErrors';
@@ -180,7 +181,7 @@ function syncReminder() {
     return;
   }
   const { message, description } = liveUsageNoticeCopy(incident.reason, state);
-  const recovery = isCreditRecoveryReason(incident.reason);
+  const recovery = isOwnKeyRecoveryReason(incident.reason);
   if (state.presented === identity && state.presentedCopy === message) return;
   useUsageNoticeStore.setState({ presented: identity, presentedCopy: message });
   const account = state.account;
@@ -198,6 +199,7 @@ function syncReminder() {
           description: createElement(CreditRecoveryToastBody, {
             description,
             onRefresh: () => void refreshUsage(),
+            upgrade: isCreditRecoveryReason(incident.reason),
           }),
           // Updating a toast merges options; drop an earlier Refresh action.
           action: undefined,

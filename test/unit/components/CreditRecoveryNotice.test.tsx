@@ -218,15 +218,16 @@ describe('out of credits recovery', () => {
     }
   });
 
-  it('leaves the daily trial notice with Refresh only', async () => {
+  it('gives the daily trial notice Refresh and own key, without Upgrade', async () => {
     respond(newAccount);
     await refreshUsage();
     render(<TaskErrorNotice reason="trial-daily" />);
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeVisible();
     expect(
-      screen.queryByRole('button', {
-        name: /Upgrade plan|Use your own API key/,
-      })
+      screen.getByRole('button', { name: 'Use your own API key' })
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Upgrade plan' })
     ).not.toBeInTheDocument();
   });
 
@@ -252,6 +253,54 @@ describe('out of credits recovery', () => {
       notice.queryByText('You’re out of Eigent credits.')
     ).not.toBeInTheDocument();
     expect(notice.getByRole('button', { name: 'Refresh' })).toBeVisible();
+  });
+
+  it('offers Refresh and own key, but not Upgrade, for the daily trial limit', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 859,
+      },
+      500
+    );
+    await refreshUsage();
+    const toast = lastToast();
+    expect(toast.message).toBe('You’ve used today’s Pro trial credits.');
+    render(
+      <>
+        <div data-testid="toast">{toast.description}</div>
+        <TaskErrorNotice reason="credits" />
+      </>
+    );
+    act(() => acknowledgeUsageNotice());
+    render(<LiveNotice />);
+
+    const surfaces = [
+      screen.getByTestId('toast'),
+      document.querySelector('[data-usage-notice]') as HTMLElement,
+      document.querySelector('[data-task-error]') as HTMLElement,
+    ];
+    for (const surface of surfaces) {
+      const notice = within(surface);
+      expect(
+        notice.queryByRole('button', { name: 'Upgrade plan' })
+      ).not.toBeInTheDocument();
+      expect(notice.getByRole('button', { name: 'Refresh' })).toBeVisible();
+      expect(
+        notice.getByRole('button', { name: 'Use your own API key' })
+      ).toBeVisible();
+    }
+
+    const user = userEvent.setup();
+    await user.click(
+      within(surfaces[2]).getByRole('button', { name: 'Use your own API key' })
+    );
+    expect(useSettingsStore.getState()).toMatchObject({
+      isOpen: true,
+      activeSection: 'models',
+    });
   });
 
   it('keeps the trial allowance wording after a failed Refresh', async () => {
