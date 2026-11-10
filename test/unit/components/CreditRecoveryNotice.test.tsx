@@ -193,7 +193,12 @@ describe('out of credits recovery', () => {
 
     mocks.get.mockClear();
     await user.click(notice.getByRole('button', { name: 'Refresh' }));
-    expect(mocks.get).toHaveBeenCalledWith('/api/v1/subscription');
+    expect(mocks.get).toHaveBeenCalledWith(
+      '/api/v1/subscription',
+      undefined,
+      undefined,
+      { signal: expect.any(AbortSignal) }
+    );
 
     const originalLocation = window.location;
     Object.defineProperty(window, 'location', {
@@ -223,5 +228,50 @@ describe('out of credits recovery', () => {
         name: /Upgrade plan|Use your own API key/,
       })
     ).not.toBeInTheDocument();
+  });
+
+  it('records a spend-limit failure during a trial as the trial allowance', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 859,
+      },
+      500
+    );
+    await refreshUsage();
+    render(<TaskErrorNotice reason="credits" />);
+    const notice = within(
+      document.querySelector('[data-task-error]') as HTMLElement
+    );
+    expect(
+      notice.getByText('You’ve used today’s trial credits.')
+    ).toBeVisible();
+    expect(
+      notice.queryByText('You’re out of Eigent credits.')
+    ).not.toBeInTheDocument();
+    expect(notice.getByRole('button', { name: 'Refresh' })).toBeVisible();
+  });
+
+  it('keeps Upgrade plan and own key for a used-up trial total', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 0,
+      },
+      500
+    );
+    await refreshUsage();
+    render(<TaskErrorNotice reason="credits" />);
+    expect(
+      screen.getByText('You’ve used all your trial credits.')
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Upgrade plan' })).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Use your own API key' })
+    ).toBeVisible();
   });
 });

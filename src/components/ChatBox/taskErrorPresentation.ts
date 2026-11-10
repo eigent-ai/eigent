@@ -13,23 +13,31 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ChatNoticeNode } from '@/lib/projector/chat/types';
+import { trialAwareUsageReason } from '@/lib/trialQuotaCopy';
 import { errorPresentationReason, type ErrorReason } from '@/lib/usageErrors';
 import { useProjectStore } from '@/store/projectStore';
+import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 
 /** Presentation boundary shared by every timeline, including collapsed summaries. */
 export function taskErrorReason(
   node: Pick<ChatNoticeNode, 'severity' | 'content'> &
     Partial<Pick<ChatNoticeNode, 'legacyStep' | 'projectId' | 'code'>>
 ): ErrorReason | null {
-  if (node.legacyStep === 'budget_not_enough') return 'credits';
+  // A spend limit reached during a trial is the trial's allowance.
+  const subscription = useUsageNoticeStore.getState().subscription;
+  if (node.legacyStep === 'budget_not_enough')
+    return trialAwareUsageReason('credits', subscription);
   if (node.legacyStep === 'context_too_long') return 'context';
   if (node.severity !== 'error') return null;
   const model = node.projectId
     ? useProjectStore.getState().projects[node.projectId]?.metadata
         ?.modelSelection
     : undefined;
-  return errorPresentationReason(
-    { message: node.content, code: node.code },
-    { modelType: model?.modelType }
+  return trialAwareUsageReason(
+    errorPresentationReason(
+      { message: node.content, code: node.code },
+      { modelType: model?.modelType }
+    ),
+    subscription
   );
 }

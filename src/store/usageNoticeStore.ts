@@ -18,7 +18,7 @@ import {
   isAccountWithoutCredits,
   isCreditRecoveryReason,
 } from '@/lib/creditRecovery';
-import { usageNoticeCopy } from '@/lib/trialQuotaCopy';
+import { trialAwareUsageReason, usageNoticeCopy } from '@/lib/trialQuotaCopy';
 import type { UsageReason } from '@/lib/usageErrors';
 import i18n from 'i18next';
 import { createElement } from 'react';
@@ -204,11 +204,15 @@ function syncReminder() {
 }
 
 export function reportUsageIncident(
-  incident: UsageIncident,
+  reported: UsageIncident,
   account = useUsageNoticeStore.getState().account
 ) {
   const state = useUsageNoticeStore.getState();
   if (!account || state.account !== account) return;
+  const incident = {
+    ...reported,
+    reason: trialAwareUsageReason(reported.reason, state.subscription),
+  };
   incidentVersion += 1;
   const previous = state.incidents.find(
     (item) =>
@@ -251,6 +255,8 @@ export function reportUsageIncident(
 }
 
 let inFlight: { account: string; promise: Promise<void> } | null = null;
+/** A stalled request must not leave Refresh spinning; it ends as a failed refresh. */
+export const USAGE_REFRESH_TIMEOUT_MS = 15_000;
 /** Read-only and shared by all surfaces; never retries a task or changes billing. */
 export function refreshUsage(): Promise<void> {
   const account = useUsageNoticeStore.getState().account;
@@ -260,12 +266,37 @@ export function refreshUsage(): Promise<void> {
   if (inFlight?.account === account) return inFlight.promise;
   useUsageNoticeStore.setState({ refreshing: true, refreshError: null });
   const promise = (async () => {
-    const { proxyFetchGet } = await import('@/api/http');
-    const results = await Promise.allSettled([
-      proxyFetchGet('/api/v1/subscription'),
-      proxyFetchGet('/api/v1/user/current_credits'),
-      proxyFetchGet('/api/v1/user/key'),
-    ]);
+    const controller = new AbortController();
+    const timedOut = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener(
+        'abort',
+        () => reject(new Error('Usage refresh timed out')),
+        { once: true }
+      );
+    });
+    timedOut.catch(() => undefined);
+    const timer = setTimeout(
+      () => controller.abort(),
+      USAGE_REFRESH_TIMEOUT_MS
+    );
+    let results: PromiseSettledResult<any>[];
+    try {
+      const { proxyFetchGet } = await import('@/api/http');
+      const get = (url: string) =>
+        Promise.race([
+          proxyFetchGet(url, undefined, undefined, {
+            signal: controller.signal,
+          }),
+          timedOut,
+        ]);
+      results = await Promise.allSettled([
+        get('/api/v1/subscription'),
+        get('/api/v1/user/current_credits'),
+        get('/api/v1/user/key'),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
     if (
       useUsageNoticeStore.getState().account !== account ||
       accountEpoch !== epoch
@@ -303,11 +334,18 @@ export function refreshUsage(): Promise<void> {
       access &&
       !subscription?.is_trialing &&
       ['plus', 'pro'].includes(subscription?.plan_key?.toLowerCase() ?? '');
-    const incidents = state.incidents.filter(
-      (item) =>
-        item.reason === 'service' ||
-        (item.reason === 'model-access' ? !recoveredAccess : !recoveredCredits)
-    );
+    const incidents = state.incidents
+      .filter(
+        (item) =>
+          item.reason === 'service' ||
+          (item.reason === 'model-access'
+            ? !recoveredAccess
+            : !recoveredCredits)
+      )
+      .map((item) => {
+        const reason = trialAwareUsageReason(item.reason, subscription);
+        return reason === item.reason ? item : { ...item, reason };
+      });
     useUsageNoticeStore.setState({
       subscription,
       credits,

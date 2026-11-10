@@ -21,9 +21,10 @@ import {
   reportUsageIncident,
   setUsageAccount,
   setUsageModelType,
+  USAGE_REFRESH_TIMEOUT_MS,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   dismiss: vi.fn(),
@@ -246,5 +247,152 @@ describe('account-scoped usage reminders', () => {
     setUsageAccount('account-b');
     for (const call of mocks.dismiss.mock.calls)
       expect(call[0]).toBe('usage-availability:account-a');
+  });
+});
+
+describe('spend limits during a trial', () => {
+  // Purchased credits cannot be spent beyond the trial's allowance.
+  const proTrial = {
+    plan_key: 'pro',
+    is_trialing: true,
+    trial_daily_credits_remaining: 120,
+    trial_total_credits_remaining: 859,
+  };
+  function respond(subscription: Record<string, unknown>) {
+    mocks.get.mockImplementation(async (url: string) =>
+      url.endsWith('subscription')
+        ? subscription
+        : url.endsWith('current_credits')
+          ? { credits: 500 }
+          : { value: 'redacted-test-key' }
+    );
+  }
+  beforeEach(() => {
+    setUsageAccount(null);
+    vi.clearAllMocks();
+    setUsageAccount('account-a');
+    setUsageModelType('cloud');
+  });
+
+  it('reports a spend-limit failure as the trial allowance while trialing', async () => {
+    respond(proTrial);
+    await refreshUsage();
+
+    reportUsageIncident({ reason: 'credits' });
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.usage-limit-plan-trial-daily-exhausted',
+      expect.anything()
+    );
+  });
+
+  it('reports the trial total when the whole trial is used up', async () => {
+    respond({ ...proTrial, trial_total_credits_remaining: 0 });
+    await refreshUsage();
+    mocks.error.mockClear();
+
+    reportUsageIncident({ reason: 'credits' });
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-total'
+    );
+  });
+
+  it('keeps out-of-credits copy for an account that is not trialing', async () => {
+    respond({ plan_key: 'pro', is_trialing: false });
+    await refreshUsage();
+
+    reportUsageIncident({ reason: 'credits' });
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'credits'
+    );
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.notice-credits',
+      expect.anything()
+    );
+  });
+
+  it('updates an earlier out-of-credits notice once the trial is known', async () => {
+    reportUsageIncident({ reason: 'credits' });
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.notice-credits',
+      expect.anything()
+    );
+    // The gateway's limit can be lower than the balance shown in the account.
+    mocks.get.mockImplementation(async (url: string) =>
+      url.endsWith('subscription')
+        ? proTrial
+        : url.endsWith('current_credits')
+          ? { credits: 500 }
+          : { code: 20 }
+    );
+
+    await refreshUsage();
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.usage-limit-plan-trial-daily-exhausted',
+      expect.anything()
+    );
+  });
+});
+
+describe('Refresh that never gets an answer', () => {
+  beforeEach(() => {
+    setUsageAccount(null);
+    vi.clearAllMocks();
+    setUsageAccount('account-a');
+    setUsageModelType('cloud');
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('ends in a failed refresh that can be retried', async () => {
+    reportUsageIncident({ reason: 'credits' });
+    const signals: AbortSignal[] = [];
+    mocks.get.mockImplementation(
+      (
+        _url: string,
+        _params: unknown,
+        _headers: unknown,
+        options: { signal: AbortSignal }
+      ) => {
+        signals.push(options.signal);
+        return new Promise(() => undefined);
+      }
+    );
+
+    const pending = refreshUsage();
+    expect(useUsageNoticeStore.getState().refreshing).toBe(true);
+    await vi.advanceTimersByTimeAsync(USAGE_REFRESH_TIMEOUT_MS - 1);
+    expect(useUsageNoticeStore.getState().refreshing).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+
+    expect(signals).toHaveLength(3);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(useUsageNoticeStore.getState()).toMatchObject({
+      refreshing: false,
+      refreshError: 'chat.notice-refresh-failed',
+    });
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'credits'
+    );
+
+    healthy();
+    await refreshUsage();
+    expect(mocks.get).toHaveBeenCalledTimes(6);
+    expect(useUsageNoticeStore.getState()).toMatchObject({
+      refreshing: false,
+      refreshError: null,
+    });
   });
 });

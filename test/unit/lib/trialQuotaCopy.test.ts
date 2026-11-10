@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { trialQuotaCopy, usageNoticeCopy } from '@/lib/trialQuotaCopy';
+import {
+  trialAwareUsageReason,
+  trialQuotaCopy,
+  usageNoticeCopy,
+} from '@/lib/trialQuotaCopy';
 import { errorCopy } from '@/lib/usageErrors';
 import { buildUsageLimitBannerState } from '@/lib/usageLimitBanner';
 import i18n from 'i18next';
@@ -210,5 +214,29 @@ describe('trial quota presentation', () => {
     expect(errorCopy('trial-daily')).not.toMatch(/Pro|free/i);
     expect(usageNoticeCopy('credits', trial)).toBe(errorCopy('credits'));
     expect(usageNoticeCopy('service', trial)).toBe(errorCopy('service'));
+  });
+});
+
+describe('spend-limit reason during a trial', () => {
+  it('names the trial allowance instead of an empty balance', () => {
+    expect(trialAwareUsageReason('credits', trial)).toBe('trial-daily');
+    expect(
+      trialAwareUsageReason('credits', {
+        ...trial,
+        trial_total_credits_remaining: 0,
+      })
+    ).toBe('trial-total');
+  });
+
+  it('leaves other accounts and other reasons unchanged', () => {
+    expect(trialAwareUsageReason('credits', null)).toBe('credits');
+    expect(
+      trialAwareUsageReason('credits', { plan_key: 'pro', is_trialing: false })
+    ).toBe('credits');
+    expect(trialAwareUsageReason('free-credits', trial)).toBe('free-credits');
+    expect(trialAwareUsageReason('provider-credits', trial)).toBe(
+      'provider-credits'
+    );
+    expect(trialAwareUsageReason('service', trial)).toBe('service');
   });
 });

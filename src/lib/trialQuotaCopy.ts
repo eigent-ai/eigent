@@ -63,6 +63,26 @@ export function trialQuotaCopy(
   );
 }
 
+interface TrialAllowance extends TrialSubscription {
+  trial_total_credits_remaining?: number | null;
+}
+
+/**
+ * While an account is trialing, purchased credits cannot be spent beyond the
+ * trial's allowance, so a spend-limit failure means that allowance is used up
+ * rather than that the account is out of credits.
+ */
+export function trialAwareUsageReason<Reason extends ErrorReason>(
+  reason: Reason,
+  subscription: TrialAllowance | null | undefined
+): Reason | 'trial-daily' | 'trial-total' {
+  if (reason !== 'credits' || subscription?.is_trialing !== true) return reason;
+  const totalRemaining = subscription.trial_total_credits_remaining;
+  return totalRemaining != null && totalRemaining <= 0
+    ? 'trial-total'
+    : 'trial-daily';
+}
+
 /** Current account notices only. Historical errors have no subscription snapshot. */
 export function usageNoticeCopy(
   reason: ErrorReason,

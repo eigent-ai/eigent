@@ -15,6 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { isCreditRecoveryReason, openPricing } from '@/lib/creditRecovery';
+import { trialAwareUsageReason } from '@/lib/trialQuotaCopy';
 import { errorCopy, type ErrorReason } from '@/lib/usageErrors';
 import {
   contactSupport,
@@ -28,8 +29,14 @@ import { CreditRecoveryActions } from './CreditRecoveryActions';
  * Historical task outcome. Sonner owns the live announcement and interruption.
  * The copy records what happened; balance blockers offer the live notices' actions.
  */
-export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
+export function TaskErrorNotice({
+  reason: recordedReason,
+}: {
+  reason: ErrorReason;
+}) {
   const { t } = useTranslation();
+  const subscription = useUsageNoticeStore((state) => state.subscription);
+  const reason = trialAwareUsageReason(recordedReason, subscription);
   const refreshing = useUsageNoticeStore((state) => state.refreshing);
   const creditRecovery = isCreditRecoveryReason(reason);
   const sharedRefreshError = useUsageNoticeStore((state) => state.refreshError);
