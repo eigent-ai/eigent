@@ -139,6 +139,7 @@ export function setUsageAccount(account: string | null) {
   if (previous === account) return;
   accountEpoch += 1;
   inFlight = null;
+  clearFollowUpRefresh();
   if (previous) toast.dismiss(slot(previous));
   useUsageNoticeStore.setState({ ...initial, account });
 }
@@ -224,12 +225,44 @@ function syncReminder() {
   });
 }
 
+/** After a failure, read the account again once it has settled. */
+export const USAGE_FOLLOW_UP_REFRESH_MS = [2_000, 15_000] as const;
+let followUpRefresh: ReturnType<typeof setTimeout>[] = [];
+function clearFollowUpRefresh() {
+  followUpRefresh.forEach(clearTimeout);
+  followUpRefresh = [];
+}
+/**
+ * Timed from the failure itself, so every way a task starts (a new Session,
+ * a follow-up, a queued or background task) gets the same check, however long
+ * the task ran before it hit the limit.
+ */
+function scheduleFollowUpRefresh(account: string) {
+  clearFollowUpRefresh();
+  followUpRefresh = USAGE_FOLLOW_UP_REFRESH_MS.map((delay) =>
+    setTimeout(() => {
+      if (useUsageNoticeStore.getState().account === account)
+        void refreshUsage();
+    }, delay)
+  );
+}
+
+/** A task or request failed for a usage reason. */
 export function reportUsageIncident(
   reported: UsageIncident,
   account = useUsageNoticeStore.getState().account
 ) {
+  if (recordUsageIncident(reported, account) && reported.reason !== 'service')
+    scheduleFollowUpRefresh(account as string);
+}
+
+/** Records an incident; Refresh reports what it read through here directly. */
+function recordUsageIncident(
+  reported: UsageIncident,
+  account: string | null
+): boolean {
   const state = useUsageNoticeStore.getState();
-  if (!account || state.account !== account) return;
+  if (!account || state.account !== account) return false;
   const incident = {
     ...reported,
     reason: trialAwareUsageReason(reported.reason, state.subscription),
@@ -277,6 +310,7 @@ export function reportUsageIncident(
     });
   }
   syncReminder();
+  return true;
 }
 
 let inFlight: { account: string; promise: Promise<void> } | null = null;
@@ -393,15 +427,15 @@ export function refreshUsage(): Promise<void> {
       subscription.trial_total_credits_remaining != null &&
       subscription.trial_total_credits_remaining <= 0
     )
-      reportUsageIncident({ reason: 'trial-total' }, account);
+      recordUsageIncident({ reason: 'trial-total' }, account);
     else if (
       subscription?.is_trialing &&
       subscription.trial_daily_credits_remaining != null &&
       subscription.trial_daily_credits_remaining <= 0
     )
-      reportUsageIncident({ reason: 'trial-daily' }, account);
+      recordUsageIncident({ reason: 'trial-daily' }, account);
     else if (credits !== null && credits <= 0)
-      reportUsageIncident(
+      recordUsageIncident(
         {
           reason:
             subscription?.plan_key === 'free' ? 'free-credits' : 'credits',

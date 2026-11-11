@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { reportError } from '@/lib/notifyError';
 import {
   acknowledgeUsageNotice,
   activeUsageIncident,
@@ -22,6 +23,7 @@ import {
   reportUsageIncident,
   setUsageAccount,
   setUsageModelType,
+  USAGE_FOLLOW_UP_REFRESH_MS,
   USAGE_REFRESH_TIMEOUT_MS,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
@@ -436,5 +438,104 @@ describe('Refresh that never gets an answer', () => {
       refreshing: false,
       refreshError: null,
     });
+  });
+});
+
+describe('checking the account after a failure', () => {
+  // A trial with allowance left: the gateway refused anyway, as in a cap that
+  // had not caught up with the account yet.
+  const allowanceLeft = {
+    plan_key: 'pro',
+    is_trialing: true,
+    trial_daily_credits_remaining: 159,
+    trial_total_credits_remaining: 859,
+  };
+  // The shape a model call returns when the gateway's spend cap is reached.
+  const gatewayLimit = {
+    message:
+      "Error code: 400 - {'error': {'message': 'Budget has been exceeded! Current cost: 3.0012, Max budget: 3.0', 'type': 'budget_exceeded', 'param': None, 'code': '400'}}",
+  };
+  function respond(subscription: Record<string, unknown>) {
+    mocks.get.mockImplementation(async (url: string) =>
+      url.endsWith('subscription')
+        ? subscription
+        : url.endsWith('current_credits')
+          ? { credits: 500 }
+          : { value: 'redacted-test-key' }
+    );
+  }
+  const reads = () =>
+    mocks.get.mock.calls.filter(([url]) => url === '/api/v1/subscription')
+      .length;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    setUsageAccount(null);
+    vi.clearAllMocks();
+    setUsageAccount('account-a');
+    setUsageModelType('cloud');
+    respond(allowanceLeft);
+    await refreshUsage();
+    mocks.get.mockClear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('checks the account 2 s and 15 s after a task fails in a new Session', async () => {
+    // New Sessions start from the Workspace composer, not the Session composer,
+    // and report their failure through the shared error path.
+    expect(reportError(gatewayLimit, { modelType: 'cloud' })).toBe('credits');
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+
+    await vi.advanceTimersByTimeAsync(USAGE_FOLLOW_UP_REFRESH_MS[0] - 1);
+    expect(reads()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.get).toHaveBeenCalledTimes(3);
+    // The account shows allowance left, so the live notice clears.
+    expect(activeUsageIncident(useUsageNoticeStore.getState())).toBeNull();
+    expect(mocks.dismiss).toHaveBeenCalledWith('usage-availability:account-a');
+
+    await vi.advanceTimersByTimeAsync(
+      USAGE_FOLLOW_UP_REFRESH_MS[1] - USAGE_FOLLOW_UP_REFRESH_MS[0]
+    );
+    expect(reads()).toBe(2);
+  });
+
+  it('times the check from a failure that comes long after the message was sent', async () => {
+    // A follow-up task can run for minutes before it reaches the limit.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(reads()).toBe(0);
+
+    reportError(gatewayLimit, { modelType: 'cloud', executionId: 'run-1' });
+    await vi.advanceTimersByTimeAsync(USAGE_FOLLOW_UP_REFRESH_MS[0]);
+
+    expect(reads()).toBe(1);
+  });
+
+  it('keeps a confirmed daily limit and stops checking after the second read', async () => {
+    reportError(gatewayLimit, { modelType: 'cloud' });
+    respond({ ...allowanceLeft, trial_daily_credits_remaining: 0 });
+
+    await vi.advanceTimersByTimeAsync(USAGE_FOLLOW_UP_REFRESH_MS[1]);
+    expect(reads()).toBe(2);
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+
+    // What Refresh reads back never schedules more reads by itself.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(reads()).toBe(2);
+  });
+
+  it('does not check a previous account after switching', async () => {
+    reportError(gatewayLimit, { modelType: 'cloud' });
+    setUsageAccount('account-b');
+
+    await vi.advanceTimersByTimeAsync(USAGE_FOLLOW_UP_REFRESH_MS[1]);
+
+    expect(reads()).toBe(0);
   });
 });
