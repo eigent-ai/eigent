@@ -611,5 +611,8 @@
   "workspace-blocked-saved": "チェックポイントとして保存しました。編集を続けられます。",
   "workspace-blocked-dismissed": "無視しました。ファイルは変更されていません。",
   "workspace-blocked-changed": "ワークスペースが変更されました。確認してからもう一度お試しください。",
-  "workspace-blocked-failed": "ブロックされた操作を解決できませんでした。もう一度お試しください。"
+  "workspace-blocked-failed": "ブロックされた操作を解決できませんでした。もう一度お試しください。",
+  "notice-space-folder-home": "Eigent はホームフォルダで直接作業できません。",
+  "notice-space-folder-app-data": "Eigent は自身のアプリデータを含むフォルダでは作業できません。",
+  "notice-space-folder-description": "ホームフォルダ内のフォルダ（「書類」など）からスペースを作成してください。"
 }

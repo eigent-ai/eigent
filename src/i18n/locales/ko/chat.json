@@ -611,5 +611,8 @@
   "workspace-blocked-saved": "체크포인트로 저장했습니다. 계속 편집할 수 있습니다.",
   "workspace-blocked-dismissed": "무시했습니다. 변경된 파일은 없습니다.",
   "workspace-blocked-changed": "작업 공간이 변경되었습니다. 확인 후 다시 시도하세요.",
-  "workspace-blocked-failed": "차단된 작업을 해결하지 못했습니다. 다시 시도하세요."
+  "workspace-blocked-failed": "차단된 작업을 해결하지 못했습니다. 다시 시도하세요.",
+  "notice-space-folder-home": "Eigent는 홈 폴더에서 직접 작업할 수 없습니다.",
+  "notice-space-folder-app-data": "Eigent는 자체 앱 데이터가 있는 폴더에서 작업할 수 없습니다.",
+  "notice-space-folder-description": "홈 폴더 안의 폴더(예: 문서)로 스페이스를 만드세요."
 }

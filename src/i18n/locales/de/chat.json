@@ -615,5 +615,8 @@
   "workspace-blocked-saved": "Als Checkpoint gespeichert. Bearbeitungen können weitergehen.",
   "workspace-blocked-dismissed": "Verworfen. Es wurden keine Dateien geändert.",
   "workspace-blocked-changed": "Der Arbeitsbereich hat sich geändert. Prüfe ihn und versuche es erneut.",
-  "workspace-blocked-failed": "Der blockierte Vorgang konnte nicht aufgelöst werden. Versuche es erneut."
+  "workspace-blocked-failed": "Der blockierte Vorgang konnte nicht aufgelöst werden. Versuche es erneut.",
+  "notice-space-folder-home": "Eigent kann nicht direkt in deinem Benutzerordner arbeiten.",
+  "notice-space-folder-app-data": "Eigent kann nicht in einem Ordner arbeiten, der seine eigenen App-Daten enthält.",
+  "notice-space-folder-description": "Erstelle einen Bereich aus einem Ordner in deinem Benutzerordner, zum Beispiel Dokumente."
 }

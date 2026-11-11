@@ -619,5 +619,8 @@
   "workspace-blocked-saved": "Enregistré comme point de contrôle. Les modifications peuvent reprendre.",
   "workspace-blocked-dismissed": "Ignorée. Aucun fichier n'a été modifié.",
   "workspace-blocked-changed": "L'espace de travail a changé. Vérifiez-le et réessayez.",
-  "workspace-blocked-failed": "Impossible de résoudre l'opération bloquée. Réessayez."
+  "workspace-blocked-failed": "Impossible de résoudre l'opération bloquée. Réessayez.",
+  "notice-space-folder-home": "Eigent ne peut pas travailler directement dans votre dossier personnel.",
+  "notice-space-folder-app-data": "Eigent ne peut pas travailler dans un dossier qui contient ses propres données d’application.",
+  "notice-space-folder-description": "Créez un espace à partir d’un dossier de votre dossier personnel, par exemple Documents."
 }

@@ -112,7 +112,10 @@ from app.utils.cdp_browser_state import (
 from app.utils.event_loop_utils import schedule_async_task_from_worker
 from app.utils.server.sync_step import sync_step_event
 from app.utils.workspace_paths import camel_log_root
-from app.utils.workspace_resolver import get_workspace_resolver
+from app.utils.workspace_resolver import (
+    SpaceFolderNotUsableError,
+    get_workspace_resolver,
+)
 from app.workspace_bundle.runtime import (
     EnvironmentSetupRequiredError,
     ResolvedRuntimeEnvironment,
@@ -263,6 +266,12 @@ def _environment_setup_error(
         f"({', '.join(exc.issues)})",
         error_code=exc.code,
     )
+
+
+def _space_folder_admission_error(
+    exc: SpaceFolderNotUsableError,
+) -> UserException:
+    return UserException(code.error, str(exc), error_code=exc.code)
 
 
 _EXPLICIT_RESUME_INSTRUCTION = """
@@ -1310,6 +1319,8 @@ async def _prepare_chat_run(
     resolver = get_workspace_resolver()
     try:
         frozen_dirs = resolver.freeze_task_directories(data, task_lock)
+    except SpaceFolderNotUsableError as exc:
+        raise _space_folder_admission_error(exc) from exc
     except ValueError as exc:
         raise UserException(code.error, str(exc)) from exc
 
@@ -2688,6 +2699,9 @@ async def _prepare_improve_chat(
                     f" project_id: {id}"
                 )
 
+        except SpaceFolderNotUsableError as exc:
+            # Not a best-effort path update: the follow-up must not start.
+            raise _space_folder_admission_error(exc) from exc
         except Exception as e:
             chat_logger.error(
                 "Error updating file path for"

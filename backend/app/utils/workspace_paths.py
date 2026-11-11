@@ -110,6 +110,12 @@ def legacy_camel_log_root(
     )
 
 
+def runtime_owner_root(email: str, user_id: str | int | None = None) -> Path:
+    return (
+        Path.home() / ".eigent" / runtime_owner_key(email, user_id) / "runtime"
+    )
+
+
 def runtime_task_root(
     email: str,
     project_id: str,
@@ -117,13 +123,41 @@ def runtime_task_root(
     user_id: str | int | None = None,
 ) -> Path:
     return (
-        Path.home()
-        / ".eigent"
-        / runtime_owner_key(email, user_id)
-        / "runtime"
+        runtime_owner_root(email, user_id)
         / f"project_{project_id}"
         / task_dir_name(task_id)
     )
+
+
+SPACE_FOLDER_IS_HOME = "space_folder_is_home"
+SPACE_FOLDER_HOLDS_APP_DATA = "space_folder_holds_app_data"
+
+
+def space_folder_conflict(
+    folder: Path | str,
+    email: str,
+    user_id: str | int | None = None,
+) -> str | None:
+    """Return why Tasks cannot work directly in ``folder``, or ``None``.
+
+    Every Run keeps its toolchains and caches in Eigent's per-user runtime
+    folder, which must stay separate from the folder Tasks write to (see
+    ``app.utils.runtime_storage``). A folder that contains that runtime
+    folder, such as the home folder or Eigent's own data folder, or a folder
+    inside it, can therefore never be used. Other folders inside Eigent's
+    data folder, such as a blank Space's own folder, are not affected.
+    """
+
+    resolved = Path(folder).expanduser().resolve()
+    if resolved == Path.home().resolve():
+        return SPACE_FOLDER_IS_HOME
+    runtime = runtime_owner_root(email, user_id)
+    # Runtime storage compares its unresolved absolute path; also compare the
+    # resolved one so a linked home or data folder cannot slip through.
+    for root in {runtime.absolute(), runtime.resolve()}:
+        if root.is_relative_to(resolved) or resolved.is_relative_to(root):
+            return SPACE_FOLDER_HOLDS_APP_DATA
+    return None
 
 
 def run_output_root(

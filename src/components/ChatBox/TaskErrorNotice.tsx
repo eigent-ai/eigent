@@ -12,10 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useNewSpaceCreation } from '@/components/Home/hooks/useNewSpaceCreation';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { isCreditRecoveryReason, openPricing } from '@/lib/creditRecovery';
-import { errorCopy, type ErrorReason } from '@/lib/usageErrors';
+import {
+  errorCopy,
+  isSpaceFolderReason,
+  type ErrorReason,
+} from '@/lib/usageErrors';
 import {
   contactSupport,
   refreshUsage,
@@ -23,6 +28,21 @@ import {
 } from '@/store/usageNoticeStore';
 import { useTranslation } from 'react-i18next';
 import { CreditRecoveryActions } from './CreditRecoveryActions';
+
+/** The way out of a Space whose folder can't hold Tasks: a new folder Space. */
+function SpaceFolderAction() {
+  const { t } = useTranslation();
+  const { createSpaceFromFolder } = useNewSpaceCreation('task_error_notice');
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={() => void createSpaceFromFolder()}
+    >
+      {t('layout.workspace-use-local-folder')}
+    </Button>
+  );
+}
 
 /**
  * Historical task outcome. Sonner owns the live announcement and interruption.
@@ -45,6 +65,7 @@ export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
         : reason !== 'service'
           ? sharedRefreshError
           : null;
+  const spaceFolder = isSpaceFolderReason(reason);
   const usage = [
     'credits',
     'trial-daily',
@@ -65,6 +86,11 @@ export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
           {reason === 'service' && (
             <DsText role="base">{t('chat.notice-contact-description')}</DsText>
           )}
+          {spaceFolder && (
+            <DsText role="base">
+              {t('chat.notice-space-folder-description')}
+            </DsText>
+          )}
           {usage && (
             <DsText role="base">{t('chat.notice-refresh-description')}</DsText>
           )}
@@ -72,6 +98,11 @@ export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
             <DsText role="meta">{t(refreshError)}</DsText>
           )}
         </div>
+        {spaceFolder && (
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
+            <SpaceFolderAction />
+          </div>
+        )}
         {(usage || reason === 'service') && (
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
             {creditRecovery ? (

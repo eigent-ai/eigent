@@ -611,5 +611,8 @@
   "workspace-blocked-saved": "已儲存為檢查點，可以繼續編輯。",
   "workspace-blocked-dismissed": "已忽略，沒有變更任何檔案。",
   "workspace-blocked-changed": "工作區已變更，請檢查後重試。",
-  "workspace-blocked-failed": "無法處理被阻擋的操作，請重試。"
+  "workspace-blocked-failed": "無法處理被阻擋的操作，請重試。",
+  "notice-space-folder-home": "Eigent 無法直接在您的個人專屬資料夾中工作。",
+  "notice-space-folder-app-data": "Eigent 無法在存放其自身應用程式資料的資料夾中工作。",
+  "notice-space-folder-description": "請使用個人專屬資料夾內的資料夾（例如「文件」）建立空間。"
 }

@@ -619,5 +619,8 @@
   "workspace-blocked-saved": "Guardado como punto de control. Puedes seguir editando.",
   "workspace-blocked-dismissed": "Descartada. No se cambió ningún archivo.",
   "workspace-blocked-changed": "El espacio de trabajo cambió. Revísalo e inténtalo de nuevo.",
-  "workspace-blocked-failed": "No se pudo resolver la operación bloqueada. Inténtalo de nuevo."
+  "workspace-blocked-failed": "No se pudo resolver la operación bloqueada. Inténtalo de nuevo.",
+  "notice-space-folder-home": "Eigent no puede trabajar directamente en tu carpeta personal.",
+  "notice-space-folder-app-data": "Eigent no puede trabajar en una carpeta que contiene sus propios datos de la app.",
+  "notice-space-folder-description": "Crea un espacio a partir de una carpeta dentro de tu carpeta personal, como Documentos."
 }
