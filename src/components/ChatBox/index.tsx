@@ -409,6 +409,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const sessionSpace = useSpaceStore((s) =>
     s.getSpaceById(activeProject?.spaceId)
   );
+  // The blocked-operation card only needs the Session's Space, which its
+  // metadata knows before the runtime project has loaded.
+  const blockedOperationSpace = useSpaceStore((s) =>
+    s.getSpaceById(activeProject?.spaceId ?? activeProjectMeta?.spaceId)
+  );
   const canUseSessionSpace = Boolean(
     token &&
     user_id != null &&
@@ -3236,7 +3241,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
               <BlockedWorkspaceOperationNotice
-                space={sessionSpace}
+                space={blockedOperationSpace}
                 email={authEmail}
                 userId={user_id}
                 refreshKey={blockedWorkspaceRefreshKey}
@@ -3356,7 +3361,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                 variant={humanDecisionVariant}
               />
               <BlockedWorkspaceOperationNotice
-                space={sessionSpace}
+                space={blockedOperationSpace}
                 email={authEmail}
                 userId={user_id}
                 refreshKey={blockedWorkspaceRefreshKey}

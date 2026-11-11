@@ -62,7 +62,9 @@ export function BlockedWorkspaceOperationCard({
       data-blocked-workspace-operation
       className="@container mb-ds-8 w-full rounded-ds-card border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-ds-16 py-ds-12 text-ds-text-warning-strong-default"
     >
-      <div className="flex flex-col gap-ds-12 @lg:flex-row @lg:items-center">
+      {/* Two long action labels: sit beside the text only once the card can
+          also keep a readable text column (42rem); below that, stack. */}
+      <div className="flex flex-col gap-ds-12 @2xl:flex-row @2xl:items-center">
         <div className="min-w-0 flex-1 break-words">
           <DsText role="base" weight="medium">
             {t('chat.workspace-blocked-title')}
@@ -79,7 +81,7 @@ export function BlockedWorkspaceOperationCard({
             </DsText>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @2xl:self-center">
           <Button
             type="button"
             size="sm"

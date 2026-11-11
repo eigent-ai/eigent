@@ -13,6 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { compile } from 'tailwindcss';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -136,6 +139,63 @@ describe('BlockedWorkspaceOperationCard', () => {
     expect(
       screen.getByRole('button', { name: 'Dismiss (files untouched)' })
     ).toBeDisabled();
+  });
+});
+
+// jsdom has no layout, so resolve the card's own container-query classes
+// with the real Tailwind compiler and evaluate them at a given card width.
+const tailwindTheme = createRequire(import.meta.url).resolve(
+  'tailwindcss/theme.css'
+);
+const tailwind = compile(
+  '@import "tailwindcss/theme.css" layer(theme);\n@tailwind utilities;',
+  {
+    base: process.cwd(),
+    loadStylesheet: async (_id, base) => ({
+      path: tailwindTheme,
+      base,
+      content: readFileSync(tailwindTheme, 'utf8'),
+    }),
+  }
+);
+
+async function flexDirectionAt(element: Element, cardWidthPx: number) {
+  const classes = Array.from(element.classList);
+  if (classes.includes('flex-row')) return 'row';
+  const css = (await tailwind).build(classes);
+  const rowFrom = [
+    ...css.matchAll(
+      /@container \(width >= ([\d.]+)(rem|px)\)\s*\{\s*[^{]+\{\s*flex-direction: row;/g
+    ),
+  ].map(([, size, unit]) => Number(size) * (unit === 'rem' ? 16 : 1));
+  return rowFrom.some((minWidth) => cardWidthPx >= minWidth) ? 'row' : 'column';
+}
+
+// Measured card widths: the chat column in a 900px-wide window (GUI test
+// evidence) and the widest chat column (max-w-[736px]).
+const NARROW_CARD_PX = 593;
+const WIDEST_CARD_PX = 736;
+
+describe('BlockedWorkspaceOperationCard layout', () => {
+  it('stacks the actions below the text in a narrow chat column', async () => {
+    const { container } = render(
+      <BlockedWorkspaceOperationCard
+        operation={blocked}
+        action={null}
+        onSave={vi.fn()}
+        onDismiss={vi.fn()}
+      />
+    );
+    const card = container.querySelector('[data-blocked-workspace-operation]');
+    expect(card).toHaveClass('@container');
+    const layout = card!.firstElementChild!;
+    // Text first, then actions, in reading and keyboard order.
+    expect(layout.lastElementChild).toContainElement(
+      screen.getByRole('button', { name: 'Save as checkpoint' })
+    );
+
+    expect(await flexDirectionAt(layout, NARROW_CARD_PX)).toBe('column');
+    expect(await flexDirectionAt(layout, WIDEST_CARD_PX)).toBe('row');
   });
 });
 

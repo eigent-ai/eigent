@@ -120,7 +120,12 @@ const mocks = vi.hoisted(() => {
     spaceModelRef: null as string | null,
     managedSubmit: vi.fn(),
     modelType: 'local',
-    auth: { token: 'fixture-a', user_id: 101 as number | null },
+    auth: {
+      token: 'fixture-a',
+      user_id: 101 as number | null,
+      email: undefined as string | undefined,
+    },
+    fetchGitStatus: vi.fn(),
     modelConfig: { hasModel: true, cloudUsageLimitReached: false },
     newChatState,
     newStartTask,
@@ -149,6 +154,11 @@ vi.mock('@/api/http', async (importOriginal) => ({
 vi.mock('@/service/sessionMessage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/service/sessionMessage')>()),
   submitWorkspaceSessionDraft: mocks.managedSubmit,
+}));
+
+vi.mock('@/service/workspaceGitApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/service/workspaceGitApi')>()),
+  fetchWorkspaceGitStatus: mocks.fetchGitStatus,
 }));
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
@@ -317,7 +327,8 @@ describe('Workspace', () => {
     mocks.spaceModelRef = null;
     mocks.spaceState.spaces['space-1'].rootPath = undefined;
     mocks.managedSubmit.mockResolvedValue('managed-session');
-    mocks.auth = { token: 'fixture-a', user_id: 101 };
+    mocks.auth = { token: 'fixture-a', user_id: 101, email: undefined };
+    mocks.fetchGitStatus.mockResolvedValue({ blocked_operations: [] });
     mocks.modelConfig = { hasModel: true, cloudUsageLimitReached: false };
     mocks.spaceState.activeSpaceId = 'space-1';
     mocks.pageState.activeWorkspaceTab = 'workforce';
@@ -1171,6 +1182,44 @@ describe('Workspace', () => {
       'items-center',
       'gap-0'
     );
+  });
+
+  it('shows a blocked workspace operation in a new Session before its first message', async () => {
+    mocks.spaceState.spaces['space-1'].rootPath = '/tmp/space-1';
+    mocks.auth = { token: 'fixture-a', user_id: 101, email: 'u@example.com' };
+    mocks.fetchGitStatus.mockResolvedValue({
+      space_id: 'space-1',
+      enabled: true,
+      blocked_operations: [
+        {
+          intent_id: `gitintent_${'1'.repeat(32)}`,
+          run_id: 'run-1',
+          project_id: 'old-project',
+          status: 'needs_attention',
+          scope: 'exact_path',
+          relative_path: 'notes.md',
+          trigger: 'filesystem.edit',
+          created_at: 1,
+          updated_at: 2,
+          actionable: true,
+          can_checkpoint: true,
+          repo_state_digest: 'c'.repeat(64),
+        },
+      ],
+    });
+
+    renderWorkspace({ variant: 'new-project', embedded: true });
+
+    expect(
+      await screen.findByText('Blocked workspace operation')
+    ).toBeInTheDocument();
+    expect(mocks.fetchGitStatus).toHaveBeenCalledWith('space-1', {
+      email: 'u@example.com',
+      userId: 101,
+    });
+    expect(
+      screen.getByRole('button', { name: 'Save as checkpoint' })
+    ).toBeEnabled();
   });
 
   it('keeps the agent-list height fixed across Single Agent and Workforce modes', () => {
