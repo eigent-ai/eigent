@@ -22,8 +22,24 @@ export interface TaskFileCleanupResult {
   error?: string;
 }
 
+/** An owner, Session or Space directory name: letters, digits, `_` and `-`. */
 function component(value: unknown): string {
   if (typeof value !== 'string' || !/^[\w-]+$/.test(value)) {
+    throw new Error('Invalid storage identifier');
+  }
+  return value;
+}
+
+/**
+ * Task and Run ids may carry colon-separated source prefixes, such as
+ * `scheduled:<execution id>` for automations or `resume:<run id>:<id>`, and
+ * Brain names their folders after the raw id. Every part is still a plain
+ * name, so an id never holds a path separator, a dot or a drive prefix.
+ */
+const TASK_ID = /^[\w-]+(?::[\w-]+)*$/;
+
+function taskComponent(value: unknown): string {
+  if (typeof value !== 'string' || value.length > 255 || !TASK_ID.test(value)) {
     throw new Error('Invalid storage identifier');
   }
   return value;
@@ -110,6 +126,7 @@ export function deleteOwnedTaskFiles({
   projectId,
   userId,
   spaceId,
+  platform = process.platform,
 }: {
   homeDir: string;
   email: string;
@@ -117,17 +134,21 @@ export function deleteOwnedTaskFiles({
   projectId?: string;
   userId?: string | number | null;
   spaceId?: string;
+  platform?: NodeJS.Platform;
 }): TaskFileCleanupResult {
   const deletedPaths: string[] = [];
   try {
     const home = fs.realpathSync(homeDir);
-    component(taskId);
+    taskComponent(taskId);
     if (projectId !== undefined) component(projectId);
     if (spaceId !== undefined) component(spaceId);
-    const normalizedTask = component(taskId.replace(/^task_/, ''));
-    const taskNames = [
-      ...new Set([`task_${normalizedTask}`, `task_${taskId}`]),
-    ];
+    const normalizedTask = taskComponent(taskId.replace(/^task_/, ''));
+    // Windows reads `name:part` as a stream of the file `name`, never as a
+    // folder Brain could have created, so such a task has nothing to delete.
+    const representable = platform !== 'win32' || !taskId.includes(':');
+    const taskNames = representable
+      ? [...new Set([`task_${normalizedTask}`, `task_${taskId}`])]
+      : [];
     const identities: string[] = [];
     if (userId !== undefined && userId !== null && userId !== '') {
       // Match Brain's runtime_owner_key, not the read resolver's email-first
@@ -174,7 +195,7 @@ export function deleteOwnedTaskFiles({
         );
         const runsRoot = path.join(projectRoot, 'runs');
         // workspace_paths.run_output_root uses the raw task/run id.
-        targets.add(path.join(runsRoot, taskId));
+        if (representable) targets.add(path.join(runsRoot, taskId));
         containers.add(runsRoot);
         containers.add(projectRoot);
       }
