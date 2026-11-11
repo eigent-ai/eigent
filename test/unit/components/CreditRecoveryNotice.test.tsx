@@ -21,6 +21,7 @@ import {
   refreshUsage,
   setUsageAccount,
   setUsageModelType,
+  USAGE_REFRESH_TIMEOUT_MS,
 } from '@/store/usageNoticeStore';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -325,6 +326,83 @@ describe('out of credits recovery', () => {
     expect(
       screen.queryByText('You’re out of Eigent credits.')
     ).not.toBeInTheDocument();
+  });
+
+  it('keeps the toast Refresh in step with the other notices until the read times out', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 859,
+      },
+      500
+    );
+    await refreshUsage();
+    vi.useFakeTimers();
+    try {
+      // The account reads never answer.
+      mocks.get.mockClear();
+      mocks.get.mockImplementation(() => new Promise(() => undefined));
+      const view = render(
+        <>
+          <div data-testid="toast">{lastToast().description}</div>
+          <TaskErrorNotice reason="credits" />
+        </>
+      );
+      const toastBody = () => within(screen.getByTestId('toast'));
+      const taskNotice = () =>
+        within(document.querySelector('[data-task-error]') as HTMLElement);
+
+      act(() => {
+        toastBody().getByRole('button', { name: 'Refresh' }).click();
+      });
+      for (const surface of [toastBody(), taskNotice()]) {
+        expect(
+          surface.getByRole('button', { name: 'Refreshing…' })
+        ).toBeDisabled();
+      }
+      // Another click, or any other Refresh, joins the same read.
+      act(() => {
+        toastBody().getByRole('button', { name: 'Refreshing…' }).click();
+        taskNotice().getByRole('button', { name: 'Refreshing…' }).click();
+        void refreshUsage();
+      });
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(mocks.get).toHaveBeenCalledTimes(3);
+
+      await act(() =>
+        vi.advanceTimersByTimeAsync(USAGE_REFRESH_TIMEOUT_MS - 1)
+      );
+      expect(
+        toastBody().getByRole('button', { name: 'Refreshing…' })
+      ).toBeDisabled();
+
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      // Sonner shows the latest description it was given.
+      view.rerender(
+        <>
+          <div data-testid="toast">{lastToast().description}</div>
+          <TaskErrorNotice reason="credits" />
+        </>
+      );
+      expect(lastToast().message).toBe('You’ve used today’s trial credits.');
+      for (const surface of [toastBody(), taskNotice()]) {
+        expect(surface.getByRole('button', { name: 'Refresh' })).toBeEnabled();
+        expect(
+          surface.getByText('Couldn’t refresh your credits. Try again.')
+        ).toBeVisible();
+      }
+      act(() => acknowledgeUsageNotice());
+      render(<LiveNotice />);
+      expect(
+        within(
+          document.querySelector('[data-usage-notice]') as HTMLElement
+        ).getByText('Couldn’t refresh your credits. Try again.')
+      ).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps Upgrade plan and own key for a used-up trial total', async () => {

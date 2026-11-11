@@ -165,6 +165,28 @@ export function acknowledgeUsageNotice() {
   if (state.account) toast.dismiss(slot(state.account));
 }
 
+/**
+ * Sonner keeps the element it was given, so the toast reads the shared refresh
+ * state itself instead of a snapshot taken when it opened.
+ */
+function LiveCreditRecoveryToastBody(props: {
+  description: string;
+  upgrade: boolean;
+}) {
+  const refreshing = useUsageNoticeStore((state) => state.refreshing);
+  const refreshError = useUsageNoticeStore((state) =>
+    state.refreshError === 'chat.notice-refresh-failed'
+      ? state.refreshError
+      : null
+  );
+  return createElement(CreditRecoveryToastBody, {
+    ...props,
+    refreshing,
+    refreshError: refreshError ? i18n.t(refreshError) : undefined,
+    onRefresh: () => void refreshUsage(),
+  });
+}
+
 function syncReminder() {
   const state = useUsageNoticeStore.getState();
   const incident = activeUsageIncident(state);
@@ -197,9 +219,8 @@ function syncReminder() {
     icon: null,
     ...(recovery
       ? {
-          description: createElement(CreditRecoveryToastBody, {
+          description: createElement(LiveCreditRecoveryToastBody, {
             description,
-            onRefresh: () => void refreshUsage(),
             upgrade: isCreditRecoveryReason(incident.reason),
           }),
           // Updating a toast merges options; drop an earlier Refresh action.

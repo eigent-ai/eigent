@@ -58,11 +58,17 @@ export function CreditRecoveryActions({
 /** Toast description with the same actions as the inline notices. */
 export function CreditRecoveryToastBody({
   description,
+  refreshError,
   ...actions
-}: CreditRecoveryActionsProps & { description: string }) {
+}: CreditRecoveryActionsProps & {
+  description: string;
+  /** Already translated, as the composer notice shows it. */
+  refreshError?: string;
+}) {
   return (
     <div className="flex flex-col gap-ds-8">
       <span>{description}</span>
+      {refreshError && <span>{refreshError}</span>}
       <div className="flex flex-wrap items-center gap-ds-control-gap">
         <CreditRecoveryActions {...actions} />
       </div>
