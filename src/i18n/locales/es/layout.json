@@ -550,6 +550,7 @@
   "workspace-folder-already-bound": "Esa carpeta ya se usa en otro Espacio.",
   "workspace-folder-unavailable": "Eigent no puede acceder a esa carpeta en este dispositivo.",
   "workspace-folder-protected": "Eigent no puede usar esa carpeta porque es una carpeta del sistema, de la cuenta o de nivel superior. Elige una carpeta de proyecto.",
+  "workspace-folder-app-data": "Esa carpeta contiene los datos propios de Eigent, así que no puede ser un Espacio. Elige otra carpeta, por ejemplo una dentro de Documentos.",
   "workspace-folder-space-create-failed": "No se ha podido crear un Espacio a partir de esa carpeta. Inténtalo de nuevo.",
   "task-source-trigger": "Ejecución automatizada",
   "workspace-recent-sessions-heading": "Recent",

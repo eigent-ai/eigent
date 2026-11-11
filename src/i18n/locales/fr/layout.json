@@ -550,6 +550,7 @@
   "workspace-folder-already-bound": "Ce dossier est déjà utilisé par un autre Espace.",
   "workspace-folder-unavailable": "Eigent ne peut pas accéder à ce dossier sur cet appareil.",
   "workspace-folder-protected": "Eigent ne peut pas utiliser ce dossier, car il s'agit d'un dossier système, de compte ou de premier niveau. Choisissez plutôt un dossier de projet.",
+  "workspace-folder-app-data": "Ce dossier contient les données d'Eigent et ne peut donc pas être un Espace. Choisissez un autre dossier, par exemple dans Documents.",
   "workspace-folder-space-create-failed": "Impossible de créer un Espace à partir de ce dossier. Réessayez.",
   "task-source-trigger": "Exécution automatisée",
   "workspace-recent-sessions-heading": "Recent",

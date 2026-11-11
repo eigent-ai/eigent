@@ -16,14 +16,14 @@
 
 A local Brain may bind folders anywhere the user can reach, including other
 drives and mounted volumes. A small set of locations is always refused:
-filesystem and drive roots, the home folder itself, credential stores inside
-the home folder, operating-system folders, and other users' home folders.
+filesystem and drive roots, the home folder itself, Eigent's own data folder,
+credential stores inside the home folder, operating-system folders, and other users' home folders.
 
 The policy is a pure function over an already-resolved path so that every
 platform's rules can be tested on any host.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
 
 FILESYSTEM_ROOT_FORBIDDEN = "filesystem_root_forbidden"
@@ -31,6 +31,7 @@ HOME_ROOT_FORBIDDEN = "home_root_forbidden"
 SYSTEM_PATH_FORBIDDEN = "system_path_forbidden"
 OTHER_USER_HOME_FORBIDDEN = "other_user_home_forbidden"
 SENSITIVE_PATH_FORBIDDEN = "sensitive_path_forbidden"
+APP_DATA_PATH_FORBIDDEN = "app_data_path_forbidden"
 
 _HOME_CREDENTIAL_DIRS: dict[str, tuple[str, ...]] = {
     "common": (".ssh", ".gnupg", ".aws", ".kube", ".docker", ".config/gh"),
@@ -157,11 +158,17 @@ def binding_path_refusal(
     home: PurePath,
     system: str,
     environ: Mapping[str, str] | None = None,
+    app_data_roots: Iterable[PurePath] = (),
 ) -> str | None:
     """Return a refusal reason for ``resolved``, or ``None`` when allowed.
 
-    ``resolved`` and ``home`` must already be absolute and symlink-free, so a
-    link that points into a protected folder is judged by its target.
+    ``resolved``, ``home`` and ``app_data_roots`` must already be absolute and
+    symlink-free, so a link that points into a protected folder is judged by
+    its target.
+
+    ``app_data_roots`` are the folders that hold Eigent's own data (journal,
+    per-Run runtime storage, scratch Spaces, the managed workspace). A Space
+    rooted at, inside or above one of them would overlap that data.
     """
 
     environ = environ or {}
@@ -178,6 +185,10 @@ def binding_path_refusal(
 
     if _same(resolved, home, system):
         return HOME_ROOT_FORBIDDEN
+
+    app_data = [_pure(system, str(root)) for root in app_data_roots]
+    if any(_within(resolved, root, system) for root in app_data):
+        return APP_DATA_PATH_FORBIDDEN
 
     credential_dirs = (
         *_HOME_CREDENTIAL_DIRS["common"],
@@ -216,5 +227,10 @@ def binding_path_refusal(
         first = resolved.parts[len(profiles_root.parts)]
         if first.casefold() not in _SHARED_PROFILE_DIRS:
             return OTHER_USER_HOME_FORBIDDEN
+
+    # A folder above the data root would contain it. Home, profile roots and
+    # filesystem roots are refused above with a more specific reason.
+    if any(_within(root, resolved, system) for root in app_data):
+        return APP_DATA_PATH_FORBIDDEN
 
     return None

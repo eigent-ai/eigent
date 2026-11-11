@@ -133,6 +133,7 @@ def _status_for_reason(reason: str | None) -> int:
         "system_path_forbidden",
         "other_user_home_forbidden",
         "sensitive_path_forbidden",
+        "app_data_path_forbidden",
     }:
         return 403
     if reason and reason.startswith("sensitive_path:"):

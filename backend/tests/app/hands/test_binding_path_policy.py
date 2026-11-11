@@ -310,3 +310,213 @@ def test_bind_route_refuses_system_folder_with_403(tmp_path):
         "code": "invalid_workspace_path",
         "reason": policy.SYSTEM_PATH_FORBIDDEN,
     }
+
+
+MAC_APP_DATA = (MAC_HOME / ".eigent", MAC_HOME / "eigent")
+WIN_APP_DATA = (WIN_HOME / ".eigent", WIN_HOME / "eigent")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/Users/alex/.eigent",
+        "/Users/alex/.eigent/alex",
+        "/Users/alex/.eigent/alex/runtime",
+        "/Users/alex/.eigent/alex/runtime/project_1/task_2",
+        "/Users/alex/.eigent/workspace",
+        "/Users/alex/.eigent/workspace/session-1",
+        "/Users/alex/.EIGENT/alex",
+        "/Users/alex/eigent",
+    ],
+)
+def test_macos_refuses_app_data_folder(path):
+    assert (
+        policy.binding_path_refusal(
+            PurePosixPath(path),
+            home=MAC_HOME,
+            system="Darwin",
+            app_data_roots=MAC_APP_DATA,
+        )
+        == policy.APP_DATA_PATH_FORBIDDEN
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "path",
+    [
+        r"C:\Users\alex\.eigent",
+        r"c:\users\ALEX\.Eigent\alex\runtime",
+        r"C:\Users\alex\.eigent\workspace",
+        r"C:\Users\alex\eigent",
+    ],
+)
+def test_windows_refuses_app_data_folder(path):
+    assert (
+        policy.binding_path_refusal(
+            PureWindowsPath(path),
+            home=WIN_HOME,
+            system="Windows",
+            environ=WIN_ENV,
+            app_data_roots=WIN_APP_DATA,
+        )
+        == policy.APP_DATA_PATH_FORBIDDEN
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("path", "system", "home", "app_data", "pure"),
+    [
+        (
+            "/Users/alex/Documents",
+            "Darwin",
+            MAC_HOME,
+            MAC_APP_DATA,
+            PurePosixPath,
+        ),
+        (
+            "/Users/alex/eigent-notes",
+            "Darwin",
+            MAC_HOME,
+            MAC_APP_DATA,
+            PurePosixPath,
+        ),
+        (
+            "/Users/alex/Projects/.eigent-old",
+            "Darwin",
+            MAC_HOME,
+            MAC_APP_DATA,
+            PurePosixPath,
+        ),
+        (
+            r"C:\Users\alex\Documents",
+            "Windows",
+            WIN_HOME,
+            WIN_APP_DATA,
+            PureWindowsPath,
+        ),
+        (r"D:\eigent", "Windows", WIN_HOME, WIN_APP_DATA, PureWindowsPath),
+    ],
+)
+def test_app_data_rule_keeps_neighbours_allowed(
+    path, system, home, app_data, pure
+):
+    assert (
+        policy.binding_path_refusal(
+            pure(path),
+            home=home,
+            system=system,
+            environ=WIN_ENV if system == "Windows" else None,
+            app_data_roots=app_data,
+        )
+        is None
+    )
+
+
+@pytest.mark.unit
+def test_home_root_keeps_its_own_reason_with_app_data_roots():
+    assert (
+        policy.binding_path_refusal(
+            MAC_HOME,
+            home=MAC_HOME,
+            system="Darwin",
+            app_data_roots=MAC_APP_DATA,
+        )
+        == policy.HOME_ROOT_FORBIDDEN
+    )
+
+
+@pytest.mark.unit
+def test_folder_above_app_data_outside_home_is_refused():
+    assert (
+        policy.binding_path_refusal(
+            PurePosixPath("/srv/eigent-host"),
+            home=PurePosixPath("/home/alex"),
+            system="Linux",
+            app_data_roots=(PurePosixPath("/srv/eigent-host/data"),),
+        )
+        == policy.APP_DATA_PATH_FORBIDDEN
+    )
+
+
+def _home_with_app_data(tmp_path, monkeypatch) -> Path:
+    home = tmp_path / "home"
+    (home / ".eigent" / "alex" / "runtime").mkdir(parents=True)
+    (home / ".eigent" / "workspace").mkdir()
+    (home / "Documents").mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    return home
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "relative",
+    [".eigent", ".eigent/alex", ".eigent/alex/runtime", ".eigent/workspace"],
+)
+def test_environment_hands_refuses_app_data_folder(
+    tmp_path, monkeypatch, relative
+):
+    home = _home_with_app_data(tmp_path, monkeypatch)
+
+    assert _hands(tmp_path).validate_workspace_binding_path(
+        str(home / relative)
+    ) == (False, policy.APP_DATA_PATH_FORBIDDEN)
+
+
+@pytest.mark.unit
+def test_environment_hands_refuses_symlink_into_app_data(
+    tmp_path, monkeypatch
+):
+    home = _home_with_app_data(tmp_path, monkeypatch)
+    link = home / "Documents" / "runtime-link"
+    try:
+        link.symlink_to(home / ".eigent" / "alex", target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are not available on this runner")
+
+    assert _hands(tmp_path).validate_workspace_binding_path(str(link)) == (
+        False,
+        policy.APP_DATA_PATH_FORBIDDEN,
+    )
+
+
+@pytest.mark.unit
+def test_environment_hands_refuses_visible_eigent_root_when_present(
+    tmp_path, monkeypatch
+):
+    home = _home_with_app_data(tmp_path, monkeypatch)
+    (home / "eigent").mkdir()
+
+    assert _hands(tmp_path).validate_workspace_binding_path(
+        str(home / "eigent")
+    ) == (False, policy.APP_DATA_PATH_FORBIDDEN)
+
+
+@pytest.mark.unit
+def test_environment_hands_still_allows_documents_with_app_data(
+    tmp_path, monkeypatch
+):
+    home = _home_with_app_data(tmp_path, monkeypatch)
+
+    assert _hands(tmp_path).validate_workspace_binding_path(
+        str(home / "Documents")
+    ) == (True, None)
+
+
+@pytest.mark.unit
+def test_bind_route_refuses_app_data_folder_with_403(tmp_path, monkeypatch):
+    home = _home_with_app_data(tmp_path, monkeypatch)
+    request = SimpleNamespace(state=SimpleNamespace(hands=_hands(tmp_path)))
+
+    with pytest.raises(HTTPException) as exc_info:
+        workspace_controller._validate_bind_path(
+            request, str(home / ".eigent")
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == {
+        "code": "invalid_workspace_path",
+        "reason": policy.APP_DATA_PATH_FORBIDDEN,
+    }

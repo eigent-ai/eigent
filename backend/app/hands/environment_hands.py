@@ -26,6 +26,21 @@ from pathlib import Path
 from app.hands.binding_path_policy import binding_path_refusal
 from app.hands.capabilities import BrainCapabilities
 from app.hands.interface import IHands
+from app.utils.workspace_paths import get_eigent_root
+
+
+def _app_data_roots(home: Path) -> list[Path]:
+    # get_eigent_root() picks ~/eigent when it exists, else ~/.eigent, so
+    # either folder can hold the journal and per-Run runtime storage.
+    roots: list[Path] = []
+    for candidate in (home / "eigent", home / ".eigent", get_eigent_root()):
+        try:
+            resolved = candidate.expanduser().resolve()
+        except (OSError, RuntimeError):
+            continue
+        if resolved not in roots:
+            roots.append(resolved)
+    return roots
 
 
 class EnvironmentHands(IHands):
@@ -86,6 +101,7 @@ class EnvironmentHands(IHands):
             home=home,
             system=platform.system(),
             environ=os.environ,
+            app_data_roots=_app_data_roots(home),
         )
         if reason is not None:
             return False, reason

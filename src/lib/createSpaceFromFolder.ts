@@ -61,6 +61,12 @@ export function getFolderSpaceErrorMessage(error: unknown, t: TFunction) {
   }
   if (
     code === 'invalid_workspace_path' &&
+    reason === 'app_data_path_forbidden'
+  ) {
+    return t('layout.workspace-folder-app-data');
+  }
+  if (
+    code === 'invalid_workspace_path' &&
     PROTECTED_FOLDER_REASONS.has(reason)
   ) {
     return t('layout.workspace-folder-protected');

@@ -146,6 +146,12 @@ describe('getFolderSpaceErrorMessage', () => {
     );
   });
 
+  it("explains that Eigent's own data folder can't be a Space", () => {
+    expect(
+      getFolderSpaceErrorMessage(refusal('app_data_path_forbidden'), t)
+    ).toBe('layout.workspace-folder-app-data');
+  });
+
   it('keeps the generic message for other path refusals', () => {
     expect(
       getFolderSpaceErrorMessage(refusal('filesystem_capability_denied'), t)
