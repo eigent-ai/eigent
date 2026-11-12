@@ -61,18 +61,24 @@ def memory_run(tmp_path, monkeypatch):
             activate=True,
         )
         journal.ensure_run(run_id="other-run", project_id="other-project")
-        for event_id, event_type, run_id in (
-            ("user-1", "user.message", "run-1"),
-            ("assistant-1", "assistant.delta", "run-1"),
-            ("tool-1", "tool.completed", "run-1"),
-            ("other-user", "user.message", "other-run"),
+        for event_id, event_type, run_id, source in (
+            ("user-1", "user.message", "run-1", "chat"),
+            ("assistant-1", "assistant.delta", "run-1", None),
+            ("tool-1", "tool.completed", "run-1", None),
+            ("other-user", "user.message", "other-run", "chat"),
+            # Trigger text and messages of unknown origin are not the user's.
+            ("trigger-1", "user.message", "run-1", "scheduled"),
+            ("unsourced-1", "user.message", "run-1", None),
         ):
             journal.append_event(
                 run_id,
                 RunEventDraft(
                     event_id=event_id,
                     event_type=event_type,
-                    payload={"content": "Wait for storyboard approval."},
+                    payload={
+                        "content": "Wait for storyboard approval.",
+                        **({"source": source} if source else {}),
+                    },
                 ),
             )
         service = LightweightMemoryService(journal)
@@ -171,6 +177,9 @@ def _request(call_id="memory-call", **overrides):
         ("other-user",),
         ("user-1", "missing"),
         ("history:project-1:1",),
+        ("trigger-1",),
+        ("unsourced-1",),
+        ("user-1", "trigger-1"),
     ],
 )
 def test_service_provenance_rejection_proves_no_write(
@@ -274,6 +283,24 @@ def test_agent_receives_correction_and_can_continue(memory_run, mode):
         event.event_type in {"tool.outcome_unknown", "run.failed"}
         for event in memory_run.journal.list_events("run-1")
     )
+
+
+def test_agent_cannot_cite_trigger_text_as_the_users_words(memory_run):
+    history = memory_run.service.search_history(project_id="project-1")
+    trust = {item.event_id: item.source_trust for item in history.items}
+    assert trust["user-1"] == "user_asserted"
+    assert trust["trigger-1"] == "external_untrusted"
+    assert trust["unsourced-1"] == "external_untrusted"
+
+    rejected = _agent(memory_run.tool)._execute_tool(
+        _request(source_event_ids=["trigger-1"])
+    )
+
+    assert rejected["error_code"] == "MEMORY_PROVENANCE_REJECTED"
+    assert rejected["outcome_known"] is True
+    assert rejected["write_performed"] is False
+    assert "trigger messages" in rejected["recovery"]["instruction"]
+    memory_run.apply.assert_not_called()
 
 
 def test_tool_observed_stays_non_authoritative(memory_run):

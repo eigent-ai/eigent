@@ -36,7 +36,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from app.run_journal.cloud_projection import cloud_event_payload
-from app.run_journal.memory_policy import assert_memory_entry_policy
+from app.run_journal.memory_policy import (
+    assert_memory_entry_policy,
+    derive_user_message_source,
+    user_message_request_ids,
+)
 from app.run_journal.models import (
     ApprovalRecord,
     ApprovalRuleRecord,
@@ -9852,6 +9856,67 @@ class SQLiteRunJournal:
                 else None
             )
 
+    def resolve_user_message_source(
+        self,
+        *,
+        project_id: str,
+        run_id: str,
+        event_id: str,
+        claimed: object,
+    ) -> str | None:
+        """Return the source Memory may trust for one ``user.message``.
+
+        See ``_resolve_user_message_source_in_transaction``.
+        """
+
+        with self._lock:
+            return self._resolve_user_message_source_in_transaction(
+                self._connection,
+                project_id=project_id,
+                run_id=run_id,
+                event_id=event_id,
+                claimed=claimed,
+            )
+
+    @staticmethod
+    def _resolve_user_message_source_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        project_id: str,
+        run_id: str,
+        event_id: str,
+        claimed: object,
+    ) -> str | None:
+        """Derive a message's source from the requests Brain persisted.
+
+        Follow-up rows and managed execution requests keep ``local``,
+        ``remote_control`` or ``scheduled`` for any status, and a queued
+        follow-up is admitted as the Run named by its request id. Those rows
+        and a ``scheduled:`` request id outrank the caller's ``claimed``
+        source, which can only lower trust. None means authorship is unknown.
+        """
+
+        request_ids = user_message_request_ids(
+            run_id=run_id, event_id=event_id
+        )
+        if not request_ids:
+            return None
+        # The Run id and the event's request id; the same id twice if equal.
+        first, second = request_ids[0], request_ids[-1]
+        rows = connection.execute(
+            """SELECT source FROM follow_up_requests
+            WHERE project_id = ? AND request_id IN (?, ?)
+            UNION ALL
+            SELECT source FROM execution_requests
+            WHERE project_id = ? AND request_id IN (?, ?)""",
+            (project_id, first, second, project_id, first, second),
+        ).fetchall()
+        return derive_user_message_source(
+            claimed=claimed,
+            persisted=[row[0] for row in rows],
+            request_ids=request_ids,
+        )
+
     def set_follow_up_delivery_mode(
         self,
         *,
@@ -11360,8 +11425,13 @@ class SQLiteRunJournal:
         attachment_names: list[str] | None = None,
         review_handoff_ids: list[str] | None = None,
         error_code: str | None = None,
+        source: str = "chat",
     ) -> bool:
-        """Close a refused admission without touching a consumer-owned Run."""
+        """Close a refused admission without touching a consumer-owned Run.
+
+        ``source`` is the admitting caller's claim for the recorded prompt;
+        the Run's persisted request can still mark it as trigger text.
+        """
         with self._write_transaction() as connection:
             run = connection.execute(
                 "SELECT * FROM runs WHERE run_id = ? AND project_id = ?",
@@ -11381,15 +11451,24 @@ class SQLiteRunJournal:
                     (run_id,),
                 ).fetchone()
             ):
+                event_id = f"user-message:{request_id or run_id}"
                 self._append_event_in_transaction(
                     connection,
                     run_id,
                     RunEventDraft(
-                        event_id=f"user-message:{request_id or run_id}",
+                        event_id=event_id,
                         event_type="user.message",
                         payload={
                             "content": question,
-                            "source": "chat",
+                            "source": (
+                                self._resolve_user_message_source_in_transaction(
+                                    connection,
+                                    project_id=project_id,
+                                    run_id=run_id,
+                                    event_id=event_id,
+                                    claimed=source,
+                                )
+                            ),
                             "attachment_names": list(attachment_names or []),
                             "review_handoff_ids": list(
                                 review_handoff_ids or []
@@ -12094,7 +12173,9 @@ class SQLiteRunJournal:
         """Read metadata only, omitting already resolved extraction receipts.
 
         Even one multi-megabyte terminal event must not be materialized just
-        to discover that the explicit-user extractor cannot use it.
+        to discover that the explicit-user extractor cannot use it. The
+        source of a user.message is metadata for the same reason: trigger
+        text is excluded before its payload is loaded.
         """
 
         self._validate_memory_scope(target_scope_type, target_scope_id)
@@ -12107,7 +12188,10 @@ class SQLiteRunJournal:
             """
             SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
                    e.created_at, r.last_error,
-                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes,
+                   CASE WHEN e.event_type = 'user.message'
+                        THEN json_extract(e.payload_json, '$.source')
+                   END AS message_source
             FROM project_history_events h
             JOIN run_events e ON e.event_id = h.event_id
             LEFT JOIN memory_extraction_receipts r
@@ -12124,7 +12208,10 @@ class SQLiteRunJournal:
             else """
             SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
                    e.created_at, r.last_error,
-                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes,
+                   CASE WHEN e.event_type = 'user.message'
+                        THEN json_extract(e.payload_json, '$.source')
+                   END AS message_source
             FROM project_history_events h
             JOIN run_events e ON e.event_id = h.event_id
             LEFT JOIN memory_extraction_receipts r

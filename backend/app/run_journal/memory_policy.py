@@ -17,7 +17,8 @@
 Mutation-time authorization (for example, proving that an Agent Space write
 has a durable HumanInteraction decision) remains in ``LightweightMemoryService``.
 This module contains the entry invariants that can and must be revalidated when
-a Cloud read model is merged back into a Desktop journal.
+a Cloud read model is merged back into a Desktop journal. It also names the
+``user.message`` sources that count as the user's own words.
 """
 
 from __future__ import annotations
@@ -33,6 +34,63 @@ EXTERNAL_MEMORY_TRUST = frozenset(
     {"external_untrusted", "tool_observed", "model_inferred"}
 )
 INSTRUCTION_MEMORY_KINDS = frozenset({"preference", "constraint"})
+# ``user.message`` sources whose text the user typed: a Chat send, an Improve
+# follow-up, and a managed Session send from this device or Remote Control.
+# Trigger messages (``scheduled``: schedules, webhooks, Slack) embed text the
+# user did not write.
+USER_AUTHORED_MESSAGE_SOURCES = frozenset(
+    {"chat", "improve", "local", "remote_control"}
+)
+
+
+# Trigger runs are queued under ``scheduled:<execution id>`` request ids.
+SCHEDULED_REQUEST_ID_PREFIX = "scheduled:"
+# Event ids Brain assigns to a Run's canonical instruction, by admission path.
+USER_MESSAGE_EVENT_ID_PREFIXES = ("user-message:", "execution-input:")
+
+
+def is_user_authored_message_source(source: object) -> bool:
+    """Fail closed: any other or missing source is not the user's words."""
+
+    return isinstance(source, str) and source in USER_AUTHORED_MESSAGE_SOURCES
+
+
+def user_message_request_ids(*, run_id: str, event_id: str) -> tuple[str, ...]:
+    """Request ids that may name the persisted request behind one message."""
+
+    ids = [run_id]
+    for prefix in USER_MESSAGE_EVENT_ID_PREFIXES:
+        if event_id.startswith(prefix) and len(event_id) > len(prefix):
+            ids.append(event_id[len(prefix) :])
+            break
+    return tuple(dict.fromkeys(item for item in ids if item))
+
+
+def derive_user_message_source(
+    *,
+    claimed: object,
+    persisted: Sequence[object],
+    request_ids: Sequence[str],
+) -> str | None:
+    """Return the source Memory may trust for one ``user.message``.
+
+    ``persisted`` holds the sources Brain stored for the request rows behind
+    the message. They and the request id outrank ``claimed``, the source the
+    admitting caller reported, which can only lower trust. A message without
+    a claim falls back to its request rows. None means authorship is unknown.
+    """
+
+    for source in persisted:
+        if not is_user_authored_message_source(source):
+            return source if isinstance(source, str) else None
+    if any(
+        item.startswith(SCHEDULED_REQUEST_ID_PREFIX) for item in request_ids
+    ):
+        return "scheduled"
+    if claimed is None:
+        # Every persisted source passed the check above.
+        return str(persisted[0]) if persisted else None
+    return claimed if isinstance(claimed, str) else None
 
 
 def normalize_memory_provenance_for_cloud(

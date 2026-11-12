@@ -51,7 +51,11 @@ def test_history_search_uses_project_cursor_redacts_and_reports_trust(service):
         RunEventDraft(
             event_id="event-1",
             event_type="user.message",
-            payload={"content": "Remember alpha", "api_key": "secret-value"},
+            payload={
+                "content": "Remember alpha",
+                "source": "chat",
+                "api_key": "secret-value",
+            },
             created_at=1,
         ),
     )
@@ -380,7 +384,10 @@ def test_incremental_maintainer_advances_cursor_and_is_idempotent(service):
         RunEventDraft(
             event_id="message-1",
             event_type="user.message",
-            payload={"content": "Please remember that reports use ISO dates."},
+            payload={
+                "content": "Please remember that reports use ISO dates.",
+                "source": "chat",
+            },
         ),
     )
     journal.append_event(
@@ -479,7 +486,7 @@ def test_incremental_maintainer_extracts_explicit_scope_memory_without_review(
             RunEventDraft(
                 event_id=event_id,
                 event_type="user.message",
-                payload={"content": content},
+                payload={"content": content, "source": "chat"},
             ),
         )
 
@@ -640,7 +647,7 @@ def test_incremental_maintainer_saves_scoped_rules_but_not_requests(service):
             RunEventDraft(
                 event_id=f"message-{index}",
                 event_type="user.message",
-                payload={"content": content},
+                payload={"content": content, "source": "chat"},
             ),
         )
 
@@ -810,7 +817,10 @@ def test_failed_maintainer_does_not_advance_watermark(service):
         RunEventDraft(
             event_id="message-1",
             event_type="user.message",
-            payload={"content": "Remember that the region is ap-southeast-1."},
+            payload={
+                "content": "Remember that the region is ap-southeast-1.",
+                "source": "chat",
+            },
         ),
     )
 
