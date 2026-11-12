@@ -422,7 +422,9 @@ def test_unsettled_completion_is_quarantined_not_left_prepared(
     with run_context_scope(_context(root)):
         with pytest.raises(RuntimeError, match="checkpoint failed"):
             if operation == "write":
-                toolkit.write_to_file("report", "new", "report.md")
+                toolkit.write_to_file(
+                    "report", content="new", filename="report.md"
+                )
             else:
                 toolkit.edit_file("report.md", "original", "new")
 
@@ -478,7 +480,9 @@ def test_failed_edit_does_not_block_the_next_write_in_a_git_space(
             replace(_context(space), session_mode="single-agent")
         ):
             failed = toolkit.edit_file("notes.md", "not there", "new")
-            written = toolkit.write_to_file("report", "done", "report.md")
+            written = toolkit.write_to_file(
+                "report", content="done", filename="report.md"
+            )
 
         assert failed.startswith("No replacement performed")
         assert written == "Content successfully written to file: report.md"
