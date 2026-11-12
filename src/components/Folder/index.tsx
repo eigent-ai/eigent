@@ -78,6 +78,7 @@ import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import {
   authorizeBrainFile,
   getBrainFilePreviewUrl,
+  isBrainFileUrl,
   shareBrainFileAccess,
 } from '@/lib/brainFileAccess';
 import {
@@ -993,17 +994,48 @@ export async function downloadFromUrl(
   );
 }
 
-/** Web-first download for the file viewer: prefers in-memory content, then fetchable URL. */
-export async function downloadOpenedFile(file: FileInfo): Promise<void> {
+type DownloadIpc = {
+  invoke: (channel: string, ...args: unknown[]) => Promise<any>;
+};
+
+/**
+ * Save a file without reading it into renderer memory. The desktop host
+ * downloads Brain files itself, because it never opens a local backend URL in
+ * a browser. Anything else is handed to the browser or OS.
+ */
+async function downloadWithoutLoading(
+  file: FileInfo,
+  ipcRenderer?: DownloadIpc | null
+): Promise<void> {
+  if (!isRemotePreviewSource(file) || !file.path) return;
+  if (ipcRenderer && isBrainFileUrl(file.path)) {
+    // A preview can stay open longer than its file grant lasts.
+    const target = await authorizeBrainFile(file).catch(() => file);
+    const result = await ipcRenderer
+      .invoke('download-backend-file', target.path)
+      .catch(() => null);
+    if (result?.success) return;
+    console.warn('Desktop download of a Brain file was not started');
+  }
+  window.open(file.path, '_blank', 'noopener,noreferrer');
+}
+
+/**
+ * Web-first download for the file viewer: prefers in-memory content, then
+ * fetchable URL. Pass the desktop host's `ipcRenderer` so a file whose preview
+ * was blocked can be saved there too.
+ */
+export async function downloadOpenedFile(
+  file: FileInfo,
+  ipcRenderer?: DownloadIpc | null
+): Promise<void> {
   if (file.isFolder || (!file.path && file.content === undefined)) return;
 
   // A blocked preview must never fall back to fetch(...).blob(), because that
   // would reintroduce an unbounded renderer allocation for the exact files the
-  // preview policy rejected. Let the browser/OS own the transfer instead.
+  // preview policy rejected. Let the host, browser or OS own the transfer.
   if (file.preview?.kind === 'blocked') {
-    if (isRemotePreviewSource(file) && file.path) {
-      window.open(file.path, '_blank', 'noopener,noreferrer');
-    }
+    await downloadWithoutLoading(file, ipcRenderer);
     return;
   }
 
@@ -1798,7 +1830,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
           }
           if (selectedTargetIsRemote) {
             if (!selectedFile.isFolder) {
-              void downloadOpenedFile(selectedFile);
+              void downloadOpenedFile(selectedFile, ipcRenderer);
             }
             return;
           }
@@ -1810,13 +1842,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
         }
         onDownloadFile={() => {
           if (!selectedFile || selectedFile.isFolder) return;
-          if (selectedFile.preview?.kind === 'blocked') {
-            if (isRemotePreviewSource(selectedFile)) {
-              window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
-            }
-            return;
-          }
-          void downloadOpenedFile(selectedFile);
+          void downloadOpenedFile(selectedFile, ipcRenderer);
         }}
         onToggleSourceCode={isShowSourceCodeChange}
       />
