@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { UsageLimitBanner } from '@/components/ChatBox/BottomBox/UsageLimitBanner';
+import { NoticeEventRenderer } from '@/components/ChatBox/EventTimeline/DefaultEventRenderers';
 import { TaskErrorNotice } from '@/components/ChatBox/TaskErrorNotice';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -403,6 +404,42 @@ describe('out of credits recovery', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('moves a notice already in the timeline to the whole trial when Refresh finds it used up', async () => {
+    const trial = {
+      plan_key: 'pro',
+      is_trialing: true,
+      trial_daily_credits_remaining: 0,
+      trial_total_credits_remaining: 859,
+    };
+    respond(trial, 500);
+    await refreshUsage();
+    // The timeline's own notice for a gateway spend-limit failure.
+    const node = {
+      kind: 'notice',
+      severity: 'error',
+      content:
+        "Error code: 400 - {'error': {'message': 'Budget has been exceeded! Current cost: 3.0012, Max budget: 3.0', 'type': 'budget_exceeded', 'param': None, 'code': '400'}}",
+    } as Parameters<typeof NoticeEventRenderer>[0]['node'];
+    render(<NoticeEventRenderer node={node} />);
+    expect(
+      screen.getByText('You’ve used today’s trial credits.')
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Upgrade plan' })
+    ).not.toBeInTheDocument();
+
+    respond({ ...trial, trial_total_credits_remaining: 0 }, 500);
+    await act(() => refreshUsage());
+
+    expect(
+      screen.getByText('You’ve used all your trial credits.')
+    ).toBeVisible();
+    expect(
+      screen.queryByText('You’ve used today’s trial credits.')
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upgrade plan' })).toBeVisible();
   });
 
   it('keeps Upgrade plan and own key for a used-up trial total', async () => {

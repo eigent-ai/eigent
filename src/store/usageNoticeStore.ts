@@ -103,15 +103,25 @@ export const isUsageToastOpen = (state: UsageNoticeState) =>
  */
 export function presentedUsageReason<Reason extends ErrorReason>(
   reason: Reason,
-  state: Pick<UsageNoticeState, 'subscription' | 'incidents'>
+  state: Pick<UsageNoticeState, 'subscription' | 'incidents'> &
+    Partial<Pick<UsageNoticeState, 'credits'>>
 ): Reason | 'trial-daily' | 'trial-total' {
   if (reason !== 'credits') return reason;
   if (state.subscription)
-    return trialAwareUsageReason(reason, state.subscription);
+    return trialAwareUsageReason(reason, state.subscription, state.credits);
   const blocker = state.incidents.find(isTrialIncident)?.reason;
   return blocker === 'trial-daily' || blocker === 'trial-total'
     ? blocker
     : reason;
+}
+
+/** Subscribing form, for failure text shown outside TaskErrorNotice. */
+export function usePresentedUsageReason() {
+  const credits = useUsageNoticeStore((state) =>
+    presentedUsageReason('credits', state)
+  );
+  return (reason: ErrorReason): ErrorReason =>
+    reason === 'credits' ? credits : reason;
 }
 
 /** Current account copy, shared by the toast and the composer notice. */
@@ -273,7 +283,14 @@ export function reportUsageIncident(
   reported: UsageIncident,
   account = useUsageNoticeStore.getState().account
 ) {
-  if (recordUsageIncident(reported, account) && reported.reason !== 'service')
+  // While Refresh reads the account, a refused key is reported here by the
+  // request layer. That answer is the check, so it must not schedule another.
+  const duringRefresh = inFlight !== null && inFlight.account === account;
+  if (
+    recordUsageIncident(reported, account) &&
+    !duringRefresh &&
+    reported.reason !== 'service'
+  )
     scheduleFollowUpRefresh(account as string);
 }
 
@@ -286,7 +303,11 @@ function recordUsageIncident(
   if (!account || state.account !== account) return false;
   const incident = {
     ...reported,
-    reason: trialAwareUsageReason(reported.reason, state.subscription),
+    reason: trialAwareUsageReason(
+      reported.reason,
+      state.subscription,
+      state.credits
+    ),
   };
   incidentVersion += 1;
   const previous = state.incidents.find(
@@ -299,10 +320,11 @@ function recordUsageIncident(
       (previous.reason === 'credits' &&
         isCreditIncident(incident) &&
         incident.reason !== 'credits') ||
-      // An allowance inferred from older account details yields to a fresh one.
+      // One allowance yields to the other only when it is stated, by the
+      // server or by a fresh account read, never when it was only inferred.
       (isTrialIncident(previous) &&
-        isTrialIncident(incident) &&
-        previous.reason !== incident.reason);
+        isTrialIncident(reported) &&
+        previous.reason !== reported.reason);
     const executionIds = [
       ...new Set([
         ...(previous.executionIds ?? []),
@@ -423,7 +445,11 @@ export function refreshUsage(): Promise<void> {
             : !recoveredCredits)
       )
       .map((item) => {
-        const reason = trialAwareUsageReason(item.reason, subscription);
+        const reason = trialAwareUsageReason(
+          item.reason,
+          subscription,
+          credits
+        );
         return reason === item.reason ? item : { ...item, reason };
       });
     useUsageNoticeStore.setState({

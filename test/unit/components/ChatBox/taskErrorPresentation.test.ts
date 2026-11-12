@@ -13,7 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { taskErrorReason } from '@/components/ChatBox/taskErrorPresentation';
-import { useUsageNoticeStore } from '@/store/usageNoticeStore';
+import {
+  usePresentedUsageReason,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 // Production shape of a gateway spend-limit failure in a task error notice.
@@ -22,36 +26,61 @@ const budgetExceeded = {
   content:
     "Error code: 400 - {'error': {'message': 'Budget has been exceeded! Current cost: 0.51, Max budget: 0.5', 'type': 'budget_exceeded', 'param': None, 'code': '400'}}",
 };
+const legacyStep = {
+  severity: 'error' as const,
+  content: '',
+  legacyStep: 'budget_not_enough',
+};
+const trial = {
+  plan_key: 'pro',
+  is_trialing: true,
+  trial_total_credits_remaining: 859,
+};
 
 describe('task error summaries during a trial', () => {
   afterEach(() => {
     useUsageNoticeStore.setState({ subscription: null });
   });
 
-  it('describes a spend limit as the trial allowance while trialing', () => {
-    useUsageNoticeStore.setState({
-      subscription: {
-        plan_key: 'pro',
-        is_trialing: true,
-        trial_total_credits_remaining: 859,
-      },
-    });
+  it('keeps the reason that was recorded with the failure', () => {
+    useUsageNoticeStore.setState({ subscription: trial });
 
-    expect(taskErrorReason(budgetExceeded)).toBe('trial-daily');
-    expect(
-      taskErrorReason({
-        severity: 'error',
-        content: '',
-        legacyStep: 'budget_not_enough',
+    // The account is applied where the reason is shown, so it can change later.
+    expect(taskErrorReason(budgetExceeded)).toBe('credits');
+    expect(taskErrorReason(legacyStep)).toBe('credits');
+  });
+
+  it('describes a spend limit as the trial allowance while trialing', () => {
+    useUsageNoticeStore.setState({ subscription: trial });
+    const { result } = renderHook(() => usePresentedUsageReason());
+
+    expect(result.current(taskErrorReason(budgetExceeded)!)).toBe(
+      'trial-daily'
+    );
+    expect(result.current(taskErrorReason(legacyStep)!)).toBe('trial-daily');
+  });
+
+  it('follows the account when the whole trial turns out to be used up', () => {
+    useUsageNoticeStore.setState({ subscription: trial });
+    const { result } = renderHook(() => usePresentedUsageReason());
+
+    act(() =>
+      useUsageNoticeStore.setState({
+        subscription: { ...trial, trial_total_credits_remaining: 0 },
       })
-    ).toBe('trial-daily');
+    );
+
+    expect(result.current(taskErrorReason(budgetExceeded)!)).toBe(
+      'trial-total'
+    );
   });
 
   it('keeps out of credits for an account that is not trialing', () => {
     useUsageNoticeStore.setState({
       subscription: { plan_key: 'pro', is_trialing: false },
     });
+    const { result } = renderHook(() => usePresentedUsageReason());
 
-    expect(taskErrorReason(budgetExceeded)).toBe('credits');
+    expect(result.current(taskErrorReason(budgetExceeded)!)).toBe('credits');
   });
 });

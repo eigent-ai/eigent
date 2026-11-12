@@ -15,31 +15,25 @@
 import type { ChatNoticeNode } from '@/lib/projector/chat/types';
 import { errorPresentationReason, type ErrorReason } from '@/lib/usageErrors';
 import { useProjectStore } from '@/store/projectStore';
-import {
-  presentedUsageReason,
-  useUsageNoticeStore,
-} from '@/store/usageNoticeStore';
 
-/** Presentation boundary shared by every timeline, including collapsed summaries. */
+/**
+ * The reason recorded with a failure, shared by every timeline. Show it through
+ * TaskErrorNotice or `usePresentedUsageReason`, which follow the account: a
+ * spend limit reached during a trial is the trial's allowance.
+ */
 export function taskErrorReason(
   node: Pick<ChatNoticeNode, 'severity' | 'content'> &
     Partial<Pick<ChatNoticeNode, 'legacyStep' | 'projectId' | 'code'>>
 ): ErrorReason | null {
-  // A spend limit reached during a trial is the trial's allowance.
-  const usage = useUsageNoticeStore.getState();
-  if (node.legacyStep === 'budget_not_enough')
-    return presentedUsageReason('credits', usage);
+  if (node.legacyStep === 'budget_not_enough') return 'credits';
   if (node.legacyStep === 'context_too_long') return 'context';
   if (node.severity !== 'error') return null;
   const model = node.projectId
     ? useProjectStore.getState().projects[node.projectId]?.metadata
         ?.modelSelection
     : undefined;
-  return presentedUsageReason(
-    errorPresentationReason(
-      { message: node.content, code: node.code },
-      { modelType: model?.modelType }
-    ),
-    usage
+  return errorPresentationReason(
+    { message: node.content, code: node.code },
+    { modelType: model?.modelType }
   );
 }

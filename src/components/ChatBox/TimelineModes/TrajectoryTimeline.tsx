@@ -27,8 +27,9 @@ import type {
   TimelineTraceRow,
 } from '@/lib/projector/chat/presentation';
 import { runTerminalReasonText } from '@/lib/runTerminalReason';
-import { errorCopy } from '@/lib/usageErrors';
+import { errorCopy, type ErrorReason } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
+import { usePresentedUsageReason } from '@/store/usageNoticeStore';
 import type { TFunction } from 'i18next';
 import { ChevronRight, FileText } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -372,7 +373,11 @@ function categoryForNode(row: NodeTraceRow): TraceCategory {
   return 'CONTEXT';
 }
 
-function nodeSummary(row: NodeTraceRow, t: TFunction): string {
+function nodeSummary(
+  row: NodeTraceRow,
+  t: TFunction,
+  presentReason: (reason: ErrorReason) => ErrorReason
+): string {
   const node = row.node;
   if (node.kind === 'message') return node.content;
   if (node.kind === 'interaction')
@@ -384,7 +389,7 @@ function nodeSummary(row: NodeTraceRow, t: TFunction): string {
   }
   if (node.kind === 'notice') {
     const reason = taskErrorReason(node);
-    if (reason) return errorCopy(reason);
+    if (reason) return errorCopy(presentReason(reason));
     return node.title ? `${node.title} · ${node.content}` : node.content;
   }
   if (node.kind === 'plan')
@@ -635,6 +640,7 @@ function DetailedRun({
   onEditUserMessage?: TimelineModeProps['onEditUserMessage'];
 }) {
   const { t } = useTranslation();
+  const presentReason = usePresentedUsageReason();
   return (
     <section data-run-id={run.runId}>
       {run.traceRows.length > 0 ? (
@@ -708,7 +714,7 @@ function DetailedRun({
                 role={role}
                 rowId={row.id}
                 status={nodeStatus(row, paused)}
-                summary={nodeSummary(row, t)}
+                summary={nodeSummary(row, t, presentReason)}
               >
                 <NodeTraceDetails
                   row={row}

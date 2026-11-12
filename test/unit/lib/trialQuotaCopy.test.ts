@@ -228,6 +228,37 @@ describe('spend-limit reason during a trial', () => {
     ).toBe('trial-total');
   });
 
+  it('keeps out of credits when the balance is empty and allowance is left', () => {
+    const allowanceLeft = {
+      ...trial,
+      trial_daily_credits_remaining: 159,
+      trial_total_credits_remaining: 859,
+    };
+    expect(trialAwareUsageReason('credits', allowanceLeft, 0)).toBe('credits');
+    // A positive or unknown balance still points at the trial's allowance.
+    expect(trialAwareUsageReason('credits', allowanceLeft, 500)).toBe(
+      'trial-daily'
+    );
+    expect(trialAwareUsageReason('credits', allowanceLeft, null)).toBe(
+      'trial-daily'
+    );
+    // A used-up allowance is the blocker even with an empty balance.
+    expect(
+      trialAwareUsageReason(
+        'credits',
+        { ...allowanceLeft, trial_daily_credits_remaining: 0 },
+        0
+      )
+    ).toBe('trial-daily');
+    expect(
+      trialAwareUsageReason(
+        'credits',
+        { ...allowanceLeft, trial_total_credits_remaining: 0 },
+        0
+      )
+    ).toBe('trial-total');
+  });
+
   it('leaves other accounts and other reasons unchanged', () => {
     expect(trialAwareUsageReason('credits', null)).toBe('credits');
     expect(

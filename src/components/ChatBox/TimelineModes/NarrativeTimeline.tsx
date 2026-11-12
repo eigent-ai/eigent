@@ -35,6 +35,7 @@ import {
 import { errorCopy } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { usePresentedUsageReason } from '@/store/usageNoticeStore';
 import {
   DEFAULT_NARRATIVE_INFORMATION_DENSITY,
   type NarrativeInformationDensity,
@@ -646,10 +647,11 @@ function NarrativeSubagentRow({
     item.summary?.trim() || item.authoredStepTitle?.trim() || '';
   const reasoning =
     reasoningText && reasoningText !== agentName ? reasoningText : undefined;
+  const presentReason = usePresentedUsageReason();
   const noticeErrorReason = call.notice ? taskErrorReason(call.notice) : null;
   const description =
     (noticeErrorReason
-      ? errorCopy(noticeErrorReason)
+      ? errorCopy(presentReason(noticeErrorReason))
       : call.notice?.content.trim()) ||
     call.detail ||
     (failed
