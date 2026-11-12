@@ -18,7 +18,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
-from inspect import iscoroutinefunction, signature
+from inspect import Signature, iscoroutinefunction, signature
 from typing import Any, TypeVar
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
@@ -201,6 +201,13 @@ def _filter_kwargs_for_callable(
     return {k: v for k, v in kwargs.items() if k in allowed}
 
 
+def _call_signature(func: Callable[..., Any]) -> Signature | None:
+    try:
+        return signature(func)
+    except (TypeError, ValueError):
+        return None
+
+
 def _safe_put_queue(task_lock, data):
     """Safely put data to the queue, handling both sync and async contexts"""
     try:
@@ -301,6 +308,10 @@ def listen_toolkit(
 
     def decorator(func: Callable[..., Any]):
         wrap = func if wrap_method is None else wrap_method
+        # The published schema follows ``wrap``, but the call binds to
+        # ``func``. Keep func's signature so argument checks do not reject
+        # a parameter that only ``wrap`` requires.
+        call_signature = _call_signature(func)
 
         if iscoroutinefunction(func):
             # async function wrapper
@@ -361,6 +372,7 @@ def listen_toolkit(
                 return res
 
             async_wrapper.__listen_toolkit__ = True
+            async_wrapper.__listen_call_signature__ = call_signature
             return async_wrapper
 
         else:
@@ -433,6 +445,7 @@ def listen_toolkit(
                 return res
 
             sync_wrapper.__listen_toolkit__ = True
+            sync_wrapper.__listen_call_signature__ = call_signature
             return sync_wrapper
 
     return decorator

@@ -115,8 +115,8 @@ def test_file_toolkit_routes_git_run_write_before_dispatch(
     with run_context_scope(_context(user_root)):
         result = toolkit.write_to_file(
             "report",
-            "durable output",
-            "report.md",
+            content="durable output",
+            filename="report.md",
         )
 
     assert [name for name, _ in calls] == ["prepare", "complete"]
@@ -250,7 +250,9 @@ def test_file_toolkit_marks_workspace_prepare_conflict_as_not_dispatched(
             ),
         ) as captured:
             if operation == "write":
-                toolkit.write_to_file("report", "new", "report.md")
+                toolkit.write_to_file(
+                    "report", content="new", filename="report.md"
+                )
             else:
                 toolkit.edit_file("report.md", "visible", "new")
 
@@ -304,8 +306,8 @@ def test_file_toolkit_emits_safe_relative_path_for_legacy_run_write(
     with run_context_scope(_context(root)):
         result = toolkit.write_to_file(
             "report",
-            "durable output",
-            "reports/report.md",
+            content="durable output",
+            filename="reports/report.md",
         )
 
     written_path = root / "reports" / "report.md"

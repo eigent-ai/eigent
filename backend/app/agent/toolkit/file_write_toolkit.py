@@ -75,6 +75,19 @@ class PendingOverlayWrite:
     mode: int
 
 
+def _describe_file_write(
+    *_args,
+    filename: str | None = None,
+    encoding: str | None = None,
+    use_latex: bool = False,
+    **_kwargs,
+) -> str:
+    return (
+        f"write content to file: {filename} with encoding: {encoding} "
+        f"and use_latex: {use_latex}"
+    )
+
+
 @auto_listen_toolkit(BaseFileToolkit)
 class FileToolkit(BaseFileToolkit, AbstractToolkit):
     agent_name: str = Agents.document_agent
@@ -177,20 +190,46 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
             return None
         return OverlayWriteContext(context, rel_path, target_path)
 
-    @listen_toolkit(
-        BaseFileToolkit.write_to_file,
-        lambda _, title, content, filename, encoding=None, use_latex=False: (
-            f"write content to file: {filename} with encoding: {encoding} and use_latex: {use_latex}"
-        ),
-    )
+    @listen_toolkit(inputs=_describe_file_write)
     def write_to_file(
         self,
-        title: str,
+        title: str | None = None,
+        *,
         content: str | list[list[str]],
         filename: str,
         encoding: str | None = None,
         use_latex: bool = False,
     ) -> str:
+        r"""Write the given content to a file.
+
+        If the file exists, it will be overwritten. Supports multiple formats:
+        Markdown (.md, .markdown, default), Plaintext (.txt), CSV (.csv),
+        DOC/DOCX (.doc, .docx), PDF (.pdf), JSON (.json), YAML (.yml, .yaml),
+        and HTML (.html, .htm).
+
+        Args:
+            title (Optional[str]): The title of the document. When omitted,
+                the file name without its extension is used.
+                (default: :obj:`None`)
+            content (Union[str, List[List[str]]]): The content to write to the
+                file. Content format varies by file type:
+                - Text formats (txt, md, html, yaml): string
+                - CSV: string or list of lists
+                - JSON: string or serializable object
+            filename (str): The name or path of the file. If a relative path is
+                supplied, it is resolved to self.working_directory.
+            encoding (Optional[str]): The character encoding to use. (default:
+                :obj: `None`)
+            use_latex (bool): Whether to use LaTeX for math rendering.
+                (default: :obj:`False`)
+
+        Returns:
+            str: A message indicating success or error details.
+        """
+        if title is None:
+            # Models often fill only the status-message title; the document
+            # title is cosmetic, so its absence must not fail the write.
+            title = Path(filename).stem or filename
         run_context = run_context_for_task(self.api_task_id)
         prepared_write = None
         relative_path = None
