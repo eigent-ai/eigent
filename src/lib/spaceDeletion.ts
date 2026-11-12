@@ -21,14 +21,17 @@ import {
   proxyFetchSpaceProjects,
   proxyUpdateSpaceProject,
 } from '@/service/spaceApi';
-import { listOwnedWorkspaceBundles } from '@/service/workspaceBundleAuthoringApi';
+import {
+  listOwnedWorkspaceBundles,
+  OWNED_WORKSPACE_BUNDLE_LIST_LIMIT,
+} from '@/service/workspaceBundleAuthoringApi';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 
 export type DeleteSpacePhase = 'idle' | 'stopping' | 'deleting';
 
 export type DeleteSpaceFailure =
-  'stop' | 'cleanup' | 'has-sessions' | 'has-bundles';
+  'stop' | 'cleanup' | 'has-sessions' | 'has-bundles' | 'bundles-unchecked';
 
 /** Stopping several Sessions at once stays well under the per-host limit. */
 const STOP_CONCURRENCY = 3;
@@ -38,6 +41,17 @@ export class SpaceHasBundlesError extends Error {
   constructor() {
     super('Space is the source of a Workspace Bundle');
     this.name = 'SpaceHasBundlesError';
+  }
+}
+
+/**
+ * The Bundle list was full, so an older Bundle from this Space may be missing
+ * from it; nothing was touched.
+ */
+export class SpaceBundlesUncheckedError extends Error {
+  constructor() {
+    super('Workspace Bundles could not all be checked');
+    this.name = 'SpaceBundlesUncheckedError';
   }
 }
 
@@ -61,6 +75,7 @@ function conflictCode(error: unknown): string | undefined {
 export function classifyDeleteSpaceFailure(error: unknown): DeleteSpaceFailure {
   if (error instanceof SessionStopError) return 'stop';
   if (error instanceof SpaceHasBundlesError) return 'has-bundles';
+  if (error instanceof SpaceBundlesUncheckedError) return 'bundles-unchecked';
   const code = conflictCode(error);
   if (code === 'space_has_projects') return 'has-sessions';
   if (code === 'space_has_bundles') return 'has-bundles';
@@ -105,24 +120,36 @@ async function assertNoSourceBundles(spaceId: string) {
   if (bundles.some((bundle) => bundle.workspace_id === spaceId)) {
     throw new SpaceHasBundlesError();
   }
+  // A full list may leave out an older Bundle made from this Space.
+  if (bundles.length >= OWNED_WORKSPACE_BUNDLE_LIST_LIMIT) {
+    throw new SpaceBundlesUncheckedError();
+  }
 }
 
-/** The Space's Sessions that have not been deleted yet, server and local. */
-async function liveSessionIds(spaceId: string): Promise<string[]> {
-  const ids = new Set<string>();
+/**
+ * The Sessions this deletion removes. Only the server knows which Space a
+ * Session is in now: this window's list can be stale after a Session was
+ * moved elsewhere, so a Session it alone places here is never touched.
+ * A Session the server already marks deleted is included while this window
+ * still shows it, so a retry finishes a cleanup that failed part-way.
+ */
+async function sessionsToDelete(spaceId: string): Promise<string[]> {
+  let projects;
   try {
-    for (const project of await proxyFetchSpaceProjects(spaceId)) {
-      if (project.status !== 'archived') ids.add(project.id);
-    }
+    projects = await proxyFetchSpaceProjects(spaceId);
   } catch (error) {
-    // An absent Space is already deleted; its local Sessions still go.
+    // An absent Space is already deleted; nothing on the server to clean.
     ignoreMissing(error);
+    return [];
   }
   const local = useSpaceStore.getState().projectsBySpaceId[spaceId] ?? {};
-  for (const meta of Object.values(local)) {
-    if (meta.status !== 'archived') ids.add(meta.id);
-  }
-  return [...ids];
+  return projects
+    .filter(
+      (project) =>
+        project.status !== 'archived' ||
+        (local[project.id] && local[project.id].status !== 'archived')
+    )
+    .map((project) => project.id);
 }
 
 /**
@@ -131,10 +158,13 @@ async function liveSessionIds(spaceId: string): Promise<string[]> {
  * and mark it deleted on the server. The Space folder on disk is never
  * touched, nor are Session working directories.
  *
- * A Space that is the source of a Workspace Bundle is refused before anything
- * is stopped. Every Session is stopped before anything is removed, so a Session that
- * cannot be stopped leaves the whole Space as it was. A later failure leaves
- * the remaining Sessions in place; calling this again finishes the job.
+ * Only Sessions the server lists in this Space are touched. A Space that is
+ * the source of a Workspace Bundle is refused before anything is stopped.
+ * Every Session is stopped before anything is removed, so a Session that
+ * cannot be stopped leaves the whole Space as it was. Each Session is marked
+ * deleted in this Space before its data goes, so one that has left the Space
+ * is skipped untouched. A later failure leaves the remaining Sessions in
+ * place; calling this again finishes the job.
  */
 export async function deleteSpaceAndSessions(
   spaceId: string,
@@ -150,9 +180,10 @@ export async function deleteSpaceAndSessions(
 ): Promise<void> {
   assertSessionCleanupIdentity(identity);
   onPhase?.('stopping');
-  await assertNoSourceBundles(spaceId);
+  const sessionIds = await sessionsToDelete(spaceId);
+  // With no Session to clean up first, the server's own refusal is enough.
+  if (sessionIds.length) await assertNoSourceBundles(spaceId);
   assertSessionCleanupIdentity(identity);
-  const sessionIds = await liveSessionIds(spaceId);
   const deferLocalCleanup = new Map<string, boolean>();
   await forEachLimited(sessionIds, STOP_CONCURRENCY, async (projectId) => {
     deferLocalCleanup.set(projectId, await stopSessionForDeletion(projectId));
@@ -161,6 +192,18 @@ export async function deleteSpaceAndSessions(
   onPhase?.('deleting');
   const projectStore = useProjectRuntimeStore.getState();
   for (const projectId of sessionIds) {
+    assertSessionCleanupIdentity(identity);
+    // The server only deletes a Space once each of its Sessions is marked
+    // deleted. Doing that first also proves the Session is still in this
+    // Space: if it has moved, the server answers 404 and its data stays.
+    try {
+      await proxyUpdateSpaceProject(spaceId, projectId, {
+        status: 'archived',
+      });
+    } catch (error) {
+      ignoreMissing(error);
+      continue;
+    }
     assertSessionCleanupIdentity(identity);
     const chatState = projectStore.peekActiveChatStore(projectId)?.getState();
     await deleteSessionTaskData({
@@ -174,12 +217,6 @@ export async function deleteSpaceAndSessions(
       deferLocalCleanup: deferLocalCleanup.get(projectId) ?? false,
       ipcRenderer,
     });
-    assertSessionCleanupIdentity(identity);
-    // Unlike a single Session deletion this must succeed: the server only
-    // deletes a Space once each of its Sessions is marked deleted.
-    await proxyUpdateSpaceProject(spaceId, projectId, {
-      status: 'archived',
-    }).catch(ignoreMissing);
     assertSessionCleanupIdentity(identity);
     useProjectRuntimeStore.getState().removeProject(projectId);
   }

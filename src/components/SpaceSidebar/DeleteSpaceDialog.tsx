@@ -30,6 +30,7 @@ const MESSAGE_KEY: Record<DeleteSpaceFailure, string> = {
   cleanup: 'layout.delete-space-failed',
   'has-sessions': 'layout.delete-space-has-sessions',
   'has-bundles': 'layout.delete-space-has-bundles',
+  'bundles-unchecked': 'layout.delete-space-bundles-unchecked',
 };
 
 const CONFIRM_KEY: Record<DeleteSpacePhase, string> = {
@@ -62,8 +63,8 @@ export function DeleteSpaceDialog({
     userId: number | null;
   } | null>(null);
   const busy = phase !== 'idle';
-  // Retrying can't help until the Workspace Bundle is gone.
-  const blocked = failure === 'has-bundles';
+  // Retrying can't help while a Workspace Bundle may come from this Space.
+  const blocked = failure === 'has-bundles' || failure === 'bundles-unchecked';
 
   useEffect(() => {
     setFailure(null);

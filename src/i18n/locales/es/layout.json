@@ -1611,6 +1611,7 @@
   "delete-space-failed": "No se pudo completar la eliminación del espacio. Es posible que algunas sesiones ya se hayan eliminado. Vuelve a intentarlo para terminar de eliminar este espacio.",
   "delete-space-has-sessions": "No se pudo eliminar este espacio porque tu cuenta aún tiene sesiones en él. Vuelve a intentarlo para eliminarlas y terminar de eliminar este espacio.",
   "delete-space-has-bundles": "Este espacio es el origen de un Workspace Bundle que creaste, por lo que no se puede eliminar. Eigent aún no puede eliminar ni mover un Workspace Bundle, así que este espacio debe quedarse por ahora.",
+  "delete-space-bundles-unchecked": "Eigent no puede comprobar todos tus Workspace Bundles, así que no ha eliminado nada por si este espacio es el origen de alguno. Para eliminar este espacio, elimina primero sus sesiones una a una y después el espacio.",
   "delete-project-workdir": "Eliminar también el directorio de trabajo de la sesión",
   "delete-project-workdir-hint": "Los archivos del directorio de trabajo, incluidos los cambios no publicados, se eliminarán de forma permanente.",
   "delete-project-workdir-pending-hint": "Este directorio de trabajo tiene cambios no publicados. Se eliminarán de forma permanente y no se podrán recuperar.",

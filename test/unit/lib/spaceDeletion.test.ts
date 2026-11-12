@@ -45,6 +45,7 @@ vi.mock('@/service/spaceApi', () => ({
 }));
 vi.mock('@/service/workspaceBundleAuthoringApi', () => ({
   listOwnedWorkspaceBundles: mocks.listOwnedWorkspaceBundles,
+  OWNED_WORKSPACE_BUNDLE_LIST_LIMIT: 200,
 }));
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: {
@@ -70,6 +71,7 @@ import { SessionStopError } from '@/lib/sessionStop';
 import {
   classifyDeleteSpaceFailure,
   deleteSpaceAndSessions,
+  SpaceBundlesUncheckedError,
   SpaceHasBundlesError,
 } from '@/lib/spaceDeletion';
 
@@ -129,10 +131,10 @@ describe('deleteSpaceAndSessions', () => {
     expect(mocks.calls).toEqual([
       'stop:session-open',
       'stop:session-idle',
-      'clean:session-open',
       'archive:session-open',
-      'clean:session-idle',
+      'clean:session-open',
       'archive:session-idle',
+      'clean:session-idle',
       'delete-space:space-a',
     ]);
     expect(mocks.proxyUpdateSpaceProject).toHaveBeenCalledWith(
@@ -177,40 +179,91 @@ describe('deleteSpaceAndSessions', () => {
     expect(mocks.deleteSpaceOnServer).not.toHaveBeenCalled();
   });
 
-  it('does not delete the Space when a Session cannot be marked deleted', async () => {
+  it('never touches a Session that only this window places in the Space', async () => {
+    // Another window moved session-moved to a different Space; this window's
+    // list is stale. The server list for space-a no longer includes it.
+    mocks.proxyFetchSpaceProjects.mockResolvedValue([project('session-idle')]);
+    mocks.projectsBySpaceId = {
+      'space-a': {
+        'session-idle': { id: 'session-idle', status: 'active' },
+        'session-moved': { id: 'session-moved', status: 'active' },
+      },
+    };
+
+    await deleteSpaceAndSessions('space-a', { identity });
+
+    expect(mocks.calls).toEqual([
+      'stop:session-idle',
+      'archive:session-idle',
+      'clean:session-idle',
+      'delete-space:space-a',
+    ]);
+    expect(mocks.removeProject.mock.calls).toEqual([['session-idle']]);
+  });
+
+  it('leaves a Session alone when the server says it has left the Space', async () => {
+    // It moved after the list was read, for example while Tasks were stopping.
+    mocks.proxyUpdateSpaceProject.mockImplementation(
+      async (_spaceId: string, projectId: string) => {
+        if (projectId === 'session-open') throw httpError(404);
+        mocks.calls.push(`archive:${projectId}`);
+      }
+    );
+
+    await deleteSpaceAndSessions('space-a', { identity });
+
+    expect(mocks.deleteSessionTaskData).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteSessionTaskData).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'session-idle' })
+    );
+    expect(mocks.removeProject.mock.calls).toEqual([['session-idle']]);
+    expect(mocks.deleteSpaceOnServer).toHaveBeenCalledWith('space-a');
+  });
+
+  it('finishes a cleanup that failed after the Session was marked deleted', async () => {
+    mocks.proxyFetchSpaceProjects.mockResolvedValue([
+      project('session-half', 'archived'),
+      project('session-done', 'archived'),
+    ]);
+    mocks.projectsBySpaceId = {
+      'space-a': {
+        'session-half': { id: 'session-half', status: 'active' },
+      },
+    };
+
+    await deleteSpaceAndSessions('space-a', { identity });
+
+    expect(mocks.calls).toEqual([
+      'stop:session-half',
+      'archive:session-half',
+      'clean:session-half',
+      'delete-space:space-a',
+    ]);
+  });
+
+  it('cleans nothing locally when the Space is already gone on the server', async () => {
+    mocks.proxyFetchSpaceProjects.mockRejectedValue(httpError(404));
+    mocks.projectsBySpaceId = {
+      'space-a': {
+        'session-local': { id: 'session-local', status: 'active' },
+      },
+    };
+
+    await deleteSpaceAndSessions('space-a', { identity });
+
+    expect(mocks.stopSessionForDeletion).not.toHaveBeenCalled();
+    expect(mocks.deleteSessionTaskData).not.toHaveBeenCalled();
+    expect(mocks.deleteSpaceOnServer).toHaveBeenCalledWith('space-a');
+  });
+
+  it('does not clean a Session whose deletion the server refused', async () => {
     mocks.proxyUpdateSpaceProject.mockRejectedValue(httpError(500));
 
     await expect(
       deleteSpaceAndSessions('space-a', { identity })
     ).rejects.toMatchObject({ status: 500 });
+    expect(mocks.deleteSessionTaskData).not.toHaveBeenCalled();
     expect(mocks.deleteSpaceOnServer).not.toHaveBeenCalled();
-    expect(mocks.removeProject).not.toHaveBeenCalled();
-  });
-
-  it('includes local Sessions and tolerates ones the server no longer has', async () => {
-    mocks.proxyFetchSpaceProjects.mockResolvedValue([]);
-    mocks.projectsBySpaceId = {
-      'space-a': {
-        'session-local': { id: 'session-local', status: 'active' },
-        'session-gone': { id: 'session-gone', status: 'archived' },
-      },
-    };
-    mocks.proxyUpdateSpaceProject.mockRejectedValue(httpError(404));
-
-    await deleteSpaceAndSessions('space-a', { identity });
-
-    expect(mocks.stopSessionForDeletion).toHaveBeenCalledTimes(1);
-    expect(mocks.stopSessionForDeletion).toHaveBeenCalledWith('session-local');
-    expect(mocks.deleteSpaceOnServer).toHaveBeenCalledWith('space-a');
-  });
-
-  it('still clears local Sessions when the Space is already gone on the server', async () => {
-    mocks.proxyFetchSpaceProjects.mockRejectedValue(httpError(404));
-
-    await deleteSpaceAndSessions('space-a', { identity });
-
-    expect(mocks.stopSessionForDeletion).not.toHaveBeenCalled();
-    expect(mocks.deleteSpaceOnServer).toHaveBeenCalledWith('space-a');
   });
 
   it('refuses a Space that is the source of a Workspace Bundle before touching anything', async () => {
@@ -249,6 +302,43 @@ describe('deleteSpaceAndSessions', () => {
     expect(mocks.deleteSpaceOnServer).not.toHaveBeenCalled();
   });
 
+  it('refuses before touching anything when the Bundle list may be incomplete', async () => {
+    mocks.listOwnedWorkspaceBundles.mockResolvedValue(
+      Array.from({ length: 200 }, (_, index) => ({
+        id: `bundle-${index}`,
+        workspace_id: `space-other-${index}`,
+      }))
+    );
+
+    const failure = await deleteSpaceAndSessions('space-a', { identity }).then(
+      () => null,
+      (error: unknown) => classifyDeleteSpaceFailure(error)
+    );
+
+    expect(failure).toBe('bundles-unchecked');
+    expect(mocks.stopSessionForDeletion).not.toHaveBeenCalled();
+    expect(mocks.proxyUpdateSpaceProject).not.toHaveBeenCalled();
+    expect(mocks.deleteSessionTaskData).not.toHaveBeenCalled();
+    expect(mocks.deleteSpaceOnServer).not.toHaveBeenCalled();
+  });
+
+  it('leaves the Bundle refusal to the server when there is no Session to clean up', async () => {
+    mocks.proxyFetchSpaceProjects.mockResolvedValue([
+      project('session-deleted', 'archived'),
+    ]);
+    mocks.listOwnedWorkspaceBundles.mockResolvedValue(
+      Array.from({ length: 200 }, (_, index) => ({
+        id: `bundle-${index}`,
+        workspace_id: `space-other-${index}`,
+      }))
+    );
+
+    await deleteSpaceAndSessions('space-a', { identity });
+
+    expect(mocks.listOwnedWorkspaceBundles).not.toHaveBeenCalled();
+    expect(mocks.deleteSpaceOnServer).toHaveBeenCalledWith('space-a');
+  });
+
   it('keeps local files of Sessions whose backend could not be reached', async () => {
     mocks.stopSessionForDeletion.mockResolvedValue(true);
 
@@ -273,6 +363,9 @@ describe('classifyDeleteSpaceFailure', () => {
     expect(classifyDeleteSpaceFailure(new SessionStopError())).toBe('stop');
     expect(classifyDeleteSpaceFailure(new SpaceHasBundlesError())).toBe(
       'has-bundles'
+    );
+    expect(classifyDeleteSpaceFailure(new SpaceBundlesUncheckedError())).toBe(
+      'bundles-unchecked'
     );
   });
 });

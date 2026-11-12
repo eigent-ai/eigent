@@ -163,6 +163,28 @@ describe('SpaceHeaderMenu', () => {
     expect(mocks.deleteSpaceAndSessions).toHaveBeenCalledTimes(1);
   });
 
+  it('explains why it stopped when it could not check every Workspace Bundle', async () => {
+    const { SpaceBundlesUncheckedError } = await import('@/lib/spaceDeletion');
+    mocks.deleteSpaceAndSessions.mockRejectedValue(
+      new SpaceBundlesUncheckedError()
+    );
+    render(<SpaceHeaderMenu spaceId={space.id} appearance="sidebar" />);
+    const { user, menu } = await openMenu();
+    await user.click(
+      within(menu).getByRole('menuitem', { name: 'Delete Space' })
+    );
+    const confirm = await screen.findByRole('alertdialog');
+    await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
+
+    expect(
+      await within(confirm).findByText(/delete its sessions one by one first/)
+    ).toBeInTheDocument();
+    expect(within(confirm).queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(
+      within(confirm).getByRole('button', { name: 'Delete' })
+    ).toBeDisabled();
+  });
+
   it('starts a new Space from the sidebar menu', async () => {
     render(<SpaceHeaderMenu spaceId={space.id} appearance="sidebar" />);
     const { user, menu } = await openMenu();

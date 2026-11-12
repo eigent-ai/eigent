@@ -1567,6 +1567,7 @@
   "delete-space-failed": "Space 删除未完成。部分会话可能已被删除。请重试以完成删除此 Space。",
   "delete-space-has-sessions": "你的账号中此 Space 仍有会话，因此无法删除。请重试以删除这些会话并完成删除此 Space。",
   "delete-space-has-bundles": "此 Space 是你创建的 Workspace Bundle 的来源，因此无法删除。Eigent 暂时还不能删除或移动 Workspace Bundle，所以此 Space 需要暂时保留。",
+  "delete-space-bundles-unchecked": "Eigent 无法检查你的全部 Workspace Bundle，为防此 Space 是其中某个的来源，没有删除任何内容。要删除此 Space，请先逐个删除其中的会话，再删除此 Space。",
   "delete-project-workdir": "同时删除会话工作目录",
   "delete-project-workdir-hint": "工作目录中的文件（包括尚未发布的修改）将被永久删除。",
   "delete-project-workdir-pending-hint": "该工作目录中有尚未发布的修改。它们将被永久删除，且无法恢复。",

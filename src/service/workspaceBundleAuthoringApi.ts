@@ -150,9 +150,15 @@ export const findWorkspaceBundle = async (
   }
 };
 
-/** The signed-in user's own Workspace Bundles, newest first. */
+/** The most Workspace Bundles the server returns in one list. */
+export const OWNED_WORKSPACE_BUNDLE_LIST_LIMIT = 200;
+
+/**
+ * The signed-in user's own Workspace Bundles, newest first. The list has no
+ * paging, so a full page may leave older Bundles out.
+ */
 export const listOwnedWorkspaceBundles = async (
-  limit = 200
+  limit = OWNED_WORKSPACE_BUNDLE_LIST_LIMIT
 ): Promise<CloudWorkspaceBundle[]> => {
   const page = await proxyFetchGet('/api/v1/workspace-bundles', { limit });
   if (!Array.isArray(page?.items)) {
