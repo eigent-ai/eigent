@@ -107,6 +107,35 @@ class EnvironmentHands(IHands):
             return False, reason
         return True, None
 
+    def validate_agent_plugin_source_path(
+        self, path: str
+    ) -> tuple[bool, str | None]:
+        """Check a folder or archive the user picked to import a plugin from.
+
+        Full filesystem scope reaches every drive, so the locations a Space
+        may never use are refused here as well. Eigent's own data folder
+        stays allowed: an import only reads its source.
+        """
+        if not self.can_access_filesystem(path):
+            return False, "filesystem_capability_denied"
+        try:
+            resolved = Path(path).expanduser().resolve()
+        except (OSError, RuntimeError):
+            return False, "path_resolve_failed"
+        try:
+            home = Path.home().resolve()
+        except (OSError, RuntimeError):
+            return False, "home_resolve_failed"
+        reason = binding_path_refusal(
+            resolved,
+            home=home,
+            system=platform.system(),
+            environ=os.environ,
+        )
+        if reason is not None:
+            return False, reason
+        return True, None
+
     def can_use_mcp(self, mcp_name: str) -> bool:
         if self._caps.mcp_mode == "all":
             return True
