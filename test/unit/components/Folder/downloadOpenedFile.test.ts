@@ -68,6 +68,74 @@ describe('downloadOpenedFile', () => {
     expect(requested.searchParams.get('access')).toBe('NEW');
   });
 
+  describe('a file whose preview was blocked', () => {
+    const blocked = (path: string): FileInfo =>
+      ({
+        ...pdfFile('OLD'),
+        path,
+        preview: { kind: 'blocked', reason: 'too-large', size: 9, limit: 1 },
+      }) as FileInfo;
+    const brainPath = pdfFile('OLD').path;
+    const openMock = vi.fn();
+
+    beforeEach(() => {
+      vi.stubGlobal('open', openMock);
+      authorizeBrainFileMock.mockImplementation(async (file: FileInfo) => ({
+        ...file,
+        path: file.path.replace('access=OLD', 'access=NEW'),
+      }));
+    });
+
+    it('is saved by the desktop host with a fresh grant, never fetched', async () => {
+      const invoke = vi.fn().mockResolvedValue({ success: true });
+
+      await downloadOpenedFile(blocked(brainPath), { invoke });
+
+      expect(invoke).toHaveBeenCalledTimes(1);
+      const [channel, url] = invoke.mock.calls[0];
+      expect(channel).toBe('download-backend-file');
+      expect(new URL(url).searchParams.get('access')).toBe('NEW');
+      expect(openMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('opens in the browser at once when there is no desktop host', () => {
+      void downloadOpenedFile(blocked(brainPath), null);
+
+      // Synchronous, so the browser still treats it as the user's click.
+      expect(openMock).toHaveBeenCalledWith(
+        brainPath,
+        '_blank',
+        'noopener,noreferrer'
+      );
+      expect(authorizeBrainFileMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('leaves a file from another site to the browser on desktop', () => {
+      const invoke = vi.fn();
+      const cloudPath = 'https://files.example.com/a/report.pdf?sig=1';
+
+      void downloadOpenedFile(blocked(cloudPath), { invoke });
+
+      expect(openMock).toHaveBeenCalledWith(
+        cloudPath,
+        '_blank',
+        'noopener,noreferrer'
+      );
+      expect(invoke).not.toHaveBeenCalled();
+    });
+
+    it('falls back to opening the URL when the desktop host refuses it', async () => {
+      const invoke = vi.fn().mockResolvedValue({ success: false });
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      await downloadOpenedFile(blocked(brainPath), { invoke });
+
+      expect(openMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('still tries the existing URL when a fresh grant cannot be obtained', async () => {
     authorizeBrainFileMock.mockRejectedValue(new Error('offline'));
 
