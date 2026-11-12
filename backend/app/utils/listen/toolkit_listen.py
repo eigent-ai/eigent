@@ -373,6 +373,10 @@ def listen_toolkit(
 
             async_wrapper.__listen_toolkit__ = True
             async_wrapper.__listen_call_signature__ = call_signature
+            # This wrapper drops keyword arguments ``func`` does not accept
+            # (``_filter_kwargs_for_callable`` above), so a call that carries
+            # one still runs. Argument checks read this to leave it alone.
+            async_wrapper.__listen_drops_unknown_arguments__ = True
             return async_wrapper
 
         else:

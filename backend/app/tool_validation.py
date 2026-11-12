@@ -151,9 +151,11 @@ def check_tool_arguments(
 
     Missing required parameters and parameters the tool does not accept are
     reported by name; MCP tools forward parameters their schema does not
-    list to the server, which validates them. A quoted scalar is converted only when the published
-    schema declares exactly an integer, number or boolean and the text is an
-    exact spelling of that type; anything ambiguous is passed through as is.
+    list to the server, which validates them, and async toolkit tools drop
+    them before they run, so neither is rejected for one. A quoted scalar is
+    converted only when the published schema declares exactly an integer,
+    number or boolean and the text is an exact spelling of that type;
+    anything ambiguous is passed through as is.
     Only CAMEL FunctionTools are checked, because they invoke exactly
     ``tool.func`` with these keyword arguments; other tool objects, and tools
     without introspectable metadata, are left unchanged so this check can
@@ -169,6 +171,11 @@ def check_tool_arguments(
         # The MCP server validates its own arguments, and CAMEL publishes
         # ``additionalProperties: false`` whatever the server's schema says.
         # Keys the schema does not list are forwarded unchanged, as before.
+        additional_allowed = True
+    if _drops_unknown_arguments(tool):
+        # The call is not doomed: the tool runs without the extra keys, as
+        # it did before these checks existed. Rejecting it would cost the
+        # model a round trip for a call that works.
         additional_allowed = True
     problems = _binding_problems(
         _call_signature(tool),
@@ -255,6 +262,20 @@ def _forwards_to_mcp_server(tool: Any) -> bool:
     # CAMEL's MCP client functions carry ``async_call``, which sends the
     # keyword arguments to the server; the agent dispatches MCP tools by it.
     return callable(getattr(getattr(tool, "func", None), "async_call", None))
+
+
+def _drops_unknown_arguments(tool: Any) -> bool:
+    # ``listen_toolkit`` marks the async wrapper that filters keyword
+    # arguments its tool does not accept. Sync tools are not filtered, so an
+    # unknown argument there still fails to bind and is still rejected.
+    return (
+        getattr(
+            getattr(tool, "func", None),
+            "__listen_drops_unknown_arguments__",
+            False,
+        )
+        is True
+    )
 
 
 def _bound_signature(tool: Any) -> inspect.Signature | None:
