@@ -17,6 +17,7 @@
 import '@/api/http';
 
 import {
+  EMOJI_DATA_CDN_URL,
   EMOJI_LOAD_TIMEOUT_MS,
   SpaceEmojiPicker,
 } from '@/components/Home/SpaceEmojiPicker';
@@ -27,6 +28,7 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import packageJson from '../../../../package.json';
 
 const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
@@ -143,14 +145,58 @@ describe('Space emojis', () => {
     });
   });
 
-  it('loads a pinned emoji list', async () => {
-    render(<Picker />);
-    await openPicker();
-    await screen.findByRole('button', { name: 'Pick rocket' });
+  describe('where the emoji list comes from', () => {
+    const bundledUrl = new URL('/emojibase', window.location.href).href;
+    const resolve = () =>
+      (
+        mocks.rootProps.resolveEmojiData as (
+          locale: string,
+          options: object
+        ) => Promise<unknown>
+      )('en', {});
+    const sources = () =>
+      mocks.loadEmojiData.mock.calls.map(
+        ([, options]) => (options as { emojibaseUrl: string }).emojibaseUrl
+      );
 
-    expect(mocks.rootProps.emojibaseUrl).toMatch(
-      /emojibase-data@\d+\.\d+\.\d+$/
-    );
+    beforeEach(() => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    it('reads the list the app ships, without the network', async () => {
+      mocks.loadEmojiData.mockResolvedValue({ locale: 'en' });
+      render(<Picker />);
+      await openPicker();
+      await screen.findByRole('button', { name: 'Pick rocket' });
+
+      await act(async () => {
+        await expect(resolve()).resolves.toEqual({ locale: 'en' });
+      });
+
+      expect(mocks.rootProps.emojibaseUrl).toBe(bundledUrl);
+      expect(sources()).toEqual([bundledUrl]);
+    });
+
+    it('asks the CDN only when its own list cannot be read', async () => {
+      mocks.loadEmojiData
+        .mockRejectedValueOnce(new Error('missing'))
+        .mockResolvedValueOnce({ locale: 'en' });
+      render(<Picker />);
+      await openPicker();
+
+      await act(async () => {
+        await expect(resolve()).resolves.toEqual({ locale: 'en' });
+      });
+
+      expect(sources()).toEqual([bundledUrl, EMOJI_DATA_CDN_URL]);
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('asks the CDN for the same version the app ships', () => {
+      expect(EMOJI_DATA_CDN_URL).toBe(
+        `https://cdn.jsdelivr.net/npm/emojibase-data@${packageJson.devDependencies['emojibase-data']}`
+      );
+    });
   });
 
   describe('when the emoji list cannot load', () => {
@@ -161,6 +207,10 @@ describe('Space emojis', () => {
           options: object
         ) => Promise<unknown>
       )('en', {});
+
+    beforeEach(() => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
 
     afterEach(() => {
       vi.useRealTimers();
@@ -215,6 +265,8 @@ describe('Space emojis', () => {
       });
 
       expect(screen.queryByRole('alert')).toBeNull();
+      // A read the picker stopped is not a reason to try the CDN.
+      expect(mocks.loadEmojiData).toHaveBeenCalledTimes(1);
     });
   });
 
