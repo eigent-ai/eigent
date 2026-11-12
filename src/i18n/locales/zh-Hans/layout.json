@@ -549,6 +549,8 @@
   "workspace-folder-binding-local-only": "只有本地 Brain 支持文件夹绑定。",
   "workspace-folder-already-bound": "该文件夹已被另一个 Space 使用。",
   "workspace-folder-unavailable": "该文件夹对当前 Brain 不可用。",
+  "workspace-folder-protected": "这是系统文件夹、账户文件夹或顶层文件夹，Eigent 无法使用。请选择一个项目文件夹。",
+  "workspace-folder-app-data": "该文件夹存放着 Eigent 自身的数据，不能用作 Space。请选择其他文件夹，例如“文稿”中的文件夹。",
   "workspace-folder-space-create-failed": "创建文件夹 Space 失败。",
   "task-source-trigger": "自动化运行",
   "workspace-recent-sessions-heading": "最近运行",

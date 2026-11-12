@@ -19,10 +19,28 @@ Brain deployment env determines capability set; all Channels share one instance.
 Channel only handles message display format adaptation.
 """
 
+import os
+import platform
 from pathlib import Path
 
+from app.hands.binding_path_policy import binding_path_refusal
 from app.hands.capabilities import BrainCapabilities
 from app.hands.interface import IHands
+from app.utils.workspace_paths import get_eigent_root
+
+
+def _app_data_roots(home: Path) -> list[Path]:
+    # get_eigent_root() picks ~/eigent when it exists, else ~/.eigent, so
+    # either folder can hold the journal and per-Run runtime storage.
+    roots: list[Path] = []
+    for candidate in (home / "eigent", home / ".eigent", get_eigent_root()):
+        try:
+            resolved = candidate.expanduser().resolve()
+        except (OSError, RuntimeError):
+            continue
+        if resolved not in roots:
+            roots.append(resolved)
+    return roots
 
 
 class EnvironmentHands(IHands):
@@ -46,19 +64,8 @@ class EnvironmentHands(IHands):
     def can_access_filesystem(self, path: str) -> bool:
         if self._caps.filesystem_scope == "full":
             try:
-                resolved = Path(path).expanduser().resolve()
-                home = Path.home()
-                workspace = self.workspace_root.resolve()
-                try:
-                    resolved.relative_to(home)
-                    return True
-                except ValueError:
-                    pass
-                try:
-                    resolved.relative_to(workspace)
-                    return True
-                except ValueError:
-                    return False
+                Path(path).expanduser().resolve()
+                return True
             except (OSError, RuntimeError):
                 return False
         if self._caps.filesystem_scope == "workspace_only":
@@ -72,6 +79,33 @@ class EnvironmentHands(IHands):
             except (OSError, RuntimeError):
                 return False
         return False  # none
+
+    def validate_workspace_binding_path(
+        self, path: str
+    ) -> tuple[bool, str | None]:
+        """Check a folder the user picked as a Space's workspace root."""
+        if not self.can_access_filesystem(path):
+            return False, "filesystem_capability_denied"
+        try:
+            resolved = Path(path).expanduser().resolve()
+        except (OSError, RuntimeError):
+            return False, "path_resolve_failed"
+        if not resolved.is_dir():
+            return False, "path_not_directory"
+        try:
+            home = Path.home().resolve()
+        except (OSError, RuntimeError):
+            return False, "home_resolve_failed"
+        reason = binding_path_refusal(
+            resolved,
+            home=home,
+            system=platform.system(),
+            environ=os.environ,
+            app_data_roots=_app_data_roots(home),
+        )
+        if reason is not None:
+            return False, reason
+        return True, None
 
     def can_use_mcp(self, mcp_name: str) -> bool:
         if self._caps.mcp_mode == "all":

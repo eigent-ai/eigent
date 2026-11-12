@@ -549,6 +549,8 @@
   "workspace-folder-binding-local-only": "只有本機 Brain 支持資料夾綁定。",
   "workspace-folder-already-bound": "該資料夾已被另一個 Space 使用。",
   "workspace-folder-unavailable": "該資料夾對當前 Brain 不可用。",
+  "workspace-folder-protected": "這是系統資料夾、帳戶資料夾或頂層資料夾，Eigent 無法使用。請選擇一個專案資料夾。",
+  "workspace-folder-app-data": "該資料夾存放著 Eigent 本身的資料，不能用作 Space。請選擇其他資料夾，例如「文件」中的資料夾。",
   "workspace-folder-space-create-failed": "建立資料夾 Space 失敗。",
   "task-source-trigger": "自動化執行",
   "workspace-recent-sessions-heading": "最近執行",

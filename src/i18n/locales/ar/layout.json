@@ -549,6 +549,8 @@
   "workspace-folder-binding-local-only": "لا يمكنك ربط مجلد إلا عندما يعمل Eigent على هذا الجهاز.",
   "workspace-folder-already-bound": "ذلك المجلد مستخدم بالفعل من مساحة أخرى.",
   "workspace-folder-unavailable": "لا يستطيع Eigent الوصول إلى ذلك المجلد على هذا الجهاز.",
+  "workspace-folder-protected": "لا يمكن لـ Eigent استخدام هذا المجلد لأنه مجلد نظام أو مجلد حساب أو مجلد رئيسي. اختر مجلد مشروع بدلاً منه.",
+  "workspace-folder-app-data": "يحتوي هذا المجلد على بيانات Eigent الخاصة، لذا لا يمكن استخدامه كمساحة. اختر مجلدًا آخر، مثل مجلد داخل المستندات.",
   "workspace-folder-space-create-failed": "تعذّر إنشاء مساحة من ذلك المجلد. حاول مرة أخرى.",
   "task-source-trigger": "تشغيل مُؤتمت",
   "workspace-recent-sessions-heading": "Recent",
