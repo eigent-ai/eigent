@@ -363,9 +363,9 @@ def set_input_source(connection, run_id, source):
             "SELECT payload_json FROM run_events WHERE event_id=?", (event_id,)
         ).fetchone()["payload_json"]
     )
-    assert payload.pop("source") == "local"
-    if source is not None:
-        payload["source"] = source
+    # Managed input is stored as {content, request_id}; no source.
+    assert "source" not in payload
+    payload["source"] = source
     connection.execute(
         "UPDATE run_events SET payload_json=? WHERE event_id=?",
         (json.dumps(payload), event_id),
@@ -373,7 +373,7 @@ def set_input_source(connection, run_id, source):
 
 
 @pytest.mark.asyncio
-async def test_prior_input_recorded_before_its_source_still_captures(
+async def test_prior_input_recorded_with_a_source_still_captures(
     deployment, monkeypatch
 ):
     d = deployment
@@ -382,13 +382,13 @@ async def test_prior_input_recorded_before_its_source_still_captures(
     envelope = await d.register("a")
     sources, errors = {}, []
 
-    async def drop_source(adapter, request, bound):
+    async def add_source(adapter, request, bound):
         if request.request_id == "second":
-            # History written before user.message carried its source.
+            # History written by a build that stored the input's source.
             with d.journal._write_transaction() as connection:
-                set_input_source(connection, "first", None)
+                set_input_source(connection, "first", "local")
 
-    observe_capture(monkeypatch, sources, errors, drop_source)
+    observe_capture(monkeypatch, sources, errors, add_source)
     ModelScript(monkeypatch)
     await d.service.start()
     await send(d, "first", envelope)
