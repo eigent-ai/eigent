@@ -12,18 +12,22 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { reportError } from '@/lib/notifyError';
 import {
   acknowledgeUsageNotice,
   activeUsageIncident,
   confirmCloudRecovery,
   contactSupport,
+  presentedUsageReason,
   refreshUsage,
   reportUsageIncident,
   setUsageAccount,
   setUsageModelType,
+  USAGE_FOLLOW_UP_REFRESH_MS,
+  USAGE_REFRESH_TIMEOUT_MS,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   dismiss: vi.fn(),
@@ -246,5 +250,393 @@ describe('account-scoped usage reminders', () => {
     setUsageAccount('account-b');
     for (const call of mocks.dismiss.mock.calls)
       expect(call[0]).toBe('usage-availability:account-a');
+  });
+});
+
+describe('spend limits during a trial', () => {
+  // Purchased credits cannot be spent beyond the trial's allowance.
+  const proTrial = {
+    plan_key: 'pro',
+    is_trialing: true,
+    trial_daily_credits_remaining: 120,
+    trial_total_credits_remaining: 859,
+  };
+  function respond(subscription: Record<string, unknown>) {
+    mocks.get.mockImplementation(async (url: string) =>
+      url.endsWith('subscription')
+        ? subscription
+        : url.endsWith('current_credits')
+          ? { credits: 500 }
+          : { value: 'redacted-test-key' }
+    );
+  }
+  beforeEach(() => {
+    setUsageAccount(null);
+    vi.clearAllMocks();
+    setUsageAccount('account-a');
+    setUsageModelType('cloud');
+  });
+
+  it('reports a spend-limit failure as the trial allowance while trialing', async () => {
+    respond(proTrial);
+    await refreshUsage();
+
+    reportUsageIncident({ reason: 'credits' });
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.usage-limit-plan-trial-daily-exhausted',
+      expect.anything()
+    );
+  });
+
+  it('reports the trial total when the whole trial is used up', async () => {
+    respond({ ...proTrial, trial_total_credits_remaining: 0 });
+    await refreshUsage();
+    mocks.error.mockClear();
+
+    reportUsageIncident({ reason: 'credits' });
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-total'
+    );
+  });
+
+  it('keeps out-of-credits copy for an account that is not trialing', async () => {
+    respond({ plan_key: 'pro', is_trialing: false });
+    await refreshUsage();
+
+    reportUsageIncident({ reason: 'credits' });
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'credits'
+    );
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.notice-credits',
+      expect.anything()
+    );
+  });
+
+  it('updates an earlier out-of-credits notice once the trial is known', async () => {
+    reportUsageIncident({ reason: 'credits' });
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.notice-credits',
+      expect.anything()
+    );
+    // The gateway's limit can be lower than the balance shown in the account.
+    mocks.get.mockImplementation(async (url: string) =>
+      url.endsWith('subscription')
+        ? proTrial
+        : url.endsWith('current_credits')
+          ? { credits: 500 }
+          : { code: 20 }
+    );
+
+    await refreshUsage();
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.usage-limit-plan-trial-daily-exhausted',
+      expect.anything()
+    );
+  });
+
+  it('corrects a daily-allowance notice once Refresh shows the whole trial is used', async () => {
+    // The account details were loaded before the task used the last credits.
+    respond(proTrial);
+    await refreshUsage();
+    reportUsageIncident({ reason: 'credits' });
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+
+    respond({
+      ...proTrial,
+      trial_daily_credits_remaining: 300,
+      trial_total_credits_remaining: 0,
+    });
+    await refreshUsage();
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-total'
+    );
+    expect(mocks.error).toHaveBeenLastCalledWith(
+      'chat.usage-limit-plan-trial-total-exhausted',
+      expect.anything()
+    );
+  });
+
+  it('keeps the trial wording when a later Refresh fails', async () => {
+    respond(proTrial);
+    await refreshUsage();
+    reportUsageIncident({ reason: 'credits' });
+    mocks.get.mockRejectedValue(new Error('offline'));
+
+    await refreshUsage();
+
+    const state = useUsageNoticeStore.getState();
+    expect(state.refreshError).toBe('chat.notice-refresh-failed');
+    expect(state.subscription).toBeNull();
+    expect(activeUsageIncident(state)?.reason).toBe('trial-daily');
+    // In-task notices recorded as out-of-credits follow the open trial blocker.
+    expect(presentedUsageReason('credits', state)).toBe('trial-daily');
+  });
+});
+
+describe('trial accounts whose blocker is not the daily allowance', () => {
+  beforeEach(() => {
+    setUsageAccount(null);
+    vi.clearAllMocks();
+    setUsageAccount('account-a');
+    setUsageModelType('cloud');
+  });
+  function respond(subscription: Record<string, unknown>, credits: number) {
+    mocks.get.mockImplementation(async (url: string) =>
+      url.endsWith('subscription')
+        ? subscription
+        : url.endsWith('current_credits')
+          ? { credits }
+          : { value: 'redacted-test-key' }
+    );
+  }
+  const trial = {
+    plan_key: 'pro',
+    is_trialing: true,
+    trial_daily_credits_remaining: 159,
+    trial_total_credits_remaining: 859,
+  };
+
+  it('says out of credits for an empty balance with trial allowance left', async () => {
+    respond(trial, 0);
+
+    await refreshUsage();
+
+    const state = useUsageNoticeStore.getState();
+    expect(activeUsageIncident(state)?.reason).toBe('credits');
+    // A failure recorded in the Session reads the same way.
+    expect(presentedUsageReason('credits', state)).toBe('credits');
+  });
+
+  it('keeps a whole-trial limit the server stated when a generic failure follows', async () => {
+    respond(trial, 500);
+    await refreshUsage();
+    reportUsageIncident({ reason: 'trial-total' });
+
+    // The same failure reported again without the detail, as task events do.
+    reportError({ code: 20 }, { modelType: 'cloud', executionId: 'run-1' });
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-total'
+    );
+  });
+});
+
+describe('Refresh that never gets an answer', () => {
+  beforeEach(() => {
+    setUsageAccount(null);
+    vi.clearAllMocks();
+    setUsageAccount('account-a');
+    setUsageModelType('cloud');
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('ends in a failed refresh that can be retried', async () => {
+    reportUsageIncident({ reason: 'credits' });
+    const signals: AbortSignal[] = [];
+    mocks.get.mockImplementation(
+      (
+        _url: string,
+        _params: unknown,
+        _headers: unknown,
+        options: { signal: AbortSignal }
+      ) => {
+        signals.push(options.signal);
+        return new Promise(() => undefined);
+      }
+    );
+
+    const pending = refreshUsage();
+    expect(useUsageNoticeStore.getState().refreshing).toBe(true);
+    await vi.advanceTimersByTimeAsync(USAGE_REFRESH_TIMEOUT_MS - 1);
+    expect(useUsageNoticeStore.getState().refreshing).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+
+    expect(signals).toHaveLength(3);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(useUsageNoticeStore.getState()).toMatchObject({
+      refreshing: false,
+      refreshError: 'chat.notice-refresh-failed',
+    });
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'credits'
+    );
+
+    healthy();
+    await refreshUsage();
+    expect(mocks.get).toHaveBeenCalledTimes(6);
+    expect(useUsageNoticeStore.getState()).toMatchObject({
+      refreshing: false,
+      refreshError: null,
+    });
+  });
+});
+
+describe('checking the account after a failure', () => {
+  // A trial with allowance left: the gateway refused anyway, as in a cap that
+  // had not caught up with the account yet.
+  const allowanceLeft = {
+    plan_key: 'pro',
+    is_trialing: true,
+    trial_daily_credits_remaining: 159,
+    trial_total_credits_remaining: 859,
+  };
+  // The shape a model call returns when the gateway's spend cap is reached.
+  const gatewayLimit = {
+    message:
+      "Error code: 400 - {'error': {'message': 'Budget has been exceeded! Current cost: 3.0012, Max budget: 3.0', 'type': 'budget_exceeded', 'param': None, 'code': '400'}}",
+  };
+  function respond(subscription: Record<string, unknown>) {
+    mocks.get.mockImplementation(async (url: string) =>
+      url.endsWith('subscription')
+        ? subscription
+        : url.endsWith('current_credits')
+          ? { credits: 500 }
+          : { value: 'redacted-test-key' }
+    );
+  }
+  const reads = () =>
+    mocks.get.mock.calls.filter(([url]) => url === '/api/v1/subscription')
+      .length;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    setUsageAccount(null);
+    vi.clearAllMocks();
+    setUsageAccount('account-a');
+    setUsageModelType('cloud');
+    respond(allowanceLeft);
+    await refreshUsage();
+    mocks.get.mockClear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('checks the account 2 s and 15 s after a task fails in a new Session', async () => {
+    // New Sessions start from the Workspace composer, not the Session composer,
+    // and report their failure through the shared error path.
+    expect(reportError(gatewayLimit, { modelType: 'cloud' })).toBe('credits');
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+
+    await vi.advanceTimersByTimeAsync(USAGE_FOLLOW_UP_REFRESH_MS[0] - 1);
+    expect(reads()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.get).toHaveBeenCalledTimes(3);
+    // The account shows allowance left, so the live notice clears.
+    expect(activeUsageIncident(useUsageNoticeStore.getState())).toBeNull();
+    expect(mocks.dismiss).toHaveBeenCalledWith('usage-availability:account-a');
+
+    await vi.advanceTimersByTimeAsync(
+      USAGE_FOLLOW_UP_REFRESH_MS[1] - USAGE_FOLLOW_UP_REFRESH_MS[0]
+    );
+    expect(reads()).toBe(2);
+  });
+
+  it('times the check from a failure that comes long after the message was sent', async () => {
+    // A follow-up task can run for minutes before it reaches the limit.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(reads()).toBe(0);
+
+    reportError(gatewayLimit, { modelType: 'cloud', executionId: 'run-1' });
+    await vi.advanceTimersByTimeAsync(USAGE_FOLLOW_UP_REFRESH_MS[0]);
+
+    expect(reads()).toBe(1);
+  });
+
+  it('keeps a confirmed daily limit and stops checking after the second read', async () => {
+    reportError(gatewayLimit, { modelType: 'cloud' });
+    respond({ ...allowanceLeft, trial_daily_credits_remaining: 0 });
+
+    await vi.advanceTimersByTimeAsync(USAGE_FOLLOW_UP_REFRESH_MS[1]);
+    expect(reads()).toBe(2);
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+      'trial-daily'
+    );
+
+    // What Refresh reads back never schedules more reads by itself.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(reads()).toBe(2);
+  });
+
+  describe('when the key read itself answers that the trial is used up', () => {
+    const dailyUsed = { ...allowanceLeft, trial_daily_credits_remaining: 0 };
+    // The server refuses the key with code 22, and the request layer reports
+    // that answer like any other usage failure (proxyFetchGet does this).
+    function refuseKey(subscription: Record<string, unknown>) {
+      mocks.get.mockImplementation(async (url: string) => {
+        if (url.endsWith('subscription')) return subscription;
+        if (url.endsWith('current_credits')) return { credits: 500 };
+        const refused = { code: 22, text: 'trial usage limit exceeded' };
+        reportError(refused, { modelType: 'cloud' }, 'account-a');
+        return refused;
+      });
+    }
+
+    it('reads the account once for one Refresh', async () => {
+      refuseKey(dailyUsed);
+
+      await refreshUsage();
+      expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+        'trial-daily'
+      );
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      expect(mocks.get).toHaveBeenCalledTimes(3);
+    });
+
+    it('stops after the two checks that follow a failed task', async () => {
+      refuseKey(dailyUsed);
+      reportError(gatewayLimit, { modelType: 'cloud', executionId: 'run-1' });
+
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      expect(reads()).toBe(2);
+      expect(activeUsageIncident(useUsageNoticeStore.getState())?.reason).toBe(
+        'trial-daily'
+      );
+    });
+
+    it('checks twice when starting a task is refused, then stops', async () => {
+      refuseKey(dailyUsed);
+      // Task start reads the key outside any Refresh.
+      reportError(
+        { code: 22, text: 'trial usage limit exceeded' },
+        { modelType: 'cloud' },
+        'account-a'
+      );
+
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      expect(reads()).toBe(2);
+    });
+  });
+
+  it('does not check a previous account after switching', async () => {
+    reportError(gatewayLimit, { modelType: 'cloud' });
+    setUsageAccount('account-b');
+
+    await vi.advanceTimersByTimeAsync(USAGE_FOLLOW_UP_REFRESH_MS[1]);
+
+    expect(reads()).toBe(0);
   });
 });

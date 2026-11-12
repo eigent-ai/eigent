@@ -14,10 +14,15 @@
 
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
-import { isCreditRecoveryReason, openPricing } from '@/lib/creditRecovery';
+import {
+  isCreditRecoveryReason,
+  isOwnKeyRecoveryReason,
+  openPricing,
+} from '@/lib/creditRecovery';
 import { errorCopy, type ErrorReason } from '@/lib/usageErrors';
 import {
   contactSupport,
+  presentedUsageReason,
   refreshUsage,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
@@ -28,10 +33,17 @@ import { CreditRecoveryActions } from './CreditRecoveryActions';
  * Historical task outcome. Sonner owns the live announcement and interruption.
  * The copy records what happened; balance blockers offer the live notices' actions.
  */
-export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
+export function TaskErrorNotice({
+  reason: recordedReason,
+}: {
+  reason: ErrorReason;
+}) {
   const { t } = useTranslation();
+  const reason = useUsageNoticeStore((state) =>
+    presentedUsageReason(recordedReason, state)
+  );
   const refreshing = useUsageNoticeStore((state) => state.refreshing);
-  const creditRecovery = isCreditRecoveryReason(reason);
+  const creditRecovery = isOwnKeyRecoveryReason(reason);
   const sharedRefreshError = useUsageNoticeStore((state) => state.refreshError);
   const refreshError =
     sharedRefreshError === 'chat.notice-availability-unverified'
@@ -78,6 +90,7 @@ export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
               <CreditRecoveryActions
                 refreshing={refreshing}
                 onRefresh={() => void refreshUsage()}
+                upgrade={isCreditRecoveryReason(reason)}
               />
             ) : (
               <>
