@@ -15,6 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
+import { authorizeBrainFile } from '@/lib/brainFileAccess';
 import {
   isRemotePreviewSource,
   loadFilePreview,
@@ -25,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { downloadFromUrl, downloadOpenedFile, FileViewerPanel } from './index';
+import { previewLoadFailure, type PreviewLoadFailure } from './PreviewRecovery';
 import { useIdeOpenActions } from './useIdeOpenActions';
 
 export interface FilePreviewProps {
@@ -64,7 +66,9 @@ export function FilePreview({
 
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState<PreviewLoadFailure | false>(
+    false
+  );
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const previewRequestRef = useRef<AbortController | null>(null);
 
@@ -86,6 +90,7 @@ export function FilePreview({
       setSelectedFile(target);
       setLoading(true);
       void resolveArtifactAssetFile(target, controller.signal)
+        .then((resolved) => authorizeBrainFile(resolved, controller.signal))
         .then((resolved) =>
           loadFilePreview(resolved, {
             ipcRenderer,
@@ -98,7 +103,7 @@ export function FilePreview({
         })
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {
-            setLoadFailed(true);
+            setLoadFailed(previewLoadFailure(error));
             console.error('Failed to load file preview:', error);
           }
         })
@@ -168,7 +173,9 @@ export function FilePreview({
         window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
         return;
       }
-      void downloadFromUrl(selectedFile.path, selectedFile.name);
+      void authorizeBrainFile(selectedFile)
+        .catch(() => selectedFile)
+        .then((file) => downloadFromUrl(file.path, file.name));
       return;
     }
     try {

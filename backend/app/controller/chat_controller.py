@@ -29,7 +29,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.agent.utils import current_time_str
-from app.auth import require_local_control_principal
+from app.auth import (
+    require_local_control_if_configured,
+    require_local_control_principal,
+)
 from app.auth.local_control import LocalControlPrincipal
 from app.component import code
 from app.component.environment import env, sanitize_env_path, set_user_env_path
@@ -2124,7 +2127,11 @@ def _follow_up_environment_changed_error(
     )
 
 
-@router.get("/chat/{project_id}/status", name="get chat status")
+@router.get(
+    "/chat/{project_id}/status",
+    name="get chat status",
+    dependencies=[Depends(require_local_control_if_configured)],
+)
 async def status(project_id: str):
     task_lock = get_task_lock_if_exists(project_id)
     if task_lock is None:

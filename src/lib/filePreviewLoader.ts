@@ -84,6 +84,27 @@ function throwIfAborted(signal?: AbortSignal): void {
     throw new DOMException('Preview cancelled', 'AbortError');
 }
 
+/** Brain refused a file URL whose access grant is missing or has expired. */
+export class FileAccessDeniedError extends Error {
+  constructor() {
+    super('File access grant is missing or expired');
+    this.name = 'FileAccessDeniedError';
+  }
+}
+
+const FILE_ACCESS_REQUIRED_CODE = 'file_access_required';
+
+async function throwIfFileAccessDenied(response: Response): Promise<void> {
+  if (response.status !== 401) return;
+  const payload = await response
+    .clone()
+    .json()
+    .catch(() => null);
+  if (payload?.detail?.code !== FILE_ACCESS_REQUIRED_CODE) return;
+  await response.body?.cancel('File access denied').catch(() => undefined);
+  throw new FileAccessDeniedError();
+}
+
 function remoteTotalBytes(response: Response): number | null {
   const contentRange = response.headers.get('content-range');
   const rangeTotal = contentRange?.match(/\/(\d+)$/)?.[1];
@@ -131,6 +152,7 @@ async function probeRemoteMetadata(
       headers: { Range: 'bytes=0-0' },
       signal,
     });
+    await throwIfFileAccessDenied(response);
     const supportsRanges =
       response.status === 206 &&
       /^bytes\s+0-0\//i.test(response.headers.get('content-range') || '');
@@ -143,7 +165,7 @@ async function probeRemoteMetadata(
     await response.body?.cancel('Metadata probe complete');
     return metadata;
   } catch (error) {
-    if (signal?.aborted) throw error;
+    if (signal?.aborted || error instanceof FileAccessDeniedError) throw error;
     return headMetadata ?? { size: null, supportsRanges: false };
   }
 }
@@ -174,6 +196,7 @@ async function readRemotePrefix(
     };
   }
   if (!response.ok && response.status !== 206) {
+    await throwIfFileAccessDenied(response);
     throw new Error(`Failed to preview file: HTTP ${response.status}`);
   }
 

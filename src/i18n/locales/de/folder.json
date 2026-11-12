@@ -42,5 +42,6 @@
   "open-in-explorer": "Im Datei-Explorer öffnen",
   "open-in-folder": "Im Dateimanager öffnen",
   "preview-load-failed": "Diese Datei konnte nicht angezeigt werden. Versuchen Sie es erneut oder öffnen Sie sie extern.",
-  "pdf-preview-failed": "Diese PDF-Datei konnte hier nicht angezeigt werden. Öffnen Sie sie stattdessen in einer anderen App."
+  "pdf-preview-failed": "Diese PDF-Datei konnte hier nicht angezeigt werden. Öffnen Sie sie stattdessen in einer anderen App.",
+  "preview-access-expired": "Der Zugriff auf diese Vorschau ist abgelaufen. Öffnen Sie die Datei erneut oder versuchen Sie es noch einmal."
 }

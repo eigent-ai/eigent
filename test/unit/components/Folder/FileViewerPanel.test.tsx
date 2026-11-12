@@ -782,6 +782,62 @@ describe('FileViewerPanel toolbar', () => {
     expect(callbacks.onOpenExternalFile).not.toHaveBeenCalled();
     expect(screen.queryByTestId('source-code-viewer')).toBeNull();
   });
+  it('gives Brain file links in a previewed HTML page the page grant', async () => {
+    const brain = 'http://localhost:5001';
+    const scope = 'project_id=42&email=dev%40example.com';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(new Blob(['png'], { type: 'image/png' }), { status: 200 })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      renderViewer(
+        textFile({
+          name: 'index.html',
+          path: `${brain}/files/stream?path=index.html&${scope}&access=G.1`,
+          relativePath: 'index.html',
+          type: 'html',
+          isRemote: true,
+          content: [
+            `<a href="/files/stream?path=report.pdf&${scope}">Report</a>`,
+            `<a href="/files/stream?path=x.pdf&project_id=43&email=dev%40example.com">Other</a>`,
+            `<div style="background:url('/files/stream?path=bg.png&${scope}')"></div>`,
+          ].join(''),
+        })
+      );
+
+      const frame = await waitFor(() => {
+        const element = document.querySelector('iframe');
+        expect(element?.getAttribute('srcdoc')).toContain('Report');
+        return element as HTMLIFrameElement;
+      });
+      const doc = new DOMParser().parseFromString(
+        frame.getAttribute('srcdoc') || '',
+        'text/html'
+      );
+      const [report, other] = Array.from(doc.querySelectorAll('a')).map(
+        (anchor) => new URL(anchor.getAttribute('href') || '', brain)
+      );
+      expect(report.searchParams.get('access')).toBe('G.1');
+      expect(other.searchParams.get('access')).toBeNull();
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${brain}/files/stream?path=bg.png&${scope}&access=G.1`
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('asks to reopen a file whose access has expired', () => {
+    renderViewer(textFile(), {
+      loadFailed: 'access-expired',
+      onRetry: vi.fn(),
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Access to this preview has expired. Reopen the file or try again.'
+    );
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
   it('offers retry for a failed load without mounting the file renderer', async () => {
     const onRetry = vi.fn();
     renderViewer(textFile(), { loadFailed: true, onRetry });

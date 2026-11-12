@@ -60,7 +60,11 @@ import { CsvPreviewTable } from './CsvPreviewTable';
 import { FileOpenActions } from './FileOpenActions';
 import FolderComponent from './FolderComponent';
 import { PdfPreview, usePdfFrameLoadFailed } from './PdfPreview';
-import { PreviewFailure } from './PreviewRecovery';
+import {
+  PreviewFailure,
+  previewLoadFailure,
+  type PreviewLoadFailure,
+} from './PreviewRecovery';
 import { useIdeOpenActions } from './useIdeOpenActions';
 
 import { fetchGet, getBaseURL } from '@/api/http';
@@ -71,6 +75,11 @@ import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanel/
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
+import {
+  authorizeBrainFile,
+  getBrainFilePreviewUrl,
+  shareBrainFileAccess,
+} from '@/lib/brainFileAccess';
 import {
   isRemotePreviewSource,
   loadFilePreview,
@@ -1027,7 +1036,10 @@ export async function downloadOpenedFile(file: FileInfo): Promise<void> {
     }
   }
 
-  await downloadFromUrl(file.path, filename);
+  // A preview can stay open longer than its file grant lasts, so ask for a
+  // fresh one before downloading from the Brain.
+  const target = await authorizeBrainFile(file).catch(() => file);
+  await downloadFromUrl(target.path, filename);
 }
 
 export interface FileViewerOpenAction {
@@ -1070,7 +1082,9 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState<PreviewLoadFailure | false>(
+    false
+  );
   const [filesLoading, setFilesLoading] = useState(false);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
@@ -1147,6 +1161,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
     }
     setLoading(true);
     void resolveArtifactAssetFile(file, controller.signal)
+      .then((resolved) => authorizeBrainFile(resolved, controller.signal))
       .then((resolvedFile) =>
         loadFilePreview(resolvedFile, {
           ipcRenderer,
@@ -1161,7 +1176,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setLoadFailed(true);
+          setLoadFailed(previewLoadFailure(error));
           console.error('Failed to load file preview:', error);
         }
       })
@@ -2190,16 +2205,21 @@ function shouldInlineHtmlImageUrl(url: string, baseHref?: string): boolean {
 
 async function inlineImageUrl(
   url: string,
-  baseHref?: string
+  baseHref?: string,
+  authorizedUrl?: string
 ): Promise<string | null> {
   if (!shouldInlineHtmlImageUrl(url, baseHref)) {
     return null;
   }
 
-  const absoluteUrl = toAbsoluteResourceUrl(url, baseHref);
-  if (!absoluteUrl) {
+  const resourceUrl = toAbsoluteResourceUrl(url, baseHref);
+  if (!resourceUrl) {
     return null;
   }
+  // Brain file URLs written into the page need the previewed file's grant.
+  const absoluteUrl = authorizedUrl
+    ? shareBrainFileAccess(resourceUrl, authorizedUrl)
+    : resourceUrl;
 
   try {
     return await fetchRemoteFileAsDataUrl(absoluteUrl);
@@ -2211,7 +2231,8 @@ async function inlineImageUrl(
 
 async function inlineSrcsetImages(
   srcset: string,
-  baseHref?: string
+  baseHref?: string,
+  authorizedUrl?: string
 ): Promise<string> {
   if (srcset.toLowerCase().includes('data:')) {
     return srcset;
@@ -2229,7 +2250,7 @@ async function inlineSrcsetImages(
   const rewrittenCandidates = await Promise.all(
     candidates.map(async (candidate) => {
       const [url, ...descriptors] = candidate.split(/\s+/);
-      const dataUrl = await inlineImageUrl(url, baseHref);
+      const dataUrl = await inlineImageUrl(url, baseHref, authorizedUrl);
       return [dataUrl || url, ...descriptors].join(' ');
     })
   );
@@ -2239,7 +2260,8 @@ async function inlineSrcsetImages(
 
 async function inlineCssImageUrls(
   cssText: string,
-  baseHref?: string
+  baseHref?: string,
+  authorizedUrl?: string
 ): Promise<string> {
   const matches = Array.from(
     cssText.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi)
@@ -2252,7 +2274,7 @@ async function inlineCssImageUrls(
     matches.map(async (match) => {
       const fullMatch = match[0];
       const url = match[2];
-      const dataUrl = await inlineImageUrl(url, baseHref);
+      const dataUrl = await inlineImageUrl(url, baseHref, authorizedUrl);
       return dataUrl ? { fullMatch, replacement: `url("${dataUrl}")` } : null;
     })
   );
@@ -2316,7 +2338,8 @@ function injectSandboxStorageShim(html: string): string {
 
 async function inlineRemoteHtmlImages(
   html: string,
-  baseHref?: string
+  baseHref?: string,
+  authorizedUrl?: string
 ): Promise<string> {
   if (typeof DOMParser === 'undefined') {
     return html;
@@ -2331,7 +2354,7 @@ async function inlineRemoteHtmlImages(
       async (element) => {
         const src = element.getAttribute('src');
         if (src) {
-          const dataUrl = await inlineImageUrl(src, baseHref);
+          const dataUrl = await inlineImageUrl(src, baseHref, authorizedUrl);
           if (dataUrl) {
             element.setAttribute('src', dataUrl);
           }
@@ -2339,7 +2362,7 @@ async function inlineRemoteHtmlImages(
 
         const href = element.getAttribute('href');
         if (href && element.tagName.toLowerCase() === 'image') {
-          const dataUrl = await inlineImageUrl(href, baseHref);
+          const dataUrl = await inlineImageUrl(href, baseHref, authorizedUrl);
           if (dataUrl) {
             element.setAttribute('href', dataUrl);
           }
@@ -2349,7 +2372,7 @@ async function inlineRemoteHtmlImages(
         if (srcset) {
           element.setAttribute(
             'srcset',
-            await inlineSrcsetImages(srcset, baseHref)
+            await inlineSrcsetImages(srcset, baseHref, authorizedUrl)
           );
         }
       }
@@ -2362,7 +2385,7 @@ async function inlineRemoteHtmlImages(
       if (style) {
         element.setAttribute(
           'style',
-          await inlineCssImageUrls(style, baseHref)
+          await inlineCssImageUrls(style, baseHref, authorizedUrl)
         );
       }
     })
@@ -2372,7 +2395,8 @@ async function inlineRemoteHtmlImages(
     Array.from(doc.querySelectorAll('style')).map(async (styleElement) => {
       styleElement.textContent = await inlineCssImageUrls(
         styleElement.textContent || '',
-        baseHref
+        baseHref,
+        authorizedUrl
       );
     })
   );
@@ -2399,42 +2423,12 @@ function getRemoteRelativePath(file: FileInfo): string | undefined {
   }
 }
 
-function encodePathSegments(path: string): string {
-  return path
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-}
-
 function getRemotePreviewUrl(file: FileInfo): string | undefined {
   const relativePath = getRemoteRelativePath(file);
   if (!relativePath || !file.path) {
     return undefined;
   }
-
-  try {
-    const url = new URL(file.path, window.location.origin);
-    const email = url.searchParams.get('email');
-    const projectId = url.searchParams.get('project_id');
-    const spaceId = url.searchParams.get('space_id');
-    const userId = url.searchParams.get('user_id');
-    if (!email || !projectId) {
-      return undefined;
-    }
-
-    const filesIndex = url.pathname.indexOf('/files/stream');
-    const routePrefix =
-      filesIndex >= 0 ? url.pathname.substring(0, filesIndex) : '';
-
-    const query = new URLSearchParams();
-    if (spaceId) query.set('space_id', spaceId);
-    if (userId) query.set('user_id', userId);
-    const queryString = query.toString();
-    return `${url.origin}${routePrefix}/files/preview/${encodeURIComponent(email)}/${encodeURIComponent(projectId)}/${encodePathSegments(relativePath)}${queryString ? `?${queryString}` : ''}`;
-  } catch {
-    return undefined;
-  }
+  return getBrainFilePreviewUrl(file.path, relativePath);
 }
 
 function getRemotePreviewBaseHref(file: FileInfo): string | undefined {
@@ -2492,15 +2486,31 @@ function rewriteRemoteHtmlReferences(
   const baseDir = getRelativeDirPath(htmlRelativePath, selectedFile.name);
   const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
   const fileMap = new Map<string, FileInfo>();
+  const previewBaseHref = getRemotePreviewBaseHref(selectedFile);
 
   projectFiles.forEach((file) => {
     if (!file.relativePath) return;
     fileMap.set(normalizeLookupPath(file.relativePath), file);
   });
 
+  // A page can link to Brain file URLs directly instead of by relative path.
+  // Give those the previewed file's grant when they read the same file root.
+  const shareAccessWithBrainFileUrl = (value: string): string | null => {
+    const absoluteUrl = toAbsoluteResourceUrl(value, previewBaseHref);
+    if (!absoluteUrl) return null;
+    const sharedUrl = shareBrainFileAccess(absoluteUrl, selectedFile.path);
+    return sharedUrl === absoluteUrl ? null : sharedUrl;
+  };
+
   const rewriteAttribute = (element: Element, attributeName: string) => {
     const originalValue = element.getAttribute(attributeName);
-    if (!originalValue || isSpecialBrowserUrl(originalValue)) return;
+    if (!originalValue) return;
+    const brainFileUrl = shareAccessWithBrainFileUrl(originalValue);
+    if (brainFileUrl) {
+      element.setAttribute(attributeName, brainFileUrl);
+      return;
+    }
+    if (isSpecialBrowserUrl(originalValue)) return;
 
     const match = originalValue.match(/^([^?#]*)(.*)$/);
     const pathPart = match?.[1] || originalValue;
@@ -2511,7 +2521,10 @@ function rewriteRemoteHtmlReferences(
     const matchedFile = fileMap.get(normalizeLookupPath(resolvedRelativePath));
 
     if (matchedFile?.path) {
-      element.setAttribute(attributeName, `${matchedFile.path}${suffix}`);
+      element.setAttribute(
+        attributeName,
+        `${shareBrainFileAccess(matchedFile.path, selectedFile.path)}${suffix}`
+      );
     }
   };
 
@@ -2587,7 +2600,8 @@ function HtmlRenderer({
           : rewrittenHtml;
         const htmlWithInlineImages = await inlineRemoteHtmlImages(
           htmlWithBaseHref,
-          previewBaseHref
+          previewBaseHref,
+          selectedFile.path
         );
         const htmlWithStorageShim =
           injectSandboxStorageShim(htmlWithInlineImages);
@@ -2799,7 +2813,8 @@ export interface FileViewerPanelProps {
   selectedFile: FileInfo | null;
   /** Whether content is currently being fetched. */
   loading: boolean;
-  loadFailed?: boolean;
+  /** Whether loading failed; `access-expired` asks the user to reopen it. */
+  loadFailed?: boolean | PreviewLoadFailure;
   onRetry?: () => void;
   canRevealFile?: boolean;
   /** Render raw source instead of the rich view (md/html). */
@@ -3242,7 +3257,16 @@ export function FileViewerPanel({
           {selectedFile ? (
             !loading ? (
               loadFailed ? (
-                <PreviewFailure />
+                <PreviewFailure
+                  message={
+                    loadFailed === 'access-expired'
+                      ? t('folder.preview-access-expired', {
+                          defaultValue:
+                            'Access to this preview has expired. Reopen the file or try again.',
+                        })
+                      : undefined
+                  }
+                />
               ) : selectedFile.isFolder ? (
                 <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
                   <div className="flex max-w-md flex-col items-center gap-2 text-center">
