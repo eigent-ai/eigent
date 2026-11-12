@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { UsageLimitBanner } from '@/components/ChatBox/BottomBox/UsageLimitBanner';
+import { NoticeEventRenderer } from '@/components/ChatBox/EventTimeline/DefaultEventRenderers';
 import { TaskErrorNotice } from '@/components/ChatBox/TaskErrorNotice';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -21,6 +22,7 @@ import {
   refreshUsage,
   setUsageAccount,
   setUsageModelType,
+  USAGE_REFRESH_TIMEOUT_MS,
 } from '@/store/usageNoticeStore';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -193,7 +195,12 @@ describe('out of credits recovery', () => {
 
     mocks.get.mockClear();
     await user.click(notice.getByRole('button', { name: 'Refresh' }));
-    expect(mocks.get).toHaveBeenCalledWith('/api/v1/subscription');
+    expect(mocks.get).toHaveBeenCalledWith(
+      '/api/v1/subscription',
+      undefined,
+      undefined,
+      { signal: expect.any(AbortSignal) }
+    );
 
     const originalLocation = window.location;
     Object.defineProperty(window, 'location', {
@@ -213,15 +220,246 @@ describe('out of credits recovery', () => {
     }
   });
 
-  it('leaves the daily trial notice with Refresh only', async () => {
+  it('gives the daily trial notice Refresh and own key, without Upgrade', async () => {
     respond(newAccount);
     await refreshUsage();
     render(<TaskErrorNotice reason="trial-daily" />);
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeVisible();
     expect(
-      screen.queryByRole('button', {
-        name: /Upgrade plan|Use your own API key/,
-      })
+      screen.getByRole('button', { name: 'Use your own API key' })
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Upgrade plan' })
     ).not.toBeInTheDocument();
+  });
+
+  it('records a spend-limit failure during a trial as the trial allowance', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 859,
+      },
+      500
+    );
+    await refreshUsage();
+    render(<TaskErrorNotice reason="credits" />);
+    const notice = within(
+      document.querySelector('[data-task-error]') as HTMLElement
+    );
+    expect(
+      notice.getByText('You’ve used today’s trial credits.')
+    ).toBeVisible();
+    expect(
+      notice.queryByText('You’re out of Eigent credits.')
+    ).not.toBeInTheDocument();
+    expect(notice.getByRole('button', { name: 'Refresh' })).toBeVisible();
+  });
+
+  it('offers Refresh and own key, but not Upgrade, for the daily trial limit', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 859,
+      },
+      500
+    );
+    await refreshUsage();
+    const toast = lastToast();
+    expect(toast.message).toBe('You’ve used today’s Pro trial credits.');
+    render(
+      <>
+        <div data-testid="toast">{toast.description}</div>
+        <TaskErrorNotice reason="credits" />
+      </>
+    );
+    act(() => acknowledgeUsageNotice());
+    render(<LiveNotice />);
+
+    const surfaces = [
+      screen.getByTestId('toast'),
+      document.querySelector('[data-usage-notice]') as HTMLElement,
+      document.querySelector('[data-task-error]') as HTMLElement,
+    ];
+    for (const surface of surfaces) {
+      const notice = within(surface);
+      expect(
+        notice.queryByRole('button', { name: 'Upgrade plan' })
+      ).not.toBeInTheDocument();
+      expect(notice.getByRole('button', { name: 'Refresh' })).toBeVisible();
+      expect(
+        notice.getByRole('button', { name: 'Use your own API key' })
+      ).toBeVisible();
+    }
+
+    const user = userEvent.setup();
+    await user.click(
+      within(surfaces[2]).getByRole('button', { name: 'Use your own API key' })
+    );
+    expect(useSettingsStore.getState()).toMatchObject({
+      isOpen: true,
+      activeSection: 'models',
+    });
+  });
+
+  it('keeps the trial allowance wording after a failed Refresh', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 859,
+      },
+      500
+    );
+    await refreshUsage();
+    render(<TaskErrorNotice reason="credits" />);
+    mocks.get.mockRejectedValue(new Error('offline'));
+
+    await act(() => refreshUsage());
+
+    expect(
+      screen.getByText('You’ve used today’s trial credits.')
+    ).toBeVisible();
+    expect(
+      screen.queryByText('You’re out of Eigent credits.')
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the toast Refresh in step with the other notices until the read times out', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 859,
+      },
+      500
+    );
+    await refreshUsage();
+    vi.useFakeTimers();
+    try {
+      // The account reads never answer.
+      mocks.get.mockClear();
+      mocks.get.mockImplementation(() => new Promise(() => undefined));
+      const view = render(
+        <>
+          <div data-testid="toast">{lastToast().description}</div>
+          <TaskErrorNotice reason="credits" />
+        </>
+      );
+      const toastBody = () => within(screen.getByTestId('toast'));
+      const taskNotice = () =>
+        within(document.querySelector('[data-task-error]') as HTMLElement);
+
+      act(() => {
+        toastBody().getByRole('button', { name: 'Refresh' }).click();
+      });
+      for (const surface of [toastBody(), taskNotice()]) {
+        expect(
+          surface.getByRole('button', { name: 'Refreshing…' })
+        ).toBeDisabled();
+      }
+      // Another click, or any other Refresh, joins the same read.
+      act(() => {
+        toastBody().getByRole('button', { name: 'Refreshing…' }).click();
+        taskNotice().getByRole('button', { name: 'Refreshing…' }).click();
+        void refreshUsage();
+      });
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(mocks.get).toHaveBeenCalledTimes(3);
+
+      await act(() =>
+        vi.advanceTimersByTimeAsync(USAGE_REFRESH_TIMEOUT_MS - 1)
+      );
+      expect(
+        toastBody().getByRole('button', { name: 'Refreshing…' })
+      ).toBeDisabled();
+
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      // Sonner shows the latest description it was given.
+      view.rerender(
+        <>
+          <div data-testid="toast">{lastToast().description}</div>
+          <TaskErrorNotice reason="credits" />
+        </>
+      );
+      expect(lastToast().message).toBe('You’ve used today’s trial credits.');
+      for (const surface of [toastBody(), taskNotice()]) {
+        expect(surface.getByRole('button', { name: 'Refresh' })).toBeEnabled();
+        expect(
+          surface.getByText('Couldn’t refresh your credits. Try again.')
+        ).toBeVisible();
+      }
+      act(() => acknowledgeUsageNotice());
+      render(<LiveNotice />);
+      expect(
+        within(
+          document.querySelector('[data-usage-notice]') as HTMLElement
+        ).getByText('Couldn’t refresh your credits. Try again.')
+      ).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('moves a notice already in the timeline to the whole trial when Refresh finds it used up', async () => {
+    const trial = {
+      plan_key: 'pro',
+      is_trialing: true,
+      trial_daily_credits_remaining: 0,
+      trial_total_credits_remaining: 859,
+    };
+    respond(trial, 500);
+    await refreshUsage();
+    // The timeline's own notice for a gateway spend-limit failure.
+    const node = {
+      kind: 'notice',
+      severity: 'error',
+      content:
+        "Error code: 400 - {'error': {'message': 'Budget has been exceeded! Current cost: 3.0012, Max budget: 3.0', 'type': 'budget_exceeded', 'param': None, 'code': '400'}}",
+    } as Parameters<typeof NoticeEventRenderer>[0]['node'];
+    render(<NoticeEventRenderer node={node} />);
+    expect(
+      screen.getByText('You’ve used today’s trial credits.')
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Upgrade plan' })
+    ).not.toBeInTheDocument();
+
+    respond({ ...trial, trial_total_credits_remaining: 0 }, 500);
+    await act(() => refreshUsage());
+
+    expect(
+      screen.getByText('You’ve used all your trial credits.')
+    ).toBeVisible();
+    expect(
+      screen.queryByText('You’ve used today’s trial credits.')
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upgrade plan' })).toBeVisible();
+  });
+
+  it('keeps Upgrade plan and own key for a used-up trial total', async () => {
+    respond(
+      {
+        plan_key: 'pro',
+        is_trialing: true,
+        trial_daily_credits_remaining: 0,
+        trial_total_credits_remaining: 0,
+      },
+      500
+    );
+    await refreshUsage();
+    render(<TaskErrorNotice reason="credits" />);
+    expect(
+      screen.getByText('You’ve used all your trial credits.')
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Upgrade plan' })).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Use your own API key' })
+    ).toBeVisible();
   });
 });
