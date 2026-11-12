@@ -170,7 +170,7 @@ export function FilePreview({
     if (!selectedFile) return;
     if (isRemotePreviewSource(selectedFile)) {
       if (selectedFile.preview?.kind === 'blocked') {
-        window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+        void downloadOpenedFile(selectedFile, ipcRenderer);
         return;
       }
       void authorizeBrainFile(selectedFile)
@@ -194,14 +194,8 @@ export function FilePreview({
 
   const handleDownloadFile = useCallback(() => {
     if (!selectedFile || selectedFile.isFolder) return;
-    if (selectedFile.preview?.kind === 'blocked') {
-      if (isRemotePreviewSource(selectedFile)) {
-        window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
-      }
-      return;
-    }
-    void downloadOpenedFile(selectedFile);
-  }, [selectedFile]);
+    void downloadOpenedFile(selectedFile, ipcRenderer);
+  }, [selectedFile, ipcRenderer]);
 
   const handleOpenExternalFile = useCallback(async () => {
     if (!selectedFile) return;

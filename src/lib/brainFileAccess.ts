@@ -43,6 +43,11 @@ function parseStreamUrl(url: string): URL | null {
     : null;
 }
 
+/** Whether `url` has the shape of a file URL on a Brain. */
+export function isBrainFileUrl(url: string): boolean {
+  return parseStreamUrl(url) !== null;
+}
+
 /** Keep a Brain-relative URL relative so path comparisons still match. */
 function serializeLike(url: URL, original: string): string {
   return /^[a-z][a-z\d+.-]*:|^\/\//i.test(original)
