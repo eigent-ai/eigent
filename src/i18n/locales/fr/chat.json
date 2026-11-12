@@ -606,5 +606,18 @@
   "notice-use-own-api-key": "Utiliser votre propre clé API",
   "notice-credits-new": "Ajoutez des crédits pour commencer à exécuter des tâches.",
   "notice-credits-new-description": "Changez de forfait ou utilisez la clé API de votre propre modèle.",
-  "space-model-fallback": "Le modèle de cet espace n’est plus disponible : cette session utilise votre modèle par défaut."
+  "space-model-fallback": "Le modèle de cet espace n’est plus disponible : cette session utilise votre modèle par défaut.",
+  "workspace-blocked-title": "Opération d'espace de travail bloquée",
+  "workspace-blocked-description-file": "Une tâche arrêtée n'a pas terminé une modification de {{path}} ; les nouvelles modifications dans cet espace sont donc suspendues. Enregistrez le contenu actuel comme point de contrôle ou ignorez-la.",
+  "workspace-blocked-description-process": "La commande d'une tâche arrêtée a laissé des modifications non enregistrées dans l'espace de travail ; les nouvelles modifications dans cet espace sont donc suspendues. Enregistrez le contenu actuel comme point de contrôle ou ignorez-la.",
+  "workspace-blocked-waiting": "Arrêtez la tâche en cours pour résoudre ce problème.",
+  "workspace-blocked-more": "+{{count}} autres bloquées",
+  "workspace-blocked-save": "Enregistrer comme point de contrôle",
+  "workspace-blocked-saving": "Enregistrement…",
+  "workspace-blocked-dismiss": "Ignorer (fichiers inchangés)",
+  "workspace-blocked-dismissing": "Traitement…",
+  "workspace-blocked-saved": "Enregistré comme point de contrôle. Les modifications peuvent reprendre.",
+  "workspace-blocked-dismissed": "Ignorée. Aucun fichier n'a été modifié.",
+  "workspace-blocked-changed": "L'espace de travail a changé. Vérifiez-le et réessayez.",
+  "workspace-blocked-failed": "Impossible de résoudre l'opération bloquée. Réessayez."
 }

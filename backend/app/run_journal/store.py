@@ -152,7 +152,7 @@ from app.workspace_runtime.schema import (
     MIGRATION_V40,
 )
 
-SCHEMA_VERSION = 42
+SCHEMA_VERSION = 43
 
 # Pending-only markers; never a terminal execution outcome.
 _WARM_ADMISSION_PREFIX = "warm_admission_preparing:"
@@ -2541,6 +2541,63 @@ PRAGMA foreign_keys = ON;
 """
 
 
+_MIGRATION_V43 = """
+PRAGMA foreign_keys = OFF;
+BEGIN IMMEDIATE;
+
+-- A user can dismiss a blocked workspace operation without touching its
+-- files. SQLite cannot alter a CHECK constraint, so rebuild the table under
+-- its canonical name. Nothing references this table.
+DROP TABLE IF EXISTS git_mutation_intents_v43;
+CREATE TABLE git_mutation_intents_v43 (
+    intent_id TEXT PRIMARY KEY,
+    change_set_id TEXT NOT NULL REFERENCES git_change_sets(
+        change_set_id
+    ) ON DELETE CASCADE,
+    operation_request_id TEXT NOT NULL,
+    mutation_scope TEXT NOT NULL CHECK (
+        mutation_scope IN ('exact_path', 'broad_process')
+    ),
+    relative_path TEXT,
+    preimage_digest TEXT,
+    actor_id TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'prepared' CHECK (
+        status IN ('prepared', 'completed', 'needs_attention', 'abandoned')
+    ),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(change_set_id, operation_request_id),
+    CHECK (
+        (mutation_scope = 'exact_path' AND relative_path IS NOT NULL)
+        OR (mutation_scope = 'broad_process' AND relative_path IS NULL)
+    )
+);
+
+INSERT INTO git_mutation_intents_v43(
+    intent_id, change_set_id, operation_request_id, mutation_scope,
+    relative_path, preimage_digest, actor_id, trigger, status, created_at,
+    updated_at
+)
+SELECT intent_id, change_set_id, operation_request_id, mutation_scope,
+       relative_path, preimage_digest, actor_id, trigger, status, created_at,
+       updated_at
+FROM git_mutation_intents;
+
+DROP TABLE git_mutation_intents;
+ALTER TABLE git_mutation_intents_v43 RENAME TO git_mutation_intents;
+CREATE INDEX git_mutation_intents_reconcile_idx
+ON git_mutation_intents(status, updated_at, change_set_id);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (43, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 43;
+COMMIT;
+PRAGMA foreign_keys = ON;
+"""
+
+
 def _sql_run_terminal_cause(event_type: str, payload_json: str) -> str | None:
     # A malformed historical payload leaves the cause unknown rather than
     # failing the migration.
@@ -2580,6 +2637,33 @@ class OutboxLeaseLostError(RunJournalError):
 
 class WorkspaceWriterLeaseLostError(RunJournalError):
     pass
+
+
+class WorkspaceMutationBlockedError(OutboxLeaseLostError):
+    """An unresolved workspace operation still fences its checkout.
+
+    Subclasses ``OutboxLeaseLostError`` so existing admission retries keep
+    working, while carrying the blocking operation for diagnostics and the
+    user-facing recovery card.
+    """
+
+    def __init__(
+        self,
+        *,
+        intent_id: str,
+        run_id: str | None,
+        status: str,
+        mutation_scope: str | None = None,
+    ) -> None:
+        self.intent_id = intent_id
+        self.run_id = run_id
+        self.status = status
+        self.mutation_scope = mutation_scope
+        super().__init__(
+            "Workspace operation is still active or needs attention "
+            f"(operation {intent_id} from Run {run_id or 'unknown'} is "
+            f"{status})"
+        )
 
 
 class InvalidRunTransitionError(RunJournalError):
@@ -7831,19 +7915,25 @@ class SQLiteRunJournal:
                 # This transaction also fences separate service instances.
                 owner = connection.execute(
                     """
-                    SELECT intents.intent_id FROM git_mutation_intents intents
+                    SELECT intents.intent_id, intents.status,
+                           intents.mutation_scope, active.run_id
+                    FROM git_mutation_intents intents
                     JOIN git_change_sets active USING (change_set_id)
                     JOIN git_change_sets target ON target.change_set_id = ?
                     WHERE active.repository_id = target.repository_id
                       AND active.worktree_ref = target.worktree_ref
                       AND intents.status IN ('prepared', 'needs_attention')
+                    ORDER BY intents.created_at, intents.intent_id
                     LIMIT 1
                     """,
                     (change_set_id,),
                 ).fetchone()
                 if owner is not None:
-                    raise OutboxLeaseLostError(
-                        "Workspace operation is still active or needs attention"
+                    raise WorkspaceMutationBlockedError(
+                        intent_id=owner["intent_id"],
+                        run_id=owner["run_id"],
+                        status=owner["status"],
+                        mutation_scope=owner["mutation_scope"],
                     )
             row = connection.execute(
                 """
@@ -7911,9 +8001,10 @@ class SQLiteRunJournal:
         now: float | None = None,
     ) -> GitMutationIntentRecord:
         transitions = {
-            "prepared": {"completed", "needs_attention"},
+            "prepared": {"completed", "needs_attention", "abandoned"},
             "completed": set(),
-            "needs_attention": {"prepared"},
+            "needs_attention": {"prepared", "abandoned"},
+            "abandoned": set(),
         }
         if status != expected_status and status not in transitions.get(
             expected_status, set()
@@ -7944,6 +8035,123 @@ class SQLiteRunJournal:
                 """,
                 (status, timestamp, intent_id, expected_status),
             )
+            row = connection.execute(
+                "SELECT * FROM git_mutation_intents WHERE intent_id = ?",
+                (intent_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_mutation_intent_from_row(row)
+
+    def abandon_git_mutation_intent(
+        self,
+        *,
+        intent_id: str,
+        expected_status: str,
+        now: float | None = None,
+    ) -> GitMutationIntentRecord:
+        """Record a user's decision to stop tracking one blocked operation.
+
+        This is bookkeeping only: no file, Git ref or ToolCall outcome is
+        changed. The operation's own unfinished ChangeSet items stop being
+        tracked. Once nothing else on a quarantined ChangeSet is unresolved,
+        it reopens when its Run is interrupted (Resume writes to it again)
+        and is discarded otherwise.
+        """
+        if expected_status not in {"prepared", "needs_attention"}:
+            raise InvalidRunTransitionError(
+                f"mutation intent cannot transition from {expected_status!r} "
+                "to 'abandoned'"
+            )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM git_mutation_intents WHERE intent_id = ?",
+                (intent_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown mutation intent {intent_id!r}")
+            if row["status"] == "abandoned":
+                return self._git_mutation_intent_from_row(row)
+            if row["status"] != expected_status:
+                raise OptimisticConcurrencyError(
+                    f"mutation intent {intent_id!r} changed concurrently"
+                )
+            connection.execute(
+                """
+                UPDATE git_mutation_intents
+                SET status = 'abandoned', updated_at = ?
+                WHERE intent_id = ? AND status = ?
+                """,
+                (timestamp, intent_id, expected_status),
+            )
+            change_set_id = row["change_set_id"]
+            if row["mutation_scope"] == "exact_path":
+                connection.execute(
+                    """
+                    UPDATE git_change_set_items
+                    SET item_state = 'ignored', updated_at = ?
+                    WHERE change_set_id = ? AND item_state = 'pending'
+                      AND relative_path = ?
+                    """,
+                    (timestamp, change_set_id, row["relative_path"]),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE git_change_set_items
+                    SET item_state = 'ignored', updated_at = ?
+                    WHERE change_set_id = ? AND item_state = 'pending'
+                      AND operation_request_id = ?
+                    """,
+                    (timestamp, change_set_id, row["operation_request_id"]),
+                )
+            unresolved = connection.execute(
+                """
+                SELECT 1 FROM git_mutation_intents
+                WHERE change_set_id = ?
+                  AND status IN ('prepared', 'needs_attention')
+                UNION ALL
+                SELECT 1 FROM git_change_set_items
+                WHERE change_set_id = ?
+                  AND item_state IN ('pending', 'preimage_checkpointed')
+                LIMIT 1
+                """,
+                (change_set_id, change_set_id),
+            ).fetchone()
+            if unresolved is None:
+                owner = connection.execute(
+                    """
+                    SELECT runs.status FROM runs
+                    JOIN git_change_sets USING (run_id)
+                    WHERE git_change_sets.change_set_id = ?
+                    """,
+                    (change_set_id,),
+                ).fetchone()
+                # Resume reuses the Run's ChangeSet, so an interrupted Run
+                # gets it back open; only a Run that can never write again
+                # has it discarded.
+                resolved_state = (
+                    "open"
+                    if owner is not None and owner["status"] == "interrupted"
+                    else "discarded"
+                )
+                connection.execute(
+                    """
+                    UPDATE git_change_sets
+                    SET state = ?, version = version + 1, updated_at = ?
+                    WHERE change_set_id = ? AND state = 'needs_attention'
+                    """,
+                    (resolved_state, timestamp, change_set_id),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE git_change_sets
+                    SET version = version + 1, updated_at = ?
+                    WHERE change_set_id = ?
+                    """,
+                    (timestamp, change_set_id),
+                )
             row = connection.execute(
                 "SELECT * FROM git_mutation_intents WHERE intent_id = ?",
                 (intent_id,),
@@ -21310,6 +21518,8 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
                 deterministic=True,
             )
             self._connection.executescript(migration)
+        if version < 43:
+            self._connection.executescript(_MIGRATION_V43)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:

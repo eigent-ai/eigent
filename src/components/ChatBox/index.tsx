@@ -128,6 +128,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { BlockedWorkspaceOperationNotice } from './BlockedWorkspaceOperationCard';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
 import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
@@ -397,6 +398,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { modelType, token, user_id } = useAuthStore();
+  const authEmail = useAuthStore((s) => s.email);
   const sessionModelSelection =
     (activeProjectId
       ? projectStore.projects[activeProjectId]?.metadata?.modelSelection
@@ -406,6 +408,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     : null;
   const sessionSpace = useSpaceStore((s) =>
     s.getSpaceById(activeProject?.spaceId)
+  );
+  // The blocked-operation card only needs the Session's Space, which its
+  // metadata knows before the runtime project has loaded.
+  const blockedOperationSpace = useSpaceStore((s) =>
+    s.getSpaceById(activeProject?.spaceId ?? activeProjectMeta?.spaceId)
   );
   const canUseSessionSpace = Boolean(
     token &&
@@ -1099,6 +1106,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           ?.queuedMessages.map((item) => item.task_id)) ||
       [],
   });
+
+  // A failed write surfaces once its Task stops, on either timeline renderer.
+  const blockedWorkspaceRefreshKey = `${activeProjectId ?? ''}:${
+    chatStore?.activeTaskId ?? ''
+  }:${queueExecution.busy || isTaskBusy}`;
 
   const isCloudUsageLimited =
     composerModelType === 'cloud' && cloudUsageLimitReached;
@@ -3228,6 +3240,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             <div className="mx-auto flex min-h-full w-full max-w-[736px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
+              <BlockedWorkspaceOperationNotice
+                space={blockedOperationSpace}
+                email={authEmail}
+                userId={user_id}
+                refreshKey={blockedWorkspaceRefreshKey}
+              />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   title={t(
@@ -3341,6 +3359,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                 key={activeProjectId ?? 'no-session'}
                 requestKey={humanDecisionKey}
                 variant={humanDecisionVariant}
+              />
+              <BlockedWorkspaceOperationNotice
+                space={blockedOperationSpace}
+                email={authEmail}
+                userId={user_id}
+                refreshKey={blockedWorkspaceRefreshKey}
               />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner

@@ -598,5 +598,18 @@
   "notice-use-own-api-key": "使用自己的 API 金鑰",
   "notice-credits-new": "新增額度即可開始執行任務。",
   "notice-credits-new-description": "升級方案，或使用自己模型的 API 金鑰。",
-  "space-model-fallback": "此空間的模型已無法使用，本工作階段將使用您的預設模型。"
+  "space-model-fallback": "此空間的模型已無法使用，本工作階段將使用您的預設模型。",
+  "workspace-blocked-title": "工作區操作被阻擋",
+  "workspace-blocked-description-file": "一個已停止的任務對 {{path}} 的修改沒有完成，因此此空間中的新編輯已暫停。你可以將磁碟上的目前內容儲存為檢查點，或忽略它。",
+  "workspace-blocked-description-process": "一個已停止任務的命令留下了未記錄的工作區變更，因此此空間中的新編輯已暫停。你可以將磁碟上的目前內容儲存為檢查點，或忽略它。",
+  "workspace-blocked-waiting": "請先停止正在執行的任務，再處理此問題。",
+  "workspace-blocked-more": "還有 {{count}} 個被阻擋",
+  "workspace-blocked-save": "儲存為檢查點",
+  "workspace-blocked-saving": "正在儲存…",
+  "workspace-blocked-dismiss": "忽略（不變更檔案）",
+  "workspace-blocked-dismissing": "正在忽略…",
+  "workspace-blocked-saved": "已儲存為檢查點，可以繼續編輯。",
+  "workspace-blocked-dismissed": "已忽略，沒有變更任何檔案。",
+  "workspace-blocked-changed": "工作區已變更，請檢查後重試。",
+  "workspace-blocked-failed": "無法處理被阻擋的操作，請重試。"
 }

@@ -602,5 +602,18 @@
   "notice-use-own-api-key": "Use your own API key",
   "notice-credits-new": "Add credits to start running tasks.",
   "notice-credits-new-description": "Upgrade your plan or use your own model API key.",
-  "space-model-fallback": "This Space's model is no longer available, so this session uses your default model."
+  "space-model-fallback": "This Space's model is no longer available, so this session uses your default model.",
+  "workspace-blocked-title": "Blocked workspace operation",
+  "workspace-blocked-description-file": "A stopped task left a change to {{path}} unfinished, so new edits in this Space are paused. Save what's on disk as a checkpoint, or dismiss it.",
+  "workspace-blocked-description-process": "A stopped task's command left workspace changes unrecorded, so new edits in this Space are paused. Save what's on disk as a checkpoint, or dismiss it.",
+  "workspace-blocked-waiting": "Stop the running task to resolve this.",
+  "workspace-blocked-more": "+{{count}} more blocked",
+  "workspace-blocked-save": "Save as checkpoint",
+  "workspace-blocked-saving": "Saving…",
+  "workspace-blocked-dismiss": "Dismiss (files untouched)",
+  "workspace-blocked-dismissing": "Dismissing…",
+  "workspace-blocked-saved": "Saved as a checkpoint. New edits can continue.",
+  "workspace-blocked-dismissed": "Dismissed. No files were changed.",
+  "workspace-blocked-changed": "The workspace changed. Review it and try again.",
+  "workspace-blocked-failed": "Couldn't resolve the blocked operation. Try again."
 }

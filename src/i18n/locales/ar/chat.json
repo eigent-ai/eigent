@@ -618,5 +618,18 @@
   "notice-use-own-api-key": "استخدم مفتاح API الخاص بك",
   "notice-credits-new": "أضف أرصدة لبدء تشغيل المهام.",
   "notice-credits-new-description": "رقِّ خطتك أو استخدم مفتاح API لنموذجك.",
-  "space-model-fallback": "نموذج هذه المساحة لم يعد متاحاً، لذا تستخدم هذه الجلسة نموذجك الافتراضي."
+  "space-model-fallback": "نموذج هذه المساحة لم يعد متاحاً، لذا تستخدم هذه الجلسة نموذجك الافتراضي.",
+  "workspace-blocked-title": "عملية مساحة العمل محظورة",
+  "workspace-blocked-description-file": "تركت مهمة متوقفة تغييرًا غير مكتمل على {{path}}، لذلك تم إيقاف التعديلات الجديدة في هذه المساحة مؤقتًا. احفظ ما هو موجود على القرص كنقطة حفظ، أو تجاهله.",
+  "workspace-blocked-description-process": "ترك أمر مهمة متوقفة تغييرات غير مسجلة في مساحة العمل، لذلك تم إيقاف التعديلات الجديدة في هذه المساحة مؤقتًا. احفظ ما هو موجود على القرص كنقطة حفظ، أو تجاهله.",
+  "workspace-blocked-waiting": "أوقف المهمة قيد التشغيل لحل هذه المشكلة.",
+  "workspace-blocked-more": "+{{count}} عمليات محظورة أخرى",
+  "workspace-blocked-save": "حفظ كنقطة حفظ",
+  "workspace-blocked-saving": "جارٍ الحفظ…",
+  "workspace-blocked-dismiss": "تجاهل (دون تغيير الملفات)",
+  "workspace-blocked-dismissing": "جارٍ التجاهل…",
+  "workspace-blocked-saved": "تم الحفظ كنقطة حفظ. يمكن متابعة التعديلات.",
+  "workspace-blocked-dismissed": "تم التجاهل. لم يتم تغيير أي ملفات.",
+  "workspace-blocked-changed": "تغيرت مساحة العمل. راجعها ثم حاول مرة أخرى.",
+  "workspace-blocked-failed": "تعذر حل العملية المحظورة. حاول مرة أخرى."
 }

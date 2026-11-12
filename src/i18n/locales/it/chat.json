@@ -606,5 +606,18 @@
   "notice-use-own-api-key": "Usa la tua chiave API",
   "notice-credits-new": "Aggiungi crediti per iniziare a eseguire attività.",
   "notice-credits-new-description": "Passa a un piano superiore o usa la chiave API del tuo modello.",
-  "space-model-fallback": "Il modello di questo spazio non è più disponibile, quindi questa sessione usa il tuo modello predefinito."
+  "space-model-fallback": "Il modello di questo spazio non è più disponibile, quindi questa sessione usa il tuo modello predefinito.",
+  "workspace-blocked-title": "Operazione dell'area di lavoro bloccata",
+  "workspace-blocked-description-file": "Un'attività interrotta non ha completato una modifica a {{path}}, quindi le nuove modifiche in questo spazio sono in pausa. Salva il contenuto attuale come checkpoint oppure ignorala.",
+  "workspace-blocked-description-process": "Il comando di un'attività interrotta ha lasciato modifiche non registrate nell'area di lavoro, quindi le nuove modifiche in questo spazio sono in pausa. Salva il contenuto attuale come checkpoint oppure ignorala.",
+  "workspace-blocked-waiting": "Interrompi l'attività in corso per risolvere.",
+  "workspace-blocked-more": "+{{count}} altre bloccate",
+  "workspace-blocked-save": "Salva come checkpoint",
+  "workspace-blocked-saving": "Salvataggio…",
+  "workspace-blocked-dismiss": "Ignora (file invariati)",
+  "workspace-blocked-dismissing": "Operazione in corso…",
+  "workspace-blocked-saved": "Salvato come checkpoint. Puoi continuare a modificare.",
+  "workspace-blocked-dismissed": "Ignorata. Nessun file è stato modificato.",
+  "workspace-blocked-changed": "L'area di lavoro è cambiata. Controllala e riprova.",
+  "workspace-blocked-failed": "Impossibile risolvere l'operazione bloccata. Riprova."
 }

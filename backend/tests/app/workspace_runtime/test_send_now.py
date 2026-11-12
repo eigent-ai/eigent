@@ -535,6 +535,7 @@ def test_v38_upgrade_preserves_v37_rows_and_delivery_receipt_across_reopen(
         patch("app.run_journal.store.MIGRATION_V39", ""),
         patch("app.run_journal.store.MIGRATION_V40", ""),
         patch("app.run_journal.store._MIGRATION_V41", ""),
+        patch("app.run_journal.store._MIGRATION_V43", ""),
         patch(
             "app.run_journal.store._MIGRATION_V42",
             PRE_V42_TERMINAL_COLUMNS,

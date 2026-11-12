@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,11 +23,18 @@ import pytest
 from app.agent.toolkit import file_write_toolkit
 from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.run_context import RunContext, run_context_scope
+from app.run_journal import SQLiteRunJournal
 from app.run_runtime.tool_checkpoint import ToolInvocationNotDispatchedError
 from app.service.task import ActionWriteFileData
 from app.utils.listen import toolkit_listen
 from app.utils.space_overlay_client import relative_to_artifact_root
-from app.workspace_git import WorkspaceOverlayConflictError
+from app.workspace_git import (
+    ContentRepositoryService,
+    GitBackend,
+    WorkspaceGitCoordinator,
+    WorkspaceMutationService,
+    WorkspaceOverlayConflictError,
+)
 
 
 def _context(root: Path) -> RunContext:
@@ -315,3 +323,164 @@ def test_artifact_relative_path_rejects_file_outside_run_roots(tmp_path):
     outside.write_text("not run-owned")
 
     assert relative_to_artifact_root(_context(root), outside) is None
+
+
+def _quiet_task_queue(monkeypatch, emitted: list | None = None) -> None:
+    monkeypatch.setattr(
+        file_write_toolkit, "get_task_lock", lambda _task_id: object()
+    )
+    monkeypatch.setattr(
+        toolkit_listen, "get_task_lock", lambda _task_id: object()
+    )
+    monkeypatch.setattr(
+        toolkit_listen, "_safe_put_queue", lambda _lock, _event: None
+    )
+    monkeypatch.setattr(
+        file_write_toolkit,
+        "_safe_put_queue",
+        lambda _lock, event: (
+            emitted.append(event) if emitted is not None else None
+        ),
+    )
+
+
+def test_failed_edit_still_settles_its_prepared_operation(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "space"
+    root.mkdir()
+    target = root / "report.md"
+    target.write_text("unchanged")
+    prepared = SimpleNamespace(target_path=target, relative_path="report.md")
+    calls: list[str] = []
+
+    class _MutationService:
+        def prepare_file_write(self, **_kwargs):
+            calls.append("prepare")
+            return prepared
+
+        def complete_file_write(self, value, **kwargs):
+            assert value is prepared
+            assert kwargs["trigger"] == "filesystem.edit"
+            calls.append("complete")
+
+    monkeypatch.setattr(
+        file_write_toolkit,
+        "get_default_workspace_mutation_service",
+        lambda: _MutationService(),
+    )
+    emitted: list[ActionWriteFileData] = []
+    _quiet_task_queue(monkeypatch, emitted)
+    toolkit = FileToolkit(
+        "project-1", working_directory=str(root), backup_enabled=False
+    )
+
+    with run_context_scope(_context(root)):
+        result = toolkit.edit_file("report.md", "missing text", "new")
+
+    assert result.startswith("No replacement performed")
+    assert calls == ["prepare", "complete"]
+    assert target.read_text() == "unchanged"
+    assert emitted == []
+
+
+@pytest.mark.parametrize("operation", ["write", "edit"])
+def test_unsettled_completion_is_quarantined_not_left_prepared(
+    tmp_path, monkeypatch, operation
+):
+    root = tmp_path / "space"
+    root.mkdir()
+    target = root / "report.md"
+    target.write_text("original")
+    prepared = SimpleNamespace(target_path=target, relative_path="report.md")
+    calls: list[str] = []
+
+    class _MutationService:
+        def prepare_file_write(self, **_kwargs):
+            return prepared
+
+        def complete_file_write(self, _value, **_kwargs):
+            calls.append("complete")
+            raise RuntimeError("checkpoint failed")
+
+        def mark_file_write_needs_attention(self, value):
+            assert value is prepared
+            calls.append("quarantine")
+
+    monkeypatch.setattr(
+        file_write_toolkit,
+        "get_default_workspace_mutation_service",
+        lambda: _MutationService(),
+    )
+    _quiet_task_queue(monkeypatch)
+    toolkit = FileToolkit(
+        "project-1", working_directory=str(root), backup_enabled=False
+    )
+
+    with run_context_scope(_context(root)):
+        with pytest.raises(RuntimeError, match="checkpoint failed"):
+            if operation == "write":
+                toolkit.write_to_file("report", "new", "report.md")
+            else:
+                toolkit.edit_file("report.md", "original", "new")
+
+    assert calls == ["complete", "quarantine"]
+
+
+def test_failed_edit_does_not_block_the_next_write_in_a_git_space(
+    tmp_path, monkeypatch
+):
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir()
+    backend = GitBackend(hooks_path=hooks)
+    state_root = tmp_path / "state"
+    with SQLiteRunJournal(tmp_path / "run-journal.sqlite3") as journal:
+        content = ContentRepositoryService(
+            journal, state_root=state_root, git_backend=backend
+        )
+        coordinator = WorkspaceGitCoordinator(
+            journal, state_root=state_root, git_backend=backend
+        )
+        service = WorkspaceMutationService(
+            journal, state_root=state_root, coordinator=coordinator
+        )
+        space = tmp_path / "space"
+        space.mkdir()
+        content.bootstrap(
+            space_id="space-1", space_root=space, allow_init=True
+        )
+        seed = space / "notes.md"
+        seed.write_text("hello", encoding="utf-8")
+        backend.commit_paths(space, (seed,), message="seed")
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="pending"
+        )
+        assert coordinator.admit_run(
+            space_id="space-1",
+            project_id="project-1",
+            run_id="run-1",
+            task_id="task-1",
+            session_mode="single-agent",
+        )
+        monkeypatch.setattr(
+            file_write_toolkit,
+            "get_default_workspace_mutation_service",
+            lambda: service,
+        )
+        _quiet_task_queue(monkeypatch)
+        toolkit = FileToolkit(
+            "project-1", working_directory=str(space), backup_enabled=False
+        )
+
+        with run_context_scope(
+            replace(_context(space), session_mode="single-agent")
+        ):
+            failed = toolkit.edit_file("notes.md", "not there", "new")
+            written = toolkit.write_to_file("report", "done", "report.md")
+
+        assert failed.startswith("No replacement performed")
+        assert written == "Content successfully written to file: report.md"
+        assert (space / "report.md").read_text() == "done"
+        assert {
+            item.status for item in journal.list_git_mutation_intents()
+        } == {"completed"}

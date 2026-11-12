@@ -31,6 +31,7 @@ from app.agent.toolkit.terminal_toolkit import (
 from app.run_context import RunContext, run_context_scope
 from app.run_journal import (
     OutboxLeaseLostError,
+    WorkspaceMutationBlockedError,
     WorkspaceWriterLeaseLostError,
 )
 from app.run_runtime.tool_checkpoint import ToolInvocationNotDispatchedError
@@ -589,13 +590,15 @@ def test_terminal_workspace_admission_failure_is_marked_before_dispatch(
         with pytest.raises(
             ToolInvocationNotDispatchedError,
             match="was not started.*workspace is leased",
-        ):
+        ) as error:
             toolkit.shell_exec(
                 command="which python3",
                 id="terminal-after-background",
             )
 
     assert spawn_called is False
+    # No background session exists, so the error must not blame one.
+    assert "background Terminal session" not in str(error.value)
 
 
 def test_terminal_does_not_wait_out_a_lost_writer_lease(
@@ -919,3 +922,168 @@ def test_background_checkpoint_failure_remains_visible_to_repeated_teardown(
     assert toolkit.quiesce_run_background_sessions("run-1", timeout=2) == (
         "bg",
     )
+
+
+def test_terminal_quarantined_block_asks_for_review_without_waiting(
+    tmp_path,
+    monkeypatch,
+):
+    user_root = tmp_path / "user"
+    user_root.mkdir()
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.agent_name = "developer_agent"
+    toolkit.working_dir = str(user_root)
+    toolkit.shell_sessions = {}
+
+    class _MutationService:
+        attempts = 0
+
+        def prepare_broad_write(self, **_kwargs):
+            self.attempts += 1
+            raise WorkspaceMutationBlockedError(
+                intent_id="gitintent_1",
+                run_id="run-0",
+                status="needs_attention",
+            )
+
+    service = _MutationService()
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_default_workspace_mutation_service",
+        lambda: service,
+    )
+    monkeypatch.setattr(
+        terminal_toolkit, "_WORKSPACE_LEASE_WAIT_MAX_SECONDS", 30.0
+    )
+    monkeypatch.setattr(
+        toolkit_listen, "get_task_lock", lambda _task_id: object()
+    )
+    monkeypatch.setattr(
+        toolkit_listen, "_safe_put_queue", lambda _lock, _event: None
+    )
+
+    with run_context_scope(_context(user_root)):
+        with pytest.raises(ToolInvocationNotDispatchedError) as error:
+            toolkit.shell_exec(command="ls", id="terminal-blocked")
+
+    assert service.attempts == 1
+    message = str(error.value)
+    assert "gitintent_1" in message and "run-0" in message
+    assert "save it as a checkpoint or dismiss it" in message
+    assert "background Terminal session" not in message
+
+
+@pytest.mark.parametrize("failure", ["write", "complete"])
+def test_terminal_file_write_always_settles_its_operation(
+    tmp_path,
+    monkeypatch,
+    failure,
+):
+    user_root = tmp_path / "user"
+    user_root.mkdir()
+    target = user_root / "file.txt"
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.agent_name = "developer_agent"
+    toolkit.working_dir = str(user_root)
+    toolkit._terminal_mutation_lock = threading.RLock()
+    toolkit._closing = False
+    toolkit._quiescing_runs = set()
+    toolkit._workspace_checkpoint_failures = {}
+    prepared = SimpleNamespace(
+        mutation_root=user_root,
+        target_path=target,
+        context=SimpleNamespace(run_id="run-1"),
+    )
+    calls: list[str] = []
+
+    class _MutationService:
+        def prepare_file_write(self, **_kwargs):
+            return prepared
+
+        def complete_file_write(self, value, **_kwargs):
+            assert value is prepared
+            calls.append("complete")
+            if failure == "complete":
+                raise RuntimeError("checkpoint failed")
+
+        def mark_file_write_needs_attention(self, value):
+            assert value is prepared
+            calls.append("quarantine")
+
+    def failing_write(self, content, file_path):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_default_workspace_mutation_service",
+        lambda: _MutationService(),
+    )
+    if failure == "write":
+        monkeypatch.setattr(
+            BaseTerminalToolkit, "shell_write_content_to_file", failing_write
+        )
+    monkeypatch.setattr(
+        toolkit_listen, "get_task_lock", lambda _task_id: object()
+    )
+    monkeypatch.setattr(
+        toolkit_listen, "_safe_put_queue", lambda _lock, _event: None
+    )
+
+    with run_context_scope(_context(user_root)):
+        with pytest.raises((OSError, RuntimeError)):
+            toolkit.shell_write_content_to_file("text", "file.txt")
+
+    assert calls == (
+        ["complete"] if failure == "write" else ["complete", "quarantine"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("scope", "hinted"),
+    [("broad_process", True), ("exact_path", False)],
+)
+def test_terminal_session_hint_needs_a_possible_live_session(
+    tmp_path,
+    monkeypatch,
+    scope,
+    hinted,
+):
+    user_root = tmp_path / "user"
+    user_root.mkdir()
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.agent_name = "developer_agent"
+    toolkit.working_dir = str(user_root)
+    toolkit.shell_sessions = {}
+
+    class _MutationService:
+        def prepare_broad_write(self, **_kwargs):
+            raise WorkspaceMutationBlockedError(
+                intent_id="gitintent_1",
+                run_id="run-0",
+                status="prepared",
+                mutation_scope=scope,
+            )
+
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_default_workspace_mutation_service",
+        lambda: _MutationService(),
+    )
+    monkeypatch.setattr(
+        terminal_toolkit, "_WORKSPACE_LEASE_WAIT_MAX_SECONDS", 0.0
+    )
+    monkeypatch.setattr(
+        toolkit_listen, "get_task_lock", lambda _task_id: object()
+    )
+    monkeypatch.setattr(
+        toolkit_listen, "_safe_put_queue", lambda _lock, _event: None
+    )
+
+    with run_context_scope(_context(user_root)):
+        with pytest.raises(ToolInvocationNotDispatchedError) as error:
+            toolkit.shell_exec(command="ls", id="terminal-blocked")
+
+    assert ("background Terminal session" in str(error.value)) is hinted

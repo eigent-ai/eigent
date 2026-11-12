@@ -43,7 +43,10 @@ from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
-from app.run_journal import OutboxLeaseLostError
+from app.run_journal import (
+    OutboxLeaseLostError,
+    WorkspaceMutationBlockedError,
+)
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import (
     BackgroundToolResult,
@@ -71,6 +74,7 @@ from app.utils.toolchain_preflight import inspect_toolchain
 from app.workspace_git import (
     get_default_workspace_git_lifecycle,
     get_default_workspace_mutation_service,
+    workspace_block_hint,
 )
 
 logger = logging.getLogger("terminal_toolkit")
@@ -1145,10 +1149,10 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 # Workspace admission happens before CAMEL can spawn the
                 # command. Preserve that boundary even though FunctionTool
                 # later wraps this exception in a generic ValueError.
-                recovery_hint = (
+                recovery_hint = workspace_block_hint(error) or (
                     " Wait for or stop the active background Terminal "
                     "session, then retry."
-                    if isinstance(error, OutboxLeaseLostError)
+                    if self._block_may_be_a_live_session(error)
                     else ""
                 )
                 raise ToolInvocationNotDispatchedError(
@@ -1515,9 +1519,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     actor_id=self.agent_name,
                     trigger="terminal.execute",
                 )
-            except OutboxLeaseLostError:
+            except OutboxLeaseLostError as error:
                 remaining = deadline - time.monotonic()
-                if remaining <= 0:
+                if remaining <= 0 or (
+                    # A quarantined operation waits for the user, not for a
+                    # background session hand-off.
+                    isinstance(error, WorkspaceMutationBlockedError)
+                    and error.status == "needs_attention"
+                ):
                     raise
                 time.sleep(
                     min(_WORKSPACE_LEASE_RETRY_INTERVAL_SECONDS, remaining)
@@ -1555,13 +1564,22 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     )
                 except Exception as error:
                     raise ToolInvocationNotDispatchedError(
-                        "Terminal file write was not started: " + str(error)
+                        "Terminal file write was not started: "
+                        + str(error)
+                        + workspace_block_hint(error)
                     ) from error
-            if prepared is not None:
-                self.working_dir = str(prepared.mutation_root)
-                file_path = str(prepared.target_path)
-            result = super().shell_write_content_to_file(content, file_path)
-            if prepared is not None:
+            if prepared is None:
+                return super().shell_write_content_to_file(content, file_path)
+            self.working_dir = str(prepared.mutation_root)
+            file_path = str(prepared.target_path)
+            try:
+                result = super().shell_write_content_to_file(
+                    content, file_path
+                )
+            finally:
+                # Every prepared write gets exactly one completion, even when
+                # the write itself failed; an unsettled completion is
+                # quarantined instead of fencing the checkout forever.
                 try:
                     service.complete_file_write(
                         prepared,
@@ -1574,6 +1592,13 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                         prepared.context.run_id,
                         error,
                     )
+                    try:
+                        service.mark_file_write_needs_attention(prepared)
+                    except Exception:
+                        logger.exception(
+                            "Failed to quarantine an unsettled Terminal write",
+                            extra={"operation_request_id": request_id},
+                        )
                     raise
             return result
 
@@ -2045,6 +2070,23 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 if process is not None and process.poll() is not None:
                     self._close_local_stdin(session)
         return tuple(lingering)
+
+    def _block_may_be_a_live_session(self, error: BaseException) -> bool:
+        """Only blame a background session when one could hold the block."""
+        if not isinstance(error, OutboxLeaseLostError):
+            return False
+        if any(
+            self._workspace_session_running(session_id)
+            for session_id in tuple(getattr(self, "shell_sessions", {}) or {})
+        ):
+            return True
+        # Another Terminal's still-running command holds a prepared broad
+        # operation; a failed or settled file write never does.
+        return (
+            isinstance(error, WorkspaceMutationBlockedError)
+            and error.status == "prepared"
+            and error.mutation_scope == "broad_process"
+        )
 
     def _workspace_session_running(self, session_id: str) -> bool:
         session_lock = getattr(self, "_session_lock", None)

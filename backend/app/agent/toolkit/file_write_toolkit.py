@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
 import os
 import uuid
 from dataclasses import dataclass
@@ -47,7 +48,12 @@ from app.utils.space_overlay_client import (
     sha256_of_file,
     should_record_overlay,
 )
-from app.workspace_git import get_default_workspace_mutation_service
+from app.workspace_git import (
+    get_default_workspace_mutation_service,
+    workspace_block_hint,
+)
+
+logger = logging.getLogger("file_write_toolkit")
 
 
 @dataclass(frozen=True)
@@ -119,8 +125,43 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
             detail = f"{error_code}: {error}" if error_code else str(error)
             raise ToolInvocationNotDispatchedError(
                 "File mutation was not started because its Workspace could "
-                f"not be prepared: {detail}"
+                f"not be prepared: {detail}.{workspace_block_hint(error)}"
             ) from error
+
+    def _settle_prepared_write(
+        self,
+        mutation_service,
+        prepared_write,
+        *,
+        operation_request_id: str,
+        trigger: str,
+    ) -> None:
+        """Give every prepared write exactly one completion.
+
+        Completion records a no-op when the file still matches its preimage
+        (for example an edit whose ``old_content`` was not found) and
+        checkpoints whatever the tool did write. A prepared operation left
+        behind would fence every later writer on the checkout, so a failed
+        completion is quarantined for the user to review instead.
+        """
+        try:
+            mutation_service.complete_file_write(
+                prepared_write,
+                operation_request_id=operation_request_id,
+                actor_id=self.agent_name,
+                trigger=trigger,
+            )
+        except Exception:
+            try:
+                mutation_service.mark_file_write_needs_attention(
+                    prepared_write
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to quarantine an unsettled workspace write",
+                    extra={"operation_request_id": operation_request_id},
+                )
+            raise
 
     def _overlay_write_context(
         self, filename: str
@@ -172,22 +213,24 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                 trigger="filesystem.write",
             )
         if prepared_write is not None:
-            res = super().write_to_file(
-                title,
-                content,
-                str(prepared_write.target_path),
-                encoding,
-                use_latex,
-            )
-            if "Content successfully written to file: " in res:
-                assert operation_request_id is not None
-                assert mutation_service is not None
-                mutation_service.complete_file_write(
+            assert operation_request_id is not None
+            assert mutation_service is not None
+            try:
+                res = super().write_to_file(
+                    title,
+                    content,
+                    str(prepared_write.target_path),
+                    encoding,
+                    use_latex,
+                )
+            finally:
+                self._settle_prepared_write(
+                    mutation_service,
                     prepared_write,
                     operation_request_id=operation_request_id,
-                    actor_id=self.agent_name,
                     trigger="filesystem.write",
                 )
+            if "Content successfully written to file: " in res:
                 res = (
                     "Content successfully written to file: "
                     f"{prepared_write.relative_path}"
@@ -261,20 +304,22 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                 trigger="filesystem.edit",
             )
         if prepared_write is not None:
-            res = super().edit_file(
-                str(prepared_write.target_path),
-                old_content,
-                new_content,
-            )
-            if res.startswith("Successfully edited "):
-                assert operation_request_id is not None
-                assert mutation_service is not None
-                mutation_service.complete_file_write(
+            assert operation_request_id is not None
+            assert mutation_service is not None
+            try:
+                res = super().edit_file(
+                    str(prepared_write.target_path),
+                    old_content,
+                    new_content,
+                )
+            finally:
+                self._settle_prepared_write(
+                    mutation_service,
                     prepared_write,
                     operation_request_id=operation_request_id,
-                    actor_id=self.agent_name,
                     trigger="filesystem.edit",
                 )
+            if res.startswith("Successfully edited "):
                 relative_path = prepared_write.relative_path
                 res = f"Successfully edited {relative_path}"
         else:

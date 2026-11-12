@@ -14,6 +14,7 @@
 
 import { fetchGet } from '@/api/http';
 import { AddWorker } from '@/components/AddWorker';
+import { BlockedWorkspaceOperationNotice } from '@/components/ChatBox/BlockedWorkspaceOperationCard';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DsText } from '@/components/ui/ds-text';
@@ -117,6 +118,7 @@ export default function Workspace({
   );
   const workerList = useWorkerList();
   const { modelType, token, user_id, setWorkerList } = useAuthStore();
+  const authEmail = useAuthStore((s) => s.email);
   const [draftSessionMode, setDraftSessionMode] = useState<SessionModeType>(
     SessionMode.SINGLE_AGENT
   );
@@ -767,6 +769,13 @@ export default function Workspace({
           </DsText>
         </label>
       )}
+      {/* A new Session writes to the same checkout, so a blocked operation
+          must be resolvable before its first message. */}
+      <BlockedWorkspaceOperationNotice
+        space={activeSpace}
+        email={authEmail}
+        userId={user_id}
+      />
       <div data-workspace-bottom-box className="w-full">
         <BottomBox
           resourcePickersEnabled={!managedSelected}

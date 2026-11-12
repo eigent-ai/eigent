@@ -606,5 +606,18 @@
   "notice-use-own-api-key": "Usar tu propia clave API",
   "notice-credits-new": "Añade créditos para empezar a ejecutar tareas.",
   "notice-credits-new-description": "Mejora tu plan o usa la clave API de tu propio modelo.",
-  "space-model-fallback": "El modelo de este espacio ya no está disponible, así que esta sesión usa tu modelo predeterminado."
+  "space-model-fallback": "El modelo de este espacio ya no está disponible, así que esta sesión usa tu modelo predeterminado.",
+  "workspace-blocked-title": "Operación del espacio de trabajo bloqueada",
+  "workspace-blocked-description-file": "Una tarea detenida dejó sin terminar un cambio en {{path}}, así que las nuevas ediciones en este espacio están en pausa. Guarda lo que hay en el disco como punto de control o descártala.",
+  "workspace-blocked-description-process": "El comando de una tarea detenida dejó cambios sin registrar en el espacio de trabajo, así que las nuevas ediciones en este espacio están en pausa. Guarda lo que hay en el disco como punto de control o descártala.",
+  "workspace-blocked-waiting": "Detén la tarea en curso para resolverlo.",
+  "workspace-blocked-more": "+{{count}} más bloqueadas",
+  "workspace-blocked-save": "Guardar como punto de control",
+  "workspace-blocked-saving": "Guardando…",
+  "workspace-blocked-dismiss": "Descartar (sin tocar archivos)",
+  "workspace-blocked-dismissing": "Descartando…",
+  "workspace-blocked-saved": "Guardado como punto de control. Puedes seguir editando.",
+  "workspace-blocked-dismissed": "Descartada. No se cambió ningún archivo.",
+  "workspace-blocked-changed": "El espacio de trabajo cambió. Revísalo e inténtalo de nuevo.",
+  "workspace-blocked-failed": "No se pudo resolver la operación bloqueada. Inténtalo de nuevo."
 }
