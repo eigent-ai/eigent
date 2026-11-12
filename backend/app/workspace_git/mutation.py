@@ -46,6 +46,7 @@ from app.workspace_git.backend import (
 )
 from app.workspace_git.content import (
     ContentRepositoryError,
+    NoCheckpointChangesError,
     RepositoryStateChangedError,
 )
 from app.workspace_git.coordinator import (
@@ -1495,25 +1496,38 @@ class WorkspaceMutationService:
         if item.item_state == "checkpointed":
             self._complete_intent(prepared.intent)
             return self.git.current_head(prepared.mutation_root)
-        checkpoint = self.content.checkpoint(
-            prepared.change_set.repository_id,
-            operation_request_id=self._request_id(
-                operation_request_id,
-                "direct-delta",
-            ),
-            expected_repo_state_digest=self.git.repo_state_token(
-                prepared.mutation_root
-            ).digest,
-            paths=(prepared.target_path,),
-            path_sources={prepared.relative_path: source},
-            target_role="run",
-            target_id=prepared.context.run_id,
-            actor_id=actor_id,
-            trigger=trigger,
-            message=f"Update {prepared.relative_path}",
-            worktree_root=prepared.mutation_root,
-            commit_trailers=self._direct_commit_trailers(prepared.context),
-        )
+        try:
+            checkpoint = self.content.checkpoint(
+                prepared.change_set.repository_id,
+                operation_request_id=self._request_id(
+                    operation_request_id,
+                    "direct-delta",
+                ),
+                expected_repo_state_digest=self.git.repo_state_token(
+                    prepared.mutation_root
+                ).digest,
+                paths=(prepared.target_path,),
+                path_sources={prepared.relative_path: source},
+                target_role="run",
+                target_id=prepared.context.run_id,
+                actor_id=actor_id,
+                trigger=trigger,
+                message=f"Update {prepared.relative_path}",
+                worktree_root=prepared.mutation_root,
+                commit_trailers=self._direct_commit_trailers(prepared.context),
+            )
+        except NoCheckpointChangesError:
+            # Git has nothing to record for this path (for example it is
+            # ignored, or the write left it identical to the last commit).
+            # The write itself succeeded, so it is settled, not blocking.
+            self.journal.update_git_change_set_item_state(
+                change_set_id=prepared.change_set.change_set_id,
+                relative_path=prepared.relative_path,
+                expected_state=item.item_state,
+                state="ignored",
+            )
+            self._complete_intent(prepared.intent)
+            return None
         self.journal.update_git_change_set_item_state(
             change_set_id=prepared.change_set.change_set_id,
             relative_path=prepared.relative_path,
@@ -1868,6 +1882,13 @@ class WorkspaceMutationService:
             return None
         return binding
 
+    def _on_bound_branch(
+        self, root: Path, binding: ProjectWorkspaceBindingRecord
+    ) -> bool:
+        """Whether the checkout still has the Space's bound branch checked out."""
+        branch = self.git.probe(root).branch
+        return bool(branch) and f"refs/heads/{branch}" == binding.target_ref
+
     def _reconcile_direct_intent(
         self,
         change_set: GitChangeSetRecord,
@@ -1908,6 +1929,10 @@ class WorkspaceMutationService:
                 item.item_state != "pending"
                 or current_digest != item.result_digest
             ):
+                return False
+            if not self._on_bound_branch(root, binding):
+                # The user switched branches before the restart. Committing
+                # now would land the write on their branch, not the Space's.
                 return False
             # The result was recorded before the crash and the file still
             # holds exactly that content: resume the same checkpoint
@@ -2097,11 +2122,7 @@ class WorkspaceMutationService:
                     "Stop dispatched tools before saving a checkpoint"
                 )
             root = Path(binding.worktree_path).expanduser().resolve()
-            probe = self.git.probe(root)
-            observed_ref = (
-                f"refs/heads/{probe.branch}" if probe.branch else None
-            )
-            if observed_ref != binding.target_ref:
+            if not self._on_bound_branch(root, binding):
                 raise ContentRepositoryError(
                     "The checkout is on another branch; switch it back "
                     "before saving"
@@ -2156,25 +2177,29 @@ class WorkspaceMutationService:
         assert change_set is not None
         context = self._direct_reconciliation_context(change_set)
         try:
+            # The failed attempt may already have recorded its result under
+            # the tool's own request id. This save records what is on disk
+            # now under its own id, so that unfinished record would refuse
+            # it; stop tracking it first (the same records Dismiss drops).
+            for item in self.journal.list_git_change_set_items(
+                change_set_id, states=("pending",)
+            ):
+                owned = (
+                    item.relative_path == intent.relative_path
+                    if intent.mutation_scope == "exact_path"
+                    else item.operation_request_id
+                    == intent.operation_request_id
+                )
+                if owned:
+                    self.journal.update_git_change_set_item_state(
+                        change_set_id=change_set_id,
+                        relative_path=item.relative_path,
+                        expected_state="pending",
+                        state="ignored",
+                    )
             if intent.mutation_scope == "exact_path":
                 assert intent.relative_path is not None
                 target = root / intent.relative_path
-                current_digest = self._digest_file(target)
-                for item in self.journal.list_git_change_set_items(
-                    change_set_id, states=("pending",)
-                ):
-                    if (
-                        item.relative_path == intent.relative_path
-                        and item.result_digest != current_digest
-                    ):
-                        # A stale unfinished record would refuse the content
-                        # the user just reviewed.
-                        self.journal.update_git_change_set_item_state(
-                            change_set_id=change_set_id,
-                            relative_path=item.relative_path,
-                            expected_state="pending",
-                            state="ignored",
-                        )
                 commit = self._complete_direct_file_write(
                     PreparedWorkspaceWrite(
                         context=context,

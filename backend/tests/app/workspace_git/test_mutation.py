@@ -1629,3 +1629,174 @@ def test_failed_completion_is_quarantined_instead_of_left_prepared(
     with pytest.raises(WorkspaceMutationBlockedError) as blocked:
         _prepare_direct(direct, space, "write-2", "other.txt")
     assert blocked.value.status == "needs_attention"
+
+
+class _SimulatedCrash(BaseException):
+    pass
+
+
+def _fail_next_checkpoint(direct, monkeypatch, error):
+    real = direct.content.checkpoint
+    calls = {"count": 0}
+
+    def checkpoint(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise error
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(direct.content, "checkpoint", checkpoint)
+
+
+def _git_output(space, *args) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=space,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _save_blocked(direct, repository_id, request_id="user-save-1"):
+    (blocked,) = direct.list_blocked_operations(repository_id)
+    return direct.checkpoint_blocked_operation(
+        repository_id=repository_id,
+        intent_id=blocked.intent.intent_id,
+        operation_request_id=request_id,
+        expected_repo_state_digest=blocked.repo_state_digest,
+    )
+
+
+def test_save_works_after_a_file_write_checkpoint_failed(
+    tmp_path, journal, monkeypatch
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    prepared = _prepare_direct(direct, space, "edit-1", "seed.txt")
+    (space / "seed.txt").write_text("agent wrote this", "utf-8")
+    _fail_next_checkpoint(
+        direct, monkeypatch, ContentRepositoryError("checkpoint failed")
+    )
+    with pytest.raises(ContentRepositoryError):
+        direct.complete_file_write(
+            prepared,
+            operation_request_id="edit-1",
+            actor_id="developer-agent",
+            trigger="filesystem.edit",
+        )
+    direct.mark_file_write_needs_attention(prepared)
+    _stop_run(journal, coordinator)
+    repository_id = prepared.change_set.repository_id
+
+    (commit,) = _save_blocked(direct, repository_id)
+
+    assert backend.current_head(space) == commit
+    assert _git_output(space, "show", "--name-only", "--format=", commit) == (
+        "seed.txt"
+    )
+    assert direct.list_blocked_operations(repository_id) == ()
+
+
+def test_save_works_after_a_terminal_capture_failed(
+    tmp_path, journal, monkeypatch
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    prepared = direct.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="command-1",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    (space / "out.txt").write_text("from command", "utf-8")
+    _fail_next_checkpoint(
+        direct, monkeypatch, ContentRepositoryError("checkpoint failed")
+    )
+    with pytest.raises(ContentRepositoryError):
+        direct.complete_broad_write(
+            prepared,
+            operation_request_id="command-1",
+            actor_id="developer-agent",
+            trigger="terminal.execute",
+        )
+    direct.mark_broad_write_needs_attention(prepared)
+    _stop_run(journal, coordinator)
+    repository_id = prepared.change_set.repository_id
+
+    (commit,) = _save_blocked(direct, repository_id)
+
+    assert backend.current_head(space) == commit
+    assert _git_output(space, "show", "--name-only", "--format=", commit) == (
+        "out.txt"
+    )
+    assert direct.list_blocked_operations(repository_id) == ()
+
+
+def test_startup_does_not_commit_a_recorded_write_onto_a_switched_branch(
+    tmp_path, journal, monkeypatch
+):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    _admit(journal, coordinator)
+    bound_branch = _git_output(space, "rev-parse", "--abbrev-ref", "HEAD")
+    prepared = _prepare_direct(direct, space, "edit-1", "seed.txt")
+    (space / "seed.txt").write_text("agent wrote this", "utf-8")
+    # The process dies after recording the result, before the commit.
+    _fail_next_checkpoint(direct, monkeypatch, _SimulatedCrash())
+    with pytest.raises(_SimulatedCrash):
+        direct.complete_file_write(
+            prepared,
+            operation_request_id="edit-1",
+            actor_id="developer-agent",
+            trigger="filesystem.edit",
+        )
+    # Before restarting, the user switches branch; the edit carries over.
+    _git_output(space, "checkout", "-q", "-b", "user-feature")
+    heads = {
+        name: _git_output(space, "rev-parse", name)
+        for name in (bound_branch, "user-feature")
+    }
+
+    direct.reconcile_startup()
+
+    assert {
+        name: _git_output(space, "rev-parse", name) for name in heads
+    } == heads
+    (intent,) = journal.list_git_mutation_intents()
+    assert intent.status == "needs_attention"
+    (blocked,) = direct.list_blocked_operations(
+        prepared.change_set.repository_id
+    )
+    assert blocked.intent.intent_id == intent.intent_id
+    _stop_run(journal, coordinator)
+    with pytest.raises(ContentRepositoryError, match="another branch"):
+        _save_blocked(direct, prepared.change_set.repository_id)
+
+
+def test_write_git_does_not_record_settles_without_blocking(tmp_path, journal):
+    coordinator, direct, backend, space = _direct_space(tmp_path, journal)
+    (space / ".gitignore").write_text("dist/\n", "utf-8")
+    backend.commit_paths(space, (space / ".gitignore",), message="ignore")
+    _admit(journal, coordinator)
+    head = backend.current_head(space)
+    prepared = _prepare_direct(direct, space, "write-1", "dist/out.js")
+    (space / "dist").mkdir()
+    (space / "dist" / "out.js").write_text("built", "utf-8")
+
+    commit = direct.complete_file_write(
+        prepared,
+        operation_request_id="write-1",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+
+    assert commit is None
+    assert backend.current_head(space) == head
+    (intent,) = journal.list_git_mutation_intents()
+    assert intent.status == "completed"
+    (item,) = journal.list_git_change_set_items(
+        prepared.change_set.change_set_id
+    )
+    assert item.item_state == "ignored"
+    later = _prepare_direct(direct, space, "write-2", "notes.txt")
+    assert later.intent.status == "prepared"
