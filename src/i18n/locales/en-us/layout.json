@@ -558,6 +558,7 @@
   "workspace-folder-binding-local-only": "You can only link a folder when Eigent is running on this device.",
   "workspace-folder-already-bound": "That folder is already used by another Space.",
   "workspace-folder-unavailable": "Eigent can't reach that folder on this device.",
+  "workspace-folder-protected": "Eigent can't use that folder because it's a system, account, or top-level folder. Choose a project folder instead.",
   "workspace-folder-space-create-failed": "Couldn't create a Space from that folder. Try again.",
   "task-source-trigger": "Automated run",
   "workspace-recent-sessions-heading": "Recent sessions",

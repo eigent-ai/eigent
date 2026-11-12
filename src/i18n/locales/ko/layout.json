@@ -549,6 +549,7 @@
   "workspace-folder-binding-local-only": "이 기기에서 Eigent가 실행 중일 때만 폴더를 연결할 수 있습니다.",
   "workspace-folder-already-bound": "해당 폴더는 이미 다른 스페이스에서 사용 중입니다.",
   "workspace-folder-unavailable": "Eigent가 이 기기에서 해당 폴더에 접근할 수 없습니다.",
+  "workspace-folder-protected": "이 폴더는 시스템, 계정 또는 최상위 폴더이므로 Eigent에서 사용할 수 없습니다. 대신 프로젝트 폴더를 선택하세요.",
   "workspace-folder-space-create-failed": "해당 폴더에서 스페이스를 만들지 못했습니다. 다시 시도해 주세요.",
   "task-source-trigger": "자동 실행",
   "workspace-recent-sessions-heading": "최근",
