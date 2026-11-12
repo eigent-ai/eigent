@@ -209,6 +209,12 @@ class TestChatController:
             ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
         ):
             # Mock async generator
             async def mock_generator():
@@ -1320,6 +1326,12 @@ class TestChatController:
             ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(os.environ, {}, clear=True),
         ):
 
@@ -1371,6 +1383,12 @@ class TestChatController:
             patch("app.controller.chat_controller.set_current_task_id"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(os.environ, {}, clear=True),
         ):
 
@@ -1415,6 +1433,12 @@ class TestChatController:
             patch("app.controller.chat_controller.set_current_task_id"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(
                 os.environ,
                 {"EIGENT_CDP_URL": "http://127.0.0.1:9222"},
@@ -1459,6 +1483,12 @@ class TestChatController:
             patch("app.controller.chat_controller.set_current_task_id"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(
                 os.environ,
                 {"EIGENT_CDP_URL": "http://worker-17:9222"},
@@ -2151,6 +2181,12 @@ class TestChatControllerIntegration:
             ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
         ):
             mock_task_lock = MagicMock()
             mock_task_lock.put_queue = AsyncMock()

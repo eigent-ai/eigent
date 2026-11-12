@@ -631,5 +631,8 @@
   "workspace-blocked-saved": "تم الحفظ كنقطة حفظ. يمكن متابعة التعديلات.",
   "workspace-blocked-dismissed": "تم التجاهل. لم يتم تغيير أي ملفات.",
   "workspace-blocked-changed": "تغيرت مساحة العمل. راجعها ثم حاول مرة أخرى.",
-  "workspace-blocked-failed": "تعذر حل العملية المحظورة. حاول مرة أخرى."
+  "workspace-blocked-failed": "تعذر حل العملية المحظورة. حاول مرة أخرى.",
+  "notice-space-folder-home": "لا يمكن لـ Eigent العمل مباشرة في مجلد المنزل.",
+  "notice-space-folder-app-data": "لا يمكن لـ Eigent العمل في مجلد يحتوي على بيانات التطبيق الخاصة به.",
+  "notice-space-folder-description": "أنشئ مساحة من مجلد داخل مجلد المنزل، مثل المستندات."
 }

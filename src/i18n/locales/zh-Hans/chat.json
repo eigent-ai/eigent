@@ -611,5 +611,8 @@
   "workspace-blocked-saved": "已保存为检查点，可以继续编辑。",
   "workspace-blocked-dismissed": "已忽略，没有改动任何文件。",
   "workspace-blocked-changed": "工作区已发生变化，请检查后重试。",
-  "workspace-blocked-failed": "无法处理被阻塞的操作，请重试。"
+  "workspace-blocked-failed": "无法处理被阻塞的操作，请重试。",
+  "notice-space-folder-home": "Eigent 无法直接在您的主文件夹中工作。",
+  "notice-space-folder-app-data": "Eigent 无法在存放其自身应用数据的文件夹中工作。",
+  "notice-space-folder-description": "请使用主文件夹内的某个文件夹（例如“文稿”）创建空间。"
 }

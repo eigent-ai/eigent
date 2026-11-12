@@ -619,5 +619,8 @@
   "workspace-blocked-saved": "Salvato come checkpoint. Puoi continuare a modificare.",
   "workspace-blocked-dismissed": "Ignorata. Nessun file è stato modificato.",
   "workspace-blocked-changed": "L'area di lavoro è cambiata. Controllala e riprova.",
-  "workspace-blocked-failed": "Impossibile risolvere l'operazione bloccata. Riprova."
+  "workspace-blocked-failed": "Impossibile risolvere l'operazione bloccata. Riprova.",
+  "notice-space-folder-home": "Eigent non può lavorare direttamente nella tua cartella home.",
+  "notice-space-folder-app-data": "Eigent non può lavorare in una cartella che contiene i propri dati dell’app.",
+  "notice-space-folder-description": "Crea uno spazio da una cartella all’interno della tua cartella home, ad esempio Documenti."
 }
