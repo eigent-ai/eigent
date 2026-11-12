@@ -19,6 +19,7 @@ import {
   usePinnedSpaceIds,
 } from '@/components/Layout/AppRail/pinnedSpaces';
 import { sidebarTabButtonClass } from '@/components/Layout/AppSidebar';
+import { DeleteSpaceDialog } from '@/components/SpaceSidebar/DeleteSpaceDialog';
 import {
   canRenameSpace,
   SpaceRenameDialog,
@@ -37,7 +38,6 @@ import { useSpaceStore } from '@/store/spaceStore';
 import { ChevronDown, Folder } from 'lucide-react';
 import { forwardRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
 /**
  * Mounted only while open: creating a Space reads the whole Session store,
@@ -87,11 +87,7 @@ export const SpaceHeaderMenu = forwardRef<
   const openSpaceHomeTab = useOpenSpaceHomeTab();
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
-  const deleteSpaceOnServer = useSpaceStore(
-    (state) => state.deleteSpaceOnServer
-  );
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
@@ -112,20 +108,6 @@ export const SpaceHeaderMenu = forwardRef<
   const inSidebar = appearance === 'sidebar';
   const canDelete =
     inSidebar && space?.status === 'active' && !isLegacySpace(space);
-
-  const deleteSpace = async () => {
-    if (deleting) return;
-    setDeleting(true);
-    try {
-      await deleteSpaceOnServer(spaceId);
-      setDeleteOpen(false);
-    } catch (error) {
-      console.warn('[SpaceHeaderMenu] Failed to delete Space:', error);
-      toast.error(t('layout.spaces-delete-failed'));
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   return (
     <>
@@ -150,17 +132,9 @@ export const SpaceHeaderMenu = forwardRef<
         userId={userId}
         actorId={userId == null ? email || 'local-user' : String(userId)}
       />
-      <AlertDialog
-        isOpen={deleteOpen}
-        onClose={() => {
-          if (!deleting) setDeleteOpen(false);
-        }}
-        onConfirm={() => void deleteSpace()}
-        title={t('layout.delete-space')}
-        message={t('layout.delete-space-confirmation')}
-        confirmText={t('layout.delete')}
-        cancelText={t('layout.cancel')}
-        confirmDisabled={deleting}
+      <DeleteSpaceDialog
+        spaceId={deleteOpen ? spaceId : null}
+        onClose={() => setDeleteOpen(false)}
       />
       <SpaceRenameDialog
         spaceId={renameOpen ? spaceId : null}

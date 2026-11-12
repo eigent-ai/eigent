@@ -30,6 +30,7 @@ import {
 } from '@/components/Layout/AppSidebar';
 import { SidebarRowTooltip } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import { SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS } from '@/components/SpaceSidebar/constants';
+import { DeleteSpaceDialog } from '@/components/SpaceSidebar/DeleteSpaceDialog';
 import { SessionControlDialogs } from '@/components/SpaceSidebar/SessionControlDialogs';
 import {
   SessionNavListRows,
@@ -38,7 +39,6 @@ import {
 } from '@/components/SpaceSidebar/SessionNavListRows';
 import { SidebarAccordionSection } from '@/components/SpaceSidebar/SidebarAccordionSection';
 import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
-import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
@@ -434,24 +434,7 @@ function HomeSidebar() {
   const activity = useHomeVisitStore((state) => state.activity);
   const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
   const unpinSpace = useSpaceStore((state) => state.unpinSpace);
-  const deleteSpaceOnServer = useSpaceStore(
-    (state) => state.deleteSpaceOnServer
-  );
   const [deleteSpaceId, setDeleteSpaceId] = useState<string | null>(null);
-  const [deletingSpace, setDeletingSpace] = useState(false);
-  const deleteSpace = useCallback(async () => {
-    if (!deleteSpaceId || deletingSpace) return;
-    setDeletingSpace(true);
-    try {
-      await deleteSpaceOnServer(deleteSpaceId);
-      setDeleteSpaceId(null);
-    } catch (error) {
-      console.warn('[HomeSidebar] Failed to delete Space:', error);
-      toast.error(t('layout.spaces-delete-failed'));
-    } finally {
-      setDeletingSpace(false);
-    }
-  }, [deleteSpaceId, deleteSpaceOnServer, deletingSpace, t]);
   const { createBlankSpace, createSpaceFromFolder } =
     useNewSpaceCreation('home_hub');
 
@@ -669,17 +652,9 @@ function HomeSidebar() {
   return (
     <>
       <SessionControlDialogs />
-      <AlertDialog
-        isOpen={deleteSpaceId !== null}
-        onClose={() => {
-          if (!deletingSpace) setDeleteSpaceId(null);
-        }}
-        onConfirm={() => void deleteSpace()}
-        title={t('layout.delete-space')}
-        message={t('layout.delete-space-confirmation')}
-        confirmText={t('layout.delete')}
-        cancelText={t('layout.cancel')}
-        confirmDisabled={deletingSpace}
+      <DeleteSpaceDialog
+        spaceId={deleteSpaceId}
+        onClose={() => setDeleteSpaceId(null)}
       />
       <NewSpaceDialog
         open={newSpaceDialogOpen}

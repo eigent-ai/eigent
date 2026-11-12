@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DeleteSpaceDialog } from '@/components/SpaceSidebar/DeleteSpaceDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -81,13 +82,11 @@ function SpaceItemContent({
   const { t } = useTranslation();
   const { openSpace, openWorkspace } = useHomeHubNavigation();
   const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
-  const deleteSpaceOnServer = useSpaceStore((s) => s.deleteSpaceOnServer);
 
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   const canManage = space.status === 'active' && !isLegacy;
   const title = space.name?.trim() || t('layout.spaces-untitled');
@@ -108,24 +107,6 @@ function SpaceItemContent({
       setRenaming(false);
     }
   }, [canManage, renameSpaceOnServer, renameValue, renaming, space.id, t]);
-
-  const handleDelete = useCallback(async () => {
-    if (deleting || !canManage) return;
-    setDeleting(true);
-    try {
-      await deleteSpaceOnServer(space.id);
-      setDeleteDialogOpen(false);
-    } catch (error) {
-      console.warn('[HomeHubCard] Failed to delete Space:', error);
-      toast.error(
-        t('layout.spaces-delete-failed', {
-          defaultValue: 'Failed to delete Space',
-        })
-      );
-    } finally {
-      setDeleting(false);
-    }
-  }, [canManage, deleteSpaceOnServer, deleting, space.id, t]);
 
   const handleOpenWorkspace = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
@@ -194,21 +175,9 @@ function SpaceItemContent({
         />
       </AlertDialog>
 
-      <AlertDialog
-        isOpen={deleteDialogOpen}
-        onClose={() => {
-          if (deleting) return;
-          setDeleteDialogOpen(false);
-        }}
-        onConfirm={() => void handleDelete()}
-        title={t('layout.delete')}
-        message={t('layout.delete-space-confirmation', {
-          defaultValue:
-            'Are you sure you want to delete this space and all its sessions? This action cannot be undone.',
-        })}
-        confirmText={t('layout.delete')}
-        cancelText={t('layout.cancel')}
-        confirmDisabled={deleting}
+      <DeleteSpaceDialog
+        spaceId={deleteDialogOpen && canManage ? space.id : null}
+        onClose={() => setDeleteDialogOpen(false)}
       />
 
       <HomeHubItemShell
