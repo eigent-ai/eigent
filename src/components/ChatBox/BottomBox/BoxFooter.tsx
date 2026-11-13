@@ -14,6 +14,7 @@
 
 import { ProjectModeToggle } from '@/components/Workspace/ProjectModeToggle';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
+import { cn } from '@/lib/utils';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -22,13 +23,24 @@ import {
 } from '@/types/constants';
 import type { ReactNode } from 'react';
 import { ApprovalModeSelect } from './ApprovalModeSelect';
+import { FooterCompactContext } from './footerCompact';
 import { ModelAndThinkingEffortSelect } from './ModelAndThinkingEffortSelect';
 
 /**
- * Below this footer width the session mode control collapses to icon-only so
- * everything stays on a single row.
+ * Below this footer width the left controls (Space, session mode, approval)
+ * collapse to icon-only buttons so everything stays on a single row.
  */
 const COMPACT_WIDTH_THRESHOLD = 460;
+
+/**
+ * Session mode and approval are set-and-forget, so they sit at half strength
+ * until the pointer, keyboard focus or an open menu engages them.
+ */
+const RECEDING_CONTROL_CLASS = cn(
+  'opacity-50 transition-[background-color,opacity] duration-150 ease-out',
+  'hover:opacity-100 focus:opacity-100 focus-visible:opacity-100',
+  'data-[state=open]:opacity-100 aria-expanded:opacity-100'
+);
 
 export interface BoxFooterProps {
   /** Before the session mode control, for example New session's Space chip. */
@@ -57,8 +69,8 @@ export interface BoxFooterProps {
 /**
  * BoxFooter — project-setup row under BoxMain in the BottomBox shell.
  * Left: session mode + approval. Right: one thinking-effort and model menu.
- * Stays on a single row; the left controls collapse to icon-only when the
- * footer gets narrow.
+ * Stays on a single row; the left controls collapse to icon-only buttons
+ * (no label, no chevron) when the footer gets narrow.
  */
 export function BoxFooter({
   leading,
@@ -106,22 +118,26 @@ export function BoxFooter({
   return (
     <div
       ref={footerRef}
-      className="flex w-full items-center justify-between gap-2 px-3 py-1"
+      // 14px puts the first control's 16px icon (behind its 8px padding)
+      // on the centre of the composer's "+" icon above.
+      className="flex w-full items-center justify-between gap-2 py-1 pr-ds-12 pl-ds-14"
     >
       <div className="flex min-w-0 shrink items-center gap-1">
-        {leading}
+        <FooterCompactContext.Provider value={compact}>
+          {leading}
+        </FooterCompactContext.Provider>
         <ProjectModeToggle
           value={sessionMode}
           onValueChange={onSessionModeChange ?? (() => {})}
           readOnly={!interactive}
           compact={compact}
-          className="shrink-0"
+          className={cn('shrink-0', RECEDING_CONTROL_CLASS)}
         />
         <ApprovalModeSelect
           spaceId={spaceId}
           disabled={disabled}
           compact={compact}
-          className="shrink-0"
+          className={cn('shrink-0', RECEDING_CONTROL_CLASS)}
         />
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1">

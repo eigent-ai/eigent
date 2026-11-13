@@ -8,6 +8,7 @@
   "save-changes": "변경 사항 저장",
   "description-optional": "설명 (선택 사항)",
   "agent-tool": "에이전트 도구",
+  "agent-tool-connectors-note": "여기에서 로컬 커넥터를 추가하세요. 원격 커넥터는 모든 에이전트에 자동으로 추가됩니다.",
   "agent-tool-tooltip": "에이전트를 위한 도구 및 통합 선택",
   "share": "공유",
   "advanced-model-config": "고급 모델 구성",

@@ -35,6 +35,15 @@ const CONTENT_HEADER_BASE_CLASS =
 
 export const CONTENT_HEADER_CLASS = `${CONTENT_HEADER_BASE_CLASS} h-ds-layout-row-header min-h-ds-layout-row-header px-ds-8`;
 
+/**
+ * Leading inset that lines a page header's first item up with the top bar's
+ * search icon, 18px in from the content column (the search button's 8px
+ * margin plus its 10px padding). Use it on headers whose left edge is the
+ * content column's left edge.
+ */
+export const CONTENT_HEADER_TOP_BAR_ALIGNED_INSET_CLASS =
+  'pl-[calc(var(--ds-ref-space-8)_+_var(--ds-ref-space-10))]';
+
 /** Bottom hairline for headers that sit above a scrolling list. */
 export const CONTENT_HEADER_BORDER_CLASS =
   'border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default';

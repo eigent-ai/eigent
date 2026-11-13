@@ -20,18 +20,25 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DsText } from '@/components/ui/ds-text';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { useWorkspaceComposerRequests } from '@/components/Workspace/composerRequests';
-import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
+import { EigentAppIcon } from '@/components/Workspace/EigentAppIcon';
 import {
   clearWorkspaceSendRecovery,
   peekWorkspaceSendRecovery,
   setWorkspaceSendRecovery,
   type WorkspaceSendRecovery,
 } from '@/components/Workspace/sendRecovery';
-import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
-import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
+import {
+  readStarterUseCasesOverride,
+  USE_CASES_URL,
+  UseCaseCards,
+} from '@/components/Workspace/UseCaseCards';
+import { pickWorkspaceWelcomeKey } from '@/components/Workspace/welcomeMessage';
+import { WorkforceAgentsMenu } from '@/components/Workspace/WorkforceAgentsMenu';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useNewSessionModelQuota } from '@/hooks/useNewSessionModelQuota';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { useSessionPane } from '@/hooks/useSessionPane';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
@@ -73,8 +80,6 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
-const WORKSPACE_COWORK_TEXT_CLASS =
-  'inline-flex shrink-0 items-center font-display text-ds-text-display font-semibold text-ds-ink-default-default';
 
 interface WorkspaceProps {
   /**
@@ -656,102 +661,67 @@ export default function Workspace({
     });
   }, [taskAssigning, workerList]);
 
-  const onSelectAgent = useCallback(
-    (agentId: string) => {
-      if (!chatStore?.activeTaskId) return;
-      chatStore.setActiveWorkspace(chatStore.activeTaskId, agentId);
-      chatStore.setActiveAgent(chatStore.activeTaskId, agentId);
-      host?.electronAPI?.hideAllWebview?.();
-    },
-    [chatStore, host]
+  /** Puts a starter use case in the composer, ready to edit or send. */
+  const applyUseCasePrompt = useCallback((prompt: string) => {
+    setMessage(prompt);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    });
+  }, []);
+
+  // Starter use cases are onboarding: shown only while the user has at most
+  // one Space (archived ones aside), i.e. before they have set up their work.
+  const isNewUser = useSpaceStore(
+    (state) =>
+      Object.values(state.spaces).filter((space) => space.status !== 'archived')
+        .length <= 1
   );
+  // Read once per visit; see STARTER_USE_CASES_OVERRIDE_KEY for testing.
+  const [useCasesOverride] = useState(readStarterUseCasesOverride);
+  const showStarterUseCases =
+    useCasesOverride === null ? isNewUser : useCasesOverride === 'show';
 
-  const onEditWorkerFromMenu = (agent: Agent) => {
-    setEditingWorkerAgent(agent);
-  };
-
-  const onDuplicateUserAgent = useCallback(
-    (agent: Agent) => {
-      if (isBaseWorkflowAgent(agent)) return;
-      const baseName = agent.workerInfo?.name ?? agent.name;
-      const taken = new Set<string>();
-      workerList.forEach((w) => {
-        taken.add(w.agent_id);
-        taken.add(w.name);
-      });
-      let newName = `${baseName} copy`;
-      let n = 2;
-      while (taken.has(newName)) {
-        newName = `${baseName} copy ${n++}`;
-      }
-      const raw = JSON.parse(JSON.stringify(agent)) as Agent;
-      const duplicate: Agent = {
-        ...raw,
-        agent_id: newName,
-        name: newName,
-        type: newName as AgentNameType,
-        tasks: [],
-        log: [],
-        activeWebviewIds: [],
-        workerInfo: raw.workerInfo
-          ? { ...raw.workerInfo, name: newName }
-          : undefined,
-      };
-      setWorkerList([...workerList, duplicate]);
-    },
-    [workerList, setWorkerList]
+  // In a Session, "View more" opens the use cases in its Preview browser so
+  // the user stays in the app; the standalone page has no Preview, so it
+  // falls back to the system browser.
+  const sessionPane = useSessionPane();
+  const openBrowserPreview = useSessionPageTabStore(
+    (s) => s.openBrowserPreview
   );
+  const openUseCases = useCallback(() => {
+    if (sessionPane) {
+      openBrowserPreview(USE_CASES_URL);
+      return;
+    }
+    window.open(USE_CASES_URL, '_blank', 'noopener,noreferrer');
+  }, [openBrowserPreview, sessionPane]);
 
-  const onDeleteUserAgent = useCallback(
-    (agentId: string) => {
-      setWorkerList(workerList.filter((w) => w.agent_id !== agentId));
-    },
-    [workerList, setWorkerList]
-  );
+  // Chosen once per visit so the line does not change while the user types.
+  const [welcomeKey] = useState(() => pickWorkspaceWelcomeKey());
 
-  const activeAgentId = chatStore?.activeTaskId
-    ? chatStore.tasks[chatStore.activeTaskId]?.activeAgent
-    : undefined;
-
-  const renderAgentList = () =>
-    effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-      <SingleAgentList />
-    ) : (
-      <WorkforceAgentList
-        sortedAgents={sortedAgents}
-        activeAgentId={activeAgentId}
-        onSelectAgent={onSelectAgent}
-        onEditWorkerFromMenu={onEditWorkerFromMenu}
-        onDuplicateUserAgent={onDuplicateUserAgent}
-        onDeleteUserAgent={onDeleteUserAgent}
-        onAddWorker={() => setAddWorkerDialogOpen(true)}
-        alignment="start"
+  // Workforce lists its agents from a button beside the composer's "+".
+  const workforceAgentsAction =
+    effectiveSessionMode === SessionMode.WORKFORCE ? (
+      <WorkforceAgentsMenu
+        agents={sortedAgents}
+        onAddAgent={() => setAddWorkerDialogOpen(true)}
+        onEditAgent={setEditingWorkerAgent}
+        onDeleteAgent={(agent) =>
+          setWorkerList(
+            workerList.filter((worker) => worker.agent_id !== agent.agent_id)
+          )
+        }
+        disabled={isStartingDirectProject}
       />
-    );
-
-  const workspaceComposerTop = (
-    <div
-      data-workspace-cowork-row
-      className="mb-3 flex min-h-[46px] w-full min-w-0 items-center justify-start gap-3"
-    >
-      <span className={WORKSPACE_COWORK_TEXT_CLASS}>
-        {t('layout.cowork-with', { defaultValue: 'Cowork with' })}
-      </span>
-      <div
-        data-workspace-agent-list
-        className="flex h-[46px] min-h-[46px] min-w-0 flex-1 items-center justify-start gap-3 overflow-visible"
-      >
-        {renderAgentList()}
-        {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-          <span className="sr-only">
-            {t('layout.workspace-session-single-agent', {
-              defaultValue: 'Single Agent',
-            })}
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
+    ) : undefined;
 
   const composerInput = (
     <>
@@ -787,6 +757,7 @@ export default function Workspace({
           onSelectModel={() => openSettings('models')}
           inputProps={{
             ...composerInputProps,
+            leadingActions: workforceAgentsAction,
             attachmentsEnabled: !managedSelected,
             onUnsupportedAttachment: () =>
               toast.error(t('chat.parallel-unsupported')),
@@ -806,7 +777,7 @@ export default function Workspace({
         <AddWorker
           edit
           workerInfo={editingWorkerAgent}
-          isOpen={true}
+          isOpen
           onOpenChange={(open) => {
             if (!open) setEditingWorkerAgent(null);
           }}
@@ -838,12 +809,32 @@ export default function Workspace({
             {/* The Workspace page shares its width with the Space panel. */}
             <div
               className={cn(
-                'flex w-full min-w-0 flex-col pb-[58px]',
+                '@container flex w-full min-w-0 flex-col pb-[58px]',
                 variant === 'new-project' ? 'max-w-[736px]' : 'max-w-[600px]'
               )}
             >
-              {workspaceComposerTop}
+              {/* In a narrow composer column the line wraps, so the icon stacks
+                  above it, centred; from 40rem it sits beside the line. */}
+              <h1
+                data-workspace-welcome
+                className="m-0 mb-ds-24 flex flex-col items-center justify-center gap-ds-12 text-center text-ds-text-display font-semibold text-ds-ink-default-default @min-[40rem]:flex-row"
+              >
+                <EigentAppIcon className="size-11" />
+                {/* The display face goes on the text itself: a global `*` rule gives
+                    every element Inter, so it is not inherited from the h1. */}
+                <span className="min-w-0 font-display text-balance">
+                  {t(welcomeKey)}
+                </span>
+              </h1>
               {composerInput}
+              {showStarterUseCases ? (
+                <div className="mt-ds-32 w-full">
+                  <UseCaseCards
+                    onSelectPrompt={applyUseCasePrompt}
+                    onViewMore={openUseCases}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
         </section>

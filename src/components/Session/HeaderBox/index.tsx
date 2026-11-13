@@ -15,7 +15,10 @@
 import tokenDarkIcon from '@/assets/custom/token-dark.svg';
 import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
-import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
+import {
+  CONTENT_HEADER_CLASS,
+  CONTENT_HEADER_TOP_BAR_ALIGNED_INSET_CLASS,
+} from '@/components/Layout/ContentHeader';
 import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
@@ -268,8 +271,7 @@ export function HeaderBox({
         // button's 8px margin and 10px padding). A leading Space icon starts
         // there; without one, the title leads, and its own 10px text inset
         // puts it there from the base 8px.
-        sessionSpace &&
-          'pl-[calc(var(--ds-ref-space-8)_+_var(--ds-ref-space-10))]',
+        sessionSpace && CONTENT_HEADER_TOP_BAR_ALIGNED_INSET_CLASS,
         // At the window edge, the last 28px button centres under Support,
         // 10px in from the edge.
         atWindowEdge && 'pr-ds-10',

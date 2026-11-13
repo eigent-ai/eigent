@@ -12,6 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  FOOTER_COMPACT_TRIGGER_CLASS,
+  useFooterCompact,
+} from '@/components/ChatBox/BottomBox/footerCompact';
 import { getChoosableSpaces } from '@/components/Layout/AppRail/pinnedSpaces';
 import {
   DropdownMenu,
@@ -65,6 +69,8 @@ export function NewSessionSpaceChip() {
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const { switchToSpace, switchingSpaceId } = useSpaceSwitch();
+  // In a narrow composer footer the chip becomes a folder icon button.
+  const compact = useFooterCompact();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
@@ -123,15 +129,20 @@ export function NewSessionSpaceChip() {
             aria-label={`${fieldLabel}, ${label}`}
             aria-haspopup="menu"
             data-new-session-space-chip
-            className={FOOTER_TRIGGER_CLASS}
+            className={cn(
+              FOOTER_TRIGGER_CLASS,
+              compact && cn('shrink-0', FOOTER_COMPACT_TRIGGER_CLASS)
+            )}
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <DsIcon icon={Folder} className="opacity-80" />
-              <span className="min-w-0 flex-1 truncate text-left !text-ds-text-meta text-ds-ink-default-default">
-                {label}
-              </span>
+              {!compact && (
+                <span className="min-w-0 flex-1 truncate text-left !text-ds-text-meta text-ds-ink-default-default">
+                  {label}
+                </span>
+              )}
             </span>
-            <DsIcon icon={ChevronDown} className="opacity-80" />
+            {!compact && <DsIcon icon={ChevronDown} className="opacity-80" />}
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent

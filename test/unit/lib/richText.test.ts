@@ -14,6 +14,7 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { rememberConnectorChipIcon } from '@/lib/connectorChipIcon';
 import { segmentsToHtml, tokenizeRichPlainText } from '@/lib/richText';
 
 describe('rich chat tag typography', () => {
@@ -29,4 +30,32 @@ describe('rich chat tag typography', () => {
       expect(html).not.toContain('py-px');
     }
   );
+});
+
+describe('connector tags', () => {
+  const render = (text: string) => {
+    const root = document.createElement('div');
+    root.innerHTML = segmentsToHtml(tokenizeRichPlainText(text));
+    return root;
+  };
+
+  it('shows the logo and name instead of the @ prefix', () => {
+    const tag = render('post to @Slack').querySelector<HTMLElement>(
+      '[data-rich-connector]'
+    )!;
+    const logo = tag.querySelector('img')!;
+
+    expect(logo.getAttribute('alt')).toBe('');
+    expect(logo.getAttribute('src')).toBeTruthy();
+    expect(tag.querySelector('.sr-only')?.textContent).toBe('@');
+    // The @ stays in the text so the prompt value and caret offsets match.
+    expect(tag.textContent).toBe('@Slack');
+  });
+
+  it('remembers a hosted connector logo reported by the API', () => {
+    rememberConnectorChipIcon('@Linear', 'https://cdn.example/linear.svg');
+    expect(render('@Linear').querySelector('img')?.getAttribute('src')).toBe(
+      'https://cdn.example/linear.svg'
+    );
+  });
 });

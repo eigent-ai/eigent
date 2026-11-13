@@ -20,6 +20,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { TriangleAlert } from 'lucide-react';
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -28,9 +29,13 @@ import {
 import { useTranslation } from 'react-i18next';
 import { BoxFooter } from './BoxFooter';
 import { BoxHeaderConfirm, BoxHeaderDisplay, BoxHeaderSave } from './BoxHeader';
+import {
+  ContextPanel,
+  type ContextItem,
+  type ContextPanelHandle,
+} from './ContextPanel';
 import { ControlInputRouter } from './ControlInput';
 import type { FileAttachment, InputboxProps } from './InputBox';
-import { ConnectorPickerPanel, SkillPickerPanel } from './PickerPanel';
 import { QueuedBox, type QueueContext, type QueuedMessage } from './QueuedBox';
 import type { BottomBoxVariant, LegacyBottomBoxVariant } from './types';
 import {
@@ -41,7 +46,20 @@ import {
 export type BottomBoxState =
   'input' | 'confirm' | 'save' | 'running' | 'finished';
 
-type PickerPanelKind = 'connector' | 'skill';
+/** Appends a `#skill` / `@connector` token, space-separated. */
+function appendToken(text: string, token: string): string {
+  const trimmed = text.replace(/\s+$/, '');
+  return (trimmed.length ? `${trimmed} ` : '') + `${token} `;
+}
+
+/** Removes a token (and one adjacent space) from the text. */
+function stripToken(text: string, token: string): string {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text
+    .replace(new RegExp(`\\s?${escaped}`), '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^\s+/, '');
+}
 
 const VARIANT_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
 const VARIANT_ENTER_TRANSITION = {
@@ -228,35 +246,6 @@ export default function BottomBox({
   const normalizedVariant: BottomBoxVariant =
     variant === 'input' ? { kind: 'input' } : variant;
 
-  // Picker panels (connector/skill) float above BoxMain and are mutually exclusive.
-  const [openPanel, setOpenPanel] = useState<PickerPanelKind | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  const togglePanel = (panel: PickerPanelKind) =>
-    setOpenPanel((prev) => (prev === panel ? null : panel));
-
-  // Close the floating panel on outside click (ignore the trigger buttons,
-  // which own their own toggle).
-  useEffect(() => {
-    if (!openPanel) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        panelRef.current?.contains(target ?? null) ||
-        target?.closest('[data-picker-trigger]')
-      ) {
-        return;
-      }
-      setOpenPanel(null);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [openPanel]);
-
-  useEffect(() => {
-    if (normalizedVariant.kind !== 'input') setOpenPanel(null);
-  }, [normalizedVariant.kind]);
-
   // Replacing the composer with an agent request is a mode change. Assistive
   // technology only learns about it if the new region is announced and focus
   // follows it, otherwise the caret is left on a control that no longer exists.
@@ -298,27 +287,119 @@ export default function BottomBox({
     });
   };
 
-  /** Append a `#skill` / `@connector` token to the input, space-separated. */
-  const insertToken = (token: string) => {
-    const trimmed = inputValue.replace(/\s+$/, '');
-    const next = (trimmed.length ? `${trimmed} ` : '') + `${token} `;
-    inputProps.onChange?.(next);
+  // "Add context" panel (files, skills, connectors) floating above BoxMain.
+  // The composer's text field is its search box: whatever is typed after the
+  // panel opens (the text past `contextAnchor`) filters it, and choosing a row
+  // replaces that search text with the row's token.
+  const contextPanelEnabled =
+    resourcePickersEnabled && normalizedVariant.kind === 'input';
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
+  const [contextAnchor, setContextAnchor] = useState('');
+  const [contextActiveRowId, setContextActiveRowId] = useState<string>();
+  const contextPanelRef = useRef<ContextPanelHandle>(null);
+  const contextPanelBoxRef = useRef<HTMLDivElement>(null);
+  const contextListId = useId();
+  const contextOpen = contextPanelEnabled && contextPanelOpen;
+  const contextBase = inputValue.startsWith(contextAnchor)
+    ? contextAnchor
+    : inputValue;
+  const contextQuery = contextOpen
+    ? inputValue.slice(contextBase.length).trim()
+    : '';
+
+  const closeContextPanel = () => {
+    setContextPanelOpen(false);
+    setContextActiveRowId(undefined);
+  };
+
+  const toggleContextPanel = () => {
+    if (contextOpen) {
+      closeContextPanel();
+      return;
+    }
+    setContextAnchor(inputValue);
+    setContextPanelOpen(true);
     focusInputEnd();
   };
 
-  /** Remove a previously inserted token (and one adjacent space) from the input. */
-  const removeToken = (token: string) => {
-    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const next = inputValue
-      .replace(new RegExp(`\\s?${escaped}`), '')
-      .replace(/\s{2,}/g, ' ')
-      .replace(/^\s+/, '');
+  // Editing back into the text that was there when the panel opened starts
+  // a fresh search from what is left.
+  useEffect(() => {
+    if (contextOpen && !inputValue.startsWith(contextAnchor)) {
+      setContextAnchor(inputValue);
+    }
+  }, [contextAnchor, contextOpen, inputValue]);
+
+  useEffect(() => {
+    if (contextPanelEnabled) return;
+    setContextPanelOpen(false);
+    setContextActiveRowId(undefined);
+  }, [contextPanelEnabled]);
+
+  // Close on outside click. The text field is the panel's search box and the
+  // "+" button owns its own toggle, so neither counts as outside.
+  useEffect(() => {
+    if (!contextOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        contextPanelBoxRef.current?.contains(target ?? null) ||
+        target?.closest('[data-context-panel-trigger], [data-text-input]')
+      ) {
+        return;
+      }
+      setContextPanelOpen(false);
+      setContextActiveRowId(undefined);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [contextOpen]);
+
+  /** Adds the item's token in place of the search text, or removes it. */
+  const pickContextItem = (item: ContextItem) => {
+    const next = contextBase.includes(item.token)
+      ? stripToken(contextBase, item.token)
+      : appendToken(contextBase, item.token);
     inputProps.onChange?.(next);
+    closeContextPanel();
     focusInputEnd();
   };
 
-  const toggleToken = (token: string) =>
-    inputValue.includes(token) ? removeToken(token) : insertToken(token);
+  const uploadFromContextPanel = () => {
+    if (contextBase !== inputValue) inputProps.onChange?.(contextBase);
+    closeContextPanel();
+    inputProps.onAddFile?.();
+  };
+
+  const handleContextPanelKeyDown = (
+    e: React.KeyboardEvent<HTMLDivElement>
+  ): boolean => {
+    if (!contextOpen || e.nativeEvent.isComposing) return false;
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowUp':
+        e.preventDefault();
+        contextPanelRef.current?.move(e.key === 'ArrowDown' ? 1 : -1);
+        return true;
+      case 'Enter':
+        if (e.shiftKey || !contextPanelRef.current?.pick()) return false;
+        e.preventDefault();
+        return true;
+      case 'Escape':
+        e.preventDefault();
+        e.stopPropagation();
+        closeContextPanel();
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  const contextUploadDisabled =
+    inputProps.attachmentsEnabled === false ||
+    inputProps.privacy === false ||
+    inputProps.useCloudModelInDev === true ||
+    typeof inputProps.onAddFile !== 'function';
 
   // Background color reflects current state only. The composer tray matches
   // the chat canvas so its footer row reads as part of the background; the
@@ -332,11 +413,7 @@ export default function BottomBox({
     : 'bg-ds-neutral-default-default';
 
   const showQueuedBox = enableQueuedBox && queuedMessages.length > 0;
-  const activePickerPanel =
-    resourcePickersEnabled && normalizedVariant.kind === 'input'
-      ? openPanel
-      : null;
-  const hasOverlay = !!usageLimitBanner || !!activePickerPanel;
+  const hasOverlay = !!usageLimitBanner || contextOpen;
 
   const variantHeader = normalizedVariant.header;
   // Composer and approval question/details live inside their input surfaces.
@@ -401,7 +478,7 @@ export default function BottomBox({
       {/* Floating utility overlays: never affect BoxMain layout. */}
       {hasOverlay && (
         <motion.div
-          key={activePickerPanel ?? 'usage-limit'}
+          key={contextOpen ? 'context-panel' : 'usage-limit'}
           data-bottom-box-overlay={inline ? 'below' : 'above'}
           className={cn(
             'pointer-events-auto absolute inset-x-0 z-[60] flex flex-col gap-1',
@@ -412,19 +489,18 @@ export default function BottomBox({
           transition={enterTransition}
         >
           {usageLimitBanner && <UsageLimitBanner {...usageLimitBanner} />}
-          {activePickerPanel && (
-            <div ref={panelRef}>
-              {activePickerPanel === 'connector' ? (
-                <ConnectorPickerPanel
-                  inputValue={inputValue}
-                  onToggleItem={(item) => toggleToken(item.token)}
-                />
-              ) : (
-                <SkillPickerPanel
-                  inputValue={inputValue}
-                  onToggleItem={(item) => toggleToken(item.token)}
-                />
-              )}
+          {contextOpen && (
+            <div ref={contextPanelBoxRef}>
+              <ContextPanel
+                ref={contextPanelRef}
+                listId={contextListId}
+                query={contextQuery}
+                inputValue={inputValue}
+                uploadDisabled={contextUploadDisabled}
+                onUpload={uploadFromContextPanel}
+                onPickItem={pickContextItem}
+                onActiveRowChange={setContextActiveRowId}
+              />
             </div>
           )}
         </motion.div>
@@ -520,15 +596,16 @@ export default function BottomBox({
             <ControlInputRouter
               variant={normalizedVariant}
               inputProps={inputProps}
-              connectorPanelOpen={activePickerPanel === 'connector'}
-              onToggleConnectorPanel={
-                resourcePickersEnabled
-                  ? () => togglePanel('connector')
+              contextPanel={
+                contextPanelEnabled
+                  ? {
+                      open: contextOpen,
+                      onToggle: toggleContextPanel,
+                      onKeyDown: handleContextPanelKeyDown,
+                      listId: contextListId,
+                      activeRowId: contextActiveRowId,
+                    }
                   : undefined
-              }
-              skillPanelOpen={activePickerPanel === 'skill'}
-              onToggleSkillPanel={
-                resourcePickersEnabled ? () => togglePanel('skill') : undefined
               }
             />
           </motion.div>

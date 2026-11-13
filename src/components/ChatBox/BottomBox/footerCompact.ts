@@ -12,18 +12,21 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
+import { createContext, useContext } from 'react';
 
 /**
- * Workspace single-agent mode placeholder (visual only until wired).
+ * True while the composer footer is narrow. Controls passed into the footer
+ * from outside (for example New session's Space chip) read it so they collapse
+ * to icon-only together with the built-in mode and approval controls.
  */
-export function SingleAgentList() {
-  return (
-    <div
-      className="inline-flex size-10 shrink-0 overflow-hidden rounded-xl bg-ds-neutral-strong-default"
-      aria-hidden
-    >
-      <AgentAvatar agentType="single_agent" fullBleed />
-    </div>
-  );
+export const FooterCompactContext = createContext(false);
+
+export function useFooterCompact(): boolean {
+  return useContext(FooterCompactContext);
 }
+
+/**
+ * Narrow-footer trigger geometry: an even 4px inset around the 16px icon gives
+ * a 24 × 24px circular icon button in place of the labelled pill.
+ */
+export const FOOTER_COMPACT_TRIGGER_CLASS = 'p-1';

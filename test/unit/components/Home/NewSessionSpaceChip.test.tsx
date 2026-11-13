@@ -16,6 +16,7 @@
 // and i18n settle their import cycle in the same order.
 import '@/api/http';
 
+import { FooterCompactContext } from '@/components/ChatBox/BottomBox/footerCompact';
 import { NewSessionSpaceChip } from '@/components/Home/NewSessionSpaceChip';
 import { useSpaceStore, type Space } from '@/store/spaceStore';
 import { render, screen, within } from '@testing-library/react';
@@ -92,6 +93,20 @@ describe('NewSessionSpaceChip', () => {
     });
     expect(chip).toHaveTextContent('Research');
     expect(chip).toHaveClass('rounded-xl', 'bg-ds-neutral-subtle-default');
+  });
+
+  it('collapses to a named folder icon button in a narrow footer', () => {
+    render(
+      <FooterCompactContext.Provider value>
+        <NewSessionSpaceChip />
+      </FooterCompactContext.Provider>
+    );
+    const chip = screen.getByRole('button', {
+      name: 'Space for this session, Research',
+    });
+    expect(chip).toHaveTextContent('');
+    expect(chip).toHaveAttribute('title', 'Research');
+    expect(chip.querySelectorAll('svg')).toHaveLength(1);
   });
 
   it('lists every Space under a search field, then New Space, and switches on choice', async () => {

@@ -150,6 +150,7 @@ module.exports = {
   },
   "boxShadow": {
     "ds-elevation-card": "var(--ds-elevation-card)",
+    "ds-elevation-card-subtle": "var(--ds-elevation-card-subtle)",
     "ds-elevation-control": "var(--ds-elevation-control)",
     "ds-elevation-control-hover": "var(--ds-elevation-control-hover)",
     "ds-elevation-control-pressed": "var(--ds-elevation-control-pressed)",
