@@ -677,13 +677,21 @@ export default function Workspace({
     });
   }, []);
 
-  // Starter use cases are onboarding: shown only while the user has at most
-  // one Space (archived ones aside), i.e. before they have set up their work.
-  const isNewUser = useSpaceStore(
-    (state) =>
-      Object.values(state.spaces).filter((space) => space.status !== 'archived')
-        .length <= 1
-  );
+  // Starter use cases are onboarding: shown only to a new user, who has at
+  // most one Space (archived ones aside) and no Session yet. They wait until
+  // the Space's Sessions have loaded, so a returning user on a new device
+  // never sees them flash.
+  const isNewUser = useSpaceStore((state) => {
+    const spaces = Object.values(state.spaces).filter(
+      (space) => space.status !== 'archived'
+    );
+    if (spaces.length > 1) return false;
+    if (Object.keys(state.projectIdIndex ?? {}).length > 0) return false;
+    return (
+      !state.activeSpaceId ||
+      state.projectsSyncedAt?.[state.activeSpaceId] !== undefined
+    );
+  });
   // Read once per visit; see STARTER_USE_CASES_OVERRIDE_KEY for testing.
   const [useCasesOverride] = useState(readStarterUseCasesOverride);
   const showStarterUseCases =
