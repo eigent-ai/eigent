@@ -31,6 +31,7 @@ from camel.toolkits import (
 
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.agent.toolkit import file_write_toolkit
+from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.run_context import RunContext, run_context_scope
@@ -149,6 +150,77 @@ def test_unknown_argument_is_rejected_by_name(tmp_path):
     assert "'filename'" in result["error"]  # lists what is accepted
     assert result["write_performed"] is False
     assert result["retryable"] is True
+
+
+class _PageToolkit(AbstractToolkit):
+    """Shaped like the browser toolkit: tools wrapped by listen_toolkit."""
+
+    agent_name = "browser"
+
+    def __init__(self, calls: list[dict]) -> None:
+        self.api_task_id = "project-1"
+        self.calls = calls
+
+    @toolkit_listen.listen_toolkit()
+    async def open_page(self, url: str) -> str:
+        """Open a page.
+
+        Args:
+            url (str): The page address.
+
+        Returns:
+            str: Confirmation.
+        """
+        self.calls.append({"url": url})
+        return "opened"
+
+    @toolkit_listen.listen_toolkit()
+    def read_page(self, url: str) -> str:
+        """Read a page.
+
+        Args:
+            url (str): The page address.
+
+        Returns:
+            str: The page text.
+        """
+        self.calls.append({"url": url})
+        return "text"
+
+
+def test_async_toolkit_tool_is_not_rejected_for_an_argument_it_drops():
+    # listen_toolkit drops keyword arguments an async tool does not accept,
+    # so the call runs. Rejecting it would only cost the model a round trip.
+    tool = FunctionTool(_PageToolkit([]).open_page)
+    sent = {"url": "https://example.com", "wait_seconds": 5}
+
+    checked = check_tool_arguments(tool, "open_page", sent)
+
+    assert checked.rejection is None
+    assert checked.arguments == sent
+
+
+def test_async_toolkit_tool_still_rejects_a_missing_argument():
+    tool = FunctionTool(_PageToolkit([]).open_page)
+
+    checked = check_tool_arguments(tool, "open_page", {"wait_seconds": 5})
+
+    assert checked.rejection is not None
+    assert checked.rejection.error_code == "missing_tool_argument"
+    assert checked.rejection.field == "url"
+
+
+def test_sync_toolkit_tool_still_rejects_an_unknown_argument():
+    # A sync tool is called with every argument, so this call cannot bind.
+    tool = FunctionTool(_PageToolkit([]).read_page)
+
+    checked = check_tool_arguments(
+        tool, "read_page", {"url": "https://example.com", "wait_seconds": 5}
+    )
+
+    assert checked.rejection is not None
+    assert checked.rejection.error_code == "unknown_tool_argument"
+    assert checked.rejection.field == "wait_seconds"
 
 
 def test_missing_required_argument_is_rejected_by_name(tmp_path):
@@ -680,4 +752,35 @@ async def test_mcp_dispatch_sends_unknown_arguments_to_the_server(tmp_path):
         tool_call = journal.list_tool_calls("run-1")[0]
 
     server_call.assert_awaited_once_with(query="q", limit=3, trace="on")
+    assert tool_call.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_async_toolkit_tool_runs_without_the_argument_it_drops(tmp_path):
+    calls: list[dict] = []
+    agent = _agent(FunctionTool(_PageToolkit(calls).open_page))
+    request = ToolCallRequest(
+        tool_name="open_page",
+        args={"url": "https://example.com", "wait_seconds": 5},
+        tool_call_id="call-extra",
+    )
+    task_lock = MagicMock()
+    task_lock.put_queue = AsyncMock()
+
+    with (
+        _running_journal(tmp_path) as journal,
+        run_context_scope(_context(tmp_path)),
+        patch(
+            "app.run_runtime.tool_checkpoint.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(f"{_LCA}.get_task_lock", return_value=task_lock),
+        patch.object(toolkit_listen, "get_task_lock", return_value=task_lock),
+        patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+    ):
+        await agent._aexecute_tool(request)
+
+        tool_call = journal.list_tool_calls("run-1")[0]
+
+    assert calls == [{"url": "https://example.com"}]
     assert tool_call.status == "completed"
